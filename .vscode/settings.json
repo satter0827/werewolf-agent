@@ -1,0 +1,44 @@
+{
+  // ----------------------
+  // Editor
+  // ----------------------
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "always",
+    "source.fixAll": "explicit"
+  },
+  // ----------------------
+  // Python Environment
+  // ----------------------
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "python-envs.pythonProjects": [],
+  // ----------------------
+  // Testing
+  // ----------------------
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
+  "python.testing.pytestArgs": [
+    "tests"
+  ],
+  // ----------------------
+  // Type Checking (mypy)
+  // ----------------------
+  "mypy-type-checker.args": [
+    "--config-file=pyproject.toml"
+  ],
+  "python.analysis.typeCheckingMode": "off",
+  // ----------------------
+  // Paths / Import Resolution
+  // ----------------------
+  "python.analysis.extraPaths": [
+    "src"
+  ],
+  // ----------------------
+  // UI / Noise Reduction
+  // ----------------------
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportMissingImports": "none",
+    "reportMissingTypeStubs": "none"
+  }
+}
