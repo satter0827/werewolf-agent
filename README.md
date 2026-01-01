@@ -1,129 +1,134 @@
-# Werewolf LLM Engine — LLM 駆動人狼ゲーム基盤
+Below is a faithful, professional English translation suitable for a README, portfolio, or PyPI description.
+The tone is neutral–positive and aligned with software engineering conventions.
 
 ---
 
-## 概要
-
-本プロジェクトは、**人狼ゲームの進行を LLM（大規模言語モデル）によって自動実行することを目的とした、Python 製のヘッドレスゲームエンジン**です。
-UI・UX や通信機構を持たず、**上位レイヤー（CLI / Web / Bot / 実験基盤など）から呼び出されるライブラリ**としての利用を前提としています。
-
-本ライブラリは、フェーズ管理、役職能力解決、投票・処刑、勝利判定といった人狼ゲームの中核ロジックを提供し、
-各プレイヤーの発言・意思決定は LLM エージェントとして抽象化されます。
-
-設定やルール、プロンプトは外部から注入可能であり、
-研究用途・検証用途・エージェント比較・ゲームデザイン検証まで幅広く適用できる **汎用的な人狼実行基盤**を目指します。
+# Werewolf LLM Engine — LLM-Driven Werewolf Game Core
 
 ---
 
-## 設計方針
+## Overview
 
-* UI・入出力方式を固定せず、組み込み用途に最適化する
-* 役職・ルール・LLM を疎結合に保ち、拡張容易性を担保する
-* 上位レイヤーからの制御を前提に、境界（インターフェース）を明確に設計する
-* 再現性（乱数シード・決定論的進行）を重視し、検証と改善を加速させる
+This project is a **Python-based, headless game engine designed to execute Werewolf games using large language models (LLMs)**.
+It provides no UI/UX or communication layer and is intended to be used as a **library invoked from higher-level systems** such as CLI tools, web applications, bots, or experimental platforms.
 
----
+The library implements the core logic of the Werewolf game, including phase management, role ability resolution, voting and execution, and win-condition evaluation.
+Each player’s dialogue and decision-making are abstracted as LLM-driven agents.
 
-## 主な機能
-
-人狼ゲームの進行制御を中核に、LLM エージェントによる会話・投票・能力行使を統合的に扱う機能を提供します。
-
-* **ゲーム進行エンジン**
-  夜・昼・投票・処刑・勝利判定といったフェーズ遷移を管理し、ゲーム状態を一貫して更新します。
-
-* **役職・能力システム**
-  人狼、村人、占い師などの役職を拡張可能な形で定義し、能力の解決順序や競合処理を制御できます。
-
-* **LLM エージェントによる意思決定**
-  各プレイヤーの発言、投票、能力行使を LLM またはルールベースエージェントで決定します。
-
-* **設定注入型設計**
-  役職構成、勝利条件、会話制約、プロンプト、乱数シードなどを外部から指定できます。
-
-* **構造化イベント出力**
-  発言、投票、能力結果、死亡、勝利といった出来事を、上位レイヤーで扱いやすいイベント形式で出力します。
-
-* **再現可能なゲーム実行**
-  同一設定・同一シードで同一進行を再現でき、実験や検証に適した設計です。
+Game rules, configurations, and prompts are fully injectable from external sources, enabling flexible use across **research, experimentation, agent comparison, and game design validation**.
+The project aims to serve as a **general-purpose execution core for LLM-based Werewolf simulations**.
 
 ---
 
-## 対象範囲
+## Design Principles
 
-本プロジェクトは、人狼ゲームエンジンとしての**中核ロジック**に責務を集中させています。
-そのため、以下の領域は提供範囲に含めていません。
-
-* **ユーザーインターフェース層**
-  チャット UI、Web 画面、音声入出力などは対象外とし、上位レイヤーでの実装を前提とします。
-
-* **永続化・データ管理**
-  ゲームログ、会話履歴、結果保存の方式は規定せず、利用側で設計可能とします。
-
-* **LLM 認証情報の管理**
-  API Key やモデル管理は外部で行う前提とします。
-
-* **マッチング・ルーム管理**
-  複数ゲーム管理や参加者管理はスコープ外とします。
+* Do not fix UI or input/output mechanisms; optimize for embedded use
+* Keep roles, rules, and LLMs loosely coupled to ensure extensibility
+* Clearly define boundaries and interfaces, assuming control from higher-level layers
+* Emphasize reproducibility through deterministic execution and random seed control
 
 ---
 
-## 他ライブラリとの差別化ポイント
+## Key Features
 
-本ライブラリは、**LLM 駆動の人狼ゲームコア**に特化して設計されています。
+The engine focuses on orchestrating Werewolf game execution while integrating LLM-based agents for dialogue, voting, and ability usage.
 
-* **人狼ゲームのコアロジックに特化**
-  UI や運用を切り離し、ゲーム進行そのものに集中しています。
+* **Game Execution Engine**
+  Manages phase transitions such as night, day, voting, execution, and win-condition evaluation, while consistently updating game state.
 
-* **LLM ファーストな設計**
-  発言・推論・投票を LLM エージェントとして自然に組み込めます。
+* **Role and Ability System**
+  Defines roles such as werewolves, villagers, and seers in an extensible manner, with controllable ability resolution order and conflict handling.
 
-* **再現性と検証性**
-  実験・比較・研究用途を前提とした決定論的設計により、改善サイクルを回しやすくしています。
+* **LLM-Driven Agent Decisions**
+  Player dialogue, voting, and ability usage are determined by LLM-based or rule-based agents.
 
-* **拡張しやすい役職・ルール設計**
-  新役職や特殊ルールを追加しやすい構造を採用し、応用の幅を広げます。
+* **Config-Driven Architecture**
+  Role composition, win conditions, dialogue constraints, prompts, and random seeds can be specified externally.
 
-* **組み込み前提の API 設計**
-  Bot、Web、分析基盤などからの呼び出しを想定し、インターフェースを明確に保ちます。
+* **Structured Event Output**
+  Game events such as dialogue, votes, ability results, deaths, and victories are emitted in a structured format suitable for higher-level systems.
 
----
-
-## 想定ユースケース
-
-* **LLM エージェント研究・評価**
-  複数モデルやプロンプトの推論・対話特性を比較する用途。
-
-* **Bot・ゲームサービスへの組み込み**
-  Discord や Slack 等の Bot の内部エンジンとしての利用。
-
-* **ゲームデザイン検証**
-  役職バランスやルール変更の影響を大量試行で検証。
-
-* **会話・推論ログの分析基盤**
-  LLM の振る舞いを構造化ログとして収集・分析。
+* **Reproducible Game Execution**
+  Identical configurations and seeds guarantee identical execution, making the engine suitable for experimentation and validation.
 
 ---
 
-## 対応要素（初期想定）
+## Scope
 
-* フェーズ管理（夜／昼／投票／処刑）
-* 基本役職（村人・人狼・占い師 など）
-* LLM エージェント / ルールベースエージェント
-* 勝利条件判定
-* 構造化イベント出力
+This project deliberately focuses on the **core logic of a Werewolf game engine**.
+The following areas are explicitly out of scope:
+
+* **User Interface Layer**
+  Chat UIs, web interfaces, and voice input/output are excluded and expected to be implemented externally.
+
+* **Persistence and Data Management**
+  Storage formats and destinations for logs, conversations, and results are not prescribed.
+
+* **LLM Credential Management**
+  API keys and model configuration are expected to be managed outside the library.
+
+* **Matching and Room Management**
+  Multiplayer orchestration and session management are not included.
 
 ---
 
-## アーキテクチャ概要
+## Differentiation from Other Libraries
 
-* ゲーム進行エンジン層
-* 役職・能力定義層
-* LLM エージェント抽象層
-* ランタイム／オーケストレーション層
+This library is specifically designed as an **LLM-driven Werewolf game core**.
+
+* **Focus on Core Game Logic**
+  UI and operational concerns are intentionally separated from the game engine.
+
+* **LLM-First Architecture**
+  Dialogue, reasoning, and voting are treated as first-class LLM agent behaviors.
+
+* **Reproducibility and Evaluability**
+  Deterministic execution supports experiments, comparisons, and research workflows.
+
+* **Extensible Role and Rule Design**
+  New roles and custom rules can be added with minimal friction.
+
+* **Integration-Oriented API Design**
+  Interfaces are designed for embedding into bots, web services, and analytical systems.
 
 ---
 
-## インストール（予定）
+## Intended Use Cases
+
+* **LLM Agent Research and Evaluation**
+  Comparing reasoning and dialogue behaviors across models and prompts.
+
+* **Integration into Bots and Game Services**
+  Serving as the internal engine for Discord, Slack, or similar bots.
+
+* **Game Design Validation**
+  Running large-scale simulations to test role balance and rule changes.
+
+* **Conversation and Reasoning Log Analysis**
+  Collecting structured logs for analysis of LLM behavior.
+
+---
+
+## Supported Elements (Initial Scope)
+
+* Phase management (night / day / voting / execution)
+* Core roles (villager, werewolf, seer, etc.)
+* LLM-based and rule-based agents
+* Win-condition evaluation
+* Structured event output
+
+---
+
+## Architecture Overview
+
+* Game execution engine layer
+* Role and ability definition layer
+* LLM agent abstraction layer
+* Runtime and orchestration layer
+
+---
+
+## Installation (Planned)
 
 ```bash
 pip install werewolf-llm
@@ -131,7 +136,7 @@ pip install werewolf-llm
 
 ---
 
-## クイックスタート（イメージ）
+## Quick Start (Conceptual)
 
 ```python
 from werewolf_llm import GameEngine, GameConfig
@@ -149,22 +154,22 @@ for event in events:
     print(event)
 ```
 
-※ 上位レイヤーでイベントを解釈・表示・保存することを想定しています。
+The returned events are intended to be interpreted, displayed, or persisted by higher-level systems.
 
 ---
 
-## 今後の予定
+## Roadmap
 
-* 役職・ルール拡張用 API の整理（プラグイン的な追加を容易にする）
-* 推論ログ／視点別ログ（プレイヤー視点・観戦視点）の拡張
-* 人間参加を想定した入力注入インターフェース（Human-in-the-loop）
-* ゲームの大量実行・評価を支援する実験ランナーの提供（ベンチマーク用途）
-* **API 化（FastAPI 等）を想定したインターフェース整備**
-  ライブラリの設計思想を維持しつつ、上位サービスとして API 提供できる形へ段階的に拡張します。
-* PyPI 公開とドキュメント整備（設計指針・拡張ガイド・サンプルの充実）
+* Refinement of APIs for role and rule extensions (plugin-style architecture)
+* Enhanced reasoning logs and perspective-based logs (player vs. spectator views)
+* Human-in-the-loop input injection for mixed human/agent games
+* Experimental runners for large-scale execution and benchmarking
+* **Preparation for API-based deployment (e.g., FastAPI)**
+  While preserving the core library design, the engine will be extended to support API-based services.
+* PyPI publication and expanded documentation, including design guidelines, extension guides, and examples
 
 ---
 
-## ライセンス
+## License
 
 MIT License
