@@ -1,8 +1,3 @@
-Below is a faithful, professional English translation suitable for a README, portfolio, or PyPI description.
-The tone is neutral–positive and aligned with software engineering conventions.
-
----
-
 # Werewolf LLM Engine — LLM-Driven Werewolf Game Core
 
 ---
