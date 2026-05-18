@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import AliasChoices, Field, SecretStr
+from pydantic.functional_validators import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME: Final = "werewolf-agent"
@@ -14,6 +15,15 @@ API_SERVICE_NAME: Final = "werewolf-agent-api"
 DEFAULT_LLM_PROVIDER: Final = "dummy"
 DEFAULT_LLM_MODEL: Final = "dummy-local"
 DEFAULT_LOG_LEVEL: Final = "INFO"
+DEFAULT_LOG_FORMAT: Final = "json"
+DEFAULT_LOG_OUTPUT: Final = "stderr"
+
+LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
+LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
+LOG_OUTPUT_NAMES: Final = frozenset({"stderr", "stdout"})
+
+LogFormat = Literal["json", "console"]
+LogOutput = Literal["stderr", "stdout"]
 
 
 @lru_cache(maxsize=1)
@@ -30,6 +40,25 @@ def split_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
+def normalize_choice(
+    value: object,
+    *,
+    field_name: str,
+    choices: frozenset[str],
+    case: Literal["upper", "lower"],
+) -> str:
+    """Return a validated string choice normalized to the configured case."""
+    if not isinstance(value, str):
+        msg = f"{field_name} must be a string"
+        raise ValueError(msg)
+
+    normalized = value.strip().upper() if case == "upper" else value.strip().lower()
+    if normalized not in choices:
+        msg = f"{field_name} must be one of: {', '.join(sorted(choices))}"
+        raise ValueError(msg)
+    return normalized
+
+
 class AppSettings(BaseSettings):
     """Environment-backed settings shared by CLI and API entry points."""
 
@@ -39,6 +68,14 @@ class AppSettings(BaseSettings):
     )
     model: str = Field(default=DEFAULT_LLM_MODEL, validation_alias="WEREWOLF_MODEL")
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
+    log_format: LogFormat = Field(
+        default=DEFAULT_LOG_FORMAT,
+        validation_alias="WEREWOLF_LOG_FORMAT",
+    )
+    log_output: LogOutput = Field(
+        default=DEFAULT_LOG_OUTPUT,
+        validation_alias="WEREWOLF_LOG_OUTPUT",
+    )
 
     django_secret_key: SecretStr = Field(
         default=SecretStr("django-insecure-local-dev-only"),
@@ -96,6 +133,39 @@ class AppSettings(BaseSettings):
         if sqlite_path.is_absolute():
             return sqlite_path
         return repository_root() / sqlite_path
+
+    @field_validator("log_level", mode="before")
+    @classmethod
+    def normalize_log_level(cls, value: object) -> str:
+        """Return a validated uppercase logging level name."""
+        return normalize_choice(
+            value,
+            field_name="log_level",
+            choices=LOG_LEVEL_NAMES,
+            case="upper",
+        )
+
+    @field_validator("log_format", mode="before")
+    @classmethod
+    def normalize_log_format(cls, value: object) -> str:
+        """Return a validated lowercase logging formatter name."""
+        return normalize_choice(
+            value,
+            field_name="log_format",
+            choices=LOG_FORMAT_NAMES,
+            case="lower",
+        )
+
+    @field_validator("log_output", mode="before")
+    @classmethod
+    def normalize_log_output(cls, value: object) -> str:
+        """Return a validated lowercase logging stream name."""
+        return normalize_choice(
+            value,
+            field_name="log_output",
+            choices=LOG_OUTPUT_NAMES,
+            case="lower",
+        )
 
 
 @lru_cache(maxsize=1)

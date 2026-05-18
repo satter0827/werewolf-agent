@@ -41,7 +41,10 @@ OpenAI 互換 API、ローカル LLM、モック LLM を差し替えられるよ
 
 ### Observability
 
-ゲームの再現、デバッグ、評価のために、以下をログとして保存します。
+ログは、運用向けの構造化アプリログと、ゲーム再現・分析向けの JSONL イベントログを分けます。
+アプリログは Python 標準 `logging` を使い、CLI と Django の入口で設定します。ゲームエンジンのコアにはログ出力先を持ち込まず、必要な境界で logger や event sink を注入します。
+
+ゲームの再現、デバッグ、評価のために、以下を JSONL イベントログとして保存します。
 
 - ゲーム設定
 - 初期役職
@@ -53,6 +56,16 @@ OpenAI 互換 API、ローカル LLM、モック LLM を差し替えられるよ
 
 API キーや機密情報はログに含めません。
 
+### Error Handling
+
+Backend 共通のアプリ起因エラーは `werewolf_agent.errors` パッケージに集約します。エラーコードは `game.invalid_action` のような namespaced slug を使い、独自の数値コードは増やしません。
+
+HTTP API は RFC 9457 Problem Details (`application/problem+json`) を返します。`type`、`title`、`status`、`detail`、`instance` を基本形とし、安定した `code` と、必要に応じて `trace_id`、`errors` を含めます。
+
+入力検証は Pydantic / Django REST Framework の既存エラーコードを尊重します。API 全体の validation error は `request.validation_failed` とし、各フィールドの `errors[]` には Pydantic / DRF の `missing`、`int_parsing`、`required` などのコードを保持します。
+
+CLI は Typer / Click の引数エラーを標準挙動に任せ、アプリ起因の `AppError` だけを安全な短いメッセージと exit code `1` に変換します。
+
 ## 技術スタック
 
 - Language: Python 3.11+
@@ -63,7 +76,7 @@ API キーや機密情報はログに含めません。
 - Type Check: mypy または pyright
 - CLI: Typer
 - Config: `.env` + 環境変数
-- Logs: JSONL
+- Logs: structured application logs + JSONL game events
 
 ## ディレクトリ構成
 
@@ -102,6 +115,9 @@ uv run werewolf-agent doctor
 ```env
 WEREWOLF_LLM_PROVIDER=dummy
 WEREWOLF_MODEL=dummy-local
+WEREWOLF_LOG_LEVEL=INFO
+WEREWOLF_LOG_FORMAT=json
+WEREWOLF_LOG_OUTPUT=stderr
 WEREWOLF_DJANGO_DEBUG=true
 WEREWOLF_DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
 OPENAI_API_KEY=
@@ -109,6 +125,7 @@ OPENAI_API_KEY=
 
 機密情報を含む `.env` は Git にコミットしません。
 Django / LLM / ログの基本設定は `backend/src/werewolf_agent/config.py` に集約し、CLI と API の両方から同じ値を参照します。
+`WEREWOLF_LOG_FORMAT` は `json` または `console`、`WEREWOLF_LOG_OUTPUT` は `stderr` または `stdout` を指定できます。
 
 API 層や LLM 連携を触るときは、必要な optional dependencies を追加します。
 
@@ -120,11 +137,10 @@ uv sync --group dev --extra llm
 Django API のローカル確認:
 
 ```bash
-cd backend
-uv run --extra api python manage.py migrate
-uv run --extra api python manage.py check
-uv run --extra api python manage.py test werewolf_agent.interfaces.api.games
-uv run --extra api python manage.py runserver
+uv run --extra api python backend/manage.py migrate
+uv run --extra api python backend/manage.py check
+uv run --extra api pytest tests/test_api_health.py
+uv run --extra api python backend/manage.py runserver
 ```
 
 起動後、health endpoint を確認します。
@@ -200,8 +216,8 @@ uv run werewolf-agent play --config examples/basic-game.toml --log runs/game-001
 
 ```bash
 uv run werewolf-agent doctor
-cd backend && uv run --extra api python manage.py check
-cd backend && uv run --extra api python manage.py test werewolf_agent.interfaces.api.games
+uv run --extra api python backend/manage.py check
+uv run --extra api pytest tests/test_api_health.py
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .

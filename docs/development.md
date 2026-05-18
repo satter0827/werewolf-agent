@@ -31,11 +31,10 @@ uv sync --group dev --extra llm
 Django API の基本コマンド:
 
 ```bash
-cd backend
-uv run --extra api python manage.py migrate
-uv run --extra api python manage.py check
-uv run --extra api python manage.py test werewolf_agent.interfaces.api.games
-uv run --extra api python manage.py runserver
+uv run --extra api python backend/manage.py migrate
+uv run --extra api python backend/manage.py check
+uv run --extra api pytest tests/test_api_health.py
+uv run --extra api python backend/manage.py runserver
 ```
 
 起動後の health endpoint:
@@ -74,6 +73,23 @@ uv run --extra api python manage.py startapp <app_name> src/werewolf_agent/inter
 - `backend/src/werewolf_agent/interfaces/api/`: Django config、Django app、DRF API
 - `tests/`: ルールと境界の再現テスト
 - `docs/`: 仕様、判断理由、未決事項
+
+## ログ設定
+
+- アプリログは CLI と Django の入口で初期化し、domain 層には出力先の設定を持ち込まない
+- `WEREWOLF_LOG_LEVEL`: `DEBUG`、`INFO`、`WARNING`、`ERROR`、`CRITICAL`
+- `WEREWOLF_LOG_FORMAT`: `json` または `console`
+- `WEREWOLF_LOG_OUTPUT`: `stderr` または `stdout`
+- ゲーム再現・分析向けのログは、アプリログとは別に `JsonlEventWriter` / `EventSink` で JSONL として扱う
+- `secret`、`token`、`api_key`、`authorization`、`password` 系のキーはログ出力前にマスクする
+
+## エラーコード方針
+
+- アプリ共通の安全な例外は `werewolf_agent.errors` パッケージの `AppError` とカテゴリ別例外を使う
+- コードは `config.invalid_value`、`game.invalid_phase`、`llm.provider_unavailable` のような namespaced slug にする
+- API は RFC 9457 Problem Details (`application/problem+json`) を返し、`code` を後方互換のある機械処理キーとして扱う
+- Pydantic / DRF の validation error は独自コードへ潰さず、各フィールドの `errors[].code` に既存コードを残す
+- CLI は Typer / Click の引数エラーをそのまま使い、`AppError` だけを安全な表示と exit code `1` に変換する
 
 ## バイブコーディング向けドキュメント方針
 

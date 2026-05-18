@@ -1,6 +1,7 @@
 """Django settings for the Werewolf Agent API."""
 
 from werewolf_agent.config import get_settings
+from werewolf_agent.observation.logging import build_django_logging_config
 
 APP_SETTINGS = get_settings()
 
@@ -112,3 +113,9 @@ STATIC_URL = "static/"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+REST_FRAMEWORK = {
+    "EXCEPTION_HANDLER": "werewolf_agent.interfaces.api.errors.exception_handler",
+}
+
+LOGGING = build_django_logging_config(APP_SETTINGS)
