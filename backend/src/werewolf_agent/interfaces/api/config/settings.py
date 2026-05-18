@@ -1,9 +1,10 @@
 """Django settings for the Werewolf Agent API."""
 
-from werewolf_agent.config import get_settings
+from werewolf_agent.config import get_settings, repository_root
 from werewolf_agent.observation.logging import build_django_logging_config
 
 APP_SETTINGS = get_settings()
+BASE_DIR = repository_root()
 
 
 # Quick-start development settings - unsuitable for production
@@ -42,6 +43,9 @@ MIDDLEWARE = [
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 
+if not DEBUG:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
+
 ROOT_URLCONF = "werewolf_agent.interfaces.api.config.urls"
 
 TEMPLATES = [
@@ -65,12 +69,7 @@ WSGI_APPLICATION = "werewolf_agent.interfaces.api.config.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
-DATABASES = {
-    "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": APP_SETTINGS.django_sqlite_database,
-    }
-}
+DATABASES = {"default": APP_SETTINGS.django_database_config}
 
 
 # Password validation
@@ -108,6 +107,16 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
+
+STORAGES = {
+    "default": {
+        "BACKEND": "django.core.files.storage.FileSystemStorage",
+    },
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field

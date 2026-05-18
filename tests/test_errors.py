@@ -3,8 +3,8 @@ from http import HTTPStatus
 import pytest
 from pydantic import ValidationError
 
-import werewolf_agent.errors as errors_package
-from werewolf_agent.errors import (
+import werewolf_agent.commons as errors_package
+from werewolf_agent.commons import (
     ERROR_SPECS,
     AppError,
     ErrorCode,
@@ -12,7 +12,7 @@ from werewolf_agent.errors import (
     LlmProviderError,
     problem_type_uri,
 )
-from werewolf_agent.errors.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
+from werewolf_agent.commons.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
 
 
 def test_errors_package_reexports_public_api() -> None:

@@ -13,14 +13,14 @@ from rest_framework.exceptions import APIException, ErrorDetail, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import exception_handler as drf_exception_handler
 
-from werewolf_agent.errors import (
+from werewolf_agent.commons import (
     AppError,
     ErrorCode,
     InternalError,
     get_error_spec,
     problem_type_uri,
 )
-from werewolf_agent.errors.schemas import ProblemDetails, ProblemIssue
+from werewolf_agent.commons.schemas import ProblemDetails, ProblemIssue
 from werewolf_agent.observation.log_context import get_log_context
 
 PROBLEM_JSON_CONTENT_TYPE = "application/problem+json"

@@ -16,6 +16,7 @@ class ErrorCode(StrEnum):
 
     CONFIG_INVALID_VALUE = "config.invalid_value"
     REQUEST_VALIDATION_FAILED = "request.validation_failed"
+    API_UNAVAILABLE = "api.unavailable"
     GAME_INVALID_PHASE = "game.invalid_phase"
     GAME_INVALID_ACTION = "game.invalid_action"
     AGENT_INVALID_RESPONSE = "agent.invalid_response"
@@ -44,6 +45,12 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title="Request Validation Failed",
         status=HTTPStatus.BAD_REQUEST,
         detail="The request body or parameters failed validation.",
+    ),
+    ErrorCode.API_UNAVAILABLE: ErrorSpec(
+        title="API Unavailable",
+        status=HTTPStatus.SERVICE_UNAVAILABLE,
+        detail="The API server could not be reached.",
+        retryable=True,
     ),
     ErrorCode.GAME_INVALID_PHASE: ErrorSpec(
         title="Invalid Game Phase",

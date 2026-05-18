@@ -1,0 +1,39 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: werewolf_agent
+      POSTGRES_USER: werewolf_agent
+      POSTGRES_PASSWORD: werewolf_agent_dev
+    volumes:
+      - werewolf-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U werewolf_agent -d werewolf_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  api:
+    environment:
+      WEREWOLF_DATABASE_URL: postgres://werewolf_agent:werewolf_agent_dev@postgres:5432/werewolf_agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    environment:
+      WEREWOLF_DATABASE_URL: postgres://werewolf_agent:werewolf_agent_dev@postgres:5432/werewolf_agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  test:
+    environment:
+      WEREWOLF_DATABASE_URL: postgres://werewolf_agent:werewolf_agent_dev@postgres:5432/werewolf_agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  werewolf-postgres:

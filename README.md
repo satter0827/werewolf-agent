@@ -3,7 +3,7 @@
 LLM エージェントをプレイヤーとして参加させる人狼ゲームです。
 ゲーム進行、役職処理、勝敗判定は決定的なゲームエンジンで管理し、LLM は各プレイヤーの発話、推理、投票、能力使用の意思決定を担当します。
 
-> Status: Backend MVP の開発環境を整備中。まずは CLI から 1 ゲームを完走できる状態を目指します。
+> Status: deterministic core、同期 API、CLI `play` の最初の到達点を統合中。次は LLM provider 接続と観戦 UI に広げます。
 
 ## 目的
 
@@ -12,7 +12,7 @@ LLM エージェントをプレイヤーとして参加させる人狼ゲーム�
 - 会話ログ、投票理由、役職行動、勝敗を保存し、後から分析できるようにする
 - CLI、Notebook、Web UI など複数のインターフェースから同じゲームエンジンを利用できるようにする
 
-## MVP スコープ
+## 最初に遊べる範囲
 
 最初の実装では、以下の最小構成を目標にします。
 
@@ -58,7 +58,7 @@ API キーや機密情報はログに含めません。
 
 ### Error Handling
 
-Backend 共通のアプリ起因エラーは `werewolf_agent.errors` パッケージに集約します。エラーコードは `game.invalid_action` のような namespaced slug を使い、独自の数値コードは増やしません。
+Backend 共通のアプリ起因エラーは `werewolf_agent.commons` パッケージに集約します。エラーコードは `game.invalid_action` のような namespaced slug を使い、独自の数値コードは増やしません。
 
 HTTP API は RFC 9457 Problem Details (`application/problem+json`) を返します。`type`、`title`、`status`、`detail`、`instance` を基本形とし、安定した `code` と、必要に応じて `trace_id`、`errors` を含めます。
 
@@ -77,6 +77,7 @@ CLI は Typer / Click の引数エラーを標準挙動に任せ、アプリ起�
 - CLI: Typer
 - Config: `.env` + 環境変数
 - Logs: structured application logs + JSONL game events
+- Container: Docker + Docker Compose v2
 
 ## ディレクトリ構成
 
@@ -94,7 +95,10 @@ CLI は Typer / Click の引数エラーを標準挙動に任せ、アプリ起�
 │           └── observation/     # ログ、リプレイ、評価
 ├── front-web/
 ├── tests/
+├── docker/
 ├── docs/
+├── compose.yaml
+├── compose.postgres.yaml
 ├── .env.example
 ├── pyproject.toml
 └── README.md
@@ -120,6 +124,7 @@ WEREWOLF_LOG_FORMAT=json
 WEREWOLF_LOG_OUTPUT=stderr
 WEREWOLF_DJANGO_DEBUG=true
 WEREWOLF_DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1
+WEREWOLF_DATABASE_URL=
 OPENAI_API_KEY=
 ```
 
@@ -139,7 +144,7 @@ Django API のローカル確認:
 ```bash
 uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py
+uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
 uv run --extra api python backend/manage.py runserver
 ```
 
@@ -147,7 +152,44 @@ uv run --extra api python backend/manage.py runserver
 
 ```text
 http://127.0.0.1:8000/api/health/
+http://127.0.0.1:8000/api/rulesets/default/
 ```
+
+### Docker でのローカル開発
+
+Windows と macOS では Docker Desktop と Docker Compose v2 を使います。
+標準の Compose 構成は Django API を hot reload で起動し、SQLite DB は Docker named volume に保存します。
+
+```bash
+docker compose build
+docker compose run --rm migrate
+docker compose up api
+```
+
+Docker 内でテストを実行する場合:
+
+```bash
+docker compose run --rm test
+```
+
+Postgres に切り替えてクラウドに近い構成を確認する場合:
+
+```bash
+docker compose -f compose.yaml -f compose.postgres.yaml run --rm migrate
+docker compose -f compose.yaml -f compose.postgres.yaml up api
+```
+
+LM Studio などホスト OS 上のローカル LLM にコンテナから接続する場合は、provider の base URL に `host.docker.internal` を使います。
+例: `http://host.docker.internal:1234/v1`。
+
+本番用 image は `docker/backend.Dockerfile` の `runtime` target で Gunicorn を使います。
+
+```bash
+docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api:runtime .
+```
+
+本番 container の起動時には migration を自動実行しません。
+デプロイ先の release command または one-off job で `python backend/manage.py migrate` を実行してください。
 
 Django の実装コードは `backend/src/werewolf_agent/interfaces/api/` 配下に置きます。`backend/manage.py` は Django 標準の操作入口として残します。Django app を追加する場合は、作成先ディレクトリを先に用意して target path を指定します。
 
@@ -159,17 +201,32 @@ uv run --extra api python manage.py startapp <app_name> src/werewolf_agent/inter
 
 ## 実行例
 
-CLI 実装後は、以下のようなコマンドでゲームを開始できるようにする予定です。
+API サーバーを起動してから、CLI で公開 API 経由のゲームを開始します。
 
 ```bash
-uv run werewolf-agent play --players 6 --wolves 1 --model gpt-4.1-mini
+uv run --extra api python backend/manage.py migrate
+uv run --extra api python backend/manage.py runserver
+```
+
+別のターミナルで実行します。
+
+```bash
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
 ```
 
 ログを保存する例:
 
 ```bash
-uv run werewolf-agent play --config examples/basic-game.toml --log runs/game-001.jsonl
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1 --log-jsonl runs/game-001.jsonl
 ```
+
+CLI はゲームエンジンや application service を直接呼び出さず、以下の API 契約だけを使います。
+
+- `POST /api/games/`: ゲーム作成
+- `GET /api/games/{game_id}/`: 公開状態の取得
+- `POST /api/games/{game_id}/steps/`: 1 ステップ進行
+- `POST /api/games/{game_id}/advance/`: `steps` と同じ互換エイリアス
+- `GET /api/games/{game_id}/events/?after=<seq>`: 公開イベントの取得
 
 ## ゲーム進行
 
@@ -217,7 +274,7 @@ uv run werewolf-agent play --config examples/basic-game.toml --log runs/game-001
 ```bash
 uv run werewolf-agent doctor
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py
+uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
@@ -226,10 +283,11 @@ uv run mypy backend/src
 
 ## ロードマップ
 
-- [ ] ドメインモデルの実装
-- [ ] ダミーエージェントの実装
-- [ ] CLI での 1 ゲーム実行
-- [ ] JSONL ログ出力
+- [x] ドメインモデルの実装
+- [x] ダミーエージェントの実装
+- [x] API 経由のゲーム作成とステップ進行
+- [x] CLI での 1 ゲーム実行
+- [x] JSONL ログ出力
 - [ ] LLM プロバイダー接続
 - [ ] プロンプトテンプレート管理
 - [ ] リプレイ機能

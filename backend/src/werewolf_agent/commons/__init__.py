@@ -1,6 +1,6 @@
 """Public error API for Werewolf Agent."""
 
-from werewolf_agent.errors.codes import (
+from werewolf_agent.commons.codes import (
     ERROR_SPECS,
     PROBLEM_TYPE_TAG_PREFIX,
     ErrorCode,
@@ -8,7 +8,7 @@ from werewolf_agent.errors.codes import (
     get_error_spec,
     problem_type_uri,
 )
-from werewolf_agent.errors.exceptions import (
+from werewolf_agent.commons.exceptions import (
     AgentError,
     AppError,
     ConfigError,

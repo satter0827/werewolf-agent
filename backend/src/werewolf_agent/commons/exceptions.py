@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from werewolf_agent.errors.codes import ErrorCode, get_error_spec
+from werewolf_agent.commons.codes import ErrorCode, get_error_spec
 
 
 class AppError(Exception):

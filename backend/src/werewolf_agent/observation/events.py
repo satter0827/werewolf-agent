@@ -11,8 +11,8 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.functional_validators import field_validator
 
-from werewolf_agent.errors import AppError
-from werewolf_agent.errors.schemas import ErrorEventPayload
+from werewolf_agent.commons import AppError
+from werewolf_agent.commons.schemas import ErrorEventPayload
 from werewolf_agent.observation.redaction import redact_mapping
 
 EventVisibility = Literal["public", "player_private", "debug"]

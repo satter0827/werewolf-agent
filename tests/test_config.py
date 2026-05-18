@@ -28,6 +28,28 @@ def test_django_settings_derive_lists_and_paths() -> None:
         "https://example.test",
     ]
     assert settings.django_sqlite_database == repository_root() / "tmp/test.sqlite3"
+    assert settings.django_database_url == ""
+    assert settings.django_database_config == {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": repository_root() / "tmp/test.sqlite3",
+    }
+
+
+def test_database_url_uses_django_database_url_parser() -> None:
+    pytest.importorskip("dj_database_url")
+    settings = AppSettings(
+        _env_file=None,
+        database_url="postgres://werewolf_agent:secret@example.test:5432/werewolf_agent",
+    )
+
+    database_config = settings.django_database_config
+
+    assert settings.django_database_url.endswith("@example.test:5432/werewolf_agent")
+    assert database_config["ENGINE"] == "django.db.backends.postgresql"
+    assert database_config["HOST"] == "example.test"
+    assert database_config["PORT"] == 5432
+    assert database_config["CONN_MAX_AGE"] == 600
+    assert database_config["CONN_HEALTH_CHECKS"] is True
 
 
 def test_logging_settings_have_safe_defaults() -> None:

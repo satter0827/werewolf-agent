@@ -18,8 +18,12 @@ dependencies = [
 
 [project.optional-dependencies]
 api = [
+    "dj-database-url>=2.3,<3",
     "django>=5.1,<6",
     "djangorestframework>=3.15,<4",
+    "gunicorn>=23,<24",
+    "psycopg[binary]>=3.2,<4",
+    "whitenoise>=6.8,<7",
 ]
 llm = [
     "langchain>=0.3,<0.4",

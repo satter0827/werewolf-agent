@@ -5,7 +5,7 @@
 
 ## 現在の目的
 
-- Backend MVP を優先する
+- バックエンドのゲーム進行を優先する
 - Python 実装は `backend/src/werewolf_agent/` に置く
 - まずは CLI から 1 ゲームを完走できる状態を目指す
 - LLM 接続より先に、dummy agent と決定的なゲームエンジンを検証可能にする
@@ -15,6 +15,7 @@
 ```bash
 uv sync --group dev
 uv run werewolf-agent doctor
+uv run --extra api pytest tests/test_api_games.py tests/test_cli.py
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
@@ -33,7 +34,7 @@ Django API の基本コマンド:
 ```bash
 uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py
+uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
 uv run --extra api python backend/manage.py runserver
 ```
 
@@ -41,7 +42,44 @@ uv run --extra api python backend/manage.py runserver
 
 ```text
 http://127.0.0.1:8000/api/health/
+http://127.0.0.1:8000/api/rulesets/default/
 ```
+
+CLI から 1 ゲームを実行する例:
+
+```bash
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1 --log-jsonl runs/game-001.jsonl
+```
+
+CLI は HTTP API の公開 DTO だけを使い、`domain` / `application` / `agents` を直接 import しません。
+
+Docker Compose v2 を使う場合:
+
+```bash
+docker compose build
+docker compose run --rm migrate
+docker compose up api
+docker compose run --rm test
+```
+
+Compose の標準構成は Django API を hot reload で起動し、SQLite DB を Docker named volume に保存します。
+Windows と macOS では Docker Desktop 上で同じコマンドを使います。
+
+Postgres を使ってクラウドに近い構成を確認する場合:
+
+```bash
+docker compose -f compose.yaml -f compose.postgres.yaml run --rm migrate
+docker compose -f compose.yaml -f compose.postgres.yaml up api
+docker compose -f compose.yaml -f compose.postgres.yaml run --rm test
+```
+
+本番用 container は `docker/backend.Dockerfile` の `runtime` target を使い、Gunicorn で起動します。
+本番では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_SECRET_KEY`、公開ホストに合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS`、必要に応じて `WEREWOLF_DATABASE_URL` を設定します。
+Migration は container 起動時に自動実行せず、クラウド側の release command または one-off job で `python backend/manage.py migrate` を実行します。
+
+ホスト OS 上の LM Studio などへ Docker container から接続する場合は、base URL に `host.docker.internal` を使います。
+例: `http://host.docker.internal:1234/v1`。
 
 Django の実装コードは `backend/src/werewolf_agent/interfaces/api/` 配下に置きます。`backend/manage.py` は Django 標準の操作入口として残します。
 
@@ -74,6 +112,8 @@ uv run --extra api python manage.py startapp <app_name> src/werewolf_agent/inter
 - `tests/`: ルールと境界の再現テスト
 - `docs/`: 仕様、判断理由、未決事項
 
+Domain core の公開境界と実装方針は [docs/domain.md](domain.md) を参照してください。
+
 ## ログ設定
 
 - アプリログは CLI と Django の入口で初期化し、domain 層には出力先の設定を持ち込まない
@@ -85,7 +125,7 @@ uv run --extra api python manage.py startapp <app_name> src/werewolf_agent/inter
 
 ## エラーコード方針
 
-- アプリ共通の安全な例外は `werewolf_agent.errors` パッケージの `AppError` とカテゴリ別例外を使う
+- アプリ共通の安全な例外は `werewolf_agent.commons` パッケージの `AppError` とカテゴリ別例外を使う
 - コードは `config.invalid_value`、`game.invalid_phase`、`llm.provider_unavailable` のような namespaced slug にする
 - API は RFC 9457 Problem Details (`application/problem+json`) を返し、`code` を後方互換のある機械処理キーとして扱う
 - Pydantic / DRF の validation error は独自コードへ潰さず、各フィールドの `errors[].code` に既存コードを残す
@@ -116,6 +156,6 @@ uv run --extra api python manage.py startapp <app_name> src/werewolf_agent/inter
 
 ## 未決事項
 
-- Django/API 層は最小 health endpoint まで導入済み。ゲーム API は CLI MVP の進行に合わせて拡張する
+- ゲーム API は、CLI で 1 ゲームを完走するための公開状態取得とステップ進行まで導入済み
 - LangChain/実 LLM provider は dummy agent でゲーム進行が固まってから導入する
 - `front-web/` は backend の明示的な API/DTO が見えてから着手する

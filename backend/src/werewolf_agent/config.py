@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from importlib import import_module
 from pathlib import Path
-from typing import Final, Literal
+from typing import Any, Final, Literal, cast
 
 from pydantic import AliasChoices, Field, SecretStr
 from pydantic.functional_validators import field_validator
@@ -108,6 +109,10 @@ class AppSettings(BaseSettings):
         default=Path("backend/db.sqlite3"),
         validation_alias=AliasChoices("WEREWOLF_DJANGO_SQLITE_PATH", "DJANGO_SQLITE_PATH"),
     )
+    database_url: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias=AliasChoices("WEREWOLF_DATABASE_URL", "DATABASE_URL"),
+    )
 
     model_config = SettingsConfigDict(
         env_file=repository_root() / ".env",
@@ -133,6 +138,31 @@ class AppSettings(BaseSettings):
         if sqlite_path.is_absolute():
             return sqlite_path
         return repository_root() / sqlite_path
+
+    @property
+    def django_database_url(self) -> str:
+        """Return the configured database URL without exposing it in repr output."""
+        return self.database_url.get_secret_value().strip()
+
+    @property
+    def django_database_config(self) -> dict[str, Any]:
+        """Return Django DATABASES['default'] for SQLite or DATABASE_URL deployments."""
+        database_url = self.django_database_url
+        if database_url:
+            database_parser = import_module("dj_database_url")
+            return cast(
+                "dict[str, Any]",
+                database_parser.parse(
+                    database_url,
+                    conn_max_age=600,
+                    conn_health_checks=True,
+                ),
+            )
+
+        return {
+            "ENGINE": "django.db.backends.sqlite3",
+            "NAME": self.django_sqlite_database,
+        }
 
     @field_validator("log_level", mode="before")
     @classmethod

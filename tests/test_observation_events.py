@@ -3,7 +3,7 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.errors import ObservationError
+from werewolf_agent.commons import ObservationError
 from werewolf_agent.observation.events import (
     GameEvent,
     JsonlEventWriter,
