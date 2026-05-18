@@ -1,4 +1,4 @@
-"""Public error API for Werewolf Agent."""
+"""Public common error API for Werewolf Agent."""
 
 from werewolf_agent.commons.codes import (
     ERROR_SPECS,

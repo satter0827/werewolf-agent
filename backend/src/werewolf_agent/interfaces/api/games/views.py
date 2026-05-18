@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from werewolf_agent.config import API_SERVICE_NAME
+from werewolf_agent.interfaces.api.games.schemas import CreateGameRequest, GameEventsQuery
 from werewolf_agent.interfaces.api.games.services import (
     create_game_run,
     default_ruleset,
@@ -10,7 +11,6 @@ from werewolf_agent.interfaces.api.games.services import (
     list_public_events,
     step_game_run,
 )
-from werewolf_agent.interfaces.api.schemas import CreateGameRequest, GameEventsQuery
 
 
 @api_view(["GET"])

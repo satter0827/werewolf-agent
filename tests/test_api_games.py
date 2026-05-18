@@ -151,6 +151,56 @@ class ApiGamesEndpointTests(TestCase):
         assert response.status_code == 422
         assert response.json()["code"] == "game.invalid_action"
 
+    def test_create_game_rejects_unsupported_top_level_agent_type(self) -> None:
+        response = self.client.post(
+            "/api/games/",
+            data=json.dumps({"player_count": 5, "agent": {"type": "llm"}}),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 422
+        assert response.json()["code"] == "game.invalid_action"
+
+    def test_create_game_rejects_invalid_rule_config_as_validation_error(self) -> None:
+        response = self.client.post(
+            "/api/games/",
+            data=json.dumps(
+                {
+                    "player_count": 5,
+                    "rule_config": {"tie_break_policy": "coin_flip"},
+                }
+            ),
+            content_type="application/json",
+        )
+
+        assert response.status_code == 400
+        assert response["Content-Type"].startswith("application/problem+json")
+        assert response.json()["code"] == "request.validation_failed"
+        assert response.json()["errors"][0]["pointer"] == "/rule_config/tie_break_policy"
+
+    def test_day_speech_turns_controls_api_discussion_actions(self) -> None:
+        created = self.client.post(
+            "/api/games/",
+            data=json.dumps(
+                {
+                    "player_count": 5,
+                    "seed": 3,
+                    "rule_config": {"day_speech_turns": 2},
+                }
+            ),
+            content_type="application/json",
+        ).json()
+        game_id = created["game_id"]
+
+        after_night = self.client.post(f"/api/games/{game_id}/steps/").json()["state"]
+        response = self.client.post(f"/api/games/{game_id}/steps/")
+
+        assert response.status_code == 200
+        speech_events = [
+            event for event in response.json()["events"] if event["event_type"] == "speech_recorded"
+        ]
+        assert len(speech_events) == len(after_night["alive_player_ids"]) * 2
+
     def test_create_game_validation_errors_use_problem_details(self) -> None:
         response = self.client.post(
             "/api/games/",

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
+RoleId = Literal["villager", "werewolf", "seer", "knight"]
+TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
+RoleCount = Annotated[int, Field(ge=0)]
 
 
 class CreateGamePlayer(BaseModel):
@@ -33,14 +36,43 @@ class CreateGamePlayer(BaseModel):
         return normalized
 
 
+class CreateGameAgentConfig(BaseModel):
+    """Agent selection for MVP API-driven game runs."""
+
+    type: str = "dummy"
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("type")
+    @classmethod
+    def validate_non_blank(cls, value: str) -> str:
+        """Return a stripped non-empty agent type."""
+        normalized = value.strip()
+        if not normalized:
+            msg = "value must not be blank"
+            raise ValueError(msg)
+        return normalized
+
+
+class CreateGameRuleConfig(BaseModel):
+    """Rule knobs accepted by the MVP create-game endpoint."""
+
+    role_counts: dict[RoleId, RoleCount] | None = None
+    tie_break_policy: TieBreakPolicyId = "no_elimination"
+    day_speech_turns: int = Field(default=1, ge=1, le=5)
+    allow_self_vote: bool = False
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class CreateGameRequest(BaseModel):
     """Payload for creating one game."""
 
     player_count: int | None = Field(default=None, ge=5, le=8)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
-    agent: dict[str, Any] = Field(default_factory=lambda: {"type": "dummy"})
-    rule_config: dict[str, Any] = Field(default_factory=dict)
+    agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
+    rule_config: CreateGameRuleConfig = Field(default_factory=CreateGameRuleConfig)
 
     model_config = ConfigDict(extra="forbid")
 

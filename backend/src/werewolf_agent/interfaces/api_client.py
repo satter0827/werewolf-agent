@@ -50,7 +50,7 @@ class HttpGameApiClient:
         payload = self._request_json(
             "POST",
             "games/",
-            body=request.model_dump(mode="json", exclude_none=True),
+            body=request.model_dump(mode="json", exclude_none=True, exclude_defaults=True),
         )
         return self._parse_model(GameResponse, payload)
 

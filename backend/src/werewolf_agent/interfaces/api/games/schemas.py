@@ -1,8 +1,10 @@
 """Compatibility re-exports for games API DTOs."""
 
 from werewolf_agent.interfaces.api.schemas import (
+    CreateGameAgentConfig,
     CreateGamePlayer,
     CreateGameRequest,
+    CreateGameRuleConfig,
     GameEventsQuery,
     GameEventsResponse,
     GamePhase,
@@ -11,14 +13,18 @@ from werewolf_agent.interfaces.api.schemas import (
     PublicGameEvent,
     PublicGameState,
     PublicPlayerState,
+    RoleId,
     RulesetResponse,
     StepGameResponse,
+    TieBreakPolicyId,
     Winner,
 )
 
 __all__ = [
+    "CreateGameAgentConfig",
     "CreateGamePlayer",
     "CreateGameRequest",
+    "CreateGameRuleConfig",
     "GameEventsQuery",
     "GameEventsResponse",
     "GamePhase",
@@ -27,7 +33,9 @@ __all__ = [
     "PublicGameEvent",
     "PublicGameState",
     "PublicPlayerState",
+    "RoleId",
     "RulesetResponse",
     "StepGameResponse",
+    "TieBreakPolicyId",
     "Winner",
 ]

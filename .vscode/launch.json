@@ -2,20 +2,7 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Python: Current File",
-      "type": "debugpy",
-      "request": "launch",
-      "program": "${file}",
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "Werewolf Agent: Doctor",
+      "name": "Werewolf Agent: CLI doctor",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent.interfaces.cli",
@@ -29,11 +16,28 @@
       "justMyCode": true
     },
     {
-      "name": "Django API: Runserver",
+      "name": "Django API: runserver",
       "type": "debugpy",
       "request": "launch",
       "program": "${workspaceFolder}/backend/manage.py",
       "args": ["runserver", "127.0.0.1:8000"],
+      "django": true,
+      "subProcess": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "DJANGO_SETTINGS_MODULE": "werewolf_agent.interfaces.api.config.settings"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Django API: check",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/manage.py",
+      "args": ["check"],
       "django": true,
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -45,11 +49,76 @@
       "justMyCode": true
     },
     {
-      "name": "Tests: Pytest",
+      "name": "Django API: migrate",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/manage.py",
+      "args": ["migrate"],
+      "django": true,
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "DJANGO_SETTINGS_MODULE": "werewolf_agent.interfaces.api.config.settings"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Werewolf Agent: CLI play (requires running API)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent.interfaces.cli",
+      "args": [
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api",
+        "--players",
+        "6",
+        "--seed",
+        "1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Pytest: all tests",
       "type": "debugpy",
       "request": "launch",
       "module": "pytest",
       "args": ["tests"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Pytest: current file",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "pytest",
+      "args": ["${file}"],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Utility: current Python file",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",

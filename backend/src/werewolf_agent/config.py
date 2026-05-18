@@ -5,10 +5,10 @@ from __future__ import annotations
 from functools import lru_cache
 from importlib import import_module
 from pathlib import Path
-from typing import Any, Final, Literal, cast
+from typing import Any, Final, Literal, Self, cast
 
 from pydantic import AliasChoices, Field, SecretStr
-from pydantic.functional_validators import field_validator
+from pydantic.functional_validators import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 APP_NAME: Final = "werewolf-agent"
@@ -18,6 +18,8 @@ DEFAULT_LLM_MODEL: Final = "dummy-local"
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
 DEFAULT_LOG_OUTPUT: Final = "stderr"
+DEFAULT_DJANGO_SECRET_KEY: Final = "django-insecure-local-dev-only"
+MIN_DJANGO_SECRET_KEY_LENGTH: Final = 50
 
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
@@ -79,7 +81,7 @@ class AppSettings(BaseSettings):
     )
 
     django_secret_key: SecretStr = Field(
-        default=SecretStr("django-insecure-local-dev-only"),
+        default=SecretStr(DEFAULT_DJANGO_SECRET_KEY),
         validation_alias=AliasChoices("WEREWOLF_DJANGO_SECRET_KEY", "DJANGO_SECRET_KEY"),
     )
     django_debug: bool = Field(
@@ -196,6 +198,24 @@ class AppSettings(BaseSettings):
             choices=LOG_OUTPUT_NAMES,
             case="lower",
         )
+
+    @model_validator(mode="after")
+    def validate_django_secret_key(self) -> Self:
+        """Require an explicit Django secret key for non-debug deployments."""
+        secret_key = self.django_secret_key.get_secret_value().strip()
+        if not secret_key:
+            msg = "django_secret_key must not be blank"
+            raise ValueError(msg)
+        if not self.django_debug and secret_key == DEFAULT_DJANGO_SECRET_KEY:
+            msg = "WEREWOLF_DJANGO_SECRET_KEY must be set when WEREWOLF_DJANGO_DEBUG is false"
+            raise ValueError(msg)
+        if not self.django_debug and len(secret_key) < MIN_DJANGO_SECRET_KEY_LENGTH:
+            msg = (
+                "WEREWOLF_DJANGO_SECRET_KEY must be at least "
+                f"{MIN_DJANGO_SECRET_KEY_LENGTH} characters when WEREWOLF_DJANGO_DEBUG is false"
+            )
+            raise ValueError(msg)
+        return self
 
 
 @lru_cache(maxsize=1)

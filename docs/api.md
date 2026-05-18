@@ -1,33 +1,50 @@
-# API 設計メモ
+# API 設計
 
 ## 目的
 
-Django API の MVP は、CLI、将来の Streamlit / React 観戦 UI、外部クライアントから使える公開ゲーム状態を提供することを目的にします。
-ゲーム進行は `domain.Game` と `FakeLlmAgent` を使い、API service が永続化と公開 DTO への変換を担当します。
+Django API は、CLI と将来の観戦 UI が使う公開ゲーム契約です。
+内部の `GameSnapshot` は保存しますが、レスポンスには公開状態と public event だけを出します。
 
-## 現在の状態
+## 現在の範囲
 
-- `GET /api/health/` は死活監視用です。
-- `GET /api/rulesets/default/` は MVP のプレイヤー数、役職、フェーズ、agent type を返します。
-- `POST /api/games/` は dummy agent だけを受け付け、ゲーム run を作成します。
-- `GET /api/games/{game_id}/` は公開状態だけを返します。
-- `POST /api/games/{game_id}/steps/` は現在フェーズの dummy action を生成し、1 ステップ進めます。
-- `POST /api/games/{game_id}/advance/` は `steps` と同じ互換エイリアスです。
-- `GET /api/games/{game_id}/events/?after={sequence}` は public event だけを sequence 昇順で返します。
+- 同期 API
+- dummy agent の自動進行
+- ゲーム作成、状態取得、1 ステップ進行、公開イベント取得
+- 役職、夜行動、debug state、private observation は非公開
+- 認証、手動 action 投入、SSE / WebSocket は未実装
 
-## 公開情報と秘匿情報
+## Endpoints
 
-公開 API には、プレイヤー名、生死状態、現在フェーズ、日数、勝敗、public event だけを含めます。
-役職割り当て、夜行動、LLM 入力、debug state は API レスポンスに含めません。
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/health/` | 死活監視 |
+| `GET` | `/api/rulesets/default/` | MVP ルールセット metadata |
+| `POST` | `/api/games/` | game run 作成 |
+| `GET` | `/api/games/{game_id}/` | 公開状態取得 |
+| `POST` | `/api/games/{game_id}/steps/` | 現在フェーズを 1 ステップ進める |
+| `POST` | `/api/games/{game_id}/advance/` | `steps` の互換 alias |
+| `GET` | `/api/games/{game_id}/events/?after=<seq>` | public event を sequence 昇順で取得 |
 
-内部保存では `GameRun.private_state` に domain snapshot を持ちます。
-これは deterministic engine の再開用であり、公開 API や公開ログへ出しません。
+## Create Game
 
-## 作成リクエスト例
+最小:
+
+```json
+{"player_count": 6, "seed": 1}
+```
+
+明示指定:
 
 ```json
 {
   "seed": 42,
+  "agent": {"type": "dummy"},
+  "rule_config": {
+    "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
+    "tie_break_policy": "no_elimination",
+    "day_speech_turns": 1,
+    "allow_self_vote": false
+  },
   "players": [
     {"id": "p1", "name": "Alice", "agent_type": "dummy"},
     {"id": "p2", "name": "Bob", "agent_type": "dummy"},
@@ -38,38 +55,65 @@ Django API の MVP は、CLI、将来の Streamlit / React 観戦 UI、外部ク
 }
 ```
 
-簡易作成では `player_count` だけも指定できます。
+制約:
 
-```json
-{"player_count": 6, "seed": 1}
-```
+- `player_count`: 5〜8
+- `agent.type`: 現在は `dummy` のみ
+- `players[].agent_type`: 現在は `dummy` のみ
+- `role_counts`: `villager`、`werewolf`、`seer`、`knight`。合計は player count と一致
+- `tie_break_policy`: `no_elimination` または `random_elimination`
+- `day_speech_turns`: 1〜5
+- `allow_self_vote`: boolean
 
-## エラー
+## 公開 DTO
 
-API エラーは RFC 9457 Problem Details (`application/problem+json`) で返します。
+`PublicGameState` に含めるもの:
 
-- 不正な request body: `400 request.validation_failed`
-- 存在しない game: `404 not_found`
-- 終了済みゲームの進行: `409 game.invalid_phase`
-- 不正な player count / agent type: `422 game.invalid_action`
+- game id、status、phase、day、version、seed
+- player id、name、生死状態
+- alive / eliminated player ids
+- winner
+- summary count
 
-## 実行コマンド
+含めないもの:
+
+- role assignment
+- night action detail
+- private observation
+- `GameRun.private_state`
+- LLM prompt / raw provider response
+
+## Events
+
+public event だけを返します。
+domain event の `debug` / `player_private` は保存されても公開 API では返しません。
+`game_started` の role count も public payload から除去します。
+
+## Errors
+
+API error は RFC 9457 Problem Details (`application/problem+json`) です。
+
+| Status | Code | 例 |
+| --- | --- | --- |
+| `400` | `request.validation_failed` | body / query validation |
+| `404` | `not_found` | game が存在しない |
+| `409` | `game.invalid_phase` | 終了済み game の進行 |
+| `422` | `game.invalid_action` | 未対応 agent type、ルール違反 |
+| `500` | `internal.unexpected` | 想定外エラー |
+
+## 実装位置
+
+- DTO: `backend/src/werewolf_agent/interfaces/api/schemas.py`
+- Problem Details schema: `backend/src/werewolf_agent/commons/schemas.py`
+- Error handler: `backend/src/werewolf_agent/interfaces/api/errors.py`
+- View: `backend/src/werewolf_agent/interfaces/api/games/views.py`
+- Service: `backend/src/werewolf_agent/interfaces/api/games/services.py`
+- DB model: `backend/src/werewolf_agent/interfaces/api/games/models.py`
+
+## 確認コマンド
 
 ```bash
 uv run --extra api python backend/manage.py check
 uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
 uv run --extra api python backend/manage.py runserver
 ```
-
-ローカル確認:
-
-```text
-http://127.0.0.1:8000/api/rulesets/default/
-```
-
-## 未決事項
-
-- 認証と player private observation
-- 人間プレイヤーの発話、投票、夜行動 API
-- LLM provider 呼び出しと background job 化
-- SSE / WebSocket によるイベント配信

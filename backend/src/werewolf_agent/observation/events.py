@@ -8,8 +8,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
-from pydantic.functional_validators import field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from werewolf_agent.commons import AppError
 from werewolf_agent.commons.schemas import ErrorEventPayload

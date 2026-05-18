@@ -32,7 +32,7 @@ from werewolf_agent.domain import (
     VoteAction,
 )
 from werewolf_agent.interfaces.api.games.models import GameEventRecord, GameRun
-from werewolf_agent.interfaces.api.schemas import (
+from werewolf_agent.interfaces.api.games.schemas import (
     CreateGamePlayer,
     CreateGameRequest,
     GameEventsResponse,
@@ -86,6 +86,7 @@ def default_ruleset() -> RulesetResponse:
 def create_game_run(request: CreateGameRequest) -> GameResponse:
     """Create and persist one deterministic game."""
     game_id = uuid.uuid4()
+    _validate_agent_config(request)
     players = _player_configs(request)
     config = _domain_config(request, game_id=str(game_id), player_count=len(players))
     collector = _EventCollector()
@@ -226,25 +227,27 @@ def _validate_players(players: Sequence[CreateGamePlayer]) -> None:
         raise GameError("player id values must be unique.")
 
 
+def _validate_agent_config(request: CreateGameRequest) -> None:
+    if request.agent.type != SUPPORTED_AGENT_TYPE:
+        raise GameError("Only dummy agent type is supported for the MVP API.")
+
+
 def _domain_config(
     request: CreateGameRequest,
     *,
     game_id: str,
     player_count: int,
 ) -> GameConfig:
-    rule_config = dict(request.rule_config)
-    role_counts = _role_counts(player_count, rule_config.pop("role_counts", None))
-    tie_break_policy = TieBreakPolicy(
-        rule_config.pop("tie_break_policy", TieBreakPolicy.NO_ELIMINATION.value)
-    )
+    rule_config = request.rule_config
+    role_counts = _role_counts(player_count, rule_config.role_counts)
     return GameConfig(
         game_id=game_id,
         player_count=player_count,
         role_counts=role_counts,
         seed=request.seed,
-        day_speech_turns=int(rule_config.pop("day_speech_turns", 1)),
-        tie_break_policy=tie_break_policy,
-        allow_self_vote=bool(rule_config.pop("allow_self_vote", False)),
+        day_speech_turns=rule_config.day_speech_turns,
+        tie_break_policy=TieBreakPolicy(rule_config.tie_break_policy),
+        allow_self_vote=rule_config.allow_self_vote,
     )
 
 
@@ -264,15 +267,18 @@ def _role_counts(
 
 def _drive_current_phase(game: Game, *, seed: int | None, version: int) -> None:
     snapshot = game.snapshot()
-    for index, player in enumerate(snapshot.players.values()):
-        if player.status is not PlayerStatus.ALIVE:
-            continue
-        agent = FakeLlmAgent(
-            player.player_id,
-            rng=random.Random(_agent_seed(seed, version, index)),
-        )
-        action = agent.act(game.observation_for(player.player_id))
-        _submit_agent_action(game, action)
+    turn_count = snapshot.config.day_speech_turns if snapshot.phase is Phase.DAY_DISCUSSION else 1
+    for turn in range(turn_count):
+        current_snapshot = game.snapshot()
+        for index, player in enumerate(current_snapshot.players.values()):
+            if player.status is not PlayerStatus.ALIVE:
+                continue
+            agent = FakeLlmAgent(
+                player.player_id,
+                rng=random.Random(_agent_seed(seed, version, index, turn)),
+            )
+            action = agent.act(game.observation_for(player.player_id))
+            _submit_agent_action(game, action)
 
 
 def _submit_agent_action(game: Game, action: AgentAction) -> None:
@@ -435,5 +441,5 @@ def _runtime_seed(seed: int | None, version: int) -> int:
     return (seed or 0) + version * 1009
 
 
-def _agent_seed(seed: int | None, version: int, index: int) -> int:
-    return (seed or 0) + version * 1009 + index * 131
+def _agent_seed(seed: int | None, version: int, index: int, turn: int = 0) -> int:
+    return (seed or 0) + version * 1009 + index * 131 + turn * 1709

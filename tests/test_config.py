@@ -84,3 +84,26 @@ def test_logging_settings_normalize_supported_values() -> None:
 def test_logging_settings_reject_invalid_values(field_name: str, value: str) -> None:
     with pytest.raises(ValidationError):
         AppSettings(_env_file=None, **{field_name: value})
+
+
+def test_django_secret_key_must_be_explicit_when_debug_is_disabled() -> None:
+    with pytest.raises(ValidationError):
+        AppSettings(_env_file=None, django_debug=False)
+
+    with pytest.raises(ValidationError):
+        AppSettings(
+            _env_file=None,
+            django_debug=False,
+            django_secret_key="short-secret",
+        )
+
+    settings = AppSettings(
+        _env_file=None,
+        django_debug=False,
+        django_secret_key="test-only-production-secret-with-enough-length-123456",
+    )
+
+    assert (
+        settings.django_secret_key.get_secret_value()
+        == "test-only-production-secret-with-enough-length-123456"
+    )

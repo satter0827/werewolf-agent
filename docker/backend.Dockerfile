@@ -29,7 +29,7 @@ ENV WEREWOLF_DJANGO_DEBUG=false \
     PORT=8000
 
 RUN uv sync --frozen --no-dev --extra api
-RUN python backend/manage.py collectstatic --noinput
+RUN WEREWOLF_DJANGO_DEBUG=true python backend/manage.py collectstatic --noinput
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && mkdir -p /data \
