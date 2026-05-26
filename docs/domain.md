@@ -15,6 +15,7 @@ domain が持つもの:
 - フェーズ遷移
 - 勝敗判定
 - domain event の生成
+- dummy agent の deterministic action 選択
 
 domain が持たないもの:
 
@@ -30,7 +31,7 @@ domain が持たないもの:
 
 interface から domain を使う経路は `werewolf_agent.usecase` だけです。
 usecase は `werewolf_agent.domain.models` と `werewolf_agent.domain.service` だけを使います。
-interface 層は domain / agents を直接 import せず、usecase のステートレス関数を呼びます。
+interface 層は domain を直接 import せず、usecase のステートレス関数を呼びます。
 `werewolf_agent.domain.rules` は domain 内部の実装です。
 
 責務:
@@ -46,6 +47,7 @@ interface 層は domain / agents を直接 import せず、usecase のステー�
 - `Observation`: 1 プレイヤーに見せてよい情報
 - `SpeechAction` / `VoteAction` / `NightAction`: 構造化 action
 - `DomainEvent`: 外側が保存・公開・redaction する event
+- `DummyAgent`: provider を呼ばず、`Observation` だけから構造化 action を返す dummy agent
 
 ## 進行
 
@@ -104,19 +106,19 @@ seed は role assignment、tie break、dummy agent の選択に使います。
 中心テスト:
 
 - `tests/unit/domain/test_domain_game.py`
-- `tests/unit/agents/test_fake_llm_agent.py`
+- `tests/unit/domain/test_dummy_agent.py`
 - `tests/integration/api/test_api_games.py`
 
 基本コマンド:
 
 ```bash
-uv run pytest tests/unit/domain/test_domain_game.py tests/unit/agents/test_fake_llm_agent.py
+uv run pytest tests/unit/domain/test_domain_game.py tests/unit/domain/test_dummy_agent.py
 uv run pytest
 ```
 
 ## 次に拡張する場所
 
 - 新 role / rule: `domain.models` と `domain.rules`
-- LLM agent: `agents` / `llm` と usecase の agent port
+- LLM agent: `llm` と usecase の agent port
 - 人間 action API: `usecase` に業務要件を置き、`interfaces/api` は HTTP 入出力だけを扱う
 - replay / evaluation: `commons.events.*` / `commons.security.redaction`

@@ -5,10 +5,9 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "backend" / "src" / "werewolf_agent"
 
 
-def test_interfaces_do_not_import_domain_agents_or_llm_directly() -> None:
+def test_interfaces_do_not_import_domain_or_llm_directly() -> None:
     forbidden_prefixes = (
         "werewolf_agent.domain",
-        "werewolf_agent.agents",
         "werewolf_agent.llm",
     )
 
@@ -44,7 +43,6 @@ def test_domain_does_not_import_outer_layers() -> None:
         "werewolf_agent.interfaces",
         "werewolf_agent.config",
         "werewolf_agent.commons",
-        "werewolf_agent.agents",
         "werewolf_agent.llm",
     )
 

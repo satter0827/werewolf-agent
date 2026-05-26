@@ -112,7 +112,7 @@ API error は RFC 9457 Problem Details (`application/problem+json`) です。
 - DB repository adapter: `backend/src/werewolf_agent/interfaces/api/games/repositories.py`
 - DB model: `backend/src/werewolf_agent/interfaces/api/games/models.py`
 
-`interfaces/api` は domain / agents を直接 import しません。
+`interfaces/api` は domain を直接 import しません。
 Django 固有の処理は adapter に閉じ、業務要件と公開投影は usecase に置きます。
 
 ## 確認コマンド

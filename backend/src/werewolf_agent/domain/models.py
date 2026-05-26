@@ -311,6 +311,39 @@ class Observation(_DomainModel):
     win_result: WinResult | None = None
 
 
+DEFAULT_SPEECH_TEMPLATES: tuple[str, ...] = (
+    "I want to hear more from {target_name}.",
+    "{target_name}'s vote history looks worth checking.",
+    "I will compare today's claims before voting.",
+)
+
+
+class DummyAgent:
+    """Seeded dummy agent that returns structured actions without a provider call."""
+
+    def __init__(
+        self,
+        player_id: str,
+        *,
+        rng: random.Random | None = None,
+        speech_templates: Sequence[str] = DEFAULT_SPEECH_TEMPLATES,
+    ) -> None:
+        self.player_id = player_id
+        self._rng = rng or random.Random()
+        self._speech_templates = tuple(speech_templates) or DEFAULT_SPEECH_TEMPLATES
+
+    def act(self, observation: Observation) -> AgentAction:
+        """Return one structured action for the current observation."""
+        from werewolf_agent.domain.service import decide_dummy_agent_action
+
+        return decide_dummy_agent_action(
+            self.player_id,
+            observation,
+            rng=self._rng,
+            speech_templates=self._speech_templates,
+        )
+
+
 class DomainEvent(_DomainModel):
     """Headless domain event that an outer layer may log or adapt."""
 
@@ -498,6 +531,7 @@ __all__ = [
     "AgentAction",
     "DomainEvent",
     "DomainEventSink",
+    "DummyAgent",
     "EventVisibility",
     "Faction",
     "Game",

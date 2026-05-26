@@ -1,8 +1,8 @@
 import random
 
-from werewolf_agent.agents import FakeLlmAgent
 from werewolf_agent.domain.models import (
     AgentAction,
+    DummyAgent,
     Game,
     GameConfig,
     KnightGuardAction,
@@ -19,7 +19,7 @@ from werewolf_agent.domain.models import (
 
 def config() -> GameConfig:
     return GameConfig(
-        game_id="fake-game",
+        game_id="dummy-game",
         player_count=5,
         role_counts={
             Role.WEREWOLF: 1,
@@ -45,13 +45,13 @@ def start_game() -> Game:
     return Game.start(config=config(), players=players(), rng=random.Random(11))
 
 
-def test_fake_llm_returns_role_specific_night_actions() -> None:
+def test_dummy_agent_returns_role_specific_night_actions() -> None:
     game = start_game()
 
-    wolf_action = FakeLlmAgent("p1", rng=random.Random(1)).act(game.observation_for("p1"))
-    seer_action = FakeLlmAgent("p2", rng=random.Random(1)).act(game.observation_for("p2"))
-    knight_action = FakeLlmAgent("p3", rng=random.Random(1)).act(game.observation_for("p3"))
-    villager_action = FakeLlmAgent("p4", rng=random.Random(1)).act(game.observation_for("p4"))
+    wolf_action = DummyAgent("p1", rng=random.Random(1)).act(game.observation_for("p1"))
+    seer_action = DummyAgent("p2", rng=random.Random(1)).act(game.observation_for("p2"))
+    knight_action = DummyAgent("p3", rng=random.Random(1)).act(game.observation_for("p3"))
+    villager_action = DummyAgent("p4", rng=random.Random(1)).act(game.observation_for("p4"))
 
     assert isinstance(wolf_action, WerewolfAttackAction)
     assert wolf_action.target_id != "p1"
@@ -61,35 +61,34 @@ def test_fake_llm_returns_role_specific_night_actions() -> None:
     assert isinstance(villager_action, PassAction)
 
 
-def test_fake_llm_is_seed_deterministic_for_same_observation() -> None:
+def test_dummy_agent_is_seed_deterministic_for_same_observation() -> None:
     game = start_game()
     observation = game.observation_for("p1")
 
-    action_a = FakeLlmAgent("p1", rng=random.Random(99)).act(observation)
-    action_b = FakeLlmAgent("p1", rng=random.Random(99)).act(observation)
+    action_a = DummyAgent("p1", rng=random.Random(99)).act(observation)
+    action_b = DummyAgent("p1", rng=random.Random(99)).act(observation)
 
     assert action_a == action_b
 
 
-def test_fake_llm_day_and_vote_actions_match_phase() -> None:
+def test_dummy_agent_day_and_vote_actions_match_phase() -> None:
     game = start_game()
     game.advance_phase()
 
-    speech = FakeLlmAgent("p2", rng=random.Random(3)).act(game.observation_for("p2"))
+    speech = DummyAgent("p2", rng=random.Random(3)).act(game.observation_for("p2"))
     assert isinstance(speech, SpeechAction)
     assert speech.message
 
     game.advance_phase()
-    vote = FakeLlmAgent("p2", rng=random.Random(3)).act(game.observation_for("p2"))
+    vote = DummyAgent("p2", rng=random.Random(3)).act(game.observation_for("p2"))
     assert isinstance(vote, VoteAction)
     assert vote.target_id != "p2"
 
 
-def test_fake_llm_actions_are_accepted_by_game() -> None:
+def test_dummy_agent_actions_are_accepted_by_game() -> None:
     game = start_game()
     agents = {
-        player.player_id: FakeLlmAgent(player.player_id, rng=random.Random(5))
-        for player in players()
+        player.player_id: DummyAgent(player.player_id, rng=random.Random(5)) for player in players()
     }
 
     for player_id, agent in agents.items():

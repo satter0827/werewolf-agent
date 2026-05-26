@@ -17,11 +17,10 @@ LLM エージェントを人狼ゲームのプレイヤーとして動かすポ�
 
 ## 設計の要点
 
-- `domain`: ルール、状態、投票、夜行動、勝敗判定。`.env`、Django、ログ出力に依存しない。
+- `domain`: ルール、状態、投票、夜行動、勝敗判定、dummy agent の deterministic action 選択。`.env`、Django、ログ出力に依存しない。
 - `usecase`: interface と domain をつなぐ唯一の接点。業務要件、公開投影、agent 駆動、port 呼び出しをステートレス関数で扱う。
-- `agents`: `Observation` を受け取り、構造化 action を返す。現在は provider 呼び出しを行わない `FakeLlmAgent` のみ。
 - `interfaces/api`: Django / DRF の公開 API。HTTP 契約、DB adapter、transaction、例外変換だけを扱う。
-- `interfaces/cli.py`: 公開 HTTP API だけを呼ぶ。domain / agents を直接 import しない。
+- `interfaces/cli.py`: 公開 HTTP API だけを呼ぶ。domain を直接 import しない。
 - `contracts`: 安定した error code、safe exception、Problem Details schema。外部境界で共有する契約。
 - `commons`: logging、JSONL event、redaction、shared constants など内部で横断的に使う helper。
 
