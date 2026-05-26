@@ -94,10 +94,11 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/config.py` | `.env` / 環境変数 |
-| `backend/src/werewolf_agent/domain/models.py` | 外部参照する domain class / enum / type alias / Protocol |
-| `backend/src/werewolf_agent/domain/service.py` | 外部参照するステートレス domain 関数 |
+| `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
+| `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取るステートレス domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部の deterministic rules |
 | `backend/src/werewolf_agent/usecase/` | interface と domain をつなぐステートレス usecase、公開投影、port |
+| `backend/src/werewolf_agent/agents/` | domain の `Observation` から `Action` を返す agent 実装 |
 | `backend/src/werewolf_agent/llm/` | 未実装。将来の provider adapter、prompt、parser 置き場 |
 | `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
@@ -136,6 +137,7 @@ tests/
 - usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
 - domain は Django、LLM provider、I/O、logging 設定に依存しない。
 - `domain.rules` は `models` / `service` から使う内部実装として扱う。
+- domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する。
 - log、設定値、乱数、agent factory は interface の浅い場所で組み立て、usecase に注入する。
 - API は `private_state` を保存してよいが、公開 DTO に出さない。
 - public event には role、night action、secret、token、API key を含めない。

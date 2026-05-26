@@ -8,11 +8,12 @@ from collections.abc import Mapping
 
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.models import (
+    Action,
+    ActionType,
     GameConfig,
     GameSnapshot,
     Phase,
     TieBreakPolicy,
-    VoteAction,
     VoteResult,
 )
 from werewolf_agent.domain.rules.player_rules import (
@@ -26,17 +27,18 @@ from werewolf_agent.domain.rules.player_rules import (
 def record_vote(
     snapshot: GameSnapshot,
     config: GameConfig,
-    pending_votes: Mapping[str, VoteAction],
-    action: VoteAction,
-) -> dict[str, VoteAction]:
+    pending_votes: Mapping[str, Action],
+    action: Action,
+) -> dict[str, Action]:
     """Validate and return pending votes with one vote recorded."""
     require_phase(snapshot, Phase.VOTING)
     require_alive(snapshot, action.player_id)
-    require_alive(snapshot, action.target_id)
-    if not config.allow_self_vote and action.player_id == action.target_id:
+    target_id = _vote_target(action)
+    require_alive(snapshot, target_id)
+    if not config.allow_self_vote and action.player_id == target_id:
         raise GameError(
             "Self-voting is disabled for this game.",
-            context={"player_id": action.player_id, "target_id": action.target_id},
+            context={"player_id": action.player_id, "target_id": target_id},
         )
 
     updated_votes = dict(pending_votes)
@@ -47,15 +49,15 @@ def record_vote(
 def resolve_votes(
     snapshot: GameSnapshot,
     config: GameConfig,
-    pending_votes: Mapping[str, VoteAction],
+    pending_votes: Mapping[str, Action],
     rng: random.Random,
 ) -> tuple[GameSnapshot, VoteResult]:
     """Resolve all currently pending votes."""
     require_phase(snapshot, Phase.VOTING)
 
-    vote_targets = {player_id: action.target_id for player_id, action in pending_votes.items()}
+    vote_targets = {player_id: _vote_target(action) for player_id, action in pending_votes.items()}
     counts = dict(Counter(vote_targets.values()))
-    alive_voter_ids = [player.player_id for player in alive_players(snapshot)]
+    alive_voter_ids = [player.id for player in alive_players(snapshot)]
     missing_voter_ids = [
         player_id for player_id in alive_voter_ids if player_id not in pending_votes
     ]
@@ -89,5 +91,13 @@ def resolve_votes(
         eliminated_player_id=eliminated_player_id,
         tie_break_policy=config.tie_break_policy,
     )
-    updated_history = [*updated_snapshot.vote_history, result]
-    return updated_snapshot.model_copy(update={"vote_history": updated_history}), result
+    history = updated_snapshot.history.model_copy(
+        update={"votes": [*updated_snapshot.history.votes, result]}
+    )
+    return updated_snapshot.model_copy(update={"history": history}), result
+
+
+def _vote_target(action: Action) -> str:
+    if action.type is not ActionType.VOTE or action.target_id is None:
+        raise GameError("Expected a vote action.")
+    return action.target_id

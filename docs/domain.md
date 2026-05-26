@@ -10,7 +10,7 @@
 domain が持つもの:
 
 - 役職、フェーズ、プレイヤー状態
-- 投票、夜行動、発話 action
+- 投票、夜行動、発話を表す構造化 `Action`
 - 観測情報 `Observation`
 - フェーズ遷移
 - 勝敗判定
@@ -36,23 +36,33 @@ interface 層は domain を直接 import せず、usecase のステートレス�
 
 責務:
 
-- `models.py`: 外部参照する class、enum、type alias、Protocol
-- `service.py`: 外部参照するステートレス関数
+- `models.py`: headless 利用者が扱う domain model と enum
+- `service.py`: snapshot / pending action を受け取るステートレス関数
 - `rules/`: `models` と `service` が使う内部処理
 
 主要型:
 
 - `GameConfig`: player count、role count、seed、投票 rule
+- `Player`: setup、snapshot、observation で共通して使う player 表現
+- `Action`: `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass` をまとめた構造化 action
 - `GameSnapshot`: 永続化可能な完全状態
+- `PendingActions`: 投票や夜行動のように phase 解決まで保留する action
 - `Observation`: 1 プレイヤーに見せてよい情報
-- `SpeechAction` / `VoteAction` / `NightAction`: 構造化 action
 - `DomainEvent`: 外側が保存・公開・redaction する event
-- `DummyAgent`: provider を呼ばず、`Observation` だけから構造化 action を返す dummy agent
+- `GameHistory`: 発話、投票結果、夜結果の append-only history
+
+主要 service:
+
+- `start_game(config, players, rng)`: 初期 snapshot と開始 event を返す
+- `observe(snapshot, player_id)`: 1 player の observation を返す
+- `submit_action(snapshot, pending, action)`: action を検証し、snapshot / pending / event を返す
+- `advance_phase(snapshot, pending, rng)`: phase を 1 つ進め、snapshot / pending / event を返す
+- `choose_dummy_action(player_id, observation, rng)`: dummy agent 用の deterministic action を返す
 
 ## 進行
 
 ```text
-Game.start
+start_game
   -> night
   -> day_discussion
   -> voting
@@ -69,7 +79,7 @@ Game.start
 
 昼:
 
-- 生存者が `SpeechAction` を出す
+- 生存者が `Action.speech(...)` を出す
 - API 側では `day_speech_turns` 回、生存者を巡回する
 
 投票:

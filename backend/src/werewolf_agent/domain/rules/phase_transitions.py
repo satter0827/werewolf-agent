@@ -8,13 +8,12 @@ from dataclasses import dataclass, field
 
 from werewolf_agent.contracts import GamePhaseError
 from werewolf_agent.domain.models import (
+    Action,
     DomainEvent,
     EventVisibility,
     GameConfig,
     GameSnapshot,
-    NightAction,
     Phase,
-    VoteAction,
 )
 from werewolf_agent.domain.rules.night_actions import resolve_night
 from werewolf_agent.domain.rules.player_rules import check_win
@@ -34,8 +33,8 @@ class TransitionOutcome:
 def advance_game_phase(
     snapshot: GameSnapshot,
     config: GameConfig,
-    pending_votes: Mapping[str, VoteAction],
-    pending_night_actions: Mapping[str, NightAction],
+    pending_votes: Mapping[str, Action],
+    pending_night_actions: Mapping[str, Action],
     rng: random.Random,
 ) -> TransitionOutcome:
     """Advance the state machine by one phase."""
@@ -53,7 +52,7 @@ def advance_game_phase(
 
 def _advance_from_night(
     snapshot: GameSnapshot,
-    pending_night_actions: Mapping[str, NightAction],
+    pending_night_actions: Mapping[str, Action],
     rng: random.Random,
 ) -> TransitionOutcome:
     resolved_snapshot, result = resolve_night(snapshot, pending_night_actions, rng)
@@ -82,7 +81,7 @@ def _advance_from_night(
 def _advance_from_voting(
     snapshot: GameSnapshot,
     config: GameConfig,
-    pending_votes: Mapping[str, VoteAction],
+    pending_votes: Mapping[str, Action],
     rng: random.Random,
 ) -> TransitionOutcome:
     resolved_snapshot, result = resolve_votes(snapshot, config, pending_votes, rng)

@@ -1,33 +1,52 @@
 import random
+from dataclasses import dataclass, field
 
 import pytest
 from pydantic import ValidationError
 
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.models import (
+    Action,
     DomainEvent,
     Faction,
-    Game,
     GameConfig,
-    KnightGuardAction,
+    GameSnapshot,
+    PendingActions,
     Phase,
-    PlayerConfig,
+    Player,
     PlayerStatus,
     Role,
-    SeerInspectAction,
-    SpeechAction,
     TieBreakPolicy,
-    VoteAction,
-    WerewolfAttackAction,
 )
+from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
 
 
-class ListEventSink:
-    def __init__(self) -> None:
-        self.events: list[DomainEvent] = []
+@dataclass
+class HeadlessRun:
+    snapshot: GameSnapshot
+    pending: PendingActions
+    rng: random.Random
+    events: list[DomainEvent] = field(default_factory=list)
 
-    def write(self, event: DomainEvent) -> None:
-        self.events.append(event)
+    def observe(self, player_id: str):
+        return observe(self.snapshot, player_id)
+
+    def submit(self, action: Action) -> None:
+        self.snapshot, self.pending, events = submit_action(
+            self.snapshot,
+            self.pending,
+            action,
+        )
+        self.events.extend(events)
+
+    def advance(self) -> GameSnapshot:
+        self.snapshot, self.pending, events = advance_phase(
+            self.snapshot,
+            self.pending,
+            self.rng,
+        )
+        self.events.extend(events)
+        return self.snapshot
 
 
 def mvp_config(*, tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION) -> GameConfig:
@@ -45,33 +64,38 @@ def mvp_config(*, tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATI
     )
 
 
-def fixed_players() -> list[PlayerConfig]:
+def fixed_players() -> list[Player]:
     return [
-        PlayerConfig(player_id="p1", name="Alice", role=Role.WEREWOLF),
-        PlayerConfig(player_id="p2", name="Bob", role=Role.SEER),
-        PlayerConfig(player_id="p3", name="Chika", role=Role.KNIGHT),
-        PlayerConfig(player_id="p4", name="Dan", role=Role.VILLAGER),
-        PlayerConfig(player_id="p5", name="Eve", role=Role.VILLAGER),
+        Player(id="p1", name="Alice", role=Role.WEREWOLF),
+        Player(id="p2", name="Bob", role=Role.SEER),
+        Player(id="p3", name="Chika", role=Role.KNIGHT),
+        Player(id="p4", name="Dan", role=Role.VILLAGER),
+        Player(id="p5", name="Eve", role=Role.VILLAGER),
     ]
 
 
-def start_fixed_game(
+def start_fixed_run(
     *,
     tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION,
-    event_sink: ListEventSink | None = None,
-) -> Game:
-    return Game.start(
-        config=mvp_config(tie_break_policy=tie_break_policy),
-        players=fixed_players(),
-        rng=random.Random(7),
-        event_sink=event_sink,
+) -> HeadlessRun:
+    rng = random.Random(7)
+    snapshot, events = start_game(
+        mvp_config(tie_break_policy=tie_break_policy),
+        fixed_players(),
+        rng,
+    )
+    return HeadlessRun(
+        snapshot=snapshot,
+        pending=PendingActions(),
+        rng=rng,
+        events=list(events),
     )
 
 
-def advance_to_voting(game: Game) -> None:
-    game.advance_phase()
-    game.advance_phase()
-    assert game.phase is Phase.VOTING
+def advance_to_voting(run: HeadlessRun) -> None:
+    run.advance()
+    run.advance()
+    assert run.snapshot.phase is Phase.VOTING
 
 
 def test_game_config_validates_role_counts() -> None:
@@ -82,17 +106,16 @@ def test_game_config_validates_role_counts() -> None:
         )
 
 
-def test_game_start_is_headless_and_emits_injected_events() -> None:
-    sink = ListEventSink()
-    game = start_fixed_game(event_sink=sink)
+def test_start_game_is_headless_and_returns_events() -> None:
+    run = start_fixed_run()
 
-    snapshot = game.snapshot()
+    snapshot = run.snapshot
 
     assert snapshot.phase is Phase.NIGHT
     assert snapshot.day == 1
     assert snapshot.players["p1"].role is Role.WEREWOLF
-    assert sink.events[0].event_type == "game_started"
-    assert sink.events[0].payload["role_counts"] == {
+    assert run.events[0].event_type == "game_started"
+    assert run.events[0].payload["role_counts"] == {
         "werewolf": 1,
         "seer": 1,
         "knight": 1,
@@ -101,13 +124,13 @@ def test_game_start_is_headless_and_emits_injected_events() -> None:
 
 
 def test_observation_hides_secret_roles_but_shows_allowed_knowledge() -> None:
-    game = start_fixed_game()
+    run = start_fixed_run()
 
-    seer_observation = game.observation_for("p2")
-    wolf_observation = game.observation_for("p1")
+    seer_observation = run.observe("p2")
+    wolf_observation = run.observe("p1")
 
     assert seer_observation.known_roles == {"p2": Role.SEER}
-    assert {player.player_id: player.role for player in seer_observation.players} == {
+    assert {player.id: player.role for player in seer_observation.players} == {
         "p1": None,
         "p2": Role.SEER,
         "p3": None,
@@ -118,71 +141,71 @@ def test_observation_hides_secret_roles_but_shows_allowed_knowledge() -> None:
 
 
 def test_night_actions_resolve_guard_and_private_seer_knowledge() -> None:
-    game = start_fixed_game()
+    run = start_fixed_run()
 
-    game.submit_night_action(WerewolfAttackAction(player_id="p1", target_id="p4"))
-    game.submit_night_action(SeerInspectAction(player_id="p2", target_id="p1"))
-    game.submit_night_action(KnightGuardAction(player_id="p3", target_id="p4"))
-    snapshot = game.advance_phase()
+    run.submit(Action.attack("p1", "p4"))
+    run.submit(Action.inspect("p2", "p1"))
+    run.submit(Action.guard("p3", "p4"))
+    snapshot = run.advance()
 
     assert snapshot.phase is Phase.DAY_DISCUSSION
     assert snapshot.players["p4"].status is PlayerStatus.ALIVE
-    assert snapshot.night_history[-1].protected_player_id == "p4"
-    assert snapshot.night_history[-1].killed_player_id is None
-    assert game.observation_for("p2").known_roles["p1"] is Role.WEREWOLF
-    assert "p1" not in game.observation_for("p4").known_roles
+    assert snapshot.history.nights[-1].protected_player_id == "p4"
+    assert snapshot.history.nights[-1].killed_player_id is None
+    assert run.observe("p2").known_roles["p1"] is Role.WEREWOLF
+    assert "p1" not in run.observe("p4").known_roles
 
 
 def test_vote_resolution_eliminates_player_and_finishes_game() -> None:
-    game = start_fixed_game()
-    advance_to_voting(game)
+    run = start_fixed_run()
+    advance_to_voting(run)
 
     for voter_id in ["p2", "p3", "p4", "p5"]:
-        game.submit_vote(VoteAction(player_id=voter_id, target_id="p1"))
-    game.submit_vote(VoteAction(player_id="p1", target_id="p5"))
-    snapshot = game.advance_phase()
+        run.submit(Action.vote(voter_id, "p1"))
+    run.submit(Action.vote("p1", "p5"))
+    snapshot = run.advance()
 
     assert snapshot.phase is Phase.FINISHED
     assert snapshot.players["p1"].status is PlayerStatus.DEAD
-    assert snapshot.vote_history[-1].eliminated_player_id == "p1"
+    assert snapshot.history.votes[-1].eliminated_player_id == "p1"
     assert snapshot.win_result is not None
     assert snapshot.win_result.winner is Faction.VILLAGE
 
 
 def test_vote_tie_policy_can_leave_everyone_alive() -> None:
-    game = start_fixed_game()
-    advance_to_voting(game)
+    run = start_fixed_run()
+    advance_to_voting(run)
 
-    game.submit_vote(VoteAction(player_id="p1", target_id="p4"))
-    game.submit_vote(VoteAction(player_id="p2", target_id="p4"))
-    game.submit_vote(VoteAction(player_id="p3", target_id="p5"))
-    game.submit_vote(VoteAction(player_id="p4", target_id="p5"))
-    snapshot = game.advance_phase()
+    run.submit(Action.vote("p1", "p4"))
+    run.submit(Action.vote("p2", "p4"))
+    run.submit(Action.vote("p3", "p5"))
+    run.submit(Action.vote("p4", "p5"))
+    snapshot = run.advance()
 
     assert snapshot.phase is Phase.NIGHT
     assert snapshot.day == 2
-    assert snapshot.vote_history[-1].eliminated_player_id is None
-    assert snapshot.vote_history[-1].tied_player_ids == ["p4", "p5"]
-    assert snapshot.vote_history[-1].missing_voter_ids == ["p5"]
+    assert snapshot.history.votes[-1].eliminated_player_id is None
+    assert snapshot.history.votes[-1].tied_player_ids == ["p4", "p5"]
+    assert snapshot.history.votes[-1].missing_voter_ids == ["p5"]
 
 
 def test_invalid_actions_raise_safe_game_errors() -> None:
-    game = start_fixed_game()
+    run = start_fixed_run()
 
     with pytest.raises(GamePhaseError):
-        game.submit_vote(VoteAction(player_id="p1", target_id="p2"))
+        run.submit(Action.vote("p1", "p2"))
 
     with pytest.raises(GameError):
-        game.submit_night_action(SeerInspectAction(player_id="p4", target_id="p1"))
+        run.submit(Action.inspect("p4", "p1"))
 
 
 def test_day_speech_is_only_recorded_during_discussion() -> None:
-    game = start_fixed_game()
+    run = start_fixed_run()
 
     with pytest.raises(GamePhaseError):
-        game.submit_day_action(SpeechAction(player_id="p2", message="too early"))
+        run.submit(Action.speech("p2", "too early"))
 
-    game.advance_phase()
-    game.submit_day_action(SpeechAction(player_id="p2", message="I have a read."))
+    run.advance()
+    run.submit(Action.speech("p2", "I have a read."))
 
-    assert game.snapshot().speeches[-1].message == "I have a read."
+    assert run.snapshot.history.speeches[-1].message == "I have a read."

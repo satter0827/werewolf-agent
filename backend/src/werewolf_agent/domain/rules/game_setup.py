@@ -7,19 +7,12 @@ from collections import Counter
 from collections.abc import Sequence
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.models import (
-    GameConfig,
-    GameSnapshot,
-    Phase,
-    PlayerConfig,
-    PlayerState,
-    Role,
-)
+from werewolf_agent.domain.models import GameConfig, GameSnapshot, Phase, Player, Role
 
 
 def create_game_snapshot(
     config: GameConfig,
-    players: Sequence[PlayerConfig],
+    players: Sequence[Player],
     rng: random.Random,
 ) -> GameSnapshot:
     """Return a validated initial game snapshot."""
@@ -31,10 +24,13 @@ def create_game_snapshot(
     _ensure_unique_player_ids(players)
     assigned_roles = _assign_roles(config, players, rng)
     player_states = {
-        player.player_id: PlayerState(
-            player_id=player.player_id,
+        player.id: Player(
+            id=player.id,
             name=player.name,
             role=role,
+            status=player.status,
+            eliminated_day=player.eliminated_day,
+            killed_night=player.killed_night,
         )
         for player, role in zip(players, assigned_roles, strict=True)
     }
@@ -47,8 +43,8 @@ def create_game_snapshot(
     )
 
 
-def _ensure_unique_player_ids(players: Sequence[PlayerConfig]) -> None:
-    player_ids = [player.player_id for player in players]
+def _ensure_unique_player_ids(players: Sequence[Player]) -> None:
+    player_ids = [player.id for player in players]
     duplicate_ids = sorted(
         player_id for player_id, count in Counter(player_ids).items() if count > 1
     )
@@ -61,7 +57,7 @@ def _ensure_unique_player_ids(players: Sequence[PlayerConfig]) -> None:
 
 def _assign_roles(
     config: GameConfig,
-    players: Sequence[PlayerConfig],
+    players: Sequence[Player],
     rng: random.Random,
 ) -> list[Role]:
     explicit_roles = [player.role for player in players]

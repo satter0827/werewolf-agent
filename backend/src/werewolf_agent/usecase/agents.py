@@ -5,7 +5,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from werewolf_agent.domain.models import DummyAgent
+from werewolf_agent.agents import DummyAgent
 
 
 @dataclass(frozen=True)
