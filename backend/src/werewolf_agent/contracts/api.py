@@ -1,4 +1,4 @@
-"""Public HTTP API schemas shared by handlers and API clients."""
+"""Public HTTP API contract schemas shared by API handlers and clients."""
 
 from __future__ import annotations
 

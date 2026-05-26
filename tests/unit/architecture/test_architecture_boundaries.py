@@ -20,6 +20,18 @@ def test_interfaces_do_not_import_domain_or_llm_directly() -> None:
     ]
 
 
+def test_only_application_bridge_imports_usecase_from_interfaces() -> None:
+    imported = _imports_under(PACKAGE / "interfaces")
+    application_path = PACKAGE / "interfaces" / "application"
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase."))
+        and not path.is_relative_to(application_path)
+    ]
+
+
 def test_usecase_only_imports_public_domain_entrypoints() -> None:
     allowed_domain_modules = {
         "werewolf_agent.domain.models",

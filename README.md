@@ -19,8 +19,10 @@ LLM エージェントを人狼ゲームのプレイヤーとして動かすポ�
 
 - `domain`: ルール、状態、投票、夜行動、勝敗判定、dummy agent の deterministic action 選択。`.env`、Django、ログ出力に依存しない。
 - `usecase`: interface と domain をつなぐ唯一の接点。業務要件、公開投影、agent 駆動、port 呼び出しをステートレス関数で扱う。
-- `interfaces/api`: Django / DRF の公開 API。HTTP 契約、DB adapter、transaction、例外変換だけを扱う。
-- `interfaces/cli.py`: 公開 HTTP API だけを呼ぶ。domain を直接 import しない。
+- `interfaces/api`: Django / DRF の公開 API。HTTP 入出力、Django config、例外変換だけを扱う。
+- `interfaces/cli`: 公開 HTTP API だけを呼ぶ CLI。domain / usecase を直接 import しない。
+- `interfaces/application`: interface 層から usecase へ接続する adapter。DB adapter、transaction、依存注入を集約する。
+- `interfaces/shared`: interface 起動時の設定読み込み、logging 初期化などの共通 helper。
 - `contracts`: 安定した error code、safe exception、Problem Details schema。外部境界で共有する契約。
 - `commons`: logging、JSONL event、redaction、shared constants など内部で横断的に使う helper。
 

@@ -103,17 +103,17 @@ API error は RFC 9457 Problem Details (`application/problem+json`) です。
 
 ## 実装位置
 
-- HTTP DTO: `backend/src/werewolf_agent/interfaces/api/schemas.py`
+- HTTP DTO: `backend/src/werewolf_agent/contracts/api.py`
 - Use case DTO / workflow: `backend/src/werewolf_agent/usecase/models.py`、`backend/src/werewolf_agent/usecase/games.py`
 - Problem Details schema: `backend/src/werewolf_agent/contracts/schemas.py`
 - Error handler: `backend/src/werewolf_agent/interfaces/api/errors.py`
 - View: `backend/src/werewolf_agent/interfaces/api/games/views.py`
-- Service adapter: `backend/src/werewolf_agent/interfaces/api/games/services.py`
-- DB repository adapter: `backend/src/werewolf_agent/interfaces/api/games/repositories.py`
+- Service adapter: `backend/src/werewolf_agent/interfaces/application/games.py`
+- DB repository adapter: `backend/src/werewolf_agent/interfaces/application/repositories.py`
 - DB model: `backend/src/werewolf_agent/interfaces/api/games/models.py`
 
 `interfaces/api` は domain を直接 import しません。
-Django 固有の処理は adapter に閉じ、業務要件と公開投影は usecase に置きます。
+usecase との接続は `interfaces/application` に閉じ、業務要件と公開投影は usecase に置きます。
 
 ## 確認コマンド
 

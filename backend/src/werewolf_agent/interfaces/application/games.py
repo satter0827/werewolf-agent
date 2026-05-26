@@ -1,16 +1,25 @@
-"""Thin Django service adapters for game use cases."""
+"""Interface application bridge for game use cases."""
 
 from __future__ import annotations
 
 import logging
 import random
 import uuid
+from typing import TypeVar
 from uuid import UUID
 
 from django.db import transaction
-from rest_framework.exceptions import NotFound
+from pydantic import BaseModel
 
-from werewolf_agent.interfaces.api.games.repositories import DjangoGameRunRepository
+from werewolf_agent.contracts.api import (
+    CreateGameRequest,
+    GameEventsResponse,
+    GameResponse,
+    RulesetResponse,
+    StepGameResponse,
+)
+from werewolf_agent.interfaces.application.errors import ResourceNotFoundError
+from werewolf_agent.interfaces.application.repositories import DjangoGameRunRepository
 from werewolf_agent.usecase.agents import DummyAgentFactory
 from werewolf_agent.usecase.games import (
     GameNotFoundError,
@@ -23,52 +32,55 @@ from werewolf_agent.usecase.games import (
 )
 from werewolf_agent.usecase.models import (
     CreateGameCommand,
-    GameEventsResponse,
-    GameResponse,
     GameUseCaseSettings,
-    RulesetResponse,
-    StepGameResponse,
 )
+
+TModel = TypeVar("TModel", bound=BaseModel)
 
 
 def default_ruleset() -> RulesetResponse:
     """Return the public MVP ruleset."""
-    return get_default_ruleset(settings=_settings())
+    return _contract_model(RulesetResponse, get_default_ruleset(settings=_settings()))
 
 
-def create_game_run(command: CreateGameCommand) -> GameResponse:
+def create_game_run(request: CreateGameRequest) -> GameResponse:
     """Create and persist one deterministic game."""
+    command = CreateGameCommand.model_validate(request.model_dump(mode="json"))
     with transaction.atomic():
-        return create_game(command, dependencies=_dependencies())
+        response = create_game(command, dependencies=_dependencies())
+    return _contract_model(GameResponse, response)
 
 
 def get_game_run(game_id: UUID) -> GameResponse:
     """Return the current public state for one game run."""
     try:
-        return get_game(game_id, repository=DjangoGameRunRepository())
+        response = get_game(game_id, repository=DjangoGameRunRepository())
     except GameNotFoundError as exc:
-        raise NotFound("Game not found.") from exc
+        raise ResourceNotFoundError("Game not found.") from exc
+    return _contract_model(GameResponse, response)
 
 
 def step_game_run(game_id: UUID) -> StepGameResponse:
     """Advance one game run by one deterministic use case step."""
     try:
         with transaction.atomic():
-            return advance_game(game_id, dependencies=_dependencies())
+            response = advance_game(game_id, dependencies=_dependencies())
     except GameNotFoundError as exc:
-        raise NotFound("Game not found.") from exc
+        raise ResourceNotFoundError("Game not found.") from exc
+    return _contract_model(StepGameResponse, response)
 
 
 def get_public_events(game_id: UUID, *, after: int = 0) -> GameEventsResponse:
     """List public events after a sequence number."""
     try:
-        return list_public_events(
+        response = list_public_events(
             game_id,
             repository=DjangoGameRunRepository(),
             after=after,
         )
     except GameNotFoundError as exc:
-        raise NotFound("Game not found.") from exc
+        raise ResourceNotFoundError("Game not found.") from exc
+    return _contract_model(GameEventsResponse, response)
 
 
 def _dependencies() -> GameUseCaseDependencies:
@@ -84,3 +96,7 @@ def _dependencies() -> GameUseCaseDependencies:
 
 def _settings() -> GameUseCaseSettings:
     return GameUseCaseSettings()
+
+
+def _contract_model(model_type: type[TModel], source: BaseModel) -> TModel:
+    return model_type.model_validate(source.model_dump(mode="json"))
