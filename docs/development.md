@@ -6,6 +6,7 @@
 
 - 優先対象は backend。
 - deterministic domain core は実装済み。
+- `usecase` は interface と domain をつなぐ唯一の接点として実装済み。
 - dummy agent は実装済み。
 - Django API は game 作成、状態取得、step 進行、public event 取得まで実装済み。
 - CLI `play` は公開 HTTP API だけで 1 ゲームを完走できる。
@@ -96,8 +97,9 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | `backend/src/werewolf_agent/domain/models.py` | 外部参照する domain class / enum / type alias / Protocol |
 | `backend/src/werewolf_agent/domain/service.py` | 外部参照するステートレス domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部の deterministic rules |
-| `backend/src/werewolf_agent/agents/` | dummy / LLM / human agent |
-| `backend/src/werewolf_agent/llm/` | provider adapter、prompt、parser |
+| `backend/src/werewolf_agent/usecase/` | interface と domain をつなぐステートレス usecase、公開投影、port |
+| `backend/src/werewolf_agent/agents/` | provider を呼ばない `FakeLlmAgent` |
+| `backend/src/werewolf_agent/llm/` | 未実装。将来の provider adapter、prompt、parser 置き場 |
 | `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details schema |
@@ -132,9 +134,11 @@ tests/
 ## 設計メモ
 
 - CLI は domain / agents を直接 import しない。HTTP API の DTO だけを使う。
+- interface 層は domain / agents を直接 import しない。usecase のステートレス関数を呼ぶ。
+- usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
 - domain は Django、LLM provider、I/O、logging 設定に依存しない。
-- domain 外から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
 - `domain.rules` は `models` / `service` から使う内部実装として扱う。
+- log、設定値、乱数、agent factory は interface の浅い場所で組み立て、usecase に注入する。
 - API は `private_state` を保存してよいが、公開 DTO に出さない。
 - public event には role、night action、secret、token、API key を含めない。
 - `AppError` は CLI では短いメッセージ、API では Problem Details に変換する。

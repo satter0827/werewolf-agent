@@ -11,7 +11,7 @@ Werewolf Agent は、LLM エージェントをプレイヤーとして参加さ�
 現在の状態:
 
 - dummy agent だけで Django API 経由の 1 ゲームを CLI から完走できる
-- domain core、API、CLI、public event stream は実装済み
+- domain core、usecase、API、CLI、public event stream は実装済み
 - 実 LLM provider、手動 action API、private observation 認証、観戦 UI は未実装
 
 ## Read First
@@ -28,19 +28,23 @@ Werewolf Agent は、LLM エージェントをプレイヤーとして参加さ�
 主要な責務:
 
 - `backend/src/werewolf_agent/domain/`: ルール、状態、投票、夜行動、勝敗判定
-- `backend/src/werewolf_agent/agents/`: dummy / LLM / human agent
-- `backend/src/werewolf_agent/llm/`: provider adapter、prompt、structured output parser
+- `backend/src/werewolf_agent/usecase/`: interface と domain をつなぐ usecase、公開投影、port
+- `backend/src/werewolf_agent/agents/`: dummy agent。実 LLM / human agent は未実装
+- `backend/src/werewolf_agent/llm/`: 未実装。将来の provider adapter、prompt、structured output parser 置き場
 - `backend/src/werewolf_agent/interfaces/cli.py`: CLI。公開 HTTP API だけを呼ぶ
-- `backend/src/werewolf_agent/interfaces/api/`: Django API、公開 DTO、DB 永続化
+- `backend/src/werewolf_agent/interfaces/api/`: Django API、公開 DTO、DB adapter、transaction、例外変換
 - `backend/src/werewolf_agent/contracts/`: error code、safe exception、Problem Details schema
 - `backend/src/werewolf_agent/commons/`: logs、JSONL event、redaction
-- `tests/`: domain と外部境界の再現テスト
+- `tests/unit/`: domain と外部境界の unit test
+- `tests/integration/api/`: Django / API / DB 境界の integration test
 - `docs/`: 仕様、判断理由、未決事項
 
 境界ルール:
 
 - domain は `.env`、Django、LLM provider、file I/O、logging 設定に依存させない
 - CLI は domain / agents を直接 import せず、API DTO と HTTP client だけを使う
+- interface 層は domain / agents を直接 import せず、usecase の stateless function を呼ぶ
+- usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う
 - API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
 - LLM 出力は自由文のまま使わず、Pydantic / JSON Schema 相当で検証する
@@ -64,7 +68,7 @@ API:
 uv sync --group dev --extra api
 uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
+uv run --extra api pytest tests/integration/api
 uv run --extra api python backend/manage.py runserver
 ```
 

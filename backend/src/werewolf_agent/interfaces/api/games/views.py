@@ -3,14 +3,14 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from werewolf_agent.config import API_SERVICE_NAME
-from werewolf_agent.interfaces.api.games.schemas import CreateGameRequest, GameEventsQuery
 from werewolf_agent.interfaces.api.games.services import (
     create_game_run,
     default_ruleset,
     get_game_run,
-    list_public_events,
+    get_public_events,
     step_game_run,
 )
+from werewolf_agent.usecase.models import CreateGameCommand, GameEventsQuery
 
 
 @api_view(["GET"])
@@ -27,7 +27,7 @@ def ruleset_default(_request):
 @api_view(["POST"])
 def create_game(request):
     """Create a new deterministic MVP game run."""
-    payload = CreateGameRequest.model_validate(request.data)
+    payload = CreateGameCommand.model_validate(request.data)
     response = create_game_run(payload)
     return Response(response.model_dump(mode="json"), status=status.HTTP_201_CREATED)
 
@@ -50,5 +50,5 @@ def step_game(_request, game_id):
 def game_events(request, game_id):
     """Return public game events after an optional sequence cursor."""
     query = GameEventsQuery.model_validate({"after": request.query_params.get("after", 0)})
-    response = list_public_events(game_id, after=query.after)
+    response = get_public_events(game_id, after=query.after)
     return Response(response.model_dump(mode="json"))

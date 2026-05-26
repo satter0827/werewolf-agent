@@ -88,15 +88,8 @@ class GameConfig(_DomainModel):
     """Settings for one deterministic game run."""
 
     game_id: str = "game"
-    player_count: int = 6
-    role_counts: dict[Role, int] = Field(
-        default_factory=lambda: {
-            Role.WEREWOLF: 1,
-            Role.SEER: 1,
-            Role.KNIGHT: 1,
-            Role.VILLAGER: 3,
-        }
-    )
+    player_count: int
+    role_counts: dict[Role, int]
     seed: int | None = None
     day_speech_turns: int = 1
     tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION
@@ -110,9 +103,9 @@ class GameConfig(_DomainModel):
 
     @model_validator(mode="after")
     def validate_counts(self) -> Self:
-        """Validate MVP player and role-count constraints."""
-        if self.player_count < 5 or self.player_count > 8:
-            msg = "player_count must be between 5 and 8"
+        """Validate role-count invariants for one game state."""
+        if self.player_count < 1:
+            msg = "player_count must be at least 1"
             raise ValueError(msg)
         if self.day_speech_turns < 1:
             msg = "day_speech_turns must be at least 1"
