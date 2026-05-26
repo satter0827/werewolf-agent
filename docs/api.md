@@ -114,6 +114,6 @@ API error は RFC 9457 Problem Details (`application/problem+json`) です。
 
 ```bash
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
+uv run --extra api pytest tests/integration/api
 uv run --extra api python backend/manage.py runserver
 ```

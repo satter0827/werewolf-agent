@@ -116,7 +116,7 @@ docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api
 uv run werewolf-agent doctor
 uv run pytest
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
+uv run --extra api pytest tests/integration/api
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src

@@ -100,14 +100,14 @@ seed は role assignment、tie break、dummy agent の選択に使います。
 
 中心テスト:
 
-- `tests/test_domain_game.py`
-- `tests/test_fake_llm_agent.py`
-- `tests/test_api_games.py`
+- `tests/unit/domain/test_domain_game.py`
+- `tests/unit/agents/test_fake_llm_agent.py`
+- `tests/integration/api/test_api_games.py`
 
 基本コマンド:
 
 ```bash
-uv run pytest tests/test_domain_game.py tests/test_fake_llm_agent.py
+uv run pytest tests/unit/domain/test_domain_game.py tests/unit/agents/test_fake_llm_agent.py
 uv run pytest
 ```
 
