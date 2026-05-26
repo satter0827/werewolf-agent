@@ -100,8 +100,10 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | `backend/src/werewolf_agent/usecase/` | interface と domain をつなぐステートレス usecase、公開投影、port |
 | `backend/src/werewolf_agent/agents/` | provider を呼ばない `FakeLlmAgent` |
 | `backend/src/werewolf_agent/llm/` | 未実装。将来の provider adapter、prompt、parser 置き場 |
-| `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
-| `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
+| `backend/src/werewolf_agent/interfaces/cli/` | CLI |
+| `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
+| `backend/src/werewolf_agent/interfaces/application/` | interface 層から usecase への adapter、DB 永続化、transaction、依存注入 |
+| `backend/src/werewolf_agent/interfaces/shared/` | interface 起動時の設定読み込み、logging 初期化などの共通 helper |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details schema |
 | `backend/src/werewolf_agent/commons/` | logging、events、security、shared constants など内部横断 helper |
 | `tests/unit/` | プロセス内で完結する unit test |
@@ -133,8 +135,8 @@ tests/
 
 ## 設計メモ
 
-- CLI は domain / agents を直接 import しない。HTTP API の DTO だけを使う。
-- interface 層は domain / agents を直接 import しない。usecase のステートレス関数を呼ぶ。
+- CLI は domain / agents / usecase を直接 import しない。HTTP API の DTO だけを使う。
+- interface 層は domain / agents を直接 import しない。usecase のステートレス関数を呼ぶ場所は `interfaces/application/` に限定する。
 - usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
 - domain は Django、LLM provider、I/O、logging 設定に依存しない。
 - `domain.rules` は `models` / `service` から使う内部実装として扱う。

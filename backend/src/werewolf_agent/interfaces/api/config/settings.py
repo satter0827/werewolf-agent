@@ -2,10 +2,13 @@
 
 from pathlib import Path
 
-from werewolf_agent.commons.logging.config import build_django_logging_config
-from werewolf_agent.config import DEFAULT_DJANGO_STATIC_ROOT, get_settings, repository_root
+from werewolf_agent.config import DEFAULT_DJANGO_STATIC_ROOT, repository_root
+from werewolf_agent.interfaces.shared.runtime import (
+    build_interface_django_logging_config,
+    load_app_settings,
+)
 
-APP_SETTINGS = get_settings()
+APP_SETTINGS = load_app_settings()
 BASE_DIR = repository_root()
 
 
@@ -132,4 +135,4 @@ REST_FRAMEWORK = {
     "EXCEPTION_HANDLER": "werewolf_agent.interfaces.api.errors.exception_handler",
 }
 
-LOGGING = build_django_logging_config(APP_SETTINGS)
+LOGGING = build_interface_django_logging_config(APP_SETTINGS)

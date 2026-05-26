@@ -32,7 +32,7 @@ llm = [
 ]
 
 [project.scripts]
-werewolf-agent = "werewolf_agent.interfaces.cli:app"
+werewolf-agent = "werewolf_agent.interfaces.cli.main:app"
 
 [dependency-groups]
 dev = [
@@ -79,6 +79,10 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "werewolf_agent.interfaces.api.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "werewolf_agent.interfaces.application.*"
 ignore_errors = true
 
 [tool.coverage.run]

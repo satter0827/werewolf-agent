@@ -10,8 +10,7 @@ from typer.testing import CliRunner
 
 from werewolf_agent.config import get_settings
 from werewolf_agent.contracts import AppError, ErrorCode
-from werewolf_agent.interfaces import cli as cli_module
-from werewolf_agent.interfaces.api.schemas import (
+from werewolf_agent.contracts.api import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
@@ -20,7 +19,9 @@ from werewolf_agent.interfaces.api.schemas import (
     PublicPlayerState,
     StepGameResponse,
 )
-from werewolf_agent.interfaces.cli import app, run_app_command
+from werewolf_agent.interfaces.cli import commands as cli_commands
+from werewolf_agent.interfaces.cli.errors import run_app_command
+from werewolf_agent.interfaces.cli.main import app
 
 
 def _state(
@@ -159,7 +160,7 @@ def test_play_command_uses_public_api_client(
     tmp_path: Path,
 ) -> None:
     fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cli_module, "_build_game_api_client", lambda _api_url: fake_client)
+    monkeypatch.setattr(cli_commands, "_build_game_api_client", lambda _api_url: fake_client)
     log_path = tmp_path / "events.jsonl"
 
     result = CliRunner().invoke(
@@ -206,7 +207,7 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
             )
 
     monkeypatch.setattr(
-        cli_module,
+        cli_commands,
         "_build_game_api_client",
         lambda _api_url: FailingGameApiClient(),
     )
@@ -219,14 +220,15 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
 
 
 def test_cli_does_not_import_internal_game_layers() -> None:
-    source = Path(cli_module.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(source)
     imported_modules: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imported_modules.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            imported_modules.append(node.module)
+    cli_package = Path(cli_commands.__file__).parent
+    for source_path in cli_package.rglob("*.py"):
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported_modules.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                imported_modules.append(node.module)
 
     forbidden_prefixes = (
         "werewolf_agent.domain",
