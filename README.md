@@ -52,6 +52,34 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1 --log-jsonl .werewolf-agent/logs/game-001.jsonl
 ```
 
+## Wheel 配布
+
+内部配布用の wheel / sdist は次で作成します。
+
+```bash
+uv build --no-sources
+```
+
+生成された wheel を別環境で確認する例:
+
+```bash
+uv run --with dist/werewolf_agent-0.1.0-py3-none-any.whl --no-project -- werewolf-agent doctor
+```
+
+Django API を wheel から使う場合は `api` extra を入れ、`werewolf-agent-api-manage` で管理コマンドを実行します。
+
+```bash
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage check
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage migrate --noinput
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage runserver
+```
+
+本番相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_SECRET_KEY`、公開 host に合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS` を設定し、WSGI entry point を gunicorn で起動します。
+
+```bash
+gunicorn werewolf_agent.interfaces.api.config.wsgi:application --bind 0.0.0.0:${PORT:-8000}
+```
+
 ## API
 
 主要 endpoint:
@@ -110,7 +138,7 @@ Runtime image:
 docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api:runtime .
 ```
 
-本番起動時は migration を自動実行しません。release command または one-off job で `python backend/manage.py migrate` を実行してください。
+本番起動時は migration を自動実行しません。release command または one-off job で `werewolf-agent-api-manage migrate` を実行してください。
 
 ## 検証
 
