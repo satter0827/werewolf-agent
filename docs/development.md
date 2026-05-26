@@ -56,6 +56,31 @@ uv sync --group dev --extra llm
 `api` は Django / DRF / DB adapter 用です。
 `llm` は LangChain / OpenAI compatible provider 用です。
 
+## Wheel 配布チェックリスト
+
+内部配布用の wheel / sdist は、PyPA 標準の `pyproject.toml` と Hatchling build backend で作成します。
+
+```bash
+uv build --no-sources
+```
+
+release 前に次を確認します。
+
+```bash
+python -m zipfile -l dist/werewolf_agent-0.1.0-py3-none-any.whl
+tar -tf dist/werewolf_agent-0.1.0.tar.gz
+uv run --with dist/werewolf_agent-0.1.0-py3-none-any.whl --no-project -- werewolf-agent doctor
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage check
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage migrate --noinput
+```
+
+- wheel は `backend/src/werewolf_agent` の runtime package だけを含めます。
+- sdist は source、tests、docs、Docker/compose、README、LICENSE、`.env.example`、`pyproject.toml` だけを含めます。
+- `.werewolf-agent/`、`.git/`、`dist/`、local DB、cache、virtualenv が sdist に入っていないことを確認します。
+- `pyproject.toml` の `version` と `backend/src/werewolf_agent/__init__.py` の `__version__` は release 前に一致させます。
+- API を wheel から操作する場合は `python backend/manage.py` ではなく `werewolf-agent-api-manage` を使います。
+- 本番相当の WSGI 起動は `gunicorn werewolf_agent.interfaces.api.config.wsgi:application --bind 0.0.0.0:${PORT:-8000}` を使います。
+
 ## ローカル生成物
 
 Git 管理しないキャッシュ、SQLite、静的ファイル、JSONL ログは `.werewolf-agent/` 配下に集約します。
@@ -87,7 +112,7 @@ docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api
 ```
 
 Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_SECRET_KEY`、公開 host に合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS` を設定します。
-起動時 migration はしません。release command または one-off job で `python backend/manage.py migrate` を実行します。
+起動時 migration はしません。release command または one-off job で `werewolf-agent-api-manage migrate` を実行します。
 
 ## 配置
 
