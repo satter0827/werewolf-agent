@@ -7,7 +7,7 @@ from werewolf_agent.domain.models import (
     Faction,
     GameSnapshot,
     Phase,
-    PlayerState,
+    Player,
     PlayerStatus,
     Role,
     WinResult,
@@ -30,7 +30,7 @@ def require_phase(snapshot: GameSnapshot, expected: Phase) -> None:
         )
 
 
-def player_by_id(snapshot: GameSnapshot, player_id: str) -> PlayerState:
+def player_by_id(snapshot: GameSnapshot, player_id: str) -> Player:
     """Return one player or raise a safe game error."""
     try:
         return snapshot.players[player_id]
@@ -41,7 +41,7 @@ def player_by_id(snapshot: GameSnapshot, player_id: str) -> PlayerState:
         ) from exc
 
 
-def require_alive(snapshot: GameSnapshot, player_id: str) -> PlayerState:
+def require_alive(snapshot: GameSnapshot, player_id: str) -> Player:
     """Return one alive player or raise a safe game error."""
     player = player_by_id(snapshot, player_id)
     if player.status is not PlayerStatus.ALIVE:
@@ -52,22 +52,23 @@ def require_alive(snapshot: GameSnapshot, player_id: str) -> PlayerState:
     return player
 
 
-def require_role(snapshot: GameSnapshot, player_id: str, expected: Role) -> PlayerState:
+def require_role(snapshot: GameSnapshot, player_id: str, expected: Role) -> Player:
     """Return an alive player with the expected role."""
     player = require_alive(snapshot, player_id)
     if player.role is not expected:
+        actual_role = player.role.value if player.role is not None else None
         raise GameError(
             f"Player {player_id} cannot perform a {expected.value} action.",
             context={
                 "player_id": player_id,
                 "expected_role": expected.value,
-                "actual_role": player.role.value,
+                "actual_role": actual_role,
             },
         )
     return player
 
 
-def alive_players(snapshot: GameSnapshot) -> list[PlayerState]:
+def alive_players(snapshot: GameSnapshot) -> list[Player]:
     """Return alive players in stable game order."""
     return [player for player in snapshot.players.values() if player.status is PlayerStatus.ALIVE]
 
@@ -108,9 +109,9 @@ def check_win(snapshot: GameSnapshot) -> WinResult | None:
 
 def _win_result(snapshot: GameSnapshot, winner: Faction, reason: str) -> WinResult:
     winning_player_ids = [
-        player.player_id
+        player.id
         for player in snapshot.players.values()
-        if faction_for_role(player.role) is winner
+        if player.role is not None and faction_for_role(player.role) is winner
     ]
     return WinResult(
         winner=winner,

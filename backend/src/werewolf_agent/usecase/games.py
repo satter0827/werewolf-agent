@@ -9,20 +9,17 @@ from uuid import UUID
 
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.models import (
-    AgentAction,
     DomainEvent,
-    Game,
     GameConfig,
     GameSnapshot,
-    NightAction,
-    PassAction,
-    PlayerConfig,
+    PendingActions,
+    Phase,
+    Player,
     PlayerStatus,
     Role,
-    SpeechAction,
     TieBreakPolicy,
-    VoteAction,
 )
+from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
 from werewolf_agent.usecase.models import (
     CreateGameCommand,
     CreateGamePlayer,
@@ -61,17 +58,6 @@ class GameUseCaseDependencies:
     settings: GameUseCaseSettings
 
 
-class _EventCollector:
-    """In-memory domain event sink used before events are persisted."""
-
-    def __init__(self) -> None:
-        self.events: list[DomainEvent] = []
-
-    def write(self, event: DomainEvent) -> None:
-        """Collect one domain event."""
-        self.events.append(event)
-
-
 def get_default_ruleset(*, settings: GameUseCaseSettings) -> RulesetResponse:
     """Return public metadata for the default ruleset."""
     return default_ruleset(settings)
@@ -87,14 +73,7 @@ def create_game(
     _validate_agent_config(command, dependencies.settings)
     players = _player_configs(command, dependencies.settings)
     config = _domain_config(command, game_id=str(game_id), player_count=len(players))
-    collector = _EventCollector()
-    game = Game.start(
-        config=config,
-        players=players,
-        rng=dependencies.rng_factory(command.seed),
-        event_sink=collector,
-    )
-    snapshot = game.snapshot()
+    snapshot, events = start_game(config, players, dependencies.rng_factory(command.seed))
     public_state = public_state_from_snapshot(
         snapshot,
         version=1,
@@ -113,7 +92,7 @@ def create_game(
             version=1,
         )
     )
-    dependencies.repository.append_events(run.id, events_to_persist(collector.events))
+    dependencies.repository.append_events(run.id, events_to_persist(events))
     dependencies.logger.debug("Created game run.", extra={"game_id": str(run.id)})
     return GameResponse(game_id=str(run.id), state=public_state_from_run(run))
 
@@ -139,19 +118,20 @@ def advance_game(
         raise GamePhaseError("Finished games cannot be advanced.")
 
     snapshot = GameSnapshot.model_validate(run.private_state)
-    collector = _EventCollector()
-    game = Game.restore(
+    runtime_rng = dependencies.rng_factory(_runtime_seed(run.seed, run.version))
+    pending_actions = PendingActions()
+    snapshot, pending_actions, action_events = _drive_current_phase(
         snapshot,
-        rng=dependencies.rng_factory(_runtime_seed(run.seed, run.version)),
-        event_sink=collector,
-    )
-    _drive_current_phase(
-        game,
         seed=run.seed,
         version=run.version,
         agent_factory=dependencies.agent_factory,
+        pending_actions=pending_actions,
     )
-    next_snapshot = game.advance_phase()
+    next_snapshot, _next_pending_actions, phase_events = advance_phase(
+        snapshot,
+        pending_actions,
+        runtime_rng,
+    )
     next_public_state = public_state_from_snapshot(
         next_snapshot,
         version=run.version + 1,
@@ -172,7 +152,7 @@ def advance_game(
     )
     records = dependencies.repository.append_events(
         updated_run.id,
-        events_to_persist(collector.events),
+        events_to_persist([*action_events, *phase_events]),
     )
     dependencies.logger.debug(
         "Advanced game run.",
@@ -211,10 +191,10 @@ def list_public_events(
 def _player_configs(
     command: CreateGameCommand,
     settings: GameUseCaseSettings,
-) -> list[PlayerConfig]:
+) -> list[Player]:
     if command.players is not None:
         _validate_players(command.players, settings)
-        return [PlayerConfig(player_id=player.id, name=player.name) for player in command.players]
+        return [Player(id=player.id, name=player.name) for player in command.players]
 
     player_count = _resolved_player_count(command, settings)
     if player_count < settings.min_players or player_count > settings.max_players:
@@ -222,8 +202,7 @@ def _player_configs(
             f"player_count must be between {settings.min_players} and {settings.max_players}."
         )
     return [
-        PlayerConfig(player_id=f"player-{index}", name=f"Player {index}")
-        for index in range(1, player_count + 1)
+        Player(id=f"player-{index}", name=f"Player {index}") for index in range(1, player_count + 1)
     ]
 
 
@@ -289,25 +268,34 @@ def _domain_config(
 
 
 def _drive_current_phase(
-    game: Game,
+    snapshot: GameSnapshot,
     *,
     seed: int | None,
     version: int,
     agent_factory: AgentFactory,
-) -> None:
-    snapshot = game.snapshot()
-    turn_count = snapshot.config.day_speech_turns if snapshot.phase.value == "day_discussion" else 1
+    pending_actions: PendingActions,
+) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+    current_snapshot = snapshot
+    current_pending_actions = pending_actions
+    events: list[DomainEvent] = []
+    turn_count = snapshot.config.day_speech_turns if snapshot.phase is Phase.DAY_DISCUSSION else 1
     for turn in range(turn_count):
-        current_snapshot = game.snapshot()
-        for index, player in enumerate(current_snapshot.players.values()):
+        turn_snapshot = current_snapshot
+        for index, player in enumerate(turn_snapshot.players.values()):
             if player.status is not PlayerStatus.ALIVE:
                 continue
             agent = agent_factory.create(
-                player.player_id,
+                player.id,
                 seed=_agent_seed(seed, version, index, turn),
             )
-            action = agent.act(game.observation_for(player.player_id))
-            _submit_agent_action(game, action)
+            action = agent.act(observe(current_snapshot, player.id))
+            current_snapshot, current_pending_actions, action_events = submit_action(
+                current_snapshot,
+                current_pending_actions,
+                action,
+            )
+            events.extend(action_events)
+    return current_snapshot, current_pending_actions, events
 
 
 def _role_counts(
@@ -322,21 +310,6 @@ def _role_counts(
         Role.KNIGHT: 1,
         Role.VILLAGER: player_count - 3,
     }
-
-
-def _submit_agent_action(game: Game, action: AgentAction) -> None:
-    if isinstance(action, SpeechAction):
-        game.submit_day_action(action)
-        return
-    if isinstance(action, VoteAction):
-        game.submit_vote(action)
-        return
-    if isinstance(action, NightAction):
-        game.submit_night_action(action)
-        return
-    if isinstance(action, PassAction):
-        return
-    raise GameError("Unsupported agent action.")
 
 
 def _runtime_seed(seed: int | None, version: int) -> int:

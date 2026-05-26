@@ -1,11 +1,9 @@
-"""Public domain models and the headless game facade."""
+"""Public domain models for the deterministic headless game."""
 
 from __future__ import annotations
 
-import random
-from collections.abc import Sequence
 from enum import StrEnum
-from typing import Any, Literal, Protocol, Self, TypeAlias
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -50,6 +48,17 @@ class TieBreakPolicy(StrEnum):
     RANDOM_ELIMINATION = "random_elimination"
 
 
+class ActionType(StrEnum):
+    """Structured actions accepted by the headless game."""
+
+    SPEECH = "speech"
+    VOTE = "vote"
+    WEREWOLF_ATTACK = "werewolf_attack"
+    SEER_INSPECT = "seer_inspect"
+    KNIGHT_GUARD = "knight_guard"
+    PASS = "pass"
+
+
 class EventVisibility(StrEnum):
     """Intended visibility for domain events emitted by the headless core."""
 
@@ -70,18 +79,37 @@ def _non_blank(value: str, field_name: str) -> str:
     return normalized
 
 
-class PlayerConfig(_DomainModel):
-    """Initial player definition supplied by an outer interface."""
+def _optional_non_blank(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _non_blank(value, field_name)
 
-    player_id: str
+
+class _PlayerBase(_DomainModel):
+    """Shared identity fields for players in setup, state, and observations."""
+
+    id: str
     name: str
-    role: Role | None = None
 
-    @field_validator("player_id", "name")
+    @field_validator("id", "name")
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
         return _non_blank(value, str(info.field_name))
+
+
+class Player(_PlayerBase):
+    """Player data used by setup, full snapshots, and observations."""
+
+    role: Role | None = None
+    status: PlayerStatus = PlayerStatus.ALIVE
+    eliminated_day: int | None = None
+    killed_night: int | None = None
+
+    @property
+    def is_alive(self) -> bool:
+        """Return whether the player can act."""
+        return self.status is PlayerStatus.ALIVE
 
 
 class GameConfig(_DomainModel):
@@ -129,104 +157,10 @@ class GameConfig(_DomainModel):
         return self
 
 
-class PlayerState(_DomainModel):
-    """Full internal player state exposed only through snapshots."""
+class _ActionBase(_DomainModel):
+    """Shared fields for every structured player action."""
 
-    player_id: str
-    name: str
-    role: Role
-    status: PlayerStatus = PlayerStatus.ALIVE
-    eliminated_day: int | None = None
-    killed_night: int | None = None
-
-
-class ObservedPlayer(_DomainModel):
-    """Player information visible to one observer."""
-
-    player_id: str
-    name: str
-    status: PlayerStatus
-    role: Role | None = None
-
-
-class SpeechAction(_DomainModel):
-    """A public day-discussion message from one player."""
-
-    action_type: Literal["speech"] = "speech"
-    player_id: str
-    message: str
-
-    @field_validator("player_id", "message")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: Any) -> str:
-        """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
-
-
-class VoteAction(_DomainModel):
-    """A vote cast during the voting phase."""
-
-    action_type: Literal["vote"] = "vote"
-    player_id: str
-    target_id: str
-    reason: str = ""
-
-    @field_validator("player_id", "target_id")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: Any) -> str:
-        """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
-
-
-class WerewolfAttackAction(_DomainModel):
-    """A werewolf attack target submitted during night."""
-
-    action_type: Literal["werewolf_attack"] = "werewolf_attack"
-    player_id: str
-    target_id: str
-    reason: str = ""
-
-    @field_validator("player_id", "target_id")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: Any) -> str:
-        """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
-
-
-class SeerInspectAction(_DomainModel):
-    """A seer inspection target submitted during night."""
-
-    action_type: Literal["seer_inspect"] = "seer_inspect"
-    player_id: str
-    target_id: str
-    reason: str = ""
-
-    @field_validator("player_id", "target_id")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: Any) -> str:
-        """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
-
-
-class KnightGuardAction(_DomainModel):
-    """A knight guard target submitted during night."""
-
-    action_type: Literal["knight_guard"] = "knight_guard"
-    player_id: str
-    target_id: str
-    reason: str = ""
-
-    @field_validator("player_id", "target_id")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: Any) -> str:
-        """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
-
-
-class PassAction(_DomainModel):
-    """A structured no-op for agents that have no valid action."""
-
-    action_type: Literal["pass"] = "pass"
+    type: ActionType
     player_id: str
     reason: str = ""
 
@@ -237,14 +171,123 @@ class PassAction(_DomainModel):
         return _non_blank(value, "player_id")
 
 
-NightAction: TypeAlias = WerewolfAttackAction | SeerInspectAction | KnightGuardAction
-AgentAction: TypeAlias = SpeechAction | VoteAction | NightAction | PassAction
+class Action(_ActionBase):
+    """One structured action submitted by an agent or player."""
+
+    target_id: str | None = None
+    message: str | None = None
+
+    TARGET_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
+        {
+            ActionType.VOTE,
+            ActionType.WEREWOLF_ATTACK,
+            ActionType.SEER_INSPECT,
+            ActionType.KNIGHT_GUARD,
+        }
+    )
+    NIGHT_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
+        {
+            ActionType.WEREWOLF_ATTACK,
+            ActionType.SEER_INSPECT,
+            ActionType.KNIGHT_GUARD,
+        }
+    )
+
+    @field_validator("target_id", "message")
+    @classmethod
+    def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
+        """Return a trimmed optional string."""
+        return _optional_non_blank(value, str(info.field_name))
+
+    @model_validator(mode="after")
+    def validate_payload(self) -> Self:
+        """Ensure the action payload matches the action type."""
+        if self.type is ActionType.SPEECH:
+            if self.message is None:
+                raise ValueError("message is required for speech actions")
+            if self.target_id is not None:
+                raise ValueError("target_id is not allowed for speech actions")
+            return self
+
+        if self.type in self.TARGET_TYPES:
+            if self.target_id is None:
+                raise ValueError(f"target_id is required for {self.type.value} actions")
+            if self.message is not None:
+                raise ValueError(f"message is not allowed for {self.type.value} actions")
+            return self
+
+        if self.type is ActionType.PASS:
+            if self.target_id is not None or self.message is not None:
+                raise ValueError("pass actions cannot include target_id or message")
+            return self
+
+        raise ValueError(f"unsupported action type: {self.type.value}")
+
+    @property
+    def is_night_action(self) -> bool:
+        """Return whether this action is resolved during the night phase."""
+        return self.type in self.NIGHT_TYPES
+
+    @classmethod
+    def speech(cls, player_id: str, message: str) -> Self:
+        """Create a day-discussion speech action."""
+        return cls(type=ActionType.SPEECH, player_id=player_id, message=message)
+
+    @classmethod
+    def vote(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
+        """Create a voting action."""
+        return cls(
+            type=ActionType.VOTE,
+            player_id=player_id,
+            target_id=target_id,
+            reason=reason,
+        )
+
+    @classmethod
+    def attack(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
+        """Create a werewolf attack action."""
+        return cls(
+            type=ActionType.WEREWOLF_ATTACK,
+            player_id=player_id,
+            target_id=target_id,
+            reason=reason,
+        )
+
+    @classmethod
+    def inspect(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
+        """Create a seer inspection action."""
+        return cls(
+            type=ActionType.SEER_INSPECT,
+            player_id=player_id,
+            target_id=target_id,
+            reason=reason,
+        )
+
+    @classmethod
+    def guard(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
+        """Create a knight guard action."""
+        return cls(
+            type=ActionType.KNIGHT_GUARD,
+            player_id=player_id,
+            target_id=target_id,
+            reason=reason,
+        )
+
+    @classmethod
+    def pass_(cls, player_id: str, *, reason: str = "") -> Self:
+        """Create a structured no-op action."""
+        return cls(type=ActionType.PASS, player_id=player_id, reason=reason)
 
 
-class VoteResult(_DomainModel):
-    """Resolved vote outcome for one day."""
+class _RoundResult(_DomainModel):
+    """Shared field for phase resolution records."""
 
     day: int
+
+
+class VoteResult(_RoundResult):
+    """Resolved vote outcome for one day."""
+
     votes: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
@@ -253,24 +296,22 @@ class VoteResult(_DomainModel):
     tie_break_policy: TieBreakPolicy
 
 
-class SeerInspectionResult(_DomainModel):
+class InspectionResult(_RoundResult):
     """Private seer result generated by a resolved night phase."""
 
-    day: int
     seer_id: str
     target_id: str
     target_role: Role
     target_faction: Faction
 
 
-class NightResult(_DomainModel):
+class NightResult(_RoundResult):
     """Resolved night outcome."""
 
-    day: int
     attacked_player_id: str | None = None
     protected_player_id: str | None = None
     killed_player_id: str | None = None
-    inspections: list[SeerInspectionResult] = Field(default_factory=list)
+    inspections: list[InspectionResult] = Field(default_factory=list)
 
 
 class WinResult(_DomainModel):
@@ -282,6 +323,14 @@ class WinResult(_DomainModel):
     winning_player_ids: list[str]
 
 
+class GameHistory(_DomainModel):
+    """Append-only records produced by game phases."""
+
+    speeches: list[Action] = Field(default_factory=list)
+    votes: list[VoteResult] = Field(default_factory=list)
+    nights: list[NightResult] = Field(default_factory=list)
+
+
 class GameSnapshot(_DomainModel):
     """Serializable full game state for application boundaries."""
 
@@ -289,59 +338,29 @@ class GameSnapshot(_DomainModel):
     config: GameConfig
     phase: Phase
     day: int
-    players: dict[str, PlayerState]
-    speeches: list[SpeechAction] = Field(default_factory=list)
-    vote_history: list[VoteResult] = Field(default_factory=list)
-    night_history: list[NightResult] = Field(default_factory=list)
+    players: dict[str, Player]
+    history: GameHistory = Field(default_factory=GameHistory)
     win_result: WinResult | None = None
+
+
+class PendingActions(_DomainModel):
+    """Actions collected for phases that resolve in batches."""
+
+    votes: dict[str, Action] = Field(default_factory=dict)
+    night_actions: dict[str, Action] = Field(default_factory=dict)
 
 
 class Observation(_DomainModel):
     """Information visible to one player-agent at one point in time."""
 
-    player_id: str
     phase: Phase
     day: int
-    self_player: ObservedPlayer
-    players: list[ObservedPlayer]
+    me: Player
+    players: list[Player]
     known_roles: dict[str, Role] = Field(default_factory=dict)
-    available_actions: list[str] = Field(default_factory=list)
-    speeches: list[SpeechAction] = Field(default_factory=list)
-    vote_history: list[VoteResult] = Field(default_factory=list)
+    available_actions: list[ActionType] = Field(default_factory=list)
+    history: GameHistory = Field(default_factory=GameHistory)
     win_result: WinResult | None = None
-
-
-DEFAULT_SPEECH_TEMPLATES: tuple[str, ...] = (
-    "I want to hear more from {target_name}.",
-    "{target_name}'s vote history looks worth checking.",
-    "I will compare today's claims before voting.",
-)
-
-
-class DummyAgent:
-    """Seeded dummy agent that returns structured actions without a provider call."""
-
-    def __init__(
-        self,
-        player_id: str,
-        *,
-        rng: random.Random | None = None,
-        speech_templates: Sequence[str] = DEFAULT_SPEECH_TEMPLATES,
-    ) -> None:
-        self.player_id = player_id
-        self._rng = rng or random.Random()
-        self._speech_templates = tuple(speech_templates) or DEFAULT_SPEECH_TEMPLATES
-
-    def act(self, observation: Observation) -> AgentAction:
-        """Return one structured action for the current observation."""
-        from werewolf_agent.domain.service import decide_dummy_agent_action
-
-        return decide_dummy_agent_action(
-            self.player_id,
-            observation,
-            rng=self._rng,
-            speech_templates=self._speech_templates,
-        )
 
 
 class DomainEvent(_DomainModel):
@@ -362,198 +381,24 @@ class DomainEvent(_DomainModel):
         return _non_blank(value, str(info.field_name))
 
 
-class DomainEventSink(Protocol):
-    """Destination for domain events emitted by the headless game core."""
-
-    def write(self, event: DomainEvent) -> None:
-        """Write one domain event."""
-
-
-class Game:
-    """Headless game facade; detailed rules live behind domain services."""
-
-    def __init__(
-        self,
-        snapshot: GameSnapshot,
-        *,
-        rng: random.Random | None = None,
-        event_sink: DomainEventSink | None = None,
-    ) -> None:
-        self._snapshot = snapshot
-        self._rng = rng or random.Random(snapshot.config.seed)
-        self._event_sink = event_sink
-        self._pending_votes: dict[str, VoteAction] = {}
-        self._pending_night_actions: dict[str, NightAction] = {}
-
-    @classmethod
-    def start(
-        cls,
-        *,
-        config: GameConfig,
-        players: Sequence[PlayerConfig],
-        rng: random.Random | None = None,
-        event_sink: DomainEventSink | None = None,
-    ) -> Self:
-        """Create a new game from injected settings, players, and runtime services."""
-        from werewolf_agent.domain.service import create_game_snapshot
-
-        runtime_rng = rng or random.Random(config.seed)
-        snapshot = create_game_snapshot(config, players, runtime_rng)
-        game = cls(snapshot, rng=runtime_rng, event_sink=event_sink)
-        game._emit(
-            DomainEvent(
-                event_type="game_started",
-                game_id=snapshot.game_id,
-                phase=snapshot.phase,
-                day=snapshot.day,
-                payload={
-                    "player_count": config.player_count,
-                    "role_counts": {
-                        role.value: count for role, count in config.role_counts.items()
-                    },
-                },
-            )
-        )
-        return game
-
-    @classmethod
-    def restore(
-        cls,
-        snapshot: GameSnapshot,
-        *,
-        rng: random.Random | None = None,
-        event_sink: DomainEventSink | None = None,
-    ) -> Self:
-        """Restore a headless game facade from a previously persisted snapshot."""
-        return cls(snapshot, rng=rng, event_sink=event_sink)
-
-    @property
-    def phase(self) -> Phase:
-        """Return the current phase."""
-        return self._snapshot.phase
-
-    @property
-    def day(self) -> int:
-        """Return the current day."""
-        return self._snapshot.day
-
-    def snapshot(self) -> GameSnapshot:
-        """Return a defensive copy of the current full game state."""
-        return self._snapshot.model_copy(deep=True)
-
-    def observation_for(self, player_id: str) -> Observation:
-        """Return the information visible to one player."""
-        from werewolf_agent.domain.service import build_player_observation
-
-        return build_player_observation(self._snapshot, player_id)
-
-    def submit_day_action(self, action: SpeechAction) -> SpeechAction:
-        """Record one day-discussion action."""
-        from werewolf_agent.domain.service import record_day_speech
-
-        self._snapshot, events = record_day_speech(self._snapshot, action)
-        self._emit_all(events)
-        return action
-
-    def submit_vote(self, action: VoteAction) -> VoteAction:
-        """Record one vote for the current voting phase."""
-        from werewolf_agent.domain.service import record_vote
-
-        self._pending_votes = record_vote(
-            self._snapshot,
-            self._snapshot.config,
-            self._pending_votes,
-            action,
-        )
-        self._emit(
-            DomainEvent(
-                event_type="vote_submitted",
-                game_id=self._snapshot.game_id,
-                phase=self._snapshot.phase,
-                day=self._snapshot.day,
-                actor_id=action.player_id,
-                payload={"target_id": action.target_id},
-            )
-        )
-        return action
-
-    def submit_night_action(self, action: NightAction) -> NightAction:
-        """Record one night action for later resolution."""
-        from werewolf_agent.domain.service import record_night_action
-
-        self._pending_night_actions = record_night_action(
-            self._snapshot,
-            self._pending_night_actions,
-            action,
-        )
-        self._emit(
-            DomainEvent(
-                event_type="night_action_submitted",
-                game_id=self._snapshot.game_id,
-                phase=self._snapshot.phase,
-                day=self._snapshot.day,
-                actor_id=action.player_id,
-                visibility=EventVisibility.PLAYER_PRIVATE,
-                payload={"action_type": action.action_type},
-            )
-        )
-        return action
-
-    def advance_phase(self) -> GameSnapshot:
-        """Advance the deterministic state machine by one phase."""
-        from werewolf_agent.domain.service import advance_game_phase
-
-        snapshot, events, clear_votes, clear_night_actions = advance_game_phase(
-            self._snapshot,
-            self._snapshot.config,
-            self._pending_votes,
-            self._pending_night_actions,
-            self._rng,
-        )
-        self._snapshot = snapshot
-        if clear_votes:
-            self._pending_votes = {}
-        if clear_night_actions:
-            self._pending_night_actions = {}
-        self._emit_all(events)
-        return self.snapshot()
-
-    def _emit(self, event: DomainEvent) -> None:
-        if self._event_sink is not None:
-            self._event_sink.write(event)
-
-    def _emit_all(self, events: Sequence[DomainEvent]) -> None:
-        for event in events:
-            self._emit(event)
-
-
 __all__ = [
-    "AgentAction",
+    "Action",
+    "ActionType",
     "DomainEvent",
-    "DomainEventSink",
-    "DummyAgent",
     "EventVisibility",
     "Faction",
-    "Game",
     "GameConfig",
+    "GameHistory",
     "GameSnapshot",
-    "KnightGuardAction",
-    "NightAction",
+    "InspectionResult",
     "NightResult",
     "Observation",
-    "ObservedPlayer",
-    "PassAction",
+    "PendingActions",
     "Phase",
-    "PlayerConfig",
-    "PlayerState",
+    "Player",
     "PlayerStatus",
     "Role",
-    "SeerInspectAction",
-    "SeerInspectionResult",
-    "SpeechAction",
     "TieBreakPolicy",
-    "VoteAction",
     "VoteResult",
-    "WerewolfAttackAction",
     "WinResult",
 ]

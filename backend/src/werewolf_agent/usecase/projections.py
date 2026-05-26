@@ -43,7 +43,7 @@ def public_state_from_snapshot(
     """Project a full domain snapshot into a public state DTO."""
     players = [
         PublicPlayerState(
-            id=player.player_id,
+            id=player.id,
             name=player.name,
             alive=player.status is PlayerStatus.ALIVE,
             status=player.status.value,
@@ -53,14 +53,10 @@ def public_state_from_snapshot(
         for player in snapshot.players.values()
     ]
     alive_player_ids = [
-        player.player_id
-        for player in snapshot.players.values()
-        if player.status is PlayerStatus.ALIVE
+        player.id for player in snapshot.players.values() if player.status is PlayerStatus.ALIVE
     ]
     eliminated_player_ids = [
-        player.player_id
-        for player in snapshot.players.values()
-        if player.status is PlayerStatus.DEAD
+        player.id for player in snapshot.players.values() if player.status is PlayerStatus.DEAD
     ]
     return PublicGameState(
         game_id=snapshot.game_id,
@@ -76,9 +72,9 @@ def public_state_from_snapshot(
         summary={
             "alive_count": len(alive_player_ids),
             "eliminated_count": len(eliminated_player_ids),
-            "speech_count": len(snapshot.speeches),
-            "vote_rounds": len(snapshot.vote_history),
-            "night_rounds": len(snapshot.night_history),
+            "speech_count": len(snapshot.history.speeches),
+            "vote_rounds": len(snapshot.history.votes),
+            "night_rounds": len(snapshot.history.nights),
         },
         created_at=created_at,
     )

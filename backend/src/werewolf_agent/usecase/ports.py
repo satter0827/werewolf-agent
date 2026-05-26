@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
-from werewolf_agent.domain.models import AgentAction, Observation
+from werewolf_agent.domain.models import Action, Observation
 from werewolf_agent.usecase.models import (
     EventToPersist,
     GameRunUpdate,
@@ -20,7 +20,7 @@ from werewolf_agent.usecase.models import (
 class AgentRuntime(Protocol):
     """Runtime agent capable of selecting one action from an observation."""
 
-    def act(self, observation: Observation) -> AgentAction:
+    def act(self, observation: Observation) -> Action:
         """Return one structured action for the given observation."""
 
 

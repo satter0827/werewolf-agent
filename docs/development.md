@@ -39,9 +39,10 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 | --- | --- |
 | `backend/src/werewolf_agent/configuration/` | `.env` / 環境変数、既定値、usecase 設定 adapter |
 | `backend/src/werewolf_agent/config.py` | 互換 import 用 wrapper |
-| `backend/src/werewolf_agent/domain/models.py` | public domain types と `Game` facade |
-| `backend/src/werewolf_agent/domain/service.py` | public domain stateless functions |
+| `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
+| `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取る stateless domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
+| `backend/src/werewolf_agent/agents/` | domain の `Observation` から `Action` を返す agent 実装 |
 | `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
 | `backend/src/werewolf_agent/contracts/api.py` | 公開 HTTP API DTO |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details |
@@ -61,6 +62,7 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 - `configuration` は interface から読み込む設定境界として扱い、domain から import しない
 - usecase は `domain.models` と `domain.service` だけを import する
 - domain は usecase / interfaces / config / commons / llm を import しない
+- domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
 - API は `private_state` を保存してよいが public response へ出さない
 - public event に role、night action、secret、token、API key を混ぜない
 

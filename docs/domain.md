@@ -6,12 +6,12 @@
 ## 持つもの
 
 - role、phase、player status
-- speech、vote、night action
+- speech、vote、night action を表す構造化 `Action`
 - observer ごとの `Observation`
 - phase transition
 - win condition
 - visibility 付き `DomainEvent`
-- provider 非依存の `DummyAgent`
+- dummy agent 用の provider 非依存 action 選択
 
 ## 持たないもの
 
@@ -41,22 +41,33 @@ interface 層から usecase を呼ぶ場所は `interfaces/application` に限�
 | 型 | 意味 |
 | --- | --- |
 | `GameConfig` | player count、role count、seed、投票 rule |
-| `PlayerConfig` | player id、name、任意の固定 role |
+| `Player` | setup、snapshot、observation で共通して使う player 表現 |
+| `Action` | `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass` をまとめた構造化 action |
 | `GameSnapshot` | 永続化できる完全状態 |
+| `PendingActions` | 投票や夜行動のように phase 解決まで保留する action |
 | `Observation` | 1 player に見せてよい情報 |
-| `SpeechAction` / `VoteAction` / `NightAction` | 構造化 action |
+| `GameHistory` | 発話、投票結果、夜結果の append-only history |
 | `DomainEvent` | 保存・公開・redaction される event の元データ |
-| `Game` | snapshot を操作する state machine facade |
+
+## 主要 service
+
+| 関数 | 意味 |
+| --- | --- |
+| `start_game(config, players, rng)` | 初期 snapshot と開始 event を返す |
+| `observe(snapshot, player_id)` | 1 player の observation を返す |
+| `submit_action(snapshot, pending, action)` | action を検証し、snapshot / pending / event を返す |
+| `advance_phase(snapshot, pending, rng)` | phase を 1 つ進め、snapshot / pending / event を返す |
+| `choose_dummy_action(player_id, observation, rng)` | dummy agent 用の deterministic action を返す |
 
 ## 進行
 
 ```text
-night -> day_discussion -> voting -> night -> ... -> finished
+start_game -> night -> day_discussion -> voting -> night -> ... -> finished
 ```
 
 - 夜: 人狼は村側を襲撃、占い師は検査、騎士は護衛
-- 昼: 生存者が `SpeechAction` を出す
-- 投票: 生存者が生存者へ投票する
+- 昼: 生存者が `Action.speech(...)` を出す
+- 投票: 生存者が `Action.vote(...)` を出す
 - 勝敗: 人狼全滅で村勝利、生存人狼数が生存村側数以上で人狼勝利
 
 同票は `no_elimination` または `random_elimination`。
@@ -84,7 +95,7 @@ seed は role assignment、tie break、dummy agent の選択に使います。
 
 - 新 role / rule: `domain.models`、`domain.rules`
 - 公開 projection: `usecase.projections`
-- 自動 agent の選択: `usecase.agents`
+- 自動 agent の実装と選択: `usecase.agents`
 - human / LLM action API: `usecase` に要件を置き、`interfaces/application` は接続、`interfaces/api` は入出力に寄せる
 
 ## 検証
