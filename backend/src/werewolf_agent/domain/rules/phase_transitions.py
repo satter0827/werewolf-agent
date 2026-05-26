@@ -1,4 +1,4 @@
-"""Phase-transition orchestration for the headless game."""
+"""Phase-transition rules for the headless game."""
 
 from __future__ import annotations
 
@@ -7,9 +7,6 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from werewolf_agent.contracts import GamePhaseError
-from werewolf_agent.domain._night_actions import resolve_night
-from werewolf_agent.domain._rules import check_win
-from werewolf_agent.domain._voting import resolve_votes
 from werewolf_agent.domain.models import (
     DomainEvent,
     EventVisibility,
@@ -19,6 +16,9 @@ from werewolf_agent.domain.models import (
     Phase,
     VoteAction,
 )
+from werewolf_agent.domain.rules.night_actions import resolve_night
+from werewolf_agent.domain.rules.player_rules import check_win
+from werewolf_agent.domain.rules.voting import resolve_votes
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ class TransitionOutcome:
     clear_night_actions: bool = False
 
 
-def advance_phase(
+def advance_game_phase(
     snapshot: GameSnapshot,
     config: GameConfig,
     pending_votes: Mapping[str, VoteAction],

@@ -14,7 +14,7 @@ from rest_framework.exceptions import NotFound
 
 from werewolf_agent.agents.fake_llm import FakeLlmAgent
 from werewolf_agent.contracts import GameError, GamePhaseError
-from werewolf_agent.domain import (
+from werewolf_agent.domain.models import (
     AgentAction,
     DomainEvent,
     Faction,

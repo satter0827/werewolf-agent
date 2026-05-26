@@ -1,4 +1,4 @@
-"""Initial game-state construction."""
+"""Initial game-state construction rules."""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ from werewolf_agent.domain.models import (
 )
 
 
-def create_initial_snapshot(
+def create_game_snapshot(
     config: GameConfig,
     players: Sequence[PlayerConfig],
     rng: random.Random,

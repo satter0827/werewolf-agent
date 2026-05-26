@@ -1,8 +1,7 @@
-"""Visibility-filtered observations for agents."""
+"""Visibility-filtered observation rules."""
 
 from __future__ import annotations
 
-from werewolf_agent.domain._rules import player_by_id
 from werewolf_agent.domain.models import (
     GameSnapshot,
     Observation,
@@ -11,9 +10,10 @@ from werewolf_agent.domain.models import (
     PlayerStatus,
     Role,
 )
+from werewolf_agent.domain.rules.player_rules import player_by_id
 
 
-def build_observation(snapshot: GameSnapshot, player_id: str) -> Observation:
+def build_player_observation(snapshot: GameSnapshot, player_id: str) -> Observation:
     """Return the information visible to one player."""
     observer = player_by_id(snapshot, player_id)
     known_roles = _known_roles(snapshot, player_id)

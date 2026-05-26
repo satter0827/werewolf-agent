@@ -1,0 +1,1 @@
+"""Internal deterministic domain rules."""

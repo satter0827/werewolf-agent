@@ -344,7 +344,7 @@ class DomainEventSink(Protocol):
 
 
 class Game:
-    """Headless game facade; detailed rules live in private domain modules."""
+    """Headless game facade; detailed rules live behind domain services."""
 
     def __init__(
         self,
@@ -369,10 +369,10 @@ class Game:
         event_sink: DomainEventSink | None = None,
     ) -> Self:
         """Create a new game from injected settings, players, and runtime services."""
-        from werewolf_agent.domain._setup import create_initial_snapshot
+        from werewolf_agent.domain.service import create_game_snapshot
 
         runtime_rng = rng or random.Random(config.seed)
-        snapshot = create_initial_snapshot(config, players, runtime_rng)
+        snapshot = create_game_snapshot(config, players, runtime_rng)
         game = cls(snapshot, rng=runtime_rng, event_sink=event_sink)
         game._emit(
             DomainEvent(
@@ -417,21 +417,21 @@ class Game:
 
     def observation_for(self, player_id: str) -> Observation:
         """Return the information visible to one player."""
-        from werewolf_agent.domain._observations import build_observation
+        from werewolf_agent.domain.service import build_player_observation
 
-        return build_observation(self._snapshot, player_id)
+        return build_player_observation(self._snapshot, player_id)
 
     def submit_day_action(self, action: SpeechAction) -> SpeechAction:
         """Record one day-discussion action."""
-        from werewolf_agent.domain._actions import apply_day_action
+        from werewolf_agent.domain.service import record_day_speech
 
-        self._snapshot, events = apply_day_action(self._snapshot, action)
+        self._snapshot, events = record_day_speech(self._snapshot, action)
         self._emit_all(events)
         return action
 
     def submit_vote(self, action: VoteAction) -> VoteAction:
         """Record one vote for the current voting phase."""
-        from werewolf_agent.domain._voting import record_vote
+        from werewolf_agent.domain.service import record_vote
 
         self._pending_votes = record_vote(
             self._snapshot,
@@ -453,7 +453,7 @@ class Game:
 
     def submit_night_action(self, action: NightAction) -> NightAction:
         """Record one night action for later resolution."""
-        from werewolf_agent.domain._night_actions import record_night_action
+        from werewolf_agent.domain.service import record_night_action
 
         self._pending_night_actions = record_night_action(
             self._snapshot,
@@ -475,21 +475,21 @@ class Game:
 
     def advance_phase(self) -> GameSnapshot:
         """Advance the deterministic state machine by one phase."""
-        from werewolf_agent.domain._transitions import advance_phase
+        from werewolf_agent.domain.service import advance_game_phase
 
-        outcome = advance_phase(
+        snapshot, events, clear_votes, clear_night_actions = advance_game_phase(
             self._snapshot,
             self._snapshot.config,
             self._pending_votes,
             self._pending_night_actions,
             self._rng,
         )
-        self._snapshot = outcome.snapshot
-        if outcome.clear_votes:
+        self._snapshot = snapshot
+        if clear_votes:
             self._pending_votes = {}
-        if outcome.clear_night_actions:
+        if clear_night_actions:
             self._pending_night_actions = {}
-        self._emit_all(outcome.events)
+        self._emit_all(events)
         return self.snapshot()
 
     def _emit(self, event: DomainEvent) -> None:

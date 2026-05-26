@@ -1,4 +1,4 @@
-"""Night action recording and resolution."""
+"""Night action recording and resolution rules."""
 
 from __future__ import annotations
 
@@ -7,14 +7,6 @@ from collections import Counter
 from collections.abc import Mapping
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain._rules import (
-    faction_for_role,
-    mark_dead,
-    player_by_id,
-    require_alive,
-    require_phase,
-    require_role,
-)
 from werewolf_agent.domain.models import (
     GameSnapshot,
     KnightGuardAction,
@@ -25,6 +17,14 @@ from werewolf_agent.domain.models import (
     SeerInspectAction,
     SeerInspectionResult,
     WerewolfAttackAction,
+)
+from werewolf_agent.domain.rules.player_rules import (
+    faction_for_role,
+    mark_dead,
+    player_by_id,
+    require_alive,
+    require_phase,
+    require_role,
 )
 
 

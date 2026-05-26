@@ -1,4 +1,4 @@
-"""Pure rule helpers used by the public Game facade."""
+"""Player state, faction, and win-condition rules."""
 
 from __future__ import annotations
 

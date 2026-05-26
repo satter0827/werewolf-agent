@@ -93,7 +93,9 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/config.py` | `.env` / 環境変数 |
-| `backend/src/werewolf_agent/domain/` | deterministic rules |
+| `backend/src/werewolf_agent/domain/models.py` | 外部参照する domain class / enum / type alias / Protocol |
+| `backend/src/werewolf_agent/domain/service.py` | 外部参照するステートレス domain 関数 |
+| `backend/src/werewolf_agent/domain/rules/` | domain 内部の deterministic rules |
 | `backend/src/werewolf_agent/agents/` | dummy / LLM / human agent |
 | `backend/src/werewolf_agent/llm/` | provider adapter、prompt、parser |
 | `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
@@ -107,6 +109,8 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 
 - CLI は domain / agents を直接 import しない。HTTP API の DTO だけを使う。
 - domain は Django、LLM provider、I/O、logging 設定に依存しない。
+- domain 外から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
+- `domain.rules` は `models` / `service` から使う内部実装として扱う。
 - API は `private_state` を保存してよいが、公開 DTO に出さない。
 - public event には role、night action、secret、token、API key を含めない。
 - `AppError` は CLI では短いメッセージ、API では Problem Details に変換する。

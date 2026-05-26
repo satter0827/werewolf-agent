@@ -25,10 +25,16 @@ domain が持たないもの:
 - logging 設定
 - 認証
 
-## 公開モデル
+## 公開境界
 
-外部層は `from werewolf_agent.domain import ...` を使います。
-`_rules.py` などの `_` 付き module は private 実装です。
+外部層は `werewolf_agent.domain.models` と `werewolf_agent.domain.service` だけを使います。
+`werewolf_agent.domain.rules` は domain 内部の実装です。
+
+責務:
+
+- `models.py`: 外部参照する class、enum、type alias、Protocol
+- `service.py`: 外部参照するステートレス関数
+- `rules/`: `models` と `service` が使う内部処理
 
 主要型:
 
@@ -107,7 +113,7 @@ uv run pytest
 
 ## 次に拡張する場所
 
-- 新 role / rule: domain model と private rule module
+- 新 role / rule: `domain.models` と `domain.rules`
 - LLM agent: `agents` / `llm`
 - 人間 action API: `interfaces/api`。domain へは構造化 action だけを渡す
 - replay / evaluation: `commons.events` / `commons.redaction`

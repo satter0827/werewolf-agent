@@ -1,12 +1,12 @@
-"""Day action handling."""
+"""Day speech recording rules."""
 
 from __future__ import annotations
 
-from werewolf_agent.domain._rules import require_alive, require_phase
 from werewolf_agent.domain.models import DomainEvent, GameSnapshot, Phase, SpeechAction
+from werewolf_agent.domain.rules.player_rules import require_alive, require_phase
 
 
-def apply_day_action(
+def record_day_speech(
     snapshot: GameSnapshot,
     action: SpeechAction,
 ) -> tuple[GameSnapshot, list[DomainEvent]]:

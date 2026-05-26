@@ -1,4 +1,4 @@
-"""Vote recording and resolution."""
+"""Vote recording and resolution rules."""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ from collections import Counter
 from collections.abc import Mapping
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain._rules import alive_players, mark_dead, require_alive, require_phase
 from werewolf_agent.domain.models import (
     GameConfig,
     GameSnapshot,
@@ -15,6 +14,12 @@ from werewolf_agent.domain.models import (
     TieBreakPolicy,
     VoteAction,
     VoteResult,
+)
+from werewolf_agent.domain.rules.player_rules import (
+    alive_players,
+    mark_dead,
+    require_alive,
+    require_phase,
 )
 
 
