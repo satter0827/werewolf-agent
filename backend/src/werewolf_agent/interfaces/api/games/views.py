@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view
 from rest_framework.exceptions import NotFound
 from rest_framework.response import Response
 
-from werewolf_agent.config import API_SERVICE_NAME
+from werewolf_agent.configuration import API_SERVICE_NAME
 from werewolf_agent.contracts.api import CreateGameRequest, GameEventsQuery
 from werewolf_agent.interfaces.application.errors import ResourceNotFoundError
 from werewolf_agent.interfaces.application.games import (

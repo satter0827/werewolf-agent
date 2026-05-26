@@ -6,7 +6,7 @@ from werewolf_agent.commons.logging.config import build_django_logging_config
 from werewolf_agent.commons.logging.context import bind_log_context
 from werewolf_agent.commons.logging.formatters import JsonFormatter
 from werewolf_agent.commons.security.redaction import redact_mapping
-from werewolf_agent.config import AppSettings
+from werewolf_agent.configuration import AppSettings
 
 
 def _format_record(record: logging.LogRecord) -> dict[str, object]:

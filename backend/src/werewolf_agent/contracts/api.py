@@ -68,7 +68,7 @@ class CreateGameRuleConfig(BaseModel):
 class CreateGameRequest(BaseModel):
     """Payload for creating one game."""
 
-    player_count: int | None = Field(default=None, ge=5, le=8)
+    player_count: int | None = Field(default=None, ge=1)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
     agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)

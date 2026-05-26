@@ -11,6 +11,7 @@ from uuid import UUID
 from django.db import transaction
 from pydantic import BaseModel
 
+from werewolf_agent.configuration import build_game_usecase_settings, get_settings
 from werewolf_agent.contracts.api import (
     CreateGameRequest,
     GameEventsResponse,
@@ -95,7 +96,7 @@ def _dependencies() -> GameUseCaseDependencies:
 
 
 def _settings() -> GameUseCaseSettings:
-    return GameUseCaseSettings()
+    return build_game_usecase_settings(get_settings())
 
 
 def _contract_model(model_type: type[TModel], source: BaseModel) -> TModel:

@@ -55,7 +55,7 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 制約:
 
-- `player_count`: 5〜8。省略時は 6
+- `player_count`: 既定では 5〜8。省略時は `WEREWOLF_GAME_DEFAULT_PLAYER_COUNT`。実際の範囲は `WEREWOLF_GAME_MIN_PLAYERS` / `WEREWOLF_GAME_MAX_PLAYERS` で決まる
 - `players`: 指定時は 5〜8 件。`id` は一意
 - `agent.type` / `players[].agent_type`: 現在は `dummy` のみ
 - `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上

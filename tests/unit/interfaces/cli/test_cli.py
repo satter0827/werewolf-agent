@@ -8,7 +8,7 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from werewolf_agent.config import get_settings
+from werewolf_agent.configuration import get_settings
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     CreateGameRequest,

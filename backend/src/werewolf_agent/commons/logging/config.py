@@ -35,7 +35,7 @@ from werewolf_agent.commons.shared.constants import (
 )
 
 if TYPE_CHECKING:
-    from werewolf_agent.config import AppSettings
+    from werewolf_agent.configuration import AppSettings
 
 
 def configure_logging(settings: AppSettings) -> None:

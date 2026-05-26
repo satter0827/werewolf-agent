@@ -72,7 +72,9 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 
 ## 設定
 
-設定は `.env` と環境変数から `backend/src/werewolf_agent/config.py` に集約します。
+設定は `.env` と環境変数から [backend/src/werewolf_agent/configuration/](backend/src/werewolf_agent/configuration/) に集約します。
+interface の浅い場所で読み取り、usecase へ依存として注入します。
+既存の `werewolf_agent.config` は互換 import として残しています。
 `.env` はコミットしません。
 
 主な値:
@@ -83,6 +85,13 @@ WEREWOLF_MODEL=dummy-local
 WEREWOLF_LOG_LEVEL=INFO
 WEREWOLF_LOG_FORMAT=json
 WEREWOLF_LOG_OUTPUT=stderr
+WEREWOLF_GAME_MIN_PLAYERS=5
+WEREWOLF_GAME_MAX_PLAYERS=8
+WEREWOLF_GAME_DEFAULT_PLAYER_COUNT=6
+WEREWOLF_GAME_SUPPORTED_AGENT_TYPE=dummy
+WEREWOLF_GAME_SUPPORTED_AGENT_NAME=Dummy Agent
+WEREWOLF_GAME_DEFAULT_RULESET_ID=default
+WEREWOLF_GAME_DEFAULT_RULESET_NAME=MVP Default
 WEREWOLF_DJANGO_SECRET_KEY=django-insecure-local-dev-only
 WEREWOLF_DJANGO_DEBUG=true
 WEREWOLF_DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,testserver

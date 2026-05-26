@@ -216,7 +216,7 @@ def _player_configs(
         _validate_players(command.players, settings)
         return [PlayerConfig(player_id=player.id, name=player.name) for player in command.players]
 
-    player_count = command.resolved_player_count
+    player_count = _resolved_player_count(command, settings)
     if player_count < settings.min_players or player_count > settings.max_players:
         raise GameError(
             f"player_count must be between {settings.min_players} and {settings.max_players}."
@@ -225,6 +225,15 @@ def _player_configs(
         PlayerConfig(player_id=f"player-{index}", name=f"Player {index}")
         for index in range(1, player_count + 1)
     ]
+
+
+def _resolved_player_count(
+    command: CreateGameCommand,
+    settings: GameUseCaseSettings,
+) -> int:
+    if command.player_count is not None:
+        return command.player_count
+    return settings.default_player_count
 
 
 def _validate_players(

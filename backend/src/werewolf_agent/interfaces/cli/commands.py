@@ -13,7 +13,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.config import APP_NAME, get_settings, repository_root
+from werewolf_agent.configuration import APP_NAME, get_settings, repository_root
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import CreateGameRequest
 from werewolf_agent.interfaces.cli.client import GameApiClient, HttpGameApiClient

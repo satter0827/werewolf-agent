@@ -54,6 +54,7 @@ def test_domain_does_not_import_outer_layers() -> None:
         "werewolf_agent.usecase",
         "werewolf_agent.interfaces",
         "werewolf_agent.config",
+        "werewolf_agent.configuration",
         "werewolf_agent.commons",
         "werewolf_agent.llm",
     )

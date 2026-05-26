@@ -24,6 +24,7 @@ class GameUseCaseSettings:
 
     min_players: int = 5
     max_players: int = 8
+    default_player_count: int = 6
     supported_agent_type: str = "dummy"
     default_ruleset_id: str = "default"
     default_ruleset_name: str = "MVP Default"
@@ -87,7 +88,7 @@ class CreateGameRuleConfig(_UseCaseModel):
 class CreateGameCommand(_UseCaseModel):
     """Command for creating one game run."""
 
-    player_count: int | None = Field(default=None, ge=5, le=8)
+    player_count: int | None = Field(default=None, ge=1)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
     agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
@@ -104,15 +105,6 @@ class CreateGameCommand(_UseCaseModel):
             msg = "player_count must match the number of players"
             raise ValueError(msg)
         return self
-
-    @property
-    def resolved_player_count(self) -> int:
-        """Return the requested player count, defaulting to the MVP table size."""
-        if self.players is not None:
-            return len(self.players)
-        if self.player_count is not None:
-            return self.player_count
-        return 6
 
 
 class PublicPlayerState(_UseCaseModel):

@@ -8,7 +8,7 @@ from werewolf_agent.commons.logging.config import (
     build_django_logging_config,
     configure_logging,
 )
-from werewolf_agent.config import AppSettings, get_settings
+from werewolf_agent.configuration import AppSettings, get_settings
 
 
 def load_app_settings() -> AppSettings:

@@ -1,10 +1,10 @@
-"""Compatibility exports for the configuration package."""
+"""Public configuration entry points for interface adapters."""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from werewolf_agent.configuration import (
+from werewolf_agent.configuration.defaults import (
     API_SERVICE_NAME,
     APP_NAME,
     DEFAULT_DJANGO_SECRET_KEY,
@@ -24,10 +24,12 @@ from werewolf_agent.configuration import (
     DEFAULT_LOG_FORMAT,
     DEFAULT_LOG_LEVEL,
     DEFAULT_LOG_OUTPUT,
+    MIN_DJANGO_SECRET_KEY_LENGTH,
+)
+from werewolf_agent.configuration.settings import (
     LOG_FORMAT_NAMES,
     LOG_LEVEL_NAMES,
     LOG_OUTPUT_NAMES,
-    MIN_DJANGO_SECRET_KEY_LENGTH,
     AppSettings,
     LogFormat,
     LogOutput,
@@ -39,12 +41,12 @@ from werewolf_agent.configuration import (
 )
 
 if TYPE_CHECKING:
-    from werewolf_agent.configuration import build_game_usecase_settings
+    from werewolf_agent.configuration.usecase import build_game_usecase_settings
 
 
 def __getattr__(name: str) -> Any:
     if name == "build_game_usecase_settings":
-        from werewolf_agent.configuration import build_game_usecase_settings
+        from werewolf_agent.configuration.usecase import build_game_usecase_settings
 
         return build_game_usecase_settings
     msg = f"module {__name__!r} has no attribute {name!r}"
