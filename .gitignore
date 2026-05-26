@@ -35,6 +35,7 @@ local_settings.py
 *.pid
 
 # Test, coverage, lint, type-check, and tool caches
+.werewolf-agent/
 /.cache/
 .coverage
 .coverage.*
