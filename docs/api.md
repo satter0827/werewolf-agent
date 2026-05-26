@@ -1,27 +1,25 @@
-# API 設計
+# API
 
-## 目的
-
-Django API は、CLI と将来の観戦 UI が使う公開ゲーム契約です。
-内部の `GameSnapshot` は保存しますが、レスポンスには公開状態と public event だけを出します。
+Django API は CLI と将来の UI が使う公開契約です。
+DB には完全状態を保存しますが、レスポンスは public state / public event だけです。
 
 ## 現在の範囲
 
 - 同期 API
-- dummy agent の自動進行
-- ゲーム作成、状態取得、1 ステップ進行、公開イベント取得
-- 役職、夜行動、debug state、private observation は非公開
-- 認証、手動 action 投入、SSE / WebSocket は未実装
+- dummy agent による自動進行
+- game 作成、状態取得、1 step 進行、public event 取得
+- Problem Details 形式の error response
+- 認証、手動 action、private observation、SSE / WebSocket は未実装
 
 ## Endpoints
 
 | Method | Path | 用途 |
 | --- | --- | --- |
-| `GET` | `/api/health/` | 死活監視 |
-| `GET` | `/api/rulesets/default/` | MVP ルールセット metadata |
+| `GET` | `/api/health/` | `{"status":"ok","service":"werewolf-agent-api"}` |
+| `GET` | `/api/rulesets/default/` | player count、roles、phases、agent types |
 | `POST` | `/api/games/` | game run 作成 |
-| `GET` | `/api/games/{game_id}/` | 公開状態取得 |
-| `POST` | `/api/games/{game_id}/steps/` | 現在フェーズを 1 ステップ進める |
+| `GET` | `/api/games/{game_id}/` | public state 取得 |
+| `POST` | `/api/games/{game_id}/steps/` | 現在 phase を 1 step 進める |
 | `POST` | `/api/games/{game_id}/advance/` | `steps` の互換 alias |
 | `GET` | `/api/games/{game_id}/events/?after=<seq>` | public event を sequence 昇順で取得 |
 
@@ -33,7 +31,7 @@ Django API は、CLI と将来の観戦 UI が使う公開ゲーム契約です�
 {"player_count": 6, "seed": 1}
 ```
 
-明示指定:
+明示:
 
 ```json
 {
@@ -57,41 +55,46 @@ Django API は、CLI と将来の観戦 UI が使う公開ゲーム契約です�
 
 制約:
 
-- `player_count`: 5〜8
-- `agent.type`: 現在は `dummy` のみ
-- `players[].agent_type`: 現在は `dummy` のみ
-- `role_counts`: `villager`、`werewolf`、`seer`、`knight`。合計は player count と一致
+- `player_count`: 5〜8。省略時は 6
+- `players`: 指定時は 5〜8 件。`id` は一意
+- `agent.type` / `players[].agent_type`: 現在は `dummy` のみ
+- `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
 - `tie_break_policy`: `no_elimination` または `random_elimination`
 - `day_speech_turns`: 1〜5
-- `allow_self_vote`: boolean
 
-## 公開 DTO
+## Public State
 
-`PublicGameState` に含めるもの:
+返すもの:
 
-- game id、status、phase、day、version、seed
-- player id、name、生死状態
+- `game_id`、`status`、`phase`、`day`、`version`、`seed`
+- player id / name / alive / status
 - alive / eliminated player ids
-- winner
-- summary count
+- `winner`
+- public summary counts
+- `created_at`、`updated_at`
 
-含めないもの:
+返さないもの:
 
 - role assignment
 - night action detail
 - private observation
-- `GameRun.private_state`
-- LLM prompt / raw provider response
+- `private_state`
+- prompt、API key、raw provider response
 
 ## Events
 
-public event だけを返します。
-domain event の `debug` / `player_private` は保存されても公開 API では返しません。
-`game_started` の role count も public payload から除去します。
+`GET /events/` は `visibility == "public"` の event だけを返します。
+`game_started` の `role_counts` は public payload から落とします。
+
+Cursor:
+
+- request: `after=<last_sequence>`
+- response: `next_after`
 
 ## Errors
 
-API error は RFC 9457 Problem Details (`application/problem+json`) です。
+Error response は RFC 9457 Problem Details 互換です。
+`Content-Type` は `application/problem+json`。
 
 | Status | Code | 例 |
 | --- | --- | --- |
@@ -103,22 +106,25 @@ API error は RFC 9457 Problem Details (`application/problem+json`) です。
 
 ## 実装位置
 
-- HTTP DTO: `backend/src/werewolf_agent/contracts/api.py`
-- Use case DTO / workflow: `backend/src/werewolf_agent/usecase/models.py`、`backend/src/werewolf_agent/usecase/games.py`
-- Problem Details schema: `backend/src/werewolf_agent/contracts/schemas.py`
-- Error handler: `backend/src/werewolf_agent/interfaces/api/errors.py`
-- View: `backend/src/werewolf_agent/interfaces/api/games/views.py`
-- Service adapter: `backend/src/werewolf_agent/interfaces/application/games.py`
-- DB repository adapter: `backend/src/werewolf_agent/interfaces/application/repositories.py`
-- DB model: `backend/src/werewolf_agent/interfaces/api/games/models.py`
+| Path | 責務 |
+| --- | --- |
+| `contracts/api.py` | HTTP DTO |
+| `interfaces/api/games/views.py` | endpoint |
+| `interfaces/application/games.py` | usecase adapter、transaction、依存注入 |
+| `interfaces/application/repositories.py` | Django DB repository adapter |
+| `interfaces/application/errors.py` | interface application bridge の例外 |
+| `interfaces/api/games/models.py` | `GameRun` / `GameEventRecord` |
+| `interfaces/api/errors.py` | Problem Details 変換 |
+| `usecase/games.py` | game workflow |
+| `usecase/models.py` | usecase DTO |
+| `usecase/projections.py` | public state / event projection |
 
-`interfaces/api` は domain を直接 import しません。
-usecase との接続は `interfaces/application` に閉じ、業務要件と公開投影は usecase に置きます。
+`interfaces/api` は domain / usecase を直接 import しません。
+usecase との接続は `interfaces/application` に閉じます。
 
-## 確認コマンド
+## 検証
 
 ```bash
 uv run --extra api python backend/manage.py check
 uv run --extra api pytest tests/integration/api
-uv run --extra api python backend/manage.py runserver
 ```
