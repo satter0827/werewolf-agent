@@ -230,7 +230,7 @@ def test_cli_does_not_import_internal_game_layers() -> None:
 
     forbidden_prefixes = (
         "werewolf_agent.domain",
-        "werewolf_agent.application",
+        "werewolf_agent.usecase",
         "werewolf_agent.agents",
     )
     assert not any(module.startswith(forbidden_prefixes) for module in imported_modules)

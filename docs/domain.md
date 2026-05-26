@@ -24,10 +24,13 @@ domain が持たないもの:
 - ファイル I/O
 - logging 設定
 - 認証
+- MVP の 5〜8 人制約など interface / product 固有の業務要件
 
 ## 公開境界
 
-外部層は `werewolf_agent.domain.models` と `werewolf_agent.domain.service` だけを使います。
+interface から domain を使う経路は `werewolf_agent.usecase` だけです。
+usecase は `werewolf_agent.domain.models` と `werewolf_agent.domain.service` だけを使います。
+interface 層は domain / agents を直接 import せず、usecase のステートレス関数を呼びます。
 `werewolf_agent.domain.rules` は domain 内部の実装です。
 
 責務:
@@ -88,7 +91,7 @@ Game.start
 - 公開 speeches / vote history は見える
 - 他 role、夜行動、debug event は見えない
 
-API は `GameSnapshot` をそのまま返しません。
+usecase / API は `GameSnapshot` をそのまま返しません。
 公開 DTO へ変換して、role や private state を落とします。
 
 ## 乱数
@@ -114,6 +117,6 @@ uv run pytest
 ## 次に拡張する場所
 
 - 新 role / rule: `domain.models` と `domain.rules`
-- LLM agent: `agents` / `llm`
-- 人間 action API: `interfaces/api`。domain へは構造化 action だけを渡す
+- LLM agent: `agents` / `llm` と usecase の agent port
+- 人間 action API: `usecase` に業務要件を置き、`interfaces/api` は HTTP 入出力だけを扱う
 - replay / evaluation: `commons.events` / `commons.redaction`

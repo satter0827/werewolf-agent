@@ -1,7 +1,8 @@
-"""Public HTTP API schemas shared by handlers and API clients."""
+"""Use case input and output models for game workflows."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
@@ -10,14 +11,32 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
+EventVisibility = Literal["public", "player_private", "debug"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
 RoleCount = Annotated[int, Field(ge=0)]
 
 
-class CreateGamePlayer(BaseModel):
-    """One player in a create-game request."""
+@dataclass(frozen=True)
+class GameUseCaseSettings:
+    """Business settings injected by outer interfaces."""
+
+    min_players: int = 5
+    max_players: int = 8
+    supported_agent_type: str = "dummy"
+    default_ruleset_id: str = "default"
+    default_ruleset_name: str = "MVP Default"
+    default_ruleset_description: str = "5〜8人向けの最小同期 API ルールセットです。"
+    supported_agent_name: str = "Dummy Agent"
+
+
+class _UseCaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CreateGamePlayer(_UseCaseModel):
+    """One player requested for a new game."""
 
     id: str
     name: str
@@ -36,8 +55,8 @@ class CreateGamePlayer(BaseModel):
         return normalized
 
 
-class CreateGameAgentConfig(BaseModel):
-    """Agent selection for API-driven game runs."""
+class CreateGameAgentConfig(_UseCaseModel):
+    """Agent selection for automated use case-driven game runs."""
 
     type: str = "dummy"
 
@@ -54,8 +73,8 @@ class CreateGameAgentConfig(BaseModel):
         return normalized
 
 
-class CreateGameRuleConfig(BaseModel):
-    """Rule knobs accepted by the create-game endpoint."""
+class CreateGameRuleConfig(_UseCaseModel):
+    """Rule knobs accepted when creating a game."""
 
     role_counts: dict[RoleId, RoleCount] | None = None
     tie_break_policy: TieBreakPolicyId = "no_elimination"
@@ -65,16 +84,14 @@ class CreateGameRuleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class CreateGameRequest(BaseModel):
-    """Payload for creating one game."""
+class CreateGameCommand(_UseCaseModel):
+    """Command for creating one game run."""
 
     player_count: int | None = Field(default=None, ge=5, le=8)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
     agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
     rule_config: CreateGameRuleConfig = Field(default_factory=CreateGameRuleConfig)
-
-    model_config = ConfigDict(extra="forbid")
 
     @model_validator(mode="after")
     def validate_players_and_count(self) -> Self:
@@ -98,7 +115,7 @@ class CreateGameRequest(BaseModel):
         return 6
 
 
-class PublicPlayerState(BaseModel):
+class PublicPlayerState(_UseCaseModel):
     """Public player state exposed to clients."""
 
     id: str
@@ -111,8 +128,8 @@ class PublicPlayerState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameState(BaseModel):
-    """Public game state exposed to CLI and future UI clients."""
+class PublicGameState(_UseCaseModel):
+    """Public game state exposed to interfaces."""
 
     game_id: str
     status: GameStatus
@@ -131,8 +148,8 @@ class PublicGameState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameEvent(BaseModel):
-    """One public event in the API event stream."""
+class PublicGameEvent(_UseCaseModel):
+    """One public event returned by a client-facing event stream."""
 
     sequence: int = Field(ge=1)
     event_id: UUID
@@ -147,7 +164,7 @@ class PublicGameEvent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameResponse(BaseModel):
+class GameResponse(_UseCaseModel):
     """Response containing the current public game state."""
 
     game_id: str
@@ -156,8 +173,8 @@ class GameResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class StepGameResponse(BaseModel):
-    """Response from advancing a game by one API-side step."""
+class StepGameResponse(_UseCaseModel):
+    """Response from advancing a game by one use case step."""
 
     game_id: str
     status: GameStatus
@@ -167,15 +184,13 @@ class StepGameResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameEventsQuery(BaseModel):
-    """Query parameters for listing public events."""
+class GameEventsQuery(_UseCaseModel):
+    """Query model for listing public events."""
 
     after: int = Field(default=0, ge=0)
 
-    model_config = ConfigDict(extra="forbid")
 
-
-class GameEventsResponse(BaseModel):
+class GameEventsResponse(_UseCaseModel):
     """Public event stream response."""
 
     game_id: str
@@ -185,7 +200,7 @@ class GameEventsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class RulesetResponse(BaseModel):
+class RulesetResponse(_UseCaseModel):
     """Public ruleset metadata for client bootstrapping."""
 
     id: str
@@ -195,5 +210,82 @@ class RulesetResponse(BaseModel):
     roles: list[dict[str, str]]
     phases: list[dict[str, str]]
     agent_types: list[dict[str, str]]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class EventToPersist(_UseCaseModel):
+    """Sanitized event data to persist through an outer repository."""
+
+    visibility: EventVisibility
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class NewGameRun(_UseCaseModel):
+    """New game run data to be persisted by an outer repository."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    seed: int | None
+    config: dict[str, Any]
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunUpdate(_UseCaseModel):
+    """Persistable updates for an existing game run."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameRun(_UseCaseModel):
+    """Game run loaded from an outer persistence adapter."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    seed: int | None
+    config: dict[str, Any]
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameEvent(_UseCaseModel):
+    """Event record loaded from an outer persistence adapter."""
+
+    sequence: int
+    event_id: UUID
+    visibility: EventVisibility
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any]
+    occurred_at: datetime
 
     model_config = ConfigDict(extra="forbid", frozen=True)
