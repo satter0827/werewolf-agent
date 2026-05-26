@@ -25,7 +25,7 @@ API を触る場合:
 uv sync --group dev --extra api
 uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/test_api_health.py tests/test_api_errors.py tests/test_api_games.py
+uv run --extra api pytest tests/integration/api
 uv run --extra api python backend/manage.py runserver
 ```
 
@@ -102,8 +102,32 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details schema |
 | `backend/src/werewolf_agent/commons/` | logging、events、security、shared constants など内部横断 helper |
-| `tests/` | 仕様と境界の再現テスト |
+| `tests/unit/` | プロセス内で完結する unit test |
+| `tests/integration/` | Django / API / DB など複数層を接続する integration test |
 | `docs/` | 設計、契約、未決事項 |
+
+## テスト構成
+
+`tests/` は実装境界ごとに配置します。
+
+```text
+tests/
+  unit/
+    agents/
+    commons/
+    config/
+    contracts/
+    domain/
+    interfaces/
+      cli/
+  integration/
+    api/
+```
+
+- `unit/`: プロセス内で完結し、DB、Django test client、外部 HTTP、実 LLM provider を使わないテスト。
+- `integration/`: Django / DRF、DB setup、HTTP endpoint、CLI から API への接続など、複数層の接続を検証するテスト。
+- CLI テストは fake API client で公開 API 境界を検証する限り `tests/unit/interfaces/cli/` に置く。実 API サーバや Django client を使う場合は `tests/integration/cli/` を追加する。
+- LLM の mock provider テストは `tests/unit/llm/`、実 provider や optional dependency を含む接続確認は `tests/integration/llm/` に置く。
 
 ## 設計メモ
 
