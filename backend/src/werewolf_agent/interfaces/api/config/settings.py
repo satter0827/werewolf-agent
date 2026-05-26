@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from werewolf_agent.commons.logging import build_django_logging_config
+from werewolf_agent.commons.logging.config import build_django_logging_config
 from werewolf_agent.config import DEFAULT_DJANGO_STATIC_ROOT, get_settings, repository_root
 
 APP_SETTINGS = get_settings()

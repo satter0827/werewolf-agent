@@ -116,4 +116,4 @@ uv run pytest
 - 新 role / rule: `domain.models` と `domain.rules`
 - LLM agent: `agents` / `llm`
 - 人間 action API: `interfaces/api`。domain へは構造化 action だけを渡す
-- replay / evaluation: `commons.events` / `commons.redaction`
+- replay / evaluation: `commons.events.*` / `commons.security.redaction`

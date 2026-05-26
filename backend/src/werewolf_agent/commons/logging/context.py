@@ -6,8 +6,10 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar
 
+from werewolf_agent.commons.shared.constants import LOG_CONTEXT_VAR_NAME
+
 _LOG_CONTEXT: ContextVar[dict[str, str] | None] = ContextVar(
-    "werewolf_log_context",
+    LOG_CONTEXT_VAR_NAME,
     default=None,
 )
 

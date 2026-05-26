@@ -101,7 +101,7 @@ Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_
 | `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details schema |
-| `backend/src/werewolf_agent/commons/` | logs、JSONL、redaction など内部横断 helper |
+| `backend/src/werewolf_agent/commons/` | logging、events、security、shared constants など内部横断 helper |
 | `tests/` | 仕様と境界の再現テスト |
 | `docs/` | 設計、契約、未決事項 |
 

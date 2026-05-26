@@ -3,16 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Final
 
-REDACTED: Final = "[REDACTED]"
-SENSITIVE_KEY_PARTS: Final = (
-    "secret",
-    "token",
-    "api_key",
-    "apikey",
-    "authorization",
-    "password",
+from werewolf_agent.commons.shared.constants import (
+    REDACTED,
+    REDACTION_NORMALIZED_SEPARATOR,
+    REDACTION_SOURCE_SEPARATOR,
+    SENSITIVE_KEY_PARTS,
 )
 
 
@@ -37,5 +33,5 @@ def redact_value(key: str | None, value: object) -> object:
 
 def is_sensitive_key(key: str) -> bool:
     """Return whether a structured field name should be masked."""
-    normalized = key.lower().replace("-", "_")
+    normalized = key.lower().replace(REDACTION_SOURCE_SEPARATOR, REDACTION_NORMALIZED_SEPARATOR)
     return any(part in normalized for part in SENSITIVE_KEY_PARTS)

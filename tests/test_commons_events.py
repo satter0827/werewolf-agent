@@ -3,12 +3,9 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.commons.events import (
-    GameEvent,
-    JsonlEventWriter,
-    NullEventSink,
-    error_event,
-)
+from werewolf_agent.commons.events.factories import error_event
+from werewolf_agent.commons.events.models import GameEvent
+from werewolf_agent.commons.events.sinks import JsonlEventWriter, NullEventSink
 from werewolf_agent.contracts import ObservationError
 
 
