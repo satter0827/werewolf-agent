@@ -51,10 +51,12 @@ packages = ["backend/src/werewolf_agent"]
 
 [tool.pytest.ini_options]
 addopts = "-q"
+cache_dir = ".werewolf-agent/cache/pytest"
 pythonpath = ["backend/src"]
 testpaths = ["tests"]
 
 [tool.ruff]
+cache-dir = ".werewolf-agent/cache/ruff"
 line-length = 100
 src = ["backend/src", "tests"]
 target-version = "py311"
@@ -66,6 +68,7 @@ select = ["B", "E", "F", "I", "RUF", "SIM", "UP"]
 quote-style = "double"
 
 [tool.mypy]
+cache_dir = ".werewolf-agent/cache/mypy"
 check_untyped_defs = true
 files = ["backend/src"]
 mypy_path = "backend/src"
@@ -77,3 +80,6 @@ warn_unused_ignores = true
 [[tool.mypy.overrides]]
 module = "werewolf_agent.interfaces.api.*"
 ignore_errors = true
+
+[tool.coverage.run]
+data_file = ".werewolf-agent/cache/coverage/.coverage"
