@@ -2,15 +2,15 @@ import json
 import logging
 import sys
 
-from werewolf_agent.config import AppSettings
-from werewolf_agent.observation.log_context import bind_log_context
-from werewolf_agent.observation.logging import (
+from werewolf_agent.commons.log_context import bind_log_context
+from werewolf_agent.commons.logging import (
     JsonFormatter,
     build_django_logging_config,
 )
-from werewolf_agent.observation.redaction import (
+from werewolf_agent.commons.redaction import (
     redact_mapping,
 )
+from werewolf_agent.config import AppSettings
 
 
 def _format_record(record: logging.LogRecord) -> dict[str, object]:

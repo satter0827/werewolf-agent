@@ -6,7 +6,7 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
-from werewolf_agent.commons import GameError
+from werewolf_agent.contracts import GameError
 from werewolf_agent.domain._rules import (
     faction_for_role,
     mark_dead,

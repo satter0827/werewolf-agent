@@ -3,13 +3,13 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.commons import ObservationError
-from werewolf_agent.observation.events import (
+from werewolf_agent.commons.events import (
     GameEvent,
     JsonlEventWriter,
     NullEventSink,
     error_event,
 )
+from werewolf_agent.contracts import ObservationError
 
 
 def test_game_event_serializes_to_single_json_line() -> None:

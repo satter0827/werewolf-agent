@@ -6,7 +6,7 @@ import random
 from collections import Counter
 from collections.abc import Sequence
 
-from werewolf_agent.commons import GameError
+from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.models import (
     GameConfig,
     GameSnapshot,

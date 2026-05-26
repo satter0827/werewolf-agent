@@ -13,7 +13,7 @@ from django.db.models import Max
 from rest_framework.exceptions import NotFound
 
 from werewolf_agent.agents.fake_llm import FakeLlmAgent
-from werewolf_agent.commons import GameError, GamePhaseError
+from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain import (
     AgentAction,
     DomainEvent,

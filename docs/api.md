@@ -104,7 +104,7 @@ API error は RFC 9457 Problem Details (`application/problem+json`) です。
 ## 実装位置
 
 - DTO: `backend/src/werewolf_agent/interfaces/api/schemas.py`
-- Problem Details schema: `backend/src/werewolf_agent/commons/schemas.py`
+- Problem Details schema: `backend/src/werewolf_agent/contracts/schemas.py`
 - Error handler: `backend/src/werewolf_agent/interfaces/api/errors.py`
 - View: `backend/src/werewolf_agent/interfaces/api/games/views.py`
 - Service: `backend/src/werewolf_agent/interfaces/api/games/services.py`

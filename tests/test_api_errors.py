@@ -3,7 +3,7 @@ import os
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from werewolf_agent.commons import GamePhaseError
+from werewolf_agent.contracts import GamePhaseError
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "werewolf_agent.interfaces.api.config.settings")
 django = pytest.importorskip("django")

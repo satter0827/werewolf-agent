@@ -21,8 +21,8 @@ LLM エージェントを人狼ゲームのプレイヤーとして動かすポ�
 - `agents`: `Observation` を受け取り、構造化 action を返す。現在は `FakeLlmAgent` のみ。
 - `interfaces/api`: Django / DRF の公開 API。公開 DTO を定義し、`GameSnapshot` を保存・変換する。
 - `interfaces/cli.py`: 公開 HTTP API だけを呼ぶ。domain / agents を直接 import しない。
-- `observation`: アプリログ、JSONL event、redaction。
-- `commons`: 安定した error code、safe exception、Problem Details schema。
+- `contracts`: 安定した error code、safe exception、Problem Details schema。外部境界で共有する契約。
+- `commons`: アプリログ、JSONL event、redaction など内部で横断的に使う helper。
 
 ## セットアップ
 

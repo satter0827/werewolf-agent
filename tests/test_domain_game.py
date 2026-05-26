@@ -3,7 +3,7 @@ import random
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.commons import GameError, GamePhaseError
+from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.models import (
     DomainEvent,
     Faction,

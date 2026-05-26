@@ -8,8 +8,8 @@ import sys
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, Final, TextIO
 
-from werewolf_agent.observation.log_context import get_log_context
-from werewolf_agent.observation.redaction import redact_mapping
+from werewolf_agent.commons.log_context import get_log_context
+from werewolf_agent.commons.redaction import redact_mapping
 
 if TYPE_CHECKING:
     from werewolf_agent.config import AppSettings
@@ -85,7 +85,7 @@ def build_django_logging_config(settings: AppSettings) -> dict[str, Any]:
         "disable_existing_loggers": False,
         "formatters": {
             "json": {
-                "()": "werewolf_agent.observation.logging.JsonFormatter",
+                "()": "werewolf_agent.commons.logging.JsonFormatter",
             },
             "console": {
                 "format": "%(levelname)s %(name)s: %(message)s",

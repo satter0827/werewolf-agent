@@ -3,8 +3,8 @@ from http import HTTPStatus
 import pytest
 from pydantic import ValidationError
 
-import werewolf_agent.commons as errors_package
-from werewolf_agent.commons import (
+import werewolf_agent.contracts as contracts_package
+from werewolf_agent.contracts import (
     ERROR_SPECS,
     AppError,
     ErrorCode,
@@ -12,13 +12,13 @@ from werewolf_agent.commons import (
     LlmProviderError,
     problem_type_uri,
 )
-from werewolf_agent.commons.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
+from werewolf_agent.contracts.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
 
 
-def test_errors_package_reexports_public_api() -> None:
-    assert errors_package.AppError is AppError
-    assert errors_package.ErrorCode is ErrorCode
-    assert errors_package.GamePhaseError is GamePhaseError
+def test_contracts_package_reexports_public_api() -> None:
+    assert contracts_package.AppError is AppError
+    assert contracts_package.ErrorCode is ErrorCode
+    assert contracts_package.GamePhaseError is GamePhaseError
 
 
 def test_error_codes_are_unique_and_all_have_specs() -> None:

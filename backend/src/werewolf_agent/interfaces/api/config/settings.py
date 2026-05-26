@@ -1,7 +1,7 @@
 """Django settings for the Werewolf Agent API."""
 
+from werewolf_agent.commons.logging import build_django_logging_config
 from werewolf_agent.config import get_settings, repository_root
-from werewolf_agent.observation.logging import build_django_logging_config
 
 APP_SETTINGS = get_settings()
 BASE_DIR = repository_root()

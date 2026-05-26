@@ -32,8 +32,8 @@ Werewolf Agent は、LLM エージェントをプレイヤーとして参加さ�
 - `backend/src/werewolf_agent/llm/`: provider adapter、prompt、structured output parser
 - `backend/src/werewolf_agent/interfaces/cli.py`: CLI。公開 HTTP API だけを呼ぶ
 - `backend/src/werewolf_agent/interfaces/api/`: Django API、公開 DTO、DB 永続化
-- `backend/src/werewolf_agent/observation/`: logs、JSONL event、redaction
-- `backend/src/werewolf_agent/commons/`: error code、safe exception、Problem Details schema
+- `backend/src/werewolf_agent/contracts/`: error code、safe exception、Problem Details schema
+- `backend/src/werewolf_agent/commons/`: logs、JSONL event、redaction
 - `tests/`: domain と外部境界の再現テスト
 - `docs/`: 仕様、判断理由、未決事項
 

@@ -6,7 +6,7 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
-from werewolf_agent.commons import GameError
+from werewolf_agent.contracts import GameError
 from werewolf_agent.domain._rules import alive_players, mark_dead, require_alive, require_phase
 from werewolf_agent.domain.models import (
     GameConfig,

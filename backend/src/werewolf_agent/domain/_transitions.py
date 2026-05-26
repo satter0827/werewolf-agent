@@ -6,7 +6,7 @@ import random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
-from werewolf_agent.commons import GamePhaseError
+from werewolf_agent.contracts import GamePhaseError
 from werewolf_agent.domain._night_actions import resolve_night
 from werewolf_agent.domain._rules import check_win
 from werewolf_agent.domain._voting import resolve_votes

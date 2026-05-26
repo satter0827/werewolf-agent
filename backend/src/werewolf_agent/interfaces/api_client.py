@@ -11,8 +11,8 @@ from urllib.request import Request, urlopen
 
 from pydantic import BaseModel, ValidationError
 
-from werewolf_agent.commons import AppError, ErrorCode
-from werewolf_agent.commons.schemas import ProblemDetails
+from werewolf_agent.contracts import AppError, ErrorCode
+from werewolf_agent.contracts.schemas import ProblemDetails
 from werewolf_agent.interfaces.api.schemas import (
     CreateGameRequest,
     GameEventsResponse,

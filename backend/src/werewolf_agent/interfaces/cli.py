@@ -18,15 +18,15 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.commons import AppError, ConfigError, ErrorCode
+from werewolf_agent.commons.logging import configure_logging
 from werewolf_agent.config import APP_NAME, get_settings, repository_root
+from werewolf_agent.contracts import AppError, ConfigError, ErrorCode
 from werewolf_agent.interfaces.api.schemas import (
     CreateGameRequest,
     PublicGameEvent,
     PublicGameState,
 )
 from werewolf_agent.interfaces.api_client import GameApiClient, HttpGameApiClient
-from werewolf_agent.observation.logging import configure_logging
 
 T = TypeVar("T")
 
