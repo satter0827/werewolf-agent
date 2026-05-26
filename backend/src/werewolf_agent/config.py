@@ -18,6 +18,9 @@ DEFAULT_LLM_MODEL: Final = "dummy-local"
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
 DEFAULT_LOG_OUTPUT: Final = "stderr"
+DEFAULT_GENERATED_DIR: Final = Path(".werewolf-agent")
+DEFAULT_DJANGO_SQLITE_PATH: Final = DEFAULT_GENERATED_DIR / "db" / "db.sqlite3"
+DEFAULT_DJANGO_STATIC_ROOT: Final = DEFAULT_GENERATED_DIR / "staticfiles"
 DEFAULT_DJANGO_SECRET_KEY: Final = "django-insecure-local-dev-only"
 MIN_DJANGO_SECRET_KEY_LENGTH: Final = 50
 
@@ -108,7 +111,7 @@ class AppSettings(BaseSettings):
         validation_alias=AliasChoices("WEREWOLF_DJANGO_TIME_ZONE", "DJANGO_TIME_ZONE", "TZ"),
     )
     django_sqlite_path: Path = Field(
-        default=Path("backend/db.sqlite3"),
+        default=DEFAULT_DJANGO_SQLITE_PATH,
         validation_alias=AliasChoices("WEREWOLF_DJANGO_SQLITE_PATH", "DJANGO_SQLITE_PATH"),
     )
     database_url: SecretStr = Field(

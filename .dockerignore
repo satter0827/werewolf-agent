@@ -3,6 +3,7 @@
 !.env.example
 .git
 .github
+.werewolf-agent
 .venv
 __pycache__
 *.py[cod]

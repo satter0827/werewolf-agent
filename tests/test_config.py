@@ -3,7 +3,12 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.config import AppSettings, repository_root, split_csv
+from werewolf_agent.config import (
+    DEFAULT_DJANGO_SQLITE_PATH,
+    AppSettings,
+    repository_root,
+    split_csv,
+)
 
 
 def test_split_csv_removes_empty_items_and_whitespace() -> None:
@@ -58,6 +63,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.log_format == "json"
     assert settings.log_output == "stderr"
+    assert settings.django_sqlite_path == DEFAULT_DJANGO_SQLITE_PATH
+    assert settings.django_sqlite_database == repository_root() / DEFAULT_DJANGO_SQLITE_PATH
 
 
 def test_logging_settings_normalize_supported_values() -> None:

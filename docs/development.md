@@ -55,6 +55,11 @@ uv sync --group dev --extra llm
 `api` は Django / DRF / DB adapter 用です。
 `llm` は LangChain / OpenAI compatible provider 用です。
 
+## ローカル生成物
+
+Git 管理しないキャッシュ、SQLite、静的ファイル、JSONL ログは `.werewolf-agent/` 配下に集約します。
+このディレクトリ配下は `.gitkeep` 以外コミットしません。
+
 ## Docker
 
 SQLite:

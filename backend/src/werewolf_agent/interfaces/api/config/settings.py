@@ -1,7 +1,9 @@
 """Django settings for the Werewolf Agent API."""
 
+from pathlib import Path
+
 from werewolf_agent.commons.logging import build_django_logging_config
-from werewolf_agent.config import get_settings, repository_root
+from werewolf_agent.config import DEFAULT_DJANGO_STATIC_ROOT, get_settings, repository_root
 
 APP_SETTINGS = get_settings()
 BASE_DIR = repository_root()
@@ -70,6 +72,9 @@ WSGI_APPLICATION = "werewolf_agent.interfaces.api.config.wsgi.application"
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 DATABASES = {"default": APP_SETTINGS.django_database_config}
+if DATABASES["default"].get("ENGINE") == "django.db.backends.sqlite3":
+    sqlite_database = Path(DATABASES["default"]["NAME"])
+    sqlite_database.parent.mkdir(parents=True, exist_ok=True)
 
 
 # Password validation
@@ -107,7 +112,7 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = BASE_DIR / DEFAULT_DJANGO_STATIC_ROOT
 
 STORAGES = {
     "default": {

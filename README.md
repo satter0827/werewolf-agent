@@ -48,7 +48,7 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 公開イベントを JSONL に残す場合:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1 --log-jsonl runs/game-001.jsonl
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1 --log-jsonl .werewolf-agent/logs/game-001.jsonl
 ```
 
 ## API
@@ -79,6 +79,7 @@ WEREWOLF_LOG_FORMAT=json
 WEREWOLF_LOG_OUTPUT=stderr
 WEREWOLF_DJANGO_DEBUG=true
 WEREWOLF_DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,testserver
+WEREWOLF_DJANGO_SQLITE_PATH=.werewolf-agent/db/db.sqlite3
 WEREWOLF_DATABASE_URL=
 ```
 
