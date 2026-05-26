@@ -1,124 +1,94 @@
-# Domain 設計
-
-## 目的
+# Domain
 
 `werewolf_agent.domain` は人狼ゲームの deterministic core です。
-同じ設定、同じ seed、同じ action なら同じ結果になります。
+同じ config、players、seed、action なら同じ snapshot と event になります。
 
-## 境界
+## 持つもの
 
-domain が持つもの:
+- role、phase、player status
+- speech、vote、night action
+- observer ごとの `Observation`
+- phase transition
+- win condition
+- visibility 付き `DomainEvent`
+- provider 非依存の `DummyAgent`
 
-- 役職、フェーズ、プレイヤー状態
-- 投票、夜行動、発話 action
-- 観測情報 `Observation`
-- フェーズ遷移
-- 勝敗判定
-- domain event の生成
-- dummy agent の deterministic action 選択
-
-domain が持たないもの:
+## 持たないもの
 
 - `.env` / `get_settings()`
 - Django model / HTTP DTO
-- LLM provider 呼び出し
-- ファイル I/O
+- DB / file I/O
 - logging 設定
 - 認証
-- MVP の 5〜8 人制約など interface / product 固有の業務要件
+- LLM provider 呼び出し
+- MVP の 5〜8 人制約など product / interface 固有の制約
 
 ## 公開境界
 
-interface から domain を使う経路は `werewolf_agent.usecase` だけです。
-usecase は `werewolf_agent.domain.models` と `werewolf_agent.domain.service` だけを使います。
-interface 層は domain を直接 import せず、usecase のステートレス関数を呼びます。
-`werewolf_agent.domain.rules` は domain 内部の実装です。
+外側が参照してよい domain module は次だけです。
 
-責務:
+- `werewolf_agent.domain.models`
+- `werewolf_agent.domain.service`
 
-- `models.py`: 外部参照する class、enum、type alias、Protocol
-- `service.py`: 外部参照するステートレス関数
-- `rules/`: `models` と `service` が使う内部処理
+`domain.rules` は内部実装です。
+`interfaces` は domain を直接 import せず、`usecase` の stateless function を呼びます。
 
-主要型:
+この境界は `tests/unit/architecture/test_architecture_boundaries.py` で検査します。
 
-- `GameConfig`: player count、role count、seed、投票 rule
-- `GameSnapshot`: 永続化可能な完全状態
-- `Observation`: 1 プレイヤーに見せてよい情報
-- `SpeechAction` / `VoteAction` / `NightAction`: 構造化 action
-- `DomainEvent`: 外側が保存・公開・redaction する event
-- `DummyAgent`: provider を呼ばず、`Observation` だけから構造化 action を返す dummy agent
+## 主要型
+
+| 型 | 意味 |
+| --- | --- |
+| `GameConfig` | player count、role count、seed、投票 rule |
+| `PlayerConfig` | player id、name、任意の固定 role |
+| `GameSnapshot` | 永続化できる完全状態 |
+| `Observation` | 1 player に見せてよい情報 |
+| `SpeechAction` / `VoteAction` / `NightAction` | 構造化 action |
+| `DomainEvent` | 保存・公開・redaction される event の元データ |
+| `Game` | snapshot を操作する state machine facade |
 
 ## 進行
 
 ```text
-Game.start
-  -> night
-  -> day_discussion
-  -> voting
-  -> night ...
-  -> finished
+night -> day_discussion -> voting -> night -> ... -> finished
 ```
 
-夜:
+- 夜: 人狼は村側を襲撃、占い師は検査、騎士は護衛
+- 昼: 生存者が `SpeechAction` を出す
+- 投票: 生存者が生存者へ投票する
+- 勝敗: 人狼全滅で村勝利、生存人狼数が生存村側数以上で人狼勝利
 
-- 人狼は村側だけを襲撃できる
-- 占い師は自分以外を占える
-- 騎士は生存者を護衛できる
-- 襲撃先と護衛先が一致すれば死亡なし
+同票は `no_elimination` または `random_elimination`。
+自投票は `allow_self_vote` で制御します。
 
-昼:
+## Observation
 
-- 生存者が `SpeechAction` を出す
-- API 側では `day_speech_turns` 回、生存者を巡回する
-
-投票:
-
-- 生存者が生存者へ投票する
-- 自投票は `allow_self_vote` で制御
-- 同票は `no_elimination` または `random_elimination`
-
-勝敗:
-
-- 人狼が全滅: 村側勝利
-- 生存人狼数が生存村側数以上: 人狼勝利
-
-## 情報公開
-
-`Observation` は observer ごとに作ります。
+`Observation` は observer ごとに生成します。
 
 - 自分の role は見える
 - 人狼は仲間の人狼を知る
-- 占い師は自分の占い結果だけを知る
-- 公開 speeches / vote history は見える
-- 他 role、夜行動、debug event は見えない
+- 占い師は自分の検査結果だけを知る
+- 公開 speech / vote history は見える
+- 他 role、夜行動、private event、debug event は見えない
 
-usecase / API は `GameSnapshot` をそのまま返しません。
-公開 DTO へ変換して、role や private state を落とします。
+API は `GameSnapshot` をそのまま返しません。
+`usecase.projections` が public state / public event に変換します。
 
 ## 乱数
 
-乱数は外から `random.Random` を注入します。
+乱数は外側から `random.Random` を注入します。
 seed は role assignment、tie break、dummy agent の選択に使います。
 
-## テスト
+## 拡張先
 
-中心テスト:
+- 新 role / rule: `domain.models`、`domain.rules`
+- 公開 projection: `usecase.projections`
+- 自動 agent の選択: `usecase.agents`
+- human / LLM action API: `usecase` に要件を置き、`interfaces/api` は入出力に寄せる
 
-- `tests/unit/domain/test_domain_game.py`
-- `tests/unit/domain/test_dummy_agent.py`
-- `tests/integration/api/test_api_games.py`
-
-基本コマンド:
+## 検証
 
 ```bash
-uv run pytest tests/unit/domain/test_domain_game.py tests/unit/domain/test_dummy_agent.py
-uv run pytest
+uv run pytest tests/unit/domain
+uv run pytest tests/unit/architecture/test_architecture_boundaries.py
 ```
-
-## 次に拡張する場所
-
-- 新 role / rule: `domain.models` と `domain.rules`
-- LLM agent: `llm` と usecase の agent port
-- 人間 action API: `usecase` に業務要件を置き、`interfaces/api` は HTTP 入出力だけを扱う
-- replay / evaluation: `commons.events.*` / `commons.security.redaction`

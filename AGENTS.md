@@ -1,49 +1,46 @@
 # AGENTS.md
 
 このファイルは、このリポジトリで作業する AI コーディングエージェント向けの作業ガイドです。
-リポジトリ全体に適用します。より深い階層に別の `AGENTS.md` がある場合は、そちらを優先してください。
+リポジトリ全体に適用します。下位に別の `AGENTS.md` がある場合は、そちらを優先してください。
 
 ## Project
 
-Werewolf Agent は、LLM エージェントをプレイヤーとして参加させる人狼ゲームです。
-ゲームルールは deterministic engine が管理し、エージェントは観測できる情報だけを受け取って構造化 action を返します。
+Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーとして動かす Python backend です。
+ゲームルールは deterministic domain core が管理し、外側には公開状態と public event だけを出します。
 
 現在の状態:
 
-- dummy agent だけで Django API 経由の 1 ゲームを CLI から完走できる
-- domain core、usecase、API、CLI、public event stream は実装済み
-- 実 LLM provider、手動 action API、private observation 認証、観戦 UI は未実装
+- dummy agent だけで Django API 経由の 1 game を CLI から完走できる
+- `domain`、`usecase`、Django API、CLI、public event stream は実装済み
+- 実 LLM provider、手動 action API、private observation API、観戦 UI は未実装
 
 ## Read First
 
-作業前に、変更範囲に近い実装・テスト・文書を確認してください。
+変更前に、近い実装・テスト・文書を確認してください。
 
 - 入口: `README.md`
 - domain 境界: `docs/domain.md`
 - API 契約: `docs/api.md`
-- 開発再開メモ: `docs/development.md`
+- 再開メモ: `docs/development.md`
 
 ## Architecture
 
-主要な責務:
-
-- `backend/src/werewolf_agent/domain/`: ルール、状態、投票、夜行動、勝敗判定
-- `backend/src/werewolf_agent/usecase/`: interface と domain をつなぐ usecase、公開投影、port
-- `backend/src/werewolf_agent/agents/`: dummy agent。実 LLM / human agent は未実装
-- `backend/src/werewolf_agent/llm/`: 未実装。将来の provider adapter、prompt、structured output parser 置き場
-- `backend/src/werewolf_agent/interfaces/cli.py`: CLI。公開 HTTP API だけを呼ぶ
-- `backend/src/werewolf_agent/interfaces/api/`: Django API、公開 DTO、DB adapter、transaction、例外変換
-- `backend/src/werewolf_agent/contracts/`: error code、safe exception、Problem Details schema
-- `backend/src/werewolf_agent/commons/`: logs、JSONL event、redaction
-- `tests/unit/`: domain と外部境界の unit test
-- `tests/integration/api/`: Django / API / DB 境界の integration test
-- `docs/`: 仕様、判断理由、未決事項
+| Path | 責務 |
+| --- | --- |
+| `backend/src/werewolf_agent/domain/` | ルール、状態、観測、勝敗、domain event |
+| `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
+| `backend/src/werewolf_agent/interfaces/api/` | Django API、DB adapter、transaction、例外変換 |
+| `backend/src/werewolf_agent/interfaces/cli.py` | 公開 HTTP API だけを呼ぶ CLI |
+| `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details |
+| `backend/src/werewolf_agent/commons/` | logging、event sink、redaction、shared helper |
+| `tests/unit/` | unit test |
+| `tests/integration/api/` | Django / DB / API integration test |
 
 境界ルール:
 
 - domain は `.env`、Django、LLM provider、file I/O、logging 設定に依存させない
-- CLI は domain / agents を直接 import せず、API DTO と HTTP client だけを使う
-- interface 層は domain / agents を直接 import せず、usecase の stateless function を呼ぶ
+- CLI は domain / usecase を直接 import せず、API DTO と HTTP client だけを使う
+- interface 層は domain を直接 import せず、usecase の stateless function を呼ぶ
 - usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う
 - API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
@@ -54,7 +51,7 @@ Werewolf Agent は、LLM エージェントをプレイヤーとして参加さ�
 基本:
 
 ```bash
-uv sync --group dev
+uv sync --group dev --extra api
 uv run werewolf-agent doctor
 uv run pytest
 uv run ruff check .
@@ -65,14 +62,13 @@ uv run mypy backend/src
 API:
 
 ```bash
-uv sync --group dev --extra api
 uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py check
 uv run --extra api pytest tests/integration/api
 uv run --extra api python backend/manage.py runserver
 ```
 
-CLI で 1 ゲーム確認:
+CLI で 1 game 確認:
 
 ```bash
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
@@ -101,19 +97,18 @@ docker compose run --rm test
 
 レビューでは、構文より先に次を見てください。
 
-- 変更が README / docs / tests / 近い実装と矛盾していないか
+- README / docs / tests / 近い実装と矛盾していないか
 - 設定、provider、model、DB、Django、ログ、秘密情報が hard-code されていないか
 - 重複した定数や処理を既存設定、共通関数、標準 API に寄せられるか
 - CLI / API / UI 境界で内部例外、stack trace、secret を露出していないか
 - public state / public event に role、night action、API key、token が混ざらないか
 - 変更範囲に見合う test、lint、format check、type check を実行したか
-- コミットメッセージ案は日本語を基本にし、`feat: ...`、`fix: ...`、`docs: ...` など Conventional Commits に近いデファクトな形式にする
 - 不要となったファイル、モジュールを残していないか
 
 ## Testing
 
-- ルール、勝敗判定、投票、夜行動は unit test を優先する
-- LLM provider 直接呼び出しは通常の unit test から分離する
+- ルール、勝敗、投票、夜行動は unit test を優先する
+- LLM provider 直接呼び出しは通常 unit test から分離する
 - LLM 出力は mock / fixture で再現可能にする
 - ランダム性を使うテストは seed を固定する
 - バグ修正では、可能な限り再現テストを追加する
@@ -131,7 +126,7 @@ docker compose run --rm test
 - README は利用者向けの入口として保つ
 - 詳細設計と判断理由は `docs/` に置く
 - 文書は日本語を基本にし、コード識別子と外部 API 名は英語のまま扱う
-- 「目的」「現在の状態」「実行コマンド」「未決事項」「次の一手」を優先する
+- 「目的」「現在地」「実行コマンド」「未実装」「次の一手」を優先する
 - 長い背景説明より、途中参加者がすぐ再開できる構造を優先する
 
 ## Style
@@ -151,7 +146,7 @@ docker compose run --rm test
 - 実行したコマンド
 - 次に人間が判断すべき選択肢
 
-可能なら、外部 API なしで動く dummy agent / mock provider を先に実装してください。
+外部 API なしで動く dummy agent / mock provider を先に実装できる場合は、そちらを優先してください。
 
 ## Commit Message
 

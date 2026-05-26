@@ -1,50 +1,93 @@
-# 開発メモ
+# Development
 
-途中参加した人間や AI が、最短で再開するための作業メモです。
+途中参加者が最短で再開するためのメモです。
 
 ## 現在地
 
-- 優先対象は backend。
-- deterministic domain core は実装済み。
-- `usecase` は interface と domain をつなぐ唯一の接点として実装済み。
-- dummy agent は domain の deterministic helper として実装済み。
-- Django API は game 作成、状態取得、step 進行、public event 取得まで実装済み。
-- CLI `play` は公開 HTTP API だけで 1 ゲームを完走できる。
-- 実 LLM provider、手動 action API、観戦 UI は未実装。
+- backend 中心
+- deterministic domain core 実装済み
+- `usecase` は interface と domain の唯一の接続点
+- Django API は game 作成、状態取得、step 進行、public event 取得まで実装済み
+- CLI `play` は公開 HTTP API だけで 1 game を完走できる
+- 実 LLM provider、human action、private observation、観戦 UI は未実装
 
-## まず実行する
-
-```bash
-uv sync --group dev
-uv run werewolf-agent doctor
-uv run pytest
-```
-
-API を触る場合:
+## 最初に実行
 
 ```bash
 uv sync --group dev --extra api
-uv run --extra api python backend/manage.py migrate
+uv run werewolf-agent doctor
+uv run pytest
 uv run --extra api python backend/manage.py check
-uv run --extra api pytest tests/integration/api
+```
+
+API を起動:
+
+```bash
+uv run --extra api python backend/manage.py migrate
 uv run --extra api python backend/manage.py runserver
 ```
 
-CLI で API 経由のゲームを確認:
+CLI で確認:
 
 ```bash
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
 ```
 
-## 品質確認
+## 配置
+
+| Path | 責務 |
+| --- | --- |
+| `backend/src/werewolf_agent/config.py` | `.env` / 環境変数 |
+| `backend/src/werewolf_agent/domain/models.py` | public domain types と `Game` facade |
+| `backend/src/werewolf_agent/domain/service.py` | public domain stateless functions |
+| `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
+| `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
+| `backend/src/werewolf_agent/interfaces/api/` | Django API と DB adapter |
+| `backend/src/werewolf_agent/interfaces/cli.py` | Typer CLI |
+| `backend/src/werewolf_agent/interfaces/api_client.py` | CLI 用 HTTP client |
+| `backend/src/werewolf_agent/contracts/` | error contract |
+| `backend/src/werewolf_agent/commons/` | logging、events、redaction |
+| `tests/unit/` | process 内 unit test |
+| `tests/integration/api/` | Django / DB / API integration test |
+
+## 境界
+
+- CLI は API DTO と HTTP client だけを使う
+- interface 層は domain を直接 import しない
+- usecase は `domain.models` と `domain.service` だけを import する
+- domain は usecase / interfaces / config / commons / llm を import しない
+- API は `private_state` を保存してよいが public response へ出さない
+- public event に role、night action、secret、token、API key を混ぜない
+
+## テスト
 
 ```bash
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src
-uv run --extra api python backend/manage.py check
+uv run --extra api pytest tests/integration/api
 ```
+
+配置方針:
+
+- ルール、勝敗、投票、夜行動: `tests/unit/domain/`
+- 境界 import: `tests/unit/architecture/`
+- CLI の public API 境界: `tests/unit/interfaces/cli/`
+- Django / DB / endpoint: `tests/integration/api/`
+- 実 LLM provider 接続: 通常 unit test から分離する
+
+## 生成物
+
+Git 管理しないものは `.werewolf-agent/` に集約します。
+
+- SQLite: `.werewolf-agent/db/db.sqlite3`
+- pytest / ruff / mypy cache
+- coverage data
+- JSONL logs
+- collectstatic output
+
+`.werewolf-agent/.gitkeep` 以外はコミットしません。
 
 ## Optional Dependencies
 
@@ -53,42 +96,10 @@ uv sync --group dev --extra api
 uv sync --group dev --extra llm
 ```
 
-`api` は Django / DRF / DB adapter 用です。
-`llm` は LangChain / OpenAI compatible provider 用です。
-
-## Wheel 配布チェックリスト
-
-内部配布用の wheel / sdist は、PyPA 標準の `pyproject.toml` と Hatchling build backend で作成します。
-
-```bash
-uv build --no-sources
-```
-
-release 前に次を確認します。
-
-```bash
-python -m zipfile -l dist/werewolf_agent-0.1.0-py3-none-any.whl
-tar -tf dist/werewolf_agent-0.1.0.tar.gz
-uv run --with dist/werewolf_agent-0.1.0-py3-none-any.whl --no-project -- werewolf-agent doctor
-uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage check
-uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage migrate --noinput
-```
-
-- wheel は `backend/src/werewolf_agent` の runtime package だけを含めます。
-- sdist は source、tests、docs、Docker/compose、README、LICENSE、`.env.example`、`pyproject.toml` だけを含めます。
-- `.werewolf-agent/`、`.git/`、`dist/`、local DB、cache、virtualenv が sdist に入っていないことを確認します。
-- `pyproject.toml` の `version` と `backend/src/werewolf_agent/__init__.py` の `__version__` は release 前に一致させます。
-- API を wheel から操作する場合は `python backend/manage.py` ではなく `werewolf-agent-api-manage` を使います。
-- 本番相当の WSGI 起動は `gunicorn werewolf_agent.interfaces.api.config.wsgi:application --bind 0.0.0.0:${PORT:-8000}` を使います。
-
-## ローカル生成物
-
-Git 管理しないキャッシュ、SQLite、静的ファイル、JSONL ログは `.werewolf-agent/` 配下に集約します。
-このディレクトリ配下は `.gitkeep` 以外コミットしません。
+- `api`: Django / DRF / DB / gunicorn
+- `llm`: LangChain / OpenAI compatible provider 用。adapter は未実装
 
 ## Docker
-
-SQLite:
 
 ```bash
 docker compose build
@@ -105,86 +116,37 @@ docker compose -f compose.yaml -f compose.postgres.yaml up api
 docker compose -f compose.yaml -f compose.postgres.yaml run --rm test
 ```
 
-Runtime image:
+## 配布
 
 ```bash
-docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api:runtime .
+uv build --no-sources
 ```
 
-Production 相当では `WEREWOLF_DJANGO_DEBUG=false`、強い `WEREWOLF_DJANGO_SECRET_KEY`、公開 host に合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS` を設定します。
-起動時 migration はしません。release command または one-off job で `werewolf-agent-api-manage migrate` を実行します。
+wheel から API 管理コマンドを使う場合:
 
-## 配置
-
-| Path | 責務 |
-| --- | --- |
-| `backend/src/werewolf_agent/config.py` | `.env` / 環境変数 |
-| `backend/src/werewolf_agent/domain/models.py` | 外部参照する domain class / enum / type alias / Protocol |
-| `backend/src/werewolf_agent/domain/service.py` | 外部参照するステートレス domain 関数 |
-| `backend/src/werewolf_agent/domain/rules/` | domain 内部の deterministic rules |
-| `backend/src/werewolf_agent/usecase/` | interface と domain をつなぐステートレス usecase、公開投影、port |
-| `backend/src/werewolf_agent/llm/` | 未実装。将来の provider adapter、prompt、parser 置き場 |
-| `backend/src/werewolf_agent/interfaces/cli.py` | CLI |
-| `backend/src/werewolf_agent/interfaces/api/` | Django API、公開 DTO、DB 永続化 |
-| `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details schema |
-| `backend/src/werewolf_agent/commons/` | logging、events、security、shared constants など内部横断 helper |
-| `tests/unit/` | プロセス内で完結する unit test |
-| `tests/integration/` | Django / API / DB など複数層を接続する integration test |
-| `docs/` | 設計、契約、未決事項 |
-
-## テスト構成
-
-`tests/` は実装境界ごとに配置します。
-
-```text
-tests/
-  unit/
-    commons/
-    config/
-    contracts/
-    domain/
-    interfaces/
-      cli/
-  integration/
-    api/
+```bash
+uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage check
 ```
 
-- `unit/`: プロセス内で完結し、DB、Django test client、外部 HTTP、実 LLM provider を使わないテスト。
-- `integration/`: Django / DRF、DB setup、HTTP endpoint、CLI から API への接続など、複数層の接続を検証するテスト。
-- CLI テストは fake API client で公開 API 境界を検証する限り `tests/unit/interfaces/cli/` に置く。実 API サーバや Django client を使う場合は `tests/integration/cli/` を追加する。
-- LLM の mock provider テストは `tests/unit/llm/`、実 provider や optional dependency を含む接続確認は `tests/integration/llm/` に置く。
+本番相当:
 
-## 設計メモ
+- `WEREWOLF_DJANGO_DEBUG=false`
+- 強い `WEREWOLF_DJANGO_SECRET_KEY`
+- 公開 host に合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS`
+- migration は release command / one-off job で実行
 
-- CLI は domain を直接 import しない。HTTP API の DTO だけを使う。
-- interface 層は domain を直接 import しない。usecase のステートレス関数を呼ぶ。
-- usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う。
-- domain は Django、LLM provider、I/O、logging 設定に依存しない。
-- `domain.rules` は `models` / `service` から使う内部実装として扱う。
-- log、設定値、乱数、agent factory は interface の浅い場所で組み立て、usecase に注入する。
-- API は `private_state` を保存してよいが、公開 DTO に出さない。
-- public event には role、night action、secret、token、API key を含めない。
-- `AppError` は CLI では短いメッセージ、API では Problem Details に変換する。
-- Pydantic / DRF validation error の field code は潰さない。
+## 未実装
 
-## VS Code / Cursor
-
-- Ruff を formatter / linter / import sorter として使う。
-- Flake8 / isort 拡張はこの workspace では使わない。
-- `.vscode/launch.json` は共有してよいが、ローカル固定パスや secret を入れない。
-
-## 未決事項
-
-- LLM provider adapter と prompt 管理
-- 人間プレイヤー / 外部 LLM からの action 投入 API
-- private observation の認証と権限
-- SSE / WebSocket による観戦 event 配信
-- Streamlit または React UI
+- LLM provider adapter
+- structured output parser / validator
+- human / external agent action API
+- private observation 認証
+- SSE / WebSocket / UI
 - replay / evaluation workflow
 
 ## Handoff
 
-中断時は次だけ残します。
+中断時はこれだけ残します。
 
 ```markdown
 ## Handoff
