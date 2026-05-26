@@ -1,1 +1,1 @@
-"""Internal shared helpers for logs, replay, redaction, and analysis."""
+"""Internal shared helpers for logging, replay events, security, and constants."""
