@@ -84,7 +84,8 @@ start_game -> night -> day_discussion -> voting -> night -> ... -> finished
 - 他 role、夜行動、private event、debug event は見えない
 
 API は `GameSnapshot` をそのまま返しません。
-`usecase.internals.projections` が public state / public event に変換します。
+`usecase.jobs` が public state / public event の業務 payload に変換し、
+interface が HTTP / CLI / 画面向け schema に整えます。
 
 ## 乱数
 
@@ -94,9 +95,8 @@ seed は role assignment、tie break、dummy agent の選択に使います。
 ## 拡張先
 
 - 新 role / rule: `domain.models`、`domain.rules`
-- 公開 workflow / port: `usecase.jobs`
-- 公開 projection 内部実装: `usecase.internals.projections`
-- 自動 agent の実装と選択: `usecase.jobs.agents`
+- 公開 workflow / port: `usecase.jobs` の top-level API
+- projection や自動 agent adapter: `usecase.jobs` 配下の private module
 - human / LLM action API: `usecase` に要件を置き、`interfaces/application` は接続、`interfaces/api` は入出力に寄せる
 
 ## 検証

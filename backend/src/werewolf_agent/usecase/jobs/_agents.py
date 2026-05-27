@@ -1,4 +1,4 @@
-"""Agent factories used by game use cases."""
+"""Private agent adapters used by game jobs."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from werewolf_agent.domain.models import Action, Observation
 from werewolf_agent.domain.service import choose_dummy_action
 
 
-class DummyAgent:
+class _DummyAgent:
     """Seeded dummy agent that returns structured actions without a provider call."""
 
     def __init__(
@@ -33,17 +33,13 @@ class DummyAgent:
                 rng=self._rng,
                 speech_templates=self._speech_templates,
             )
-        return choose_dummy_action(
-            self.player_id,
-            observation,
-            rng=self._rng,
-        )
+        return choose_dummy_action(self.player_id, observation, rng=self._rng)
 
 
 @dataclass(frozen=True)
-class DummyAgentFactory:
+class _DummyAgentFactory:
     """Create deterministic dummy agents for automated MVP game runs."""
 
-    def create(self, player_id: str, *, seed: int) -> DummyAgent:
+    def create(self, player_id: str, *, seed: int) -> _DummyAgent:
         """Create one dummy agent with an injected deterministic seed."""
-        return DummyAgent(player_id, rng=random.Random(seed))
+        return _DummyAgent(player_id, rng=random.Random(seed))

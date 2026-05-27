@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
-
 from werewolf_agent.commons.configuration.defaults import (
     API_SERVICE_NAME,
     APP_NAME,
@@ -40,19 +38,6 @@ from werewolf_agent.commons.configuration.settings import (
     split_csv,
 )
 
-if TYPE_CHECKING:
-    from werewolf_agent.commons.configuration.usecase import build_game_usecase_settings
-
-
-def __getattr__(name: str) -> Any:
-    if name == "build_game_usecase_settings":
-        from werewolf_agent.commons.configuration.usecase import build_game_usecase_settings
-
-        return build_game_usecase_settings
-    msg = f"module {__name__!r} has no attribute {name!r}"
-    raise AttributeError(msg)
-
-
 __all__ = [
     "API_SERVICE_NAME",
     "APP_NAME",
@@ -80,7 +65,6 @@ __all__ = [
     "AppSettings",
     "LogFormat",
     "LogOutput",
-    "build_game_usecase_settings",
     "get_settings",
     "normalize_choice",
     "normalize_non_blank",
