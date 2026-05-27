@@ -10,9 +10,9 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 
 現在の状態:
 
-- dummy agent だけで Django API 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、Django API、CLI、public event stream は実装済み
-- 実 LLM provider、手動 action API、private observation API、観戦 UI は未実装
+- dummy agent だけで FastAPI 経由の 1 game を CLI から完走できる
+- `domain`、`usecase`、FastAPI、CLI、public event stream は実装済み
+- 実 LLM provider、手動 action API、private observation API、Streamlit UI は未実装
 
 ## Read First
 
@@ -29,21 +29,22 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 | --- | --- |
 | `backend/src/werewolf_agent/domain/` | ルール、状態、観測、勝敗、domain event |
 | `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
-| `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
-| `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
-| `backend/src/werewolf_agent/interfaces/cli/` | 公開 HTTP API だけを呼ぶ CLI |
-| `backend/src/werewolf_agent/interfaces/shared/` | interface 起動時の runtime helper |
-| `backend/src/werewolf_agent/contracts/` | HTTP API schema、error code、Problem Details |
-| `backend/src/werewolf_agent/commons/` | logging、event sink、redaction、shared helper |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/application/` | usecase adapter、DB repository、transaction、依存注入 |
+| `backend/src/werewolf_agent/interface/cui/` | 公開 HTTP API だけを呼ぶ CLI |
+| `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
+| `backend/src/werewolf_agent/interface/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details type URI |
+| `backend/src/werewolf_agent/commons/` | event sink、redaction、shared helper |
 | `tests/unit/` | unit test |
-| `tests/integration/api/` | Django / DB / API integration test |
+| `tests/integration/api/` | FastAPI / DB / API integration test |
 
 境界ルール:
 
-- domain は `.env`、Django、LLM provider、file I/O、logging 設定に依存させない
-- CLI は domain / usecase を直接 import せず、API DTO と HTTP client だけを使う
-- interface 層は domain を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interfaces/application/` に限定する
+- domain は `.env`、FastAPI、SQLAlchemy、LLM provider、file I/O、logging 設定に依存させない
+- CLI は domain / usecase を直接 import せず、public wire schema と HTTP client だけを使う
+- `interface/api` と `interface/cui` は domain / usecase を直接 import しない
+- interface 層から usecase を呼ぶ場所は `interface/application/` に限定する
 - usecase から domain を参照する場合は `domain.models` と `domain.service` だけを使う
 - API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
@@ -65,16 +66,15 @@ uv run mypy backend/src
 API:
 
 ```bash
-uv run --extra api python backend/manage.py migrate
-uv run --extra api python backend/manage.py check
+uv run --extra api alembic upgrade head
 uv run --extra api pytest tests/integration/api
-uv run --extra api python backend/manage.py runserver
+uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
 CLI で 1 game 確認:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
 ```
 
 Docker:
@@ -93,6 +93,7 @@ docker compose run --rm test
 - 関係ないリファクタリングや整形だけの変更を混ぜない
 - ユーザーや他エージェントの未コミット変更を勝手に戻さない
 - 新しい設定値は安全な default、`.env.example`、README / docs、テストを揃える
+- DB、provider、API、ログは設定値で切り替えられるようにする
 - 不確かな仕様は断定せず、docs に前提・未決・選択肢として残す
 - 大きな構成変更は、先に docs へ意図を残す
 
@@ -101,7 +102,7 @@ docker compose run --rm test
 レビューでは、構文より先に次を見てください。
 
 - README / docs / tests / 近い実装と矛盾していないか
-- 設定、provider、model、DB、Django、ログ、秘密情報が hard-code されていないか
+- 設定、provider、model、DB、ログ、秘密情報が hard-code されていないか
 - 重複した定数や処理を既存設定、共通関数、標準 API に寄せられるか
 - CLI / API / UI 境界で内部例外、stack trace、secret を露出していないか
 - public state / public event に role、night action、API key、token が混ざらないか
@@ -122,7 +123,7 @@ docker compose run --rm test
 - `.env.example` はダミー値だけにする
 - ログ出力前に `secret`、`token`、`api_key`、`authorization`、`password` 系を mask する
 - 外部入力をそのまま prompt、file path、shell command に渡さない
-- `WEREWOLF_DJANGO_DEBUG=false` では強い `WEREWOLF_DJANGO_SECRET_KEY` を必須にする
+- public response と public event に private state を出さない
 
 ## Documentation
 
@@ -157,6 +158,6 @@ docker compose run --rm test
 
 例:
 
-- `feat: API 経由のゲーム進行を追加`
+- `feat: FastAPI 経由のゲーム進行を追加`
 - `fix: public event から秘匿情報を除外`
 - `docs: 開発メモを最新化`

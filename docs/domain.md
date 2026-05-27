@@ -16,7 +16,7 @@
 ## 持たないもの
 
 - `.env` / `get_settings()`
-- Django model / HTTP DTO
+- ORM model / HTTP DTO
 - DB / file I/O
 - logging 設定
 - 認証
@@ -31,8 +31,8 @@
 - `werewolf_agent.domain.service`
 
 `domain.rules` は内部実装です。
-`interfaces` は domain を直接 import しません。
-interface 層から usecase を呼ぶ場所は `interfaces/application` に限定します。
+`interface/api` と `interface/cui` は domain を直接 import しません。
+interface 層から usecase を呼ぶ場所は `interface/application` に限定します。
 
 この境界は `tests/unit/architecture/test_architecture_boundaries.py` で検査します。
 
@@ -97,7 +97,7 @@ seed は role assignment、tie break、dummy agent の選択に使います。
 - 公開 workflow / port: `usecase.jobs`
 - 公開 projection 内部実装: `usecase.internals.projections`
 - 自動 agent の実装と選択: `usecase.jobs.agents`
-- human / LLM action API: `usecase` に要件を置き、`interfaces/application` は接続、`interfaces/api` は入出力に寄せる
+- human / LLM action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
 
 ## 検証
 

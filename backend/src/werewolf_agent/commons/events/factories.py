@@ -10,7 +10,7 @@ from werewolf_agent.commons.shared.constants import (
     EventVisibility,
 )
 from werewolf_agent.contracts import AppError
-from werewolf_agent.contracts.schemas import ErrorEventPayload
+from werewolf_agent.interface.shared.schemas import ErrorEventPayload
 
 
 def error_event(

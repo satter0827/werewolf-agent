@@ -12,7 +12,7 @@ from werewolf_agent.contracts import (
     LlmProviderError,
     problem_type_uri,
 )
-from werewolf_agent.contracts.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
+from werewolf_agent.interface.shared.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
 
 
 def test_contracts_package_reexports_public_api() -> None:

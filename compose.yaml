@@ -1,17 +1,12 @@
 x-api-environment: &api-environment
-  DJANGO_SETTINGS_MODULE: werewolf_agent.interfaces.api.config.settings
   WEREWOLF_LLM_PROVIDER: ${WEREWOLF_LLM_PROVIDER:-dummy}
   WEREWOLF_MODEL: ${WEREWOLF_MODEL:-dummy-local}
   WEREWOLF_LOG_LEVEL: ${WEREWOLF_LOG_LEVEL:-INFO}
   WEREWOLF_LOG_FORMAT: ${WEREWOLF_LOG_FORMAT:-json}
   WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-stderr}
-  WEREWOLF_DJANGO_SECRET_KEY: ${WEREWOLF_DJANGO_SECRET_KEY:-django-insecure-local-dev-only}
-  WEREWOLF_DJANGO_DEBUG: ${WEREWOLF_DJANGO_DEBUG:-true}
-  WEREWOLF_DJANGO_ALLOWED_HOSTS: ${WEREWOLF_DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1,0.0.0.0,api,testserver}
-  WEREWOLF_DJANGO_CSRF_TRUSTED_ORIGINS: ${WEREWOLF_DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
-  WEREWOLF_DJANGO_LANGUAGE_CODE: ${WEREWOLF_DJANGO_LANGUAGE_CODE:-ja}
-  WEREWOLF_DJANGO_TIME_ZONE: ${WEREWOLF_DJANGO_TIME_ZONE:-Asia/Tokyo}
-  WEREWOLF_DJANGO_SQLITE_PATH: /data/db.sqlite3
+  WEREWOLF_API_DEBUG: ${WEREWOLF_API_DEBUG:-true}
+  WEREWOLF_CORS_ALLOWED_ORIGINS: ${WEREWOLF_CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
+  WEREWOLF_SQLITE_PATH: /data/db.sqlite3
   WEREWOLF_DATABASE_URL: ${WEREWOLF_DATABASE_URL:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
   ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
@@ -34,14 +29,14 @@ services:
     volumes: *backend-volumes
     ports:
       - "8000:8000"
-    command: python backend/manage.py runserver 0.0.0.0:8000
+    command: uvicorn werewolf_agent.interface.api.app:create_app --factory --host 0.0.0.0 --port 8000
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health/', timeout=5).read()",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).read()",
         ]
       interval: 10s
       timeout: 5s
@@ -53,14 +48,14 @@ services:
     profiles: ["tools"]
     environment: *api-environment
     volumes: *backend-volumes
-    command: python backend/manage.py migrate
+    command: alembic upgrade head
 
   test:
     build: *backend-build
     profiles: ["tools"]
     environment: *api-environment
     volumes: *backend-volumes
-    command: sh -c "python backend/manage.py check && pytest"
+    command: pytest
 
 volumes:
   werewolf-sqlite:

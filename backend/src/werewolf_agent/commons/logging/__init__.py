@@ -1,1 +1,0 @@
-"""Structured application logging helpers."""

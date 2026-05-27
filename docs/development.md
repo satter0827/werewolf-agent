@@ -6,10 +6,10 @@
 
 - backend 中心
 - deterministic domain core 実装済み
-- `usecase` は interface と domain の唯一の接続点
-- Django API は game 作成、状態取得、step 進行、public event 取得まで実装済み
+- `usecase.jobs` は interface と domain の唯一の接続点
+- FastAPI は game 作成、状態取得、step 進行、public event 取得、public SSE まで実装済み
 - CLI `play` は公開 HTTP API だけで 1 game を完走できる
-- 実 LLM provider、human action、private observation、観戦 UI は未実装
+- 実 LLM provider、human action、private observation、Streamlit UI は未実装
 
 ## 最初に実行
 
@@ -17,54 +17,66 @@
 uv sync --group dev --extra api
 uv run werewolf-agent doctor
 uv run pytest
-uv run --extra api python backend/manage.py check
+uv run --extra api alembic upgrade head
 ```
 
 API を起動:
 
 ```bash
-uv run --extra api python backend/manage.py migrate
-uv run --extra api python backend/manage.py runserver
+uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
 CLI で確認:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
 ```
 
 ## 配置
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/commons/configuration/` | `.env` / 環境変数、既定値、usecase 設定 adapter |
+| `backend/src/werewolf_agent/__main__.py` | `python -m werewolf_agent` の薄い CLI 委譲 |
 | `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
 | `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取る stateless domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
-| `backend/src/werewolf_agent/agents/` | domain の `Observation` から `Action` を返す agent 実装 |
 | `backend/src/werewolf_agent/usecase/jobs/` | workflow、port、usecase DTO、agent factory の公開面 |
 | `backend/src/werewolf_agent/usecase/internals/` | projection、ruleset など usecase 内部 helper |
-| `backend/src/werewolf_agent/contracts/schemas.py` | 公開 HTTP API DTO、Problem Details |
-| `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
-| `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
-| `backend/src/werewolf_agent/interfaces/cli/` | Typer CLI と HTTP client |
-| `backend/src/werewolf_agent/interfaces/shared/` | interface runtime helper |
-| `backend/src/werewolf_agent/commons/` | logging、events、redaction |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入、Alembic migration |
+| `backend/src/werewolf_agent/interface/cui/` | Typer CLI と HTTP client |
+| `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
+| `backend/src/werewolf_agent/interface/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/contracts/` | error code、safe exception |
+| `backend/src/werewolf_agent/commons/` | event sink、redaction |
 | `tests/unit/` | process 内 unit test |
-| `tests/integration/api/` | Django / DB / API integration test |
+| `tests/integration/api/` | FastAPI / DB / API integration test |
 
 ## 境界
 
-- CLI は `contracts.schemas` と HTTP client だけを使う
-- `interfaces/api` と `interfaces/cli` は domain / usecase を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interfaces/application` に限定する
-- `commons.configuration` は interface から読み込む設定境界として扱い、domain から import しない
+- CLI は `interface/shared/schemas.py` と HTTP client だけを使う
+- `interface/api` と `interface/cui` は domain / usecase を直接 import しない
+- interface 層から usecase を呼ぶ場所は `interface/application` に限定する
+- 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
 - usecase は `domain.models` と `domain.service` だけを import する
-- domain は usecase / interfaces / config / commons / llm を import しない
-- domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
+- domain は usecase / interface / commons / llm を import しない
 - API は `private_state` を保存してよいが public response へ出さない
 - public event に role、night action、secret、token、API key を混ぜない
+
+## DB
+
+DB は設定値で選びます。
+
+- `WEREWOLF_DATABASE_URL` が空なら SQLite
+- SQLite の既定値は `.werewolf-agent/db/db.sqlite3`
+- SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
+- Postgres などは `WEREWOLF_DATABASE_URL` を設定する
+
+Migration:
+
+```bash
+uv run --extra api alembic upgrade head
+```
 
 ## テスト
 
@@ -80,8 +92,8 @@ uv run --extra api pytest tests/integration/api
 
 - ルール、勝敗、投票、夜行動: `tests/unit/domain/`
 - 境界 import: `tests/unit/architecture/`
-- CLI の public API 境界: `tests/unit/interfaces/cli/`
-- Django / DB / endpoint: `tests/integration/api/`
+- CLI の public API 境界: `tests/unit/interface/cui/`
+- FastAPI / DB / endpoint: `tests/integration/api/`
 - 実 LLM provider 接続: 通常 unit test から分離する
 
 ## 生成物
@@ -92,7 +104,6 @@ Git 管理しないものは `.werewolf-agent/` に集約します。
 - pytest / ruff / mypy cache
 - coverage data
 - JSONL logs
-- collectstatic output
 
 `.werewolf-agent/.gitkeep` 以外はコミットしません。
 
@@ -103,7 +114,7 @@ uv sync --group dev --extra api
 uv sync --group dev --extra llm
 ```
 
-- `api`: Django / DRF / DB / gunicorn
+- `api`: FastAPI / SQLAlchemy / Alembic / Uvicorn / SSE / Postgres driver
 - `llm`: LangChain / OpenAI compatible provider 用。adapter は未実装
 
 ## Docker
@@ -129,17 +140,11 @@ docker compose -f compose.yaml -f compose.postgres.yaml run --rm test
 uv build --no-sources
 ```
 
-wheel から API 管理コマンドを使う場合:
-
-```bash
-uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- werewolf-agent-api-manage check
-```
-
 本番相当:
 
-- `WEREWOLF_DJANGO_DEBUG=false`
-- 強い `WEREWOLF_DJANGO_SECRET_KEY`
-- 公開 host に合わせた `WEREWOLF_DJANGO_ALLOWED_HOSTS`
+- `WEREWOLF_API_DEBUG=false`
+- `WEREWOLF_DATABASE_URL` または永続 volume 上の `WEREWOLF_SQLITE_PATH`
+- 公開 UI に合わせた `WEREWOLF_CORS_ALLOWED_ORIGINS`
 - migration は release command / one-off job で実行
 
 ## 未実装
@@ -148,7 +153,7 @@ uv run --with "dist/werewolf_agent-0.1.0-py3-none-any.whl[api]" --no-project -- 
 - structured output parser / validator
 - human / external agent action API
 - private observation 認証
-- SSE / WebSocket / UI
+- Streamlit UI
 - replay / evaluation workflow
 
 ## Handoff

@@ -5,24 +5,28 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "backend" / "src" / "werewolf_agent"
 
 
-def test_interfaces_do_not_import_domain_or_llm_directly() -> None:
+def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> None:
     forbidden_prefixes = (
         "werewolf_agent.domain",
+        "werewolf_agent.usecase",
         "werewolf_agent.llm",
     )
 
-    imported = _imports_under(PACKAGE / "interfaces")
+    imported = _imports_under(PACKAGE / "interface" / "api")
+    imported.extend(_imports_under(PACKAGE / "interface" / "cui"))
+    imported.extend(_imports_under(PACKAGE / "interface" / "streamlit"))
 
     assert not [
         (path, module)
         for path, module in imported
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
+        and module != "werewolf_agent.interface.application.errors"
     ]
 
 
-def test_interfaces_import_only_public_usecase_jobs_from_application_bridge() -> None:
-    imported = _imports_under(PACKAGE / "interfaces")
-    application_path = PACKAGE / "interfaces" / "application"
+def test_interface_imports_only_public_usecase_jobs_from_application_bridge() -> None:
+    imported = _imports_under(PACKAGE / "interface")
+    application_path = PACKAGE / "interface" / "application"
     allowed_prefix = "werewolf_agent.usecase.jobs"
 
     assert not [
@@ -56,7 +60,7 @@ def test_usecase_only_imports_public_domain_entrypoints() -> None:
 def test_domain_does_not_import_outer_layers() -> None:
     forbidden_prefixes = (
         "werewolf_agent.usecase",
-        "werewolf_agent.interfaces",
+        "werewolf_agent.interface",
         "werewolf_agent.commons",
         "werewolf_agent.llm",
     )

@@ -20,16 +20,15 @@ RUN uv sync --frozen --group dev --extra api
 
 EXPOSE 8000
 
-CMD ["python", "backend/manage.py", "runserver", "0.0.0.0:8000"]
+CMD ["uvicorn", "werewolf_agent.interface.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM base AS runtime
 
-ENV WEREWOLF_DJANGO_DEBUG=false \
-    WEREWOLF_DJANGO_SQLITE_PATH=/data/db.sqlite3 \
+ENV WEREWOLF_API_DEBUG=false \
+    WEREWOLF_SQLITE_PATH=/data/db.sqlite3 \
     PORT=8000
 
 RUN uv sync --frozen --no-dev --extra api
-RUN WEREWOLF_DJANGO_DEBUG=true python backend/manage.py collectstatic --noinput
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && mkdir -p /data \
@@ -39,6 +38,6 @@ USER app
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen('http://127.0.0.1:%s/api/health/' % port, timeout=5).read()" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % port, timeout=5).read()" || exit 1
 
-CMD ["sh", "-c", "gunicorn werewolf_agent.interfaces.api.config.wsgi:application --bind 0.0.0.0:${PORT:-8000} --workers ${WEB_CONCURRENCY:-2} --access-logfile - --error-logfile -"]
+CMD ["sh", "-c", "uvicorn werewolf_agent.interface.api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
