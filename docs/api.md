@@ -121,11 +121,11 @@ Error response は RFC 9457 Problem Details 互換です。
 | `interface/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `interface/application/models.py` | `game_runs` / `game_events` ORM model |
-| `usecase/jobs/` | game workflow、usecase DTO、port、agent factory の公開面 |
-| `usecase/internals/projections.py` | public state / event projection |
+| `usecase/jobs/` | stateless game workflow、業務 validation、repository port、domain 接続 |
 
 `interface/api` は domain / usecase を直接 import しません。
-usecase との接続は `interface/application` に閉じます。
+usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
+HTTP DTO、Problem Details、表示名、response 整形は interface 側に置きます。
 
 ## 検証
 

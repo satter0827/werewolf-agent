@@ -210,6 +210,14 @@ def test_missing_game_returns_problem_details(client: TestClient) -> None:
     assert response.json()["code"] == "not_found"
 
 
+def test_invalid_game_id_is_handled_by_usecase_boundary(client: TestClient) -> None:
+    response = client.get("/api/v1/games/not-a-uuid")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "not_found"
+
+
 def test_method_not_allowed_returns_problem_details(client: TestClient) -> None:
     response = client.post("/api/v1/health")
 

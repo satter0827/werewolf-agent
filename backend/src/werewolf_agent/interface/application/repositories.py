@@ -17,21 +17,22 @@ from werewolf_agent.interface.application.models import (
     utc_now,
 )
 from werewolf_agent.usecase.jobs import (
-    EventToPersist,
+    GameEventCreate,
+    GameRepository,
+    GameRunCreate,
     GameRunUpdate,
-    NewGameRun,
     StoredGameEvent,
     StoredGameRun,
 )
 
 
-class SqlAlchemyGameRunRepository:
+class SqlAlchemyGameRunRepository(GameRepository):
     """SQLAlchemy-backed implementation of the game run repository port."""
 
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    def create(self, run: NewGameRun) -> StoredGameRun:
+    def create(self, run: GameRunCreate) -> StoredGameRun:
         """Persist a new game run."""
         now = utc_now()
         model = GameRunModel(
@@ -85,7 +86,7 @@ class SqlAlchemyGameRunRepository:
     def append_events(
         self,
         run_id: UUID,
-        events: Sequence[EventToPersist],
+        events: Sequence[GameEventCreate],
     ) -> list[StoredGameEvent]:
         """Append events and assign stream sequence numbers."""
         if not events:

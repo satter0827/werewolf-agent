@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
@@ -51,7 +50,7 @@ def create_game(
 
 @router.get("/games/{game_id}", response_model=GameResponse)
 def get_game(
-    game_id: UUID,
+    game_id: str,
     app: GameApplication = GAME_APPLICATION,
 ) -> GameResponse:
     """Return public game state."""
@@ -63,7 +62,7 @@ def get_game(
 
 @router.post("/games/{game_id}/steps", response_model=StepGameResponse)
 def step_game(
-    game_id: UUID,
+    game_id: str,
     app: GameApplication = GAME_APPLICATION,
 ) -> StepGameResponse:
     """Advance one game by one synchronous use case step."""
@@ -75,7 +74,7 @@ def step_game(
 
 @router.get("/games/{game_id}/events", response_model=GameEventsResponse)
 def game_events(
-    game_id: UUID,
+    game_id: str,
     after: int = 0,
     app: GameApplication = GAME_APPLICATION,
 ) -> GameEventsResponse:
@@ -89,7 +88,7 @@ def game_events(
 
 @router.get("/games/{game_id}/events/stream")
 def game_event_stream(
-    game_id: UUID,
+    game_id: str,
     after: int = 0,
     app: GameApplication = GAME_APPLICATION,
 ) -> EventSourceResponse:

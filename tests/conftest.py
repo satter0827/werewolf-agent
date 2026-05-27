@@ -13,8 +13,8 @@ import pytest
 @pytest.fixture
 def tmp_path(request: pytest.FixtureRequest) -> Iterator[Path]:
     """Create test temp directories without pytest's restrictive Windows ACLs."""
-    root = Path(__file__).resolve().parents[1] / ".pytest-tmp"
-    root.mkdir(exist_ok=True)
+    root = Path(__file__).resolve().parents[1] / ".werewolf-agent" / "cache" / "pytest" / "tmp"
+    root.mkdir(parents=True, exist_ok=True)
     path = root / f"{request.node.name[:40]}-{uuid.uuid4().hex}"
     path.mkdir()
 

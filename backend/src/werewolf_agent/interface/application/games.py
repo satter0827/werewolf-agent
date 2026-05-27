@@ -2,12 +2,8 @@
 
 from __future__ import annotations
 
-import logging
-import random
-import uuid
 from dataclasses import dataclass
 from typing import TypeVar
-from uuid import UUID
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,7 +11,7 @@ from sqlalchemy.orm import Session
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
 from werewolf_agent.interface.application.errors import ResourceNotFoundError
 from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
-from werewolf_agent.interface.application.settings import build_game_usecase_settings
+from werewolf_agent.interface.application.settings import build_game_usecase_config
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsResponse,
@@ -25,11 +21,15 @@ from werewolf_agent.interface.shared.schemas import (
 )
 from werewolf_agent.interface.shared.settings import AppSettings, get_settings
 from werewolf_agent.usecase.jobs import (
+    AdvanceGameCommand,
     CreateGameCommand,
-    DummyAgentFactory,
     GameNotFoundError,
+    GameUseCaseConfig,
     GameUseCaseDependencies,
-    GameUseCaseSettings,
+    GetGameQuery,
+    InvalidGameIdError,
+    ListPublicEventsQuery,
+    RulesetResult,
     advance_game,
     create_game,
     get_default_ruleset,
@@ -49,7 +49,8 @@ class GameApplication:
 
     def default_ruleset(self) -> RulesetResponse:
         """Return the public ruleset."""
-        return _wire_model(RulesetResponse, get_default_ruleset(settings=self._usecase_settings()))
+        ruleset = get_default_ruleset(config=self._usecase_config())
+        return _ruleset_response(ruleset, self.settings)
 
     def create_game_run(self, request: CreateGameRequest) -> GameResponse:
         """Create and persist one deterministic game."""
@@ -58,49 +59,50 @@ class GameApplication:
             response = create_game(command, dependencies=self._dependencies(session))
         return _wire_model(GameResponse, response)
 
-    def get_game_run(self, game_id: UUID) -> GameResponse:
+    def get_game_run(self, game_id: str) -> GameResponse:
         """Return the current public state for one game run."""
         with session_scope(self.session_factory) as session:
             try:
-                response = get_game(game_id, repository=SqlAlchemyGameRunRepository(session))
-            except GameNotFoundError as exc:
+                response = get_game(
+                    GetGameQuery(game_id=game_id),
+                    dependencies=self._dependencies(session),
+                )
+            except (GameNotFoundError, InvalidGameIdError) as exc:
                 raise ResourceNotFoundError("Game not found.") from exc
         return _wire_model(GameResponse, response)
 
-    def step_game_run(self, game_id: UUID) -> StepGameResponse:
+    def step_game_run(self, game_id: str) -> StepGameResponse:
         """Advance one game run by one deterministic use case step."""
         with session_scope(self.session_factory) as session:
             try:
-                response = advance_game(game_id, dependencies=self._dependencies(session))
-            except GameNotFoundError as exc:
+                response = advance_game(
+                    AdvanceGameCommand(game_id=game_id),
+                    dependencies=self._dependencies(session),
+                )
+            except (GameNotFoundError, InvalidGameIdError) as exc:
                 raise ResourceNotFoundError("Game not found.") from exc
         return _wire_model(StepGameResponse, response)
 
-    def get_public_events(self, game_id: UUID, *, after: int = 0) -> GameEventsResponse:
+    def get_public_events(self, game_id: str, *, after: int = 0) -> GameEventsResponse:
         """List public events after a sequence number."""
         with session_scope(self.session_factory) as session:
             try:
                 response = list_public_events(
-                    game_id,
-                    repository=SqlAlchemyGameRunRepository(session),
-                    after=after,
+                    ListPublicEventsQuery(game_id=game_id, after=after),
+                    dependencies=self._dependencies(session),
                 )
-            except GameNotFoundError as exc:
+            except (GameNotFoundError, InvalidGameIdError) as exc:
                 raise ResourceNotFoundError("Game not found.") from exc
         return _wire_model(GameEventsResponse, response)
 
     def _dependencies(self, session: Session) -> GameUseCaseDependencies:
         return GameUseCaseDependencies(
             repository=SqlAlchemyGameRunRepository(session),
-            agent_factory=DummyAgentFactory(),
-            rng_factory=random.Random,
-            game_id_factory=uuid.uuid4,
-            logger=logging.getLogger(__name__),
-            settings=self._usecase_settings(),
+            config=self._usecase_config(),
         )
 
-    def _usecase_settings(self) -> GameUseCaseSettings:
-        return build_game_usecase_settings(self.settings)
+    def _usecase_config(self) -> GameUseCaseConfig:
+        return build_game_usecase_config(self.settings)
 
 
 def default_application(session_factory: SessionFactory) -> GameApplication:
@@ -110,3 +112,43 @@ def default_application(session_factory: SessionFactory) -> GameApplication:
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
     return model_type.model_validate(source.model_dump(mode="json"))
+
+
+def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetResponse:
+    return RulesetResponse(
+        id=ruleset.id,
+        name=settings.game_default_ruleset_name,
+        description=_ruleset_description(settings),
+        player_count=ruleset.player_count,
+        roles=[{"id": role_id, "name": _role_name(role_id)} for role_id in ruleset.roles],
+        phases=[{"id": phase_id, "name": _phase_name(phase_id)} for phase_id in ruleset.phases],
+        agent_types=[
+            {"id": agent_type, "name": settings.game_supported_agent_name}
+            for agent_type in ruleset.agent_types
+        ],
+    )
+
+
+def _ruleset_description(settings: AppSettings) -> str:
+    return (
+        f"{settings.game_min_players}〜{settings.game_max_players}"
+        "人向けの最小同期 API ルールセットです。"
+    )
+
+
+def _role_name(role_id: str) -> str:
+    return {
+        "villager": "村人",
+        "werewolf": "人狼",
+        "seer": "占い師",
+        "knight": "騎士",
+    }[role_id]
+
+
+def _phase_name(phase_id: str) -> str:
+    return {
+        "night": "夜",
+        "day_discussion": "昼チャット",
+        "voting": "投票",
+        "finished": "終了",
+    }[phase_id]

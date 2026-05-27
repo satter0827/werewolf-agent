@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.interface.application.settings import build_game_usecase_settings
+from werewolf_agent.interface.application.settings import build_game_usecase_config
 from werewolf_agent.interface.shared.settings import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
@@ -64,7 +64,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
 
 
-def test_game_usecase_settings_are_built_from_interface_settings() -> None:
+def test_game_usecase_config_is_built_from_interface_settings() -> None:
     settings = AppSettings(
         _env_file=None,
         game_min_players=4,
@@ -76,18 +76,13 @@ def test_game_usecase_settings_are_built_from_interface_settings() -> None:
         game_default_ruleset_name="Custom Rules",
     )
 
-    usecase_settings = build_game_usecase_settings(settings)
+    usecase_config = build_game_usecase_config(settings)
 
-    assert usecase_settings.min_players == 4
-    assert usecase_settings.max_players == 10
-    assert usecase_settings.default_player_count == 7
-    assert usecase_settings.supported_agent_type == "dummy"
-    assert usecase_settings.supported_agent_name == "Dummy Agent"
-    assert usecase_settings.default_ruleset_id == "default"
-    assert usecase_settings.default_ruleset_name == "Custom Rules"
-    assert usecase_settings.default_ruleset_description == (
-        "4〜10人向けの最小同期 API ルールセットです。"
-    )
+    assert usecase_config.min_players == 4
+    assert usecase_config.max_players == 10
+    assert usecase_config.default_player_count == 7
+    assert usecase_config.supported_agent_type == "dummy"
+    assert usecase_config.default_ruleset_id == "default"
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:

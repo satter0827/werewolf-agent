@@ -40,8 +40,7 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --
 | `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
 | `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取る stateless domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
-| `backend/src/werewolf_agent/usecase/jobs/` | workflow、port、usecase DTO、agent factory の公開面 |
-| `backend/src/werewolf_agent/usecase/internals/` | projection、ruleset など usecase 内部 helper |
+| `backend/src/werewolf_agent/usecase/jobs/` | stateless job、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入、Alembic migration |
 | `backend/src/werewolf_agent/interface/cui/` | Typer CLI と HTTP client |
@@ -58,8 +57,12 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --
 - `interface/api` と `interface/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
 - 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
-- usecase は `domain.models` と `domain.service` だけを import する
-- domain は usecase / interface / commons / llm を import しない
+- `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
+- 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
+- usecase から domain へ入る code は `usecase/jobs` 配下に限定し、`domain.models` と `domain.service` だけを import する
+- 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
+- domain は usecase / interface / config / commons / llm を import しない
+- domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
 - API は `private_state` を保存してよいが public response へ出さない
 - public event に role、night action、secret、token、API key を混ぜない
 
@@ -91,6 +94,7 @@ uv run --extra api pytest tests/integration/api
 配置方針:
 
 - ルール、勝敗、投票、夜行動: `tests/unit/domain/`
+- 業務 workflow と usecase 境界: `tests/unit/usecase/`
 - 境界 import: `tests/unit/architecture/`
 - CLI の public API 境界: `tests/unit/interface/cui/`
 - FastAPI / DB / endpoint: `tests/integration/api/`
@@ -101,8 +105,9 @@ uv run --extra api pytest tests/integration/api
 Git 管理しないものは `.werewolf-agent/` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
-- pytest / ruff / mypy cache
-- coverage data
+- pytest / ruff / mypy cache: `.werewolf-agent/cache/`
+- pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
+- coverage data: `.werewolf-agent/cache/coverage/.coverage`
 - JSONL logs
 
 `.werewolf-agent/.gitkeep` 以外はコミットしません。
