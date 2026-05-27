@@ -101,13 +101,20 @@ WEREWOLF_GAME_SUPPORTED_AGENT_TYPE=dummy
 WEREWOLF_GAME_SUPPORTED_AGENT_NAME=Dummy Agent
 WEREWOLF_GAME_DEFAULT_RULESET_ID=default
 WEREWOLF_GAME_DEFAULT_RULESET_NAME=MVP Default
+WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE={min_players}〜{max_players}人向けの最小同期 API ルールセットです。
+WEREWOLF_GAME_ROLE_NAMES=villager:村人,werewolf:人狼,seer:占い師,knight:騎士
+WEREWOLF_GAME_PHASE_NAMES=night:夜,day_discussion:昼チャット,voting:投票,finished:終了
+WEREWOLF_API_TITLE=Werewolf Agent API
+WEREWOLF_API_VERSION=0.1.0
 WEREWOLF_API_DEBUG=true
 WEREWOLF_CORS_ALLOWED_ORIGINS=
+WEREWOLF_CORS_ALLOWED_METHODS=GET,POST
+WEREWOLF_CORS_ALLOWED_HEADERS=*
 WEREWOLF_SQLITE_PATH=.werewolf-agent/db/db.sqlite3
 WEREWOLF_DATABASE_URL=
 ```
 
-DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。
+DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。コード上の `WEREWOLF_API_DEBUG` 既定値は `false` で、`.env.example` と `compose.yaml` はローカル開発用に `true` を明示しています。
 
 ## Docker
 

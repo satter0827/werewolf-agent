@@ -177,6 +177,12 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "contracts" / "codes.py").exists()
 
 
+def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:
+    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+
+    assert "ignore_errors = true" not in pyproject
+
+
 def _imports_under(path: Path) -> list[tuple[Path, str]]:
     imported: list[tuple[Path, str]] = []
     for source_path in path.rglob("*.py"):

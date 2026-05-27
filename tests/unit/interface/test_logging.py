@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 
-from werewolf_agent.commons.security.redaction import redact_mapping
+from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
 from werewolf_agent.interface.shared.logging import JsonFormatter, bind_log_context
 
 
@@ -113,3 +113,9 @@ def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
         "nested": {"api_token": "[REDACTED]", "model": "dummy"},
         "items": [{"password": "[REDACTED]"}],
     }
+
+
+def test_redact_text_masks_common_sensitive_assignments() -> None:
+    assert redact_text("api_key=abc token: def safe=value") == (
+        "api_key=[REDACTED] token: [REDACTED] safe=value"
+    )

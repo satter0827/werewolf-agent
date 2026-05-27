@@ -14,7 +14,11 @@ from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from werewolf_agent.commons.shared.codes import ErrorCode, get_error_spec, problem_type_uri
-from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
+from werewolf_agent.commons.shared.messages import (
+    LOG_API_APPLICATION_ERROR_HANDLED,
+    LOG_API_UNHANDLED_EXCEPTION,
+    MESSAGE_INVALID_VALUE,
+)
 from werewolf_agent.contracts import AppError, InternalError
 from werewolf_agent.interface.shared.logging import get_log_context
 from werewolf_agent.interface.shared.schemas import ProblemDetails, ProblemIssue
@@ -72,7 +76,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     """Convert unexpected exceptions into a safe Problem Details response."""
     error = InternalError()
     logger.exception(
-        "Unhandled API exception",
+        LOG_API_UNHANDLED_EXCEPTION,
         extra=error.log_extra(trace_id=_trace_id()),
     )
     return problem_response(
@@ -194,6 +198,6 @@ def _log_app_error(error: AppError) -> None:
     if int(error.spec.status) >= HTTPStatus.INTERNAL_SERVER_ERROR:
         log_method = logger.error
     log_method(
-        "Handled API application error",
+        LOG_API_APPLICATION_ERROR_HANDLED,
         extra=error.log_extra(trace_id=_trace_id()),
     )

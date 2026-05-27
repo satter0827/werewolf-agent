@@ -116,13 +116,20 @@ def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
 
 
 def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetResponse:
+    role_names = settings.game_role_name_map
+    phase_names = settings.game_phase_name_map
     return RulesetResponse(
         id=ruleset.id,
         name=settings.game_default_ruleset_name,
         description=_ruleset_description(settings),
         player_count=ruleset.player_count,
-        roles=[{"id": role_id, "name": _role_name(role_id)} for role_id in ruleset.roles],
-        phases=[{"id": phase_id, "name": _phase_name(phase_id)} for phase_id in ruleset.phases],
+        roles=[
+            {"id": role_id, "name": role_names.get(role_id, role_id)} for role_id in ruleset.roles
+        ],
+        phases=[
+            {"id": phase_id, "name": phase_names.get(phase_id, phase_id)}
+            for phase_id in ruleset.phases
+        ],
         agent_types=[
             {"id": agent_type, "name": settings.game_supported_agent_name}
             for agent_type in ruleset.agent_types
@@ -131,25 +138,8 @@ def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetR
 
 
 def _ruleset_description(settings: AppSettings) -> str:
-    return (
-        f"{settings.game_min_players}〜{settings.game_max_players}"
-        "人向けの最小同期 API ルールセットです。"
+    return settings.game_ruleset_description_template.format(
+        min_players=settings.game_min_players,
+        max_players=settings.game_max_players,
+        default_player_count=settings.game_default_player_count,
     )
-
-
-def _role_name(role_id: str) -> str:
-    return {
-        "villager": "村人",
-        "werewolf": "人狼",
-        "seer": "占い師",
-        "knight": "騎士",
-    }[role_id]
-
-
-def _phase_name(phase_id: str) -> str:
-    return {
-        "night": "夜",
-        "day_discussion": "昼チャット",
-        "voting": "投票",
-        "finished": "終了",
-    }[phase_id]

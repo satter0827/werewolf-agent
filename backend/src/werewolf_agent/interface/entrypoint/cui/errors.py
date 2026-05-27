@@ -2,16 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from typing import TypeVar
 
 import typer
 
 from werewolf_agent.commons.security.redaction import redact_mapping
-from werewolf_agent.commons.shared.messages import message_error_line
+from werewolf_agent.commons.shared.messages import (
+    LOG_CLI_APPLICATION_ERROR_HANDLED,
+    LOG_CLI_UNHANDLED_EXCEPTION,
+    message_error_line,
+)
 from werewolf_agent.contracts import AppError, InternalError
 
 T = TypeVar("T")
+logger = logging.getLogger(__name__)
 
 
 def run_app_command(command: Callable[[], T]) -> T:
@@ -19,10 +25,12 @@ def run_app_command(command: Callable[[], T]) -> T:
     try:
         return command()
     except AppError as exc:
+        logger.warning(LOG_CLI_APPLICATION_ERROR_HANDLED, extra=exc.log_extra())
         typer.echo(_safe_error_message(exc), err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
         error = InternalError()
+        logger.exception(LOG_CLI_UNHANDLED_EXCEPTION, extra=error.log_extra())
         typer.echo(_safe_error_message(error), err=True)
         raise typer.Exit(code=1) from exc
 

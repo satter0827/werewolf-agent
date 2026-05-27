@@ -132,32 +132,36 @@ class SqlAlchemyGameRunRepository(GameRepository):
 
 
 def _stored_run(model: GameRunModel) -> StoredGameRun:
-    return StoredGameRun(
-        id=UUID(model.id),
-        status=model.status,
-        phase=model.phase,
-        day=model.day,
-        seed=model.seed,
-        config=_json_object(model.config),
-        public_state=_json_object(model.public_state),
-        private_state=_json_object(model.private_state),
-        version=model.version,
-        created_at=_ensure_aware(model.created_at),
-        updated_at=_ensure_aware(model.updated_at),
+    return StoredGameRun.model_validate(
+        {
+            "id": UUID(model.id),
+            "status": model.status,
+            "phase": model.phase,
+            "day": model.day,
+            "seed": model.seed,
+            "config": _json_object(model.config),
+            "public_state": _json_object(model.public_state),
+            "private_state": _json_object(model.private_state),
+            "version": model.version,
+            "created_at": _ensure_aware(model.created_at),
+            "updated_at": _ensure_aware(model.updated_at),
+        }
     )
 
 
 def _stored_event(model: GameEventModel) -> StoredGameEvent:
-    return StoredGameEvent(
-        sequence=model.sequence,
-        event_id=UUID(model.event_id),
-        visibility=model.visibility,
-        phase=model.phase,
-        day=model.day,
-        actor_id=model.actor_id,
-        event_type=model.event_type,
-        payload=_json_object(model.payload),
-        occurred_at=_ensure_aware(model.occurred_at),
+    return StoredGameEvent.model_validate(
+        {
+            "sequence": model.sequence,
+            "event_id": UUID(model.event_id),
+            "visibility": model.visibility,
+            "phase": model.phase,
+            "day": model.day,
+            "actor_id": model.actor_id,
+            "event_type": model.event_type,
+            "payload": _json_object(model.payload),
+            "occurred_at": _ensure_aware(model.occurred_at),
+        }
     )
 
 

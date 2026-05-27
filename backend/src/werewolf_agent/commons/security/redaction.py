@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
+from typing import Final
 
 from werewolf_agent.commons.shared.constants import (
     REDACTED,
     REDACTION_NORMALIZED_SEPARATOR,
     REDACTION_SOURCE_SEPARATOR,
     SENSITIVE_KEY_PARTS,
+)
+
+_SENSITIVE_ASSIGNMENT_PATTERN: Final = re.compile(
+    r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password)"
+    r"(\s*[:=]\s*)([^,\s;]+)"
 )
 
 
@@ -28,7 +35,14 @@ def redact_value(key: str | None, value: object) -> object:
         }
     if isinstance(value, (list, tuple, set, frozenset)):
         return [redact_value(None, item) for item in value]
+    if isinstance(value, str):
+        return redact_text(value)
     return value
+
+
+def redact_text(value: str) -> str:
+    """Mask common sensitive key assignments inside free-form log strings."""
+    return _SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
 
 
 def is_sensitive_key(key: str) -> bool:

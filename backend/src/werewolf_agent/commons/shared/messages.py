@@ -33,6 +33,11 @@ DETAIL_INTERNAL_UNEXPECTED = "An unexpected internal error occurred."
 MESSAGE_INVALID_APPLICATION_CONFIGURATION = "Invalid application configuration."
 MESSAGE_INVALID_VALUE = "Invalid value."
 MESSAGE_SETTINGS = "settings"
+LOG_API_REQUEST_COMPLETED = "API request completed"
+LOG_API_APPLICATION_ERROR_HANDLED = "Handled API application error"
+LOG_API_UNHANDLED_EXCEPTION = "Unhandled API exception"
+LOG_CLI_APPLICATION_ERROR_HANDLED = "Handled CLI application error"
+LOG_CLI_UNHANDLED_EXCEPTION = "Unhandled CLI exception"
 MESSAGE_GAME_NOT_FOUND = "Game not found."
 MESSAGE_GAME_RUN_NOT_FOUND_TEMPLATE = "Game run not found: {game_id}"
 MESSAGE_UNSUPPORTED_AGENT_ACTION = "Unsupported agent action."
@@ -111,6 +116,11 @@ def message_field_must_be_one_of(field_name: str, choices: Iterable[str]) -> str
     return f"{field_name} must be one of: {', '.join(sorted(choices))}"
 
 
+def message_mapping_item_must_use_separator(field_name: str, separator: str) -> str:
+    """Return a key-value mapping syntax validation message."""
+    return f"{field_name} items must use '{separator}' between key and value"
+
+
 def message_game_default_player_count_between() -> str:
     """Return a settings consistency validation message."""
     return "game_default_player_count must be between game_min_players and game_max_players"
@@ -119,6 +129,14 @@ def message_game_default_player_count_between() -> str:
 def message_game_min_players_le_max_players() -> str:
     """Return a settings consistency validation message."""
     return "game_min_players must be less than or equal to game_max_players"
+
+
+def message_ruleset_description_template_invalid() -> str:
+    """Return a ruleset description template validation message."""
+    return (
+        "game_ruleset_description_template must use only min_players, "
+        "max_players, and default_player_count placeholders"
+    )
 
 
 def message_role_count_must_be_zero_or_greater(role_id: str) -> str:

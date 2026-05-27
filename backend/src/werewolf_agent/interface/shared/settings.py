@@ -12,6 +12,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from werewolf_agent.commons.shared.messages import (
     message_game_default_player_count_between,
     message_game_min_players_le_max_players,
+    message_mapping_item_must_use_separator,
+    message_ruleset_description_template_invalid,
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
 
@@ -25,6 +27,12 @@ DEFAULT_LLM_MODEL: Final = "dummy-local"
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
 DEFAULT_LOG_OUTPUT: Final = "stderr"
+DEFAULT_API_TITLE: Final = "Werewolf Agent API"
+DEFAULT_API_VERSION: Final = "0.1.0"
+DEFAULT_API_DEBUG: Final = False
+DEFAULT_API_CORS_ALLOWED_ORIGINS: Final = ""
+DEFAULT_API_CORS_ALLOWED_METHODS: Final = "GET,POST"
+DEFAULT_API_CORS_ALLOWED_HEADERS: Final = "*"
 DEFAULT_GAME_MIN_PLAYERS: Final = 5
 DEFAULT_GAME_MAX_PLAYERS: Final = 8
 DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = 6
@@ -32,6 +40,11 @@ DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = "dummy"
 DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = "Dummy Agent"
 DEFAULT_GAME_DEFAULT_RULESET_ID: Final = "default"
 DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = "MVP Default"
+DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = (
+    "{min_players}〜{max_players}人向けの最小同期 API ルールセットです。"
+)
+DEFAULT_GAME_ROLE_NAMES: Final = "villager:村人,werewolf:人狼,seer:占い師,knight:騎士"
+DEFAULT_GAME_PHASE_NAMES: Final = "night:夜,day_discussion:昼チャット,voting:投票,finished:終了"
 
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
@@ -54,6 +67,21 @@ def repository_root() -> Path:
 def split_csv(value: str) -> list[str]:
     """Split a comma-separated setting into clean values."""
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def split_mapping(value: str, *, field_name: str) -> dict[str, str]:
+    """Split a comma-separated key:value setting into a mapping."""
+    mapping: dict[str, str] = {}
+    for item in split_csv(value):
+        key, separator, item_value = item.partition(":")
+        if separator == "":
+            raise ValueError(message_mapping_item_must_use_separator(field_name, ":"))
+        key = key.strip()
+        item_value = item_value.strip()
+        if not key or not item_value:
+            raise ValueError(message_mapping_item_must_use_separator(field_name, ":"))
+        mapping[key] = item_value
+    return mapping
 
 
 class AppSettings(BaseSettings):
@@ -105,11 +133,33 @@ class AppSettings(BaseSettings):
         default=DEFAULT_GAME_DEFAULT_RULESET_NAME,
         validation_alias="WEREWOLF_GAME_DEFAULT_RULESET_NAME",
     )
+    game_ruleset_description_template: str = Field(
+        default=DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE,
+        validation_alias="WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE",
+    )
+    game_role_names: str = Field(
+        default=DEFAULT_GAME_ROLE_NAMES,
+        validation_alias="WEREWOLF_GAME_ROLE_NAMES",
+    )
+    game_phase_names: str = Field(
+        default=DEFAULT_GAME_PHASE_NAMES,
+        validation_alias="WEREWOLF_GAME_PHASE_NAMES",
+    )
 
-    api_debug: bool = Field(default=True, validation_alias="WEREWOLF_API_DEBUG")
+    api_title: str = Field(default=DEFAULT_API_TITLE, validation_alias="WEREWOLF_API_TITLE")
+    api_version: str = Field(default=DEFAULT_API_VERSION, validation_alias="WEREWOLF_API_VERSION")
+    api_debug: bool = Field(default=DEFAULT_API_DEBUG, validation_alias="WEREWOLF_API_DEBUG")
     api_cors_allowed_origins: str = Field(
-        default="",
+        default=DEFAULT_API_CORS_ALLOWED_ORIGINS,
         validation_alias="WEREWOLF_CORS_ALLOWED_ORIGINS",
+    )
+    api_cors_allowed_methods: str = Field(
+        default=DEFAULT_API_CORS_ALLOWED_METHODS,
+        validation_alias="WEREWOLF_CORS_ALLOWED_METHODS",
+    )
+    api_cors_allowed_headers: str = Field(
+        default=DEFAULT_API_CORS_ALLOWED_HEADERS,
+        validation_alias="WEREWOLF_CORS_ALLOWED_HEADERS",
     )
     sqlite_path: Path = Field(
         default=DEFAULT_SQLITE_PATH,
@@ -131,6 +181,26 @@ class AppSettings(BaseSettings):
     def cors_allowed_origins_list(self) -> list[str]:
         """Return configured CORS origins."""
         return split_csv(self.api_cors_allowed_origins)
+
+    @property
+    def cors_allowed_methods_list(self) -> list[str]:
+        """Return configured CORS methods."""
+        return split_csv(self.api_cors_allowed_methods)
+
+    @property
+    def cors_allowed_headers_list(self) -> list[str]:
+        """Return configured CORS headers."""
+        return split_csv(self.api_cors_allowed_headers)
+
+    @property
+    def game_role_name_map(self) -> dict[str, str]:
+        """Return configured public role display names."""
+        return split_mapping(self.game_role_names, field_name="game_role_names")
+
+    @property
+    def game_phase_name_map(self) -> dict[str, str]:
+        """Return configured public phase display names."""
+        return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
     def sqlite_database_path(self) -> Path:
@@ -205,6 +275,11 @@ class AppSettings(BaseSettings):
         "game_supported_agent_name",
         "game_default_ruleset_id",
         "game_default_ruleset_name",
+        "game_ruleset_description_template",
+        "game_role_names",
+        "game_phase_names",
+        "api_title",
+        "api_version",
         mode="before",
     )
     @classmethod
@@ -219,6 +294,16 @@ class AppSettings(BaseSettings):
             raise ValueError(message_game_min_players_le_max_players())
         if not self.game_min_players <= self.game_default_player_count <= self.game_max_players:
             raise ValueError(message_game_default_player_count_between())
+        split_mapping(self.game_role_names, field_name="game_role_names")
+        split_mapping(self.game_phase_names, field_name="game_phase_names")
+        try:
+            self.game_ruleset_description_template.format(
+                min_players=self.game_min_players,
+                max_players=self.game_max_players,
+                default_player_count=self.game_default_player_count,
+            )
+        except (KeyError, ValueError) as exc:
+            raise ValueError(message_ruleset_description_template_invalid()) from exc
         return self
 
 

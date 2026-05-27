@@ -77,6 +77,9 @@ DB は設定値で選びます。
 - SQLite の既定値は `.werewolf-agent/db/db.sqlite3`
 - SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
 - Postgres などは `WEREWOLF_DATABASE_URL` を設定する
+- ruleset metadata の説明文、role 表示名、phase 表示名は `WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE`、`WEREWOLF_GAME_ROLE_NAMES`、`WEREWOLF_GAME_PHASE_NAMES` で変更できる
+- API の表示名、version、debug、CORS は `WEREWOLF_API_TITLE`、`WEREWOLF_API_VERSION`、`WEREWOLF_API_DEBUG`、`WEREWOLF_CORS_ALLOWED_*` で変更できる
+- コード上の `WEREWOLF_API_DEBUG` 既定値は `false`。ローカル開発用の `.env.example` と `compose.yaml` は `true` を明示する
 
 Migration:
 

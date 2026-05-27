@@ -11,7 +11,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Final, TextIO
 
-from werewolf_agent.commons.security.redaction import redact_mapping
+from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
 from werewolf_agent.commons.shared.constants import JSON_SEPARATORS, LOG_CONTEXT_VAR_NAME
 from werewolf_agent.interface.shared.settings import AppSettings
 
@@ -104,8 +104,8 @@ class JsonFormatter(stdlib_logging.Formatter):
         exc_type, exc_value, _traceback = record.exc_info
         return {
             "type": exc_type.__name__ if exc_type is not None else None,
-            "message": str(exc_value) if exc_value is not None else "",
-            "stacktrace": self.formatException(record.exc_info),
+            "message": redact_text(str(exc_value)) if exc_value is not None else "",
+            "stacktrace": redact_text(self.formatException(record.exc_info)),
         }
 
 

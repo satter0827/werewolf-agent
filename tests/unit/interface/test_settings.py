@@ -12,6 +12,7 @@ from werewolf_agent.interface.shared.settings import (
     AppSettings,
     repository_root,
     split_csv,
+    split_mapping,
 )
 
 
@@ -21,6 +22,13 @@ def test_split_csv_removes_empty_items_and_whitespace() -> None:
         "127.0.0.1",
         "https://ui.test",
     ]
+
+
+def test_split_mapping_parses_key_value_items() -> None:
+    assert split_mapping("villager:村人, werewolf:人狼", field_name="names") == {
+        "villager": "村人",
+        "werewolf": "人狼",
+    }
 
 
 def test_database_settings_default_to_sqlite_path_under_generated_dir() -> None:
@@ -59,6 +67,13 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.log_format == "json"
     assert settings.log_output == "stderr"
+    assert settings.api_title == "Werewolf Agent API"
+    assert settings.api_version == "0.1.0"
+    assert settings.api_debug is False
+    assert settings.cors_allowed_methods_list == ["GET", "POST"]
+    assert settings.cors_allowed_headers_list == ["*"]
+    assert settings.game_role_name_map["werewolf"] == "人狼"
+    assert settings.game_phase_name_map["day_discussion"] == "昼チャット"
     assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
     assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
@@ -93,6 +108,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable Dummy")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
+    monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
+    monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
+    monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
 
     settings = AppSettings(_env_file=None)
 
@@ -103,6 +121,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_supported_agent_name == "Configurable Dummy"
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
+    assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
+    assert settings.game_role_name_map == {"villager": "Villager"}
+    assert settings.game_phase_name_map == {"night": "Night"}
 
 
 def test_game_settings_reject_inconsistent_player_counts() -> None:
@@ -116,6 +137,12 @@ def test_game_settings_reject_inconsistent_player_counts() -> None:
             game_max_players=8,
             game_default_player_count=9,
         )
+
+    with pytest.raises(ValidationError):
+        AppSettings(_env_file=None, game_role_names="villager")
+
+    with pytest.raises(ValidationError):
+        AppSettings(_env_file=None, game_ruleset_description_template="{unknown}")
 
 
 def test_logging_settings_normalize_supported_values() -> None:

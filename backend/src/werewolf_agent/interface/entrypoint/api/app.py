@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import time
+from collections.abc import Awaitable, Callable
+from typing import cast
 from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
@@ -13,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 
+from werewolf_agent.commons.shared.messages import LOG_API_REQUEST_COMPLETED
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.application.database import (
     create_database_engine,
@@ -36,6 +39,7 @@ TRACE_ID_HEADER = "X-Trace-Id"
 REQUEST_ID_HEADER = "X-Request-Id"
 
 logger = logging.getLogger(__name__)
+ApiExceptionHandler = Callable[[Request, Exception], Response | Awaitable[Response]]
 
 
 def create_app(
@@ -53,8 +57,8 @@ def create_app(
     session_factory = create_session_factory(engine)
 
     app = FastAPI(
-        title="Werewolf Agent API",
-        version="0.1.0",
+        title=loaded_settings.api_title,
+        version=loaded_settings.api_version,
         debug=loaded_settings.api_debug,
     )
     app.state.settings = loaded_settings
@@ -70,15 +74,24 @@ def create_app(
             CORSMiddleware,
             allow_origins=loaded_settings.cors_allowed_origins_list,
             allow_credentials=False,
-            allow_methods=["GET", "POST"],
-            allow_headers=["*"],
+            allow_methods=loaded_settings.cors_allowed_methods_list,
+            allow_headers=loaded_settings.cors_allowed_headers_list,
         )
 
-    app.add_exception_handler(AppError, app_error_handler)
-    app.add_exception_handler(RequestValidationError, request_validation_error_handler)
-    app.add_exception_handler(PydanticValidationError, pydantic_validation_error_handler)
-    app.add_exception_handler(StarletteHTTPException, http_exception_handler)
-    app.add_exception_handler(Exception, unhandled_exception_handler)
+    app.add_exception_handler(AppError, cast(ApiExceptionHandler, app_error_handler))
+    app.add_exception_handler(
+        RequestValidationError,
+        cast(ApiExceptionHandler, request_validation_error_handler),
+    )
+    app.add_exception_handler(
+        PydanticValidationError,
+        cast(ApiExceptionHandler, pydantic_validation_error_handler),
+    )
+    app.add_exception_handler(
+        StarletteHTTPException,
+        cast(ApiExceptionHandler, http_exception_handler),
+    )
+    app.add_exception_handler(Exception, cast(ApiExceptionHandler, unhandled_exception_handler))
     app.middleware("http")(_trace_request)
     app.include_router(router)
 
@@ -99,7 +112,7 @@ async def _trace_request(
         response = await call_next(request)
         response.headers[TRACE_ID_HEADER] = trace_id
         logger.info(
-            "API request completed",
+            LOG_API_REQUEST_COMPLETED,
             extra={
                 "http_method": request.method,
                 "http_path": request.url.path,

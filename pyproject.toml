@@ -110,13 +110,5 @@ show_error_codes = true
 strict = true
 warn_unused_ignores = true
 
-[[tool.mypy.overrides]]
-module = "werewolf_agent.interface.entrypoint.api.*"
-ignore_errors = true
-
-[[tool.mypy.overrides]]
-module = "werewolf_agent.interface.application.*"
-ignore_errors = true
-
 [tool.coverage.run]
 data_file = ".werewolf-agent/cache/coverage/.coverage"
