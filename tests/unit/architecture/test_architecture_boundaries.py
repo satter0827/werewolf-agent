@@ -1,7 +1,9 @@
 import ast
 import inspect
 from pathlib import Path
+from types import ModuleType
 
+import werewolf_agent.domain.llm as llm_domain
 import werewolf_agent.usecase.jobs as game_jobs
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -51,48 +53,68 @@ def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
 
 
 def test_usecase_jobs_public_surface_is_minimal() -> None:
-    assert set(game_jobs.__all__) == {
-        "AdvanceGameCommand",
-        "AdvanceGameResult",
-        "AgentFactory",
-        "CreateGameCommand",
-        "FakeLlmAgentFactory",
-        "FakeLlmConfig",
-        "FakeLlmStrategy",
-        "GameEventCreate",
-        "GameNotFoundError",
-        "GameRepository",
-        "GamePhase",
-        "GameResult",
-        "GameRunCreate",
-        "GameRunUpdate",
-        "GameRunsResult",
-        "GameStatus",
-        "GameTurnsResult",
-        "GameUseCaseConfig",
-        "GameUseCaseDependencies",
-        "GetGameQuery",
-        "InvalidGameIdError",
-        "ListGameTurnsQuery",
-        "ListGamesQuery",
-        "ListPublicEventsQuery",
-        "PlayerAgent",
-        "PublicEventsResult",
-        "PublicGameRunSummary",
-        "PublicGameTurn",
-        "RulesetResult",
-        "StoredGameEvent",
-        "StoredGameRun",
-        "StoredGameRunSummary",
-        "StoredGameTurn",
-        "advance_game",
-        "create_game",
-        "get_default_ruleset",
-        "get_game",
-        "list_game_turns",
-        "list_games",
-        "list_public_events",
-    }
+    _assert_public_surface(
+        game_jobs,
+        {
+            "AdvanceGameCommand",
+            "AdvanceGameResult",
+            "AgentFactory",
+            "CreateGameCommand",
+            "FakeLlmAgentFactory",
+            "FakeLlmConfig",
+            "FakeLlmStrategy",
+            "GameEventCreate",
+            "GameNotFoundError",
+            "GamePhase",
+            "GameRepository",
+            "GameResult",
+            "GameRunCreate",
+            "GameRunUpdate",
+            "GameRunsResult",
+            "GameStatus",
+            "GameTurnsResult",
+            "GameUseCaseConfig",
+            "GameUseCaseDependencies",
+            "GetGameQuery",
+            "InvalidGameIdError",
+            "ListGameTurnsQuery",
+            "ListGamesQuery",
+            "ListPublicEventsQuery",
+            "PlayerAgent",
+            "PublicEventsResult",
+            "PublicGameRunSummary",
+            "PublicGameTurn",
+            "RulesetResult",
+            "StoredGameEvent",
+            "StoredGameRun",
+            "StoredGameRunSummary",
+            "StoredGameTurn",
+            "advance_game",
+            "create_game",
+            "get_default_ruleset",
+            "get_game",
+            "list_game_turns",
+            "list_games",
+            "list_public_events",
+        },
+    )
+
+
+def test_domain_llm_public_surface_is_minimal() -> None:
+    _assert_public_surface(
+        llm_domain,
+        {
+            "AgentActionType",
+            "AgentDecision",
+            "AgentObservation",
+            "AgentPhase",
+            "AgentPlayerStatus",
+            "AgentRole",
+            "LlmDecisionProvider",
+            "VisiblePlayer",
+            "choose_fake_llm_decision",
+        },
+    )
 
 
 def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
@@ -203,6 +225,14 @@ def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert "ignore_errors = true" not in pyproject
+
+
+def _assert_public_surface(module: ModuleType, expected: set[str]) -> None:
+    actual = set(module.__all__)
+
+    assert actual == expected
+    assert not [name for name in actual if name.startswith("_")]
+    assert not [name for name in actual if not hasattr(module, name)]
 
 
 def _imports_under(path: Path) -> list[tuple[Path, str]]:
