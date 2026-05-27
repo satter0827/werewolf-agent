@@ -86,9 +86,10 @@ addopts = "-q"
 cache_dir = ".werewolf-agent/cache/pytest"
 pythonpath = ["backend/src"]
 testpaths = ["tests"]
+tmp_path_retention_policy = "none"
 
 [tool.ruff]
-cache-dir = ".werewolf-agent/cache/ruff"
+cache-dir = ".ruff_cache"
 line-length = 100
 src = ["backend/src", "tests"]
 target-version = "py311"
