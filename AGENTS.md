@@ -27,7 +27,8 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/domain/` | ルール、状態、観測、勝敗、domain event |
+| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、dummy decision、provider port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
 | `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
@@ -45,7 +46,8 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 - interface 層は domain を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interfaces/application/` に限定する
 - `interfaces/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
-- usecase から domain を参照する code は `usecase/jobs` 配下に限定し、`domain.models` と `domain.service` だけを使う
+- usecase から domain を参照する code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
+- `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換してつなぐ
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
 - API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする

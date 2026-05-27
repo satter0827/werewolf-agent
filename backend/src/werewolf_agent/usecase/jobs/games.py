@@ -10,7 +10,7 @@ from typing import cast
 from uuid import UUID, uuid4
 
 from werewolf_agent.contracts import GameError, GamePhaseError
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     DomainEvent,
     GameConfig,
     GameSnapshot,
@@ -21,7 +21,7 @@ from werewolf_agent.domain.models import (
     Role,
     TieBreakPolicy,
 )
-from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
+from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
 from werewolf_agent.usecase.jobs._agents import _DummyAgentFactory
 from werewolf_agent.usecase.jobs._projections import (
     events_to_create,

@@ -51,7 +51,8 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/domain/` | ルール、状態、観測、勝敗、domain event |
+| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、dummy decision |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
 | `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
@@ -63,9 +64,10 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 境界:
 
 - `domain` は Django、`.env`、I/O、logging 設定、LLM provider を知らない
+- `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換して接続する
 - `interfaces/api` と `interfaces/cli` は domain / usecase を直接 import しない
 - usecase 接続は `interfaces/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
-- domain へ入る usecase code は `usecase/jobs` 配下に限定し、触る domain は `domain.models` と `domain.service` だけ
+- domain へ入る usecase code は `usecase/jobs` 配下に限定し、触る domain は `domain.game.*` と `domain.llm.*` の公開面だけ
 - HTTP response schema、Problem Details、CLI 表示、画面向けの表示名や整形は interface に閉じる
 - public state / public event に role、night action、secret を出さない
 

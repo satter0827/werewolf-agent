@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     DomainEvent,
     Faction,
     GameSnapshot,

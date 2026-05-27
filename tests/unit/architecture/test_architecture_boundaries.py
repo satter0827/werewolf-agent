@@ -88,8 +88,11 @@ def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
 
 def test_usecase_imports_domain_only_from_jobs() -> None:
     allowed_domain_modules = {
-        "werewolf_agent.domain.models",
-        "werewolf_agent.domain.service",
+        "werewolf_agent.domain.game.models",
+        "werewolf_agent.domain.game.service",
+        "werewolf_agent.domain.llm.models",
+        "werewolf_agent.domain.llm.ports",
+        "werewolf_agent.domain.llm.service",
     }
 
     imported = _imports_under(PACKAGE / "usecase")
@@ -102,6 +105,23 @@ def test_usecase_imports_domain_only_from_jobs() -> None:
             bad_imports.append((path, module))
 
     assert not bad_imports
+
+
+def test_game_and_llm_subdomains_do_not_import_each_other() -> None:
+    imported_by_game = _imports_under(PACKAGE / "domain" / "game")
+    imported_by_llm = _imports_under(PACKAGE / "domain" / "llm")
+
+    assert not [
+        (path, module)
+        for path, module in imported_by_game
+        if module == "werewolf_agent.domain.llm" or module.startswith("werewolf_agent.domain.llm.")
+    ]
+    assert not [
+        (path, module)
+        for path, module in imported_by_llm
+        if module == "werewolf_agent.domain.game"
+        or module.startswith("werewolf_agent.domain.game.")
+    ]
 
 
 def test_commons_do_not_import_usecase_or_interfaces() -> None:

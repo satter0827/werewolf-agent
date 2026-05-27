@@ -38,9 +38,12 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/commons/configuration/` | `.env` / 環境変数、既定値 |
-| `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
-| `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取る stateless domain 関数 |
-| `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
+| `backend/src/werewolf_agent/domain/game/models.py` | headless game が扱う `Player` / `Action` / snapshot / observation / event |
+| `backend/src/werewolf_agent/domain/game/service.py` | snapshot と pending action を受け取る stateless game 関数 |
+| `backend/src/werewolf_agent/domain/game/rules/` | game 内部 rules |
+| `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO |
+| `backend/src/werewolf_agent/domain/llm/service.py` | dummy decision logic |
+| `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless job、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/contracts/schemas.py` | 公開 HTTP API DTO、Problem Details |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details |
@@ -59,9 +62,10 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 - interface 層から usecase を呼ぶ場所は `interfaces/application` に限定する
 - `interfaces/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `commons.configuration` は interface から読み込む設定境界として扱い、domain / usecase から import しない
-- usecase から domain へ入る code は `usecase/jobs` 配下に限定し、`domain.models` と `domain.service` だけを import する
+- usecase から domain へ入る code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
+- `domain.game` と `domain.llm` は互いに import せず、observation / decision / action の変換は usecase に置く
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
-- domain は usecase / interfaces / config / commons / llm を import しない
+- domain は usecase / interfaces / config / commons を import しない
 - domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
 - API は `private_state` を保存してよいが public response へ出さない
 - public event に role、night action、secret、token、API key を混ぜない

@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Mapping
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     Action,
     ActionType,
     GameSnapshot,
@@ -16,7 +16,7 @@ from werewolf_agent.domain.models import (
     Phase,
     Role,
 )
-from werewolf_agent.domain.rules.player_rules import (
+from werewolf_agent.domain.game.rules.player_rules import (
     faction_for_role,
     mark_dead,
     player_by_id,
