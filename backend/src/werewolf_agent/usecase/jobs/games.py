@@ -1,11 +1,13 @@
-"""Stateless game use cases that orchestrate domain rules and ports."""
+"""Stateless game jobs that orchestrate business workflow and domain rules."""
 
 from __future__ import annotations
 
+import random
 from collections import Counter
-from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
-from uuid import UUID
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+from typing import cast
+from uuid import UUID, uuid4
 
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.models import (
@@ -20,102 +22,108 @@ from werewolf_agent.domain.models import (
     TieBreakPolicy,
 )
 from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.internals.projections import (
-    events_to_persist,
-    public_event_from_record,
-    public_state_from_run,
-    public_state_from_snapshot,
+from werewolf_agent.usecase.jobs._agents import _DummyAgentFactory
+from werewolf_agent.usecase.jobs._projections import (
+    events_to_create,
+    public_event_payload_from_record,
+    public_state_payload_from_run,
+    public_state_payload_from_snapshot,
 )
-from werewolf_agent.usecase.internals.rulesets import default_ruleset
+from werewolf_agent.usecase.jobs._rulesets import default_ruleset
 from werewolf_agent.usecase.jobs.models import (
+    AdvanceGameCommand,
+    AdvanceGameResult,
     CreateGameCommand,
     CreateGamePlayer,
-    GameEventsResponse,
-    GameResponse,
+    GamePhase,
+    GameResult,
+    GameRunCreate,
     GameRunUpdate,
-    GameUseCaseSettings,
-    NewGameRun,
+    GameStatus,
+    GameUseCaseConfig,
+    GetGameQuery,
+    ListPublicEventsQuery,
+    PublicEventsResult,
     RoleId,
-    RulesetResponse,
-    StepGameResponse,
+    RulesetResult,
 )
-from werewolf_agent.usecase.jobs.ports import (
-    AgentFactory,
-    GameRunRepository,
-    Logger,
-    RandomFactory,
-)
+from werewolf_agent.usecase.jobs.ports import GameRepository
 
 
 class GameNotFoundError(Exception):
     """Raised when a requested game run is absent from the repository."""
 
 
+class InvalidGameIdError(Exception):
+    """Raised when a game id cannot be parsed as a UUID."""
+
+
 @dataclass(frozen=True)
 class GameUseCaseDependencies:
-    """Externally supplied dependencies for game use cases."""
+    """Externally supplied dependencies for stateless game jobs."""
 
-    repository: GameRunRepository
-    agent_factory: AgentFactory
-    rng_factory: RandomFactory
-    game_id_factory: Callable[[], UUID]
-    logger: Logger
-    settings: GameUseCaseSettings
+    repository: GameRepository
+    config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
 
 
-def get_default_ruleset(*, settings: GameUseCaseSettings) -> RulesetResponse:
-    """Return public metadata for the default ruleset."""
-    return default_ruleset(settings)
+def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
+    """Return business metadata for the default ruleset."""
+    return default_ruleset(config)
 
 
 def create_game(
     command: CreateGameCommand,
     *,
     dependencies: GameUseCaseDependencies,
-) -> GameResponse:
+) -> GameResult:
     """Create and persist one deterministic game."""
-    game_id = dependencies.game_id_factory()
-    _validate_agent_config(command, dependencies.settings)
-    players = _player_configs(command, dependencies.settings)
+    game_id = uuid4()
+    _validate_agent_config(command, dependencies.config)
+    players = _player_configs(command, dependencies.config)
     config = _domain_config(command, game_id=str(game_id), player_count=len(players))
-    snapshot, events = start_game(config, players, dependencies.rng_factory(command.seed))
-    public_state = public_state_from_snapshot(
+    snapshot, events = start_game(config, players, random.Random(command.seed))
+    public_state = public_state_payload_from_snapshot(
         snapshot,
         version=1,
         seed=command.seed,
     )
     run = dependencies.repository.create(
-        NewGameRun(
+        GameRunCreate(
             id=game_id,
-            status=public_state.status,
-            phase=public_state.phase,
-            day=public_state.day,
+            status=cast(GameStatus, public_state["status"]),
+            phase=cast(GamePhase, public_state["phase"]),
+            day=cast(int, public_state["day"]),
             seed=command.seed,
             config=config.model_dump(mode="json"),
-            public_state=public_state.model_dump(mode="json"),
+            public_state=public_state,
             private_state=snapshot.model_dump(mode="json"),
             version=1,
         )
     )
-    dependencies.repository.append_events(run.id, events_to_persist(events))
-    dependencies.logger.debug("Created game run.", extra={"game_id": str(run.id)})
-    return GameResponse(game_id=str(run.id), state=public_state_from_run(run))
+    dependencies.repository.append_events(run.id, events_to_create(events))
+    return GameResult(game_id=str(run.id), state=public_state_payload_from_run(run))
 
 
-def get_game(game_id: UUID, *, repository: GameRunRepository) -> GameResponse:
+def get_game(
+    query: GetGameQuery,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> GameResult:
     """Return the current public state for one game run."""
-    run = repository.get(game_id)
+    game_id = _parse_game_id(query.game_id)
+    run = dependencies.repository.get(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    return GameResponse(game_id=str(run.id), state=public_state_from_run(run))
+    return GameResult(game_id=str(run.id), state=public_state_payload_from_run(run))
 
 
 def advance_game(
-    game_id: UUID,
+    command: AdvanceGameCommand,
     *,
     dependencies: GameUseCaseDependencies,
-) -> StepGameResponse:
+) -> AdvanceGameResult:
     """Advance one game run by one business step."""
+    game_id = _parse_game_id(command.game_id)
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
@@ -123,13 +131,12 @@ def advance_game(
         raise GamePhaseError("Finished games cannot be advanced.")
 
     snapshot = GameSnapshot.model_validate(run.private_state)
-    runtime_rng = dependencies.rng_factory(_runtime_seed(run.seed, run.version))
+    runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
     pending_actions = PendingActions()
     snapshot, pending_actions, action_events = _drive_current_phase(
         snapshot,
         seed=run.seed,
         version=run.version,
-        agent_factory=dependencies.agent_factory,
         pending_actions=pending_actions,
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(
@@ -137,7 +144,7 @@ def advance_game(
         pending_actions,
         runtime_rng,
     )
-    next_public_state = public_state_from_snapshot(
+    next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
         version=run.version + 1,
         seed=run.seed,
@@ -147,64 +154,71 @@ def advance_game(
     updated_run = dependencies.repository.save(
         GameRunUpdate(
             id=run.id,
-            status=next_public_state.status,
-            phase=next_public_state.phase,
-            day=next_public_state.day,
-            public_state=next_public_state.model_dump(mode="json"),
+            status=cast(GameStatus, next_public_state["status"]),
+            phase=cast(GamePhase, next_public_state["phase"]),
+            day=cast(int, next_public_state["day"]),
+            public_state=next_public_state,
             private_state=next_snapshot.model_dump(mode="json"),
             version=run.version + 1,
         )
     )
     records = dependencies.repository.append_events(
         updated_run.id,
-        events_to_persist([*action_events, *phase_events]),
+        events_to_create([*action_events, *phase_events]),
     )
-    dependencies.logger.debug(
-        "Advanced game run.",
-        extra={"game_id": str(updated_run.id), "version": updated_run.version},
-    )
-    return StepGameResponse(
+    return AdvanceGameResult(
         game_id=str(updated_run.id),
         status=updated_run.status,
-        state=public_state_from_run(updated_run),
+        state=public_state_payload_from_run(updated_run),
         events=[
-            public_event_from_record(record) for record in records if record.visibility == "public"
+            public_event_payload_from_record(record)
+            for record in records
+            if record.visibility == "public"
         ],
     )
 
 
 def list_public_events(
-    game_id: UUID,
+    query: ListPublicEventsQuery,
     *,
-    repository: GameRunRepository,
-    after: int = 0,
-) -> GameEventsResponse:
+    dependencies: GameUseCaseDependencies,
+) -> PublicEventsResult:
     """List public events after a sequence number."""
-    run = repository.get(game_id)
+    game_id = _parse_game_id(query.game_id)
+    run = dependencies.repository.get(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
 
-    records = repository.list_public_events(run.id, after=after)
-    next_after = records[-1].sequence if records else after
-    return GameEventsResponse(
+    records = dependencies.repository.list_public_events(run.id, after=query.after)
+    next_after = records[-1].sequence if records else query.after
+    return PublicEventsResult(
         game_id=str(run.id),
-        events=[public_event_from_record(record) for record in records],
+        events=[public_event_payload_from_record(record) for record in records],
         next_after=next_after,
     )
 
 
+def _parse_game_id(value: str | UUID) -> UUID:
+    if isinstance(value, UUID):
+        return value
+    try:
+        return UUID(value)
+    except ValueError as exc:
+        raise InvalidGameIdError("game_id must be a valid UUID.") from exc
+
+
 def _player_configs(
     command: CreateGameCommand,
-    settings: GameUseCaseSettings,
+    config: GameUseCaseConfig,
 ) -> list[Player]:
     if command.players is not None:
-        _validate_players(command.players, settings)
+        _validate_players(command.players, config)
         return [Player(id=player.id, name=player.name) for player in command.players]
 
-    player_count = _resolved_player_count(command, settings)
-    if player_count < settings.min_players or player_count > settings.max_players:
+    player_count = _resolved_player_count(command, config)
+    if player_count < config.min_players or player_count > config.max_players:
         raise GameError(
-            f"player_count must be between {settings.min_players} and {settings.max_players}."
+            f"player_count must be between {config.min_players} and {config.max_players}."
         )
     return [
         Player(id=f"player-{index}", name=f"Player {index}") for index in range(1, player_count + 1)
@@ -213,27 +227,27 @@ def _player_configs(
 
 def _resolved_player_count(
     command: CreateGameCommand,
-    settings: GameUseCaseSettings,
+    config: GameUseCaseConfig,
 ) -> int:
     if command.player_count is not None:
         return command.player_count
-    return settings.default_player_count
+    return config.default_player_count
 
 
 def _validate_players(
     players: Sequence[CreateGamePlayer],
-    settings: GameUseCaseSettings,
+    config: GameUseCaseConfig,
 ) -> None:
-    if len(players) < settings.min_players or len(players) > settings.max_players:
+    if len(players) < config.min_players or len(players) > config.max_players:
         raise GameError(
-            f"player count must be between {settings.min_players} and {settings.max_players}."
+            f"player count must be between {config.min_players} and {config.max_players}."
         )
 
     unsupported_agent_types = sorted(
         {
             player.agent_type
             for player in players
-            if player.agent_type != settings.supported_agent_type
+            if player.agent_type != config.supported_agent_type
         }
     )
     if unsupported_agent_types:
@@ -248,8 +262,8 @@ def _validate_players(
         raise GameError("player id values must be unique.")
 
 
-def _validate_agent_config(command: CreateGameCommand, settings: GameUseCaseSettings) -> None:
-    if command.agent.type != settings.supported_agent_type:
+def _validate_agent_config(command: CreateGameCommand, config: GameUseCaseConfig) -> None:
+    if command.agent.type != config.supported_agent_type:
         raise GameError("Only dummy agent type is supported for the MVP API.")
 
 
@@ -277,12 +291,12 @@ def _drive_current_phase(
     *,
     seed: int | None,
     version: int,
-    agent_factory: AgentFactory,
     pending_actions: PendingActions,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
     current_pending_actions = pending_actions
     events: list[DomainEvent] = []
+    agent_factory = _DummyAgentFactory()
     turn_count = snapshot.config.day_speech_turns if snapshot.phase is Phase.DAY_DISCUSSION else 1
     for turn in range(turn_count):
         turn_snapshot = current_snapshot

@@ -219,3 +219,10 @@ class ApiGamesEndpointTests(TestCase):
         assert response.status_code == 404
         assert response["Content-Type"].startswith("application/problem+json")
         assert response.json()["code"] == "not_found"
+
+    def test_invalid_game_id_is_handled_by_usecase_boundary(self) -> None:
+        response = self.client.get("/api/games/not-a-uuid/")
+
+        assert response.status_code == 404
+        assert response["Content-Type"].startswith("application/problem+json")
+        assert response.json()["code"] == "not_found"

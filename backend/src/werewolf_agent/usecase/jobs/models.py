@@ -1,4 +1,4 @@
-"""Use case input and output models for game workflows."""
+"""Use case input, output, and persistence models for game jobs."""
 
 from __future__ import annotations
 
@@ -19,17 +19,14 @@ RoleCount = Annotated[int, Field(ge=0)]
 
 
 @dataclass(frozen=True)
-class GameUseCaseSettings:
-    """Business settings injected by outer interfaces."""
+class GameUseCaseConfig:
+    """Business settings used by stateless game jobs."""
 
     min_players: int = 5
     max_players: int = 8
     default_player_count: int = 6
     supported_agent_type: str = "dummy"
     default_ruleset_id: str = "default"
-    default_ruleset_name: str = "MVP Default"
-    default_ruleset_description: str = "5〜8人向けの最小同期 API ルールセットです。"
-    supported_agent_name: str = "Dummy Agent"
 
 
 class _UseCaseModel(BaseModel):
@@ -57,7 +54,7 @@ class CreateGamePlayer(_UseCaseModel):
 
 
 class CreateGameAgentConfig(_UseCaseModel):
-    """Agent selection for automated use case-driven game runs."""
+    """Agent selection for automated game runs."""
 
     type: str = "dummy"
 
@@ -107,8 +104,75 @@ class CreateGameCommand(_UseCaseModel):
         return self
 
 
+class GetGameQuery(_UseCaseModel):
+    """Query for loading one game."""
+
+    game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceGameCommand(_UseCaseModel):
+    """Command for advancing one game by one business step."""
+
+    game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ListPublicEventsQuery(_UseCaseModel):
+    """Query for listing public events after a sequence cursor."""
+
+    game_id: str | UUID
+    after: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RulesetResult(_UseCaseModel):
+    """Ruleset business metadata returned by use cases."""
+
+    id: str
+    player_count: dict[str, int]
+    roles: list[RoleId]
+    phases: list[GamePhase]
+    agent_types: list[str]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameResult(_UseCaseModel):
+    """Current game state returned by use cases."""
+
+    game_id: str
+    state: dict[str, Any]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceGameResult(_UseCaseModel):
+    """Result from advancing a game by one use case step."""
+
+    game_id: str
+    status: GameStatus
+    state: dict[str, Any]
+    events: list[dict[str, Any]]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicEventsResult(_UseCaseModel):
+    """Public event stream returned by use cases."""
+
+    game_id: str
+    events: list[dict[str, Any]]
+    next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class PublicPlayerState(_UseCaseModel):
-    """Public player state exposed to clients."""
+    """Internal public player state projected from domain state."""
 
     id: str
     name: str
@@ -121,7 +185,7 @@ class PublicPlayerState(_UseCaseModel):
 
 
 class PublicGameState(_UseCaseModel):
-    """Public game state exposed to interfaces."""
+    """Internal public game state projected from domain state."""
 
     game_id: str
     status: GameStatus
@@ -141,7 +205,7 @@ class PublicGameState(_UseCaseModel):
 
 
 class PublicGameEvent(_UseCaseModel):
-    """One public event returned by a client-facing event stream."""
+    """Internal public event projected from a stored event record."""
 
     sequence: int = Field(ge=1)
     event_id: UUID
@@ -156,57 +220,7 @@ class PublicGameEvent(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameResponse(_UseCaseModel):
-    """Response containing the current public game state."""
-
-    game_id: str
-    state: PublicGameState
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class StepGameResponse(_UseCaseModel):
-    """Response from advancing a game by one use case step."""
-
-    game_id: str
-    status: GameStatus
-    state: PublicGameState
-    events: list[PublicGameEvent]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameEventsQuery(_UseCaseModel):
-    """Query model for listing public events."""
-
-    after: int = Field(default=0, ge=0)
-
-
-class GameEventsResponse(_UseCaseModel):
-    """Public event stream response."""
-
-    game_id: str
-    events: list[PublicGameEvent]
-    next_after: int
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class RulesetResponse(_UseCaseModel):
-    """Public ruleset metadata for client bootstrapping."""
-
-    id: str
-    name: str
-    description: str
-    player_count: dict[str, int]
-    roles: list[dict[str, str]]
-    phases: list[dict[str, str]]
-    agent_types: list[dict[str, str]]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class EventToPersist(_UseCaseModel):
+class GameEventCreate(_UseCaseModel):
     """Sanitized event data to persist through an outer repository."""
 
     visibility: EventVisibility
@@ -219,7 +233,7 @@ class EventToPersist(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class NewGameRun(_UseCaseModel):
+class GameRunCreate(_UseCaseModel):
     """New game run data to be persisted by an outer repository."""
 
     id: UUID

@@ -1,4 +1,4 @@
-"""Use case projections from full domain state to public client data."""
+"""Private projections from full domain state to public result payloads."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from werewolf_agent.domain.models import (
     PlayerStatus,
 )
 from werewolf_agent.usecase.jobs.models import (
-    EventToPersist,
+    GameEventCreate,
     GamePhase,
     GameStatus,
     PublicGameEvent,
@@ -25,22 +25,22 @@ from werewolf_agent.usecase.jobs.models import (
 )
 
 
-def public_state_from_run(run: StoredGameRun) -> PublicGameState:
-    """Return public game state with persistence timestamps attached."""
+def public_state_payload_from_run(run: StoredGameRun) -> dict[str, Any]:
+    """Return public game state payload with persistence timestamps attached."""
     payload = dict(run.public_state)
     payload["created_at"] = run.created_at
     payload["updated_at"] = run.updated_at
-    return PublicGameState.model_validate(payload)
+    return PublicGameState.model_validate(payload).model_dump(mode="json")
 
 
-def public_state_from_snapshot(
+def public_state_payload_from_snapshot(
     snapshot: GameSnapshot,
     *,
     version: int,
     seed: int | None,
     created_at: datetime | None = None,
-) -> PublicGameState:
-    """Project a full domain snapshot into a public state DTO."""
+) -> dict[str, Any]:
+    """Project a full domain snapshot into a public state payload."""
     players = [
         PublicPlayerState(
             id=player.id,
@@ -58,7 +58,7 @@ def public_state_from_snapshot(
     eliminated_player_ids = [
         player.id for player in snapshot.players.values() if player.status is PlayerStatus.DEAD
     ]
-    return PublicGameState(
+    state = PublicGameState(
         game_id=snapshot.game_id,
         status=status_from_snapshot(snapshot),
         phase=cast(GamePhase, snapshot.phase.value),
@@ -78,11 +78,12 @@ def public_state_from_snapshot(
         },
         created_at=created_at,
     )
+    return state.model_dump(mode="json")
 
 
-def public_event_from_record(record: StoredGameEvent) -> PublicGameEvent:
-    """Project a stored public event into a client-facing event DTO."""
-    return PublicGameEvent(
+def public_event_payload_from_record(record: StoredGameEvent) -> dict[str, Any]:
+    """Project a stored public event into a public event payload."""
+    event = PublicGameEvent(
         sequence=record.sequence,
         event_id=record.event_id,
         event_type=record.event_type,
@@ -93,16 +94,17 @@ def public_event_from_record(record: StoredGameEvent) -> PublicGameEvent:
         payload=dict(record.payload),
         occurred_at=record.occurred_at,
     )
+    return event.model_dump(mode="json")
 
 
-def events_to_persist(events: list[DomainEvent]) -> list[EventToPersist]:
+def events_to_create(events: list[DomainEvent]) -> list[GameEventCreate]:
     """Return sanitized event data ready for an outer persistence adapter."""
-    return [event_to_persist(event) for event in events]
+    return [event_to_create(event) for event in events]
 
 
-def event_to_persist(event: DomainEvent) -> EventToPersist:
+def event_to_create(event: DomainEvent) -> GameEventCreate:
     """Return sanitized persistable event data for one domain event."""
-    return EventToPersist(
+    return GameEventCreate(
         visibility=event.visibility.value,
         phase=cast(GamePhase, event.phase.value) if event.phase is not None else None,
         day=event.day,

@@ -9,7 +9,6 @@ from werewolf_agent.commons.configuration import (
     DEFAULT_GAME_MAX_PLAYERS,
     DEFAULT_GAME_MIN_PLAYERS,
     AppSettings,
-    build_game_usecase_settings,
     repository_root,
     split_csv,
 )
@@ -72,32 +71,6 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
     assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
-
-
-def test_game_usecase_settings_are_built_from_application_settings() -> None:
-    settings = AppSettings(
-        _env_file=None,
-        game_min_players=4,
-        game_max_players=10,
-        game_default_player_count=7,
-        game_supported_agent_type="dummy",
-        game_supported_agent_name="Dummy Agent",
-        game_default_ruleset_id="default",
-        game_default_ruleset_name="Custom Rules",
-    )
-
-    usecase_settings = build_game_usecase_settings(settings)
-
-    assert usecase_settings.min_players == 4
-    assert usecase_settings.max_players == 10
-    assert usecase_settings.default_player_count == 7
-    assert usecase_settings.supported_agent_type == "dummy"
-    assert usecase_settings.supported_agent_name == "Dummy Agent"
-    assert usecase_settings.default_ruleset_id == "default"
-    assert usecase_settings.default_ruleset_name == "Custom Rules"
-    assert usecase_settings.default_ruleset_description == (
-        "4〜10人向けの最小同期 API ルールセットです。"
-    )
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
