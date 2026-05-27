@@ -89,8 +89,9 @@ uv run --extra api pytest tests/integration/api
 Git 管理しないものは `.werewolf-agent/` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
-- pytest / ruff / mypy cache
-- coverage data
+- pytest / ruff / mypy cache: `.werewolf-agent/cache/`
+- pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
+- coverage data: `.werewolf-agent/cache/coverage/.coverage`
 - JSONL logs
 - collectstatic output
 

@@ -89,7 +89,7 @@ testpaths = ["tests"]
 tmp_path_retention_policy = "none"
 
 [tool.ruff]
-cache-dir = ".ruff_cache"
+cache-dir = ".werewolf-agent/cache/ruff"
 line-length = 100
 src = ["backend/src", "tests"]
 target-version = "py311"
