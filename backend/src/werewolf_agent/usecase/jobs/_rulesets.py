@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from werewolf_agent.domain.models import Phase
+from werewolf_agent.domain.game.models import Phase
 from werewolf_agent.usecase.jobs.models import GameUseCaseConfig, RulesetResult
 
 

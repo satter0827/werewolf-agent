@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from werewolf_agent.contracts import GameError, GamePhaseError
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     Faction,
     GameSnapshot,
     Phase,

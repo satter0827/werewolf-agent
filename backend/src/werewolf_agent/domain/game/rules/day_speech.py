@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.models import Action, ActionType, DomainEvent, GameSnapshot, Phase
-from werewolf_agent.domain.rules.player_rules import require_alive, require_phase
+from werewolf_agent.domain.game.models import Action, ActionType, DomainEvent, GameSnapshot, Phase
+from werewolf_agent.domain.game.rules.player_rules import require_alive, require_phase
 
 
 def record_day_speech(

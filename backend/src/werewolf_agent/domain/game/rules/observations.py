@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     ActionType,
     GameHistory,
     GameSnapshot,
@@ -12,7 +12,7 @@ from werewolf_agent.domain.models import (
     PlayerStatus,
     Role,
 )
-from werewolf_agent.domain.rules.player_rules import player_by_id
+from werewolf_agent.domain.game.rules.player_rules import player_by_id
 
 
 def build_player_observation(snapshot: GameSnapshot, player_id: str) -> Observation:

@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Mapping
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     Action,
     ActionType,
     GameConfig,
@@ -16,7 +16,7 @@ from werewolf_agent.domain.models import (
     TieBreakPolicy,
     VoteResult,
 )
-from werewolf_agent.domain.rules.player_rules import (
+from werewolf_agent.domain.game.rules.player_rules import (
     alive_players,
     mark_dead,
     require_alive,

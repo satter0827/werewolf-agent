@@ -7,7 +7,7 @@ from collections import Counter
 from collections.abc import Sequence
 
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.models import GameConfig, GameSnapshot, Phase, Player, Role
+from werewolf_agent.domain.game.models import GameConfig, GameSnapshot, Phase, Player, Role
 
 
 def create_game_snapshot(

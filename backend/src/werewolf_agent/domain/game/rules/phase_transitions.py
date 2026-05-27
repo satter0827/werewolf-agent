@@ -7,7 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 from werewolf_agent.contracts import GamePhaseError
-from werewolf_agent.domain.models import (
+from werewolf_agent.domain.game.models import (
     Action,
     DomainEvent,
     EventVisibility,
@@ -15,9 +15,9 @@ from werewolf_agent.domain.models import (
     GameSnapshot,
     Phase,
 )
-from werewolf_agent.domain.rules.night_actions import resolve_night
-from werewolf_agent.domain.rules.player_rules import check_win
-from werewolf_agent.domain.rules.voting import resolve_votes
+from werewolf_agent.domain.game.rules.night_actions import resolve_night
+from werewolf_agent.domain.game.rules.player_rules import check_win
+from werewolf_agent.domain.game.rules.voting import resolve_votes
 
 
 @dataclass(frozen=True)
