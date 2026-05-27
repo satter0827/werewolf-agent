@@ -9,6 +9,9 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
+from werewolf_agent.commons.shared.validation import non_blank
+
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 EventVisibility = Literal["public", "player_private", "debug"]
@@ -46,11 +49,7 @@ class CreateGamePlayer(_UseCaseModel):
     @classmethod
     def validate_non_blank(cls, value: str) -> str:
         """Return a stripped non-empty string."""
-        normalized = value.strip()
-        if not normalized:
-            msg = "value must not be blank"
-            raise ValueError(msg)
-        return normalized
+        return non_blank(value, "value")
 
 
 class CreateGameAgentConfig(_UseCaseModel):
@@ -64,11 +63,7 @@ class CreateGameAgentConfig(_UseCaseModel):
     @classmethod
     def validate_non_blank(cls, value: str) -> str:
         """Return a stripped non-empty agent type."""
-        normalized = value.strip()
-        if not normalized:
-            msg = "value must not be blank"
-            raise ValueError(msg)
-        return normalized
+        return non_blank(value, "value")
 
 
 class CreateGameRuleConfig(_UseCaseModel):
@@ -99,8 +94,7 @@ class CreateGameCommand(_UseCaseModel):
             and self.player_count is not None
             and len(self.players) != self.player_count
         ):
-            msg = "player_count must match the number of players"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS)
         return self
 
 

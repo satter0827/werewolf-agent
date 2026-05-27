@@ -5,6 +5,20 @@ from __future__ import annotations
 import random
 from collections.abc import Sequence
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_DUMMY_SEEDED_ATTACK,
+    MESSAGE_DUMMY_SEEDED_GUARD,
+    MESSAGE_DUMMY_SEEDED_INSPECTION,
+    MESSAGE_DUMMY_SEEDED_VOTE,
+    MESSAGE_NO_ATTACK_TARGETS,
+    MESSAGE_NO_GUARD_TARGETS,
+    MESSAGE_NO_INSPECT_TARGETS,
+    MESSAGE_NO_VALID_VOTE_TARGETS,
+    MESSAGE_OBSERVATION_BELONGS_TO_ANOTHER_PLAYER,
+    MESSAGE_PLAYER_IS_DEAD,
+    MESSAGE_ROLE_HAS_NO_NIGHT_ACTION,
+    message_no_action_for_phase,
+)
 from werewolf_agent.domain.llm.models import (
     AgentDecision,
     AgentObservation,
@@ -31,10 +45,10 @@ def choose_dummy_decision(
     if observation.me.id != player_id:
         return AgentDecision.pass_(
             player_id=player_id,
-            reason="observation belongs to another player",
+            reason=MESSAGE_OBSERVATION_BELONGS_TO_ANOTHER_PLAYER,
         )
     if observation.me.status is not AgentPlayerStatus.ALIVE:
-        return AgentDecision.pass_(player_id=player_id, reason="player is dead")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_PLAYER_IS_DEAD)
     if observation.phase is AgentPhase.DAY_DISCUSSION:
         return _dummy_speech_decision(player_id, observation, rng, speech_templates)
     if observation.phase is AgentPhase.VOTING:
@@ -43,7 +57,7 @@ def choose_dummy_decision(
         return _dummy_night_decision(player_id, observation, rng)
     return AgentDecision.pass_(
         player_id=player_id,
-        reason=f"no action for {observation.phase.value}",
+        reason=message_no_action_for_phase(observation.phase.value),
     )
 
 
@@ -71,11 +85,11 @@ def _dummy_vote_decision(
     candidates = _alive_candidate_ids(observation, include_self=False)
     target_id = _choose(candidates, rng)
     if target_id is None:
-        return AgentDecision.pass_(player_id=player_id, reason="no valid vote targets")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_NO_VALID_VOTE_TARGETS)
     return AgentDecision.vote(
         player_id=player_id,
         target_id=target_id,
-        reason="dummy seeded vote",
+        reason=MESSAGE_DUMMY_SEEDED_VOTE,
     )
 
 
@@ -90,7 +104,7 @@ def _dummy_night_decision(
         return _dummy_seer_inspect(player_id, observation, rng)
     if observation.role is AgentRole.KNIGHT:
         return _dummy_knight_guard(player_id, observation, rng)
-    return AgentDecision.pass_(player_id=player_id, reason="role has no night action")
+    return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_ROLE_HAS_NO_NIGHT_ACTION)
 
 
 def _dummy_werewolf_attack(
@@ -105,11 +119,11 @@ def _dummy_werewolf_attack(
     ]
     target_id = _choose(candidates, rng)
     if target_id is None:
-        return AgentDecision.pass_(player_id=player_id, reason="no attack targets")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_NO_ATTACK_TARGETS)
     return AgentDecision.attack(
         player_id=player_id,
         target_id=target_id,
-        reason="dummy seeded attack",
+        reason=MESSAGE_DUMMY_SEEDED_ATTACK,
     )
 
 
@@ -126,11 +140,11 @@ def _dummy_seer_inspect(
     fallback_candidates = _alive_candidate_ids(observation, include_self=False)
     target_id = _choose(unknown_candidates or fallback_candidates, rng)
     if target_id is None:
-        return AgentDecision.pass_(player_id=player_id, reason="no inspect targets")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_NO_INSPECT_TARGETS)
     return AgentDecision.inspect(
         player_id=player_id,
         target_id=target_id,
-        reason="dummy seeded inspection",
+        reason=MESSAGE_DUMMY_SEEDED_INSPECTION,
     )
 
 
@@ -142,11 +156,11 @@ def _dummy_knight_guard(
     candidates = _alive_candidate_ids(observation, include_self=True)
     target_id = _choose(candidates, rng)
     if target_id is None:
-        return AgentDecision.pass_(player_id=player_id, reason="no guard targets")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_NO_GUARD_TARGETS)
     return AgentDecision.guard(
         player_id=player_id,
         target_id=target_id,
-        reason="dummy seeded guard",
+        reason=MESSAGE_DUMMY_SEEDED_GUARD,
     )
 
 

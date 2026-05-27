@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.messages import MESSAGE_EXPECTED_SPEECH_ACTION
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import Action, ActionType, DomainEvent, GameSnapshot, Phase
 from werewolf_agent.domain.game.rules.player_rules import require_alive, require_phase
@@ -15,7 +16,7 @@ def record_day_speech(
     require_phase(snapshot, Phase.DAY_DISCUSSION)
     require_alive(snapshot, action.player_id)
     if action.type is not ActionType.SPEECH or action.message is None:
-        raise GameError("Expected a speech action.")
+        raise GameError(MESSAGE_EXPECTED_SPEECH_ACTION)
 
     history = snapshot.history.model_copy(update={"speeches": [*snapshot.history.speeches, action]})
     updated = snapshot.model_copy(update={"history": history})

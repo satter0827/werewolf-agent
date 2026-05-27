@@ -6,6 +6,13 @@ import random
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_MISSING_ATTACK_TARGET,
+    MESSAGE_MISSING_GUARD_TARGET,
+    MESSAGE_MISSING_INSPECT_TARGET,
+    MESSAGE_MISSING_SPEECH_MESSAGE,
+    MESSAGE_MISSING_VOTE_TARGET,
+)
 from werewolf_agent.domain.game.models import Action, Observation, Player
 from werewolf_agent.domain.llm.models import (
     AgentActionType,
@@ -84,27 +91,27 @@ def _visible_player_from_game(player: Player) -> VisiblePlayer:
 def _game_action_from_decision(decision: AgentDecision) -> Action:
     if decision.type is AgentActionType.SPEECH:
         if decision.message is None:
-            return Action.pass_(decision.player_id, reason="missing speech message")
+            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_SPEECH_MESSAGE)
         return Action.speech(decision.player_id, decision.message)
 
     if decision.type is AgentActionType.VOTE:
         if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason="missing vote target")
+            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_VOTE_TARGET)
         return Action.vote(decision.player_id, decision.target_id, reason=decision.reason)
 
     if decision.type is AgentActionType.WEREWOLF_ATTACK:
         if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason="missing attack target")
+            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_ATTACK_TARGET)
         return Action.attack(decision.player_id, decision.target_id, reason=decision.reason)
 
     if decision.type is AgentActionType.SEER_INSPECT:
         if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason="missing inspect target")
+            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_INSPECT_TARGET)
         return Action.inspect(decision.player_id, decision.target_id, reason=decision.reason)
 
     if decision.type is AgentActionType.KNIGHT_GUARD:
         if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason="missing guard target")
+            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_GUARD_TARGET)
         return Action.guard(decision.player_id, decision.target_id, reason=decision.reason)
 
     return Action.pass_(decision.player_id, reason=decision.reason)

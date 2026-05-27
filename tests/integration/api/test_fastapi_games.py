@@ -7,7 +7,7 @@ import pytest
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
-from werewolf_agent.interface.api.app import create_app  # noqa: E402
+from werewolf_agent.interface.entrypoint.api.app import create_app  # noqa: E402
 from werewolf_agent.interface.shared.settings import AppSettings  # noqa: E402
 
 
@@ -16,7 +16,7 @@ def client(tmp_path) -> Iterator[TestClient]:
     settings = AppSettings(
         _env_file=None,
         api_debug=False,
-        sqlite_path=tmp_path / "api.sqlite3",
+        database_url="sqlite+pysqlite:///:memory:",
     )
     app = create_app(settings, create_schema=True)
     with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -38,10 +38,11 @@ def _create_payload() -> dict[str, object]:
 
 
 def test_health_endpoint_returns_ok(client: TestClient) -> None:
-    response = client.get("/api/v1/health")
+    response = client.get("/api/v1/health", headers={"X-Trace-Id": "trace-test"})
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "werewolf-agent-api"}
+    assert response.headers["x-trace-id"] == "trace-test"
 
 
 def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> None:
@@ -207,7 +208,9 @@ def test_missing_game_returns_problem_details(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["code"] == "not_found"
+    assert response.json()["code"] == "resource.not_found"
+    assert response.headers["x-trace-id"]
+    assert response.json()["trace_id"] == response.headers["x-trace-id"]
 
 
 def test_invalid_game_id_is_handled_by_usecase_boundary(client: TestClient) -> None:
@@ -215,7 +218,7 @@ def test_invalid_game_id_is_handled_by_usecase_boundary(client: TestClient) -> N
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["code"] == "not_found"
+    assert response.json()["code"] == "resource.not_found"
 
 
 def test_method_not_allowed_returns_problem_details(client: TestClient) -> None:
@@ -223,8 +226,8 @@ def test_method_not_allowed_returns_problem_details(client: TestClient) -> None:
 
     assert response.status_code == 405
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["code"] == "method_not_allowed"
-    assert response.json()["type"] == "tag:werewolf-agent,2026:problem:method_not_allowed"
+    assert response.json()["code"] == "request.method_not_allowed"
+    assert response.json()["type"] == "tag:werewolf-agent,2026:problem:request.method_not_allowed"
 
 
 def test_missing_api_route_returns_problem_details(client: TestClient) -> None:
@@ -232,5 +235,5 @@ def test_missing_api_route_returns_problem_details(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["code"] == "not_found"
+    assert response.json()["code"] == "resource.not_found"
     assert response.json()["instance"] == "/api/v1/missing"

@@ -8,7 +8,16 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from werewolf_agent.contracts import AppError, ErrorCode
+from werewolf_agent.commons.shared.codes import ErrorCode
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_API_RESPONSE_NOT_JSON,
+    MESSAGE_API_RESPONSE_NOT_OBJECT,
+    MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
+    message_api_http_error,
+    message_api_unavailable,
+    message_problem_detail,
+)
+from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsResponse,
@@ -88,7 +97,7 @@ class HttpGameApiClient:
             raise _api_error_from_response(exc.response) from exc
         except httpx.HTTPError as exc:
             raise AppError(
-                f"api.unavailable: Could not connect to API ({exc}).",
+                message_api_unavailable(exc),
                 code=ErrorCode.API_UNAVAILABLE,
             ) from exc
 
@@ -99,13 +108,13 @@ class HttpGameApiClient:
             payload = response.json()
         except ValueError as exc:
             raise AppError(
-                "api.invalid_response: API response was not valid JSON.",
+                MESSAGE_API_RESPONSE_NOT_JSON,
                 code=ErrorCode.INTERNAL_UNEXPECTED,
             ) from exc
 
         if not isinstance(payload, dict):
             raise AppError(
-                "api.invalid_response: API response was not a JSON object.",
+                MESSAGE_API_RESPONSE_NOT_OBJECT,
                 code=ErrorCode.INTERNAL_UNEXPECTED,
             )
         return payload
@@ -115,7 +124,7 @@ class HttpGameApiClient:
             return model_type.model_validate(payload)
         except ValidationError as exc:
             raise AppError(
-                "api.invalid_response: API response did not match the public schema.",
+                MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
                 code=ErrorCode.INTERNAL_UNEXPECTED,
                 context={"schema": model_type.__name__},
             ) from exc
@@ -131,7 +140,7 @@ def _api_error_from_response(response: httpx.Response) -> AppError:
             return _app_error_from_problem(problem)
 
     return AppError(
-        f"api.http_error: API request failed with HTTP {response.status_code}.",
+        message_api_http_error(response.status_code),
         code=ErrorCode.INTERNAL_UNEXPECTED,
         context={"http_status": response.status_code},
     )
@@ -144,7 +153,7 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
         code = ErrorCode.INTERNAL_UNEXPECTED
 
     return AppError(
-        f"{problem.code}: {problem.detail}",
+        message_problem_detail(problem.code, problem.detail),
         code=code,
         context={"http_status": problem.status, "problem_type": problem.type},
         retryable=problem.status >= 500,

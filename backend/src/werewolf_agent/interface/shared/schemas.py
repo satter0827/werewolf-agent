@@ -8,6 +8,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
+from werewolf_agent.commons.shared.validation import non_blank
+from werewolf_agent.interface.shared.settings import DEFAULT_GAME_DEFAULT_PLAYER_COUNT
+
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
@@ -29,11 +33,7 @@ class CreateGamePlayer(BaseModel):
     @classmethod
     def validate_non_blank(cls, value: str) -> str:
         """Return a stripped non-empty string."""
-        normalized = value.strip()
-        if not normalized:
-            msg = "value must not be blank"
-            raise ValueError(msg)
-        return normalized
+        return non_blank(value, "value")
 
 
 class CreateGameAgentConfig(BaseModel):
@@ -47,11 +47,7 @@ class CreateGameAgentConfig(BaseModel):
     @classmethod
     def validate_non_blank(cls, value: str) -> str:
         """Return a stripped non-empty agent type."""
-        normalized = value.strip()
-        if not normalized:
-            msg = "value must not be blank"
-            raise ValueError(msg)
-        return normalized
+        return non_blank(value, "value")
 
 
 class CreateGameRuleConfig(BaseModel):
@@ -84,8 +80,7 @@ class CreateGameRequest(BaseModel):
             and self.player_count is not None
             and len(self.players) != self.player_count
         ):
-            msg = "player_count must match the number of players"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS)
         return self
 
     @property
@@ -95,7 +90,7 @@ class CreateGameRequest(BaseModel):
             return len(self.players)
         if self.player_count is not None:
             return self.player_count
-        return 6
+        return DEFAULT_GAME_DEFAULT_PLAYER_COUNT
 
 
 class PublicPlayerState(BaseModel):

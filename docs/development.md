@@ -23,7 +23,7 @@ uv run --extra api alembic upgrade head
 API を起動:
 
 ```bash
-uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
+uv run --extra api uvicorn werewolf_agent.interface.entrypoint.api.app:create_app --factory
 ```
 
 CLI で確認:
@@ -44,27 +44,27 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --
 | `backend/src/werewolf_agent/domain/llm/service.py` | dummy decision logic |
 | `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless job、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI app、router、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入、Alembic migration |
-| `backend/src/werewolf_agent/interface/cui/` | Typer CLI と HTTP client |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と HTTP client |
 | `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
-| `backend/src/werewolf_agent/interface/streamlit/` | 将来の Streamlit 入口 |
-| `backend/src/werewolf_agent/contracts/` | error code、safe exception |
-| `backend/src/werewolf_agent/commons/` | event sink、redaction |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/contracts/` | safe exception |
+| `backend/src/werewolf_agent/commons/` | error code、message catalog、validation、event sink、redaction |
 | `tests/unit/` | process 内 unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
 ## 境界
 
 - CLI は `interface/shared/schemas.py` と HTTP client だけを使う
-- `interface/api` と `interface/cui` は domain / usecase を直接 import しない
+- `interface/entrypoint/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
 - 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - usecase から domain へ入る code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
 - `domain.game` と `domain.llm` は互いに import せず、observation / decision / action の変換は usecase に置く
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
-- domain は usecase / interface / config / commons を import しない
+- domain から `commons` を使う場合は副作用のない `commons.shared.messages` / `commons.shared.validation` だけに限定する
 - domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
 - API は `private_state` を保存してよいが public response へ出さない
 - public event に role、night action、secret、token、API key を混ぜない
@@ -99,7 +99,7 @@ uv run --extra api pytest tests/integration/api
 - ルール、勝敗、投票、夜行動: `tests/unit/domain/`
 - 業務 workflow と usecase 境界: `tests/unit/usecase/`
 - 境界 import: `tests/unit/architecture/`
-- CLI の public API 境界: `tests/unit/interface/cui/`
+- CLI の public API 境界: `tests/unit/interface/entrypoint/cui/`
 - FastAPI / DB / endpoint: `tests/integration/api/`
 - 実 LLM provider 接続: 通常 unit test から分離する
 

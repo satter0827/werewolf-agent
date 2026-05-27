@@ -8,6 +8,7 @@ from typing import TypeVar
 import typer
 
 from werewolf_agent.commons.security.redaction import redact_mapping
+from werewolf_agent.commons.shared.messages import message_error_line
 from werewolf_agent.contracts import AppError, InternalError
 
 T = TypeVar("T")
@@ -29,4 +30,4 @@ def run_app_command(command: Callable[[], T]) -> T:
 def _safe_error_message(error: AppError) -> str:
     context = redact_mapping(error.context)
     suffix = f" context={context}" if context else ""
-    return f"Error: {error.detail}{suffix}"
+    return message_error_line(error.detail, suffix)

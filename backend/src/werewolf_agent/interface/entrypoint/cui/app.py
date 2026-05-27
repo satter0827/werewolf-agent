@@ -5,8 +5,9 @@ from __future__ import annotations
 import typer
 from pydantic import ValidationError
 
+from werewolf_agent.commons.shared.messages import message_error_line
 from werewolf_agent.contracts import ConfigError
-from werewolf_agent.interface.cui.commands import doctor, play
+from werewolf_agent.interface.entrypoint.cui.commands import doctor, play
 from werewolf_agent.interface.shared.runtime import (
     configure_interface_logging,
     settings_error_detail,
@@ -25,7 +26,7 @@ def main() -> None:
         configure_interface_logging()
     except ValidationError as exc:
         error = ConfigError(settings_error_detail(exc))
-        typer.echo(f"Error: {error.detail}", err=True)
+        typer.echo(message_error_line(error.detail), err=True)
         raise typer.Exit(code=1) from exc
 
 

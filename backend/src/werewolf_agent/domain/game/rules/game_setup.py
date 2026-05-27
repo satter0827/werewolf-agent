@@ -6,6 +6,12 @@ import random
 from collections import Counter
 from collections.abc import Sequence
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_EXPLICIT_ROLES_MUST_MATCH_ROLE_COUNTS,
+    MESSAGE_PLAYER_IDS_MUST_BE_UNIQUE,
+    MESSAGE_PLAYER_LIST_LENGTH_MUST_MATCH_CONFIG,
+    MESSAGE_PLAYER_ROLES_ALL_OR_NONE,
+)
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import GameConfig, GameSnapshot, Phase, Player, Role
 
@@ -18,7 +24,7 @@ def create_game_snapshot(
     """Return a validated initial game snapshot."""
     if len(players) != config.player_count:
         raise GameError(
-            "Player list length must match game config player_count.",
+            MESSAGE_PLAYER_LIST_LENGTH_MUST_MATCH_CONFIG,
             context={"player_count": config.player_count, "players": len(players)},
         )
     _ensure_unique_player_ids(players)
@@ -50,7 +56,7 @@ def _ensure_unique_player_ids(players: Sequence[Player]) -> None:
     )
     if duplicate_ids:
         raise GameError(
-            "Player ids must be unique.",
+            MESSAGE_PLAYER_IDS_MUST_BE_UNIQUE,
             context={"duplicate_player_ids": duplicate_ids},
         )
 
@@ -63,11 +69,11 @@ def _assign_roles(
     explicit_roles = [player.role for player in players]
     if any(role is not None for role in explicit_roles):
         if any(role is None for role in explicit_roles):
-            raise GameError("Either every player role must be set or none of them.")
+            raise GameError(MESSAGE_PLAYER_ROLES_ALL_OR_NONE)
         assigned_roles = [role for role in explicit_roles if role is not None]
         if Counter(assigned_roles) != Counter(config.role_counts):
             raise GameError(
-                "Explicit player roles must match game config role_counts.",
+                MESSAGE_EXPLICIT_ROLES_MUST_MATCH_ROLE_COUNTS,
                 context={
                     "expected_role_counts": {
                         role.value: count for role, count in config.role_counts.items()

@@ -8,6 +8,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from werewolf_agent.commons.shared.messages import MESSAGE_GAME_NOT_FOUND
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
 from werewolf_agent.interface.application.errors import ResourceNotFoundError
 from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
@@ -68,7 +69,7 @@ class GameApplication:
                     dependencies=self._dependencies(session),
                 )
             except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError("Game not found.") from exc
+                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
         return _wire_model(GameResponse, response)
 
     def step_game_run(self, game_id: str) -> StepGameResponse:
@@ -80,7 +81,7 @@ class GameApplication:
                     dependencies=self._dependencies(session),
                 )
             except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError("Game not found.") from exc
+                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
         return _wire_model(StepGameResponse, response)
 
     def get_public_events(self, game_id: str, *, after: int = 0) -> GameEventsResponse:
@@ -92,7 +93,7 @@ class GameApplication:
                     dependencies=self._dependencies(session),
                 )
             except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError("Game not found.") from exc
+                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
         return _wire_model(GameEventsResponse, response)
 
     def _dependencies(self, session: Session) -> GameUseCaseDependencies:

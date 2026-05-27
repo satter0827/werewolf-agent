@@ -13,7 +13,9 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from werewolf_agent.contracts import AppError, ErrorCode, InternalError, problem_type_uri
+from werewolf_agent.commons.shared.codes import ErrorCode, get_error_spec, problem_type_uri
+from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
+from werewolf_agent.contracts import AppError, InternalError
 from werewolf_agent.interface.shared.logging import get_log_context
 from werewolf_agent.interface.shared.schemas import ProblemDetails, ProblemIssue
 
@@ -56,11 +58,12 @@ async def http_exception_handler(
 ) -> JSONResponse:
     """Convert HTTP exceptions into Problem Details responses."""
     code = _http_error_code(exc.status_code)
+    spec = get_error_spec(code)
     return problem_response(
-        code=code,
-        title=_http_title(exc.status_code),
+        code=code.value,
+        title=spec.title,
         status_code=exc.status_code,
-        detail=_http_detail(exc),
+        detail=spec.detail,
         request=request,
     )
 
@@ -88,12 +91,12 @@ def validation_problem_response(
     status_code: int = HTTPStatus.BAD_REQUEST,
 ) -> JSONResponse:
     """Return a request validation Problem Details response."""
-    spec = ErrorCode.REQUEST_VALIDATION_FAILED
+    spec = get_error_spec(ErrorCode.REQUEST_VALIDATION_FAILED)
     return problem_response(
-        code=spec.value,
-        title="Request Validation Failed",
+        code=ErrorCode.REQUEST_VALIDATION_FAILED.value,
+        title=spec.title,
         status_code=int(status_code),
-        detail="The request body or parameters failed validation.",
+        detail=spec.detail,
         request=request,
         errors=errors,
     )
@@ -149,7 +152,7 @@ def _validation_errors(errors: Sequence[Mapping[str, Any]]) -> list[ProblemIssue
     return [
         ProblemIssue(
             code=str(error.get("type", "value_error")),
-            detail=str(error.get("msg", "Invalid value.")),
+            detail=str(error.get("msg", MESSAGE_INVALID_VALUE)),
             pointer=_json_pointer(error.get("loc", ())),
         )
         for error in errors
@@ -174,31 +177,12 @@ def _escape_json_pointer_segment(segment: str) -> str:
     return segment.replace("~", "~0").replace("/", "~1")
 
 
-def _http_error_code(status_code: int) -> str:
+def _http_error_code(status_code: int) -> ErrorCode:
     if status_code == HTTPStatus.NOT_FOUND:
-        return "not_found"
+        return ErrorCode.RESOURCE_NOT_FOUND
     if status_code == HTTPStatus.METHOD_NOT_ALLOWED:
-        return "method_not_allowed"
-    if status_code == HTTPStatus.BAD_REQUEST:
-        return "bad_request"
-    if status_code == HTTPStatus.FORBIDDEN:
-        return "permission_denied"
-    return "http.error"
-
-
-def _http_detail(exc: StarletteHTTPException) -> str:
-    if exc.status_code == HTTPStatus.NOT_FOUND:
-        return "The requested resource was not found."
-    if isinstance(exc.detail, str):
-        return exc.detail
-    return _http_title(exc.status_code)
-
-
-def _http_title(status_code: int) -> str:
-    try:
-        return HTTPStatus(status_code).phrase
-    except ValueError:
-        return "HTTP Error"
+        return ErrorCode.REQUEST_METHOD_NOT_ALLOWED
+    return ErrorCode.HTTP_ERROR
 
 
 def _trace_id() -> str | None:

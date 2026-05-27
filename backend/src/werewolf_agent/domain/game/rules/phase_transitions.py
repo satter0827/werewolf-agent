@@ -6,6 +6,7 @@ import random
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 
+from werewolf_agent.commons.shared.messages import message_cannot_advance_phase
 from werewolf_agent.contracts import GamePhaseError
 from werewolf_agent.domain.game.models import (
     Action,
@@ -45,7 +46,7 @@ def advance_game_phase(
     if snapshot.phase is Phase.VOTING:
         return _advance_from_voting(snapshot, config, pending_votes, rng)
     raise GamePhaseError(
-        f"Cannot advance phase from {snapshot.phase.value}.",
+        message_cannot_advance_phase(snapshot.phase.value),
         context={"current_phase": snapshot.phase.value},
     )
 

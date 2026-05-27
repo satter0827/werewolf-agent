@@ -1,1 +1,1 @@
-"""Shared constants and small primitives for commons helpers."""
+"""Side-effect-free shared primitives for constants, errors, messages, and validation."""

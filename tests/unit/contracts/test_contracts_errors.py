@@ -4,21 +4,23 @@ import pytest
 from pydantic import ValidationError
 
 import werewolf_agent.contracts as contracts_package
-from werewolf_agent.contracts import (
+from werewolf_agent.commons.shared.codes import (
     ERROR_SPECS,
-    AppError,
     ErrorCode,
+    problem_type_uri,
+)
+from werewolf_agent.contracts import (
+    AppError,
     GamePhaseError,
     LlmProviderError,
-    problem_type_uri,
 )
 from werewolf_agent.interface.shared.schemas import ErrorEventPayload, ProblemDetails, ProblemIssue
 
 
 def test_contracts_package_reexports_public_api() -> None:
     assert contracts_package.AppError is AppError
-    assert contracts_package.ErrorCode is ErrorCode
     assert contracts_package.GamePhaseError is GamePhaseError
+    assert not hasattr(contracts_package, "ErrorCode")
 
 
 def test_error_codes_are_unique_and_all_have_specs() -> None:

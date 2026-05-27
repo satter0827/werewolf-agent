@@ -8,6 +8,33 @@ from enum import StrEnum
 from http import HTTPStatus
 from typing import Final
 
+from werewolf_agent.commons.shared.messages import (
+    DETAIL_AGENT_INVALID_RESPONSE,
+    DETAIL_API_UNAVAILABLE,
+    DETAIL_CONFIG_INVALID_VALUE,
+    DETAIL_GAME_INVALID_ACTION,
+    DETAIL_GAME_INVALID_PHASE,
+    DETAIL_HTTP_ERROR,
+    DETAIL_INTERNAL_UNEXPECTED,
+    DETAIL_LLM_PROVIDER_UNAVAILABLE,
+    DETAIL_METHOD_NOT_ALLOWED,
+    DETAIL_OBSERVATION_WRITE_FAILED,
+    DETAIL_REQUEST_VALIDATION_FAILED,
+    DETAIL_RESOURCE_NOT_FOUND,
+    TITLE_API_UNAVAILABLE,
+    TITLE_HTTP_ERROR,
+    TITLE_INVALID_AGENT_RESPONSE,
+    TITLE_INVALID_CONFIGURATION,
+    TITLE_INVALID_GAME_ACTION,
+    TITLE_INVALID_GAME_PHASE,
+    TITLE_LLM_PROVIDER_UNAVAILABLE,
+    TITLE_METHOD_NOT_ALLOWED,
+    TITLE_OBSERVATION_WRITE_FAILED,
+    TITLE_REQUEST_VALIDATION_FAILED,
+    TITLE_RESOURCE_NOT_FOUND,
+    TITLE_UNEXPECTED_INTERNAL_ERROR,
+)
+
 PROBLEM_TYPE_TAG_PREFIX: Final = "tag:werewolf-agent,2026:problem:"
 
 
@@ -16,7 +43,10 @@ class ErrorCode(StrEnum):
 
     CONFIG_INVALID_VALUE = "config.invalid_value"
     REQUEST_VALIDATION_FAILED = "request.validation_failed"
+    REQUEST_METHOD_NOT_ALLOWED = "request.method_not_allowed"
     API_UNAVAILABLE = "api.unavailable"
+    RESOURCE_NOT_FOUND = "resource.not_found"
+    HTTP_ERROR = "http.error"
     GAME_INVALID_PHASE = "game.invalid_phase"
     GAME_INVALID_ACTION = "game.invalid_action"
     AGENT_INVALID_RESPONSE = "agent.invalid_response"
@@ -37,52 +67,67 @@ class ErrorSpec:
 
 ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
     ErrorCode.CONFIG_INVALID_VALUE: ErrorSpec(
-        title="Invalid Configuration",
+        title=TITLE_INVALID_CONFIGURATION,
         status=HTTPStatus.BAD_REQUEST,
-        detail="The application configuration contains an invalid value.",
+        detail=DETAIL_CONFIG_INVALID_VALUE,
     ),
     ErrorCode.REQUEST_VALIDATION_FAILED: ErrorSpec(
-        title="Request Validation Failed",
+        title=TITLE_REQUEST_VALIDATION_FAILED,
         status=HTTPStatus.BAD_REQUEST,
-        detail="The request body or parameters failed validation.",
+        detail=DETAIL_REQUEST_VALIDATION_FAILED,
+    ),
+    ErrorCode.REQUEST_METHOD_NOT_ALLOWED: ErrorSpec(
+        title=TITLE_METHOD_NOT_ALLOWED,
+        status=HTTPStatus.METHOD_NOT_ALLOWED,
+        detail=DETAIL_METHOD_NOT_ALLOWED,
     ),
     ErrorCode.API_UNAVAILABLE: ErrorSpec(
-        title="API Unavailable",
+        title=TITLE_API_UNAVAILABLE,
         status=HTTPStatus.SERVICE_UNAVAILABLE,
-        detail="The API server could not be reached.",
+        detail=DETAIL_API_UNAVAILABLE,
         retryable=True,
     ),
+    ErrorCode.RESOURCE_NOT_FOUND: ErrorSpec(
+        title=TITLE_RESOURCE_NOT_FOUND,
+        status=HTTPStatus.NOT_FOUND,
+        detail=DETAIL_RESOURCE_NOT_FOUND,
+    ),
+    ErrorCode.HTTP_ERROR: ErrorSpec(
+        title=TITLE_HTTP_ERROR,
+        status=HTTPStatus.BAD_REQUEST,
+        detail=DETAIL_HTTP_ERROR,
+    ),
     ErrorCode.GAME_INVALID_PHASE: ErrorSpec(
-        title="Invalid Game Phase",
+        title=TITLE_INVALID_GAME_PHASE,
         status=HTTPStatus.CONFLICT,
-        detail="The requested game operation is not valid in the current phase.",
+        detail=DETAIL_GAME_INVALID_PHASE,
     ),
     ErrorCode.GAME_INVALID_ACTION: ErrorSpec(
-        title="Invalid Game Action",
+        title=TITLE_INVALID_GAME_ACTION,
         status=HTTPStatus.UNPROCESSABLE_ENTITY,
-        detail="The requested game action is not valid.",
+        detail=DETAIL_GAME_INVALID_ACTION,
     ),
     ErrorCode.AGENT_INVALID_RESPONSE: ErrorSpec(
-        title="Invalid Agent Response",
+        title=TITLE_INVALID_AGENT_RESPONSE,
         status=HTTPStatus.UNPROCESSABLE_ENTITY,
-        detail="The agent response could not be validated.",
+        detail=DETAIL_AGENT_INVALID_RESPONSE,
     ),
     ErrorCode.LLM_PROVIDER_UNAVAILABLE: ErrorSpec(
-        title="LLM Provider Unavailable",
+        title=TITLE_LLM_PROVIDER_UNAVAILABLE,
         status=HTTPStatus.SERVICE_UNAVAILABLE,
-        detail="The configured LLM provider is temporarily unavailable.",
+        detail=DETAIL_LLM_PROVIDER_UNAVAILABLE,
         retryable=True,
     ),
     ErrorCode.OBSERVATION_WRITE_FAILED: ErrorSpec(
-        title="Observation Write Failed",
+        title=TITLE_OBSERVATION_WRITE_FAILED,
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
-        detail="The game event log could not be written.",
+        detail=DETAIL_OBSERVATION_WRITE_FAILED,
         retryable=True,
     ),
     ErrorCode.INTERNAL_UNEXPECTED: ErrorSpec(
-        title="Unexpected Internal Error",
+        title=TITLE_UNEXPECTED_INTERNAL_ERROR,
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
-        detail="An unexpected internal error occurred.",
+        detail=DETAIL_INTERNAL_UNEXPECTED,
     ),
 }
 

@@ -10,6 +10,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from werewolf_agent.commons.shared.messages import message_game_run_not_found
 from werewolf_agent.interface.application.models import (
     GameEventModel,
     GameRunModel,
@@ -71,8 +72,7 @@ class SqlAlchemyGameRunRepository(GameRepository):
         """Persist mutable fields for one game run."""
         model = self._session.get(GameRunModel, str(update.id))
         if model is None:
-            msg = f"Game run not found: {update.id}"
-            raise KeyError(msg)
+            raise KeyError(message_game_run_not_found(update.id))
         model.status = update.status
         model.phase = update.phase
         model.day = update.day

@@ -9,6 +9,7 @@ from typing import TypeAlias
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
 from werewolf_agent.interface.shared.settings import AppSettings
 
@@ -21,13 +22,17 @@ def create_database_engine(settings: AppSettings) -> Engine:
         settings.sqlite_database_path.parent.mkdir(parents=True, exist_ok=True)
 
     connect_args: dict[str, object] = {}
+    engine_options: dict[str, object] = {}
     if settings.sqlalchemy_database_url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
+    if settings.sqlalchemy_database_url in {"sqlite:///:memory:", "sqlite+pysqlite:///:memory:"}:
+        engine_options["poolclass"] = StaticPool
 
     return create_engine(
         settings.sqlalchemy_database_url,
         connect_args=connect_args,
         future=True,
+        **engine_options,
     )
 
 

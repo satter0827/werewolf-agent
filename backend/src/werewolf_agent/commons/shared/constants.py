@@ -18,9 +18,6 @@ MIN_EVENT_DAY: Final = 0
 PYDANTIC_EXTRA_FORBID: Final = "forbid"
 PYDANTIC_JSON_MODE: Final = "json"
 
-MESSAGE_EVENT_TYPE_MUST_NOT_BE_BLANK: Final = "event_type must not be blank"
-MESSAGE_DAY_MUST_BE_NON_NEGATIVE: Final = "day must be zero or greater"
-
 JSON_ENCODING: Final = "utf-8"
 JSONL_NEWLINE: Final = "\n"
 JSON_SEPARATORS: Final[tuple[str, str]] = (",", ":")

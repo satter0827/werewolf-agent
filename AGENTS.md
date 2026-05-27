@@ -30,13 +30,13 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
 | `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、dummy decision、provider port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、DB repository、transaction、依存注入 |
-| `backend/src/werewolf_agent/interface/cui/` | 公開 HTTP API だけを呼ぶ CLI |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | 公開 HTTP API だけを呼ぶ CLI |
 | `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
-| `backend/src/werewolf_agent/interface/streamlit/` | 将来の Streamlit 入口 |
-| `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details type URI |
-| `backend/src/werewolf_agent/commons/` | event sink、redaction、shared helper |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/contracts/` | safe exception |
+| `backend/src/werewolf_agent/commons/` | error code、message catalog、event sink、redaction、shared helper |
 | `tests/unit/` | unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
@@ -44,7 +44,7 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 
 - domain は `.env`、FastAPI、SQLAlchemy、LLM provider、file I/O、logging 設定に依存させない
 - CLI は domain / usecase を直接 import せず、public wire schema と HTTP client だけを使う
-- `interface/api` と `interface/cui` は domain / usecase を直接 import しない
+- `interface/entrypoint/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application/` に限定する
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - usecase から domain を参照する code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
@@ -72,7 +72,7 @@ API:
 ```bash
 uv run --extra api alembic upgrade head
 uv run --extra api pytest tests/integration/api
-uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
+uv run --extra api uvicorn werewolf_agent.interface.entrypoint.api.app:create_app --factory
 ```
 
 CLI で 1 game 確認:

@@ -6,6 +6,13 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE,
+    MESSAGE_EXPECTED_NIGHT_ACTION,
+    MESSAGE_SEER_CANNOT_INSPECT_SELF,
+    MESSAGE_UNSUPPORTED_NIGHT_ACTION,
+    MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF,
+)
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
@@ -91,7 +98,7 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
         target = require_alive(snapshot, target_id)
         if target.role is Role.WEREWOLF:
             raise GameError(
-                "Werewolves cannot attack another werewolf.",
+                MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         return
@@ -100,7 +107,7 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
         require_alive(snapshot, target_id)
         if action.player_id == target_id:
             raise GameError(
-                "Seer cannot inspect themself.",
+                MESSAGE_SEER_CANNOT_INSPECT_SELF,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         return
@@ -108,12 +115,12 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
         require_role(snapshot, action.player_id, Role.KNIGHT)
         require_alive(snapshot, target_id)
         return
-    raise GameError("Unsupported night action.")
+    raise GameError(MESSAGE_UNSUPPORTED_NIGHT_ACTION)
 
 
 def _night_target(action: Action) -> str:
     if not action.is_night_action or action.target_id is None:
-        raise GameError("Expected a night action.")
+        raise GameError(MESSAGE_EXPECTED_NIGHT_ACTION)
     return action.target_id
 
 
@@ -140,7 +147,7 @@ def _inspect(snapshot: GameSnapshot, action: Action) -> InspectionResult:
     target = player_by_id(snapshot, _night_target(action))
     if target.role is None:
         raise GameError(
-            "Cannot inspect a player before roles are assigned.",
+            MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE,
             context={"target_id": target.id},
         )
     return InspectionResult(

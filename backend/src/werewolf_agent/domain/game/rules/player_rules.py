@@ -2,6 +2,12 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.messages import (
+    message_expected_phase,
+    message_player_cannot_perform_role_action,
+    message_player_not_alive,
+    message_unknown_player_id,
+)
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
     Faction,
@@ -25,7 +31,7 @@ def require_phase(snapshot: GameSnapshot, expected: Phase) -> None:
     """Raise if the game is not in the expected phase."""
     if snapshot.phase is not expected:
         raise GamePhaseError(
-            f"Expected phase {expected.value}, but current phase is {snapshot.phase.value}.",
+            message_expected_phase(expected.value, snapshot.phase.value),
             context={"expected_phase": expected.value, "current_phase": snapshot.phase.value},
         )
 
@@ -36,7 +42,7 @@ def player_by_id(snapshot: GameSnapshot, player_id: str) -> Player:
         return snapshot.players[player_id]
     except KeyError as exc:
         raise GameError(
-            f"Unknown player id: {player_id}.",
+            message_unknown_player_id(player_id),
             context={"player_id": player_id},
         ) from exc
 
@@ -46,7 +52,7 @@ def require_alive(snapshot: GameSnapshot, player_id: str) -> Player:
     player = player_by_id(snapshot, player_id)
     if player.status is not PlayerStatus.ALIVE:
         raise GameError(
-            f"Player is not alive: {player_id}.",
+            message_player_not_alive(player_id),
             context={"player_id": player_id, "status": player.status.value},
         )
     return player
@@ -58,7 +64,7 @@ def require_role(snapshot: GameSnapshot, player_id: str, expected: Role) -> Play
     if player.role is not expected:
         actual_role = player.role.value if player.role is not None else None
         raise GameError(
-            f"Player {player_id} cannot perform a {expected.value} action.",
+            message_player_cannot_perform_role_action(player_id, expected.value),
             context={
                 "player_id": player_id,
                 "expected_role": expected.value,

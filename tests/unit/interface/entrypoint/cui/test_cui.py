@@ -9,11 +9,12 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from werewolf_agent.contracts import AppError, ErrorCode
-from werewolf_agent.interface.cui import commands as cui_commands
-from werewolf_agent.interface.cui.app import app
-from werewolf_agent.interface.cui.client import HttpGameApiClient
-from werewolf_agent.interface.cui.errors import run_app_command
+from werewolf_agent.commons.shared.codes import ErrorCode
+from werewolf_agent.contracts import AppError
+from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
+from werewolf_agent.interface.entrypoint.cui.app import app
+from werewolf_agent.interface.entrypoint.cui.client import HttpGameApiClient
+from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsResponse,

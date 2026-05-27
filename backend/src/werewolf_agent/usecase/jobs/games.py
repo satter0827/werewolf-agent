@@ -9,6 +9,14 @@ from dataclasses import dataclass, field
 from typing import cast
 from uuid import UUID, uuid4
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
+    MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
+    MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE,
+    message_player_count_between,
+    message_supported_agent_type_only,
+    message_supported_player_agent_type_only,
+)
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
     DomainEvent,
@@ -47,7 +55,7 @@ from werewolf_agent.usecase.jobs.models import (
     RoleId,
     RulesetResult,
 )
-from werewolf_agent.usecase.jobs.ports import GameRepository
+from werewolf_agent.usecase.jobs.ports import AgentFactory, GameRepository
 
 
 class GameNotFoundError(Exception):
@@ -64,6 +72,7 @@ class GameUseCaseDependencies:
 
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
+    agent_factory: AgentFactory = field(default_factory=_DummyAgentFactory)
 
 
 def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
@@ -128,7 +137,7 @@ def advance_game(
     if run is None:
         raise GameNotFoundError(str(game_id))
     if run.status == "completed":
-        raise GamePhaseError("Finished games cannot be advanced.")
+        raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
     snapshot = GameSnapshot.model_validate(run.private_state)
     runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
@@ -138,6 +147,7 @@ def advance_game(
         seed=run.seed,
         version=run.version,
         pending_actions=pending_actions,
+        agent_factory=dependencies.agent_factory,
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(
         snapshot,
@@ -204,7 +214,7 @@ def _parse_game_id(value: str | UUID) -> UUID:
     try:
         return UUID(value)
     except ValueError as exc:
-        raise InvalidGameIdError("game_id must be a valid UUID.") from exc
+        raise InvalidGameIdError(MESSAGE_GAME_ID_MUST_BE_VALID_UUID) from exc
 
 
 def _player_configs(
@@ -217,9 +227,7 @@ def _player_configs(
 
     player_count = _resolved_player_count(command, config)
     if player_count < config.min_players or player_count > config.max_players:
-        raise GameError(
-            f"player_count must be between {config.min_players} and {config.max_players}."
-        )
+        raise GameError(message_player_count_between(config.min_players, config.max_players))
     return [
         Player(id=f"player-{index}", name=f"Player {index}") for index in range(1, player_count + 1)
     ]
@@ -239,9 +247,7 @@ def _validate_players(
     config: GameUseCaseConfig,
 ) -> None:
     if len(players) < config.min_players or len(players) > config.max_players:
-        raise GameError(
-            f"player count must be between {config.min_players} and {config.max_players}."
-        )
+        raise GameError(message_player_count_between(config.min_players, config.max_players))
 
     unsupported_agent_types = sorted(
         {
@@ -251,7 +257,7 @@ def _validate_players(
         }
     )
     if unsupported_agent_types:
-        raise GameError("Only dummy agent_type is supported for the MVP API.")
+        raise GameError(message_supported_player_agent_type_only(config.supported_agent_type))
 
     duplicate_ids = sorted(
         player_id
@@ -259,12 +265,12 @@ def _validate_players(
         if count > 1
     )
     if duplicate_ids:
-        raise GameError("player id values must be unique.")
+        raise GameError(MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE)
 
 
 def _validate_agent_config(command: CreateGameCommand, config: GameUseCaseConfig) -> None:
     if command.agent.type != config.supported_agent_type:
-        raise GameError("Only dummy agent type is supported for the MVP API.")
+        raise GameError(message_supported_agent_type_only(config.supported_agent_type))
 
 
 def _domain_config(
@@ -292,11 +298,11 @@ def _drive_current_phase(
     seed: int | None,
     version: int,
     pending_actions: PendingActions,
+    agent_factory: AgentFactory,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
     current_pending_actions = pending_actions
     events: list[DomainEvent] = []
-    agent_factory = _DummyAgentFactory()
     turn_count = snapshot.config.day_speech_turns if snapshot.phase is Phase.DAY_DISCUSSION else 1
     for turn in range(turn_count):
         turn_snapshot = current_snapshot

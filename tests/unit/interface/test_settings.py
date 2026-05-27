@@ -137,8 +137,9 @@ def test_logging_settings_normalize_supported_values() -> None:
         ("log_level", "VERBOSE"),
         ("log_format", "plain"),
         ("log_output", "file"),
+        ("game_supported_agent_type", "llm"),
     ],
 )
-def test_logging_settings_reject_invalid_values(field_name: str, value: str) -> None:
+def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:
     with pytest.raises(ValidationError):
         AppSettings(_env_file=None, **{field_name: value})

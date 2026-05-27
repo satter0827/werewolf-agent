@@ -46,7 +46,7 @@ llm = [
 ]
 
 [project.scripts]
-werewolf-agent = "werewolf_agent.interface.cui.app:app"
+werewolf-agent = "werewolf_agent.interface.entrypoint.cui.app:app"
 
 [dependency-groups]
 dev = [
@@ -111,7 +111,7 @@ strict = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = "werewolf_agent.interface.api.*"
+module = "werewolf_agent.interface.entrypoint.api.*"
 ignore_errors = true
 
 [[tool.mypy.overrides]]

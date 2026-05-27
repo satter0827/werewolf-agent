@@ -15,9 +15,10 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
         "werewolf_agent.llm",
     )
 
-    imported = _imports_under(PACKAGE / "interface" / "api")
-    imported.extend(_imports_under(PACKAGE / "interface" / "cui"))
-    imported.extend(_imports_under(PACKAGE / "interface" / "streamlit"))
+    entrypoint_path = PACKAGE / "interface" / "entrypoint"
+    imported = _imports_under(entrypoint_path / "api")
+    imported.extend(_imports_under(entrypoint_path / "cui"))
+    imported.extend(_imports_under(entrypoint_path / "streamlit"))
 
     assert not [
         (path, module)
@@ -41,7 +42,9 @@ def test_interface_imports_only_public_usecase_jobs_from_application_bridge() ->
 
 
 def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
-    router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
+    router_source = (PACKAGE / "interface" / "entrypoint" / "api" / "routers.py").read_text(
+        encoding="utf-8"
+    )
 
     assert "game_id: UUID" not in router_source
     assert "game_id: str" in router_source
@@ -51,6 +54,7 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
     assert set(game_jobs.__all__) == {
         "AdvanceGameCommand",
         "AdvanceGameResult",
+        "AgentFactory",
         "CreateGameCommand",
         "GameEventCreate",
         "GameNotFoundError",
@@ -63,6 +67,7 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
         "GetGameQuery",
         "InvalidGameIdError",
         "ListPublicEventsQuery",
+        "PlayerAgent",
         "PublicEventsResult",
         "RulesetResult",
         "StoredGameEvent",
@@ -144,6 +149,10 @@ def test_commons_do_not_import_usecase_or_interfaces() -> None:
 
 
 def test_domain_does_not_import_outer_layers() -> None:
+    allowed_commons_modules = {
+        "werewolf_agent.commons.shared.messages",
+        "werewolf_agent.commons.shared.validation",
+    }
     forbidden_prefixes = (
         "werewolf_agent.usecase",
         "werewolf_agent.interface",
@@ -157,7 +166,15 @@ def test_domain_does_not_import_outer_layers() -> None:
         (path, module)
         for path, module in imported
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
+        and module not in allowed_commons_modules
     ]
+
+
+def test_removed_import_paths_do_not_exist() -> None:
+    assert not (PACKAGE / "interface" / "api").exists()
+    assert not (PACKAGE / "interface" / "cui").exists()
+    assert not (PACKAGE / "interface" / "streamlit").exists()
+    assert not (PACKAGE / "contracts" / "codes.py").exists()
 
 
 def _imports_under(path: Path) -> list[tuple[Path, str]]:

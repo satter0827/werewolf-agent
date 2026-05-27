@@ -5,12 +5,11 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from werewolf_agent.interface.api.dependencies import game_application
-from werewolf_agent.interface.application.errors import ResourceNotFoundError
 from werewolf_agent.interface.application.games import GameApplication
+from werewolf_agent.interface.entrypoint.api.dependencies import game_application
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsQuery,
@@ -54,10 +53,7 @@ def get_game(
     app: GameApplication = GAME_APPLICATION,
 ) -> GameResponse:
     """Return public game state."""
-    try:
-        return app.get_game_run(game_id)
-    except ResourceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Game not found.") from exc
+    return app.get_game_run(game_id)
 
 
 @router.post("/games/{game_id}/steps", response_model=StepGameResponse)
@@ -66,10 +62,7 @@ def step_game(
     app: GameApplication = GAME_APPLICATION,
 ) -> StepGameResponse:
     """Advance one game by one synchronous use case step."""
-    try:
-        return app.step_game_run(game_id)
-    except ResourceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Game not found.") from exc
+    return app.step_game_run(game_id)
 
 
 @router.get("/games/{game_id}/events", response_model=GameEventsResponse)
@@ -80,10 +73,7 @@ def game_events(
 ) -> GameEventsResponse:
     """Return public game events after an optional sequence cursor."""
     query = GameEventsQuery.model_validate({"after": after})
-    try:
-        return app.get_public_events(game_id, after=query.after)
-    except ResourceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Game not found.") from exc
+    return app.get_public_events(game_id, after=query.after)
 
 
 @router.get("/games/{game_id}/events/stream")
@@ -94,10 +84,7 @@ def game_event_stream(
 ) -> EventSourceResponse:
     """Return a finite SSE batch of public game events after a cursor."""
     query = GameEventsQuery.model_validate({"after": after})
-    try:
-        response = app.get_public_events(game_id, after=query.after)
-    except ResourceNotFoundError as exc:
-        raise HTTPException(status_code=404, detail="Game not found.") from exc
+    response = app.get_public_events(game_id, after=query.after)
     return EventSourceResponse(_event_batch(response))
 
 

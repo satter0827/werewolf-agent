@@ -13,10 +13,16 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.contracts import AppError, ErrorCode
-from werewolf_agent.interface.cui.client import GameApiClient, HttpGameApiClient
-from werewolf_agent.interface.cui.errors import run_app_command
-from werewolf_agent.interface.cui.output import console, consume_events, print_state
+from werewolf_agent.commons.shared.codes import ErrorCode
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE,
+    MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
+    message_game_did_not_complete,
+)
+from werewolf_agent.contracts import AppError
+from werewolf_agent.interface.entrypoint.cui.client import GameApiClient, HttpGameApiClient
+from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
+from werewolf_agent.interface.entrypoint.cui.output import console, consume_events, print_state
 from werewolf_agent.interface.shared.schemas import CreateGameRequest
 from werewolf_agent.interface.shared.settings import APP_NAME, get_settings, repository_root
 
@@ -110,10 +116,10 @@ def _play(
     client: GameApiClient,
 ) -> None:
     if max_steps < 1:
-        raise AppError("max_steps must be at least 1.", code=ErrorCode.CONFIG_INVALID_VALUE)
+        raise AppError(MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE, code=ErrorCode.CONFIG_INVALID_VALUE)
     if poll_interval < 0:
         raise AppError(
-            "poll_interval must be zero or greater.",
+            MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 
@@ -151,7 +157,7 @@ def _play(
 
     if state.status != "completed":
         raise AppError(
-            f"Game did not complete within {max_steps} API steps.",
+            message_game_did_not_complete(max_steps),
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 

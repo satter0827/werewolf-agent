@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from werewolf_agent.contracts import GameError
+from werewolf_agent.domain.game.models import Action, Observation
 from werewolf_agent.usecase.jobs import (
     AdvanceGameCommand,
     CreateGameCommand,
@@ -29,6 +30,21 @@ from werewolf_agent.usecase.jobs import (
 )
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+class PassingAgent:
+    def act(self, observation: Observation) -> Action:
+        return Action.pass_(observation.me.id)
+
+
+class RecordingAgentFactory:
+    def __init__(self) -> None:
+        self.player_ids: list[str] = []
+
+    def create(self, player_id: str, *, seed: int) -> PassingAgent:
+        _ = seed
+        self.player_ids.append(player_id)
+        return PassingAgent()
 
 
 class InMemoryGameRepository(GameRepository):
@@ -208,3 +224,14 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert "role_counts" not in json.dumps(events.model_dump(mode="json"))
     assert events.events
     assert events.next_after <= repository.events[UUID(created.game_id)][-1].sequence
+
+
+def test_advance_game_uses_injected_agent_factory() -> None:
+    repository = InMemoryGameRepository()
+    factory = RecordingAgentFactory()
+    deps = GameUseCaseDependencies(repository=repository, agent_factory=factory)
+    created = create_game(CreateGameCommand(player_count=5, seed=1), dependencies=deps)
+
+    advance_game(AdvanceGameCommand(game_id=created.game_id), dependencies=deps)
+
+    assert factory.player_ids == [f"player-{index}" for index in range(1, 6)]

@@ -26,11 +26,12 @@ from werewolf_agent.usecase.jobs.models import (
     StoredGameEvent,
     StoredGameRun,
 )
-from werewolf_agent.usecase.jobs.ports import GameRepository
+from werewolf_agent.usecase.jobs.ports import AgentFactory, GameRepository, PlayerAgent
 
 __all__ = [
     "AdvanceGameCommand",
     "AdvanceGameResult",
+    "AgentFactory",
     "CreateGameCommand",
     "GameEventCreate",
     "GameNotFoundError",
@@ -43,6 +44,7 @@ __all__ = [
     "GetGameQuery",
     "InvalidGameIdError",
     "ListPublicEventsQuery",
+    "PlayerAgent",
     "PublicEventsResult",
     "RulesetResult",
     "StoredGameEvent",

@@ -9,6 +9,12 @@ from typing import Final, Literal, Self
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from werewolf_agent.commons.shared.messages import (
+    message_game_default_player_count_between,
+    message_game_min_players_le_max_players,
+)
+from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
+
 APP_NAME: Final = "werewolf-agent"
 API_SERVICE_NAME: Final = "werewolf-agent-api"
 
@@ -30,6 +36,7 @@ DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = "MVP Default"
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
 LOG_OUTPUT_NAMES: Final = frozenset({"stderr", "stdout"})
+SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogFormat = Literal["json", "console"]
 LogOutput = Literal["stderr", "stdout"]
@@ -47,37 +54,6 @@ def repository_root() -> Path:
 def split_csv(value: str) -> list[str]:
     """Split a comma-separated setting into clean values."""
     return [item.strip() for item in value.split(",") if item.strip()]
-
-
-def normalize_choice(
-    value: object,
-    *,
-    field_name: str,
-    choices: frozenset[str],
-    case: Literal["upper", "lower"],
-) -> str:
-    """Return a validated string choice normalized to the configured case."""
-    if not isinstance(value, str):
-        msg = f"{field_name} must be a string"
-        raise ValueError(msg)
-
-    normalized = value.strip().upper() if case == "upper" else value.strip().lower()
-    if normalized not in choices:
-        msg = f"{field_name} must be one of: {', '.join(sorted(choices))}"
-        raise ValueError(msg)
-    return normalized
-
-
-def normalize_non_blank(value: object, *, field_name: str) -> str:
-    """Return a stripped non-empty string."""
-    if not isinstance(value, str):
-        msg = f"{field_name} must be a string"
-        raise ValueError(msg)
-    normalized = value.strip()
-    if not normalized:
-        msg = f"{field_name} must not be blank"
-        raise ValueError(msg)
-    return normalized
 
 
 class AppSettings(BaseSettings):
@@ -214,8 +190,18 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
+    @field_validator("game_supported_agent_type", mode="before")
+    @classmethod
+    def normalize_supported_agent_type(cls, value: object) -> str:
+        """Return the configured supported agent type."""
+        return normalize_choice(
+            value,
+            field_name="game_supported_agent_type",
+            choices=SUPPORTED_AGENT_TYPE_NAMES,
+            case="lower",
+        )
+
     @field_validator(
-        "game_supported_agent_type",
         "game_supported_agent_name",
         "game_default_ruleset_id",
         "game_default_ruleset_name",
@@ -230,11 +216,9 @@ class AppSettings(BaseSettings):
     def validate_game_settings(self) -> Self:
         """Ensure game count defaults are internally consistent."""
         if self.game_min_players > self.game_max_players:
-            msg = "game_min_players must be less than or equal to game_max_players"
-            raise ValueError(msg)
+            raise ValueError(message_game_min_players_le_max_players())
         if not self.game_min_players <= self.game_default_player_count <= self.game_max_players:
-            msg = "game_default_player_count must be between game_min_players and game_max_players"
-            raise ValueError(msg)
+            raise ValueError(message_game_default_player_count_between())
         return self
 
 

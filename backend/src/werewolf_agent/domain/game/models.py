@@ -7,6 +7,22 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_DAY_SPEECH_TURNS_AT_LEAST_ONE,
+    MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD,
+    MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
+    MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT,
+    MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE,
+    MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF,
+    MESSAGE_SPEECH_ACTION_FORBIDS_TARGET,
+    MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE,
+    message_message_not_allowed,
+    message_role_count_must_be_zero_or_greater,
+    message_target_required,
+    message_unsupported_type,
+)
+from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
+
 
 class Role(StrEnum):
     """Playable roles supported by the MVP rules."""
@@ -71,20 +87,6 @@ class _DomainModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def _non_blank(value: str, field_name: str) -> str:
-    normalized = value.strip()
-    if not normalized:
-        msg = f"{field_name} must not be blank"
-        raise ValueError(msg)
-    return normalized
-
-
-def _optional_non_blank(value: str | None, field_name: str) -> str | None:
-    if value is None:
-        return None
-    return _non_blank(value, field_name)
-
-
 class _PlayerBase(_DomainModel):
     """Shared identity fields for players in setup, state, and observations."""
 
@@ -95,7 +97,7 @@ class _PlayerBase(_DomainModel):
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
+        return non_blank(value, str(info.field_name))
 
 
 class Player(_PlayerBase):
@@ -127,33 +129,27 @@ class GameConfig(_DomainModel):
     @classmethod
     def validate_game_id(cls, value: str) -> str:
         """Return a trimmed non-empty game id."""
-        return _non_blank(value, "game_id")
+        return non_blank(value, "game_id")
 
     @model_validator(mode="after")
     def validate_counts(self) -> Self:
         """Validate role-count invariants for one game state."""
         if self.player_count < 1:
-            msg = "player_count must be at least 1"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
         if self.day_speech_turns < 1:
-            msg = "day_speech_turns must be at least 1"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_DAY_SPEECH_TURNS_AT_LEAST_ONE)
 
         role_total = 0
         for role, count in self.role_counts.items():
             if count < 0:
-                msg = f"role_counts[{role.value}] must be zero or greater"
-                raise ValueError(msg)
+                raise ValueError(message_role_count_must_be_zero_or_greater(role.value))
             role_total += count
         if role_total != self.player_count:
-            msg = "role_counts must sum to player_count"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT)
         if self.role_counts.get(Role.WEREWOLF, 0) < 1:
-            msg = "role_counts must include at least one werewolf"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF)
         if role_total - self.role_counts.get(Role.WEREWOLF, 0) < 1:
-            msg = "role_counts must include at least one village-side player"
-            raise ValueError(msg)
+            raise ValueError(MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE)
         return self
 
 
@@ -168,7 +164,7 @@ class _ActionBase(_DomainModel):
     @classmethod
     def validate_player_id(cls, value: str) -> str:
         """Return a trimmed non-empty player id."""
-        return _non_blank(value, "player_id")
+        return non_blank(value, "player_id")
 
 
 class Action(_ActionBase):
@@ -197,31 +193,31 @@ class Action(_ActionBase):
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
-        return _optional_non_blank(value, str(info.field_name))
+        return optional_non_blank(value, str(info.field_name))
 
     @model_validator(mode="after")
     def validate_payload(self) -> Self:
         """Ensure the action payload matches the action type."""
         if self.type is ActionType.SPEECH:
             if self.message is None:
-                raise ValueError("message is required for speech actions")
+                raise ValueError(MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE)
             if self.target_id is not None:
-                raise ValueError("target_id is not allowed for speech actions")
+                raise ValueError(MESSAGE_SPEECH_ACTION_FORBIDS_TARGET)
             return self
 
         if self.type in self.TARGET_TYPES:
             if self.target_id is None:
-                raise ValueError(f"target_id is required for {self.type.value} actions")
+                raise ValueError(message_target_required(self.type.value, "actions"))
             if self.message is not None:
-                raise ValueError(f"message is not allowed for {self.type.value} actions")
+                raise ValueError(message_message_not_allowed(self.type.value, "actions"))
             return self
 
         if self.type is ActionType.PASS:
             if self.target_id is not None or self.message is not None:
-                raise ValueError("pass actions cannot include target_id or message")
+                raise ValueError(MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD)
             return self
 
-        raise ValueError(f"unsupported action type: {self.type.value}")
+        raise ValueError(message_unsupported_type(self.type.value, "action"))
 
     @property
     def is_night_action(self) -> bool:
@@ -378,7 +374,7 @@ class DomainEvent(_DomainModel):
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
+        return non_blank(value, str(info.field_name))
 
 
 __all__ = [

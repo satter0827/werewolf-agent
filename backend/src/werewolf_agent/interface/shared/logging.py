@@ -12,11 +12,10 @@ from datetime import UTC, datetime
 from typing import Final, TextIO
 
 from werewolf_agent.commons.security.redaction import redact_mapping
+from werewolf_agent.commons.shared.constants import JSON_SEPARATORS, LOG_CONTEXT_VAR_NAME
 from werewolf_agent.interface.shared.settings import AppSettings
 
 CONSOLE_LOG_FORMAT: Final = "%(levelname)s %(name)s: %(message)s"
-JSON_SEPARATORS: Final[tuple[str, str]] = (",", ":")
-LOG_CONTEXT_VAR_NAME: Final = "werewolf_log_context"
 LOG_FORMAT_JSON: Final = "json"
 LOG_OUTPUT_STDOUT: Final = "stdout"
 PRIVATE_ATTRIBUTE_PREFIX: Final = "_"

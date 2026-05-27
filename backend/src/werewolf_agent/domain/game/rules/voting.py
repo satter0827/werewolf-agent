@@ -6,6 +6,10 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_EXPECTED_VOTE_ACTION,
+    MESSAGE_SELF_VOTING_DISABLED,
+)
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
@@ -37,7 +41,7 @@ def record_vote(
     require_alive(snapshot, target_id)
     if not config.allow_self_vote and action.player_id == target_id:
         raise GameError(
-            "Self-voting is disabled for this game.",
+            MESSAGE_SELF_VOTING_DISABLED,
             context={"player_id": action.player_id, "target_id": target_id},
         )
 
@@ -99,5 +103,5 @@ def resolve_votes(
 
 def _vote_target(action: Action) -> str:
     if action.type is not ActionType.VOTE or action.target_id is None:
-        raise GameError("Expected a vote action.")
+        raise GameError(MESSAGE_EXPECTED_VOTE_ACTION)
     return action.target_id

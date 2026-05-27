@@ -7,6 +7,16 @@ from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
+    MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
+    MESSAGE_SPEECH_DECISION_REQUIRES_MESSAGE,
+    message_message_not_allowed,
+    message_target_required,
+    message_unsupported_type,
+)
+from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
+
 
 class AgentRole(StrEnum):
     """Roles visible to a player decision provider."""
@@ -49,20 +59,6 @@ class _LlmModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def _non_blank(value: str, field_name: str) -> str:
-    normalized = value.strip()
-    if not normalized:
-        msg = f"{field_name} must not be blank"
-        raise ValueError(msg)
-    return normalized
-
-
-def _optional_non_blank(value: str | None, field_name: str) -> str | None:
-    if value is None:
-        return None
-    return _non_blank(value, field_name)
-
-
 class VisiblePlayer(_LlmModel):
     """Player information that may be shown to a decision provider."""
 
@@ -74,7 +70,7 @@ class VisiblePlayer(_LlmModel):
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
-        return _non_blank(value, str(info.field_name))
+        return non_blank(value, str(info.field_name))
 
 
 class AgentObservation(_LlmModel):
@@ -111,37 +107,37 @@ class AgentDecision(_LlmModel):
     @classmethod
     def validate_player_id(cls, value: str) -> str:
         """Return a trimmed non-empty player id."""
-        return _non_blank(value, "player_id")
+        return non_blank(value, "player_id")
 
     @field_validator("target_id", "message")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
-        return _optional_non_blank(value, str(info.field_name))
+        return optional_non_blank(value, str(info.field_name))
 
     @model_validator(mode="after")
     def validate_payload(self) -> Self:
         """Ensure the decision payload matches the decision type."""
         if self.type is AgentActionType.SPEECH:
             if self.message is None:
-                raise ValueError("message is required for speech decisions")
+                raise ValueError(MESSAGE_SPEECH_DECISION_REQUIRES_MESSAGE)
             if self.target_id is not None:
-                raise ValueError("target_id is not allowed for speech decisions")
+                raise ValueError(MESSAGE_SPEECH_DECISION_FORBIDS_TARGET)
             return self
 
         if self.type in self.TARGET_TYPES:
             if self.target_id is None:
-                raise ValueError(f"target_id is required for {self.type.value} decisions")
+                raise ValueError(message_target_required(self.type.value, "decisions"))
             if self.message is not None:
-                raise ValueError(f"message is not allowed for {self.type.value} decisions")
+                raise ValueError(message_message_not_allowed(self.type.value, "decisions"))
             return self
 
         if self.type is AgentActionType.PASS:
             if self.target_id is not None or self.message is not None:
-                raise ValueError("pass decisions cannot include target_id or message")
+                raise ValueError(MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD)
             return self
 
-        raise ValueError(f"unsupported decision type: {self.type.value}")
+        raise ValueError(message_unsupported_type(self.type.value, "decision"))
 
     @classmethod
     def speech(cls, player_id: str, message: str) -> Self:

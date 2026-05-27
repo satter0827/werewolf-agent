@@ -102,11 +102,13 @@ SSE:
 
 Error response は RFC 9457 Problem Details 互換です。
 `Content-Type` は `application/problem+json`。
+API response には `X-Trace-Id` header を付け、Problem Details の `trace_id` と対応させます。
 
 | Status | Code | 例 |
 | --- | --- | --- |
 | `400` | `request.validation_failed` | body / query validation |
-| `404` | `not_found` | game が存在しない |
+| `404` | `resource.not_found` | game が存在しない |
+| `405` | `request.method_not_allowed` | method が未対応 |
 | `409` | `game.invalid_phase` | 終了済み game の進行 |
 | `422` | `game.invalid_action` | 未対応 agent type、ルール違反 |
 | `500` | `internal.unexpected` | 想定外エラー |
@@ -116,14 +118,14 @@ Error response は RFC 9457 Problem Details 互換です。
 | Path | 責務 |
 | --- | --- |
 | `interface/shared/schemas.py` | HTTP wire DTO、Problem Details |
-| `interface/api/routers.py` | endpoint |
-| `interface/api/errors.py` | Problem Details 変換 |
+| `interface/entrypoint/api/routers.py` | endpoint |
+| `interface/entrypoint/api/errors.py` | Problem Details 変換 |
 | `interface/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `interface/application/models.py` | `game_runs` / `game_events` ORM model |
 | `usecase/jobs/` | stateless game workflow、業務 validation、repository port、domain 接続 |
 
-`interface/api` は domain / usecase を直接 import しません。
+`interface/entrypoint/api` は domain / usecase を直接 import しません。
 usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
 HTTP DTO、Problem Details、表示名、response 整形は interface 側に置きます。
 

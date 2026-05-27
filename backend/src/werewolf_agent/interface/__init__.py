@@ -1,1 +1,1 @@
-"""User-facing interfaces for Werewolf Agent."""
+"""Interface adapters and entry points for Werewolf Agent."""
