@@ -7,7 +7,12 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from werewolf_agent.interface.shared.schemas import PublicGameEvent, PublicGameState
+from werewolf_agent.interface.shared.schemas import (
+    PublicGameEvent,
+    PublicGameRunSummary,
+    PublicGameState,
+    PublicGameTurn,
+)
 
 console = Console()
 
@@ -47,3 +52,43 @@ def consume_events(
                 f"[dim]{event.sequence}[/dim] [bold]{event.event_type}[/bold] {event.payload}"
             )
     return next_after
+
+
+def print_run_summaries(runs: list[PublicGameRunSummary]) -> None:
+    """Print public run summaries."""
+    table = Table(title="Game Runs")
+    table.add_column("Game", overflow="fold")
+    table.add_column("Status", no_wrap=True)
+    table.add_column("Phase", no_wrap=True)
+    table.add_column("Day", justify="right")
+    table.add_column("Winner", no_wrap=True)
+    table.add_column("Turns", justify="right")
+    for run in runs:
+        table.add_row(
+            run.game_id,
+            run.status,
+            run.phase,
+            str(run.day),
+            run.winner or "-",
+            str(run.turn_count),
+        )
+    console.print(table)
+
+
+def print_turns(turns: list[PublicGameTurn]) -> None:
+    """Print public turn timeline records."""
+    table = Table(title="Game Turns")
+    table.add_column("Seq", justify="right", no_wrap=True)
+    table.add_column("Event", no_wrap=True)
+    table.add_column("Phase", no_wrap=True)
+    table.add_column("Actor", overflow="fold")
+    table.add_column("Payload", overflow="fold")
+    for turn in turns:
+        table.add_row(
+            str(turn.sequence),
+            turn.event_type,
+            turn.phase or "-",
+            turn.actor_id or "-",
+            str(turn.payload),
+        )
+    console.print(table)

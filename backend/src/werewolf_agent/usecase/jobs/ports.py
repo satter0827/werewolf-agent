@@ -11,8 +11,11 @@ from werewolf_agent.usecase.jobs.models import (
     GameEventCreate,
     GameRunCreate,
     GameRunUpdate,
+    GameStatus,
     StoredGameEvent,
     StoredGameRun,
+    StoredGameRunSummary,
+    StoredGameTurn,
 )
 
 
@@ -42,6 +45,15 @@ class GameRepository(Protocol):
     def get_for_update(self, game_id: UUID) -> StoredGameRun | None:
         """Return a game run locked for update if it exists."""
 
+    def list_run_summaries(
+        self,
+        *,
+        status: GameStatus | None,
+        limit: int,
+        offset: int,
+    ) -> list[StoredGameRunSummary]:
+        """Return a page of game run summaries."""
+
     def save(self, update: GameRunUpdate) -> StoredGameRun:
         """Persist mutable fields for one game run."""
 
@@ -52,5 +64,20 @@ class GameRepository(Protocol):
     ) -> list[StoredGameEvent]:
         """Append events and assign stream sequence numbers."""
 
-    def list_public_events(self, run_id: UUID, *, after: int) -> list[StoredGameEvent]:
+    def list_public_events(
+        self,
+        run_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> list[StoredGameEvent]:
         """Return public events after the sequence cursor."""
+
+    def list_public_turns(
+        self,
+        run_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> list[StoredGameTurn]:
+        """Return public turn records after the sequence cursor."""

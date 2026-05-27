@@ -3,7 +3,7 @@
 `werewolf_agent.domain` は game と LLM decision の bounded context を置く入れ物です。
 `domain.game` は人狼ゲームの deterministic core です。
 同じ config、players、seed、action なら同じ snapshot と event になります。
-`domain.llm` は provider 非依存の agent 観測 DTO、意思決定 DTO、dummy decision を持ちます。
+`domain.llm` は provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision を持ちます。
 
 ## 持つもの
 
@@ -13,7 +13,7 @@
 - phase transition
 - win condition
 - visibility 付き `DomainEvent`
-- dummy agent 用の provider 非依存 decision 選択
+- FakeLLM 用の provider 非依存 decision 選択
 
 ## 持たないもの
 
@@ -69,10 +69,10 @@ interface 層から usecase を呼ぶ場所は `interface/application` に限定
 
 | 型 / 関数 | 意味 |
 | --- | --- |
-| `AgentObservation` | LLM / dummy agent に渡せる provider 非依存の可視情報 |
-| `AgentDecision` | LLM / dummy agent が返す構造化 decision |
-| `LlmDecisionProvider` | 将来の provider adapter 用 port |
-| `choose_dummy_decision(player_id, observation, rng)` | dummy agent 用の deterministic decision を返す |
+| `AgentObservation` | LLM provider に渡せる provider 非依存の可視情報 |
+| `AgentDecision` | LLM provider が返す構造化 decision |
+| `LlmDecisionProvider` | FakeLLM / 将来の real LLM adapter 用 port |
+| `choose_fake_llm_decision(player_id, observation, rng)` | FakeLLM 用の decision を返す |
 
 ## 進行
 
@@ -105,12 +105,12 @@ interface が HTTP / CLI / 画面向け schema に整えます。
 ## 乱数
 
 乱数は外側から `random.Random` を注入します。
-seed は role assignment、tie break、dummy agent の decision 選択に使います。
+seed は role assignment、tie break、FakeLLM の decision 選択に使います。
 
 ## 拡張先
 
 - 新 role / rule: `domain.game.models`、`domain.game.rules`
-- LLM provider 非依存の decision 型 / dummy decision: `domain.llm.models`、`domain.llm.service`
+- LLM provider 非依存の decision 型 / FakeLLM decision: `domain.llm.models`、`domain.llm.service`
 - LLM provider adapter: `domain.llm.ports` を usecase / interface 側で実装に接続
 - 公開 workflow / port: `usecase.jobs` の top-level API
 - projection、game / llm 変換、自動 agent adapter: `usecase.jobs` 配下の private module

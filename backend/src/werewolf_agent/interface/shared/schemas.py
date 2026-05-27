@@ -25,7 +25,7 @@ class CreateGamePlayer(BaseModel):
 
     id: str
     name: str
-    agent_type: str = "dummy"
+    agent_type: str = "llm"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -39,7 +39,7 @@ class CreateGamePlayer(BaseModel):
 class CreateGameAgentConfig(BaseModel):
     """Agent selection for API-driven game runs."""
 
-    type: str = "dummy"
+    type: str = "llm"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -166,6 +166,26 @@ class GameEventsQuery(BaseModel):
     """Query parameters for listing public events."""
 
     after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GameRunsQuery(BaseModel):
+    """Query parameters for listing public runs."""
+
+    status: GameStatus | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class GameTurnsQuery(BaseModel):
+    """Query parameters for listing public turn history."""
+
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -175,6 +195,62 @@ class GameEventsResponse(BaseModel):
 
     game_id: str
     events: list[PublicGameEvent]
+    next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameRunSummary(BaseModel):
+    """Public run summary for CLI and future UI lists."""
+
+    game_id: str
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    player_count: int
+    alive_count: int
+    winner: Winner | None = None
+    step_count: int
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunsResponse(BaseModel):
+    """Public run list response."""
+
+    runs: list[PublicGameRunSummary]
+    next_offset: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameTurn(BaseModel):
+    """Public timeline item for CLI and future UI timelines."""
+
+    sequence: int = Field(ge=1)
+    event_sequence: int = Field(ge=1)
+    version: int = Field(ge=1)
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameTurnsResponse(BaseModel):
+    """Public turn history response."""
+
+    game_id: str
+    turns: list[PublicGameTurn]
     next_after: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)

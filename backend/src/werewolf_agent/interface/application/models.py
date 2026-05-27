@@ -41,6 +41,14 @@ class GameRunModel(Base):
         back_populates="run",
         cascade="all, delete-orphan",
     )
+    summary: Mapped[GameRunSummaryModel | None] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
+    turns: Mapped[list[GameTurnModel]] = relationship(
+        back_populates="run",
+        cascade="all, delete-orphan",
+    )
 
 
 class GameEventModel(Base):
@@ -70,6 +78,61 @@ class GameEventModel(Base):
     run: Mapped[GameRunModel] = relationship(back_populates="events")
 
 
+class GameRunSummaryModel(Base):
+    """Persisted read model for run lists and analytics."""
+
+    __tablename__ = "game_run_summaries"
+
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("game_runs.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False)
+    day: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    seed: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    player_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    alive_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    winner: Mapped[str | None] = mapped_column(String(24), nullable=True)
+    step_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    turn_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    run: Mapped[GameRunModel] = relationship(back_populates="summary")
+
+
+class GameTurnModel(Base):
+    """Persisted public timeline read model for one game run."""
+
+    __tablename__ = "game_turns"
+    __table_args__ = (
+        UniqueConstraint("run_id", "sequence", name="game_turns_run_sequence_unique"),
+        UniqueConstraint("run_id", "event_sequence", name="game_turns_run_event_unique"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("game_runs.id", ondelete="CASCADE"))
+    sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    event_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    day: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    actor_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    run: Mapped[GameRunModel] = relationship(back_populates="turns")
+
+
 def max_event_sequence() -> Any:
     """Return the aggregate expression for the last event sequence."""
     return func.max(GameEventModel.sequence)
+
+
+def max_turn_sequence() -> Any:
+    """Return the aggregate expression for the last turn sequence."""
+    return func.max(GameTurnModel.sequence)

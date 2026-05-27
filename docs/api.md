@@ -7,10 +7,10 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 - 同期 REST API
 - public event SSE
-- dummy agent による自動進行
-- game 作成、状態取得、1 step 進行、public event 取得
+- `llm` agent と `fake_llm` provider による自動進行
+- game 作成、一覧、状態取得、1 step 進行、public event、turn history 取得
 - Problem Details 形式の error response
-- 認証、手動 action、private observation、Streamlit UI は未実装
+- 認証、手動 action、private observation、Streamlit / React UI は未実装
 
 ## Endpoints
 
@@ -19,10 +19,12 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 | `GET` | `/api/v1/health` | `{"status":"ok","service":"werewolf-agent-api"}` |
 | `GET` | `/api/v1/rulesets/default` | player count、roles、phases、agent types |
 | `POST` | `/api/v1/games` | game run 作成 |
+| `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
 | `POST` | `/api/v1/games/{game_id}/steps` | 現在 phase を 1 step 進める |
-| `GET` | `/api/v1/games/{game_id}/events?after=<seq>` | public event を sequence 昇順で取得 |
-| `GET` | `/api/v1/games/{game_id}/events/stream?after=<seq>` | public event を SSE 形式で取得 |
+| `GET` | `/api/v1/games/{game_id}/events?after=<seq>&limit=<n>` | public event を sequence 昇順で取得 |
+| `GET` | `/api/v1/games/{game_id}/events/stream?after=<seq>&limit=<n>` | public event を SSE 形式で取得 |
+| `GET` | `/api/v1/games/{game_id}/turns?after=<seq>&limit=<n>` | UI 向け public timeline を取得 |
 
 ## Create Game
 
@@ -37,7 +39,7 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 ```json
 {
   "seed": 42,
-  "agent": {"type": "dummy"},
+  "agent": {"type": "llm"},
   "rule_config": {
     "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
     "tie_break_policy": "no_elimination",
@@ -45,11 +47,11 @@ DB には完全状態を保存しますが、レスポンスは public state / p
     "allow_self_vote": false
   },
   "players": [
-    {"id": "p1", "name": "Alice", "agent_type": "dummy"},
-    {"id": "p2", "name": "Bob", "agent_type": "dummy"},
-    {"id": "p3", "name": "Carol", "agent_type": "dummy"},
-    {"id": "p4", "name": "Dave", "agent_type": "dummy"},
-    {"id": "p5", "name": "Eve", "agent_type": "dummy"}
+    {"id": "p1", "name": "Alice", "agent_type": "llm"},
+    {"id": "p2", "name": "Bob", "agent_type": "llm"},
+    {"id": "p3", "name": "Carol", "agent_type": "llm"},
+    {"id": "p4", "name": "Dave", "agent_type": "llm"},
+    {"id": "p5", "name": "Eve", "agent_type": "llm"}
   ]
 }
 ```
@@ -58,7 +60,7 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 - `player_count`: 既定では 5〜8。省略時は `WEREWOLF_GAME_DEFAULT_PLAYER_COUNT`。実際の範囲は `WEREWOLF_GAME_MIN_PLAYERS` / `WEREWOLF_GAME_MAX_PLAYERS` で決まる
 - `players`: 指定時は 5〜8 件。`id` は一意
-- `agent.type` / `players[].agent_type`: 現在は `dummy` のみ
+- `agent.type` / `players[].agent_type`: 現在は `llm` のみ。実体 provider は `WEREWOLF_LLM_PROVIDER=fake_llm`
 - `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
 - `tie_break_policy`: `no_elimination` または `random_elimination`
 - `day_speech_turns`: 1〜5
@@ -89,7 +91,7 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 Cursor:
 
-- request: `after=<last_sequence>`
+- request: `after=<last_sequence>&limit=<n>`
 - response: `next_after`
 
 SSE:
@@ -97,6 +99,25 @@ SSE:
 - event: `game_event`
 - id: `sequence`
 - data: `PublicGameEvent` JSON
+
+## Run Summary / Turns
+
+`GET /games` は UI の一覧画面と CLI `runs` が使う public summary だけを返します。
+`GET /turns` は React / Streamlit の timeline がそのまま使える public read model です。
+
+返すもの:
+
+- status、phase、day、version、seed
+- player_count、alive_count、winner
+- step_count、turn_count
+- turn sequence、event_sequence、event_type、actor_id、public payload、timestamp
+
+返さないもの:
+
+- role assignment
+- night action target
+- private observation
+- raw prompt / raw provider response
 
 ## Errors
 
@@ -122,7 +143,7 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 | `interface/entrypoint/api/errors.py` | Problem Details 変換 |
 | `interface/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
-| `interface/application/models.py` | `game_runs` / `game_events` ORM model |
+| `interface/application/models.py` | `game_runs` / `game_events` / read model ORM |
 | `usecase/jobs/` | stateless game workflow、業務 validation、repository port、domain 接続 |
 
 `interface/entrypoint/api` は domain / usecase を直接 import しません。

@@ -7,9 +7,9 @@
 - backend 中心
 - deterministic domain core 実装済み
 - `usecase.jobs` は interface と domain の唯一の接続点
-- FastAPI は game 作成、状態取得、step 進行、public event 取得、public SSE まで実装済み
-- CLI `play` は公開 HTTP API だけで 1 game を完走できる
-- 実 LLM provider、human action、private observation、Streamlit UI は未実装
+- FastAPI は game 作成、一覧、状態取得、step 進行、public event、turn history、public SSE まで実装済み
+- CLI `play` / `watch` / `replay` / `runs` / `turns` は公開 HTTP API だけを使う
+- 現在の LLM provider は `fake_llm`。実 LLM provider、human action、private observation、Streamlit / React UI は未実装
 
 ## 最初に実行
 
@@ -30,6 +30,8 @@ CLI で確認:
 
 ```bash
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
+uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
+uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 ```
 
 ## 配置
@@ -41,7 +43,7 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --
 | `backend/src/werewolf_agent/domain/game/service.py` | snapshot と pending action を受け取る stateless game 関数 |
 | `backend/src/werewolf_agent/domain/game/rules/` | game 内部 rules |
 | `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO |
-| `backend/src/werewolf_agent/domain/llm/service.py` | dummy decision logic |
+| `backend/src/werewolf_agent/domain/llm/service.py` | FakeLLM decision logic |
 | `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless job、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI app、router、例外変換、SSE |
@@ -77,7 +79,10 @@ DB は設定値で選びます。
 - SQLite の既定値は `.werewolf-agent/db/db.sqlite3`
 - SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
 - Postgres などは `WEREWOLF_DATABASE_URL` を設定する
+- usecase の保存単位は `game_runs`、`game_events`、`game_run_summaries`、`game_turns`
+- `game_run_summaries` と `game_turns` は CLI と将来 UI 用の public read model
 - ruleset metadata の説明文、role 表示名、phase 表示名は `WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE`、`WEREWOLF_GAME_ROLE_NAMES`、`WEREWOLF_GAME_PHASE_NAMES` で変更できる
+- agent type は `llm`。実 provider は `WEREWOLF_LLM_PROVIDER=fake_llm` で切り替える
 - API の表示名、version、debug、CORS は `WEREWOLF_API_TITLE`、`WEREWOLF_API_VERSION`、`WEREWOLF_API_DEBUG`、`WEREWOLF_CORS_ALLOWED_*` で変更できる
 - コード上の `WEREWOLF_API_DEBUG` 既定値は `false`。ローカル開発用の `.env.example` と `compose.yaml` は `true` を明示する
 
@@ -160,12 +165,12 @@ uv build --no-sources
 
 ## 未実装
 
-- LLM provider adapter
+- real LLM provider adapter
 - structured output parser / validator
 - human / external agent action API
 - private observation 認証
-- Streamlit UI
-- replay / evaluation workflow
+- Streamlit / React UI
+- evaluation workflow
 
 ## Handoff
 

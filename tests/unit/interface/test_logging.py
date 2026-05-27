@@ -102,7 +102,7 @@ def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
         {
             "safe": "value",
             "authorization": "Bearer abc",
-            "nested": {"api_token": "abc", "model": "dummy"},
+            "nested": {"api_token": "abc", "model": "fake_llm"},
             "items": [{"password": "pw"}],
         }
     )
@@ -110,7 +110,7 @@ def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
     assert redacted == {
         "safe": "value",
         "authorization": "[REDACTED]",
-        "nested": {"api_token": "[REDACTED]", "model": "dummy"},
+        "nested": {"api_token": "[REDACTED]", "model": "fake_llm"},
         "items": [{"password": "[REDACTED]"}],
     }
 

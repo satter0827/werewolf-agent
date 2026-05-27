@@ -18,6 +18,7 @@ EventVisibility = Literal["public", "player_private", "debug"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
+FakeLlmStrategy = Literal["seeded", "random"]
 RoleCount = Annotated[int, Field(ge=0)]
 
 
@@ -28,8 +29,21 @@ class GameUseCaseConfig:
     min_players: int = 5
     max_players: int = 8
     default_player_count: int = 6
-    supported_agent_type: str = "dummy"
+    supported_agent_type: str = "llm"
     default_ruleset_id: str = "default"
+
+
+@dataclass(frozen=True)
+class FakeLlmConfig:
+    """Settings used by the FakeLLM automated player implementation."""
+
+    strategy: FakeLlmStrategy = "seeded"
+    randomness: float = 0.7
+    speech_templates: tuple[str, ...] = (
+        "I want to hear more from {target_name}.",
+        "{target_name}'s vote history looks worth checking.",
+        "I will compare today's claims before voting.",
+    )
 
 
 class _UseCaseModel(BaseModel):
@@ -41,7 +55,7 @@ class CreateGamePlayer(_UseCaseModel):
 
     id: str
     name: str
-    agent_type: str = "dummy"
+    agent_type: str = "llm"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -55,7 +69,7 @@ class CreateGamePlayer(_UseCaseModel):
 class CreateGameAgentConfig(_UseCaseModel):
     """Agent selection for automated game runs."""
 
-    type: str = "dummy"
+    type: str = "llm"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -114,11 +128,32 @@ class AdvanceGameCommand(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class ListGamesQuery(_UseCaseModel):
+    """Query for listing public game runs."""
+
+    status: GameStatus | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class ListPublicEventsQuery(_UseCaseModel):
     """Query for listing public events after a sequence cursor."""
 
     game_id: str | UUID
     after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ListGameTurnsQuery(_UseCaseModel):
+    """Query for listing public turn records after a sequence cursor."""
+
+    game_id: str | UUID
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -160,6 +195,25 @@ class PublicEventsResult(_UseCaseModel):
 
     game_id: str
     events: list[dict[str, Any]]
+    next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunsResult(_UseCaseModel):
+    """Page of public game run summaries."""
+
+    runs: list[dict[str, Any]]
+    next_offset: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameTurnsResult(_UseCaseModel):
+    """Page of public turn history."""
+
+    game_id: str
+    turns: list[dict[str, Any]]
     next_after: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -214,6 +268,43 @@ class PublicGameEvent(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PublicGameRunSummary(_UseCaseModel):
+    """Public summary of a persisted game run."""
+
+    game_id: str
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    player_count: int
+    alive_count: int
+    winner: Winner | None = None
+    step_count: int
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameTurn(_UseCaseModel):
+    """Public turn/event record optimized for UI timelines."""
+
+    sequence: int = Field(ge=1)
+    event_sequence: int = Field(ge=1)
+    version: int = Field(ge=1)
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class GameEventCreate(_UseCaseModel):
     """Sanitized event data to persist through an outer repository."""
 
@@ -223,6 +314,43 @@ class GameEventCreate(_UseCaseModel):
     actor_id: str | None = None
     event_type: str
     payload: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameTurn(_UseCaseModel):
+    """Turn read-model record loaded from an outer persistence adapter."""
+
+    sequence: int
+    event_sequence: int
+    version: int
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameRunSummary(_UseCaseModel):
+    """Run summary read model loaded from an outer persistence adapter."""
+
+    game_id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    player_count: int
+    alive_count: int
+    winner: Winner | None = None
+    step_count: int
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

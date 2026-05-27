@@ -15,6 +15,10 @@ from werewolf_agent.interface.shared.schemas import (
     GameEventsQuery,
     GameEventsResponse,
     GameResponse,
+    GameRunsQuery,
+    GameRunsResponse,
+    GameTurnsQuery,
+    GameTurnsResponse,
     RulesetResponse,
     StepGameResponse,
 )
@@ -47,6 +51,18 @@ def create_game(
     return app.create_game_run(request)
 
 
+@router.get("/games", response_model=GameRunsResponse)
+def list_games(
+    status: str | None = None,
+    limit: int = 20,
+    offset: int = 0,
+    app: GameApplication = GAME_APPLICATION,
+) -> GameRunsResponse:
+    """Return public game run summaries."""
+    query = GameRunsQuery.model_validate({"status": status, "limit": limit, "offset": offset})
+    return app.list_game_runs(status=query.status, limit=query.limit, offset=query.offset)
+
+
 @router.get("/games/{game_id}", response_model=GameResponse)
 def get_game(
     game_id: str,
@@ -69,23 +85,37 @@ def step_game(
 def game_events(
     game_id: str,
     after: int = 0,
+    limit: int = 100,
     app: GameApplication = GAME_APPLICATION,
 ) -> GameEventsResponse:
     """Return public game events after an optional sequence cursor."""
-    query = GameEventsQuery.model_validate({"after": after})
-    return app.get_public_events(game_id, after=query.after)
+    query = GameEventsQuery.model_validate({"after": after, "limit": limit})
+    return app.get_public_events(game_id, after=query.after, limit=query.limit)
 
 
 @router.get("/games/{game_id}/events/stream")
 def game_event_stream(
     game_id: str,
     after: int = 0,
+    limit: int = 100,
     app: GameApplication = GAME_APPLICATION,
 ) -> EventSourceResponse:
     """Return a finite SSE batch of public game events after a cursor."""
-    query = GameEventsQuery.model_validate({"after": after})
-    response = app.get_public_events(game_id, after=query.after)
+    query = GameEventsQuery.model_validate({"after": after, "limit": limit})
+    response = app.get_public_events(game_id, after=query.after, limit=query.limit)
     return EventSourceResponse(_event_batch(response))
+
+
+@router.get("/games/{game_id}/turns", response_model=GameTurnsResponse)
+def game_turns(
+    game_id: str,
+    after: int = 0,
+    limit: int = 100,
+    app: GameApplication = GAME_APPLICATION,
+) -> GameTurnsResponse:
+    """Return public timeline turns after an optional sequence cursor."""
+    query = GameTurnsQuery.model_validate({"after": after, "limit": limit})
+    return app.get_public_turns(game_id, after=query.after, limit=query.limit)
 
 
 async def _event_batch(response: GameEventsResponse) -> AsyncIterator[dict[str, str]]:

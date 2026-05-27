@@ -19,8 +19,12 @@ from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
+    GameRunsResponse,
+    GameTurnsResponse,
     PublicGameEvent,
+    PublicGameRunSummary,
     PublicGameState,
+    PublicGameTurn,
     PublicPlayerState,
     StepGameResponse,
 )
@@ -69,6 +73,38 @@ def _event(sequence: int, event_type: str, payload: dict[str, object]) -> Public
     )
 
 
+def _run_summary() -> PublicGameRunSummary:
+    return PublicGameRunSummary(
+        game_id="game-1",
+        status="completed",
+        phase="finished",
+        day=2,
+        version=4,
+        seed=1,
+        player_count=6,
+        alive_count=3,
+        winner="villagers",
+        step_count=3,
+        turn_count=3,
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        completed_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
+def _turn(sequence: int) -> PublicGameTurn:
+    return PublicGameTurn(
+        sequence=sequence,
+        event_sequence=sequence,
+        version=2,
+        phase="night",
+        day=1,
+        event_type="phase_started",
+        payload={"phase": "night"},
+        occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+
+
 class FakeGameApiClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
@@ -102,13 +138,40 @@ class FakeGameApiClient:
             events=events,
         )
 
-    def list_events(self, game_id: str, *, after: int = 0) -> GameEventsResponse:
+    def list_events(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameEventsResponse:
+        _ = limit
         self.calls.append(("events", after))
         events = [
             event for event in self.events if after < event.sequence <= self.available_sequence
         ]
         next_after = events[-1].sequence if events else after
         return GameEventsResponse(game_id=game_id, events=events, next_after=next_after)
+
+    def list_games(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> GameRunsResponse:
+        self.calls.append(("runs", (status, limit, offset)))
+        return GameRunsResponse(runs=[_run_summary()])
+
+    def list_turns(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameTurnsResponse:
+        self.calls.append(("turns", (game_id, after, limit)))
+        return GameTurnsResponse(game_id=game_id, turns=[_turn(1)], next_after=1)
 
 
 def test_doctor_command_succeeds() -> None:
@@ -118,7 +181,27 @@ def test_doctor_command_succeeds() -> None:
 
     assert result.exit_code == 0
     assert "Werewolf Agent Doctor" in result.output
-    assert "dummy" in result.output
+    assert "fake_llm" in result.output
+
+
+def test_doctor_command_redacts_database_password() -> None:
+    get_settings.cache_clear()
+    try:
+        result = CliRunner().invoke(
+            app,
+            ["doctor"],
+            env={
+                "WEREWOLF_DATABASE_URL": (
+                    "postgres://werewolf_agent:secret@example.test:5432/werewolf_agent"
+                )
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 0
+    assert "secret" not in result.output
+    assert "[REDACTED]" in result.output
 
 
 def test_run_app_command_handles_app_error_safely() -> None:
@@ -220,6 +303,37 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
     assert result.exit_code == 1
     assert "game.invalid_action: The selected action is not allowed." in result.output
     assert "secret" not in result.output
+
+
+def test_watch_replay_runs_and_turns_use_public_api_client(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeGameApiClient()
+    fake_client.available_sequence = 3
+    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    log_path = tmp_path / "watch.jsonl"
+    events_path = tmp_path / "events.jsonl"
+    events_path.write_text(_event(1, "game_started", {"player_count": 6}).model_dump_json())
+
+    watch_result = CliRunner().invoke(
+        app,
+        ["watch", "game-1", "--api-url", "http://api.test/api/v1", "--log-jsonl", str(log_path)],
+    )
+    replay_result = CliRunner().invoke(app, ["replay", "--events", str(events_path)])
+    runs_result = CliRunner().invoke(app, ["runs", "--api-url", "http://api.test/api/v1"])
+    turns_result = CliRunner().invoke(
+        app,
+        ["turns", "game-1", "--api-url", "http://api.test/api/v1"],
+    )
+
+    assert watch_result.exit_code == 0
+    assert replay_result.exit_code == 0
+    assert runs_result.exit_code == 0
+    assert turns_result.exit_code == 0
+    assert "Game Runs" in runs_result.output
+    assert "Game Turns" in turns_result.output
+    assert log_path.exists()
 
 
 def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:

@@ -15,17 +15,24 @@ from werewolf_agent.usecase.jobs import (
     GameRepository,
     GameRunCreate,
     GameRunUpdate,
+    GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameQuery,
     InvalidGameIdError,
+    ListGamesQuery,
+    ListGameTurnsQuery,
     ListPublicEventsQuery,
     StoredGameEvent,
     StoredGameRun,
+    StoredGameRunSummary,
+    StoredGameTurn,
     advance_game,
     create_game,
     get_default_ruleset,
     get_game,
+    list_game_turns,
+    list_games,
     list_public_events,
 )
 
@@ -51,6 +58,7 @@ class InMemoryGameRepository(GameRepository):
     def __init__(self) -> None:
         self.runs: dict[UUID, StoredGameRun] = {}
         self.events: dict[UUID, list[StoredGameEvent]] = {}
+        self.turns: dict[UUID, list[StoredGameTurn]] = {}
 
     def create(self, run: GameRunCreate) -> StoredGameRun:
         stored = StoredGameRun(
@@ -68,6 +76,7 @@ class InMemoryGameRepository(GameRepository):
         )
         self.runs[stored.id] = stored
         self.events[stored.id] = []
+        self.turns[stored.id] = []
         return stored
 
     def get(self, game_id: UUID) -> StoredGameRun | None:
@@ -75,6 +84,20 @@ class InMemoryGameRepository(GameRepository):
 
     def get_for_update(self, game_id: UUID) -> StoredGameRun | None:
         return self.get(game_id)
+
+    def list_run_summaries(
+        self,
+        *,
+        status: GameStatus | None,
+        limit: int,
+        offset: int,
+    ) -> list[StoredGameRunSummary]:
+        runs = [
+            run
+            for run in sorted(self.runs.values(), key=lambda item: item.created_at, reverse=True)
+            if status is None or run.status == status
+        ]
+        return [self._summary(run) for run in runs[offset : offset + limit]]
 
     def save(self, update: GameRunUpdate) -> StoredGameRun:
         current = self.runs[update.id]
@@ -115,14 +138,66 @@ class InMemoryGameRepository(GameRepository):
             for offset, event in enumerate(events, start=1)
         ]
         stream.extend(records)
+        turn_stream = self.turns.setdefault(run_id, [])
+        run = self.runs[run_id]
+        turn_stream.extend(
+            StoredGameTurn(
+                sequence=len(turn_stream) + offset,
+                event_sequence=event.sequence,
+                version=run.version,
+                phase=event.phase,
+                day=event.day,
+                actor_id=event.actor_id,
+                event_type=event.event_type,
+                payload=event.payload,
+                occurred_at=event.occurred_at,
+            )
+            for offset, event in enumerate(records, start=1)
+            if event.visibility == "public"
+        )
         return records
 
-    def list_public_events(self, run_id: UUID, *, after: int) -> list[StoredGameEvent]:
+    def list_public_events(
+        self,
+        run_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> list[StoredGameEvent]:
         return [
             event
             for event in self.events.get(run_id, [])
             if event.visibility == "public" and event.sequence > after
-        ]
+        ][:limit]
+
+    def list_public_turns(
+        self,
+        run_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> list[StoredGameTurn]:
+        return [turn for turn in self.turns.get(run_id, []) if turn.sequence > after][:limit]
+
+    def _summary(self, run: StoredGameRun) -> StoredGameRunSummary:
+        state = run.public_state
+        summary = state.get("summary") or {}
+        return StoredGameRunSummary(
+            game_id=run.id,
+            status=run.status,
+            phase=run.phase,
+            day=run.day,
+            version=run.version,
+            seed=run.seed,
+            player_count=len(state.get("players") or []),
+            alive_count=int(summary.get("alive_count") or 0),
+            winner=state.get("winner"),
+            step_count=max(run.version - 1, 0),
+            turn_count=len(self.turns.get(run.id, [])),
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+            completed_at=run.updated_at if run.status == "completed" else None,
+        )
 
 
 def dependencies(
@@ -138,11 +213,11 @@ def dependencies(
 
 def explicit_players() -> list[dict[str, str]]:
     return [
-        {"id": " p1 ", "name": "Alice", "agent_type": "dummy"},
-        {"id": "p2", "name": "Bob", "agent_type": "dummy"},
-        {"id": "p3", "name": "Carol", "agent_type": "dummy"},
-        {"id": "p4", "name": "Dave", "agent_type": "dummy"},
-        {"id": "p5", "name": "Eve", "agent_type": "dummy"},
+        {"id": " p1 ", "name": "Alice", "agent_type": "llm"},
+        {"id": "p2", "name": "Bob", "agent_type": "llm"},
+        {"id": "p3", "name": "Carol", "agent_type": "llm"},
+        {"id": "p4", "name": "Dave", "agent_type": "llm"},
+        {"id": "p5", "name": "Eve", "agent_type": "llm"},
     ]
 
 
@@ -151,7 +226,7 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
         config=GameUseCaseConfig(
             min_players=4,
             max_players=10,
-            supported_agent_type="dummy",
+            supported_agent_type="llm",
             default_ruleset_id="custom",
         )
     )
@@ -159,7 +234,7 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
     assert result.id == "custom"
     assert result.player_count == {"min": 4, "max": 10}
     assert result.roles == ["villager", "werewolf", "seer", "knight"]
-    assert result.agent_types == ["dummy"]
+    assert result.agent_types == ["llm"]
 
 
 def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
@@ -191,7 +266,7 @@ def test_create_game_rejects_unsupported_agent_type() -> None:
 
     with pytest.raises(GameError):
         create_game(
-            CreateGameCommand(player_count=5, agent={"type": "llm"}),
+            CreateGameCommand(player_count=5, agent={"type": "dummy"}),
             dependencies=deps,
         )
 
@@ -224,6 +299,20 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert "role_counts" not in json.dumps(events.model_dump(mode="json"))
     assert events.events
     assert events.next_after <= repository.events[UUID(created.game_id)][-1].sequence
+
+
+def test_list_games_and_turns_return_public_read_models() -> None:
+    deps, _repository = dependencies()
+    created = create_game(CreateGameCommand(player_count=5, seed=1), dependencies=deps)
+    advance_game(AdvanceGameCommand(game_id=created.game_id), dependencies=deps)
+
+    runs = list_games(ListGamesQuery(limit=10), dependencies=deps)
+    turns = list_game_turns(ListGameTurnsQuery(game_id=created.game_id), dependencies=deps)
+
+    assert runs.runs[0]["game_id"] == created.game_id
+    assert runs.runs[0]["turn_count"] == len(turns.turns)
+    assert turns.turns
+    assert "role_counts" not in json.dumps(turns.model_dump(mode="json"))
 
 
 def test_advance_game_uses_injected_agent_factory() -> None:

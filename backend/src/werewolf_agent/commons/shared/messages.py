@@ -34,6 +34,14 @@ MESSAGE_INVALID_APPLICATION_CONFIGURATION = "Invalid application configuration."
 MESSAGE_INVALID_VALUE = "Invalid value."
 MESSAGE_SETTINGS = "settings"
 LOG_API_REQUEST_COMPLETED = "API request completed"
+LOG_GAME_RUN_CREATED = "Game run created"
+LOG_GAME_RUN_STEPPED = "Game run stepped"
+LOG_GAME_RUNS_LISTED = "Game runs listed"
+LOG_GAME_EVENTS_LISTED = "Game events listed"
+LOG_GAME_TURNS_LISTED = "Game turns listed"
+LOG_CLI_PLAY_COMPLETED = "CLI play completed"
+LOG_CLI_WATCH_POLLED = "CLI watch polled events"
+LOG_CLI_REPLAY_COMPLETED = "CLI replay completed"
 LOG_API_APPLICATION_ERROR_HANDLED = "Handled API application error"
 LOG_API_UNHANDLED_EXCEPTION = "Unhandled API exception"
 LOG_CLI_APPLICATION_ERROR_HANDLED = "Handled CLI application error"
@@ -74,10 +82,10 @@ MESSAGE_NO_GUARD_TARGETS = "no guard targets"
 MESSAGE_ROLE_HAS_NO_NIGHT_ACTION = "role has no night action"
 MESSAGE_OBSERVATION_BELONGS_TO_ANOTHER_PLAYER = "observation belongs to another player"
 MESSAGE_PLAYER_IS_DEAD = "player is dead"
-MESSAGE_DUMMY_SEEDED_VOTE = "dummy seeded vote"
-MESSAGE_DUMMY_SEEDED_ATTACK = "dummy seeded attack"
-MESSAGE_DUMMY_SEEDED_INSPECTION = "dummy seeded inspection"
-MESSAGE_DUMMY_SEEDED_GUARD = "dummy seeded guard"
+MESSAGE_FAKE_LLM_SEEDED_VOTE = "fake_llm seeded vote"
+MESSAGE_FAKE_LLM_SEEDED_ATTACK = "fake_llm seeded attack"
+MESSAGE_FAKE_LLM_SEEDED_INSPECTION = "fake_llm seeded inspection"
+MESSAGE_FAKE_LLM_SEEDED_GUARD = "fake_llm seeded guard"
 MESSAGE_MISSING_SPEECH_MESSAGE = "missing speech message"
 MESSAGE_MISSING_VOTE_TARGET = "missing vote target"
 MESSAGE_MISSING_ATTACK_TARGET = "missing attack target"
@@ -185,7 +193,7 @@ def message_cannot_advance_phase(phase: str) -> str:
 
 
 def message_no_action_for_phase(phase: str) -> str:
-    """Return a dummy-agent no-action reason."""
+    """Return an automated-agent no-action reason."""
     return f"no action for {phase}"
 
 
@@ -196,12 +204,17 @@ def message_player_count_between(min_players: int, max_players: int) -> str:
 
 def message_supported_agent_type_only(supported_agent_type: str) -> str:
     """Return an unsupported top-level agent validation message."""
-    return f"Only {supported_agent_type} agent type is supported for the MVP API."
+    return f"Only {supported_agent_type} agent type is supported."
 
 
 def message_supported_player_agent_type_only(supported_agent_type: str) -> str:
     """Return an unsupported player agent validation message."""
-    return f"Only {supported_agent_type} agent_type is supported for the MVP API."
+    return f"Only {supported_agent_type} agent_type is supported."
+
+
+def message_unsupported_llm_provider(provider: str) -> str:
+    """Return an unsupported LLM provider configuration message."""
+    return f"Unsupported LLM provider: {provider}."
 
 
 def message_game_did_not_complete(max_steps: int) -> str:

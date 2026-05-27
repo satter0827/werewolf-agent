@@ -22,8 +22,18 @@ API_SERVICE_NAME: Final = "werewolf-agent-api"
 
 DEFAULT_GENERATED_DIR: Final = Path(".werewolf-agent")
 DEFAULT_SQLITE_PATH: Final = DEFAULT_GENERATED_DIR / "db" / "db.sqlite3"
-DEFAULT_LLM_PROVIDER: Final = "dummy"
-DEFAULT_LLM_MODEL: Final = "dummy-local"
+DEFAULT_LLM_PROVIDER: Final = "fake_llm"
+DEFAULT_LLM_MODEL: Final = "fake-llm-local"
+DEFAULT_LLM_TIMEOUT_SECONDS: Final = 30.0
+DEFAULT_LLM_MAX_RETRIES: Final = 2
+DEFAULT_LLM_TEMPERATURE: Final = 0.7
+DEFAULT_FAKE_LLM_STRATEGY: Final = "seeded"
+DEFAULT_FAKE_LLM_RANDOMNESS: Final = 0.7
+DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = (
+    "I want to hear more from {target_name}.|"
+    "{target_name}'s vote history looks worth checking.|"
+    "I will compare today's claims before voting."
+)
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
 DEFAULT_LOG_OUTPUT: Final = "stderr"
@@ -36,8 +46,8 @@ DEFAULT_API_CORS_ALLOWED_HEADERS: Final = "*"
 DEFAULT_GAME_MIN_PLAYERS: Final = 5
 DEFAULT_GAME_MAX_PLAYERS: Final = 8
 DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = 6
-DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = "dummy"
-DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = "Dummy Agent"
+DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = "llm"
+DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = "LLM Agent"
 DEFAULT_GAME_DEFAULT_RULESET_ID: Final = "default"
 DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = "MVP Default"
 DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = (
@@ -49,6 +59,8 @@ DEFAULT_GAME_PHASE_NAMES: Final = "night:夜,day_discussion:昼チャット,voti
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
 LOG_OUTPUT_NAMES: Final = frozenset({"stderr", "stdout"})
+LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
+FAKE_LLM_STRATEGY_NAMES: Final = frozenset({"seeded", "random"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogFormat = Literal["json", "console"]
@@ -92,6 +104,36 @@ class AppSettings(BaseSettings):
         validation_alias="WEREWOLF_LLM_PROVIDER",
     )
     model: str = Field(default=DEFAULT_LLM_MODEL, validation_alias="WEREWOLF_MODEL")
+    llm_timeout_seconds: float = Field(
+        default=DEFAULT_LLM_TIMEOUT_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_LLM_TIMEOUT_SECONDS",
+    )
+    llm_max_retries: int = Field(
+        default=DEFAULT_LLM_MAX_RETRIES,
+        ge=0,
+        validation_alias="WEREWOLF_LLM_MAX_RETRIES",
+    )
+    llm_temperature: float = Field(
+        default=DEFAULT_LLM_TEMPERATURE,
+        ge=0,
+        le=2,
+        validation_alias="WEREWOLF_LLM_TEMPERATURE",
+    )
+    fake_llm_strategy: str = Field(
+        default=DEFAULT_FAKE_LLM_STRATEGY,
+        validation_alias="WEREWOLF_FAKE_LLM_STRATEGY",
+    )
+    fake_llm_randomness: float = Field(
+        default=DEFAULT_FAKE_LLM_RANDOMNESS,
+        ge=0,
+        le=1,
+        validation_alias="WEREWOLF_FAKE_LLM_RANDOMNESS",
+    )
+    fake_llm_speech_templates: str = Field(
+        default=DEFAULT_FAKE_LLM_SPEECH_TEMPLATES,
+        validation_alias="WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES",
+    )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_format: LogFormat = Field(
         default=DEFAULT_LOG_FORMAT,
@@ -203,6 +245,11 @@ class AppSettings(BaseSettings):
         return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
+    def fake_llm_speech_template_list(self) -> list[str]:
+        """Return configured FakeLLM speech templates."""
+        return [item.strip() for item in self.fake_llm_speech_templates.split("|") if item.strip()]
+
+    @property
     def sqlite_database_path(self) -> Path:
         """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
         sqlite_path = self.sqlite_path.expanduser()
@@ -260,6 +307,28 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
+    @field_validator("llm_provider", mode="before")
+    @classmethod
+    def normalize_llm_provider(cls, value: object) -> str:
+        """Return the configured LLM provider."""
+        return normalize_choice(
+            value,
+            field_name="llm_provider",
+            choices=LLM_PROVIDER_NAMES,
+            case="lower",
+        )
+
+    @field_validator("fake_llm_strategy", mode="before")
+    @classmethod
+    def normalize_fake_llm_strategy(cls, value: object) -> str:
+        """Return the configured FakeLLM strategy."""
+        return normalize_choice(
+            value,
+            field_name="fake_llm_strategy",
+            choices=FAKE_LLM_STRATEGY_NAMES,
+            case="lower",
+        )
+
     @field_validator("game_supported_agent_type", mode="before")
     @classmethod
     def normalize_supported_agent_type(cls, value: object) -> str:
@@ -278,6 +347,7 @@ class AppSettings(BaseSettings):
         "game_ruleset_description_template",
         "game_role_names",
         "game_phase_names",
+        "fake_llm_speech_templates",
         "api_title",
         "api_version",
         mode="before",
@@ -296,6 +366,8 @@ class AppSettings(BaseSettings):
             raise ValueError(message_game_default_player_count_between())
         split_mapping(self.game_role_names, field_name="game_role_names")
         split_mapping(self.game_phase_names, field_name="game_phase_names")
+        if not self.fake_llm_speech_template_list:
+            raise ValueError("fake_llm_speech_templates must include at least one template")
         try:
             self.game_ruleset_description_template.format(
                 min_players=self.game_min_players,

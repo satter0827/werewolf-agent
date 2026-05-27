@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import random
-from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_MISSING_ATTACK_TARGET,
@@ -23,45 +22,66 @@ from werewolf_agent.domain.llm.models import (
     AgentRole,
     VisiblePlayer,
 )
-from werewolf_agent.domain.llm.service import choose_dummy_decision
+from werewolf_agent.domain.llm.ports import LlmDecisionProvider
+from werewolf_agent.domain.llm.service import choose_fake_llm_decision
+from werewolf_agent.usecase.jobs.models import FakeLlmConfig
 
 
-class _DummyAgent:
-    """Seeded dummy agent that returns structured actions without a provider call."""
+@dataclass(frozen=True)
+class FakeLlmDecisionProvider:
+    """Provider-port adapter for FakeLLM decisions."""
+
+    rng: random.Random
+    speech_templates: tuple[str, ...]
+
+    def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
+        """Return one structured decision for visible player context."""
+        return choose_fake_llm_decision(
+            player_id,
+            observation,
+            rng=self.rng,
+            speech_templates=self.speech_templates,
+        )
+
+
+class FakeLlmAgent:
+    """Automated player backed by an LLM decision provider."""
 
     def __init__(
         self,
         player_id: str,
         *,
-        rng: random.Random | None = None,
-        speech_templates: Sequence[str] | None = None,
+        provider: LlmDecisionProvider,
     ) -> None:
         self.player_id = player_id
-        self._rng = rng or random.Random()
-        self._speech_templates = tuple(speech_templates) if speech_templates is not None else None
+        self._provider = provider
 
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
         agent_observation = _agent_observation_from_game(observation)
-        if self._speech_templates:
-            decision = choose_dummy_decision(
-                self.player_id,
-                agent_observation,
-                rng=self._rng,
-                speech_templates=self._speech_templates,
-            )
-            return _game_action_from_decision(decision)
-        decision = choose_dummy_decision(self.player_id, agent_observation, rng=self._rng)
+        decision = self._provider.choose_decision(self.player_id, agent_observation)
         return _game_action_from_decision(decision)
 
 
 @dataclass(frozen=True)
-class _DummyAgentFactory:
-    """Create deterministic dummy agents for automated MVP game runs."""
+class FakeLlmAgentFactory:
+    """Create FakeLLM agents for automated game runs."""
 
-    def create(self, player_id: str, *, seed: int) -> _DummyAgent:
-        """Create one dummy agent with an injected deterministic seed."""
-        return _DummyAgent(player_id, rng=random.Random(seed))
+    config: FakeLlmConfig = field(default_factory=FakeLlmConfig)
+
+    def create(self, player_id: str, *, seed: int) -> FakeLlmAgent:
+        """Create one FakeLLM agent using the configured seed policy."""
+        seed_offset = int(self.config.randomness * 10000)
+        rng = (
+            random.Random(seed + seed_offset)
+            if self.config.strategy == "seeded"
+            else random.Random()
+        )
+        provider = FakeLlmDecisionProvider(
+            rng=rng,
+            speech_templates=self.config.speech_templates,
+        )
+        return FakeLlmAgent(player_id, provider=provider)
 
 
 def _agent_observation_from_game(observation: Observation) -> AgentObservation:

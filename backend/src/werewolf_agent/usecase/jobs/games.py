@@ -30,12 +30,14 @@ from werewolf_agent.domain.game.models import (
     TieBreakPolicy,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.jobs._agents import _DummyAgentFactory
+from werewolf_agent.usecase.jobs._agents import FakeLlmAgentFactory
 from werewolf_agent.usecase.jobs._projections import (
     events_to_create,
     public_event_payload_from_record,
+    public_run_summary_payload_from_record,
     public_state_payload_from_run,
     public_state_payload_from_snapshot,
+    public_turn_payload_from_record,
 )
 from werewolf_agent.usecase.jobs._rulesets import default_ruleset
 from werewolf_agent.usecase.jobs.models import (
@@ -46,10 +48,14 @@ from werewolf_agent.usecase.jobs.models import (
     GamePhase,
     GameResult,
     GameRunCreate,
+    GameRunsResult,
     GameRunUpdate,
     GameStatus,
+    GameTurnsResult,
     GameUseCaseConfig,
     GetGameQuery,
+    ListGamesQuery,
+    ListGameTurnsQuery,
     ListPublicEventsQuery,
     PublicEventsResult,
     RoleId,
@@ -72,7 +78,7 @@ class GameUseCaseDependencies:
 
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
-    agent_factory: AgentFactory = field(default_factory=_DummyAgentFactory)
+    agent_factory: AgentFactory = field(default_factory=FakeLlmAgentFactory)
 
 
 def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
@@ -124,6 +130,24 @@ def get_game(
     if run is None:
         raise GameNotFoundError(str(game_id))
     return GameResult(game_id=str(run.id), state=public_state_payload_from_run(run))
+
+
+def list_games(
+    query: ListGamesQuery,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> GameRunsResult:
+    """Return a page of public game run summaries."""
+    records = dependencies.repository.list_run_summaries(
+        status=query.status,
+        limit=query.limit,
+        offset=query.offset,
+    )
+    next_offset = query.offset + len(records) if len(records) == query.limit else None
+    return GameRunsResult(
+        runs=[public_run_summary_payload_from_record(record) for record in records],
+        next_offset=next_offset,
+    )
 
 
 def advance_game(
@@ -199,11 +223,39 @@ def list_public_events(
     if run is None:
         raise GameNotFoundError(str(game_id))
 
-    records = dependencies.repository.list_public_events(run.id, after=query.after)
+    records = dependencies.repository.list_public_events(
+        run.id,
+        after=query.after,
+        limit=query.limit,
+    )
     next_after = records[-1].sequence if records else query.after
     return PublicEventsResult(
         game_id=str(run.id),
         events=[public_event_payload_from_record(record) for record in records],
+        next_after=next_after,
+    )
+
+
+def list_game_turns(
+    query: ListGameTurnsQuery,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> GameTurnsResult:
+    """List public turn records after a sequence number."""
+    game_id = _parse_game_id(query.game_id)
+    run = dependencies.repository.get(game_id)
+    if run is None:
+        raise GameNotFoundError(str(game_id))
+
+    records = dependencies.repository.list_public_turns(
+        run.id,
+        after=query.after,
+        limit=query.limit,
+    )
+    next_after = records[-1].sequence if records else query.after
+    return GameTurnsResult(
+        game_id=str(run.id),
+        turns=[public_turn_payload_from_record(record) for record in records],
         next_after=next_after,
     )
 

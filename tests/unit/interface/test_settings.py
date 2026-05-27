@@ -3,7 +3,10 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.interface.application.settings import build_game_usecase_config
+from werewolf_agent.interface.application.settings import (
+    build_fake_llm_config,
+    build_game_usecase_config,
+)
 from werewolf_agent.interface.shared.settings import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
@@ -70,6 +73,10 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_title == "Werewolf Agent API"
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
+    assert settings.llm_provider == "fake_llm"
+    assert settings.model == "fake-llm-local"
+    assert settings.fake_llm_strategy == "seeded"
+    assert settings.fake_llm_speech_template_list
     assert settings.cors_allowed_methods_list == ["GET", "POST"]
     assert settings.cors_allowed_headers_list == ["*"]
     assert settings.game_role_name_map["werewolf"] == "人狼"
@@ -85,8 +92,8 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
         game_min_players=4,
         game_max_players=10,
         game_default_player_count=7,
-        game_supported_agent_type="dummy",
-        game_supported_agent_name="Dummy Agent",
+        game_supported_agent_type="llm",
+        game_supported_agent_name="LLM Agent",
         game_default_ruleset_id="default",
         game_default_ruleset_name="Custom Rules",
     )
@@ -96,16 +103,23 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.min_players == 4
     assert usecase_config.max_players == 10
     assert usecase_config.default_player_count == 7
-    assert usecase_config.supported_agent_type == "dummy"
+    assert usecase_config.supported_agent_type == "llm"
     assert usecase_config.default_ruleset_id == "default"
+
+    fake_llm_config = build_fake_llm_config(settings)
+    assert fake_llm_config.strategy == "seeded"
+    assert fake_llm_config.randomness == settings.fake_llm_randomness
+    assert fake_llm_config.speech_templates
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEREWOLF_GAME_MIN_PLAYERS", "4")
     monkeypatch.setenv("WEREWOLF_GAME_MAX_PLAYERS", "10")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_PLAYER_COUNT", "7")
-    monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_TYPE", "dummy")
-    monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable Dummy")
+    monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_TYPE", "llm")
+    monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable LLM Agent")
+    monkeypatch.setenv("WEREWOLF_FAKE_LLM_STRATEGY", "random")
+    monkeypatch.setenv("WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES", "hello {target_name}|watching")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
@@ -117,8 +131,10 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_min_players == 4
     assert settings.game_max_players == 10
     assert settings.game_default_player_count == 7
-    assert settings.game_supported_agent_type == "dummy"
-    assert settings.game_supported_agent_name == "Configurable Dummy"
+    assert settings.game_supported_agent_type == "llm"
+    assert settings.game_supported_agent_name == "Configurable LLM Agent"
+    assert settings.fake_llm_strategy == "random"
+    assert settings.fake_llm_speech_template_list == ["hello {target_name}", "watching"]
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
@@ -164,7 +180,9 @@ def test_logging_settings_normalize_supported_values() -> None:
         ("log_level", "VERBOSE"),
         ("log_format", "plain"),
         ("log_output", "file"),
-        ("game_supported_agent_type", "llm"),
+        ("game_supported_agent_type", "fake_llm"),
+        ("llm_provider", "openai"),
+        ("fake_llm_strategy", "scripted"),
     ],
 )
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:

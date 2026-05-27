@@ -22,6 +22,8 @@ from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
+    GameRunsResponse,
+    GameTurnsResponse,
     ProblemDetails,
     StepGameResponse,
 )
@@ -38,11 +40,35 @@ class GameApiClient(Protocol):
     def get_game(self, game_id: str) -> GameResponse:
         """Fetch one game through the public API."""
 
+    def list_games(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> GameRunsResponse:
+        """Fetch public game run summaries through the public API."""
+
     def step_game(self, game_id: str) -> StepGameResponse:
         """Advance one game through the public API."""
 
-    def list_events(self, game_id: str, *, after: int = 0) -> GameEventsResponse:
+    def list_events(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameEventsResponse:
         """Fetch public game events through the public API."""
+
+    def list_turns(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameTurnsResponse:
+        """Fetch public turn history through the public API."""
 
 
 class HttpGameApiClient:
@@ -74,13 +100,50 @@ class HttpGameApiClient:
         payload = self._request_json("GET", f"games/{game_id}")
         return self._parse_model(GameResponse, payload)
 
+    def list_games(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> GameRunsResponse:
+        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        if status is not None:
+            params["status"] = status
+        payload = self._request_json("GET", "games", params=params)
+        return self._parse_model(GameRunsResponse, payload)
+
     def step_game(self, game_id: str) -> StepGameResponse:
         payload = self._request_json("POST", f"games/{game_id}/steps")
         return self._parse_model(StepGameResponse, payload)
 
-    def list_events(self, game_id: str, *, after: int = 0) -> GameEventsResponse:
-        payload = self._request_json("GET", f"games/{game_id}/events", params={"after": after})
+    def list_events(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameEventsResponse:
+        payload = self._request_json(
+            "GET",
+            f"games/{game_id}/events",
+            params={"after": after, "limit": limit},
+        )
         return self._parse_model(GameEventsResponse, payload)
+
+    def list_turns(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameTurnsResponse:
+        payload = self._request_json(
+            "GET",
+            f"games/{game_id}/turns",
+            params={"after": after, "limit": limit},
+        )
+        return self._parse_model(GameTurnsResponse, payload)
 
     def _request_json(
         self,

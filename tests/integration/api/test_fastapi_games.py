@@ -28,11 +28,11 @@ def _create_payload() -> dict[str, object]:
     return {
         "seed": 42,
         "players": [
-            {"id": "p1", "name": "Alice", "agent_type": "dummy"},
-            {"id": "p2", "name": "Bob", "agent_type": "dummy"},
-            {"id": "p3", "name": "Carol", "agent_type": "dummy"},
-            {"id": "p4", "name": "Dave", "agent_type": "dummy"},
-            {"id": "p5", "name": "Eve", "agent_type": "dummy"},
+            {"id": "p1", "name": "Alice", "agent_type": "llm"},
+            {"id": "p2", "name": "Bob", "agent_type": "llm"},
+            {"id": "p3", "name": "Carol", "agent_type": "llm"},
+            {"id": "p4", "name": "Dave", "agent_type": "llm"},
+            {"id": "p5", "name": "Eve", "agent_type": "llm"},
         ],
     }
 
@@ -58,7 +58,7 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
         "seer",
         "knight",
     }
-    assert payload["agent_types"] == [{"id": "dummy", "name": "Dummy Agent"}]
+    assert payload["agent_types"] == [{"id": "llm", "name": "LLM Agent"}]
 
 
 def test_create_game_returns_public_state_without_private_fields(client: TestClient) -> None:
@@ -105,6 +105,23 @@ def test_steps_complete_game_and_events_are_public_only(client: TestClient) -> N
     assert "private_state" not in json.dumps(event_payload)
 
 
+def test_game_list_and_turns_return_public_read_models(client: TestClient) -> None:
+    created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
+    game_id = created["game_id"]
+    client.post(f"/api/v1/games/{game_id}/steps")
+
+    runs_response = client.get("/api/v1/games?limit=10")
+    turns_response = client.get(f"/api/v1/games/{game_id}/turns?after=0")
+
+    assert runs_response.status_code == 200
+    assert turns_response.status_code == 200
+    runs_payload = runs_response.json()
+    turns_payload = turns_response.json()
+    assert any(run["game_id"] == game_id for run in runs_payload["runs"])
+    assert turns_payload["turns"]
+    assert "role_counts" not in json.dumps(turns_payload)
+
+
 def test_public_event_stream_returns_sse_batch(client: TestClient) -> None:
     created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
 
@@ -138,7 +155,7 @@ def test_create_game_rejects_unsupported_agent_type_as_game_action_error(
     client: TestClient,
 ) -> None:
     payload = _create_payload()
-    payload["players"][0]["agent_type"] = "llm"
+    payload["players"][0]["agent_type"] = "dummy"
 
     response = client.post("/api/v1/games", json=payload)
 
@@ -147,7 +164,7 @@ def test_create_game_rejects_unsupported_agent_type_as_game_action_error(
 
 
 def test_create_game_rejects_unsupported_top_level_agent_type(client: TestClient) -> None:
-    response = client.post("/api/v1/games", json={"player_count": 5, "agent": {"type": "llm"}})
+    response = client.post("/api/v1/games", json={"player_count": 5, "agent": {"type": "dummy"}})
 
     assert response.status_code == 422
     assert response.json()["code"] == "game.invalid_action"
@@ -194,7 +211,7 @@ def test_day_speech_turns_controls_api_discussion_actions(client: TestClient) ->
 def test_create_game_validation_errors_use_problem_details(client: TestClient) -> None:
     response = client.post(
         "/api/v1/games",
-        json={"players": [{"id": "p1", "agent_type": "dummy"}]},
+        json={"players": [{"id": "p1", "agent_type": "llm"}]},
     )
 
     assert response.status_code == 400

@@ -56,32 +56,54 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
         "AdvanceGameResult",
         "AgentFactory",
         "CreateGameCommand",
+        "FakeLlmAgentFactory",
+        "FakeLlmConfig",
+        "FakeLlmStrategy",
         "GameEventCreate",
         "GameNotFoundError",
         "GameRepository",
+        "GamePhase",
         "GameResult",
         "GameRunCreate",
         "GameRunUpdate",
+        "GameRunsResult",
+        "GameStatus",
+        "GameTurnsResult",
         "GameUseCaseConfig",
         "GameUseCaseDependencies",
         "GetGameQuery",
         "InvalidGameIdError",
+        "ListGameTurnsQuery",
+        "ListGamesQuery",
         "ListPublicEventsQuery",
         "PlayerAgent",
         "PublicEventsResult",
+        "PublicGameRunSummary",
+        "PublicGameTurn",
         "RulesetResult",
         "StoredGameEvent",
         "StoredGameRun",
+        "StoredGameRunSummary",
+        "StoredGameTurn",
         "advance_game",
         "create_game",
         "get_default_ruleset",
         "get_game",
+        "list_game_turns",
+        "list_games",
         "list_public_events",
     }
 
 
 def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
-    for function_name in ("create_game", "get_game", "advance_game", "list_public_events"):
+    for function_name in (
+        "create_game",
+        "get_game",
+        "advance_game",
+        "list_games",
+        "list_public_events",
+        "list_game_turns",
+    ):
         signature = inspect.signature(getattr(game_jobs, function_name))
         parameters = list(signature.parameters.values())
 

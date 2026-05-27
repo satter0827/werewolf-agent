@@ -6,10 +6,10 @@ import random
 from collections.abc import Sequence
 
 from werewolf_agent.commons.shared.messages import (
-    MESSAGE_DUMMY_SEEDED_ATTACK,
-    MESSAGE_DUMMY_SEEDED_GUARD,
-    MESSAGE_DUMMY_SEEDED_INSPECTION,
-    MESSAGE_DUMMY_SEEDED_VOTE,
+    MESSAGE_FAKE_LLM_SEEDED_ATTACK,
+    MESSAGE_FAKE_LLM_SEEDED_GUARD,
+    MESSAGE_FAKE_LLM_SEEDED_INSPECTION,
+    MESSAGE_FAKE_LLM_SEEDED_VOTE,
     MESSAGE_NO_ATTACK_TARGETS,
     MESSAGE_NO_GUARD_TARGETS,
     MESSAGE_NO_INSPECT_TARGETS,
@@ -34,14 +34,14 @@ _DEFAULT_SPEECH_TEMPLATES: tuple[str, ...] = (
 )
 
 
-def choose_dummy_decision(
+def choose_fake_llm_decision(
     player_id: str,
     observation: AgentObservation,
     *,
     rng: random.Random,
     speech_templates: Sequence[str] = _DEFAULT_SPEECH_TEMPLATES,
 ) -> AgentDecision:
-    """Return one deterministic dummy decision from visible player context."""
+    """Return one FakeLLM decision from visible player context."""
     if observation.me.id != player_id:
         return AgentDecision.pass_(
             player_id=player_id,
@@ -50,18 +50,18 @@ def choose_dummy_decision(
     if observation.me.status is not AgentPlayerStatus.ALIVE:
         return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_PLAYER_IS_DEAD)
     if observation.phase is AgentPhase.DAY_DISCUSSION:
-        return _dummy_speech_decision(player_id, observation, rng, speech_templates)
+        return _fake_llm_speech_decision(player_id, observation, rng, speech_templates)
     if observation.phase is AgentPhase.VOTING:
-        return _dummy_vote_decision(player_id, observation, rng)
+        return _fake_llm_vote_decision(player_id, observation, rng)
     if observation.phase is AgentPhase.NIGHT:
-        return _dummy_night_decision(player_id, observation, rng)
+        return _fake_llm_night_decision(player_id, observation, rng)
     return AgentDecision.pass_(
         player_id=player_id,
         reason=message_no_action_for_phase(observation.phase.value),
     )
 
 
-def _dummy_speech_decision(
+def _fake_llm_speech_decision(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
@@ -77,7 +77,7 @@ def _dummy_speech_decision(
     )
 
 
-def _dummy_vote_decision(
+def _fake_llm_vote_decision(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
@@ -89,25 +89,25 @@ def _dummy_vote_decision(
     return AgentDecision.vote(
         player_id=player_id,
         target_id=target_id,
-        reason=MESSAGE_DUMMY_SEEDED_VOTE,
+        reason=MESSAGE_FAKE_LLM_SEEDED_VOTE,
     )
 
 
-def _dummy_night_decision(
+def _fake_llm_night_decision(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
 ) -> AgentDecision:
     if observation.role is AgentRole.WEREWOLF:
-        return _dummy_werewolf_attack(player_id, observation, rng)
+        return _fake_llm_werewolf_attack(player_id, observation, rng)
     if observation.role is AgentRole.SEER:
-        return _dummy_seer_inspect(player_id, observation, rng)
+        return _fake_llm_seer_inspect(player_id, observation, rng)
     if observation.role is AgentRole.KNIGHT:
-        return _dummy_knight_guard(player_id, observation, rng)
+        return _fake_llm_knight_guard(player_id, observation, rng)
     return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_ROLE_HAS_NO_NIGHT_ACTION)
 
 
-def _dummy_werewolf_attack(
+def _fake_llm_werewolf_attack(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
@@ -123,11 +123,11 @@ def _dummy_werewolf_attack(
     return AgentDecision.attack(
         player_id=player_id,
         target_id=target_id,
-        reason=MESSAGE_DUMMY_SEEDED_ATTACK,
+        reason=MESSAGE_FAKE_LLM_SEEDED_ATTACK,
     )
 
 
-def _dummy_seer_inspect(
+def _fake_llm_seer_inspect(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
@@ -144,11 +144,11 @@ def _dummy_seer_inspect(
     return AgentDecision.inspect(
         player_id=player_id,
         target_id=target_id,
-        reason=MESSAGE_DUMMY_SEEDED_INSPECTION,
+        reason=MESSAGE_FAKE_LLM_SEEDED_INSPECTION,
     )
 
 
-def _dummy_knight_guard(
+def _fake_llm_knight_guard(
     player_id: str,
     observation: AgentObservation,
     rng: random.Random,
@@ -160,7 +160,7 @@ def _dummy_knight_guard(
     return AgentDecision.guard(
         player_id=player_id,
         target_id=target_id,
-        reason=MESSAGE_DUMMY_SEEDED_GUARD,
+        reason=MESSAGE_FAKE_LLM_SEEDED_GUARD,
     )
 
 
@@ -188,4 +188,4 @@ def _name_for(observation: AgentObservation, player_id: str | None) -> str:
     return player_id
 
 
-__all__ = ["choose_dummy_decision"]
+__all__ = ["choose_fake_llm_decision"]

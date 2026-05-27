@@ -17,10 +17,14 @@ from werewolf_agent.usecase.jobs.models import (
     GamePhase,
     GameStatus,
     PublicGameEvent,
+    PublicGameRunSummary,
     PublicGameState,
+    PublicGameTurn,
     PublicPlayerState,
     StoredGameEvent,
     StoredGameRun,
+    StoredGameRunSummary,
+    StoredGameTurn,
     Winner,
 )
 
@@ -95,6 +99,43 @@ def public_event_payload_from_record(record: StoredGameEvent) -> dict[str, Any]:
         occurred_at=record.occurred_at,
     )
     return event.model_dump(mode="json")
+
+
+def public_run_summary_payload_from_record(record: StoredGameRunSummary) -> dict[str, Any]:
+    """Project a stored run summary into a public payload."""
+    summary = PublicGameRunSummary(
+        game_id=str(record.game_id),
+        status=record.status,
+        phase=record.phase,
+        day=record.day,
+        version=record.version,
+        seed=record.seed,
+        player_count=record.player_count,
+        alive_count=record.alive_count,
+        winner=record.winner,
+        step_count=record.step_count,
+        turn_count=record.turn_count,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        completed_at=record.completed_at,
+    )
+    return summary.model_dump(mode="json")
+
+
+def public_turn_payload_from_record(record: StoredGameTurn) -> dict[str, Any]:
+    """Project a stored turn record into a public timeline payload."""
+    turn = PublicGameTurn(
+        sequence=record.sequence,
+        event_sequence=record.event_sequence,
+        version=record.version,
+        phase=record.phase,
+        day=record.day,
+        actor_id=record.actor_id,
+        event_type=record.event_type,
+        payload=dict(record.payload),
+        occurred_at=record.occurred_at,
+    )
+    return turn.model_dump(mode="json")
 
 
 def events_to_create(events: list[DomainEvent]) -> list[GameEventCreate]:

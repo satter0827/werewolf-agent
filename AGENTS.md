@@ -5,14 +5,14 @@
 
 ## Project
 
-Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーとして動かす Python backend です。
+Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動かす Python backend です。
 ゲームルールは deterministic domain core が管理し、外側には公開状態と public event だけを出します。
 
 現在の状態:
 
-- dummy agent だけで FastAPI 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、FastAPI、CLI、public event stream は実装済み
-- 実 LLM provider、手動 action API、private observation API、Streamlit UI は未実装
+- `fake_llm` provider だけで FastAPI 経由の 1 game を CLI から完走できる
+- `domain`、`usecase`、FastAPI、CLI、public event stream、turn read model は実装済み
+- 実 LLM provider、手動 action API、private observation API、Streamlit / React UI は未実装
 
 ## Read First
 
@@ -28,7 +28,7 @@ Werewolf Agent は、LLM / dummy agent を人狼ゲームのプレイヤーと�
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、dummy decision、provider port |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision、provider port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
 | `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、DB repository、transaction、依存注入 |
@@ -154,7 +154,7 @@ docker compose run --rm test
 - 実行したコマンド
 - 次に人間が判断すべき選択肢
 
-外部 API なしで動く dummy agent / mock provider を先に実装できる場合は、そちらを優先してください。
+外部 API なしで動く FakeLLM / mock provider を先に実装できる場合は、そちらを優先してください。
 
 ## Commit Message
 
