@@ -9,7 +9,7 @@ from uuid import UUID
 from django.db.models import Max
 
 from werewolf_agent.interfaces.api.games.models import GameEventRecord, GameRun
-from werewolf_agent.usecase.models import (
+from werewolf_agent.usecase.jobs import (
     EventToPersist,
     GameRunUpdate,
     NewGameRun,

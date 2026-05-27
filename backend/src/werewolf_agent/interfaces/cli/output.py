@@ -8,7 +8,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 
-from werewolf_agent.contracts.api import PublicGameEvent, PublicGameState
+from werewolf_agent.contracts.schemas import PublicGameEvent, PublicGameState
 
 console = Console()
 

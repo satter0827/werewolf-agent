@@ -20,7 +20,14 @@ from werewolf_agent.domain.models import (
     TieBreakPolicy,
 )
 from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.models import (
+from werewolf_agent.usecase.internals.projections import (
+    events_to_persist,
+    public_event_from_record,
+    public_state_from_run,
+    public_state_from_snapshot,
+)
+from werewolf_agent.usecase.internals.rulesets import default_ruleset
+from werewolf_agent.usecase.jobs.models import (
     CreateGameCommand,
     CreateGamePlayer,
     GameEventsResponse,
@@ -32,14 +39,12 @@ from werewolf_agent.usecase.models import (
     RulesetResponse,
     StepGameResponse,
 )
-from werewolf_agent.usecase.ports import AgentFactory, GameRunRepository, Logger, RandomFactory
-from werewolf_agent.usecase.projections import (
-    events_to_persist,
-    public_event_from_record,
-    public_state_from_run,
-    public_state_from_snapshot,
+from werewolf_agent.usecase.jobs.ports import (
+    AgentFactory,
+    GameRunRepository,
+    Logger,
+    RandomFactory,
 )
-from werewolf_agent.usecase.rulesets import default_ruleset
 
 
 class GameNotFoundError(Exception):

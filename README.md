@@ -52,7 +52,8 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/` | ルール、状態、観測、勝敗、domain event |
-| `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
+| `backend/src/werewolf_agent/usecase/jobs/` | workflow、port、usecase DTO、agent factory の公開面 |
+| `backend/src/werewolf_agent/usecase/internals/` | projection、ruleset など usecase 内部 helper |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
 | `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interfaces/cli/` | 公開 HTTP API だけを呼ぶ CLI |
@@ -72,9 +73,8 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 
 ## 設定
 
-設定は `.env` と環境変数から [backend/src/werewolf_agent/configuration/](backend/src/werewolf_agent/configuration/) に集約します。
+設定は `.env` と環境変数から [backend/src/werewolf_agent/commons/configuration/](backend/src/werewolf_agent/commons/configuration/) に集約します。
 interface の浅い場所で読み取り、usecase へ依存として注入します。
-既存の `werewolf_agent.config` は互換 import として残しています。
 `.env` はコミットしません。
 
 主な値:

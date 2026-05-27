@@ -13,9 +13,9 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.configuration import APP_NAME, get_settings, repository_root
+from werewolf_agent.commons.configuration import APP_NAME, get_settings, repository_root
 from werewolf_agent.contracts import AppError, ErrorCode
-from werewolf_agent.contracts.api import CreateGameRequest
+from werewolf_agent.contracts.schemas import CreateGameRequest
 from werewolf_agent.interfaces.cli.client import GameApiClient, HttpGameApiClient
 from werewolf_agent.interfaces.cli.errors import run_app_command
 from werewolf_agent.interfaces.cli.output import console, consume_events, print_state

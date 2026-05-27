@@ -8,7 +8,7 @@ from typing import Protocol
 from uuid import UUID
 
 from werewolf_agent.domain.models import Action, Observation
-from werewolf_agent.usecase.models import (
+from werewolf_agent.usecase.jobs.models import (
     EventToPersist,
     GameRunUpdate,
     NewGameRun,

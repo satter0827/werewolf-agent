@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from werewolf_agent.config import AppSettings
+from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.interfaces.shared.runtime import (
     build_interface_django_logging_config,
     settings_error_detail,

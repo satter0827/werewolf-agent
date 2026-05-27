@@ -20,15 +20,19 @@ def test_interfaces_do_not_import_domain_or_llm_directly() -> None:
     ]
 
 
-def test_only_application_bridge_imports_usecase_from_interfaces() -> None:
+def test_interfaces_import_only_public_usecase_jobs_from_application_bridge() -> None:
     imported = _imports_under(PACKAGE / "interfaces")
     application_path = PACKAGE / "interfaces" / "application"
+    allowed_prefix = "werewolf_agent.usecase.jobs"
 
     assert not [
         (path, module)
         for path, module in imported
         if (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase."))
-        and not path.is_relative_to(application_path)
+        and (
+            not path.is_relative_to(application_path)
+            or not (module == allowed_prefix or module.startswith(f"{allowed_prefix}."))
+        )
     ]
 
 
@@ -53,8 +57,6 @@ def test_domain_does_not_import_outer_layers() -> None:
     forbidden_prefixes = (
         "werewolf_agent.usecase",
         "werewolf_agent.interfaces",
-        "werewolf_agent.config",
-        "werewolf_agent.configuration",
         "werewolf_agent.commons",
         "werewolf_agent.llm",
     )

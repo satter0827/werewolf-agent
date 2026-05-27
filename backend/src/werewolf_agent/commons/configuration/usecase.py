@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from werewolf_agent.configuration.settings import AppSettings, get_settings
-from werewolf_agent.usecase.models import GameUseCaseSettings
+from werewolf_agent.commons.configuration.settings import AppSettings, get_settings
+from werewolf_agent.usecase.jobs.models import GameUseCaseSettings
 
 
 def build_game_usecase_settings(settings: AppSettings | None = None) -> GameUseCaseSettings:

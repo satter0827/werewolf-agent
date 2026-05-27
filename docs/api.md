@@ -108,16 +108,15 @@ Error response は RFC 9457 Problem Details 互換です。
 
 | Path | 責務 |
 | --- | --- |
-| `contracts/api.py` | HTTP DTO |
+| `contracts/schemas.py` | HTTP DTO、Problem Details |
 | `interfaces/api/games/views.py` | endpoint |
 | `interfaces/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interfaces/application/repositories.py` | Django DB repository adapter |
 | `interfaces/application/errors.py` | interface application bridge の例外 |
 | `interfaces/api/games/models.py` | `GameRun` / `GameEventRecord` |
 | `interfaces/api/errors.py` | Problem Details 変換 |
-| `usecase/games.py` | game workflow |
-| `usecase/models.py` | usecase DTO |
-| `usecase/projections.py` | public state / event projection |
+| `usecase/jobs/` | game workflow、usecase DTO、port、agent factory の公開面 |
+| `usecase/internals/projections.py` | public state / event projection |
 
 `interfaces/api` は domain / usecase を直接 import しません。
 usecase との接続は `interfaces/application` に閉じます。

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from werewolf_agent.domain.models import Phase
-from werewolf_agent.usecase.models import GameUseCaseSettings, RulesetResponse
+from werewolf_agent.usecase.jobs.models import GameUseCaseSettings, RulesetResponse
 
 
 def default_ruleset(settings: GameUseCaseSettings) -> RulesetResponse:

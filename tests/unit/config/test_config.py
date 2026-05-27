@@ -3,8 +3,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-import werewolf_agent.config as legacy_config
-from werewolf_agent.configuration import (
+from werewolf_agent.commons.configuration import (
     DEFAULT_DJANGO_SQLITE_PATH,
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
@@ -132,11 +131,6 @@ def test_game_settings_reject_inconsistent_player_counts() -> None:
             game_max_players=8,
             game_default_player_count=9,
         )
-
-
-def test_legacy_config_module_reexports_configuration() -> None:
-    assert legacy_config.AppSettings is AppSettings
-    assert legacy_config.build_game_usecase_settings is build_game_usecase_settings
 
 
 def test_logging_settings_normalize_supported_values() -> None:

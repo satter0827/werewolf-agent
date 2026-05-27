@@ -11,8 +11,8 @@ from uuid import UUID
 from django.db import transaction
 from pydantic import BaseModel
 
-from werewolf_agent.configuration import build_game_usecase_settings, get_settings
-from werewolf_agent.contracts.api import (
+from werewolf_agent.commons.configuration import build_game_usecase_settings, get_settings
+from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
@@ -21,19 +21,17 @@ from werewolf_agent.contracts.api import (
 )
 from werewolf_agent.interfaces.application.errors import ResourceNotFoundError
 from werewolf_agent.interfaces.application.repositories import DjangoGameRunRepository
-from werewolf_agent.usecase.agents import DummyAgentFactory
-from werewolf_agent.usecase.games import (
+from werewolf_agent.usecase.jobs import (
+    CreateGameCommand,
+    DummyAgentFactory,
     GameNotFoundError,
     GameUseCaseDependencies,
+    GameUseCaseSettings,
     advance_game,
     create_game,
     get_default_ruleset,
     get_game,
     list_public_events,
-)
-from werewolf_agent.usecase.models import (
-    CreateGameCommand,
-    GameUseCaseSettings,
 )
 
 TModel = TypeVar("TModel", bound=BaseModel)

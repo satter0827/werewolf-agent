@@ -12,7 +12,7 @@ from werewolf_agent.domain.models import (
     Role,
 )
 from werewolf_agent.domain.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.agents import DummyAgent
+from werewolf_agent.usecase.jobs import DummyAgent
 
 
 def config() -> GameConfig:

@@ -12,7 +12,7 @@ from werewolf_agent.domain.models import (
     Phase,
     PlayerStatus,
 )
-from werewolf_agent.usecase.models import (
+from werewolf_agent.usecase.jobs.models import (
     EventToPersist,
     GamePhase,
     GameStatus,

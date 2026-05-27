@@ -37,14 +37,14 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/configuration/` | `.env` / 環境変数、既定値、usecase 設定 adapter |
-| `backend/src/werewolf_agent/config.py` | 互換 import 用 wrapper |
+| `backend/src/werewolf_agent/commons/configuration/` | `.env` / 環境変数、既定値、usecase 設定 adapter |
 | `backend/src/werewolf_agent/domain/models.py` | headless 利用者が扱う `Player` / `Action` / snapshot / observation / event |
 | `backend/src/werewolf_agent/domain/service.py` | snapshot と pending action を受け取る stateless domain 関数 |
 | `backend/src/werewolf_agent/domain/rules/` | domain 内部 rules |
 | `backend/src/werewolf_agent/agents/` | domain の `Observation` から `Action` を返す agent 実装 |
-| `backend/src/werewolf_agent/usecase/` | workflow、projection、port、agent factory |
-| `backend/src/werewolf_agent/contracts/api.py` | 公開 HTTP API DTO |
+| `backend/src/werewolf_agent/usecase/jobs/` | workflow、port、usecase DTO、agent factory の公開面 |
+| `backend/src/werewolf_agent/usecase/internals/` | projection、ruleset など usecase 内部 helper |
+| `backend/src/werewolf_agent/contracts/schemas.py` | 公開 HTTP API DTO、Problem Details |
 | `backend/src/werewolf_agent/contracts/` | error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/interfaces/api/` | Django API、HTTP 入出力、Django config、例外変換 |
 | `backend/src/werewolf_agent/interfaces/application/` | usecase adapter、DB repository、transaction、依存注入 |
@@ -56,10 +56,10 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api --players 6 --see
 
 ## 境界
 
-- CLI は `contracts.api` と HTTP client だけを使う
+- CLI は `contracts.schemas` と HTTP client だけを使う
 - `interfaces/api` と `interfaces/cli` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interfaces/application` に限定する
-- `configuration` は interface から読み込む設定境界として扱い、domain から import しない
+- `commons.configuration` は interface から読み込む設定境界として扱い、domain から import しない
 - usecase は `domain.models` と `domain.service` だけを import する
 - domain は usecase / interfaces / config / commons / llm を import しない
 - domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する

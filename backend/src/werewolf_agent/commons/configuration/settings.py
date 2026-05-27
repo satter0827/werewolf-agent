@@ -11,7 +11,7 @@ from pydantic import AliasChoices, Field, SecretStr
 from pydantic.functional_validators import field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from werewolf_agent.configuration.defaults import (
+from werewolf_agent.commons.configuration.defaults import (
     DEFAULT_DJANGO_SECRET_KEY,
     DEFAULT_DJANGO_SQLITE_PATH,
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
