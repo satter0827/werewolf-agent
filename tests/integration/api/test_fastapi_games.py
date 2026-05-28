@@ -7,7 +7,7 @@ import pytest
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
-from werewolf_agent.interface.entrypoint.api.app import create_app  # noqa: E402
+from werewolf_agent.interface.api.app import create_app  # noqa: E402
 from werewolf_agent.interface.shared.settings import AppSettings  # noqa: E402
 
 

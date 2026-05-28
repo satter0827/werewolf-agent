@@ -19,7 +19,7 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 uv sync --group dev --extra api
 uv run werewolf-agent doctor
 uv run --extra api alembic upgrade head
-uv run --extra api uvicorn werewolf_agent.interface.entrypoint.api.app:create_app --factory
+uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
 別ターミナル:
@@ -71,7 +71,7 @@ uv run werewolf-agent replay --events .werewolf-agent/logs/game-001.jsonl
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
 | `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と public HTTP client |
 | `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
@@ -83,7 +83,7 @@ uv run werewolf-agent replay --events .werewolf-agent/logs/game-001.jsonl
 
 - `domain` は `.env`、I/O、logging 設定、LLM provider を知らない
 - `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換して接続する
-- `interface/entrypoint/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
+- `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
 - domain へ入る usecase code は `usecase/jobs` 配下に限定し、触る domain は `domain.game.*` と `domain.llm.*` の公開面だけ
 - HTTP response schema、Problem Details、CLI 表示、画面向けの表示名や整形は interface に閉じる
@@ -157,7 +157,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src
 uv run --extra api alembic upgrade head
-uv run --extra api uvicorn werewolf_agent.interface.entrypoint.api.app:create_app --factory
+uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
 ## ドキュメント

@@ -23,14 +23,14 @@ from werewolf_agent.interface.application.database import (
 )
 from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.application.models import Base
-from werewolf_agent.interface.entrypoint.api.errors import (
+from werewolf_agent.interface.api.errors import (
     app_error_handler,
     http_exception_handler,
     pydantic_validation_error_handler,
     request_validation_error_handler,
     unhandled_exception_handler,
 )
-from werewolf_agent.interface.entrypoint.api.routers import router
+from werewolf_agent.interface.api.routers import router
 from werewolf_agent.interface.shared.logging import bind_log_context
 from werewolf_agent.interface.shared.runtime import configure_interface_logging
 from werewolf_agent.interface.shared.settings import AppSettings, get_settings

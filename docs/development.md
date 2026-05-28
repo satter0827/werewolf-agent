@@ -23,7 +23,7 @@ uv run --extra api alembic upgrade head
 API を起動:
 
 ```bash
-uv run --extra api uvicorn werewolf_agent.interface.entrypoint.api.app:create_app --factory
+uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
 CLI で確認:
@@ -46,7 +46,7 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/domain/llm/service.py` | FakeLLM decision logic |
 | `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
 | `backend/src/werewolf_agent/usecase/jobs/` | stateless job、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/entrypoint/api/` | FastAPI app、router、例外変換、SSE |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、例外変換、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入、Alembic migration |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と HTTP client |
 | `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
@@ -59,7 +59,7 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 ## 境界
 
 - CLI は `interface/shared/schemas.py` と HTTP client だけを使う
-- `interface/entrypoint/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
+- `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
 - 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
@@ -118,10 +118,10 @@ Git 管理しないものは `.werewolf-agent/` に集約します。
 - SQLite: `.werewolf-agent/db/db.sqlite3`
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
-- coverage data: `.werewolf-agent/cache/coverage/.coverage`
+- coverage data: `.werewolf-agent/coverage/.coverage`
 - JSONL logs
 
-`.werewolf-agent/.gitkeep` 以外はコミットしません。
+`.werewolf-agent/` は Git 管理しません。トップレベルの `.gitkeep` だけを置きます。
 
 ## Optional Dependencies
 

@@ -111,4 +111,4 @@ strict = true
 warn_unused_ignores = true
 
 [tool.coverage.run]
-data_file = ".werewolf-agent/cache/coverage/.coverage"
+data_file = ".werewolf-agent/coverage/.coverage"

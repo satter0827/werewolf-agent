@@ -139,14 +139,14 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 | Path | 責務 |
 | --- | --- |
 | `interface/shared/schemas.py` | HTTP wire DTO、Problem Details |
-| `interface/entrypoint/api/routers.py` | endpoint |
-| `interface/entrypoint/api/errors.py` | Problem Details 変換 |
+| `interface/api/routers.py` | endpoint |
+| `interface/api/errors.py` | Problem Details 変換 |
 | `interface/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `interface/application/models.py` | `game_runs` / `game_events` / read model ORM |
 | `usecase/jobs/` | stateless game workflow、業務 validation、repository port、domain 接続 |
 
-`interface/entrypoint/api` は domain / usecase を直接 import しません。
+`interface/api` は domain / usecase を直接 import しません。
 usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
 HTTP DTO、Problem Details、表示名、response 整形は interface 側に置きます。
 

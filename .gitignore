@@ -17,9 +17,7 @@ __pycache__/
 /.envrc
 
 # Werewolf Agent local generated artifacts
-/.werewolf-agent/*
-!/.werewolf-agent/
-!/.werewolf-agent/.gitkeep
+/.werewolf-agent/
 
 # Django and local databases
 *.sqlite3
@@ -35,7 +33,6 @@ local_settings.py
 *.pid
 
 # Test, coverage, lint, type-check, and tool caches
-.werewolf-agent/
 /.cache/
 .coverage
 .coverage.*
