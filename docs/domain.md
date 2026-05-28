@@ -71,8 +71,10 @@ interface 層から usecase を呼ぶ場所は `interface/application` に限定
 | --- | --- |
 | `AgentObservation` | LLM provider に渡せる provider 非依存の可視情報 |
 | `AgentDecision` | LLM provider が返す構造化 decision |
-| `LlmDecisionProvider` | FakeLLM / 将来の real LLM adapter 用 port |
-| `choose_fake_llm_decision(player_id, observation, rng)` | FakeLLM 用の decision を返す |
+| `AgentObservation.speeches` / `vote_rounds` | FakeLLM に渡してよい公開履歴 |
+| `FakeLlmConfig` | FakeLLM の seed policy、persona、発話、理由テンプレート設定 |
+| `LlmDecisionProvider` | 将来の real LLM adapter 用 port |
+| `FakeLlmService.choose_decision(player_id, observation, config, rng)` | FakeLLM 用の decision を返す唯一の service 接点 |
 
 ## 進行
 
@@ -110,7 +112,7 @@ seed は role assignment、tie break、FakeLLM の decision 選択に使いま�
 ## 拡張先
 
 - 新 role / rule: `domain.game.models`、`domain.game.rules`
-- LLM provider 非依存の decision 型 / FakeLLM decision: `domain.llm.models`、`domain.llm.service`
+- LLM provider 非依存の decision 型 / FakeLLM 設定 / FakeLLM decision: `domain.llm.models`、`domain.llm.service`
 - LLM provider adapter: `domain.llm.ports` を usecase / interface 側で実装に接続
 - 公開 workflow / port: `usecase.jobs` の top-level API
 - projection、game / llm 変換、自動 agent adapter: `usecase.jobs` 配下の private module

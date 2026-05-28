@@ -8,8 +8,8 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends
 from sse_starlette.sse import EventSourceResponse
 
-from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.api.dependencies import game_application
+from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsQuery,

@@ -44,9 +44,7 @@ def test_interface_imports_only_public_usecase_jobs_from_application_bridge() ->
 
 
 def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
-    router_source = (PACKAGE / "interface" / "entrypoint" / "api" / "routers.py").read_text(
-        encoding="utf-8"
-    )
+    router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
 
     assert "game_id: UUID" not in router_source
     assert "game_id: str" in router_source
@@ -110,9 +108,11 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentPhase",
             "AgentPlayerStatus",
             "AgentRole",
+            "FakeLlmConfig",
+            "FakeLlmStrategy",
+            "FakeLlmService",
             "LlmDecisionProvider",
             "VisiblePlayer",
-            "choose_fake_llm_decision",
         },
     )
 
@@ -144,7 +144,6 @@ def test_usecase_imports_domain_only_from_jobs() -> None:
         "werewolf_agent.domain.game.models",
         "werewolf_agent.domain.game.service",
         "werewolf_agent.domain.llm.models",
-        "werewolf_agent.domain.llm.ports",
         "werewolf_agent.domain.llm.service",
     }
 
@@ -215,10 +214,11 @@ def test_domain_does_not_import_outer_layers() -> None:
 
 
 def test_removed_import_paths_do_not_exist() -> None:
-    assert not (PACKAGE / "interface" / "api").exists()
+    assert not (PACKAGE / "interface" / "entrypoint" / "api").exists()
     assert not (PACKAGE / "interface" / "cui").exists()
     assert not (PACKAGE / "interface" / "streamlit").exists()
     assert not (PACKAGE / "contracts" / "codes.py").exists()
+    assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
 
 
 def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:

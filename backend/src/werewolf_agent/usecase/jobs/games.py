@@ -6,17 +6,22 @@ import random
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import cast
+from datetime import datetime
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self, cast
 from uuid import UUID, uuid4
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
+    MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS,
     MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE,
     message_player_count_between,
     message_supported_agent_type_only,
     message_supported_player_agent_type_only,
 )
+from werewolf_agent.commons.shared.validation import non_blank
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
     DomainEvent,
@@ -30,38 +35,407 @@ from werewolf_agent.domain.game.models import (
     TieBreakPolicy,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.jobs._agents import FakeLlmAgentFactory
-from werewolf_agent.usecase.jobs._projections import (
-    events_to_create,
-    public_event_payload_from_record,
-    public_run_summary_payload_from_record,
-    public_state_payload_from_run,
-    public_state_payload_from_snapshot,
-    public_turn_payload_from_record,
-)
-from werewolf_agent.usecase.jobs._rulesets import default_ruleset
-from werewolf_agent.usecase.jobs.models import (
-    AdvanceGameCommand,
-    AdvanceGameResult,
-    CreateGameCommand,
-    CreateGamePlayer,
-    GamePhase,
-    GameResult,
-    GameRunCreate,
-    GameRunsResult,
-    GameRunUpdate,
-    GameStatus,
-    GameTurnsResult,
-    GameUseCaseConfig,
-    GetGameQuery,
-    ListGamesQuery,
-    ListGameTurnsQuery,
-    ListPublicEventsQuery,
-    PublicEventsResult,
-    RoleId,
-    RulesetResult,
-)
-from werewolf_agent.usecase.jobs.ports import AgentFactory, GameRepository
+
+if TYPE_CHECKING:
+    from werewolf_agent.usecase.jobs.ports import AgentFactory, GameRepository
+
+GamePhase = Literal["night", "day_discussion", "voting", "finished"]
+GameStatus = Literal["running", "completed"]
+EventVisibility = Literal["public", "player_private", "debug"]
+RoleId = Literal["villager", "werewolf", "seer", "knight"]
+TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
+Winner = Literal["villagers", "werewolves"]
+RoleCount = Annotated[int, Field(ge=0)]
+
+
+@dataclass(frozen=True)
+class GameUseCaseConfig:
+    """Business settings used by stateless game jobs."""
+
+    min_players: int = 5
+    max_players: int = 8
+    default_player_count: int = 6
+    supported_agent_type: str = "llm"
+    default_ruleset_id: str = "default"
+
+
+class _UseCaseModel(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+
+class CreateGamePlayer(_UseCaseModel):
+    """One player requested for a new game."""
+
+    id: str
+    name: str
+    agent_type: str = "llm"
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("id", "name", "agent_type")
+    @classmethod
+    def validate_non_blank(cls, value: str) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, "value")
+
+
+class CreateGameAgentConfig(_UseCaseModel):
+    """Agent selection for automated game runs."""
+
+    type: str = "llm"
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("type")
+    @classmethod
+    def validate_non_blank(cls, value: str) -> str:
+        """Return a stripped non-empty agent type."""
+        return non_blank(value, "value")
+
+
+class CreateGameRuleConfig(_UseCaseModel):
+    """Rule knobs accepted when creating a game."""
+
+    role_counts: dict[RoleId, RoleCount] | None = None
+    tie_break_policy: TieBreakPolicyId = "no_elimination"
+    day_speech_turns: int = Field(default=1, ge=1, le=5)
+    allow_self_vote: bool = False
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class CreateGameCommand(_UseCaseModel):
+    """Command for creating one game run."""
+
+    player_count: int | None = Field(default=None, ge=1)
+    seed: int | None = None
+    players: list[CreateGamePlayer] | None = None
+    agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
+    rule_config: CreateGameRuleConfig = Field(default_factory=CreateGameRuleConfig)
+
+    @model_validator(mode="after")
+    def validate_players_and_count(self) -> Self:
+        """Ensure player_count and explicit players describe the same table."""
+        if (
+            self.players is not None
+            and self.player_count is not None
+            and len(self.players) != self.player_count
+        ):
+            raise ValueError(MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS)
+        return self
+
+
+class GetGameQuery(_UseCaseModel):
+    """Query for loading one game."""
+
+    game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceGameCommand(_UseCaseModel):
+    """Command for advancing one game by one business step."""
+
+    game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ListGamesQuery(_UseCaseModel):
+    """Query for listing public game runs."""
+
+    status: GameStatus | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ListPublicEventsQuery(_UseCaseModel):
+    """Query for listing public events after a sequence cursor."""
+
+    game_id: str | UUID
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ListGameTurnsQuery(_UseCaseModel):
+    """Query for listing public turn records after a sequence cursor."""
+
+    game_id: str | UUID
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RulesetResult(_UseCaseModel):
+    """Ruleset business metadata returned by use cases."""
+
+    id: str
+    player_count: dict[str, int]
+    roles: list[RoleId]
+    phases: list[GamePhase]
+    agent_types: list[str]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameResult(_UseCaseModel):
+    """Current game state returned by use cases."""
+
+    game_id: str
+    state: dict[str, Any]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceGameResult(_UseCaseModel):
+    """Result from advancing a game by one use case step."""
+
+    game_id: str
+    status: GameStatus
+    state: dict[str, Any]
+    events: list[dict[str, Any]]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicEventsResult(_UseCaseModel):
+    """Public event stream returned by use cases."""
+
+    game_id: str
+    events: list[dict[str, Any]]
+    next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunsResult(_UseCaseModel):
+    """Page of public game run summaries."""
+
+    runs: list[dict[str, Any]]
+    next_offset: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameTurnsResult(_UseCaseModel):
+    """Page of public turn history."""
+
+    game_id: str
+    turns: list[dict[str, Any]]
+    next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicPlayerState(_UseCaseModel):
+    """Internal public player state projected from domain state."""
+
+    id: str
+    name: str
+    alive: bool
+    status: str
+    eliminated_day: int | None = None
+    killed_night: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameState(_UseCaseModel):
+    """Internal public game state projected from domain state."""
+
+    game_id: str
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    players: list[PublicPlayerState]
+    alive_player_ids: list[str]
+    eliminated_player_ids: list[str]
+    winner: Winner | None = None
+    summary: dict[str, Any]
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameEvent(_UseCaseModel):
+    """Internal public event projected from a stored event record."""
+
+    sequence: int = Field(ge=1)
+    event_id: UUID
+    event_type: str
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    visibility: Literal["public"] = "public"
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameRunSummary(_UseCaseModel):
+    """Public summary of a persisted game run."""
+
+    game_id: str
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    player_count: int
+    alive_count: int
+    winner: Winner | None = None
+    step_count: int
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGameTurn(_UseCaseModel):
+    """Public turn/event record optimized for UI timelines."""
+
+    sequence: int = Field(ge=1)
+    event_sequence: int = Field(ge=1)
+    version: int = Field(ge=1)
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameEventCreate(_UseCaseModel):
+    """Sanitized event data to persist through an outer repository."""
+
+    visibility: EventVisibility
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameTurn(_UseCaseModel):
+    """Turn read-model record loaded from an outer persistence adapter."""
+
+    sequence: int
+    event_sequence: int
+    version: int
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameRunSummary(_UseCaseModel):
+    """Run summary read model loaded from an outer persistence adapter."""
+
+    game_id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    player_count: int
+    alive_count: int
+    winner: Winner | None = None
+    step_count: int
+    turn_count: int
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunCreate(_UseCaseModel):
+    """New game run data to be persisted by an outer repository."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    seed: int | None
+    config: dict[str, Any]
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunUpdate(_UseCaseModel):
+    """Persistable updates for an existing game run."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameRun(_UseCaseModel):
+    """Game run loaded from an outer persistence adapter."""
+
+    id: UUID
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    seed: int | None
+    config: dict[str, Any]
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    version: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class StoredGameEvent(_UseCaseModel):
+    """Event record loaded from an outer persistence adapter."""
+
+    sequence: int
+    event_id: UUID
+    visibility: EventVisibility
+    phase: GamePhase | None = None
+    day: int | None = None
+    actor_id: str | None = None
+    event_type: str
+    payload: dict[str, Any]
+    occurred_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+def _default_agent_factory() -> AgentFactory:
+    from werewolf_agent.usecase.jobs._agents import FakeLlmAgentFactory
+
+    return FakeLlmAgentFactory()
 
 
 class GameNotFoundError(Exception):
@@ -78,11 +452,13 @@ class GameUseCaseDependencies:
 
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
-    agent_factory: AgentFactory = field(default_factory=FakeLlmAgentFactory)
+    agent_factory: AgentFactory = field(default_factory=_default_agent_factory)
 
 
 def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
     """Return business metadata for the default ruleset."""
+    from werewolf_agent.usecase.jobs._rulesets import default_ruleset
+
     return default_ruleset(config)
 
 
@@ -92,6 +468,12 @@ def create_game(
     dependencies: GameUseCaseDependencies,
 ) -> GameResult:
     """Create and persist one deterministic game."""
+    from werewolf_agent.usecase.jobs._projections import (
+        events_to_create,
+        public_state_payload_from_run,
+        public_state_payload_from_snapshot,
+    )
+
     game_id = uuid4()
     _validate_agent_config(command, dependencies.config)
     players = _player_configs(command, dependencies.config)
@@ -125,6 +507,8 @@ def get_game(
     dependencies: GameUseCaseDependencies,
 ) -> GameResult:
     """Return the current public state for one game run."""
+    from werewolf_agent.usecase.jobs._projections import public_state_payload_from_run
+
     game_id = _parse_game_id(query.game_id)
     run = dependencies.repository.get(game_id)
     if run is None:
@@ -138,6 +522,8 @@ def list_games(
     dependencies: GameUseCaseDependencies,
 ) -> GameRunsResult:
     """Return a page of public game run summaries."""
+    from werewolf_agent.usecase.jobs._projections import public_run_summary_payload_from_record
+
     records = dependencies.repository.list_run_summaries(
         status=query.status,
         limit=query.limit,
@@ -156,6 +542,13 @@ def advance_game(
     dependencies: GameUseCaseDependencies,
 ) -> AdvanceGameResult:
     """Advance one game run by one business step."""
+    from werewolf_agent.usecase.jobs._projections import (
+        events_to_create,
+        public_event_payload_from_record,
+        public_state_payload_from_run,
+        public_state_payload_from_snapshot,
+    )
+
     game_id = _parse_game_id(command.game_id)
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
@@ -218,6 +611,8 @@ def list_public_events(
     dependencies: GameUseCaseDependencies,
 ) -> PublicEventsResult:
     """List public events after a sequence number."""
+    from werewolf_agent.usecase.jobs._projections import public_event_payload_from_record
+
     game_id = _parse_game_id(query.game_id)
     run = dependencies.repository.get(game_id)
     if run is None:
@@ -242,6 +637,8 @@ def list_game_turns(
     dependencies: GameUseCaseDependencies,
 ) -> GameTurnsResult:
     """List public turn records after a sequence number."""
+    from werewolf_agent.usecase.jobs._projections import public_turn_payload_from_record
+
     game_id = _parse_game_id(query.game_id)
     run = dependencies.repository.get(game_id)
     if run is None:

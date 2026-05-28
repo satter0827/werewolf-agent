@@ -1,4 +1,4 @@
-"""Ports for future LLM decision providers."""
+"""Ports for future real LLM decision providers."""
 
 from __future__ import annotations
 

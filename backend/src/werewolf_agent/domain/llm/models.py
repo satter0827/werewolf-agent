@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -55,6 +56,46 @@ class AgentActionType(StrEnum):
     PASS = "pass"
 
 
+FakeLlmStrategy = Literal["seeded", "random"]
+
+
+@dataclass(frozen=True)
+class FakeLlmConfig:
+    """Settings used by the FakeLLM automated player implementation."""
+
+    strategy: FakeLlmStrategy = "seeded"
+    randomness: float = 0.7
+    persona_profiles: tuple[str, ...] = ("cautious", "assertive", "analytical")
+    speech_intents: tuple[str, ...] = ("question", "compare", "pressure")
+    speech_templates: tuple[str, ...] = (
+        "[{persona}] I want to {intent} {target_name}.",
+        "[{persona}] {target_name}'s public history looks worth checking.",
+        "[{persona}] I will compare today's claims before voting.",
+    )
+    reason_templates: tuple[str, ...] = (
+        "fake_llm {persona} {action} from public signals",
+        "fake_llm {persona} {action} with {intent} intent",
+    )
+
+    def __post_init__(self) -> None:
+        """Validate FakeLLM configuration invariants."""
+        if self.strategy not in {"seeded", "random"}:
+            raise ValueError("fake_llm strategy must be one of: random, seeded")
+        if self.randomness < 0 or self.randomness > 1:
+            raise ValueError("fake_llm randomness must be between 0 and 1")
+        _validate_template_values("persona_profiles", self.persona_profiles)
+        _validate_template_values("speech_intents", self.speech_intents)
+        _validate_template_values("speech_templates", self.speech_templates)
+        _validate_template_values("reason_templates", self.reason_templates)
+
+
+def _validate_template_values(field_name: str, values: tuple[str, ...]) -> None:
+    if not values:
+        raise ValueError(f"fake_llm {field_name} must include at least one value")
+    for value in values:
+        non_blank(value, f"fake_llm {field_name}")
+
+
 class _LlmModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -73,6 +114,49 @@ class VisiblePlayer(_LlmModel):
         return non_blank(value, str(info.field_name))
 
 
+class _AgentSpeech(_LlmModel):
+    """Public speech visible to a decision provider."""
+
+    player_id: str
+    message: str
+
+    @field_validator("player_id", "message")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: Any) -> str:
+        """Return a trimmed non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+
+class _AgentVoteRound(_LlmModel):
+    """Public voting result visible to a decision provider."""
+
+    day: int
+    votes: dict[str, str] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+    eliminated_player_id: str | None = None
+
+    @field_validator("votes")
+    @classmethod
+    def validate_votes(cls, value: dict[str, str]) -> dict[str, str]:
+        """Return votes with trimmed non-empty string keys and values."""
+        return {
+            non_blank(str(key), "vote_round voter id"): non_blank(item, "vote_round target id")
+            for key, item in value.items()
+        }
+
+    @field_validator("counts")
+    @classmethod
+    def validate_counts(cls, value: dict[str, int]) -> dict[str, int]:
+        """Return vote counts with trimmed non-empty string keys."""
+        return {non_blank(str(key), "vote_round count key"): item for key, item in value.items()}
+
+    @field_validator("eliminated_player_id")
+    @classmethod
+    def validate_optional_eliminated_player_id(cls, value: str | None) -> str | None:
+        """Return a trimmed optional eliminated player id."""
+        return optional_non_blank(value, "eliminated_player_id")
+
+
 class AgentObservation(_LlmModel):
     """Provider-independent observation for one player decision."""
 
@@ -83,6 +167,8 @@ class AgentObservation(_LlmModel):
     players: list[VisiblePlayer]
     known_roles: dict[str, AgentRole] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
+    speeches: list[_AgentSpeech] = Field(default_factory=list)
+    vote_rounds: list[_AgentVoteRound] = Field(default_factory=list)
 
 
 class AgentDecision(_LlmModel):
@@ -197,5 +283,7 @@ __all__ = [
     "AgentPhase",
     "AgentPlayerStatus",
     "AgentRole",
+    "FakeLlmConfig",
+    "FakeLlmStrategy",
     "VisiblePlayer",
 ]

@@ -7,10 +7,12 @@ from werewolf_agent.domain.llm.models import (
     AgentPhase,
     AgentPlayerStatus,
     AgentRole,
+    FakeLlmConfig,
+    FakeLlmStrategy,
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
-from werewolf_agent.domain.llm.service import choose_fake_llm_decision
+from werewolf_agent.domain.llm.service import FakeLlmService
 
 __all__ = [
     "AgentActionType",
@@ -19,7 +21,9 @@ __all__ = [
     "AgentPhase",
     "AgentPlayerStatus",
     "AgentRole",
+    "FakeLlmConfig",
+    "FakeLlmService",
+    "FakeLlmStrategy",
     "LlmDecisionProvider",
     "VisiblePlayer",
-    "choose_fake_llm_decision",
 ]
