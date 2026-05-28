@@ -27,7 +27,6 @@ from werewolf_agent.interface.application.database import (
     create_database_engine,
     create_session_factory,
 )
-from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.application.models import Base
 from werewolf_agent.interface.shared.http import (
     app_error_handler,
@@ -67,10 +66,6 @@ def create_app(
     app.state.settings = loaded_settings
     app.state.engine = engine
     app.state.session_factory = session_factory
-    app.state.game_application = GameApplication(
-        session_factory=session_factory,
-        settings=loaded_settings,
-    )
 
     if loaded_settings.cors_allowed_origins_list:
         app.add_middleware(

@@ -37,9 +37,9 @@
 
 `domain.game.rules` は内部実装です。
 `domain.game` と `domain.llm` は互いに import しません。
-両者の接続、game observation から llm observation への変換、llm decision から game action への変換は `usecase.internal` の workflow が担当し、外側には `usecase.jobs` の公開 facade だけを出します。
+両者の接続、game observation から llm observation への変換、llm decision から game action への変換は `usecase.internal` が担当します。
 `interface/api` と `interface/entrypoint/cui` は domain を直接 import しません。
-interface 層から usecase を呼ぶ場所は `interface/application` に限定します。
+interface 層から usecase を呼ぶ場所は `interface/application` に限定し、呼び出し先は `usecase.jobs` の top-level facade だけにします。
 
 この境界は `tests/unit/architecture/test_architecture_boundaries.py` で検査します。
 
@@ -113,9 +113,9 @@ seed は role assignment、tie break、FakeLLM の decision 選択に使いま�
 
 - 新 role / rule: `domain.game.models`、`domain.game.rules`
 - LLM provider 非依存の decision 型 / FakeLLM 設定 / FakeLLM decision: `domain.llm.models`、`domain.llm.service`
-- LLM provider adapter: `domain.llm.ports` を usecase / interface 側で実装に接続
-- 公開 workflow / port: `usecase.jobs` の top-level API
-- projection、game / llm 変換、自動 agent adapter: `usecase.internal`
+- LLM provider adapter: `domain.llm.ports` を `usecase.internal` 側で実装に接続
+- 公開 usecase facade / DTO / repository port: `usecase.jobs` の top-level API
+- usecase workflow / projection / domain adapter: `usecase.internal`
 - 複数 human / external agent action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
 
 ## 検証

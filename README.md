@@ -87,10 +87,10 @@ uv run werewolf-agent step <game_id>
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
 | `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision |
-| `backend/src/werewolf_agent/usecase/jobs/` | 公開 usecase facade、DTO、repository port |
-| `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、業務 validation、domain 接続、projection、agent adapter |
+| `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い usecase facade、公開 DTO、repository port |
+| `backend/src/werewolf_agent/usecase/internal/` | usecase 実処理、workflow、projection、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
-| `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入 |
+| `backend/src/werewolf_agent/interface/application/` | stateless application bridge、SQLAlchemy repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と public HTTP client |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
@@ -100,10 +100,12 @@ uv run werewolf-agent step <game_id>
 境界:
 
 - `domain` は `.env`、I/O、logging 設定、LLM provider を知らない
-- `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換して接続する
+- `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換して接続する
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
-- domain へ入る usecase code は `usecase/internal` と public port に限定し、`usecase/jobs` は薄い公開 facade にする
+- usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
+- `usecase/jobs` は domain を import せず、`usecase/internal` へ委譲するだけにする
+- domain へ入る usecase code は `usecase/internal` 配下だけに限定する
+- `usecase/internal` は interface / wire schema に依存させない
 - HTTP response schema、Problem Details、error code metadata は `contracts` に置き、FastAPI 例外変換は `interface/shared` に置く
 - CLI 表示、画面向けの表示名や整形は interface に閉じる
 - public state / public event に role、night action、secret を出さない

@@ -6,7 +6,6 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
-from werewolf_agent.domain.game.models import Action, Observation
 from werewolf_agent.usecase.jobs.games import (
     GameEventCreate,
     GameRunCreate,
@@ -17,20 +16,6 @@ from werewolf_agent.usecase.jobs.games import (
     StoredGameRunSummary,
     StoredGameTurn,
 )
-
-
-class PlayerAgent(Protocol):
-    """Automated actor used by game jobs without coupling to provider details."""
-
-    def act(self, observation: Observation) -> Action:
-        """Return one structured action for the given visible observation."""
-
-
-class AgentFactory(Protocol):
-    """Factory for deterministic player agents."""
-
-    def create(self, player_id: str, *, seed: int) -> PlayerAgent:
-        """Create one player agent for a deterministic run step."""
 
 
 class GameRepository(Protocol):

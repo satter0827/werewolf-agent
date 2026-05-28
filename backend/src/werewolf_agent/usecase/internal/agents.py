@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import random
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_MISSING_ATTACK_TARGET,
@@ -21,12 +22,29 @@ from werewolf_agent.domain.llm.models import (
     AgentPhase,
     AgentPlayerStatus,
     AgentRole,
-    FakeLlmConfig,
     VisiblePlayer,
 )
+from werewolf_agent.domain.llm.models import (
+    FakeLlmConfig as DomainFakeLlmConfig,
+)
 from werewolf_agent.domain.llm.service import choose_decision
+from werewolf_agent.usecase.jobs.games import FakeLlmConfig
 
 logger = logging.getLogger(__name__)
+
+
+class PlayerAgent(Protocol):
+    """Automated actor used by internal game workflow."""
+
+    def act(self, observation: Observation) -> Action:
+        """Return one structured action for the given visible observation."""
+
+
+class AgentFactory(Protocol):
+    """Factory for deterministic player agents."""
+
+    def create(self, player_id: str, *, seed: int) -> PlayerAgent:
+        """Create one player agent for a deterministic run step."""
 
 
 @dataclass(frozen=True)
@@ -34,7 +52,7 @@ class FakeLlmAgent:
     """Automated player backed by an LLM decision provider."""
 
     player_id: str
-    config: FakeLlmConfig
+    config: DomainFakeLlmConfig
     rng: random.Random
 
     def act(self, observation: Observation) -> Action:
@@ -63,7 +81,7 @@ class FakeLlmAgent:
 class FakeLlmAgentFactory:
     """Create FakeLLM agents for automated game runs."""
 
-    config: FakeLlmConfig = field(default_factory=FakeLlmConfig)
+    config: DomainFakeLlmConfig = field(default_factory=DomainFakeLlmConfig)
 
     def create(self, player_id: str, *, seed: int) -> FakeLlmAgent:
         """Create one FakeLLM agent using the configured seed policy."""
@@ -74,6 +92,20 @@ class FakeLlmAgentFactory:
             else random.Random()
         )
         return FakeLlmAgent(player_id=player_id, config=self.config, rng=rng)
+
+
+def fake_llm_agent_factory(config: FakeLlmConfig) -> FakeLlmAgentFactory:
+    """Return a domain-facing FakeLLM factory from use case settings."""
+    return FakeLlmAgentFactory(
+        config=DomainFakeLlmConfig(
+            strategy=config.strategy,
+            randomness=config.randomness,
+            persona_profiles=config.persona_profiles,
+            speech_intents=config.speech_intents,
+            speech_templates=config.speech_templates,
+            reason_templates=config.reason_templates,
+        )
+    )
 
 
 def _agent_observation_from_game(observation: Observation) -> AgentObservation:

@@ -1,15 +1,15 @@
-"""Interface application bridge for game use cases."""
+"""Stateless interface application bridge for game use cases."""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TypeVar
 
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from werewolf_agent.commons.configuration import AppSettings, get_settings
+import werewolf_agent.usecase.jobs as game_jobs
+from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.commons.shared.messages import (
     LOG_GAME_EVENTS_LISTED,
     LOG_GAME_RUN_CREATED,
@@ -39,246 +39,234 @@ from werewolf_agent.interface.application.settings import (
     build_fake_llm_config,
     build_game_usecase_config,
 )
-from werewolf_agent.usecase.jobs import (
-    AdvanceGameCommand,
-    AgentFactory,
-    CreateGameCommand,
-    FakeLlmAgentFactory,
-    GameStatus,
-    GameUseCaseConfig,
-    GameUseCaseDependencies,
-    GetGameQuery,
-    GetPrivateObservationQuery,
-    ListGamesQuery,
-    ListGameTurnsQuery,
-    ListPublicEventsQuery,
-    RulesetResult,
-    SubmitPlayerActionCommand,
-    advance_game,
-    create_game,
-    get_default_ruleset,
-    get_game,
-    get_private_observation,
-    list_game_turns,
-    list_games,
-    list_public_events,
-    submit_player_action,
-)
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class GameApplication:
-    """Use case adapter with injected settings and persistence."""
+def get_default_ruleset(*, settings: AppSettings) -> RulesetResponse:
+    """Return the public ruleset."""
+    ruleset = game_jobs.get_default_ruleset(config=build_game_usecase_config(settings))
+    return _ruleset_response(ruleset, settings)
 
-    session_factory: SessionFactory
-    settings: AppSettings
 
-    def default_ruleset(self) -> RulesetResponse:
-        """Return the public ruleset."""
-        ruleset = get_default_ruleset(config=self._usecase_config())
-        return _ruleset_response(ruleset, self.settings)
+def create_game_run(
+    request: CreateGameRequest,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+) -> GameResponse:
+    """Create and persist one deterministic game."""
+    command = game_jobs.CreateGameRunCommand.model_validate(request.model_dump(mode="json"))
+    with session_scope(session_factory) as session:
+        response = game_jobs.create_game_run(command, dependencies=_dependencies(session, settings))
+    logger.info(
+        LOG_GAME_RUN_CREATED,
+        extra={"game_id": response.game_id, "player_count": request.resolved_player_count},
+    )
+    return _wire_model(GameResponse, response)
 
-    def create_game_run(self, request: CreateGameRequest) -> GameResponse:
-        """Create and persist one deterministic game."""
-        command = CreateGameCommand.model_validate(request.model_dump(mode="json"))
-        with session_scope(self.session_factory) as session:
-            response = create_game(command, dependencies=self._dependencies(session))
-        logger.info(
-            LOG_GAME_RUN_CREATED,
-            extra={"game_id": response.game_id, "player_count": request.resolved_player_count},
-        )
-        return _wire_model(GameResponse, response)
 
-    def get_game_run(self, game_id: str) -> GameResponse:
-        """Return the current public state for one game run."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = get_game(
-                    GetGameQuery(game_id=game_id),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        return _wire_model(GameResponse, response)
-
-    def list_game_runs(
-        self,
-        *,
-        status: GameStatus | None = None,
-        limit: int = 20,
-        offset: int = 0,
-    ) -> GameRunsResponse:
-        """Return public game run summaries."""
-        with session_scope(self.session_factory) as session:
-            response = list_games(
-                ListGamesQuery(status=status, limit=limit, offset=offset),
-                dependencies=self._dependencies(session),
+def get_game_run(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+) -> GameResponse:
+    """Return the current public state for one game run."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.get_game_run(
+                game_jobs.GetGameRunQuery(game_id=game_id),
+                dependencies=_dependencies(session, settings),
             )
-        logger.debug(
-            LOG_GAME_RUNS_LISTED,
-            extra={"status": status, "limit": limit, "offset": offset, "count": len(response.runs)},
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    return _wire_model(GameResponse, response)
+
+
+def list_game_runs(
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    status: game_jobs.GameStatus | None = None,
+    limit: int = 20,
+    offset: int = 0,
+) -> GameRunsResponse:
+    """Return public game run summaries."""
+    with session_scope(session_factory) as session:
+        response = game_jobs.list_game_runs(
+            game_jobs.ListGameRunsQuery(status=status, limit=limit, offset=offset),
+            dependencies=_dependencies(session, settings),
         )
-        return _wire_model(GameRunsResponse, response)
-
-    def step_game_run(self, game_id: str) -> StepGameResponse:
-        """Advance one game run by one deterministic use case step."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = advance_game(
-                    AdvanceGameCommand(game_id=game_id),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        logger.info(
-            LOG_GAME_RUN_STEPPED,
-            extra={
-                "game_id": response.game_id,
-                "status": response.status,
-                "version": response.state.get("version"),
-                "event_count": len(response.events),
-            },
-        )
-        return _wire_model(StepGameResponse, response)
-
-    def get_public_events(
-        self,
-        game_id: str,
-        *,
-        after: int = 0,
-        limit: int = 100,
-    ) -> GameEventsResponse:
-        """List public events after a sequence number."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = list_public_events(
-                    ListPublicEventsQuery(game_id=game_id, after=after, limit=limit),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        logger.debug(
-            LOG_GAME_EVENTS_LISTED,
-            extra={
-                "game_id": game_id,
-                "after": after,
-                "limit": limit,
-                "count": len(response.events),
-                "next_after": response.next_after,
-            },
-        )
-        return _wire_model(GameEventsResponse, response)
-
-    def get_public_turns(
-        self,
-        game_id: str,
-        *,
-        after: int = 0,
-        limit: int = 100,
-    ) -> GameTurnsResponse:
-        """List public timeline turns after a sequence number."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = list_game_turns(
-                    ListGameTurnsQuery(game_id=game_id, after=after, limit=limit),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        logger.debug(
-            LOG_GAME_TURNS_LISTED,
-            extra={
-                "game_id": game_id,
-                "after": after,
-                "limit": limit,
-                "count": len(response.turns),
-                "next_after": response.next_after,
-            },
-        )
-        return _wire_model(GameTurnsResponse, response)
-
-    def get_private_observation(
-        self,
-        game_id: str,
-        player_id: str,
-        *,
-        control_token: str,
-    ) -> PrivateObservationResponse:
-        """Return a private observation for one authenticated manual player."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = get_private_observation(
-                    GetPrivateObservationQuery(
-                        game_id=game_id,
-                        player_id=player_id,
-                        control_token=control_token,
-                    ),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        logger.debug(
-            LOG_PRIVATE_OBSERVATION_RETURNED,
-            extra={"game_id": game_id, "player_id": player_id},
-        )
-        return _wire_model(PrivateObservationResponse, response)
-
-    def submit_player_action(
-        self,
-        game_id: str,
-        player_id: str,
-        request: SubmitPlayerActionRequest,
-        *,
-        control_token: str,
-    ) -> SubmitPlayerActionResponse:
-        """Submit one authenticated manual player action."""
-        with session_scope(self.session_factory) as session:
-            try:
-                response = submit_player_action(
-                    SubmitPlayerActionCommand(
-                        game_id=game_id,
-                        player_id=player_id,
-                        control_token=control_token,
-                        **request.model_dump(mode="json"),
-                    ),
-                    dependencies=self._dependencies(session),
-                )
-            except (GameNotFoundError, InvalidGameIdError) as exc:
-                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-        logger.info(
-            LOG_PLAYER_ACTION_SUBMITTED,
-            extra={"game_id": game_id, "player_id": player_id, "action_type": request.type},
-        )
-        return _wire_model(SubmitPlayerActionResponse, response)
-
-    def _dependencies(self, session: Session) -> GameUseCaseDependencies:
-        return GameUseCaseDependencies(
-            repository=SqlAlchemyGameRunRepository(session),
-            config=self._usecase_config(),
-            agent_factory=_agent_factory(self.settings),
-        )
-
-    def _usecase_config(self) -> GameUseCaseConfig:
-        return build_game_usecase_config(self.settings)
+    logger.debug(
+        LOG_GAME_RUNS_LISTED,
+        extra={"status": status, "limit": limit, "offset": offset, "count": len(response.runs)},
+    )
+    return _wire_model(GameRunsResponse, response)
 
 
-def default_application(session_factory: SessionFactory) -> GameApplication:
-    """Return a game application using process settings."""
-    return GameApplication(session_factory=session_factory, settings=get_settings())
+def advance_game_run(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+) -> StepGameResponse:
+    """Advance one game run by one deterministic use case step."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.advance_game_run(
+                game_jobs.AdvanceGameRunCommand(game_id=game_id),
+                dependencies=_dependencies(session, settings),
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.info(
+        LOG_GAME_RUN_STEPPED,
+        extra={
+            "game_id": response.game_id,
+            "status": response.status,
+            "version": response.state.get("version"),
+            "event_count": len(response.events),
+        },
+    )
+    return _wire_model(StepGameResponse, response)
+
+
+def list_public_game_events(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    after: int = 0,
+    limit: int = 100,
+) -> GameEventsResponse:
+    """List public events after a sequence number."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.list_public_game_events(
+                game_jobs.ListPublicGameEventsQuery(game_id=game_id, after=after, limit=limit),
+                dependencies=_dependencies(session, settings),
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.debug(
+        LOG_GAME_EVENTS_LISTED,
+        extra={
+            "game_id": game_id,
+            "after": after,
+            "limit": limit,
+            "count": len(response.events),
+            "next_after": response.next_after,
+        },
+    )
+    return _wire_model(GameEventsResponse, response)
+
+
+def list_public_game_turns(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    after: int = 0,
+    limit: int = 100,
+) -> GameTurnsResponse:
+    """List public timeline turns after a sequence number."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.list_public_game_turns(
+                game_jobs.ListPublicGameTurnsQuery(game_id=game_id, after=after, limit=limit),
+                dependencies=_dependencies(session, settings),
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.debug(
+        LOG_GAME_TURNS_LISTED,
+        extra={
+            "game_id": game_id,
+            "after": after,
+            "limit": limit,
+            "count": len(response.turns),
+            "next_after": response.next_after,
+        },
+    )
+    return _wire_model(GameTurnsResponse, response)
+
+
+def get_player_observation(
+    game_id: str,
+    player_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    control_token: str,
+) -> PrivateObservationResponse:
+    """Return a private observation for one authenticated manual player."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.get_player_observation(
+                game_jobs.GetPlayerObservationQuery(
+                    game_id=game_id,
+                    player_id=player_id,
+                    control_token=control_token,
+                ),
+                dependencies=_dependencies(session, settings),
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.debug(
+        LOG_PRIVATE_OBSERVATION_RETURNED,
+        extra={"game_id": game_id, "player_id": player_id},
+    )
+    return _wire_model(PrivateObservationResponse, response)
+
+
+def submit_player_action(
+    game_id: str,
+    player_id: str,
+    request: SubmitPlayerActionRequest,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    control_token: str,
+) -> SubmitPlayerActionResponse:
+    """Submit one authenticated manual player action."""
+    with session_scope(session_factory) as session:
+        try:
+            response = game_jobs.submit_player_action(
+                game_jobs.SubmitPlayerActionCommand(
+                    game_id=game_id,
+                    player_id=player_id,
+                    control_token=control_token,
+                    **request.model_dump(mode="json"),
+                ),
+                dependencies=_dependencies(session, settings),
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.info(
+        LOG_PLAYER_ACTION_SUBMITTED,
+        extra={"game_id": game_id, "player_id": player_id, "action_type": request.type},
+    )
+    return _wire_model(SubmitPlayerActionResponse, response)
+
+
+def _dependencies(
+    session: Session,
+    settings: AppSettings,
+) -> game_jobs.GameUseCaseDependencies:
+    return game_jobs.GameUseCaseDependencies(
+        repository=SqlAlchemyGameRunRepository(session),
+        config=build_game_usecase_config(settings),
+        fake_llm_config=build_fake_llm_config(settings),
+    )
 
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
     return model_type.model_validate(source.model_dump(mode="json"))
 
 
-def _agent_factory(settings: AppSettings) -> AgentFactory:
-    return FakeLlmAgentFactory(config=build_fake_llm_config(settings))
-
-
-def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetResponse:
+def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -> RulesetResponse:
     role_names = settings.game_role_name_map
     phase_names = settings.game_phase_name_map
     return RulesetResponse(

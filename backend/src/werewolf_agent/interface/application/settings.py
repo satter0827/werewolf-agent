@@ -5,8 +5,7 @@ from __future__ import annotations
 from typing import cast
 
 from werewolf_agent.commons.configuration import AppSettings, get_settings
-from werewolf_agent.domain.llm import FakeLlmConfig, FakeLlmStrategy
-from werewolf_agent.usecase.jobs import GameUseCaseConfig
+from werewolf_agent.usecase.jobs import FakeLlmConfig, FakeLlmStrategy, GameUseCaseConfig
 
 
 def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCaseConfig:

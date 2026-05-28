@@ -7,7 +7,7 @@ from typing import cast
 from fastapi import Request
 
 from werewolf_agent.commons.configuration import AppSettings
-from werewolf_agent.interface.application.games import GameApplication
+from werewolf_agent.interface.application.database import SessionFactory
 
 
 def app_settings(request: Request) -> AppSettings:
@@ -15,6 +15,6 @@ def app_settings(request: Request) -> AppSettings:
     return cast(AppSettings, request.app.state.settings)
 
 
-def game_application(request: Request) -> GameApplication:
-    """Return the game application adapter from FastAPI app state."""
-    return cast(GameApplication, request.app.state.game_application)
+def game_session_factory(request: Request) -> SessionFactory:
+    """Return the configured session factory from FastAPI app state."""
+    return cast(SessionFactory, request.app.state.session_factory)

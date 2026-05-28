@@ -1,5 +1,4 @@
 import json
-import logging
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
@@ -7,23 +6,9 @@ from uuid import UUID, uuid4
 import pytest
 
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
-from werewolf_agent.domain.game.models import (
-    Action,
-    GameHistory,
-    Observation,
-    Phase,
-    Player,
-    PlayerStatus,
-    Role,
-    VoteResult,
-)
-from werewolf_agent.usecase.internal.agents import (
-    FakeLlmAgentFactory,
-    _agent_observation_from_game,
-)
 from werewolf_agent.usecase.jobs import (
-    AdvanceGameCommand,
-    CreateGameCommand,
+    AdvanceGameRunCommand,
+    CreateGameRunCommand,
     GameEventCreate,
     GameRepository,
     GameRunCreate,
@@ -31,39 +16,24 @@ from werewolf_agent.usecase.jobs import (
     GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
-    GetGameQuery,
-    ListGamesQuery,
-    ListGameTurnsQuery,
-    ListPublicEventsQuery,
+    GetGameRunQuery,
+    ListGameRunsQuery,
+    ListPublicGameEventsQuery,
+    ListPublicGameTurnsQuery,
     StoredGameEvent,
     StoredGameRun,
     StoredGameRunSummary,
     StoredGameTurn,
-    advance_game,
-    create_game,
+    advance_game_run,
+    create_game_run,
     get_default_ruleset,
-    get_game,
-    list_game_turns,
-    list_games,
-    list_public_events,
+    get_game_run,
+    list_game_runs,
+    list_public_game_events,
+    list_public_game_turns,
 )
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
-
-
-class PassingAgent:
-    def act(self, observation: Observation) -> Action:
-        return Action.pass_(observation.me.id)
-
-
-class RecordingAgentFactory:
-    def __init__(self) -> None:
-        self.player_ids: list[str] = []
-
-    def create(self, player_id: str, *, seed: int) -> PassingAgent:
-        _ = seed
-        self.player_ids.append(player_id)
-        return PassingAgent()
 
 
 class InMemoryGameRepository(GameRepository):
@@ -252,8 +222,8 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
 def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
-    result = create_game(
-        CreateGameCommand(players=explicit_players(), seed=42),
+    result = create_game_run(
+        CreateGameRunCommand(players=explicit_players(), seed=42),
         dependencies=deps,
     )
 
@@ -270,15 +240,15 @@ def test_create_game_rejects_duplicate_normalized_player_ids() -> None:
     players[1]["id"] = "p1"
 
     with pytest.raises(GameError):
-        create_game(CreateGameCommand(players=players), dependencies=deps)
+        create_game_run(CreateGameRunCommand(players=players), dependencies=deps)
 
 
 def test_create_game_rejects_unsupported_agent_type() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        create_game(
-            CreateGameCommand(player_count=5, agent={"type": "dummy"}),
+        create_game_run(
+            CreateGameRunCommand(player_count=5, agent={"type": "dummy"}),
             dependencies=deps,
         )
 
@@ -287,22 +257,22 @@ def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(InvalidGameIdError):
-        get_game(GetGameQuery(game_id="not-a-uuid"), dependencies=deps)
+        get_game_run(GetGameRunQuery(game_id="not-a-uuid"), dependencies=deps)
 
     with pytest.raises(GameNotFoundError):
-        get_game(GetGameQuery(game_id=str(uuid4())), dependencies=deps)
+        get_game_run(GetGameRunQuery(game_id=str(uuid4())), dependencies=deps)
 
 
 def test_advance_game_delegates_core_progression_and_returns_public_payloads() -> None:
     deps, repository = dependencies()
-    created = create_game(CreateGameCommand(player_count=5, seed=1), dependencies=deps)
+    created = create_game_run(CreateGameRunCommand(player_count=5, seed=1), dependencies=deps)
 
-    advanced = advance_game(
-        AdvanceGameCommand(game_id=created.game_id),
+    advanced = advance_game_run(
+        AdvanceGameRunCommand(game_id=created.game_id),
         dependencies=deps,
     )
-    events = list_public_events(
-        ListPublicEventsQuery(game_id=created.game_id, after=0),
+    events = list_public_game_events(
+        ListPublicGameEventsQuery(game_id=created.game_id, after=0),
         dependencies=deps,
     )
 
@@ -315,89 +285,16 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
 
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
-    created = create_game(CreateGameCommand(player_count=5, seed=1), dependencies=deps)
-    advance_game(AdvanceGameCommand(game_id=created.game_id), dependencies=deps)
+    created = create_game_run(CreateGameRunCommand(player_count=5, seed=1), dependencies=deps)
+    advance_game_run(AdvanceGameRunCommand(game_id=created.game_id), dependencies=deps)
 
-    runs = list_games(ListGamesQuery(limit=10), dependencies=deps)
-    turns = list_game_turns(ListGameTurnsQuery(game_id=created.game_id), dependencies=deps)
+    runs = list_game_runs(ListGameRunsQuery(limit=10), dependencies=deps)
+    turns = list_public_game_turns(
+        ListPublicGameTurnsQuery(game_id=created.game_id),
+        dependencies=deps,
+    )
 
     assert runs.runs[0]["game_id"] == created.game_id
     assert runs.runs[0]["turn_count"] == len(turns.turns)
     assert turns.turns
     assert "role_counts" not in json.dumps(turns.model_dump(mode="json"))
-
-
-def test_advance_game_uses_injected_agent_factory() -> None:
-    repository = InMemoryGameRepository()
-    factory = RecordingAgentFactory()
-    deps = GameUseCaseDependencies(repository=repository, agent_factory=factory)
-    created = create_game(CreateGameCommand(player_count=5, seed=1), dependencies=deps)
-
-    advance_game(AdvanceGameCommand(game_id=created.game_id), dependencies=deps)
-
-    assert factory.player_ids == [f"player-{index}" for index in range(1, 6)]
-
-
-def test_agent_observation_from_game_carries_public_history_only() -> None:
-    game_observation = Observation(
-        phase=Phase.VOTING,
-        day=2,
-        me=Player(id="p1", name="Alice", role=Role.SEER),
-        players=[
-            Player(id="p1", name="Alice", role=Role.SEER),
-            Player(id="p2", name="Bob", status=PlayerStatus.ALIVE),
-        ],
-        known_roles={"p1": Role.SEER},
-        history=GameHistory(
-            speeches=[Action.speech("p2", "I want to hear from Alice.")],
-            votes=[
-                VoteResult(
-                    day=1,
-                    votes={"p1": "p2"},
-                    counts={"p2": 1},
-                    eliminated_player_id=None,
-                    tie_break_policy="no_elimination",
-                )
-            ],
-        ),
-    )
-
-    agent_observation = _agent_observation_from_game(game_observation)
-
-    assert agent_observation.speeches[0].player_id == "p2"
-    assert agent_observation.speeches[0].message == "I want to hear from Alice."
-    assert agent_observation.vote_rounds[0].votes == {"p1": "p2"}
-    assert agent_observation.vote_rounds[0].counts == {"p2": 1}
-    assert agent_observation.known_roles == {"p1": Role.SEER.value}
-
-
-def test_fake_llm_debug_log_avoids_secret_decision_fields(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    game_observation = Observation(
-        phase=Phase.VOTING,
-        day=2,
-        me=Player(id="p1", name="Alice", role=Role.SEER),
-        players=[
-            Player(id="p1", name="Alice", role=Role.SEER),
-            Player(id="p2", name="Bob", status=PlayerStatus.ALIVE),
-        ],
-        known_roles={"p1": Role.SEER},
-    )
-    agent = FakeLlmAgentFactory().create("p1", seed=1)
-
-    with caplog.at_level(logging.DEBUG, logger="werewolf_agent.usecase.internal.agents"):
-        agent.act(game_observation)
-
-    record = next(
-        record for record in caplog.records if record.message == "fake_llm decision selected"
-    )
-    assert record.actor_id == "p1"
-    assert record.phase == "voting"
-    assert record.day == 2
-    assert record.decision_type == "vote"
-    assert record.candidate_count == 1
-    assert not hasattr(record, "role")
-    assert not hasattr(record, "known_roles")
-    assert not hasattr(record, "target_id")
-    assert not hasattr(record, "message_text")

@@ -53,33 +53,30 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
     _assert_public_surface(
         game_jobs,
         {
-            "AdvanceGameCommand",
-            "AdvanceGameResult",
-            "AgentFactory",
+            "AdvanceGameRunCommand",
+            "AdvanceGameRunResult",
             "ActionTypeId",
-            "CreateGameCommand",
-            "FakeLlmAgentFactory",
+            "CreateGameRunCommand",
             "FakeLlmConfig",
             "FakeLlmStrategy",
             "GameEventCreate",
             "GamePhase",
             "GameRepository",
-            "GameResult",
             "GameRunCreate",
+            "GameRunResult",
             "GameRunUpdate",
-            "GameRunsResult",
             "GameStatus",
-            "GameTurnsResult",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
-            "GetGameQuery",
-            "GetPrivateObservationQuery",
-            "ListGameTurnsQuery",
-            "ListGamesQuery",
-            "ListPublicEventsQuery",
-            "PlayerAgent",
-            "PrivateObservationResult",
-            "PublicEventsResult",
+            "GetGameRunQuery",
+            "GetPlayerObservationQuery",
+            "ListGameRunsQuery",
+            "ListGameRunsResult",
+            "ListPublicGameEventsQuery",
+            "ListPublicGameTurnsQuery",
+            "ListPublicGameTurnsResult",
+            "PlayerObservationResult",
+            "PublicGameEventsResult",
             "PublicGameRunSummary",
             "PublicGameTurn",
             "RulesetResult",
@@ -89,17 +86,44 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "StoredGameTurn",
             "SubmitPlayerActionCommand",
             "SubmitPlayerActionResult",
-            "advance_game",
-            "create_game",
+            "advance_game_run",
+            "create_game_run",
             "get_default_ruleset",
-            "get_private_observation",
-            "get_game",
-            "list_game_turns",
-            "list_games",
-            "list_public_events",
+            "get_player_observation",
+            "get_game_run",
+            "list_game_runs",
+            "list_public_game_events",
+            "list_public_game_turns",
             "submit_player_action",
         },
     )
+
+
+def test_old_usecase_jobs_names_are_not_public() -> None:
+    removed_names = {
+        "AdvanceGameCommand",
+        "AdvanceGameResult",
+        "CreateGameCommand",
+        "GameResult",
+        "GameRunsResult",
+        "GameTurnsResult",
+        "GetGameQuery",
+        "GetPrivateObservationQuery",
+        "ListGameTurnsQuery",
+        "ListGamesQuery",
+        "ListPublicEventsQuery",
+        "PrivateObservationResult",
+        "PublicEventsResult",
+        "advance_game",
+        "create_game",
+        "get_game",
+        "get_private_observation",
+        "list_game_turns",
+        "list_games",
+        "list_public_events",
+    }
+
+    assert not [name for name in removed_names if hasattr(game_jobs, name)]
 
 
 def test_domain_llm_public_surface_is_minimal() -> None:
@@ -123,14 +147,14 @@ def test_domain_llm_public_surface_is_minimal() -> None:
 
 def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
     for function_name in (
-        "create_game",
-        "get_game",
-        "get_private_observation",
+        "create_game_run",
+        "get_game_run",
+        "get_player_observation",
         "submit_player_action",
-        "advance_game",
-        "list_games",
-        "list_public_events",
-        "list_game_turns",
+        "advance_game_run",
+        "list_game_runs",
+        "list_public_game_events",
+        "list_public_game_turns",
     ):
         signature = inspect.signature(getattr(game_jobs, function_name))
         parameters = list(signature.parameters.values())
@@ -145,7 +169,7 @@ def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
     assert ruleset_signature.parameters["config"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_usecase_imports_domain_only_from_public_ports_or_internal() -> None:
+def test_usecase_imports_domain_only_from_internal_boundary() -> None:
     allowed_domain_modules = {
         "werewolf_agent.domain.game.models",
         "werewolf_agent.domain.game.service",
@@ -155,18 +179,40 @@ def test_usecase_imports_domain_only_from_public_ports_or_internal() -> None:
 
     imported = _imports_under(PACKAGE / "usecase")
     internal_path = PACKAGE / "usecase" / "internal"
-    ports_path = PACKAGE / "usecase" / "jobs" / "ports.py"
-    jobs_init_path = PACKAGE / "usecase" / "jobs" / "__init__.py"
     bad_imports = []
     for path, module in imported:
         if not module.startswith("werewolf_agent.domain"):
             continue
-        if (
-            not path.is_relative_to(internal_path) and path != ports_path and path != jobs_init_path
-        ) or module not in allowed_domain_modules:
+        if not path.is_relative_to(internal_path) or module not in allowed_domain_modules:
             bad_imports.append((path, module))
 
     assert not bad_imports
+
+
+def test_usecase_internal_does_not_import_interface_or_wire_contracts() -> None:
+    forbidden_prefixes = (
+        "werewolf_agent.interface",
+        "werewolf_agent.contracts.schemas",
+        "fastapi",
+        "starlette",
+        "sse_starlette",
+    )
+
+    imported = _imports_under(PACKAGE / "usecase" / "internal")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
+    ]
+
+
+def test_interface_application_bridge_is_stateless() -> None:
+    app_source = (PACKAGE / "interface" / "api" / "app.py").read_text(encoding="utf-8")
+    bridge_source = (PACKAGE / "interface" / "application" / "games.py").read_text(encoding="utf-8")
+
+    assert "class GameApplication" not in bridge_source
+    assert "app.state.game_application" not in app_source
 
 
 def test_game_and_llm_subdomains_do_not_import_each_other() -> None:

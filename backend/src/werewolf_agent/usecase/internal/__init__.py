@@ -1,1 +1,1 @@
-"""Internal implementations for public use case jobs."""
+"""Internal game use case workflow and domain-facing adapters."""
