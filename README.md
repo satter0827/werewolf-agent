@@ -101,7 +101,7 @@ uv run werewolf-agent step <game_id>
 - `domain` は `.env`、I/O、logging 設定、LLM provider を知らない
 - `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換して接続する
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
+- usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
 - domain へ入る usecase code は `usecase/jobs` 配下に限定し、触る domain は `domain.game.*` と `domain.llm.*` の公開面だけ
 - HTTP response schema、Problem Details、CLI 表示、画面向けの表示名や整形は interface に閉じる
 - public state / public event に role、night action、secret を出さない
@@ -124,6 +124,10 @@ WEREWOLF_LLM_MAX_RETRIES=2
 WEREWOLF_LLM_TEMPERATURE=0.7
 WEREWOLF_FAKE_LLM_STRATEGY=seeded
 WEREWOLF_FAKE_LLM_RANDOMNESS=0.7
+WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES=[{persona}] I want to {intent} {target_name}.|[{persona}] {target_name}'s public history looks worth checking.|[{persona}] I will compare today's claims before voting.
+WEREWOLF_FAKE_LLM_PERSONA_PROFILES=cautious|assertive|analytical
+WEREWOLF_FAKE_LLM_SPEECH_INTENTS=question|compare|pressure
+WEREWOLF_FAKE_LLM_REASON_TEMPLATES=fake_llm {persona} {action} from public signals|fake_llm {persona} {action} with {intent} intent
 WEREWOLF_LOG_LEVEL=INFO
 WEREWOLF_LOG_FORMAT=json
 WEREWOLF_LOG_OUTPUT=stderr

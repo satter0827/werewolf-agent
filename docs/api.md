@@ -169,6 +169,7 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 
 `interface/api` は domain / usecase を直接 import しません。
 usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
+FakeLLM 設定だけは `domain.llm` の公開面から組み立てます。
 HTTP DTO、Problem Details、表示名、response 整形は interface 側に置きます。
 
 ## 検証

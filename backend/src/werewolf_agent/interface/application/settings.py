@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from typing import cast
 
+from werewolf_agent.domain.llm import FakeLlmConfig, FakeLlmStrategy
 from werewolf_agent.interface.shared.settings import AppSettings, get_settings
-from werewolf_agent.usecase.jobs import FakeLlmConfig, FakeLlmStrategy, GameUseCaseConfig
+from werewolf_agent.usecase.jobs import GameUseCaseConfig
 
 
 def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCaseConfig:
@@ -26,5 +27,8 @@ def build_fake_llm_config(settings: AppSettings | None = None) -> FakeLlmConfig:
     return FakeLlmConfig(
         strategy=cast(FakeLlmStrategy, app_settings.fake_llm_strategy),
         randomness=app_settings.fake_llm_randomness,
+        persona_profiles=tuple(app_settings.fake_llm_persona_profile_list),
+        speech_intents=tuple(app_settings.fake_llm_speech_intent_list),
         speech_templates=tuple(app_settings.fake_llm_speech_template_list),
+        reason_templates=tuple(app_settings.fake_llm_reason_template_list),
     )

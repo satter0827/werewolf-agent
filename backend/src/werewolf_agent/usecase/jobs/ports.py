@@ -7,7 +7,7 @@ from typing import Protocol
 from uuid import UUID
 
 from werewolf_agent.domain.game.models import Action, Observation
-from werewolf_agent.usecase.jobs.models import (
+from werewolf_agent.usecase.jobs.games import (
     GameEventCreate,
     GameRunCreate,
     GameRunUpdate,

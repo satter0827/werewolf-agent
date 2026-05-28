@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import random
 from dataclasses import dataclass, field
 
@@ -20,46 +21,41 @@ from werewolf_agent.domain.llm.models import (
     AgentPhase,
     AgentPlayerStatus,
     AgentRole,
+    FakeLlmConfig,
     VisiblePlayer,
 )
-from werewolf_agent.domain.llm.ports import LlmDecisionProvider
-from werewolf_agent.domain.llm.service import choose_fake_llm_decision
-from werewolf_agent.usecase.jobs.models import FakeLlmConfig
+from werewolf_agent.domain.llm.service import FakeLlmService
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class FakeLlmDecisionProvider:
-    """Provider-port adapter for FakeLLM decisions."""
-
-    rng: random.Random
-    speech_templates: tuple[str, ...]
-
-    def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
-        """Return one structured decision for visible player context."""
-        return choose_fake_llm_decision(
-            player_id,
-            observation,
-            rng=self.rng,
-            speech_templates=self.speech_templates,
-        )
-
-
 class FakeLlmAgent:
     """Automated player backed by an LLM decision provider."""
 
-    def __init__(
-        self,
-        player_id: str,
-        *,
-        provider: LlmDecisionProvider,
-    ) -> None:
-        self.player_id = player_id
-        self._provider = provider
+    player_id: str
+    config: FakeLlmConfig
+    rng: random.Random
 
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
         agent_observation = _agent_observation_from_game(observation)
-        decision = self._provider.choose_decision(self.player_id, agent_observation)
+        decision = FakeLlmService.choose_decision(
+            self.player_id,
+            agent_observation,
+            config=self.config,
+            rng=self.rng,
+        )
+        logger.debug(
+            "fake_llm decision selected",
+            extra={
+                "actor_id": self.player_id,
+                "candidate_count": _safe_candidate_count(agent_observation),
+                "day": agent_observation.day,
+                "decision_type": decision.type.value,
+                "phase": agent_observation.phase.value,
+            },
+        )
         return _game_action_from_decision(decision)
 
 
@@ -77,26 +73,41 @@ class FakeLlmAgentFactory:
             if self.config.strategy == "seeded"
             else random.Random()
         )
-        provider = FakeLlmDecisionProvider(
-            rng=rng,
-            speech_templates=self.config.speech_templates,
-        )
-        return FakeLlmAgent(player_id, provider=provider)
+        return FakeLlmAgent(player_id=player_id, config=self.config, rng=rng)
 
 
 def _agent_observation_from_game(observation: Observation) -> AgentObservation:
-    return AgentObservation(
-        phase=AgentPhase(observation.phase.value),
-        day=observation.day,
-        me=_visible_player_from_game(observation.me),
-        role=AgentRole(observation.me.role.value) if observation.me.role is not None else None,
-        players=[_visible_player_from_game(player) for player in observation.players],
-        known_roles={
-            player_id: AgentRole(role.value) for player_id, role in observation.known_roles.items()
-        },
-        available_actions=[
-            AgentActionType(action_type.value) for action_type in observation.available_actions
-        ],
+    return AgentObservation.model_validate(
+        {
+            "phase": AgentPhase(observation.phase.value),
+            "day": observation.day,
+            "me": _visible_player_from_game(observation.me),
+            "role": AgentRole(observation.me.role.value)
+            if observation.me.role is not None
+            else None,
+            "players": [_visible_player_from_game(player) for player in observation.players],
+            "known_roles": {
+                player_id: AgentRole(role.value)
+                for player_id, role in observation.known_roles.items()
+            },
+            "available_actions": [
+                AgentActionType(action_type.value) for action_type in observation.available_actions
+            ],
+            "speeches": [
+                {"player_id": speech.player_id, "message": speech.message}
+                for speech in observation.history.speeches
+                if speech.message
+            ],
+            "vote_rounds": [
+                {
+                    "day": vote.day,
+                    "votes": dict(vote.votes),
+                    "counts": dict(vote.counts),
+                    "eliminated_player_id": vote.eliminated_player_id,
+                }
+                for vote in observation.history.votes
+            ],
+        }
     )
 
 
@@ -105,6 +116,14 @@ def _visible_player_from_game(player: Player) -> VisiblePlayer:
         id=player.id,
         name=player.name,
         status=AgentPlayerStatus(player.status.value),
+    )
+
+
+def _safe_candidate_count(observation: AgentObservation) -> int:
+    return sum(
+        1
+        for player in observation.players
+        if player.status is AgentPlayerStatus.ALIVE and player.id != observation.me.id
     )
 
 

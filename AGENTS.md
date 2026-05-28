@@ -46,7 +46,7 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 - CLI は domain / usecase を直接 import せず、public wire schema と HTTP client だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application/` に限定する
-- `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
+- `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面を import する。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
 - usecase から domain を参照する code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
 - `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換してつなぐ
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く

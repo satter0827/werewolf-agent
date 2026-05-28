@@ -30,9 +30,15 @@ DEFAULT_LLM_TEMPERATURE: Final = 0.7
 DEFAULT_FAKE_LLM_STRATEGY: Final = "seeded"
 DEFAULT_FAKE_LLM_RANDOMNESS: Final = 0.7
 DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = (
-    "I want to hear more from {target_name}.|"
-    "{target_name}'s vote history looks worth checking.|"
-    "I will compare today's claims before voting."
+    "[{persona}] I want to {intent} {target_name}.|"
+    "[{persona}] {target_name}'s public history looks worth checking.|"
+    "[{persona}] I will compare today's claims before voting."
+)
+DEFAULT_FAKE_LLM_PERSONA_PROFILES: Final = "cautious|assertive|analytical"
+DEFAULT_FAKE_LLM_SPEECH_INTENTS: Final = "question|compare|pressure"
+DEFAULT_FAKE_LLM_REASON_TEMPLATES: Final = (
+    "fake_llm {persona} {action} from public signals|"
+    "fake_llm {persona} {action} with {intent} intent"
 )
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
@@ -141,6 +147,18 @@ class AppSettings(BaseSettings):
     fake_llm_speech_templates: str = Field(
         default=DEFAULT_FAKE_LLM_SPEECH_TEMPLATES,
         validation_alias="WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES",
+    )
+    fake_llm_persona_profiles: str = Field(
+        default=DEFAULT_FAKE_LLM_PERSONA_PROFILES,
+        validation_alias="WEREWOLF_FAKE_LLM_PERSONA_PROFILES",
+    )
+    fake_llm_speech_intents: str = Field(
+        default=DEFAULT_FAKE_LLM_SPEECH_INTENTS,
+        validation_alias="WEREWOLF_FAKE_LLM_SPEECH_INTENTS",
+    )
+    fake_llm_reason_templates: str = Field(
+        default=DEFAULT_FAKE_LLM_REASON_TEMPLATES,
+        validation_alias="WEREWOLF_FAKE_LLM_REASON_TEMPLATES",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_format: LogFormat = Field(
@@ -287,6 +305,21 @@ class AppSettings(BaseSettings):
         return [item.strip() for item in self.fake_llm_speech_templates.split("|") if item.strip()]
 
     @property
+    def fake_llm_persona_profile_list(self) -> list[str]:
+        """Return configured FakeLLM persona profiles."""
+        return [item.strip() for item in self.fake_llm_persona_profiles.split("|") if item.strip()]
+
+    @property
+    def fake_llm_speech_intent_list(self) -> list[str]:
+        """Return configured FakeLLM speech intents."""
+        return [item.strip() for item in self.fake_llm_speech_intents.split("|") if item.strip()]
+
+    @property
+    def fake_llm_reason_template_list(self) -> list[str]:
+        """Return configured FakeLLM reason templates."""
+        return [item.strip() for item in self.fake_llm_reason_templates.split("|") if item.strip()]
+
+    @property
     def sqlite_database_path(self) -> Path:
         """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
         sqlite_path = self.sqlite_path.expanduser()
@@ -396,6 +429,9 @@ class AppSettings(BaseSettings):
         "game_role_names",
         "game_phase_names",
         "fake_llm_speech_templates",
+        "fake_llm_persona_profiles",
+        "fake_llm_speech_intents",
+        "fake_llm_reason_templates",
         "api_title",
         "api_version",
         "cli_api_url",
@@ -417,6 +453,12 @@ class AppSettings(BaseSettings):
         split_mapping(self.game_phase_names, field_name="game_phase_names")
         if not self.fake_llm_speech_template_list:
             raise ValueError("fake_llm_speech_templates must include at least one template")
+        if not self.fake_llm_persona_profile_list:
+            raise ValueError("fake_llm_persona_profiles must include at least one profile")
+        if not self.fake_llm_speech_intent_list:
+            raise ValueError("fake_llm_speech_intents must include at least one intent")
+        if not self.fake_llm_reason_template_list:
+            raise ValueError("fake_llm_reason_templates must include at least one template")
         try:
             self.game_ruleset_description_template.format(
                 min_players=self.game_min_players,

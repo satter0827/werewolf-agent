@@ -116,9 +116,11 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentPhase",
             "AgentPlayerStatus",
             "AgentRole",
+            "FakeLlmConfig",
+            "FakeLlmStrategy",
+            "FakeLlmService",
             "LlmDecisionProvider",
             "VisiblePlayer",
-            "choose_fake_llm_decision",
         },
     )
 
@@ -152,7 +154,6 @@ def test_usecase_imports_domain_only_from_jobs() -> None:
         "werewolf_agent.domain.game.models",
         "werewolf_agent.domain.game.service",
         "werewolf_agent.domain.llm.models",
-        "werewolf_agent.domain.llm.ports",
         "werewolf_agent.domain.llm.service",
     }
 
@@ -225,7 +226,10 @@ def test_domain_does_not_import_outer_layers() -> None:
 def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "interface" / "entrypoint" / "api").exists()
     assert not (PACKAGE / "interface" / "entrypoint" / "cli").exists()
+    assert not (PACKAGE / "interface" / "cui").exists()
+    assert not (PACKAGE / "interface" / "streamlit").exists()
     assert not (PACKAGE / "contracts" / "codes.py").exists()
+    assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
 
 
 def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:

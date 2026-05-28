@@ -83,6 +83,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.model == "fake-llm-local"
     assert settings.fake_llm_strategy == "seeded"
     assert settings.fake_llm_speech_template_list
+    assert settings.fake_llm_persona_profile_list
+    assert settings.fake_llm_speech_intent_list
+    assert settings.fake_llm_reason_template_list
     assert settings.cors_allowed_methods_list == ["GET", "POST"]
     assert settings.cors_allowed_headers_list == ["*"]
     assert settings.game_role_name_map["werewolf"] == "人狼"
@@ -115,7 +118,10 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     fake_llm_config = build_fake_llm_config(settings)
     assert fake_llm_config.strategy == "seeded"
     assert fake_llm_config.randomness == settings.fake_llm_randomness
+    assert fake_llm_config.persona_profiles
+    assert fake_llm_config.speech_intents
     assert fake_llm_config.speech_templates
+    assert fake_llm_config.reason_templates
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -126,6 +132,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable LLM Agent")
     monkeypatch.setenv("WEREWOLF_FAKE_LLM_STRATEGY", "random")
     monkeypatch.setenv("WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES", "hello {target_name}|watching")
+    monkeypatch.setenv("WEREWOLF_FAKE_LLM_PERSONA_PROFILES", "cautious|bold")
+    monkeypatch.setenv("WEREWOLF_FAKE_LLM_SPEECH_INTENTS", "ask|press")
+    monkeypatch.setenv("WEREWOLF_FAKE_LLM_REASON_TEMPLATES", "reason {action}|reason {persona}")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
@@ -143,6 +152,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_supported_agent_name == "Configurable LLM Agent"
     assert settings.fake_llm_strategy == "random"
     assert settings.fake_llm_speech_template_list == ["hello {target_name}", "watching"]
+    assert settings.fake_llm_persona_profile_list == ["cautious", "bold"]
+    assert settings.fake_llm_speech_intent_list == ["ask", "press"]
+    assert settings.fake_llm_reason_template_list == ["reason {action}", "reason {persona}"]
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
