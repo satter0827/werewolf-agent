@@ -114,7 +114,7 @@ seed は role assignment、tie break、FakeLLM の decision 選択に使いま�
 - LLM provider adapter: `domain.llm.ports` を usecase / interface 側で実装に接続
 - 公開 workflow / port: `usecase.jobs` の top-level API
 - projection、game / llm 変換、自動 agent adapter: `usecase.jobs` 配下の private module
-- human / LLM action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
+- 複数 human / external agent action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
 
 ## 検証
 

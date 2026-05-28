@@ -8,10 +8,14 @@ from pydantic import ValidationError
 from werewolf_agent.commons.shared.messages import message_error_line
 from werewolf_agent.contracts import ConfigError
 from werewolf_agent.interface.entrypoint.cui.commands import (
+    create,
     doctor,
     play,
     replay,
+    ruleset,
     runs,
+    state,
+    step,
     turns,
     watch,
 )
@@ -38,6 +42,10 @@ def main() -> None:
 
 
 app.command(name="doctor")(doctor)
+app.command(name="ruleset")(ruleset)
+app.command(name="create")(create)
+app.command(name="state")(state)
+app.command(name="step")(step)
 app.command(name="play")(play)
 app.command(name="watch")(watch)
 app.command(name="replay")(replay)

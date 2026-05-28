@@ -44,9 +44,7 @@ def test_interface_imports_only_public_usecase_jobs_from_application_bridge() ->
 
 
 def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
-    router_source = (PACKAGE / "interface" / "entrypoint" / "api" / "routers.py").read_text(
-        encoding="utf-8"
-    )
+    router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
 
     assert "game_id: UUID" not in router_source
     assert "game_id: str" in router_source
@@ -59,6 +57,7 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "AdvanceGameCommand",
             "AdvanceGameResult",
             "AgentFactory",
+            "ActionTypeId",
             "CreateGameCommand",
             "FakeLlmAgentFactory",
             "FakeLlmConfig",
@@ -76,11 +75,14 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
             "GetGameQuery",
+            "GetPrivateObservationQuery",
+            "InvalidControlTokenError",
             "InvalidGameIdError",
             "ListGameTurnsQuery",
             "ListGamesQuery",
             "ListPublicEventsQuery",
             "PlayerAgent",
+            "PrivateObservationResult",
             "PublicEventsResult",
             "PublicGameRunSummary",
             "PublicGameTurn",
@@ -89,13 +91,17 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "StoredGameRun",
             "StoredGameRunSummary",
             "StoredGameTurn",
+            "SubmitPlayerActionCommand",
+            "SubmitPlayerActionResult",
             "advance_game",
             "create_game",
             "get_default_ruleset",
+            "get_private_observation",
             "get_game",
             "list_game_turns",
             "list_games",
             "list_public_events",
+            "submit_player_action",
         },
     )
 
@@ -121,6 +127,8 @@ def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
     for function_name in (
         "create_game",
         "get_game",
+        "get_private_observation",
+        "submit_player_action",
         "advance_game",
         "list_games",
         "list_public_events",
@@ -215,9 +223,8 @@ def test_domain_does_not_import_outer_layers() -> None:
 
 
 def test_removed_import_paths_do_not_exist() -> None:
-    assert not (PACKAGE / "interface" / "api").exists()
-    assert not (PACKAGE / "interface" / "cui").exists()
-    assert not (PACKAGE / "interface" / "streamlit").exists()
+    assert not (PACKAGE / "interface" / "entrypoint" / "api").exists()
+    assert not (PACKAGE / "interface" / "entrypoint" / "cli").exists()
     assert not (PACKAGE / "contracts" / "codes.py").exists()
 
 

@@ -37,6 +37,12 @@ DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = (
 DEFAULT_LOG_LEVEL: Final = "INFO"
 DEFAULT_LOG_FORMAT: Final = "json"
 DEFAULT_LOG_OUTPUT: Final = "stderr"
+DEFAULT_CLI_API_URL: Final = "http://127.0.0.1:8000/api/v1"
+DEFAULT_CLI_HTTP_TIMEOUT_SECONDS: Final = 10.0
+DEFAULT_CLI_MAX_STEPS: Final = 64
+DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = 0.0
+DEFAULT_CLI_EVENT_LIMIT: Final = 100
+DEFAULT_CLI_OUTPUT_FORMAT: Final = "table"
 DEFAULT_API_TITLE: Final = "Werewolf Agent API"
 DEFAULT_API_VERSION: Final = "0.1.0"
 DEFAULT_API_DEBUG: Final = False
@@ -59,12 +65,14 @@ DEFAULT_GAME_PHASE_NAMES: Final = "night:夜,day_discussion:昼チャット,voti
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
 LOG_OUTPUT_NAMES: Final = frozenset({"stderr", "stdout"})
+CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
 FAKE_LLM_STRATEGY_NAMES: Final = frozenset({"seeded", "random"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogFormat = Literal["json", "console"]
 LogOutput = Literal["stderr", "stdout"]
+CliOutputFormat = Literal["table", "json", "jsonl"]
 
 
 @lru_cache(maxsize=1)
@@ -142,6 +150,35 @@ class AppSettings(BaseSettings):
     log_output: LogOutput = Field(
         default=DEFAULT_LOG_OUTPUT,
         validation_alias="WEREWOLF_LOG_OUTPUT",
+    )
+    cli_api_url: str = Field(
+        default=DEFAULT_CLI_API_URL,
+        validation_alias="WEREWOLF_CLI_API_URL",
+    )
+    cli_http_timeout_seconds: float = Field(
+        default=DEFAULT_CLI_HTTP_TIMEOUT_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS",
+    )
+    cli_max_steps: int = Field(
+        default=DEFAULT_CLI_MAX_STEPS,
+        ge=1,
+        validation_alias="WEREWOLF_CLI_MAX_STEPS",
+    )
+    cli_poll_interval_seconds: float = Field(
+        default=DEFAULT_CLI_POLL_INTERVAL_SECONDS,
+        ge=0,
+        validation_alias="WEREWOLF_CLI_POLL_INTERVAL_SECONDS",
+    )
+    cli_event_limit: int = Field(
+        default=DEFAULT_CLI_EVENT_LIMIT,
+        ge=1,
+        le=500,
+        validation_alias="WEREWOLF_CLI_EVENT_LIMIT",
+    )
+    cli_output_format: CliOutputFormat = Field(
+        default=DEFAULT_CLI_OUTPUT_FORMAT,
+        validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
     )
 
     game_min_players: int = Field(
@@ -307,6 +344,17 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
+    @field_validator("cli_output_format", mode="before")
+    @classmethod
+    def normalize_cli_output_format(cls, value: object) -> str:
+        """Return a validated lowercase CLI output format name."""
+        return normalize_choice(
+            value,
+            field_name="cli_output_format",
+            choices=CLI_OUTPUT_FORMAT_NAMES,
+            case="lower",
+        )
+
     @field_validator("llm_provider", mode="before")
     @classmethod
     def normalize_llm_provider(cls, value: object) -> str:
@@ -350,6 +398,7 @@ class AppSettings(BaseSettings):
         "fake_llm_speech_templates",
         "api_title",
         "api_version",
+        "cli_api_url",
         mode="before",
     )
     @classmethod

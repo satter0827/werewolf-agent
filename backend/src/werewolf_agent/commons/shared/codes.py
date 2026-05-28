@@ -11,6 +11,8 @@ from typing import Final
 from werewolf_agent.commons.shared.messages import (
     DETAIL_AGENT_INVALID_RESPONSE,
     DETAIL_API_UNAVAILABLE,
+    DETAIL_AUTHENTICATION_REQUIRED,
+    DETAIL_AUTHORIZATION_FAILED,
     DETAIL_CONFIG_INVALID_VALUE,
     DETAIL_GAME_INVALID_ACTION,
     DETAIL_GAME_INVALID_PHASE,
@@ -22,6 +24,8 @@ from werewolf_agent.commons.shared.messages import (
     DETAIL_REQUEST_VALIDATION_FAILED,
     DETAIL_RESOURCE_NOT_FOUND,
     TITLE_API_UNAVAILABLE,
+    TITLE_AUTHENTICATION_REQUIRED,
+    TITLE_AUTHORIZATION_FAILED,
     TITLE_HTTP_ERROR,
     TITLE_INVALID_AGENT_RESPONSE,
     TITLE_INVALID_CONFIGURATION,
@@ -44,6 +48,8 @@ class ErrorCode(StrEnum):
     CONFIG_INVALID_VALUE = "config.invalid_value"
     REQUEST_VALIDATION_FAILED = "request.validation_failed"
     REQUEST_METHOD_NOT_ALLOWED = "request.method_not_allowed"
+    AUTHENTICATION_REQUIRED = "auth.required"
+    AUTHORIZATION_FAILED = "auth.forbidden"
     API_UNAVAILABLE = "api.unavailable"
     RESOURCE_NOT_FOUND = "resource.not_found"
     HTTP_ERROR = "http.error"
@@ -80,6 +86,16 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_METHOD_NOT_ALLOWED,
         status=HTTPStatus.METHOD_NOT_ALLOWED,
         detail=DETAIL_METHOD_NOT_ALLOWED,
+    ),
+    ErrorCode.AUTHENTICATION_REQUIRED: ErrorSpec(
+        title=TITLE_AUTHENTICATION_REQUIRED,
+        status=HTTPStatus.UNAUTHORIZED,
+        detail=DETAIL_AUTHENTICATION_REQUIRED,
+    ),
+    ErrorCode.AUTHORIZATION_FAILED: ErrorSpec(
+        title=TITLE_AUTHORIZATION_FAILED,
+        status=HTTPStatus.FORBIDDEN,
+        detail=DETAIL_AUTHORIZATION_FAILED,
     ),
     ErrorCode.API_UNAVAILABLE: ErrorSpec(
         title=TITLE_API_UNAVAILABLE,

@@ -2,23 +2,32 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import random
+import secrets
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import cast
 from uuid import UUID, uuid4
 
+from werewolf_agent.commons.shared.codes import ErrorCode
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
+    MESSAGE_INVALID_CONTROL_TOKEN,
     MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE,
+    MESSAGE_PLAYER_IS_NOT_MANUAL,
+    MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT,
     message_player_count_between,
     message_supported_agent_type_only,
     message_supported_player_agent_type_only,
 )
-from werewolf_agent.contracts import GameError, GamePhaseError
+from werewolf_agent.contracts import AppError, GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
+    Action,
+    ActionType,
     DomainEvent,
     GameConfig,
     GameSnapshot,
@@ -54,12 +63,17 @@ from werewolf_agent.usecase.jobs.models import (
     GameTurnsResult,
     GameUseCaseConfig,
     GetGameQuery,
+    GetPrivateObservationQuery,
     ListGamesQuery,
     ListGameTurnsQuery,
     ListPublicEventsQuery,
+    PrivateObservationResult,
     PublicEventsResult,
     RoleId,
     RulesetResult,
+    StoredGameRun,
+    SubmitPlayerActionCommand,
+    SubmitPlayerActionResult,
 )
 from werewolf_agent.usecase.jobs.ports import AgentFactory, GameRepository
 
@@ -70,6 +84,12 @@ class GameNotFoundError(Exception):
 
 class InvalidGameIdError(Exception):
     """Raised when a game id cannot be parsed as a UUID."""
+
+
+class InvalidControlTokenError(AppError):
+    """Raised when a private player credential is missing or invalid."""
+
+    code = ErrorCode.AUTHORIZATION_FAILED
 
 
 @dataclass(frozen=True)
@@ -95,7 +115,17 @@ def create_game(
     game_id = uuid4()
     _validate_agent_config(command, dependencies.config)
     players = _player_configs(command, dependencies.config)
+    control_tokens = _control_tokens_for(command)
     config = _domain_config(command, game_id=str(game_id), player_count=len(players))
+    run_config = config.model_dump(mode="json")
+    run_config["player_agent_types"] = {
+        player.id: command_player.agent_type
+        for player, command_player in zip(
+            players,
+            _requested_player_configs(command, players),
+            strict=True,
+        )
+    }
     snapshot, events = start_game(config, players, random.Random(command.seed))
     public_state = public_state_payload_from_snapshot(
         snapshot,
@@ -109,14 +139,20 @@ def create_game(
             phase=cast(GamePhase, public_state["phase"]),
             day=cast(int, public_state["day"]),
             seed=command.seed,
-            config=config.model_dump(mode="json"),
+            config=run_config,
             public_state=public_state,
             private_state=snapshot.model_dump(mode="json"),
+            pending_actions=PendingActions().model_dump(mode="json"),
+            control_token_hashes=_control_token_hashes(control_tokens),
             version=1,
         )
     )
     dependencies.repository.append_events(run.id, events_to_create(events))
-    return GameResult(game_id=str(run.id), state=public_state_payload_from_run(run))
+    return GameResult(
+        game_id=str(run.id),
+        state=public_state_payload_from_run(run),
+        control_tokens=control_tokens or None,
+    )
 
 
 def get_game(
@@ -165,13 +201,14 @@ def advance_game(
 
     snapshot = GameSnapshot.model_validate(run.private_state)
     runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
-    pending_actions = PendingActions()
+    pending_actions = PendingActions.model_validate(run.pending_actions)
     snapshot, pending_actions, action_events = _drive_current_phase(
         snapshot,
         seed=run.seed,
         version=run.version,
         pending_actions=pending_actions,
         agent_factory=dependencies.agent_factory,
+        human_player_ids=_human_player_ids(run.config),
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(
         snapshot,
@@ -193,6 +230,7 @@ def advance_game(
             day=cast(int, next_public_state["day"]),
             public_state=next_public_state,
             private_state=next_snapshot.model_dump(mode="json"),
+            pending_actions=_next_pending_actions.model_dump(mode="json"),
             version=run.version + 1,
         )
     )
@@ -203,6 +241,81 @@ def advance_game(
     return AdvanceGameResult(
         game_id=str(updated_run.id),
         status=updated_run.status,
+        state=public_state_payload_from_run(updated_run),
+        events=[
+            public_event_payload_from_record(record)
+            for record in records
+            if record.visibility == "public"
+        ],
+    )
+
+
+def get_private_observation(
+    query: GetPrivateObservationQuery,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> PrivateObservationResult:
+    """Return one authenticated player's private observation."""
+    game_id = _parse_game_id(query.game_id)
+    run = dependencies.repository.get(game_id)
+    if run is None:
+        raise GameNotFoundError(str(game_id))
+    _authorize_manual_player(run, query.player_id, query.control_token)
+    snapshot = GameSnapshot.model_validate(run.private_state)
+    observation = observe(snapshot, query.player_id)
+    return PrivateObservationResult(
+        game_id=str(run.id),
+        player_id=query.player_id,
+        observation=observation.model_dump(mode="json"),
+    )
+
+
+def submit_player_action(
+    command: SubmitPlayerActionCommand,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> SubmitPlayerActionResult:
+    """Submit one authenticated manual player action."""
+    game_id = _parse_game_id(command.game_id)
+    run = dependencies.repository.get_for_update(game_id)
+    if run is None:
+        raise GameNotFoundError(str(game_id))
+    if run.status == "completed":
+        raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
+
+    _authorize_manual_player(run, command.player_id, command.control_token)
+    snapshot = GameSnapshot.model_validate(run.private_state)
+    pending_actions = PendingActions.model_validate(run.pending_actions)
+    action = Action(
+        type=ActionType(command.type),
+        player_id=command.player_id,
+        target_id=command.target_id,
+        message=command.message,
+        reason=command.reason,
+    )
+    next_snapshot, next_pending_actions, events = submit_action(snapshot, pending_actions, action)
+    next_public_state = public_state_payload_from_snapshot(
+        next_snapshot,
+        version=run.version,
+        seed=run.seed,
+        created_at=run.created_at,
+    )
+    updated_run = dependencies.repository.save(
+        GameRunUpdate(
+            id=run.id,
+            status=cast(GameStatus, next_public_state["status"]),
+            phase=cast(GamePhase, next_public_state["phase"]),
+            day=cast(int, next_public_state["day"]),
+            public_state=next_public_state,
+            private_state=next_snapshot.model_dump(mode="json"),
+            pending_actions=next_pending_actions.model_dump(mode="json"),
+            version=run.version,
+        )
+    )
+    records = dependencies.repository.append_events(updated_run.id, events_to_create(events))
+    return SubmitPlayerActionResult(
+        game_id=str(updated_run.id),
+        player_id=command.player_id,
         state=public_state_payload_from_run(updated_run),
         events=[
             public_event_payload_from_record(record)
@@ -305,11 +418,13 @@ def _validate_players(
         {
             player.agent_type
             for player in players
-            if player.agent_type != config.supported_agent_type
+            if player.agent_type not in {config.supported_agent_type, "human"}
         }
     )
     if unsupported_agent_types:
         raise GameError(message_supported_player_agent_type_only(config.supported_agent_type))
+    if sum(1 for player in players if player.agent_type == "human") > 1:
+        raise GameError(MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT)
 
     duplicate_ids = sorted(
         player_id
@@ -344,6 +459,59 @@ def _domain_config(
     )
 
 
+def _requested_player_configs(
+    command: CreateGameCommand,
+    players: Sequence[Player],
+) -> list[CreateGamePlayer]:
+    if command.players is not None:
+        return list(command.players)
+    return [
+        CreateGamePlayer(id=player.id, name=player.name, agent_type="llm") for player in players
+    ]
+
+
+def _control_tokens_for(command: CreateGameCommand) -> dict[str, str]:
+    if command.players is None:
+        return {}
+    return {
+        player.id: secrets.token_urlsafe(32)
+        for player in command.players
+        if player.agent_type == "human"
+    }
+
+
+def _control_token_hashes(control_tokens: Mapping[str, str]) -> dict[str, str]:
+    return {player_id: _hash_control_token(token) for player_id, token in control_tokens.items()}
+
+
+def _hash_control_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _authorize_manual_player(
+    run: StoredGameRun,
+    player_id: str,
+    control_token: str,
+) -> None:
+    if player_id not in _human_player_ids(run.config):
+        raise InvalidControlTokenError(MESSAGE_PLAYER_IS_NOT_MANUAL)
+    expected_hash = run.control_token_hashes.get(player_id)
+    if expected_hash is None or not hmac.compare_digest(
+        expected_hash,
+        _hash_control_token(control_token),
+    ):
+        raise InvalidControlTokenError(MESSAGE_INVALID_CONTROL_TOKEN)
+
+
+def _human_player_ids(config: Mapping[str, object]) -> set[str]:
+    agent_types = config.get("player_agent_types")
+    if not isinstance(agent_types, dict):
+        return set()
+    return {
+        str(player_id) for player_id, agent_type in agent_types.items() if agent_type == "human"
+    }
+
+
 def _drive_current_phase(
     snapshot: GameSnapshot,
     *,
@@ -351,6 +519,7 @@ def _drive_current_phase(
     version: int,
     pending_actions: PendingActions,
     agent_factory: AgentFactory,
+    human_player_ids: set[str],
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
     current_pending_actions = pending_actions
@@ -360,6 +529,8 @@ def _drive_current_phase(
         turn_snapshot = current_snapshot
         for index, player in enumerate(turn_snapshot.players.values()):
             if player.status is not PlayerStatus.ALIVE:
+                continue
+            if player.id in human_player_ids:
                 continue
             agent = agent_factory.create(
                 player.id,

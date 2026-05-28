@@ -21,12 +21,16 @@ from werewolf_agent.interface.shared.schemas import (
     GameResponse,
     GameRunsResponse,
     GameTurnsResponse,
+    PrivateObservationResponse,
     PublicGameEvent,
     PublicGameRunSummary,
     PublicGameState,
     PublicGameTurn,
     PublicPlayerState,
+    RulesetResponse,
     StepGameResponse,
+    SubmitPlayerActionRequest,
+    SubmitPlayerActionResponse,
 )
 from werewolf_agent.interface.shared.settings import get_settings
 
@@ -118,11 +122,32 @@ class FakeGameApiClient:
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         self.calls.append(("create", request.resolved_player_count))
         self.available_sequence = 1
-        return GameResponse(game_id="game-1", state=_state())
+        control_tokens = (
+            {"player-1": "token"}
+            if request.players and request.players[0].agent_type == "human"
+            else None
+        )
+        return GameResponse(game_id="game-1", state=_state(), control_tokens=control_tokens)
 
     def get_game(self, game_id: str) -> GameResponse:
         self.calls.append(("get", game_id))
         return GameResponse(game_id="game-1", state=_state())
+
+    def health(self) -> dict[str, str]:
+        self.calls.append(("health", "ok"))
+        return {"status": "ok", "service": "werewolf-agent-api"}
+
+    def get_ruleset(self) -> RulesetResponse:
+        self.calls.append(("ruleset", "default"))
+        return RulesetResponse(
+            id="default",
+            name="MVP Default",
+            description="default rules",
+            player_count={"min": 5, "max": 8},
+            roles=[{"id": "villager", "name": "Villager"}],
+            phases=[{"id": "night", "name": "Night"}],
+            agent_types=[{"id": "llm", "name": "LLM Agent"}],
+        )
 
     def step_game(self, game_id: str) -> StepGameResponse:
         self.calls.append(("step", game_id))
@@ -173,6 +198,43 @@ class FakeGameApiClient:
         self.calls.append(("turns", (game_id, after, limit)))
         return GameTurnsResponse(game_id=game_id, turns=[_turn(1)], next_after=1)
 
+    def get_private_observation(
+        self,
+        game_id: str,
+        player_id: str,
+        *,
+        control_token: str,
+    ) -> PrivateObservationResponse:
+        self.calls.append(("observation", (game_id, player_id, control_token)))
+        return PrivateObservationResponse(
+            game_id=game_id,
+            player_id=player_id,
+            observation={
+                "phase": "day_discussion",
+                "day": 1,
+                "me": {"id": player_id, "name": "Player 1", "role": "villager"},
+                "players": [{"id": "player-1"}, {"id": "player-2"}],
+                "known_roles": {"player-1": "villager"},
+                "available_actions": ["speech"],
+            },
+        )
+
+    def submit_player_action(
+        self,
+        game_id: str,
+        player_id: str,
+        request: SubmitPlayerActionRequest,
+        *,
+        control_token: str,
+    ) -> SubmitPlayerActionResponse:
+        self.calls.append(("action", (game_id, player_id, request.type, control_token)))
+        return SubmitPlayerActionResponse(
+            game_id=game_id,
+            player_id=player_id,
+            state=_state(),
+            events=[_event(4, "speech_recorded", {"player_id": player_id})],
+        )
+
 
 def test_doctor_command_succeeds() -> None:
     runner = CliRunner()
@@ -182,6 +244,15 @@ def test_doctor_command_succeeds() -> None:
     assert result.exit_code == 0
     assert "Werewolf Agent Doctor" in result.output
     assert "fake_llm" in result.output
+
+
+def test_doctor_json_output_is_machine_readable() -> None:
+    result = CliRunner().invoke(app, ["doctor", "--output", "json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["provider"] == "fake_llm"
+    assert payload["api url"]
 
 
 def test_doctor_command_redacts_database_password() -> None:
@@ -282,6 +353,98 @@ def test_play_command_uses_public_api_client(
     assert [json_line["sequence"] for json_line in map(json.loads, lines)] == [1, 2, 3]
 
 
+def test_play_json_output_is_single_machine_readable_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = FakeGameApiClient()
+    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    get_settings.cache_clear()
+    env = {"WEREWOLF_LOG_LEVEL": "CRITICAL"}
+
+    try:
+        result = CliRunner().invoke(
+            app,
+            [
+                "play",
+                "--api-url",
+                "http://api.test/api/v1",
+                "--players",
+                "6",
+                "--seed",
+                "1",
+                "--max-steps",
+                "4",
+                "--output",
+                "json",
+            ],
+            env=env,
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["game_id"] == "game-1"
+    assert payload["winner"] == "villagers"
+    assert [event["sequence"] for event in payload["events"]] == [1, 2, 3]
+
+
+def test_create_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeGameApiClient()
+    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "create",
+            "--api-url",
+            "http://api.test/api/v1",
+            "--players",
+            "5",
+            "--human-player",
+            "player-1",
+            "--role-count",
+            "werewolf=1",
+            "--role-count",
+            "villager=4",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert "control token" in result.output
+    assert fake_client.calls == [("create", 5)]
+
+
+def test_create_command_rejects_unknown_human_player() -> None:
+    result = CliRunner().invoke(
+        app,
+        ["create", "--players", "5", "--human-player", "player-9"],
+    )
+
+    assert result.exit_code == 1
+    assert "human_player must match a generated player id" in result.output
+
+
+def test_ruleset_state_and_step_commands_use_public_api_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_client = FakeGameApiClient()
+    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+
+    ruleset_result = CliRunner().invoke(app, ["ruleset", "--api-url", "http://api.test/api/v1"])
+    state_result = CliRunner().invoke(
+        app, ["state", "game-1", "--api-url", "http://api.test/api/v1"]
+    )
+    step_result = CliRunner().invoke(app, ["step", "game-1", "--api-url", "http://api.test/api/v1"])
+
+    assert ruleset_result.exit_code == 0
+    assert state_result.exit_code == 0
+    assert step_result.exit_code == 0
+    assert ("ruleset", "default") in fake_client.calls
+    assert ("get", "game-1") in fake_client.calls
+    assert ("step", "game-1") in fake_client.calls
+
+
 def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingGameApiClient(FakeGameApiClient):
         def create_game(self, request: CreateGameRequest) -> GameResponse:
@@ -334,6 +497,27 @@ def test_watch_replay_runs_and_turns_use_public_api_client(
     assert "Game Runs" in runs_result.output
     assert "Game Turns" in turns_result.output
     assert log_path.exists()
+
+
+def test_watch_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeGameApiClient()
+    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "watch",
+            "game-1",
+            "--api-url",
+            "http://api.test/api/v1",
+            "--follow",
+            "--output",
+            "json",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert "Use jsonl output when following streamed events." in result.output
 
 
 def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:

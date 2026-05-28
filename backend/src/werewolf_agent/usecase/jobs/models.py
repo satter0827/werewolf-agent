@@ -15,6 +15,7 @@ from werewolf_agent.commons.shared.validation import non_blank
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 EventVisibility = Literal["public", "player_private", "debug"]
+ActionTypeId = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knight_guard", "pass"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
@@ -128,6 +129,30 @@ class AdvanceGameCommand(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class GetPrivateObservationQuery(_UseCaseModel):
+    """Query for one player's private observation."""
+
+    game_id: str | UUID
+    player_id: str
+    control_token: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SubmitPlayerActionCommand(_UseCaseModel):
+    """Command for submitting one manual player action."""
+
+    game_id: str | UUID
+    player_id: str
+    control_token: str
+    type: ActionTypeId
+    target_id: str | None = None
+    message: str | None = None
+    reason: str = ""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class ListGamesQuery(_UseCaseModel):
     """Query for listing public game runs."""
 
@@ -175,6 +200,28 @@ class GameResult(_UseCaseModel):
 
     game_id: str
     state: dict[str, Any]
+    control_tokens: dict[str, str] | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PrivateObservationResult(_UseCaseModel):
+    """Private observation returned to an authenticated player."""
+
+    game_id: str
+    player_id: str
+    observation: dict[str, Any]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SubmitPlayerActionResult(_UseCaseModel):
+    """Result after accepting one manual player action."""
+
+    game_id: str
+    player_id: str
+    state: dict[str, Any]
+    events: list[dict[str, Any]]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -366,6 +413,8 @@ class GameRunCreate(_UseCaseModel):
     config: dict[str, Any]
     public_state: dict[str, Any]
     private_state: dict[str, Any]
+    pending_actions: dict[str, Any] = Field(default_factory=dict)
+    control_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -380,6 +429,7 @@ class GameRunUpdate(_UseCaseModel):
     day: int
     public_state: dict[str, Any]
     private_state: dict[str, Any]
+    pending_actions: dict[str, Any] = Field(default_factory=dict)
     version: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -396,6 +446,8 @@ class StoredGameRun(_UseCaseModel):
     config: dict[str, Any]
     public_state: dict[str, Any]
     private_state: dict[str, Any]
+    pending_actions: dict[str, Any] = Field(default_factory=dict)
+    control_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
     created_at: datetime
     updated_at: datetime

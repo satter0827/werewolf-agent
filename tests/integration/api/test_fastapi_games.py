@@ -58,7 +58,10 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
         "seer",
         "knight",
     }
-    assert payload["agent_types"] == [{"id": "llm", "name": "LLM Agent"}]
+    assert payload["agent_types"] == [
+        {"id": "llm", "name": "LLM Agent"},
+        {"id": "human", "name": "Human Player"},
+    ]
 
 
 def test_create_game_returns_public_state_without_private_fields(client: TestClient) -> None:
@@ -80,6 +83,111 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert "private_state" not in serialized
     assert "role" not in serialized
     assert "werewolf" not in serialized
+
+
+def test_human_player_create_returns_control_token_once(client: TestClient) -> None:
+    payload = _create_payload()
+    payload["players"][0]["agent_type"] = "human"
+
+    response = client.post("/api/v1/games", json=payload)
+
+    assert response.status_code == 201
+    created = response.json()
+    game_id = created["game_id"]
+    assert set(created["control_tokens"]) == {"p1"}
+    assert created["control_tokens"]["p1"]
+
+    state_response = client.get(f"/api/v1/games/{game_id}")
+    events_response = client.get(f"/api/v1/games/{game_id}/events?after=0")
+
+    assert "control_tokens" not in state_response.json()
+    serialized_public = json.dumps([state_response.json(), events_response.json()])
+    assert created["control_tokens"]["p1"] not in serialized_public
+    assert "control_token" not in serialized_public
+
+
+def test_private_observation_requires_valid_control_token(client: TestClient) -> None:
+    payload = _create_payload()
+    payload["players"][0]["agent_type"] = "human"
+    created = client.post("/api/v1/games", json=payload).json()
+    game_id = created["game_id"]
+    token = created["control_tokens"]["p1"]
+    url = f"/api/v1/games/{game_id}/players/p1/observation"
+
+    missing = client.get(url)
+    invalid = client.get(url, headers={"Authorization": "Bearer wrong"})
+    valid = client.get(url, headers={"Authorization": f"Bearer {token}"})
+
+    assert missing.status_code == 401
+    assert missing.json()["code"] == "auth.required"
+    assert invalid.status_code == 403
+    assert invalid.json()["code"] == "auth.forbidden"
+    assert valid.status_code == 200
+    assert valid.json()["player_id"] == "p1"
+    assert valid.json()["observation"]["me"]["role"]
+
+
+def test_private_player_endpoints_reject_non_human_player(client: TestClient) -> None:
+    payload = _create_payload()
+    payload["players"][0]["agent_type"] = "human"
+    created = client.post("/api/v1/games", json=payload).json()
+    game_id = created["game_id"]
+    token = created["control_tokens"]["p1"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    observation = client.get(
+        f"/api/v1/games/{game_id}/players/p2/observation",
+        headers=headers,
+    )
+    action = client.post(
+        f"/api/v1/games/{game_id}/players/p2/actions",
+        json={"type": "pass"},
+        headers=headers,
+    )
+
+    assert observation.status_code == 403
+    assert observation.json()["code"] == "auth.forbidden"
+    assert action.status_code == 403
+    assert action.json()["code"] == "auth.forbidden"
+
+
+def test_human_player_can_submit_manual_action(client: TestClient) -> None:
+    payload = _create_payload()
+    payload["players"][0]["agent_type"] = "human"
+    created = client.post("/api/v1/games", json=payload).json()
+    game_id = created["game_id"]
+    token = created["control_tokens"]["p1"]
+    headers = {"Authorization": f"Bearer {token}"}
+
+    observation = {}
+    for _ in range(8):
+        client.post(f"/api/v1/games/{game_id}/steps")
+        observation = client.get(
+            f"/api/v1/games/{game_id}/players/p1/observation",
+            headers=headers,
+        ).json()["observation"]
+        if observation["available_actions"]:
+            break
+
+    assert observation["available_actions"]
+    action_type = observation["available_actions"][0]
+    action_payload = {"type": action_type}
+    if action_type == "speech":
+        action_payload["message"] = "I am checking the table."
+    elif action_type != "pass":
+        target = next(player["id"] for player in observation["players"] if player["id"] != "p1")
+        action_payload["target_id"] = target
+
+    response = client.post(
+        f"/api/v1/games/{game_id}/players/p1/actions",
+        json=action_payload,
+        headers=headers,
+    )
+
+    assert response.status_code == 200
+    serialized = json.dumps(response.json())
+    assert token not in serialized
+    assert "control_token" not in serialized
 
 
 def test_steps_complete_game_and_events_are_public_only(client: TestClient) -> None:

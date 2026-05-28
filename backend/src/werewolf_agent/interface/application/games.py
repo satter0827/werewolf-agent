@@ -15,6 +15,8 @@ from werewolf_agent.commons.shared.messages import (
     LOG_GAME_RUN_STEPPED,
     LOG_GAME_RUNS_LISTED,
     LOG_GAME_TURNS_LISTED,
+    LOG_PLAYER_ACTION_SUBMITTED,
+    LOG_PRIVATE_OBSERVATION_RETURNED,
     MESSAGE_GAME_NOT_FOUND,
 )
 from werewolf_agent.interface.application.agents import build_agent_factory
@@ -28,8 +30,11 @@ from werewolf_agent.interface.shared.schemas import (
     GameResponse,
     GameRunsResponse,
     GameTurnsResponse,
+    PrivateObservationResponse,
     RulesetResponse,
     StepGameResponse,
+    SubmitPlayerActionRequest,
+    SubmitPlayerActionResponse,
 )
 from werewolf_agent.interface.shared.settings import AppSettings, get_settings
 from werewolf_agent.usecase.jobs import (
@@ -40,18 +45,22 @@ from werewolf_agent.usecase.jobs import (
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameQuery,
+    GetPrivateObservationQuery,
     InvalidGameIdError,
     ListGamesQuery,
     ListGameTurnsQuery,
     ListPublicEventsQuery,
     RulesetResult,
+    SubmitPlayerActionCommand,
     advance_game,
     create_game,
     get_default_ruleset,
     get_game,
+    get_private_observation,
     list_game_turns,
     list_games,
     list_public_events,
+    submit_player_action,
 )
 
 TModel = TypeVar("TModel", bound=BaseModel)
@@ -189,6 +198,60 @@ class GameApplication:
         )
         return _wire_model(GameTurnsResponse, response)
 
+    def get_private_observation(
+        self,
+        game_id: str,
+        player_id: str,
+        *,
+        control_token: str,
+    ) -> PrivateObservationResponse:
+        """Return a private observation for one authenticated manual player."""
+        with session_scope(self.session_factory) as session:
+            try:
+                response = get_private_observation(
+                    GetPrivateObservationQuery(
+                        game_id=game_id,
+                        player_id=player_id,
+                        control_token=control_token,
+                    ),
+                    dependencies=self._dependencies(session),
+                )
+            except (GameNotFoundError, InvalidGameIdError) as exc:
+                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+        logger.debug(
+            LOG_PRIVATE_OBSERVATION_RETURNED,
+            extra={"game_id": game_id, "player_id": player_id},
+        )
+        return _wire_model(PrivateObservationResponse, response)
+
+    def submit_player_action(
+        self,
+        game_id: str,
+        player_id: str,
+        request: SubmitPlayerActionRequest,
+        *,
+        control_token: str,
+    ) -> SubmitPlayerActionResponse:
+        """Submit one authenticated manual player action."""
+        with session_scope(self.session_factory) as session:
+            try:
+                response = submit_player_action(
+                    SubmitPlayerActionCommand(
+                        game_id=game_id,
+                        player_id=player_id,
+                        control_token=control_token,
+                        **request.model_dump(mode="json"),
+                    ),
+                    dependencies=self._dependencies(session),
+                )
+            except (GameNotFoundError, InvalidGameIdError) as exc:
+                raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+        logger.info(
+            LOG_PLAYER_ACTION_SUBMITTED,
+            extra={"game_id": game_id, "player_id": player_id, "action_type": request.type},
+        )
+        return _wire_model(SubmitPlayerActionResponse, response)
+
     def _dependencies(self, session: Session) -> GameUseCaseDependencies:
         return GameUseCaseDependencies(
             repository=SqlAlchemyGameRunRepository(session),
@@ -225,7 +288,12 @@ def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetR
             for phase_id in ruleset.phases
         ],
         agent_types=[
-            {"id": agent_type, "name": settings.game_supported_agent_name}
+            {
+                "id": agent_type,
+                "name": (
+                    "Human Player" if agent_type == "human" else settings.game_supported_agent_name
+                ),
+            }
             for agent_type in ruleset.agent_types
         ],
     )

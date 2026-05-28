@@ -51,6 +51,8 @@ class SqlAlchemyGameRunRepository(GameRepository):
             config=run.config,
             public_state=run.public_state,
             private_state=run.private_state,
+            pending_actions=run.pending_actions,
+            control_token_hashes=run.control_token_hashes,
             version=run.version,
             created_at=now,
             updated_at=now,
@@ -99,6 +101,7 @@ class SqlAlchemyGameRunRepository(GameRepository):
         model.day = update.day
         model.public_state = update.public_state
         model.private_state = update.private_state
+        model.pending_actions = update.pending_actions
         model.version = update.version
         model.updated_at = utc_now()
         self._session.flush()
@@ -258,6 +261,8 @@ def _stored_run(model: GameRunModel) -> StoredGameRun:
             "config": _json_object(model.config),
             "public_state": _json_object(model.public_state),
             "private_state": _json_object(model.private_state),
+            "pending_actions": _json_object(model.pending_actions),
+            "control_token_hashes": _json_str_mapping(model.control_token_hashes),
             "version": model.version,
             "created_at": _ensure_aware(model.created_at),
             "updated_at": _ensure_aware(model.updated_at),
@@ -324,6 +329,12 @@ def _json_object(payload: Any) -> dict[str, Any]:
     if isinstance(payload, dict):
         return dict(payload)
     return {}
+
+
+def _json_str_mapping(payload: Any) -> dict[str, str]:
+    if not isinstance(payload, dict):
+        return {}
+    return {str(key): str(value) for key, value in payload.items()}
 
 
 def _ensure_aware(value: datetime) -> datetime:

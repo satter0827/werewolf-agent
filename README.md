@@ -10,8 +10,9 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 - フェーズは `night`、`day_discussion`、`voting`、`finished`
 - `fake_llm` provider で FastAPI 経由の 1 ゲームを CLI から完走できる
 - API は game 作成、状態取得、一覧、1 step 進行、public event、turn history、public SSE を持つ
-- CLI は `play`、`watch`、`replay`、`runs`、`turns` を持つ
-- 実 LLM provider、手動 action API、private observation API、Streamlit / React UI は未実装
+- CLI は `doctor`、`ruleset`、`create`、`state`、`step`、`play`、`watch`、`replay`、`runs`、`turns` を持つ
+- 1 game につき 1 人の `human` player を CLI から操作できる
+- 実 LLM provider、複数 human player、Streamlit / React UI は未実装
 
 ## 動かす
 
@@ -48,6 +49,20 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent replay --events .werewolf-agent/logs/game-001.jsonl
 ```
 
+1 人だけ手動で操作する:
+
+```bash
+uv run werewolf-agent play --human-player player-1 --players 6 --seed 1
+```
+
+game を作成して token を控え、個別に進める:
+
+```bash
+uv run werewolf-agent create --human-player player-1 --players 6 --seed 1
+uv run werewolf-agent state <game_id>
+uv run werewolf-agent step <game_id>
+```
+
 ## API
 
 | Method | Path | 用途 |
@@ -58,6 +73,8 @@ uv run werewolf-agent replay --events .werewolf-agent/logs/game-001.jsonl
 | `GET` | `/api/v1/games` | game run 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | 公開状態取得 |
 | `POST` | `/api/v1/games/{game_id}/steps` | 1 step 進行 |
+| `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | private observation 取得 |
+| `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | manual action 投稿 |
 | `GET` | `/api/v1/games/{game_id}/events?after=<seq>` | public event 取得 |
 | `GET` | `/api/v1/games/{game_id}/events/stream?after=<seq>` | public event SSE |
 | `GET` | `/api/v1/games/{game_id}/turns?after=<seq>` | UI 向け public timeline |
@@ -110,6 +127,12 @@ WEREWOLF_FAKE_LLM_RANDOMNESS=0.7
 WEREWOLF_LOG_LEVEL=INFO
 WEREWOLF_LOG_FORMAT=json
 WEREWOLF_LOG_OUTPUT=stderr
+WEREWOLF_CLI_API_URL=http://127.0.0.1:8000/api/v1
+WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS=10
+WEREWOLF_CLI_MAX_STEPS=64
+WEREWOLF_CLI_POLL_INTERVAL_SECONDS=0
+WEREWOLF_CLI_EVENT_LIMIT=100
+WEREWOLF_CLI_OUTPUT_FORMAT=table
 WEREWOLF_GAME_MIN_PLAYERS=5
 WEREWOLF_GAME_MAX_PLAYERS=8
 WEREWOLF_GAME_DEFAULT_PLAYER_COUNT=6
@@ -169,8 +192,8 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ## 次の一手
 
 - 実 LLM provider adapter と structured output validation
-- human / LLM action を投入する API
-- private observation の認証
+- 複数 human player / external agent action API
+- 永続 login/session による private observation 認証
 - Streamlit / React UI
 - evaluation workflow
 

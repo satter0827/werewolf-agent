@@ -70,6 +70,12 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_level == "INFO"
     assert settings.log_format == "json"
     assert settings.log_output == "stderr"
+    assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
+    assert settings.cli_http_timeout_seconds == 10.0
+    assert settings.cli_max_steps == 64
+    assert settings.cli_poll_interval_seconds == 0.0
+    assert settings.cli_event_limit == 100
+    assert settings.cli_output_format == "table"
     assert settings.api_title == "Werewolf Agent API"
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
@@ -125,6 +131,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
+    monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
+    monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
 
     settings = AppSettings(_env_file=None)
 
@@ -140,6 +148,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
+    assert settings.cli_api_url == "http://api.test/api/v1"
+    assert settings.cli_output_format == "json"
 
 
 def test_game_settings_reject_inconsistent_player_counts() -> None:
@@ -180,6 +190,7 @@ def test_logging_settings_normalize_supported_values() -> None:
         ("log_level", "VERBOSE"),
         ("log_format", "plain"),
         ("log_output", "file"),
+        ("cli_output_format", "xml"),
         ("game_supported_agent_type", "fake_llm"),
         ("llm_provider", "openai"),
         ("fake_llm_strategy", "scripted"),

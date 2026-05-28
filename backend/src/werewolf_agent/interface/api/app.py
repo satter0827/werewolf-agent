@@ -17,12 +17,6 @@ from starlette.middleware.cors import CORSMiddleware
 
 from werewolf_agent.commons.shared.messages import LOG_API_REQUEST_COMPLETED
 from werewolf_agent.contracts import AppError
-from werewolf_agent.interface.application.database import (
-    create_database_engine,
-    create_session_factory,
-)
-from werewolf_agent.interface.application.games import GameApplication
-from werewolf_agent.interface.application.models import Base
 from werewolf_agent.interface.api.errors import (
     app_error_handler,
     http_exception_handler,
@@ -31,6 +25,12 @@ from werewolf_agent.interface.api.errors import (
     unhandled_exception_handler,
 )
 from werewolf_agent.interface.api.routers import router
+from werewolf_agent.interface.application.database import (
+    create_database_engine,
+    create_session_factory,
+)
+from werewolf_agent.interface.application.games import GameApplication
+from werewolf_agent.interface.application.models import Base
 from werewolf_agent.interface.shared.logging import bind_log_context
 from werewolf_agent.interface.shared.runtime import configure_interface_logging
 from werewolf_agent.interface.shared.settings import AppSettings, get_settings

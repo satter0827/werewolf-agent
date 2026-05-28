@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sse_starlette.sse import EventSourceResponse
 
-from werewolf_agent.interface.application.games import GameApplication
+from werewolf_agent.commons.shared.codes import ErrorCode
+from werewolf_agent.commons.shared.messages import MESSAGE_AUTHORIZATION_HEADER_REQUIRED
+from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.dependencies import game_application
+from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.shared.schemas import (
     CreateGameRequest,
     GameEventsQuery,
@@ -19,8 +22,11 @@ from werewolf_agent.interface.shared.schemas import (
     GameRunsResponse,
     GameTurnsQuery,
     GameTurnsResponse,
+    PrivateObservationResponse,
     RulesetResponse,
     StepGameResponse,
+    SubmitPlayerActionRequest,
+    SubmitPlayerActionResponse,
 )
 from werewolf_agent.interface.shared.settings import API_SERVICE_NAME
 
@@ -42,7 +48,12 @@ def ruleset_default(
     return app.default_ruleset()
 
 
-@router.post("/games", response_model=GameResponse, status_code=201)
+@router.post(
+    "/games",
+    response_model=GameResponse,
+    response_model_exclude_none=True,
+    status_code=201,
+)
 def create_game(
     request: CreateGameRequest,
     app: GameApplication = GAME_APPLICATION,
@@ -63,7 +74,7 @@ def list_games(
     return app.list_game_runs(status=query.status, limit=query.limit, offset=query.offset)
 
 
-@router.get("/games/{game_id}", response_model=GameResponse)
+@router.get("/games/{game_id}", response_model=GameResponse, response_model_exclude_none=True)
 def get_game(
     game_id: str,
     app: GameApplication = GAME_APPLICATION,
@@ -79,6 +90,44 @@ def step_game(
 ) -> StepGameResponse:
     """Advance one game by one synchronous use case step."""
     return app.step_game_run(game_id)
+
+
+@router.get(
+    "/games/{game_id}/players/{player_id}/observation",
+    response_model=PrivateObservationResponse,
+)
+def private_observation(
+    game_id: str,
+    player_id: str,
+    authorization: str | None = Header(default=None),
+    app: GameApplication = GAME_APPLICATION,
+) -> PrivateObservationResponse:
+    """Return one authenticated player's private observation."""
+    return app.get_private_observation(
+        game_id,
+        player_id,
+        control_token=_bearer_token(authorization),
+    )
+
+
+@router.post(
+    "/games/{game_id}/players/{player_id}/actions",
+    response_model=SubmitPlayerActionResponse,
+)
+def submit_player_action(
+    game_id: str,
+    player_id: str,
+    request: SubmitPlayerActionRequest,
+    authorization: str | None = Header(default=None),
+    app: GameApplication = GAME_APPLICATION,
+) -> SubmitPlayerActionResponse:
+    """Submit one authenticated manual player action."""
+    return app.submit_player_action(
+        game_id,
+        player_id,
+        request,
+        control_token=_bearer_token(authorization),
+    )
 
 
 @router.get("/games/{game_id}/events", response_model=GameEventsResponse)
@@ -125,3 +174,18 @@ async def _event_batch(response: GameEventsResponse) -> AsyncIterator[dict[str, 
             "id": str(event.sequence),
             "data": json.dumps(event.model_dump(mode="json"), ensure_ascii=False),
         }
+
+
+def _bearer_token(authorization: str | None) -> str:
+    if authorization is None:
+        raise AppError(
+            MESSAGE_AUTHORIZATION_HEADER_REQUIRED,
+            code=ErrorCode.AUTHENTICATION_REQUIRED,
+        )
+    scheme, separator, token = authorization.strip().partition(" ")
+    if separator == "" or scheme.lower() != "bearer" or not token.strip():
+        raise AppError(
+            MESSAGE_AUTHORIZATION_HEADER_REQUIRED,
+            code=ErrorCode.AUTHENTICATION_REQUIRED,
+        )
+    return token.strip()

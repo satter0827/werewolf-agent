@@ -33,6 +33,8 @@ class GameRunModel(Base):
     config: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     public_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     private_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    pending_actions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    control_token_hashes: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

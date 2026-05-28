@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Mapping
 from typing import Any, Protocol, TypeVar
 
@@ -10,6 +11,7 @@ from pydantic import BaseModel, ValidationError
 
 from werewolf_agent.commons.shared.codes import ErrorCode
 from werewolf_agent.commons.shared.messages import (
+    LOG_CLI_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
     MESSAGE_API_RESPONSE_NOT_OBJECT,
     MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
@@ -24,15 +26,26 @@ from werewolf_agent.interface.shared.schemas import (
     GameResponse,
     GameRunsResponse,
     GameTurnsResponse,
+    PrivateObservationResponse,
     ProblemDetails,
+    RulesetResponse,
     StepGameResponse,
+    SubmitPlayerActionRequest,
+    SubmitPlayerActionResponse,
 )
 
 TModel = TypeVar("TModel", bound=BaseModel)
+logger = logging.getLogger(__name__)
 
 
 class GameApiClient(Protocol):
     """Client operations used by the CUI without touching internal services."""
+
+    def health(self) -> dict[str, str]:
+        """Fetch API health through the public API."""
+
+    def get_ruleset(self) -> RulesetResponse:
+        """Fetch the default ruleset through the public API."""
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Create one game through the public API."""
@@ -70,6 +83,25 @@ class GameApiClient(Protocol):
     ) -> GameTurnsResponse:
         """Fetch public turn history through the public API."""
 
+    def get_private_observation(
+        self,
+        game_id: str,
+        player_id: str,
+        *,
+        control_token: str,
+    ) -> PrivateObservationResponse:
+        """Fetch one player's private observation."""
+
+    def submit_player_action(
+        self,
+        game_id: str,
+        player_id: str,
+        request: SubmitPlayerActionRequest,
+        *,
+        control_token: str,
+    ) -> SubmitPlayerActionResponse:
+        """Submit one manual player action."""
+
 
 class HttpGameApiClient:
     """Small httpx-backed client for the public API."""
@@ -87,6 +119,14 @@ class HttpGameApiClient:
             timeout=timeout,
             transport=transport,
         )
+
+    def health(self) -> dict[str, str]:
+        payload = self._request_json("GET", "health")
+        return {key: str(value) for key, value in payload.items()}
+
+    def get_ruleset(self) -> RulesetResponse:
+        payload = self._request_json("GET", "rulesets/default")
+        return self._parse_model(RulesetResponse, payload)
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         payload = self._request_json(
@@ -145,6 +185,36 @@ class HttpGameApiClient:
         )
         return self._parse_model(GameTurnsResponse, payload)
 
+    def get_private_observation(
+        self,
+        game_id: str,
+        player_id: str,
+        *,
+        control_token: str,
+    ) -> PrivateObservationResponse:
+        payload = self._request_json(
+            "GET",
+            f"games/{game_id}/players/{player_id}/observation",
+            headers=_authorization_header(control_token),
+        )
+        return self._parse_model(PrivateObservationResponse, payload)
+
+    def submit_player_action(
+        self,
+        game_id: str,
+        player_id: str,
+        request: SubmitPlayerActionRequest,
+        *,
+        control_token: str,
+    ) -> SubmitPlayerActionResponse:
+        payload = self._request_json(
+            "POST",
+            f"games/{game_id}/players/{player_id}/actions",
+            body=request.model_dump(mode="json", exclude_none=True),
+            headers=_authorization_header(control_token),
+        )
+        return self._parse_model(SubmitPlayerActionResponse, payload)
+
     def _request_json(
         self,
         method: str,
@@ -152,9 +222,20 @@ class HttpGameApiClient:
         *,
         body: Mapping[str, Any] | None = None,
         params: Mapping[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         try:
-            response = self._client.request(method, path, json=body, params=params)
+            response = self._client.request(
+                method,
+                path,
+                json=body,
+                params=params,
+                headers=headers,
+            )
+            logger.debug(
+                LOG_CLI_API_REQUEST_COMPLETED,
+                extra={"method": method, "path": path, "http_status": response.status_code},
+            )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
             raise _api_error_from_response(exc.response) from exc
@@ -221,3 +302,7 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
         context={"http_status": problem.status, "problem_type": problem.type},
         retryable=problem.status >= 500,
     )
+
+
+def _authorization_header(control_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {control_token}"}

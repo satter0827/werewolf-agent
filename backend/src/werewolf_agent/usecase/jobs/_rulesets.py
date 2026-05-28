@@ -18,5 +18,5 @@ def default_ruleset(config: GameUseCaseConfig) -> RulesetResult:
             Phase.VOTING.value,
             Phase.FINISHED.value,
         ],
-        agent_types=[config.supported_agent_type],
+        agent_types=[config.supported_agent_type, "human"],
     )

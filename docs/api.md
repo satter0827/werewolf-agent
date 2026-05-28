@@ -10,7 +10,8 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 - `llm` agent と `fake_llm` provider による自動進行
 - game 作成、一覧、状態取得、1 step 進行、public event、turn history 取得
 - Problem Details 形式の error response
-- 認証、手動 action、private observation、Streamlit / React UI は未実装
+- Streamlit / React UI、永続 login/session 管理は未実装
+- 手動 action と private observation は、作成時に返す player token で 1 人分だけ操作できる
 
 ## Endpoints
 
@@ -22,6 +23,8 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
 | `POST` | `/api/v1/games/{game_id}/steps` | 現在 phase を 1 step 進める |
+| `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | token 付き private observation |
+| `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | token 付き manual action |
 | `GET` | `/api/v1/games/{game_id}/events?after=<seq>&limit=<n>` | public event を sequence 昇順で取得 |
 | `GET` | `/api/v1/games/{game_id}/events/stream?after=<seq>&limit=<n>` | public event を SSE 形式で取得 |
 | `GET` | `/api/v1/games/{game_id}/turns?after=<seq>&limit=<n>` | UI 向け public timeline を取得 |
@@ -60,7 +63,8 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 - `player_count`: 既定では 5〜8。省略時は `WEREWOLF_GAME_DEFAULT_PLAYER_COUNT`。実際の範囲は `WEREWOLF_GAME_MIN_PLAYERS` / `WEREWOLF_GAME_MAX_PLAYERS` で決まる
 - `players`: 指定時は 5〜8 件。`id` は一意
-- `agent.type` / `players[].agent_type`: 現在は `llm` のみ。実体 provider は `WEREWOLF_LLM_PROVIDER=fake_llm`
+- `agent.type`: 現在は `llm` のみ。実体 provider は `WEREWOLF_LLM_PROVIDER=fake_llm`
+- `players[].agent_type`: `llm` または `human`。`human` は 1 game につき 1 人まで
 - `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
 - `tie_break_policy`: `no_elimination` または `random_elimination`
 - `day_speech_turns`: 1〜5
@@ -88,6 +92,23 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 `GET /events` と `GET /events/stream` は `visibility == "public"` の event だけを返します。
 `game_started` の `role_counts` は public payload から落とします。
+
+## Manual Player
+
+`players[].agent_type=human` を含む game 作成レスポンスは、作成時だけ `control_tokens` を返します。
+API は token hash だけを保存し、平文 token は保存しません。
+
+private observation と manual action は `Authorization: Bearer <token>` が必要です。
+token なしは `401 auth.required`、不正 token は `403 auth.forbidden` です。
+
+manual action body:
+
+```json
+{"type": "speech", "message": "I am checking the table."}
+```
+
+`type` は `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass` です。
+target が必要な action は `target_id` を指定します。
 
 Cursor:
 

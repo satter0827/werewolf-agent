@@ -14,6 +14,7 @@ from werewolf_agent.interface.shared.settings import DEFAULT_GAME_DEFAULT_PLAYER
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
+ActionType = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knight_guard", "pass"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
@@ -147,6 +148,7 @@ class GameResponse(BaseModel):
 
     game_id: str
     state: PublicGameState
+    control_tokens: dict[str, str] | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -266,6 +268,46 @@ class RulesetResponse(BaseModel):
     roles: list[dict[str, str]]
     phases: list[dict[str, str]]
     agent_types: list[dict[str, str]]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PrivateObservationResponse(BaseModel):
+    """Private observation visible to one authenticated player."""
+
+    game_id: str
+    player_id: str
+    observation: dict[str, Any]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SubmitPlayerActionRequest(BaseModel):
+    """One manual player action submitted through the API."""
+
+    type: ActionType
+    target_id: str | None = None
+    message: str | None = None
+    reason: str = ""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("target_id", "message", "reason")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        """Return stripped optional action text."""
+        if value is None:
+            return None
+        return non_blank(value, "value")
+
+
+class SubmitPlayerActionResponse(BaseModel):
+    """Response after accepting a manual action."""
+
+    game_id: str
+    player_id: str
+    state: PublicGameState
+    events: list[PublicGameEvent]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -234,7 +234,7 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
     assert result.id == "custom"
     assert result.player_count == {"min": 4, "max": 10}
     assert result.roles == ["villager", "werewolf", "seer", "knight"]
-    assert result.agent_types == ["llm"]
+    assert result.agent_types == ["llm", "human"]
 
 
 def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
