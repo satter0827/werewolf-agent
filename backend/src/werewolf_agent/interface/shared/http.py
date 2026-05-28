@@ -1,4 +1,4 @@
-"""RFC 9457 Problem Details handling for the FastAPI interface."""
+"""RFC 9457 Problem Details handling for the HTTP interface."""
 
 from __future__ import annotations
 
@@ -13,15 +13,15 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from werewolf_agent.commons.shared.codes import ErrorCode, get_error_spec, problem_type_uri
-from werewolf_agent.commons.shared.messages import (
+from werewolf_agent.commons.logging import get_log_context
+from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
+from werewolf_agent.contracts.errors import ErrorCode, get_error_spec, problem_type_uri
+from werewolf_agent.contracts.exceptions import AppError, InternalError
+from werewolf_agent.contracts.schemas import ProblemDetails, ProblemIssue
+from werewolf_agent.interface.shared.messages import (
     LOG_API_APPLICATION_ERROR_HANDLED,
     LOG_API_UNHANDLED_EXCEPTION,
-    MESSAGE_INVALID_VALUE,
 )
-from werewolf_agent.contracts import AppError, InternalError
-from werewolf_agent.interface.shared.logging import get_log_context
-from werewolf_agent.interface.shared.schemas import ProblemDetails, ProblemIssue
 
 PROBLEM_JSON_CONTENT_TYPE = "application/problem+json"
 

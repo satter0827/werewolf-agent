@@ -6,14 +6,15 @@ from datetime import datetime
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
+from werewolf_agent.commons.configuration import DEFAULT_GAME_DEFAULT_PLAYER_COUNT
 from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
-from werewolf_agent.commons.shared.validation import non_blank
-from werewolf_agent.interface.shared.settings import DEFAULT_GAME_DEFAULT_PLAYER_COUNT
+from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
+PlayerStatus = Literal["alive", "dead"]
 ActionType = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knight_guard", "pass"]
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
@@ -32,9 +33,9 @@ class CreateGamePlayer(BaseModel):
 
     @field_validator("id", "name", "agent_type")
     @classmethod
-    def validate_non_blank(cls, value: str) -> str:
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
         """Return a stripped non-empty string."""
-        return non_blank(value, "value")
+        return non_blank(value, str(info.field_name))
 
 
 class CreateGameAgentConfig(BaseModel):
@@ -46,9 +47,9 @@ class CreateGameAgentConfig(BaseModel):
 
     @field_validator("type")
     @classmethod
-    def validate_non_blank(cls, value: str) -> str:
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
         """Return a stripped non-empty agent type."""
-        return non_blank(value, "value")
+        return non_blank(value, str(info.field_name))
 
 
 class CreateGameRuleConfig(BaseModel):
@@ -100,7 +101,7 @@ class PublicPlayerState(BaseModel):
     id: str
     name: str
     alive: bool
-    status: str
+    status: PlayerStatus
     eliminated_day: int | None = None
     killed_night: int | None = None
 
@@ -170,7 +171,7 @@ class GameEventsQuery(BaseModel):
     after: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=500)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GameRunsQuery(BaseModel):
@@ -180,7 +181,7 @@ class GameRunsQuery(BaseModel):
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GameTurnsQuery(BaseModel):
@@ -189,7 +190,7 @@ class GameTurnsQuery(BaseModel):
     after: int = Field(default=0, ge=0)
     limit: int = Field(default=100, ge=1, le=500)
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GameEventsResponse(BaseModel):
@@ -292,13 +293,17 @@ class SubmitPlayerActionRequest(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @field_validator("target_id", "message", "reason")
+    @field_validator("target_id", "message")
     @classmethod
-    def validate_optional_text(cls, value: str | None) -> str | None:
+    def validate_optional_text(cls, value: str | None, info: ValidationInfo) -> str | None:
         """Return stripped optional action text."""
-        if value is None:
-            return None
-        return non_blank(value, "value")
+        return optional_non_blank(value, str(info.field_name))
+
+    @field_validator("reason")
+    @classmethod
+    def normalize_reason(cls, value: str) -> str:
+        """Return stripped optional action reason text."""
+        return value.strip()
 
 
 class SubmitPlayerActionResponse(BaseModel):
@@ -321,13 +326,19 @@ class ProblemIssue(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    @field_validator("code", "detail")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return stripped non-empty problem issue text."""
+        return non_blank(value, str(info.field_name))
+
 
 class ProblemDetails(BaseModel):
     """RFC 9457 Problem Details response body with project extensions."""
 
     type: str
     title: str
-    status: int
+    status: int = Field(ge=100, le=599)
     detail: str
     instance: str
     code: str
@@ -335,6 +346,12 @@ class ProblemDetails(BaseModel):
     errors: list[ProblemIssue] | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("type", "title", "detail", "instance", "code")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return stripped non-empty problem detail text."""
+        return non_blank(value, str(info.field_name))
 
 
 class ErrorEventPayload(BaseModel):
@@ -346,3 +363,45 @@ class ErrorEventPayload(BaseModel):
     context: dict[str, Any] | None = Field(default=None)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("code", "detail")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return stripped non-empty error event text."""
+        return non_blank(value, str(info.field_name))
+
+
+__all__ = [
+    "ActionType",
+    "CreateGameAgentConfig",
+    "CreateGamePlayer",
+    "CreateGameRequest",
+    "CreateGameRuleConfig",
+    "ErrorEventPayload",
+    "GameEventsQuery",
+    "GameEventsResponse",
+    "GamePhase",
+    "GameResponse",
+    "GameRunsQuery",
+    "GameRunsResponse",
+    "GameStatus",
+    "GameTurnsQuery",
+    "GameTurnsResponse",
+    "PlayerStatus",
+    "PrivateObservationResponse",
+    "ProblemDetails",
+    "ProblemIssue",
+    "PublicGameEvent",
+    "PublicGameRunSummary",
+    "PublicGameState",
+    "PublicGameTurn",
+    "PublicPlayerState",
+    "RoleCount",
+    "RoleId",
+    "RulesetResponse",
+    "StepGameResponse",
+    "SubmitPlayerActionRequest",
+    "SubmitPlayerActionResponse",
+    "TieBreakPolicyId",
+    "Winner",
+]

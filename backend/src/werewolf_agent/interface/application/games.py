@@ -9,6 +9,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.commons.shared.messages import (
     LOG_GAME_EVENTS_LISTED,
     LOG_GAME_RUN_CREATED,
@@ -19,12 +20,8 @@ from werewolf_agent.commons.shared.messages import (
     LOG_PRIVATE_OBSERVATION_RETURNED,
     MESSAGE_GAME_NOT_FOUND,
 )
-from werewolf_agent.interface.application.agents import build_agent_factory
-from werewolf_agent.interface.application.database import SessionFactory, session_scope
-from werewolf_agent.interface.application.errors import ResourceNotFoundError
-from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
-from werewolf_agent.interface.application.settings import build_game_usecase_config
-from werewolf_agent.interface.shared.schemas import (
+from werewolf_agent.contracts import GameNotFoundError, InvalidGameIdError, ResourceNotFoundError
+from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
@@ -36,17 +33,22 @@ from werewolf_agent.interface.shared.schemas import (
     SubmitPlayerActionRequest,
     SubmitPlayerActionResponse,
 )
-from werewolf_agent.interface.shared.settings import AppSettings, get_settings
+from werewolf_agent.interface.application.database import SessionFactory, session_scope
+from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
+from werewolf_agent.interface.application.settings import (
+    build_fake_llm_config,
+    build_game_usecase_config,
+)
 from werewolf_agent.usecase.jobs import (
     AdvanceGameCommand,
+    AgentFactory,
     CreateGameCommand,
-    GameNotFoundError,
+    FakeLlmAgentFactory,
     GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameQuery,
     GetPrivateObservationQuery,
-    InvalidGameIdError,
     ListGamesQuery,
     ListGameTurnsQuery,
     ListPublicEventsQuery,
@@ -256,7 +258,7 @@ class GameApplication:
         return GameUseCaseDependencies(
             repository=SqlAlchemyGameRunRepository(session),
             config=self._usecase_config(),
-            agent_factory=build_agent_factory(self.settings),
+            agent_factory=_agent_factory(self.settings),
         )
 
     def _usecase_config(self) -> GameUseCaseConfig:
@@ -270,6 +272,10 @@ def default_application(session_factory: SessionFactory) -> GameApplication:
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
     return model_type.model_validate(source.model_dump(mode="json"))
+
+
+def _agent_factory(settings: AppSettings) -> AgentFactory:
+    return FakeLlmAgentFactory(config=build_fake_llm_config(settings))
 
 
 def _ruleset_response(ruleset: RulesetResult, settings: AppSettings) -> RulesetResponse:

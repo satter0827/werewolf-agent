@@ -87,14 +87,15 @@ uv run werewolf-agent step <game_id>
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
 | `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision |
-| `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
+| `backend/src/werewolf_agent/usecase/jobs/` | 公開 usecase facade、DTO、repository port |
+| `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、業務 validation、domain 接続、projection、agent adapter |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と public HTTP client |
-| `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
+| `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
-| `backend/src/werewolf_agent/contracts/` | safe exception |
-| `backend/src/werewolf_agent/commons/` | error code、message catalog、event sink、redaction、shared helper |
+| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
+| `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
 
 境界:
 
@@ -102,16 +103,17 @@ uv run werewolf-agent step <game_id>
 - `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換して接続する
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
-- domain へ入る usecase code は `usecase/jobs` 配下に限定し、触る domain は `domain.game.*` と `domain.llm.*` の公開面だけ
-- HTTP response schema、Problem Details、CLI 表示、画面向けの表示名や整形は interface に閉じる
+- domain へ入る usecase code は `usecase/internal` と public port に限定し、`usecase/jobs` は薄い公開 facade にする
+- HTTP response schema、Problem Details、error code metadata は `contracts` に置き、FastAPI 例外変換は `interface/shared` に置く
+- CLI 表示、画面向けの表示名や整形は interface に閉じる
 - public state / public event に role、night action、secret を出さない
 
 詳細は [docs/domain.md](docs/domain.md)。
 
 ## 設定
 
-設定は `.env` と環境変数から `interface/shared/settings.py` に集約します。
-interface の浅い場所で読み取り、usecase へ依存として注入します。
+設定 default は `backend/src/werewolf_agent/default_settings/defaults.toml` に置きます。
+`commons/configuration` が `defaults.toml`、`.env`、環境変数を読み取り、interface の浅い場所で usecase へ依存として注入します。
 `.env` はコミットしません。
 
 主な値:
@@ -129,8 +131,11 @@ WEREWOLF_FAKE_LLM_PERSONA_PROFILES=cautious|assertive|analytical
 WEREWOLF_FAKE_LLM_SPEECH_INTENTS=question|compare|pressure
 WEREWOLF_FAKE_LLM_REASON_TEMPLATES=fake_llm {persona} {action} from public signals|fake_llm {persona} {action} with {intent} intent
 WEREWOLF_LOG_LEVEL=INFO
-WEREWOLF_LOG_FORMAT=json
-WEREWOLF_LOG_OUTPUT=stderr
+WEREWOLF_LOG_OUTPUT=file
+WEREWOLF_LOG_DIR=.werewolf-agent/logs
+WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl
+WEREWOLF_LOG_RETENTION_DAYS=14
+WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 WEREWOLF_CLI_API_URL=http://127.0.0.1:8000/api/v1
 WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS=10
 WEREWOLF_CLI_MAX_STEPS=64
@@ -158,6 +163,8 @@ WEREWOLF_DATABASE_URL=
 ```
 
 DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。コード上の `WEREWOLF_API_DEBUG` 既定値は `false` で、`.env.example` と `compose.yaml` はローカル開発用に `true` を明示しています。
+
+運用ログは既定で `.werewolf-agent/logs/werewolf-agent.jsonl` に ECS 風 field の JSON Lines で出力し、UTC の日次 rollover と保持日数で管理します。`WEREWOLF_LOG_OUTPUT` は `file`、`stderr`、`stdout`、`both`、`none` を選べます。`DEBUG` は操作追跡、`INFO` は通常運用、`WARNING` は回復可能な異常、`ERROR` は処理失敗、`CRITICAL` は停止級の異常に使います。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
 
 ## Docker
 

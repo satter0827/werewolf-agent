@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from werewolf_agent.interface.shared.settings import AppSettings
+from werewolf_agent.commons.configuration import AppSettings
 
 SessionFactory: TypeAlias = sessionmaker[Session]
 

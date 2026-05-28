@@ -1,5 +1,7 @@
 import json
+import logging
 from collections.abc import Iterator
+from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -7,8 +9,8 @@ import pytest
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
+from werewolf_agent.commons.configuration import AppSettings  # noqa: E402
 from werewolf_agent.interface.api.app import create_app  # noqa: E402
-from werewolf_agent.interface.shared.settings import AppSettings  # noqa: E402
 
 
 @pytest.fixture
@@ -17,6 +19,7 @@ def client(tmp_path) -> Iterator[TestClient]:
         _env_file=None,
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
+        log_output="none",
     )
     app = create_app(settings, create_schema=True)
     with TestClient(app, raise_server_exceptions=False) as test_client:
@@ -43,6 +46,35 @@ def test_health_endpoint_returns_ok(client: TestClient) -> None:
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "service": "werewolf-agent-api"}
     assert response.headers["x-trace-id"] == "trace-test"
+
+
+def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="file",
+        log_dir=tmp_path,
+        log_file_name="api.jsonl",
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            response = test_client.get("/api/v1/health", headers={"X-Trace-Id": "trace-log"})
+    finally:
+        app.state.engine.dispose()
+
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    payload = json.loads(settings.log_file_path.read_text(encoding="utf-8").splitlines()[0])
+
+    assert response.status_code == 200
+    assert payload["message"] == "API request completed"
+    assert payload["trace.id"] == "trace-log"
+    assert payload["http.request.method"] == "GET"
+    assert payload["url.path"] == "/api/v1/health"
+    assert payload["http.response.status_code"] == 200
+    assert isinstance(payload["event.duration"], int)
 
 
 def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> None:

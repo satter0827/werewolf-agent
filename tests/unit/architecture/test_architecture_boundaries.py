@@ -26,7 +26,6 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
         (path, module)
         for path, module in imported
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
-        and module != "werewolf_agent.interface.application.errors"
     ]
 
 
@@ -63,7 +62,6 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "FakeLlmConfig",
             "FakeLlmStrategy",
             "GameEventCreate",
-            "GameNotFoundError",
             "GamePhase",
             "GameRepository",
             "GameResult",
@@ -76,8 +74,6 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GameUseCaseDependencies",
             "GetGameQuery",
             "GetPrivateObservationQuery",
-            "InvalidControlTokenError",
-            "InvalidGameIdError",
             "ListGameTurnsQuery",
             "ListGamesQuery",
             "ListPublicEventsQuery",
@@ -118,9 +114,9 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentRole",
             "FakeLlmConfig",
             "FakeLlmStrategy",
-            "FakeLlmService",
             "LlmDecisionProvider",
             "VisiblePlayer",
+            "choose_decision",
         },
     )
 
@@ -149,7 +145,7 @@ def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
     assert ruleset_signature.parameters["config"].kind is inspect.Parameter.KEYWORD_ONLY
 
 
-def test_usecase_imports_domain_only_from_jobs() -> None:
+def test_usecase_imports_domain_only_from_public_ports_or_internal() -> None:
     allowed_domain_modules = {
         "werewolf_agent.domain.game.models",
         "werewolf_agent.domain.game.service",
@@ -158,12 +154,16 @@ def test_usecase_imports_domain_only_from_jobs() -> None:
     }
 
     imported = _imports_under(PACKAGE / "usecase")
-    jobs_path = PACKAGE / "usecase" / "jobs"
+    internal_path = PACKAGE / "usecase" / "internal"
+    ports_path = PACKAGE / "usecase" / "jobs" / "ports.py"
+    jobs_init_path = PACKAGE / "usecase" / "jobs" / "__init__.py"
     bad_imports = []
     for path, module in imported:
         if not module.startswith("werewolf_agent.domain"):
             continue
-        if not path.is_relative_to(jobs_path) or module not in allowed_domain_modules:
+        if (
+            not path.is_relative_to(internal_path) and path != ports_path and path != jobs_init_path
+        ) or module not in allowed_domain_modules:
             bad_imports.append((path, module))
 
     assert not bad_imports
@@ -201,6 +201,33 @@ def test_commons_do_not_import_usecase_or_interfaces() -> None:
     ]
 
 
+def test_external_wire_schemas_are_imported_from_contracts() -> None:
+    imported = _imports_under(PACKAGE / "interface")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if module == "werewolf_agent.interface.shared.schemas"
+        or module.startswith("werewolf_agent.interface.shared.schemas.")
+    ]
+
+
+def test_contracts_do_not_import_api_frameworks() -> None:
+    forbidden_modules = (
+        "fastapi",
+        "starlette",
+        "sse_starlette",
+    )
+
+    imported = _imports_under(PACKAGE / "contracts")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
 def test_domain_does_not_import_outer_layers() -> None:
     allowed_commons_modules = {
         "werewolf_agent.commons.shared.messages",
@@ -228,8 +255,21 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "interface" / "entrypoint" / "cli").exists()
     assert not (PACKAGE / "interface" / "cui").exists()
     assert not (PACKAGE / "interface" / "streamlit").exists()
+    assert not list((PACKAGE / "configuration").glob("*.py"))
+    assert not (PACKAGE / "configuration" / "defaults.toml").exists()
     assert not (PACKAGE / "contracts" / "codes.py").exists()
+    assert not (PACKAGE / "contracts" / "http.py").exists()
+    assert not (PACKAGE / "commons" / "shared" / "codes.py").exists()
+    assert not list((PACKAGE / "commons" / "events").glob("*.py"))
+    assert not list((PACKAGE / "interface" / "events").glob("*.py"))
+    assert not (PACKAGE / "interface" / "shared" / "schemas.py").exists()
+    assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
+    assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
+    assert not (PACKAGE / "interface" / "application" / "agents.py").exists()
     assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
+    assert not [
+        path for path in (PACKAGE / "usecase" / "jobs").glob("_*.py") if path.name != "__init__.py"
+    ]
 
 
 def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:

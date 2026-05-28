@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import tomllib
+from collections.abc import Mapping
 from functools import lru_cache
+from importlib.resources import files
 from pathlib import Path
-from typing import Final, Literal, Self
+from typing import Final, Literal, Self, cast
 
 from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,67 +20,112 @@ from werewolf_agent.commons.shared.messages import (
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
 
-APP_NAME: Final = "werewolf-agent"
-API_SERVICE_NAME: Final = "werewolf-agent-api"
+DEFAULTS_PACKAGE: Final = "werewolf_agent.default_settings"
+DEFAULTS_FILE: Final = "defaults.toml"
 
-DEFAULT_GENERATED_DIR: Final = Path(".werewolf-agent")
-DEFAULT_SQLITE_PATH: Final = DEFAULT_GENERATED_DIR / "db" / "db.sqlite3"
-DEFAULT_LLM_PROVIDER: Final = "fake_llm"
-DEFAULT_LLM_MODEL: Final = "fake-llm-local"
-DEFAULT_LLM_TIMEOUT_SECONDS: Final = 30.0
-DEFAULT_LLM_MAX_RETRIES: Final = 2
-DEFAULT_LLM_TEMPERATURE: Final = 0.7
-DEFAULT_FAKE_LLM_STRATEGY: Final = "seeded"
-DEFAULT_FAKE_LLM_RANDOMNESS: Final = 0.7
-DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = (
-    "[{persona}] I want to {intent} {target_name}.|"
-    "[{persona}] {target_name}'s public history looks worth checking.|"
-    "[{persona}] I will compare today's claims before voting."
+
+def _load_default_settings() -> Mapping[str, object]:
+    default_path = files(DEFAULTS_PACKAGE).joinpath(DEFAULTS_FILE)
+    with default_path.open("rb") as default_file:
+        return tomllib.load(default_file)
+
+
+DEFAULT_SETTINGS = _load_default_settings()
+
+
+def _default_value(key: str) -> object:
+    try:
+        return DEFAULT_SETTINGS[key]
+    except KeyError as exc:
+        raise RuntimeError(f"Missing default setting: {key}") from exc
+
+
+def _string_default(key: str) -> str:
+    return str(_default_value(key))
+
+
+def _integer_default(key: str) -> int:
+    value = _default_value(key)
+    if isinstance(value, int):
+        return value
+    return int(str(value))
+
+
+def _float_default(key: str) -> float:
+    value = _default_value(key)
+    if isinstance(value, (float, int)):
+        return float(value)
+    return float(str(value))
+
+
+def _bool_default(key: str) -> bool:
+    value = _default_value(key)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.lower() in {"1", "true", "yes", "on"}
+    return bool(value)
+
+
+def _path_default(key: str) -> Path:
+    return Path(_string_default(key))
+
+
+APP_NAME: Final = _string_default("app_name")
+DEFAULT_API_SERVICE_NAME: Final = _string_default("api_service_name")
+
+DEFAULT_GENERATED_DIR: Final = _path_default("generated_dir")
+DEFAULT_SQLITE_PATH: Final = _path_default("sqlite_path")
+DEFAULT_LLM_PROVIDER: Final = _string_default("llm_provider")
+DEFAULT_LLM_MODEL: Final = _string_default("model")
+DEFAULT_LLM_TIMEOUT_SECONDS: Final = _float_default("llm_timeout_seconds")
+DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
+DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
+DEFAULT_FAKE_LLM_STRATEGY: Final = _string_default("fake_llm_strategy")
+DEFAULT_FAKE_LLM_RANDOMNESS: Final = _float_default("fake_llm_randomness")
+DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = _string_default("fake_llm_speech_templates")
+DEFAULT_FAKE_LLM_PERSONA_PROFILES: Final = _string_default("fake_llm_persona_profiles")
+DEFAULT_FAKE_LLM_SPEECH_INTENTS: Final = _string_default("fake_llm_speech_intents")
+DEFAULT_FAKE_LLM_REASON_TEMPLATES: Final = _string_default("fake_llm_reason_templates")
+DEFAULT_LOG_LEVEL: Final = _string_default("log_level")
+DEFAULT_LOG_OUTPUT: Final = _string_default("log_output")
+DEFAULT_LOG_DIR: Final = _path_default("log_dir")
+DEFAULT_LOG_FILE_NAME: Final = _string_default("log_file_name")
+DEFAULT_LOG_RETENTION_DAYS: Final = _integer_default("log_retention_days")
+DEFAULT_LOG_THIRD_PARTY_LEVEL: Final = _string_default("log_third_party_level")
+DEFAULT_CLI_API_URL: Final = _string_default("cli_api_url")
+DEFAULT_CLI_HTTP_TIMEOUT_SECONDS: Final = _float_default("cli_http_timeout_seconds")
+DEFAULT_CLI_MAX_STEPS: Final = _integer_default("cli_max_steps")
+DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = _float_default("cli_poll_interval_seconds")
+DEFAULT_CLI_EVENT_LIMIT: Final = _integer_default("cli_event_limit")
+DEFAULT_CLI_OUTPUT_FORMAT: Final = _string_default("cli_output_format")
+DEFAULT_API_TITLE: Final = _string_default("api_title")
+DEFAULT_API_VERSION: Final = _string_default("api_version")
+DEFAULT_API_DEBUG: Final = _bool_default("api_debug")
+DEFAULT_API_CORS_ALLOWED_ORIGINS: Final = _string_default("api_cors_allowed_origins")
+DEFAULT_API_CORS_ALLOWED_METHODS: Final = _string_default("api_cors_allowed_methods")
+DEFAULT_API_CORS_ALLOWED_HEADERS: Final = _string_default("api_cors_allowed_headers")
+DEFAULT_GAME_MIN_PLAYERS: Final = _integer_default("game_min_players")
+DEFAULT_GAME_MAX_PLAYERS: Final = _integer_default("game_max_players")
+DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = _integer_default("game_default_player_count")
+DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = _string_default("game_supported_agent_type")
+DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = _string_default("game_supported_agent_name")
+DEFAULT_GAME_DEFAULT_RULESET_ID: Final = _string_default("game_default_ruleset_id")
+DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset_name")
+DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = _string_default(
+    "game_ruleset_description_template"
 )
-DEFAULT_FAKE_LLM_PERSONA_PROFILES: Final = "cautious|assertive|analytical"
-DEFAULT_FAKE_LLM_SPEECH_INTENTS: Final = "question|compare|pressure"
-DEFAULT_FAKE_LLM_REASON_TEMPLATES: Final = (
-    "fake_llm {persona} {action} from public signals|"
-    "fake_llm {persona} {action} with {intent} intent"
-)
-DEFAULT_LOG_LEVEL: Final = "INFO"
-DEFAULT_LOG_FORMAT: Final = "json"
-DEFAULT_LOG_OUTPUT: Final = "stderr"
-DEFAULT_CLI_API_URL: Final = "http://127.0.0.1:8000/api/v1"
-DEFAULT_CLI_HTTP_TIMEOUT_SECONDS: Final = 10.0
-DEFAULT_CLI_MAX_STEPS: Final = 64
-DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = 0.0
-DEFAULT_CLI_EVENT_LIMIT: Final = 100
-DEFAULT_CLI_OUTPUT_FORMAT: Final = "table"
-DEFAULT_API_TITLE: Final = "Werewolf Agent API"
-DEFAULT_API_VERSION: Final = "0.1.0"
-DEFAULT_API_DEBUG: Final = False
-DEFAULT_API_CORS_ALLOWED_ORIGINS: Final = ""
-DEFAULT_API_CORS_ALLOWED_METHODS: Final = "GET,POST"
-DEFAULT_API_CORS_ALLOWED_HEADERS: Final = "*"
-DEFAULT_GAME_MIN_PLAYERS: Final = 5
-DEFAULT_GAME_MAX_PLAYERS: Final = 8
-DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = 6
-DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = "llm"
-DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = "LLM Agent"
-DEFAULT_GAME_DEFAULT_RULESET_ID: Final = "default"
-DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = "MVP Default"
-DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = (
-    "{min_players}〜{max_players}人向けの最小同期 API ルールセットです。"
-)
-DEFAULT_GAME_ROLE_NAMES: Final = "villager:村人,werewolf:人狼,seer:占い師,knight:騎士"
-DEFAULT_GAME_PHASE_NAMES: Final = "night:夜,day_discussion:昼チャット,voting:投票,finished:終了"
+DEFAULT_GAME_ROLE_NAMES: Final = _string_default("game_role_names")
+DEFAULT_GAME_PHASE_NAMES: Final = _string_default("game_phase_names")
 
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
-LOG_FORMAT_NAMES: Final = frozenset({"json", "console"})
-LOG_OUTPUT_NAMES: Final = frozenset({"stderr", "stdout"})
+LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"})
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
 FAKE_LLM_STRATEGY_NAMES: Final = frozenset({"seeded", "random"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
-LogFormat = Literal["json", "console"]
-LogOutput = Literal["stderr", "stdout"]
+LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
 CliOutputFormat = Literal["table", "json", "jsonl"]
 
 
@@ -161,13 +209,23 @@ class AppSettings(BaseSettings):
         validation_alias="WEREWOLF_FAKE_LLM_REASON_TEMPLATES",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
-    log_format: LogFormat = Field(
-        default=DEFAULT_LOG_FORMAT,
-        validation_alias="WEREWOLF_LOG_FORMAT",
-    )
     log_output: LogOutput = Field(
-        default=DEFAULT_LOG_OUTPUT,
+        default=cast(LogOutput, DEFAULT_LOG_OUTPUT),
         validation_alias="WEREWOLF_LOG_OUTPUT",
+    )
+    log_dir: Path = Field(default=DEFAULT_LOG_DIR, validation_alias="WEREWOLF_LOG_DIR")
+    log_file_name: str = Field(
+        default=DEFAULT_LOG_FILE_NAME,
+        validation_alias="WEREWOLF_LOG_FILE_NAME",
+    )
+    log_retention_days: int = Field(
+        default=DEFAULT_LOG_RETENTION_DAYS,
+        ge=0,
+        validation_alias="WEREWOLF_LOG_RETENTION_DAYS",
+    )
+    log_third_party_level: str = Field(
+        default=DEFAULT_LOG_THIRD_PARTY_LEVEL,
+        validation_alias="WEREWOLF_LOG_THIRD_PARTY_LEVEL",
     )
     cli_api_url: str = Field(
         default=DEFAULT_CLI_API_URL,
@@ -195,7 +253,7 @@ class AppSettings(BaseSettings):
         validation_alias="WEREWOLF_CLI_EVENT_LIMIT",
     )
     cli_output_format: CliOutputFormat = Field(
-        default=DEFAULT_CLI_OUTPUT_FORMAT,
+        default=cast(CliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
         validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
     )
 
@@ -244,6 +302,10 @@ class AppSettings(BaseSettings):
     )
 
     api_title: str = Field(default=DEFAULT_API_TITLE, validation_alias="WEREWOLF_API_TITLE")
+    api_service_name: str = Field(
+        default=DEFAULT_API_SERVICE_NAME,
+        validation_alias="WEREWOLF_API_SERVICE_NAME",
+    )
     api_version: str = Field(default=DEFAULT_API_VERSION, validation_alias="WEREWOLF_API_VERSION")
     api_debug: bool = Field(default=DEFAULT_API_DEBUG, validation_alias="WEREWOLF_API_DEBUG")
     api_cors_allowed_origins: str = Field(
@@ -328,6 +390,19 @@ class AppSettings(BaseSettings):
         return repository_root() / sqlite_path
 
     @property
+    def log_directory_path(self) -> Path:
+        """Return the absolute directory for operational logs."""
+        log_dir = self.log_dir.expanduser()
+        if log_dir.is_absolute():
+            return log_dir
+        return repository_root() / log_dir
+
+    @property
+    def log_file_path(self) -> Path:
+        """Return the active operational JSONL log file path."""
+        return self.log_directory_path / self.log_file_name
+
+    @property
     def configured_database_url(self) -> str:
         """Return the configured database URL without exposing it in repr output."""
         return self.database_url.get_secret_value().strip()
@@ -355,27 +430,36 @@ class AppSettings(BaseSettings):
             case="upper",
         )
 
-    @field_validator("log_format", mode="before")
-    @classmethod
-    def normalize_log_format(cls, value: object) -> str:
-        """Return a validated lowercase logging formatter name."""
-        return normalize_choice(
-            value,
-            field_name="log_format",
-            choices=LOG_FORMAT_NAMES,
-            case="lower",
-        )
-
     @field_validator("log_output", mode="before")
     @classmethod
     def normalize_log_output(cls, value: object) -> str:
-        """Return a validated lowercase logging stream name."""
+        """Return a validated lowercase logging output target."""
         return normalize_choice(
             value,
             field_name="log_output",
             choices=LOG_OUTPUT_NAMES,
             case="lower",
         )
+
+    @field_validator("log_third_party_level", mode="before")
+    @classmethod
+    def normalize_log_third_party_level(cls, value: object) -> str:
+        """Return a validated uppercase logging level for third-party libraries."""
+        return normalize_choice(
+            value,
+            field_name="log_third_party_level",
+            choices=LOG_LEVEL_NAMES,
+            case="upper",
+        )
+
+    @field_validator("log_file_name", mode="before")
+    @classmethod
+    def normalize_log_file_name(cls, value: object) -> str:
+        """Return a safe non-empty operational log file name."""
+        file_name = normalize_non_blank(value, field_name="log_file_name")
+        if Path(file_name).name != file_name:
+            raise ValueError("log_file_name must be a file name")
+        return file_name
 
     @field_validator("cli_output_format", mode="before")
     @classmethod
@@ -433,6 +517,7 @@ class AppSettings(BaseSettings):
         "fake_llm_speech_intents",
         "fake_llm_reason_templates",
         "api_title",
+        "api_service_name",
         "api_version",
         "cli_api_url",
         mode="before",

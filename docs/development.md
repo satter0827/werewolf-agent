@@ -6,7 +6,7 @@
 
 - backend 中心
 - deterministic domain core 実装済み
-- `usecase.jobs` は interface と domain の唯一の接続点
+- `usecase.jobs` の公開 facade は interface から usecase へ入る唯一の接続点
 - FastAPI は game 作成、一覧、状態取得、step 進行、private observation、manual action、public event、turn history、public SSE まで実装済み
 - CLI `doctor` / `ruleset` / `create` / `state` / `step` / `play` / `watch` / `replay` / `runs` / `turns` は HTTP API だけを使う
 - 現在の LLM provider は `fake_llm`。実 LLM provider、複数 human player、Streamlit / React UI は未実装
@@ -44,28 +44,29 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/domain/game/service.py` | snapshot と pending action を受け取る stateless game 関数 |
 | `backend/src/werewolf_agent/domain/game/rules/` | game 内部 rules |
 | `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO / FakeLLM 設定 / 公開履歴 DTO |
-| `backend/src/werewolf_agent/domain/llm/service.py` | `FakeLlmService.choose_decision(...)` |
+| `backend/src/werewolf_agent/domain/llm/service.py` | `choose_decision(...)` |
 | `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
-| `backend/src/werewolf_agent/usecase/jobs/games.py` | stateless job、業務 validation、usecase DTO、domain 接続 |
+| `backend/src/werewolf_agent/usecase/jobs/games.py` | 公開 usecase facade、DTO |
 | `backend/src/werewolf_agent/usecase/jobs/ports.py` | repository / agent port |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、例外変換、SSE |
+| `backend/src/werewolf_agent/usecase/internal/` | stateless job、業務 validation、domain 接続、projection、agent adapter |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、SQLAlchemy repository、transaction、依存注入、Alembic migration |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と HTTP client |
-| `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
+| `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
-| `backend/src/werewolf_agent/contracts/` | safe exception |
-| `backend/src/werewolf_agent/commons/` | error code、message catalog、validation、event sink、redaction |
+| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
+| `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、validation、redaction |
 | `tests/unit/` | process 内 unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
 ## 境界
 
-- CLI は `interface/shared/schemas.py` と HTTP client だけを使う
+- CLI は `contracts/schemas.py` と HTTP client だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
-- 設定と logging は `interface/shared` に置き、domain / usecase には注入済み値だけ渡す
+- 設定読み込みは `commons/configuration`、logging は `commons/logging` に置き、domain / usecase には注入済み値だけ渡す
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面を import する。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
-- usecase から domain へ入る code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
+- usecase から domain へ入る code は `usecase/internal` と public port に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
 - `domain.game` と `domain.llm` は互いに import せず、observation / decision / action の変換は usecase に置く
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
 - domain から `commons` を使う場合は副作用のない `commons.shared.messages` / `commons.shared.validation` だけに限定する
@@ -119,10 +120,11 @@ uv run --extra api pytest tests/integration/api
 Git 管理しないものは `.werewolf-agent/` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
+- operational logs: `.werewolf-agent/logs/`
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
 - coverage data: `.werewolf-agent/coverage/.coverage`
-- JSONL logs
+- public event JSONL logs
 
 `.werewolf-agent/` は Git 管理しません。トップレベルの `.gitkeep` だけを置きます。
 
@@ -163,6 +165,7 @@ uv build --no-sources
 
 - `WEREWOLF_API_DEBUG=false`
 - `WEREWOLF_DATABASE_URL` または永続 volume 上の `WEREWOLF_SQLITE_PATH`
+- `WEREWOLF_LOG_OUTPUT=file` と永続 volume 上の `WEREWOLF_LOG_DIR`
 - 公開 UI に合わせた `WEREWOLF_CORS_ALLOWED_ORIGINS`
 - migration は release command / one-off job で実行
 

@@ -5,6 +5,10 @@ from __future__ import annotations
 import typer
 from pydantic import ValidationError
 
+from werewolf_agent.commons.configuration import (
+    configure_interface_logging,
+    settings_error_detail,
+)
 from werewolf_agent.commons.shared.messages import message_error_line
 from werewolf_agent.contracts import ConfigError
 from werewolf_agent.interface.entrypoint.cui.commands import (
@@ -18,10 +22,6 @@ from werewolf_agent.interface.entrypoint.cui.commands import (
     step,
     turns,
     watch,
-)
-from werewolf_agent.interface.shared.runtime import (
-    configure_interface_logging,
-    settings_error_detail,
 )
 
 app = typer.Typer(

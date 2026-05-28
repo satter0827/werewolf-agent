@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol
 
-from werewolf_agent.commons.events.models import GameEvent
 from werewolf_agent.commons.shared.constants import (
     FILE_MODE_APPEND,
     FILE_MODE_WRITE,
     JSON_ENCODING,
     JSONL_NEWLINE,
 )
+from werewolf_agent.contracts.events import GameEvent
 
 
 class EventSink(Protocol):

@@ -29,14 +29,15 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
 | `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision、provider port |
-| `backend/src/werewolf_agent/usecase/jobs/` | stateless workflow、業務 validation、repository port、domain 接続 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、例外変換、SSE |
+| `backend/src/werewolf_agent/usecase/jobs/` | 公開 usecase facade、DTO、repository port |
+| `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、業務 validation、domain 接続、projection、agent adapter |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
 | `backend/src/werewolf_agent/interface/application/` | usecase adapter、DB repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | 公開 HTTP API だけを呼ぶ CLI |
-| `backend/src/werewolf_agent/interface/shared/` | settings、logging、wire schema、runtime helper |
+| `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
-| `backend/src/werewolf_agent/contracts/` | safe exception |
-| `backend/src/werewolf_agent/commons/` | error code、message catalog、event sink、redaction、shared helper |
+| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
+| `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
 | `tests/unit/` | unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
@@ -47,7 +48,7 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application/` に限定する
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面を import する。FakeLLM 設定だけは `domain.llm` の公開面から組み立てる
-- usecase から domain を参照する code は `usecase/jobs` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
+- usecase から domain を参照する code は `usecase/internal` と public port に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
 - `domain.game` と `domain.llm` は互いに import せず、usecase が observation / decision / action を変換してつなぐ
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
 - API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない

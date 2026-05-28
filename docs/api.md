@@ -159,18 +159,22 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 
 | Path | 責務 |
 | --- | --- |
-| `interface/shared/schemas.py` | HTTP wire DTO、Problem Details |
+| `contracts/schemas.py` | HTTP wire DTO、Problem Details schema |
+| `contracts/errors.py` | error code metadata |
+| `interface/shared/http.py` | FastAPI Problem Details 変換 |
 | `interface/api/routers.py` | endpoint |
-| `interface/api/errors.py` | Problem Details 変換 |
 | `interface/application/games.py` | usecase adapter、transaction、依存注入 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `interface/application/models.py` | `game_runs` / `game_events` / read model ORM |
-| `usecase/jobs/` | stateless game workflow、業務 validation、repository port、domain 接続 |
+| `usecase/jobs/` | 公開 usecase facade、DTO、repository port |
+| `usecase/internal/` | stateless game workflow、業務 validation、domain 接続、projection |
 
 `interface/api` は domain / usecase を直接 import しません。
 usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
 FakeLLM 設定だけは `domain.llm` の公開面から組み立てます。
-HTTP DTO、Problem Details、表示名、response 整形は interface 側に置きます。
+HTTP DTO、Problem Details schema、error code metadata は `contracts` に置きます。
+FastAPI の exception handler と Problem Details response 生成は `interface/shared/http.py` に置きます。
+表示名、response 整形は interface 側に置きます。
 
 ## 検証
 

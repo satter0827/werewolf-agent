@@ -8,12 +8,10 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, Depends, Header
 from sse_starlette.sse import EventSourceResponse
 
-from werewolf_agent.commons.shared.codes import ErrorCode
-from werewolf_agent.commons.shared.messages import MESSAGE_AUTHORIZATION_HEADER_REQUIRED
+from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.contracts import AppError
-from werewolf_agent.interface.api.dependencies import game_application
-from werewolf_agent.interface.application.games import GameApplication
-from werewolf_agent.interface.shared.schemas import (
+from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameEventsQuery,
     GameEventsResponse,
@@ -28,16 +26,19 @@ from werewolf_agent.interface.shared.schemas import (
     SubmitPlayerActionRequest,
     SubmitPlayerActionResponse,
 )
-from werewolf_agent.interface.shared.settings import API_SERVICE_NAME
+from werewolf_agent.interface.api.dependencies import app_settings, game_application
+from werewolf_agent.interface.application.games import GameApplication
+from werewolf_agent.interface.shared.messages import MESSAGE_AUTHORIZATION_HEADER_REQUIRED
 
 router = APIRouter(prefix="/api/v1")
 GAME_APPLICATION = Depends(game_application)
+APP_SETTINGS = Depends(app_settings)
 
 
 @router.get("/health")
-def health() -> dict[str, str]:
+def health(settings: AppSettings = APP_SETTINGS) -> dict[str, str]:
     """Return API health."""
-    return {"status": "ok", "service": API_SERVICE_NAME}
+    return {"status": "ok", "service": settings.api_service_name}
 
 
 @router.get("/rulesets/default", response_model=RulesetResponse)

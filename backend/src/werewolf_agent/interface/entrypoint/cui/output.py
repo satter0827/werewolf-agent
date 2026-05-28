@@ -10,7 +10,7 @@ from pydantic import BaseModel
 from rich.console import Console
 from rich.table import Table
 
-from werewolf_agent.interface.shared.schemas import (
+from werewolf_agent.contracts.schemas import (
     PrivateObservationResponse,
     PublicGameEvent,
     PublicGameRunSummary,

@@ -1,4 +1,4 @@
-"""Private projections from full domain state to public result payloads."""
+"""Internal projections from full domain state to public result payloads."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from werewolf_agent.domain.game.models import (
     Phase,
     PlayerStatus,
 )
-from werewolf_agent.usecase.jobs.games import (
+from werewolf_agent.usecase.internal.games import (
     GameEventCreate,
     GamePhase,
     GameStatus,

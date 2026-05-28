@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from werewolf_agent.commons.shared.codes import ErrorCode, get_error_spec
+from werewolf_agent.contracts.errors import ErrorCode, ErrorSpec, get_error_spec
 
 
 class AppError(Exception):
@@ -21,7 +21,7 @@ class AppError(Exception):
         retryable: bool | None = None,
     ) -> None:
         self.code = code or self.code
-        self.spec = get_error_spec(self.code)
+        self.spec: ErrorSpec = get_error_spec(self.code)
         self.detail = detail or self.spec.detail
         self.context = dict(context or {})
         self.retryable = self.spec.retryable if retryable is None else retryable
@@ -58,6 +58,26 @@ class GamePhaseError(GameError):
     code = ErrorCode.GAME_INVALID_PHASE
 
 
+class ResourceNotFoundError(AppError):
+    """Raised when a requested resource does not exist."""
+
+    code = ErrorCode.RESOURCE_NOT_FOUND
+
+
+class GameNotFoundError(LookupError):
+    """Raised when a requested game run is absent from the repository."""
+
+
+class InvalidGameIdError(ValueError):
+    """Raised when a game id cannot be parsed as a UUID."""
+
+
+class InvalidControlTokenError(AppError):
+    """Raised when a private player credential is missing or invalid."""
+
+    code = ErrorCode.AUTHORIZATION_FAILED
+
+
 class AgentError(AppError):
     """An agent returned an invalid or unusable response."""
 
@@ -80,3 +100,19 @@ class InternalError(AppError):
     """A safe wrapper for unexpected internal failures."""
 
     code = ErrorCode.INTERNAL_UNEXPECTED
+
+
+__all__ = [
+    "AgentError",
+    "AppError",
+    "ConfigError",
+    "GameError",
+    "GameNotFoundError",
+    "GamePhaseError",
+    "InternalError",
+    "InvalidControlTokenError",
+    "InvalidGameIdError",
+    "LlmProviderError",
+    "ObservationError",
+    "ResourceNotFoundError",
+]

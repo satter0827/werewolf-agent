@@ -1,100 +1,158 @@
 import json
 import logging
 import sys
+from pathlib import Path
 
+import structlog
+
+from werewolf_agent.commons.configuration import AppSettings
+from werewolf_agent.commons.logging import (
+    bind_log_context,
+    configure_logging,
+    get_log_context,
+)
 from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
-from werewolf_agent.interface.shared.logging import JsonFormatter, bind_log_context
 
 
-def _format_record(record: logging.LogRecord) -> dict[str, object]:
-    return json.loads(JsonFormatter().format(record))
+def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
+    values: dict[str, object] = {
+        "_env_file": None,
+        "log_dir": tmp_path,
+        "log_file_name": "test.jsonl",
+        "log_level": "DEBUG",
+        "log_output": "file",
+    }
+    values.update(overrides)
+    return AppSettings(**values)
 
 
-def test_json_formatter_outputs_parseable_record_with_context_and_extra() -> None:
-    record = logging.LogRecord(
-        "werewolf_agent.tests",
-        logging.INFO,
-        __file__,
-        10,
-        "hello %s",
-        ("world",),
-        None,
-    )
-    record.api_key = "secret-value"
-    record.count = 2
+def _flush_handlers() -> None:
+    for handler in logging.getLogger().handlers:
+        handler.flush()
 
-    with bind_log_context(run_id="run-1", trace_id="trace-1"):
-        payload = _format_record(record)
 
-    assert payload["level"] == "INFO"
-    assert payload["logger"] == "werewolf_agent.tests"
+def _read_log(path: Path) -> dict[str, object]:
+    _flush_handlers()
+    lines = [line for line in path.read_text(encoding="utf-8").splitlines() if line]
+    assert len(lines) == 1
+    return json.loads(lines[0])
+
+
+def test_configure_logging_writes_ecs_jsonl_with_context_and_extra(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_logging(settings)
+
+    logger = logging.getLogger("werewolf_agent.tests")
+    with bind_log_context(trace_id="trace-1", method="GET", path="/api/v1/health"):
+        logger.info(
+            "hello %s",
+            "world",
+            extra={
+                "api_key": "secret-value",
+                "count": 2,
+                "http_status": 200,
+                "duration_ms": 1.25,
+            },
+        )
+
+    payload = _read_log(settings.log_file_path)
+
+    assert payload["@timestamp"]
+    assert payload["log.level"] == "INFO"
+    assert payload["log.logger"] == "werewolf_agent.tests"
     assert payload["message"] == "hello world"
-    assert payload["run_id"] == "run-1"
-    assert payload["trace_id"] == "trace-1"
-    assert payload["extra"] == {"api_key": "[REDACTED]", "count": 2}
+    assert payload["service.name"] == "werewolf-agent-api"
+    assert payload["service.version"] == "0.1.0"
+    assert payload["event.dataset"] == "werewolf_agent.tests"
+    assert payload["trace.id"] == "trace-1"
+    assert payload["http.request.method"] == "GET"
+    assert payload["url.path"] == "/api/v1/health"
+    assert payload["http.response.status_code"] == 200
+    assert payload["event.duration"] == 1_250_000
+    assert payload["api_key"] == "[REDACTED]"
+    assert payload["count"] == 2
+
+
+def test_structlog_uses_same_jsonl_processors(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_logging(settings)
+
+    structlog.get_logger("werewolf_agent.tests.structlog").info(
+        "structured event",
+        game_id="game-1",
+        token="secret-token",
+    )
+
+    payload = _read_log(settings.log_file_path)
+
+    assert payload["log.level"] == "INFO"
+    assert payload["log.logger"] == "werewolf_agent.tests.structlog"
+    assert payload["message"] == "structured event"
+    assert payload["game_id"] == "game-1"
+    assert payload["token"] == "[REDACTED]"
 
 
 def test_bound_log_context_does_not_leak_outside_scope() -> None:
-    record = logging.LogRecord(
-        "werewolf_agent.tests",
-        logging.INFO,
-        __file__,
-        10,
-        "hello",
-        (),
-        None,
-    )
+    assert get_log_context() == {}
 
     with bind_log_context(game_id="game-1"):
-        scoped_payload = _format_record(record)
-    unscoped_payload = _format_record(record)
+        assert get_log_context()["game_id"] == "game-1"
 
-    assert scoped_payload["game_id"] == "game-1"
-    assert "game_id" not in unscoped_payload
+    assert "game_id" not in get_log_context()
 
 
-def test_json_formatter_includes_exception_payload() -> None:
+def test_configure_logging_includes_redacted_exception_payload(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_logging(settings)
+    logger = logging.getLogger("werewolf_agent.tests")
+
     try:
-        raise RuntimeError("boom")
+        raise RuntimeError("token=secret-value")
     except RuntimeError:
-        record = logging.LogRecord(
-            "werewolf_agent.tests",
-            logging.ERROR,
-            __file__,
-            10,
-            "failed",
-            (),
-            sys.exc_info(),
-        )
+        logger.exception("failed authorization=Bearer abc")
 
-    payload = _format_record(record)
+    payload = _read_log(settings.log_file_path)
 
-    assert payload["exception"]["type"] == "RuntimeError"
-    assert payload["exception"]["message"] == "boom"
-    assert "RuntimeError: boom" in payload["exception"]["stacktrace"]
+    assert payload["log.level"] == "ERROR"
+    assert payload["message"] == "failed authorization=[REDACTED]"
+    assert payload["error.type"] == "RuntimeError"
+    assert payload["error.message"] == "token=[REDACTED]"
+    assert "RuntimeError: token=[REDACTED]" in payload["error.stack_trace"]
 
 
-def test_json_formatter_includes_error_metadata_extra() -> None:
-    record = logging.LogRecord(
-        "werewolf_agent.tests",
-        logging.ERROR,
-        __file__,
-        10,
-        "failed",
-        (),
-        None,
-    )
-    record.error_code = "game.invalid_action"
-    record.retryable = False
+def test_configure_logging_supports_stdout_output(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    settings = _settings(tmp_path, log_output="stdout")
+    configure_logging(settings)
 
-    with bind_log_context(trace_id="trace-1"):
-        payload = _format_record(record)
+    logging.getLogger("werewolf_agent.tests").warning("stdout log")
+    _flush_handlers()
 
-    assert payload["trace_id"] == "trace-1"
-    assert payload["extra"] == {
-        "error_code": "game.invalid_action",
-        "retryable": False,
-    }
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["message"] == "stdout log"
+    assert not settings.log_file_path.exists()
+
+
+def test_configure_logging_supports_both_and_none_outputs(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    both_settings = _settings(tmp_path / "both", log_output="both")
+    configure_logging(both_settings)
+    logging.getLogger("werewolf_agent.tests").error("both log")
+    both_payload = _read_log(both_settings.log_file_path)
+    captured = capsys.readouterr()
+    assert json.loads(captured.err)["message"] == "both log"
+    assert both_payload["message"] == "both log"
+
+    none_settings = _settings(tmp_path / "none", log_output="none")
+    configure_logging(none_settings)
+    logging.getLogger("werewolf_agent.tests").critical("dropped log")
+    _flush_handlers()
+    assert not none_settings.log_file_path.exists()
 
 
 def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
@@ -119,3 +177,11 @@ def test_redact_text_masks_common_sensitive_assignments() -> None:
     assert redact_text("api_key=abc token: def safe=value") == (
         "api_key=[REDACTED] token: [REDACTED] safe=value"
     )
+
+
+def teardown_module() -> None:
+    logging.shutdown()
+    logging.basicConfig(handlers=[logging.NullHandler()], force=True)
+    structlog.contextvars.clear_contextvars()
+    sys.stderr.flush()
+    sys.stdout.flush()

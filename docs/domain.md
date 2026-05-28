@@ -37,7 +37,7 @@
 
 `domain.game.rules` は内部実装です。
 `domain.game` と `domain.llm` は互いに import しません。
-両者の接続、game observation から llm observation への変換、llm decision から game action への変換は `usecase.jobs` が担当します。
+両者の接続、game observation から llm observation への変換、llm decision から game action への変換は `usecase.internal` の workflow が担当し、外側には `usecase.jobs` の公開 facade だけを出します。
 `interface/api` と `interface/entrypoint/cui` は domain を直接 import しません。
 interface 層から usecase を呼ぶ場所は `interface/application` に限定します。
 
@@ -74,7 +74,7 @@ interface 層から usecase を呼ぶ場所は `interface/application` に限定
 | `AgentObservation.speeches` / `vote_rounds` | FakeLLM に渡してよい公開履歴 |
 | `FakeLlmConfig` | FakeLLM の seed policy、persona、発話、理由テンプレート設定 |
 | `LlmDecisionProvider` | 将来の real LLM adapter 用 port |
-| `FakeLlmService.choose_decision(player_id, observation, config, rng)` | FakeLLM 用の decision を返す唯一の service 接点 |
+| `choose_decision(player_id, observation, config, rng)` | FakeLLM 用の decision を返す唯一の service 接点 |
 
 ## 進行
 
@@ -101,7 +101,7 @@ start_game -> night -> day_discussion -> voting -> night -> ... -> finished
 - 他 role、夜行動、private event、debug event は見えない
 
 API は `GameSnapshot` をそのまま返しません。
-`usecase.jobs` が public state / public event の業務 payload に変換し、
+`usecase.internal` が public state / public event の業務 payload に変換し、
 interface が HTTP / CLI / 画面向け schema に整えます。
 
 ## 乱数
@@ -115,7 +115,7 @@ seed は role assignment、tie break、FakeLLM の decision 選択に使いま�
 - LLM provider 非依存の decision 型 / FakeLLM 設定 / FakeLLM decision: `domain.llm.models`、`domain.llm.service`
 - LLM provider adapter: `domain.llm.ports` を usecase / interface 側で実装に接続
 - 公開 workflow / port: `usecase.jobs` の top-level API
-- projection、game / llm 変換、自動 agent adapter: `usecase.jobs` 配下の private module
+- projection、game / llm 変換、自動 agent adapter: `usecase.internal`
 - 複数 human / external agent action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
 
 ## 検証

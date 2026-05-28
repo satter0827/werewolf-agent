@@ -15,15 +15,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 
-from werewolf_agent.commons.shared.messages import LOG_API_REQUEST_COMPLETED
-from werewolf_agent.contracts import AppError
-from werewolf_agent.interface.api.errors import (
-    app_error_handler,
-    http_exception_handler,
-    pydantic_validation_error_handler,
-    request_validation_error_handler,
-    unhandled_exception_handler,
+from werewolf_agent.commons.configuration import (
+    AppSettings,
+    configure_interface_logging,
+    get_settings,
 )
+from werewolf_agent.commons.logging import bind_log_context
+from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.routers import router
 from werewolf_agent.interface.application.database import (
     create_database_engine,
@@ -31,9 +29,14 @@ from werewolf_agent.interface.application.database import (
 )
 from werewolf_agent.interface.application.games import GameApplication
 from werewolf_agent.interface.application.models import Base
-from werewolf_agent.interface.shared.logging import bind_log_context
-from werewolf_agent.interface.shared.runtime import configure_interface_logging
-from werewolf_agent.interface.shared.settings import AppSettings, get_settings
+from werewolf_agent.interface.shared.http import (
+    app_error_handler,
+    http_exception_handler,
+    pydantic_validation_error_handler,
+    request_validation_error_handler,
+    unhandled_exception_handler,
+)
+from werewolf_agent.interface.shared.messages import LOG_API_REQUEST_COMPLETED
 
 TRACE_ID_HEADER = "X-Trace-Id"
 REQUEST_ID_HEADER = "X-Request-Id"

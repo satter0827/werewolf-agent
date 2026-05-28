@@ -9,7 +9,6 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from werewolf_agent.commons.shared.codes import ErrorCode
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
@@ -20,7 +19,8 @@ from werewolf_agent.commons.shared.messages import (
     message_problem_detail,
 )
 from werewolf_agent.contracts import AppError
-from werewolf_agent.interface.shared.schemas import (
+from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,

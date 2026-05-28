@@ -9,13 +9,9 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from werewolf_agent.commons.shared.codes import ErrorCode
-from werewolf_agent.contracts import AppError
-from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
-from werewolf_agent.interface.entrypoint.cui.app import app
-from werewolf_agent.interface.entrypoint.cui.client import HttpGameApiClient
-from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
-from werewolf_agent.interface.shared.schemas import (
+from werewolf_agent.commons.configuration import get_settings
+from werewolf_agent.contracts import AppError, ErrorCode
+from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameEventsResponse,
     GameResponse,
@@ -32,7 +28,10 @@ from werewolf_agent.interface.shared.schemas import (
     SubmitPlayerActionRequest,
     SubmitPlayerActionResponse,
 )
-from werewolf_agent.interface.shared.settings import get_settings
+from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
+from werewolf_agent.interface.entrypoint.cui.app import app
+from werewolf_agent.interface.entrypoint.cui.client import HttpGameApiClient
+from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 
 
 def _state(

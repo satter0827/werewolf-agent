@@ -15,7 +15,12 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.commons.shared.codes import ErrorCode
+from werewolf_agent.commons.configuration import (
+    APP_NAME,
+    AppSettings,
+    get_settings,
+    repository_root,
+)
 from werewolf_agent.commons.shared.constants import REDACTED
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_ACTION_SUBMITTED,
@@ -33,6 +38,16 @@ from werewolf_agent.commons.shared.messages import (
     message_game_did_not_complete,
 )
 from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.contracts.schemas import (
+    CreateGamePlayer,
+    CreateGameRequest,
+    CreateGameRuleConfig,
+    PublicGameEvent,
+    RoleId,
+    SubmitPlayerActionRequest,
+    TieBreakPolicyId,
+)
 from werewolf_agent.interface.entrypoint.cui.client import GameApiClient, HttpGameApiClient
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.entrypoint.cui.output import (
@@ -46,21 +61,6 @@ from werewolf_agent.interface.entrypoint.cui.output import (
     print_run_summaries,
     print_state,
     print_turns,
-)
-from werewolf_agent.interface.shared.schemas import (
-    CreateGamePlayer,
-    CreateGameRequest,
-    CreateGameRuleConfig,
-    PublicGameEvent,
-    RoleId,
-    SubmitPlayerActionRequest,
-    TieBreakPolicyId,
-)
-from werewolf_agent.interface.shared.settings import (
-    APP_NAME,
-    AppSettings,
-    get_settings,
-    repository_root,
 )
 
 logger = logging.getLogger(__name__)
@@ -97,8 +97,11 @@ def _doctor(*, api_url: str | None, output: str | None) -> None:
         "model": settings.model,
         "fake llm strategy": settings.fake_llm_strategy,
         "log level": settings.log_level,
-        "log format": settings.log_format,
         "log output": settings.log_output,
+        "log dir": str(settings.log_directory_path),
+        "log file": str(settings.log_file_path),
+        "log retention days": str(settings.log_retention_days),
+        "log third party level": settings.log_third_party_level,
         "database": _redacted_database_url(settings.sqlalchemy_database_url),
     }
     try:

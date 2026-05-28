@@ -27,6 +27,7 @@ dependencies = [
     "pydantic-settings>=2.7,<3",
     "python-dotenv>=1.0,<2",
     "rich>=13.9,<15",
+    "structlog>=24.4,<26",
     "typer>=0.15,<1",
 ]
 
@@ -62,6 +63,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["backend/src/werewolf_agent"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"backend/src/werewolf_agent/default_settings/defaults.toml" = "werewolf_agent/default_settings/defaults.toml"
 
 [tool.hatch.build.targets.sdist]
 only-include = [

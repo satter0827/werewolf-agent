@@ -11,7 +11,7 @@ from werewolf_agent.domain.llm.models import (
     FakeLlmConfig,
     VisiblePlayer,
 )
-from werewolf_agent.domain.llm.service import FakeLlmService
+from werewolf_agent.domain.llm.service import choose_decision
 
 
 def players() -> list[VisiblePlayer]:
@@ -55,7 +55,7 @@ def choose(
     rng: random.Random,
     config: FakeLlmConfig | None = None,
 ):
-    return FakeLlmService.choose_decision(
+    return choose_decision(
         player_id,
         agent_observation,
         config=config or FakeLlmConfig(),

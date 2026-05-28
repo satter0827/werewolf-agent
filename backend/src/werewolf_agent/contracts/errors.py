@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from enum import StrEnum
 from http import HTTPStatus
 from typing import Final
+
+from pydantic import BaseModel, ConfigDict
 
 from werewolf_agent.commons.shared.messages import (
     DETAIL_AGENT_INVALID_RESPONSE,
@@ -61,14 +62,15 @@ class ErrorCode(StrEnum):
     INTERNAL_UNEXPECTED = "internal.unexpected"
 
 
-@dataclass(frozen=True)
-class ErrorSpec:
+class ErrorSpec(BaseModel):
     """Public metadata for one application error code."""
 
     title: str
     status: HTTPStatus
     detail: str
     retryable: bool = False
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {

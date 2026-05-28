@@ -7,8 +7,8 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.interface.application.models import Base
-from werewolf_agent.interface.shared.settings import AppSettings, get_settings
 
 config = context.config
 

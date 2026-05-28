@@ -15,7 +15,7 @@ from werewolf_agent.commons.shared.constants import (
 
 _SENSITIVE_ASSIGNMENT_PATTERN: Final = re.compile(
     r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password)"
-    r"(\s*[:=]\s*)([^,\s;]+)"
+    r"(\s*[:=]\s*)((?:Bearer\s+)?[^,\s;]+)"
 )
 
 

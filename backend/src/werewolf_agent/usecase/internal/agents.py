@@ -1,4 +1,4 @@
-"""Private agent adapters used by game jobs."""
+"""Internal agent adapters used by game jobs."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from werewolf_agent.domain.llm.models import (
     FakeLlmConfig,
     VisiblePlayer,
 )
-from werewolf_agent.domain.llm.service import FakeLlmService
+from werewolf_agent.domain.llm.service import choose_decision
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class FakeLlmAgent:
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
         agent_observation = _agent_observation_from_game(observation)
-        decision = FakeLlmService.choose_decision(
+        decision = choose_decision(
             self.player_id,
             agent_observation,
             config=self.config,

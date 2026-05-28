@@ -1,4 +1,4 @@
-"""Game event records for replay-oriented logs."""
+"""External game event records for replay-oriented logs."""
 
 from __future__ import annotations
 

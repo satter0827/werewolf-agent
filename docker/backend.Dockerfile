@@ -25,6 +25,11 @@ CMD ["uvicorn", "werewolf_agent.interface.api.app:create_app", "--factory", "--h
 FROM base AS runtime
 
 ENV WEREWOLF_API_DEBUG=false \
+    WEREWOLF_LOG_DIR=.werewolf-agent/logs \
+    WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl \
+    WEREWOLF_LOG_OUTPUT=file \
+    WEREWOLF_LOG_RETENTION_DAYS=14 \
+    WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING \
     WEREWOLF_SQLITE_PATH=/data/db.sqlite3 \
     PORT=8000
 

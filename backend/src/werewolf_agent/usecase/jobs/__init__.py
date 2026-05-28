@@ -1,14 +1,13 @@
 """Public stateless use case job entry points."""
 
 from werewolf_agent.domain.llm.models import FakeLlmConfig, FakeLlmStrategy
-from werewolf_agent.usecase.jobs._agents import FakeLlmAgentFactory
+from werewolf_agent.usecase.internal.agents import FakeLlmAgentFactory
 from werewolf_agent.usecase.jobs.games import (
     ActionTypeId,
     AdvanceGameCommand,
     AdvanceGameResult,
     CreateGameCommand,
     GameEventCreate,
-    GameNotFoundError,
     GamePhase,
     GameResult,
     GameRunCreate,
@@ -20,8 +19,6 @@ from werewolf_agent.usecase.jobs.games import (
     GameUseCaseDependencies,
     GetGameQuery,
     GetPrivateObservationQuery,
-    InvalidControlTokenError,
-    InvalidGameIdError,
     ListGamesQuery,
     ListGameTurnsQuery,
     ListPublicEventsQuery,
@@ -58,7 +55,6 @@ __all__ = [
     "FakeLlmConfig",
     "FakeLlmStrategy",
     "GameEventCreate",
-    "GameNotFoundError",
     "GamePhase",
     "GameRepository",
     "GameResult",
@@ -71,8 +67,6 @@ __all__ = [
     "GameUseCaseDependencies",
     "GetGameQuery",
     "GetPrivateObservationQuery",
-    "InvalidControlTokenError",
-    "InvalidGameIdError",
     "ListGameTurnsQuery",
     "ListGamesQuery",
     "ListPublicEventsQuery",

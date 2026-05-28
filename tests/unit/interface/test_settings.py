@@ -3,19 +3,20 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.interface.application.settings import (
-    build_fake_llm_config,
-    build_game_usecase_config,
-)
-from werewolf_agent.interface.shared.settings import (
+from werewolf_agent.commons.configuration import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
     DEFAULT_GAME_MIN_PLAYERS,
+    DEFAULT_SETTINGS,
     DEFAULT_SQLITE_PATH,
     AppSettings,
     repository_root,
     split_csv,
     split_mapping,
+)
+from werewolf_agent.interface.application.settings import (
+    build_fake_llm_config,
+    build_game_usecase_config,
 )
 
 
@@ -32,6 +33,11 @@ def test_split_mapping_parses_key_value_items() -> None:
         "villager": "村人",
         "werewolf": "人狼",
     }
+
+
+def test_packaged_defaults_are_loaded_from_default_settings_resource() -> None:
+    assert DEFAULT_SETTINGS["app_name"] == "werewolf-agent"
+    assert DEFAULT_SETTINGS["fake_llm_persona_profiles"] == "cautious|assertive|analytical"
 
 
 def test_database_settings_default_to_sqlite_path_under_generated_dir() -> None:
@@ -68,8 +74,13 @@ def test_logging_settings_have_safe_defaults() -> None:
     settings = AppSettings(_env_file=None)
 
     assert settings.log_level == "INFO"
-    assert settings.log_format == "json"
-    assert settings.log_output == "stderr"
+    assert settings.log_output == "file"
+    assert settings.log_dir == Path(".werewolf-agent/logs")
+    assert settings.log_file_name == "werewolf-agent.jsonl"
+    assert settings.log_retention_days == 14
+    assert settings.log_third_party_level == "WARNING"
+    assert settings.log_directory_path == repository_root() / ".werewolf-agent/logs"
+    assert settings.log_file_path == repository_root() / ".werewolf-agent/logs/werewolf-agent.jsonl"
     assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
     assert settings.cli_http_timeout_seconds == 10.0
     assert settings.cli_max_steps == 64
@@ -77,6 +88,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.cli_event_limit == 100
     assert settings.cli_output_format == "table"
     assert settings.api_title == "Werewolf Agent API"
+    assert settings.api_service_name == "werewolf-agent-api"
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
     assert settings.llm_provider == "fake_llm"
@@ -142,6 +154,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
     monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
+    monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
 
     settings = AppSettings(_env_file=None)
 
@@ -162,6 +175,28 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_phase_name_map == {"night": "Night"}
     assert settings.cli_api_url == "http://api.test/api/v1"
     assert settings.cli_output_format == "json"
+    assert settings.api_service_name == "test-api"
+
+
+def test_logging_settings_load_from_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("WEREWOLF_LOG_LEVEL", "debug")
+    monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "both")
+    monkeypatch.setenv("WEREWOLF_LOG_DIR", str(tmp_path))
+    monkeypatch.setenv("WEREWOLF_LOG_FILE_NAME", "env.jsonl")
+    monkeypatch.setenv("WEREWOLF_LOG_RETENTION_DAYS", "7")
+    monkeypatch.setenv("WEREWOLF_LOG_THIRD_PARTY_LEVEL", "error")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.log_level == "DEBUG"
+    assert settings.log_output == "both"
+    assert settings.log_directory_path == tmp_path
+    assert settings.log_file_path == tmp_path / "env.jsonl"
+    assert settings.log_retention_days == 7
+    assert settings.log_third_party_level == "ERROR"
 
 
 def test_game_settings_reject_inconsistent_player_counts() -> None:
@@ -183,25 +218,29 @@ def test_game_settings_reject_inconsistent_player_counts() -> None:
         AppSettings(_env_file=None, game_ruleset_description_template="{unknown}")
 
 
-def test_logging_settings_normalize_supported_values() -> None:
+def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
     settings = AppSettings(
         _env_file=None,
         log_level="debug",
-        log_format="CONSOLE",
-        log_output="STDOUT",
+        log_output="BOTH",
+        log_dir=tmp_path,
+        log_file_name="custom.jsonl",
+        log_third_party_level="error",
     )
 
     assert settings.log_level == "DEBUG"
-    assert settings.log_format == "console"
-    assert settings.log_output == "stdout"
+    assert settings.log_output == "both"
+    assert settings.log_directory_path == tmp_path
+    assert settings.log_file_path == tmp_path / "custom.jsonl"
+    assert settings.log_third_party_level == "ERROR"
 
 
 @pytest.mark.parametrize(
     ("field_name", "value"),
     [
         ("log_level", "VERBOSE"),
-        ("log_format", "plain"),
-        ("log_output", "file"),
+        ("log_output", "socket"),
+        ("log_third_party_level", "VERBOSE"),
         ("cli_output_format", "xml"),
         ("game_supported_agent_type", "fake_llm"),
         ("llm_provider", "openai"),
@@ -211,3 +250,8 @@ def test_logging_settings_normalize_supported_values() -> None:
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:
     with pytest.raises(ValidationError):
         AppSettings(_env_file=None, **{field_name: value})
+
+
+def test_log_file_name_rejects_paths() -> None:
+    with pytest.raises(ValidationError):
+        AppSettings(_env_file=None, log_file_name="../app.jsonl")

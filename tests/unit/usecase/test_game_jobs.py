@@ -6,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from werewolf_agent.contracts import GameError
+from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
 from werewolf_agent.domain.game.models import (
     Action,
     GameHistory,
@@ -17,11 +17,14 @@ from werewolf_agent.domain.game.models import (
     Role,
     VoteResult,
 )
+from werewolf_agent.usecase.internal.agents import (
+    FakeLlmAgentFactory,
+    _agent_observation_from_game,
+)
 from werewolf_agent.usecase.jobs import (
     AdvanceGameCommand,
     CreateGameCommand,
     GameEventCreate,
-    GameNotFoundError,
     GameRepository,
     GameRunCreate,
     GameRunUpdate,
@@ -29,7 +32,6 @@ from werewolf_agent.usecase.jobs import (
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameQuery,
-    InvalidGameIdError,
     ListGamesQuery,
     ListGameTurnsQuery,
     ListPublicEventsQuery,
@@ -45,7 +47,6 @@ from werewolf_agent.usecase.jobs import (
     list_games,
     list_public_events,
 )
-from werewolf_agent.usecase.jobs._agents import FakeLlmAgentFactory, _agent_observation_from_game
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -385,7 +386,7 @@ def test_fake_llm_debug_log_avoids_secret_decision_fields(
     )
     agent = FakeLlmAgentFactory().create("p1", seed=1)
 
-    with caplog.at_level(logging.DEBUG, logger="werewolf_agent.usecase.jobs._agents"):
+    with caplog.at_level(logging.DEBUG, logger="werewolf_agent.usecase.internal.agents"):
         agent.act(game_observation)
 
     record = next(

@@ -1,9 +1,9 @@
-"""Private ruleset metadata helpers for game jobs."""
+"""Internal ruleset metadata helpers for game jobs."""
 
 from __future__ import annotations
 
 from werewolf_agent.domain.game.models import Phase
-from werewolf_agent.usecase.jobs.games import GameUseCaseConfig, RulesetResult
+from werewolf_agent.usecase.internal.games import GameUseCaseConfig, RulesetResult
 
 
 def default_ruleset(config: GameUseCaseConfig) -> RulesetResult:
