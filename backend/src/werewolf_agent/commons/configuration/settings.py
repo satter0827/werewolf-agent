@@ -9,7 +9,14 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Final, Literal, Self, cast
 
-from pydantic import AliasChoices, Field, SecretStr, field_validator, model_validator
+from pydantic import (
+    AliasChoices,
+    Field,
+    SecretStr,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from werewolf_agent.commons.shared.messages import (
@@ -95,6 +102,17 @@ DEFAULT_CLI_MAX_STEPS: Final = _integer_default("cli_max_steps")
 DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = _float_default("cli_poll_interval_seconds")
 DEFAULT_CLI_EVENT_LIMIT: Final = _integer_default("cli_event_limit")
 DEFAULT_CLI_OUTPUT_FORMAT: Final = _string_default("cli_output_format")
+DEFAULT_STREAMLIT_API_URL: Final = _string_default("streamlit_api_url")
+DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS: Final = _float_default("streamlit_http_timeout_seconds")
+DEFAULT_STREAMLIT_REFRESH_INTERVAL_SECONDS: Final = _float_default(
+    "streamlit_refresh_interval_seconds"
+)
+DEFAULT_STREAMLIT_EVENT_LIMIT: Final = _integer_default("streamlit_event_limit")
+DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
+DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
+DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
+DEFAULT_STREAMLIT_PAGE_TITLE: Final = _string_default("streamlit_page_title")
+DEFAULT_STREAMLIT_SERVICE_NAME: Final = _string_default("streamlit_service_name")
 DEFAULT_API_TITLE: Final = _string_default("api_title")
 DEFAULT_API_VERSION: Final = _string_default("api_version")
 DEFAULT_API_DEBUG: Final = _bool_default("api_debug")
@@ -117,11 +135,13 @@ DEFAULT_GAME_PHASE_NAMES: Final = _string_default("game_phase_names")
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
 LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"})
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
+STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
 CliOutputFormat = Literal["table", "json", "jsonl"]
+StreamlitLanguage = Literal["ja", "en"]
 
 
 @lru_cache(maxsize=1)
@@ -243,6 +263,50 @@ class AppSettings(BaseSettings):
         default=cast(CliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
         validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
     )
+    streamlit_api_url: str = Field(
+        default=DEFAULT_STREAMLIT_API_URL,
+        validation_alias="WEREWOLF_STREAMLIT_API_URL",
+    )
+    streamlit_http_timeout_seconds: float = Field(
+        default=DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS",
+    )
+    streamlit_refresh_interval_seconds: float = Field(
+        default=DEFAULT_STREAMLIT_REFRESH_INTERVAL_SECONDS,
+        ge=0,
+        validation_alias="WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS",
+    )
+    streamlit_event_limit: int = Field(
+        default=DEFAULT_STREAMLIT_EVENT_LIMIT,
+        ge=1,
+        le=500,
+        validation_alias="WEREWOLF_STREAMLIT_EVENT_LIMIT",
+    )
+    streamlit_turn_limit: int = Field(
+        default=DEFAULT_STREAMLIT_TURN_LIMIT,
+        ge=1,
+        le=500,
+        validation_alias="WEREWOLF_STREAMLIT_TURN_LIMIT",
+    )
+    streamlit_run_limit: int = Field(
+        default=DEFAULT_STREAMLIT_RUN_LIMIT,
+        ge=1,
+        le=100,
+        validation_alias="WEREWOLF_STREAMLIT_RUN_LIMIT",
+    )
+    streamlit_language: StreamlitLanguage = Field(
+        default=cast(StreamlitLanguage, DEFAULT_STREAMLIT_LANGUAGE),
+        validation_alias="WEREWOLF_STREAMLIT_LANGUAGE",
+    )
+    streamlit_page_title: str = Field(
+        default=DEFAULT_STREAMLIT_PAGE_TITLE,
+        validation_alias="WEREWOLF_STREAMLIT_PAGE_TITLE",
+    )
+    streamlit_service_name: str = Field(
+        default=DEFAULT_STREAMLIT_SERVICE_NAME,
+        validation_alias="WEREWOLF_STREAMLIT_SERVICE_NAME",
+    )
 
     game_min_players: int = Field(
         default=DEFAULT_GAME_MIN_PLAYERS,
@@ -349,6 +413,12 @@ class AppSettings(BaseSettings):
         return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
+    def streamlit_resolved_api_url(self) -> str:
+        """Return Streamlit API URL, falling back to the CLI API URL."""
+        api_url = self.streamlit_api_url.strip()
+        return api_url or self.cli_api_url
+
+    @property
     def sqlite_database_path(self) -> Path:
         """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
         sqlite_path = self.sqlite_path.expanduser()
@@ -437,6 +507,23 @@ class AppSettings(BaseSettings):
         if Path(file_name).name != file_name:
             raise ValueError("log_file_name must be a file name")
         return file_name
+
+    @field_validator("streamlit_language", mode="before")
+    @classmethod
+    def normalize_streamlit_language(cls, value: object) -> str:
+        """Return a validated Streamlit UI language."""
+        return normalize_choice(
+            value,
+            field_name="streamlit_language",
+            choices=STREAMLIT_LANGUAGE_NAMES,
+            case="lower",
+        )
+
+    @field_validator("streamlit_page_title", "streamlit_service_name", mode="before")
+    @classmethod
+    def normalize_streamlit_text(cls, value: object, info: ValidationInfo) -> str:
+        """Return non-empty Streamlit display/service settings."""
+        return normalize_non_blank(value, field_name=str(info.field_name))
 
     @field_validator("cli_output_format", mode="before")
     @classmethod

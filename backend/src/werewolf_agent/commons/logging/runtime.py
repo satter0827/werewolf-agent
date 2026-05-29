@@ -26,6 +26,7 @@ THIRD_PARTY_LOGGER_NAMES: Final = (
     "httpcore",
     "httpx",
     "sqlalchemy",
+    "streamlit",
     "uvicorn",
     "uvicorn.access",
     "uvicorn.error",
@@ -34,9 +35,9 @@ THIRD_PARTY_LOGGER_NAMES: Final = (
 Processor = Callable[[Any, str, EventDict], EventDict]
 
 
-def configure_logging(settings: AppSettings) -> None:
+def configure_logging(settings: AppSettings, *, service_name: str | None = None) -> None:
     """Configure process-level structured logging."""
-    formatter = _processor_formatter(settings)
+    formatter = _processor_formatter(settings, service_name=service_name)
     handlers = _handlers(settings, formatter)
 
     stdlib_logging.basicConfig(
@@ -84,7 +85,11 @@ def _configure_structlog() -> None:
     )
 
 
-def _processor_formatter(settings: AppSettings) -> structlog.stdlib.ProcessorFormatter:
+def _processor_formatter(
+    settings: AppSettings,
+    *,
+    service_name: str | None,
+) -> structlog.stdlib.ProcessorFormatter:
     foreign_pre_chain = cast(
         Any,
         [
@@ -101,7 +106,7 @@ def _processor_formatter(settings: AppSettings) -> structlog.stdlib.ProcessorFor
     return structlog.stdlib.ProcessorFormatter(
         foreign_pre_chain=foreign_pre_chain,
         processors=[
-            _add_service_fields(settings),
+            _add_service_fields(settings, service_name=service_name),
             _normalize_ecs_fields,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             _redact_event_dict,
@@ -164,9 +169,9 @@ def _configure_third_party_loggers(level: str) -> None:
         stdlib_logging.getLogger(logger_name).setLevel(level)
 
 
-def _add_service_fields(settings: AppSettings) -> Processor:
+def _add_service_fields(settings: AppSettings, *, service_name: str | None) -> Processor:
     def processor(_logger: Any, _method_name: str, event_dict: EventDict) -> EventDict:
-        event_dict.setdefault("service.name", settings.api_service_name)
+        event_dict.setdefault("service.name", service_name or settings.api_service_name)
         event_dict.setdefault("service.version", settings.api_version)
         return event_dict
 

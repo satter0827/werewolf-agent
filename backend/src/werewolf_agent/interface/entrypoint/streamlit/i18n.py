@@ -1,0 +1,143 @@
+"""Small i18n dictionary for the Streamlit entry point."""
+
+from __future__ import annotations
+
+from typing import Final, Literal
+
+Language = Literal["ja", "en"]
+
+LANGUAGE_NAMES: Final[dict[Language, str]] = {
+    "ja": "日本語",
+    "en": "English",
+}
+
+_MESSAGES: Final[dict[Language, dict[str, str]]] = {
+    "ja": {
+        "action": "アクション",
+        "action_message": "メッセージ",
+        "action_reason": "理由",
+        "action_submitted": "アクションを送信しました。",
+        "action_target": "対象",
+        "action_type": "アクション種別",
+        "active_game": "操作中のゲーム",
+        "alive": "生存",
+        "alive_count": "生存数",
+        "api_connected": "API 接続済み",
+        "api_connection": "API 接続",
+        "api_unavailable": "API に接続できません。",
+        "api_url": "API URL",
+        "auto_refresh": "自動更新",
+        "clear_token": "Token をクリア",
+        "connection": "接続",
+        "connection_failed": "接続に失敗しました",
+        "connection_ok": "接続済み",
+        "control_token": "Control token",
+        "create_game": "ゲーム作成",
+        "created_game": "ゲームを作成しました。",
+        "current_winner": "勝者",
+        "day": "日数",
+        "dead": "死亡",
+        "events": "イベント",
+        "events_empty": "公開イベントはまだありません。",
+        "game_id": "Game ID",
+        "human_action": "人間操作",
+        "human_player": "人間プレイヤー",
+        "language": "言語",
+        "last_refreshed": "最終更新",
+        "main_title": "Werewolf Agent Console",
+        "manual_refresh": "今すぐ更新",
+        "no_active_game": "操作中のゲームを選択するか、新しいゲームを作成してください。",
+        "observation": "Private observation",
+        "observation_loaded": "Observation を取得しました。",
+        "phase": "Phase",
+        "player": "プレイヤー",
+        "player_id": "Player ID",
+        "players": "プレイヤー",
+        "recent_runs": "実行履歴",
+        "refresh_controls": "更新",
+        "runs": "実行履歴",
+        "runs_empty": "ゲーム実行履歴はまだありません。",
+        "seed": "Seed",
+        "show_observation": "Observation を取得",
+        "status": "状態",
+        "step_game": "1ステップ進める",
+        "stepped_game": "ゲームを 1 step 進めました。",
+        "submit_action": "アクション送信",
+        "timeline": "タイムライン",
+        "timeline_empty": "タイムラインはまだありません。",
+        "token_help": "Token は session のみに保持し、ログやファイルには保存しません。",
+        "turns": "Turns",
+        "use_human_player": "人間プレイヤーを含める",
+        "winner_pending": "未確定",
+    },
+    "en": {
+        "action": "Action",
+        "action_message": "Message",
+        "action_reason": "Reason",
+        "action_submitted": "Action submitted.",
+        "action_target": "Target",
+        "action_type": "Action type",
+        "active_game": "Active Game",
+        "alive": "Alive",
+        "alive_count": "Alive",
+        "api_connected": "API connected",
+        "api_connection": "API Connection",
+        "api_unavailable": "The API is unavailable.",
+        "api_url": "API URL",
+        "auto_refresh": "Auto-refresh",
+        "clear_token": "Clear token",
+        "connection": "Connection",
+        "connection_failed": "Connection failed",
+        "connection_ok": "Connection OK",
+        "control_token": "Control token",
+        "create_game": "Create Game",
+        "created_game": "Game created.",
+        "current_winner": "Winner",
+        "day": "Day",
+        "dead": "Dead",
+        "events": "Events",
+        "events_empty": "There are no public events yet.",
+        "game_id": "Game ID",
+        "human_action": "Human Action",
+        "human_player": "Human player",
+        "language": "Language",
+        "last_refreshed": "Last refreshed",
+        "main_title": "Werewolf Agent Console",
+        "manual_refresh": "Refresh now",
+        "no_active_game": "Select an active game or create a new one.",
+        "observation": "Private observation",
+        "observation_loaded": "Observation loaded.",
+        "phase": "Phase",
+        "player": "Player",
+        "player_id": "Player ID",
+        "players": "Players",
+        "recent_runs": "Runs",
+        "refresh_controls": "Refresh",
+        "runs": "Runs",
+        "runs_empty": "There are no game runs yet.",
+        "seed": "Seed",
+        "show_observation": "Load observation",
+        "status": "Status",
+        "step_game": "Step Game",
+        "stepped_game": "Game advanced by one step.",
+        "submit_action": "Submit Action",
+        "timeline": "Timeline",
+        "timeline_empty": "The timeline is empty.",
+        "token_help": "Tokens are kept only in the session and are never written to logs or files.",
+        "turns": "Turns",
+        "use_human_player": "Include human player",
+        "winner_pending": "Pending",
+    },
+}
+
+
+def normalize_language(value: str) -> Language:
+    """Return a supported language, defaulting to Japanese."""
+    if value in LANGUAGE_NAMES:
+        return value
+    return "ja"
+
+
+def text(language: Language, key: str) -> str:
+    """Translate a UI message key."""
+    return _MESSAGES[language].get(key, key)

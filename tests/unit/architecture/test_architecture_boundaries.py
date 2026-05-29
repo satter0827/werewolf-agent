@@ -262,6 +262,23 @@ def test_external_wire_schemas_are_imported_from_contracts() -> None:
     ]
 
 
+def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
+    forbidden_modules = (
+        "rich",
+        "streamlit",
+        "typer",
+        "werewolf_agent.interface.entrypoint",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "shared")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
 def test_contracts_do_not_import_api_frameworks() -> None:
     forbidden_modules = (
         "fastapi",

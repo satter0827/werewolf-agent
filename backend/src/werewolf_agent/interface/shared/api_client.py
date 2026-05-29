@@ -1,8 +1,9 @@
-"""HTTP client for the public Werewolf Agent API contract."""
+"""HTTP client for public Werewolf Agent API entry points."""
 
 from __future__ import annotations
 
 import logging
+import time
 from collections.abc import Mapping
 from typing import Any, Protocol, TypeVar
 
@@ -10,7 +11,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from werewolf_agent.commons.shared.messages import (
-    LOG_CLI_API_REQUEST_COMPLETED,
+    LOG_SHARED_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
     MESSAGE_API_RESPONSE_NOT_OBJECT,
     MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
@@ -39,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 
 class GameApiClient(Protocol):
-    """Client operations used by the CUI without touching internal services."""
+    """Client operations used by interface entry points without internal services."""
 
     def health(self) -> dict[str, str]:
         """Fetch API health through the public API."""
@@ -224,6 +225,7 @@ class HttpGameApiClient:
         params: Mapping[str, Any] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
+        started = time.perf_counter()
         try:
             response = self._client.request(
                 method,
@@ -233,8 +235,13 @@ class HttpGameApiClient:
                 headers=headers,
             )
             logger.debug(
-                LOG_CLI_API_REQUEST_COMPLETED,
-                extra={"method": method, "path": path, "http_status": response.status_code},
+                LOG_SHARED_API_REQUEST_COMPLETED,
+                extra={
+                    "method": method,
+                    "path": path,
+                    "http_status": response.status_code,
+                    "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                },
             )
             response.raise_for_status()
         except httpx.HTTPStatusError as exc:
@@ -272,6 +279,16 @@ class HttpGameApiClient:
                 code=ErrorCode.INTERNAL_UNEXPECTED,
                 context={"schema": model_type.__name__},
             ) from exc
+
+
+def build_game_api_client(
+    api_url: str,
+    *,
+    timeout: float,
+    transport: httpx.BaseTransport | None = None,
+) -> GameApiClient:
+    """Build a public API client for interface entry points."""
+    return HttpGameApiClient(api_url, timeout=timeout, transport=transport)
 
 
 def _api_error_from_response(response: httpx.Response) -> AppError:

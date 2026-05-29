@@ -3,52 +3,37 @@
 from __future__ import annotations
 
 import logging
-import platform
-import sys
 import time
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Any, cast
-from urllib.parse import urlsplit, urlunsplit
 
 import typer
 from rich.panel import Panel
 from rich.table import Table
 
 from werewolf_agent.commons.configuration import (
-    APP_NAME,
     AppSettings,
     get_settings,
-    repository_root,
 )
-from werewolf_agent.commons.shared.constants import REDACTED
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_ACTION_SUBMITTED,
     LOG_CLI_GAME_CREATED,
     LOG_CLI_PLAY_COMPLETED,
     LOG_CLI_REPLAY_COMPLETED,
     LOG_CLI_WATCH_POLLED,
-    MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
     MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW,
     MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE,
     MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID,
     MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
-    MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
-    MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
     message_game_did_not_complete,
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGamePlayer,
     CreateGameRequest,
-    CreateGameRuleConfig,
     PublicGameEvent,
-    RoleId,
     SubmitPlayerActionRequest,
-    TieBreakPolicyId,
 )
-from werewolf_agent.interface.entrypoint.cui.client import GameApiClient, HttpGameApiClient
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.entrypoint.cui.output import (
     OutputFormat,
@@ -62,6 +47,10 @@ from werewolf_agent.interface.entrypoint.cui.output import (
     print_state,
     print_turns,
 )
+from werewolf_agent.interface.shared import workflows
+from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
+from werewolf_agent.interface.shared.diagnostics import build_interface_diagnostics
+from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 logger = logging.getLogger(__name__)
 
@@ -81,36 +70,20 @@ def doctor(
 
 
 def _doctor(*, api_url: str | None, output: str | None) -> None:
-    root = repository_root()
     settings = get_settings()
     resolved_api_url = api_url or settings.cli_api_url
     output_format = _output_format(output, settings)
-    checks: dict[str, str] = {
-        "package": f"{APP_NAME} {_package_version()}",
-        "python": sys.version.split()[0],
-        "python executable": sys.executable,
-        "platform": platform.platform(),
-        "repository": str(root),
-        "env file": _env_file_status(root),
-        "api url": resolved_api_url,
-        "provider": settings.llm_provider,
-        "model": settings.model,
-        "prompt file": str(settings.llm_prompt_path or "packaged"),
-        "fake responses file": str(settings.llm_fake_responses_path or "packaged"),
-        "log level": settings.log_level,
-        "log output": settings.log_output,
-        "log dir": str(settings.log_directory_path),
-        "log file": str(settings.log_file_path),
-        "log retention days": str(settings.log_retention_days),
-        "log third party level": settings.log_third_party_level,
-        "database": _redacted_database_url(settings.sqlalchemy_database_url),
-    }
     try:
         health = _build_game_api_client(resolved_api_url).health()
     except AppError as exc:
-        checks["api health"] = exc.detail
+        api_health = exc.detail
     else:
-        checks["api health"] = health.get("status", "ok")
+        api_health = health.get("status", "ok")
+    checks = build_interface_diagnostics(
+        settings=settings,
+        api_url=resolved_api_url,
+        api_health=api_health,
+    )
 
     if output_format != "table":
         print_json(checks, output_format=output_format)
@@ -144,7 +117,7 @@ def ruleset(
 
 
 def _ruleset(*, client: GameApiClient, output_format: OutputFormat) -> None:
-    print_ruleset(client.get_ruleset(), output_format=output_format)
+    print_ruleset(workflows.get_ruleset(client), output_format=output_format)
 
 
 def create(
@@ -210,7 +183,7 @@ def _create(
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
     )
-    created = client.create_game(request)
+    created = workflows.create_game(client, request)
     logger.info(
         LOG_CLI_GAME_CREATED,
         extra={"game_id": created.game_id, "human_player": human_player},
@@ -236,7 +209,7 @@ def state(
     """Print public game state."""
     run_app_command(
         lambda: print_state(
-            _client(api_url).get_game(game_id).state,
+            workflows.get_game(_client(api_url), game_id).state,
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -261,7 +234,7 @@ def step(
 
 
 def _step(*, game_id: str, client: GameApiClient, output_format: OutputFormat) -> None:
-    response = client.step_game(game_id)
+    response = workflows.step_game(client, game_id)
     if output_format != "table":
         print_json(response, output_format=output_format)
         return
@@ -340,7 +313,7 @@ def _play(
         day_speech_turns=1,
         allow_self_vote=False,
     )
-    created = client.create_game(request)
+    created = workflows.create_game(client, request)
     state = created.state
     last_sequence = 0
     emitted_events: list[PublicGameEvent] = []
@@ -354,7 +327,7 @@ def _play(
         console.print(Panel.fit(f"Created game [bold]{created.game_id}[/bold]"))
         print_state(state)
 
-    initial_events = client.list_events(created.game_id, after=last_sequence)
+    initial_events = workflows.list_events(client, created.game_id, after=last_sequence)
     emitted_events.extend(initial_events.events)
     last_sequence = consume_events(
         initial_events.events,
@@ -376,11 +349,11 @@ def _play(
             )
         if poll_interval:
             time.sleep(poll_interval)
-        stepped = client.step_game(created.game_id)
+        stepped = workflows.step_game(client, created.game_id)
         state = stepped.state
         steps += 1
 
-        event_batch = client.list_events(created.game_id, after=last_sequence)
+        event_batch = workflows.list_events(client, created.game_id, after=last_sequence)
         emitted_events.extend(event_batch.events)
         last_sequence = consume_events(
             event_batch.events,
@@ -481,7 +454,7 @@ def _watch(
     last_sequence = after
     while True:
         previous_sequence = last_sequence
-        batch = client.list_events(game_id, after=last_sequence, limit=limit)
+        batch = workflows.list_events(client, game_id, after=last_sequence, limit=limit)
         last_sequence = consume_events(
             batch.events,
             next_after=batch.next_after,
@@ -586,7 +559,7 @@ def _runs(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    response = client.list_games(status=status, limit=limit, offset=offset)
+    response = workflows.list_games(client, status=status, limit=limit, offset=offset)
     print_run_summaries(response.runs, output_format=output_format)
     if response.next_offset is not None and output_format == "table":
         console.print(f"[dim]next offset: {response.next_offset}[/dim]")
@@ -623,7 +596,7 @@ def _turns(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    response = client.list_turns(game_id, after=after, limit=limit)
+    response = workflows.list_turns(client, game_id, after=after, limit=limit)
     print_turns(response.turns, output_format=output_format)
     if response.next_after != after and output_format == "table":
         console.print(f"[dim]next after: {response.next_after}[/dim]")
@@ -636,7 +609,7 @@ def _client(api_url: str | None) -> GameApiClient:
 
 def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None) -> GameApiClient:
     resolved_settings = settings or get_settings()
-    return HttpGameApiClient(api_url, timeout=resolved_settings.cli_http_timeout_seconds)
+    return build_game_api_client(api_url, timeout=resolved_settings.cli_http_timeout_seconds)
 
 
 def _create_request(
@@ -649,56 +622,16 @@ def _create_request(
     day_speech_turns: int,
     allow_self_vote: bool,
 ) -> CreateGameRequest:
-    explicit_players = None
-    if human_player is not None:
-        player_count = players or get_settings().game_default_player_count
-        generated_player_ids = {f"player-{index}" for index in range(1, player_count + 1)}
-        if human_player not in generated_player_ids:
-            raise AppError(
-                MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-                context={"human_player": human_player, "player_count": player_count},
-            )
-        explicit_players = [
-            CreateGamePlayer(
-                id=f"player-{index}",
-                name=f"Player {index}",
-                agent_type="human" if f"player-{index}" == human_player else "llm",
-            )
-            for index in range(1, player_count + 1)
-        ]
-    rule_config = CreateGameRuleConfig(
-        role_counts=_parse_role_counts(role_count) or None,
-        tie_break_policy=cast(TieBreakPolicyId, tie_break_policy),
+    return build_create_game_request(
+        players=players,
+        seed=seed,
+        human_player=human_player,
+        role_count_entries=role_count,
+        tie_break_policy=tie_break_policy,
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
+        default_player_count=get_settings().game_default_player_count,
     )
-    return CreateGameRequest(
-        player_count=None if explicit_players is not None else players,
-        seed=seed,
-        players=explicit_players,
-        rule_config=rule_config,
-    )
-
-
-def _parse_role_counts(entries: list[str]) -> dict[RoleId, int]:
-    role_counts: dict[RoleId, int] = {}
-    for entry in entries:
-        key, separator, value = entry.partition("=")
-        if separator == "":
-            raise AppError(
-                MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-            )
-        try:
-            count = int(value)
-        except ValueError as exc:
-            raise AppError(
-                MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-            ) from exc
-        role_counts[cast(RoleId, key.strip())] = count
-    return role_counts
 
 
 def _prompt_and_submit_human_action(
@@ -709,7 +642,8 @@ def _prompt_and_submit_human_action(
     control_token: str,
     output_format: OutputFormat,
 ) -> None:
-    observation = client.get_private_observation(
+    observation = workflows.get_private_observation(
+        client,
         game_id,
         player_id,
         control_token=control_token,
@@ -726,7 +660,8 @@ def _prompt_and_submit_human_action(
         message = typer.prompt("speech")
     elif action_type != "pass":
         target_id = typer.prompt(f"{action_type} target_id")
-    response = client.submit_player_action(
+    response = workflows.submit_player_action(
+        client,
         game_id,
         player_id,
         SubmitPlayerActionRequest(
@@ -757,7 +692,7 @@ def _load_replay_events(
             if line.strip()
         ]
     if game_id is not None:
-        return client.list_events(game_id, after=0, limit=500).events
+        return workflows.list_events(client, game_id, after=0, limit=500).events
     raise AppError(
         "Either --events or --game-id is required.",
         code=ErrorCode.CONFIG_INVALID_VALUE,
@@ -769,39 +704,3 @@ def _output_format(value: str | None, settings: AppSettings) -> OutputFormat:
     if raw_value not in {"table", "json", "jsonl"}:
         raise AppError(MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID, code=ErrorCode.CONFIG_INVALID_VALUE)
     return cast(OutputFormat, raw_value)
-
-
-def _package_version() -> str:
-    try:
-        return version(APP_NAME)
-    except PackageNotFoundError:
-        return "editable"
-
-
-def _env_file_status(root: Path) -> str:
-    env_path = root / ".env"
-    example_path = root / ".env.example"
-
-    if env_path.exists():
-        return ".env found"
-    if example_path.exists():
-        return ".env missing; copy .env.example when enabling real providers"
-    return ".env and .env.example missing"
-
-
-def _redacted_database_url(value: str) -> str:
-    parsed = urlsplit(value)
-    if parsed.password is None:
-        return value
-
-    host = parsed.hostname or ""
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
-
-    user = parsed.username or ""
-    credentials = f"{user}:{REDACTED}" if user else REDACTED
-    return urlunsplit(
-        (parsed.scheme, f"{credentials}@{host}", parsed.path, parsed.query, parsed.fragment)
-    )

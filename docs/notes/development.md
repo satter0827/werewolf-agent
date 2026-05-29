@@ -11,7 +11,7 @@
 - `usecase.jobs` は interface から usecase へ入る薄い facade であり、domain core を呼ぶ実処理は `usecase.internal` に集約する
 - FastAPI は game 作成、一覧、状態取得、step 進行、private observation、manual action、public event、turn history、public SSE まで実装済み
 - CLI `doctor` / `ruleset` / `create` / `state` / `step` / `play` / `watch` / `replay` / `runs` / `turns` は HTTP API だけを使う
-- 現在の LLM provider は LangChain `fake`。実 LLM provider、複数 human player、Streamlit / React UI は未実装
+- 現在の LLM provider は LangChain `fake`。Streamlit console は public API 経由の 1 画面 UI として実装済み。実 LLM provider、複数 human player、React UI は未実装
 
 ## 最初に実行
 
@@ -37,6 +37,12 @@ uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 ```
 
+Streamlit console を起動:
+
+```bash
+uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
+```
+
 ## 配置
 
 | Path | 責務 |
@@ -56,7 +62,7 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/interface/application/` | stateless application bridge、SQLAlchemy repository、transaction、依存注入、Alembic migration |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と HTTP client |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit console、i18n、UI rendering |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、validation、redaction |
 | `tests/unit/` | process 内 unit test |
@@ -152,10 +158,12 @@ Git 管理しないものは `.werewolf-agent/` に集約します。
 ```bash
 uv sync --group dev --extra api
 uv sync --group dev --extra llm
+uv sync --group dev --extra streamlit
 ```
 
 - `api`: FastAPI / SQLAlchemy / Alembic / Uvicorn / SSE / Postgres driver
 - `llm`: LangChain / OpenAI compatible provider 用。adapter は未実装
+- `streamlit`: Streamlit console 用。API は別 process で起動する
 
 ## Docker
 
@@ -194,7 +202,7 @@ uv build --no-sources
 - structured output parser / validator
 - 複数 human player
 - external agent action API
-- Streamlit / React UI
+- React UI
 - evaluation workflow
 
 ## Handoff

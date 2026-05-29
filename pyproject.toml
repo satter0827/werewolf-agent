@@ -45,6 +45,15 @@ llm = [
     "langchain-openai>=0.3,<0.4",
     "openai>=1.59,<2",
 ]
+streamlit = [
+    "alembic>=1.14,<2",
+    "fastapi>=0.115,<1",
+    "psycopg[binary]>=3.2,<4",
+    "sqlalchemy>=2.0,<3",
+    "sse-starlette>=2.2,<4",
+    "streamlit>=1.41,<2",
+    "uvicorn[standard]>=0.34,<1",
+]
 
 [project.scripts]
 werewolf-agent = "werewolf_agent.interface.entrypoint.cui.app:app"
