@@ -1,0 +1,419 @@
+{
+  "version": "2.0.0",
+  "options": {
+    "cwd": "${workspaceFolder}",
+    "env": {
+      "PYTHONPATH": "${workspaceFolder}/backend/src"
+    }
+  },
+  "tasks": [
+    {
+      "label": "Setup: uv sync (dev + api)",
+      "type": "process",
+      "command": "uv",
+      "args": ["sync", "--group", "dev", "--extra", "api"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: doctor",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "werewolf-agent", "doctor"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: ruleset",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "ruleset",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: create",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "create",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: state",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "state",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: step",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "step",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: play",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: play (human player)",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1",
+        "--human-player",
+        "player-1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: play (save replay log)",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1",
+        "--log-jsonl",
+        "${input:eventLogPath}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: runs",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "runs",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: watch",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "watch",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: turns",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "turns",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "CLI: replay",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "werewolf-agent",
+        "replay",
+        "--events",
+        "${input:eventLogPath}"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "API: migrate",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--extra", "api", "alembic", "upgrade", "head"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "API: serve",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--extra",
+        "api",
+        "uvicorn",
+        "werewolf_agent.interface.api.app:create_app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8000"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: pytest",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "pytest"],
+      "group": {
+        "kind": "test",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: pytest current file",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "pytest", "${file}"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: pytest API integration",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--extra", "api", "pytest", "tests/integration/api"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: pytest domain",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "pytest", "tests/unit/domain"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Test: architecture boundaries",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "pytest",
+        "tests/unit/architecture/test_architecture_boundaries.py"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Lint: ruff check",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "ruff", "check", "."],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Format: ruff format check",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "ruff", "format", "--check", "."],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Type: mypy backend/src",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "mypy", "backend/src"],
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Check: standard",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "CLI: doctor",
+        "Test: pytest",
+        "Lint: ruff check",
+        "Format: ruff format check",
+        "Type: mypy backend/src"
+      ],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Docs: sphinx html",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-project",
+        "--with",
+        "sphinx>=8,<9",
+        "--with",
+        "myst-parser>=4,<5",
+        "sphinx-build",
+        "-b",
+        "html",
+        "-c",
+        "docs/sphinx",
+        "docs",
+        "docs/sphinx/_build/html"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: compose build",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "build"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: migrate",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "run", "--rm", "migrate"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: up api",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "up", "api"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: test",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "run", "--rm", "test"],
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: postgres migrate",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "compose.yaml",
+        "-f",
+        "compose.postgres.yaml",
+        "run",
+        "--rm",
+        "migrate"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: postgres up api",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "compose.yaml",
+        "-f",
+        "compose.postgres.yaml",
+        "up",
+        "api"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: postgres test",
+      "type": "process",
+      "command": "docker",
+      "args": [
+        "compose",
+        "-f",
+        "compose.yaml",
+        "-f",
+        "compose.postgres.yaml",
+        "run",
+        "--rm",
+        "test"
+      ],
+      "group": "test",
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "gameId",
+      "type": "promptString",
+      "description": "Game ID for CLI state / step / watch / turns",
+      "default": ""
+    },
+    {
+      "id": "eventLogPath",
+      "type": "promptString",
+      "description": "Public event JSONL path for CLI replay",
+      "default": ".werewolf-agent/logs/game-001.jsonl"
+    }
+  ]
+}
