@@ -88,6 +88,10 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.cli_poll_interval_seconds == 0.0
     assert settings.cli_event_limit == 100
     assert settings.cli_output_format == "table"
+    assert settings.streamlit_api_url == "http://127.0.0.1:8000/api/v1"
+    assert settings.streamlit_http_timeout_seconds == 10.0
+    assert settings.streamlit_event_limit == 100
+    assert settings.streamlit_max_auto_steps == 64
     assert settings.api_title == "Werewolf Agent API"
     assert settings.api_service_name == "werewolf-agent-api"
     assert settings.api_version == "0.1.0"
@@ -147,6 +151,10 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
     monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_API_URL", "http://ui-api.test/api/v1")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_EVENT_LIMIT", "50")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
 
     settings = AppSettings(_env_file=None)
@@ -165,6 +173,10 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_phase_name_map == {"night": "Night"}
     assert settings.cli_api_url == "http://api.test/api/v1"
     assert settings.cli_output_format == "json"
+    assert settings.streamlit_api_url == "http://ui-api.test/api/v1"
+    assert settings.streamlit_http_timeout_seconds == 5.0
+    assert settings.streamlit_event_limit == 50
+    assert settings.streamlit_max_auto_steps == 12
     assert settings.api_service_name == "test-api"
 
 

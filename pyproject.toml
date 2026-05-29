@@ -45,6 +45,9 @@ llm = [
     "langchain-openai>=0.3,<0.4",
     "openai>=1.59,<2",
 ]
+ui = [
+    "streamlit>=1.40,<2",
+]
 
 [project.scripts]
 werewolf-agent = "werewolf_agent.interface.entrypoint.cui.app:app"

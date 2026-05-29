@@ -10,7 +10,7 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from werewolf_agent.commons.shared.messages import (
-    LOG_CLI_API_REQUEST_COMPLETED,
+    LOG_ENTRYPOINT_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
     MESSAGE_API_RESPONSE_NOT_OBJECT,
     MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 
 
 class GameApiClient(Protocol):
-    """Client operations used by the CUI without touching internal services."""
+    """Client operations used by entry points without touching internal services."""
 
     def health(self) -> dict[str, str]:
         """Fetch API health through the public API."""
@@ -233,7 +233,7 @@ class HttpGameApiClient:
                 headers=headers,
             )
             logger.debug(
-                LOG_CLI_API_REQUEST_COMPLETED,
+                LOG_ENTRYPOINT_API_REQUEST_COMPLETED,
                 extra={"method": method, "path": path, "http_status": response.status_code},
             )
             response.raise_for_status()

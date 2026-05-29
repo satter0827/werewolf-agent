@@ -20,6 +20,7 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
     entrypoint_path = PACKAGE / "interface" / "entrypoint"
     imported = _imports_under(entrypoint_path / "api")
     imported.extend(_imports_under(entrypoint_path / "cui"))
+    imported.extend(_imports_under(entrypoint_path / "shared"))
     imported.extend(_imports_under(entrypoint_path / "streamlit"))
 
     assert not [

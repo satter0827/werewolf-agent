@@ -11,7 +11,8 @@
 - `usecase.jobs` は interface から usecase へ入る薄い facade であり、domain core を呼ぶ実処理は `usecase.internal` に集約する
 - FastAPI は game 作成、一覧、状態取得、step 進行、private observation、manual action、public event、turn history、public SSE まで実装済み
 - CLI `doctor` / `ruleset` / `create` / `state` / `step` / `play` / `watch` / `replay` / `runs` / `turns` は HTTP API だけを使う
-- 現在の LLM provider は LangChain `fake`。実 LLM provider、複数 human player、Streamlit / React UI は未実装
+- 現在の LLM provider は LangChain `fake`。実 LLM provider、複数 human player、React UI は未実装
+- Streamlit は 1 human player が FastAPI 経由で play できる入口を実装済み
 
 ## 最初に実行
 
@@ -35,7 +36,11 @@ uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1 --human-player player-1
 uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
+uv run --extra ui streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
+
+Streamlit の実ブラウザ QA は `docs/notes/streamlit-browser-qa.md` を参照してください。
+Browser plugin が直接 tool として見えない場合も、`node_repl` 経由で in-app browser を操作できます。
 
 ## 配置
 
@@ -54,9 +59,10 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、SSE |
 | `backend/src/werewolf_agent/interface/application/` | stateless application bridge、SQLAlchemy repository、transaction、依存注入、Alembic migration |
-| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と HTTP client |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit の play 画面 |
+| `backend/src/werewolf_agent/interface/entrypoint/shared/` | CLI / Streamlit 共通の HTTP client と request builder |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、validation、redaction |
 | `tests/unit/` | process 内 unit test |
@@ -79,7 +85,7 @@ uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-buil
 ## 境界
 
 - CLI は `contracts/schemas.py` と HTTP client だけを使う
-- `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
+- `interface/api` と `interface/entrypoint/*` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
 - 設定読み込みは `commons/configuration`、logging は `commons/logging` に置き、domain / usecase には注入済み値だけ渡す
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
@@ -103,6 +109,7 @@ DB は設定値で選びます。
 - Postgres などは `WEREWOLF_DATABASE_URL` を設定する
 - usecase の保存単位は `game_runs`、`game_events`、`game_run_summaries`、`game_turns`
 - `game_run_summaries` と `game_turns` は CLI と将来 UI 用の public read model
+- Streamlit は `game_turns` を `これまでの流れ` に使い、private observation は右側の手番 panel に閉じる
 - ruleset metadata の説明文、role 表示名、phase 表示名は `WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE`、`WEREWOLF_GAME_ROLE_NAMES`、`WEREWOLF_GAME_PHASE_NAMES` で変更できる
 - agent type は `llm` と `human`。たたき台では `human` は 1 game につき 1 人まで
 - human player の control token は作成時だけ平文で返し、DB には hash だけを保存する
@@ -156,6 +163,7 @@ uv sync --group dev --extra llm
 
 - `api`: FastAPI / SQLAlchemy / Alembic / Uvicorn / SSE / Postgres driver
 - `llm`: LangChain / OpenAI compatible provider 用。adapter は未実装
+- `ui`: Streamlit play 画面
 
 ## Docker
 
@@ -194,7 +202,7 @@ uv build --no-sources
 - structured output parser / validator
 - 複数 human player
 - external agent action API
-- Streamlit / React UI
+- React UI
 - evaluation workflow
 
 ## Handoff

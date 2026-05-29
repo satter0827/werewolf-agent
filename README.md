@@ -12,7 +12,8 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 - API は game 作成、状態取得、一覧、1 step 進行、public event、turn history、public SSE を持つ
 - CLI は `doctor`、`ruleset`、`create`、`state`、`step`、`play`、`watch`、`replay`、`runs`、`turns` を持つ
 - 1 game につき 1 人の `human` player を CLI から操作できる
-- 実 LLM provider、複数 human player、Streamlit / React UI は未実装
+- 実 LLM provider、複数 human player、React UI は未実装
+- Streamlit は 1 game につき 1 人の human player を操作できる play 画面を持つ
 
 ## 動かす
 
@@ -27,6 +28,12 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 
 ```bash
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
+```
+
+Streamlit で play する:
+
+```bash
+uv run --extra ui streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
 
 `python -m` でも CLI を起動できます。
@@ -92,9 +99,10 @@ uv run werewolf-agent step <game_id>
 | `backend/src/werewolf_agent/usecase/internal/` | usecase 実処理、workflow、projection、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
 | `backend/src/werewolf_agent/interface/application/` | stateless application bridge、SQLAlchemy repository、transaction、依存注入 |
-| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI と public HTTP client |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit の play 画面 |
+| `backend/src/werewolf_agent/interface/entrypoint/shared/` | CLI / Streamlit 共通の HTTP client と request builder |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
 
@@ -102,7 +110,7 @@ uv run werewolf-agent step <game_id>
 
 - `domain` は `.env`、logging 設定、interface/usecase を知らない
 - `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換して接続する
-- `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
+- `interface/api` と `interface/entrypoint/*` は domain / usecase を直接 import しない
 - usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
 - `usecase/jobs` は domain を import せず、`usecase/internal` へ委譲するだけにする
 - domain へ入る usecase code は `usecase/internal` 配下だけに限定する
@@ -142,6 +150,10 @@ WEREWOLF_CLI_MAX_STEPS=64
 WEREWOLF_CLI_POLL_INTERVAL_SECONDS=0
 WEREWOLF_CLI_EVENT_LIMIT=100
 WEREWOLF_CLI_OUTPUT_FORMAT=table
+WEREWOLF_STREAMLIT_API_URL=http://127.0.0.1:8000/api/v1
+WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS=10
+WEREWOLF_STREAMLIT_EVENT_LIMIT=100
+WEREWOLF_STREAMLIT_MAX_AUTO_STEPS=64
 WEREWOLF_GAME_MIN_PLAYERS=5
 WEREWOLF_GAME_MAX_PLAYERS=8
 WEREWOLF_GAME_DEFAULT_PLAYER_COUNT=6
@@ -210,7 +222,8 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 - 実 LLM provider adapter と structured output validation
 - 複数 human player / external agent action API
 - 永続 login/session による private observation 認証
-- Streamlit / React UI
+- Streamlit 画面の複数 human player 対応
+- React UI
 - evaluation workflow
 
 ## License

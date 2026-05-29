@@ -95,6 +95,10 @@ DEFAULT_CLI_MAX_STEPS: Final = _integer_default("cli_max_steps")
 DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = _float_default("cli_poll_interval_seconds")
 DEFAULT_CLI_EVENT_LIMIT: Final = _integer_default("cli_event_limit")
 DEFAULT_CLI_OUTPUT_FORMAT: Final = _string_default("cli_output_format")
+DEFAULT_STREAMLIT_API_URL: Final = _string_default("streamlit_api_url")
+DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS: Final = _float_default("streamlit_http_timeout_seconds")
+DEFAULT_STREAMLIT_EVENT_LIMIT: Final = _integer_default("streamlit_event_limit")
+DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
 DEFAULT_API_TITLE: Final = _string_default("api_title")
 DEFAULT_API_VERSION: Final = _string_default("api_version")
 DEFAULT_API_DEBUG: Final = _bool_default("api_debug")
@@ -242,6 +246,26 @@ class AppSettings(BaseSettings):
     cli_output_format: CliOutputFormat = Field(
         default=cast(CliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
         validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
+    )
+    streamlit_api_url: str = Field(
+        default=DEFAULT_STREAMLIT_API_URL,
+        validation_alias="WEREWOLF_STREAMLIT_API_URL",
+    )
+    streamlit_http_timeout_seconds: float = Field(
+        default=DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS",
+    )
+    streamlit_event_limit: int = Field(
+        default=DEFAULT_STREAMLIT_EVENT_LIMIT,
+        ge=1,
+        le=500,
+        validation_alias="WEREWOLF_STREAMLIT_EVENT_LIMIT",
+    )
+    streamlit_max_auto_steps: int = Field(
+        default=DEFAULT_STREAMLIT_MAX_AUTO_STEPS,
+        ge=1,
+        validation_alias="WEREWOLF_STREAMLIT_MAX_AUTO_STEPS",
     )
 
     game_min_players: int = Field(
@@ -482,6 +506,7 @@ class AppSettings(BaseSettings):
         "api_service_name",
         "api_version",
         "cli_api_url",
+        "streamlit_api_url",
         mode="before",
     )
     @classmethod

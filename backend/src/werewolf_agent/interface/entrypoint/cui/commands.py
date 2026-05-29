@@ -28,27 +28,18 @@ from werewolf_agent.commons.shared.messages import (
     LOG_CLI_PLAY_COMPLETED,
     LOG_CLI_REPLAY_COMPLETED,
     LOG_CLI_WATCH_POLLED,
-    MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
     MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW,
     MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE,
     MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID,
     MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
-    MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
-    MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
     message_game_did_not_complete,
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGamePlayer,
-    CreateGameRequest,
-    CreateGameRuleConfig,
     PublicGameEvent,
-    RoleId,
     SubmitPlayerActionRequest,
-    TieBreakPolicyId,
 )
-from werewolf_agent.interface.entrypoint.cui.client import GameApiClient, HttpGameApiClient
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.entrypoint.cui.output import (
     OutputFormat,
@@ -61,6 +52,11 @@ from werewolf_agent.interface.entrypoint.cui.output import (
     print_run_summaries,
     print_state,
     print_turns,
+)
+from werewolf_agent.interface.entrypoint.shared import (
+    GameApiClient,
+    HttpGameApiClient,
+    build_create_game_request,
 )
 
 logger = logging.getLogger(__name__)
@@ -201,7 +197,7 @@ def _create(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    request = _create_request(
+    request = build_create_game_request(
         players=players,
         seed=seed,
         human_player=human_player,
@@ -209,6 +205,7 @@ def _create(
         tie_break_policy=tie_break_policy,
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
+        default_player_count=get_settings().game_default_player_count,
     )
     created = client.create_game(request)
     logger.info(
@@ -331,7 +328,7 @@ def _play(
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 
-    request = _create_request(
+    request = build_create_game_request(
         players=players,
         seed=seed,
         human_player=human_player,
@@ -339,6 +336,7 @@ def _play(
         tie_break_policy="no_elimination",
         day_speech_turns=1,
         allow_self_vote=False,
+        default_player_count=get_settings().game_default_player_count,
     )
     created = client.create_game(request)
     state = created.state
@@ -637,68 +635,6 @@ def _client(api_url: str | None) -> GameApiClient:
 def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None) -> GameApiClient:
     resolved_settings = settings or get_settings()
     return HttpGameApiClient(api_url, timeout=resolved_settings.cli_http_timeout_seconds)
-
-
-def _create_request(
-    *,
-    players: int | None,
-    seed: int | None,
-    human_player: str | None,
-    role_count: list[str],
-    tie_break_policy: str,
-    day_speech_turns: int,
-    allow_self_vote: bool,
-) -> CreateGameRequest:
-    explicit_players = None
-    if human_player is not None:
-        player_count = players or get_settings().game_default_player_count
-        generated_player_ids = {f"player-{index}" for index in range(1, player_count + 1)}
-        if human_player not in generated_player_ids:
-            raise AppError(
-                MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-                context={"human_player": human_player, "player_count": player_count},
-            )
-        explicit_players = [
-            CreateGamePlayer(
-                id=f"player-{index}",
-                name=f"Player {index}",
-                agent_type="human" if f"player-{index}" == human_player else "llm",
-            )
-            for index in range(1, player_count + 1)
-        ]
-    rule_config = CreateGameRuleConfig(
-        role_counts=_parse_role_counts(role_count) or None,
-        tie_break_policy=cast(TieBreakPolicyId, tie_break_policy),
-        day_speech_turns=day_speech_turns,
-        allow_self_vote=allow_self_vote,
-    )
-    return CreateGameRequest(
-        player_count=None if explicit_players is not None else players,
-        seed=seed,
-        players=explicit_players,
-        rule_config=rule_config,
-    )
-
-
-def _parse_role_counts(entries: list[str]) -> dict[RoleId, int]:
-    role_counts: dict[RoleId, int] = {}
-    for entry in entries:
-        key, separator, value = entry.partition("=")
-        if separator == "":
-            raise AppError(
-                MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-            )
-        try:
-            count = int(value)
-        except ValueError as exc:
-            raise AppError(
-                MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-            ) from exc
-        role_counts[cast(RoleId, key.strip())] = count
-    return role_counts
 
 
 def _prompt_and_submit_human_action(
