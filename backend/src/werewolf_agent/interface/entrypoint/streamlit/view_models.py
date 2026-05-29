@@ -8,15 +8,18 @@ from typing import Any
 
 from werewolf_agent.contracts.schemas import (
     PrivateObservationResponse,
+    PublicGameRunSummary,
     PublicGameState,
     PublicGameTurn,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.icons import (
+    action_icon,
     action_label,
     event_icon,
     phase_label,
     role_label,
+    status_icon,
     winner_label,
 )
 
@@ -29,8 +32,42 @@ class PlayerSeatView:
     name: str
     status: str
     activity: str
+    activity_tone: str
     is_alive: bool
     is_human: bool
+    is_current: bool
+
+
+@dataclass(frozen=True)
+class StatusMetricView:
+    """One top status strip item."""
+
+    key: str
+    icon: str
+    label: str
+    value: str
+    detail: str
+    tone: str = "neutral"
+
+
+@dataclass(frozen=True)
+class TableLegendItemView:
+    """One table legend marker."""
+
+    symbol: str
+    label: str
+    tone: str
+
+
+@dataclass(frozen=True)
+class ActionChoiceView:
+    """One action option visible in the hand panel."""
+
+    action_type: str
+    icon: str
+    label: str
+    requires_target: bool
+    requires_message: bool
 
 
 @dataclass(frozen=True)
@@ -52,6 +89,7 @@ class ObservationView:
 
     role: str
     available_actions: list[str]
+    action_choices: list[ActionChoiceView]
     known_role_lines: list[str]
     target_candidates: dict[str, list[str]]
 
@@ -68,11 +106,15 @@ class GameScreenView:
     alive_label: str
     turn_label: str
     winner_label: str
+    status_metrics: list[StatusMetricView]
+    table_legend: list[TableLegendItemView]
     seats: list[PlayerSeatView]
     timeline: list[TimelineItemView]
     observation: ObservationView | None
     current_turn_title: str
     current_turn_detail: str
+    is_completed: bool
+    can_submit_action: bool
 
 
 def build_game_screen_view(
@@ -88,6 +130,13 @@ def build_game_screen_view(
         if observation is not None
         else None
     )
+    can_submit_action = (
+        state.status != "completed"
+        and observation_view is not None
+        and bool(observation_view.available_actions)
+    )
+    current_title = current_turn_title(state, observation_view, human_player_id)
+    current_detail = current_turn_detail(state, observation_view)
     return GameScreenView(
         game_id=state.game_id,
         phase=state.phase,
@@ -97,41 +146,108 @@ def build_game_screen_view(
         alive_label=f"{len(state.alive_player_ids)} / {len(state.players)} 人",
         turn_label=f"{state.version} 巡目",
         winner_label=winner_label(state.winner),
-        seats=player_seats(state.players, turns=turns, human_player_id=human_player_id),
+        status_metrics=status_metrics(
+            state,
+            current_turn=current_title,
+            current_turn_detail=current_detail,
+        ),
+        table_legend=table_legend_items(),
+        seats=player_seats(
+            state.players,
+            turns=turns,
+            observation=observation_view,
+            human_player_id=human_player_id,
+        ),
         timeline=timeline_items(turns),
         observation=observation_view,
-        current_turn_title=current_turn_title(state, observation_view, human_player_id),
-        current_turn_detail=current_turn_detail(state, observation_view),
+        current_turn_title=current_title,
+        current_turn_detail=current_detail,
+        is_completed=state.status == "completed",
+        can_submit_action=can_submit_action,
     )
+
+
+def status_metrics(
+    state: PublicGameState,
+    *,
+    current_turn: str,
+    current_turn_detail: str,
+) -> list[StatusMetricView]:
+    """Return top status strip items."""
+    metrics = [
+        ("phase", "現在のフェーズ", f"Day {state.day} {phase_label(state.phase)}", ""),
+        ("alive", "生存プレイヤー", f"{len(state.alive_player_ids)} / {len(state.players)} 人", ""),
+        ("turn", "経過ターン", f"{state.version} 巡目", ""),
+        ("hand", "現在の手番", current_turn, current_turn_detail),
+        ("status", "状態", "進行中" if state.status == "running" else "終了", ""),
+        ("winner", "勝利", winner_label(state.winner), ""),
+    ]
+    return [
+        StatusMetricView(
+            key=key,
+            icon=status_icon(key).symbol,
+            label=label,
+            value=value,
+            detail=detail,
+            tone=status_icon(key).tone,
+        )
+        for key, label, value, detail in metrics
+    ]
+
+
+def table_legend_items() -> list[TableLegendItemView]:
+    """Return stable legend items for the game table."""
+    return [
+        TableLegendItemView("●", "発言済み", "safe"),
+        TableLegendItemView("●", "入力待ち", "danger"),
+        TableLegendItemView("●", "待機中", "neutral"),
+        TableLegendItemView("x", "退場", "muted"),
+    ]
 
 
 def player_seats(
     players: list[PublicPlayerState],
     *,
     turns: list[PublicGameTurn],
+    observation: ObservationView | None,
     human_player_id: str | None,
 ) -> list[PlayerSeatView]:
     """Return compact game-table player seats."""
     last_speaker = _last_actor(turns, event_type="speech_recorded")
+    active_player_id = (
+        human_player_id
+        if observation is not None and observation.available_actions
+        else last_speaker
+    )
     seats: list[PlayerSeatView] = []
     for player in players:
         is_human = player.id == human_player_id
+        is_current = player.id == active_player_id
         if not player.alive:
             activity = "退場"
+            activity_tone = "muted"
+        elif is_human and observation is not None and observation.available_actions:
+            activity = "入力待ち"
+            activity_tone = "danger"
         elif player.id == last_speaker:
             activity = "発言済み"
+            activity_tone = "safe"
         elif is_human:
             activity = "あなた"
+            activity_tone = "danger"
         else:
             activity = "待機中"
+            activity_tone = "neutral"
         seats.append(
             PlayerSeatView(
                 player_id=player.id,
                 name=player.name,
                 status="生存" if player.alive else "退場",
                 activity=activity,
+                activity_tone=activity_tone,
                 is_alive=player.alive,
                 is_human=is_human,
+                is_current=is_current,
             )
         )
     return seats
@@ -175,6 +291,7 @@ def observation_view_from_response(
     return ObservationView(
         role=role_label(role),
         available_actions=actions,
+        action_choices=[action_choice(action) for action in actions],
         known_role_lines=known_role_lines,
         target_candidates={
             action: target_candidates_for_action(
@@ -185,6 +302,17 @@ def observation_view_from_response(
             )
             for action in actions
         },
+    )
+
+
+def action_choice(action_type: str) -> ActionChoiceView:
+    """Return display metadata for one action."""
+    return ActionChoiceView(
+        action_type=action_type,
+        icon=action_icon(action_type).symbol,
+        label=action_label(action_type),
+        requires_target=action_type in {"vote", "werewolf_attack", "seer_inspect", "knight_guard"},
+        requires_message=action_type == "speech",
     )
 
 
@@ -225,8 +353,9 @@ def current_turn_title(
     if state.status == "completed":
         return "ゲームは終了しました"
     if observation is not None and observation.available_actions:
-        actor = human_player_id or "あなた"
-        return f"{actor} の入力待ち"
+        return "あなたの入力待ち"
+    if observation is None and human_player_id:
+        return "ゲームを確認中"
     return "進行できます"
 
 
@@ -235,11 +364,17 @@ def current_turn_detail(state: PublicGameState, observation: ObservationView | N
     if state.status == "completed":
         return f"勝利: {winner_label(state.winner)}"
     if observation is None:
-        return "操作するプレイヤーと操作用 token を入力すると手番が表示されます。"
+        return "ゲームを再開すると、あなたの手番が表示されます。"
     if observation.available_actions:
         labels = " / ".join(action_label(action) for action in observation.available_actions)
         return f"できる行動: {labels}"
     return "次の入力が必要な場面まで進められます。"
+
+
+def game_run_option_label(run: PublicGameRunSummary) -> str:
+    """Return one sidebar option label for a game run."""
+    status = "終了" if run.status == "completed" else "進行中"
+    return f"{status} / Day {run.day} / {run.game_id}"
 
 
 def _event_title(turn: PublicGameTurn) -> str:
@@ -262,7 +397,7 @@ def _event_detail(turn: PublicGameTurn) -> str:
     if turn.event_type == "vote_recorded":
         return f"{actor} が投票しました。" if actor else "投票が行われました。"
     if turn.event_type == "night_action_recorded":
-        return "夜の行動が実行されました。詳細は表示されません。"
+        return "夜の行動が進みました。"
     if turn.event_type == "game_finished":
         winner = turn.payload.get("winner")
         if isinstance(winner, str):

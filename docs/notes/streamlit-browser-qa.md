@@ -5,7 +5,7 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 目的
 
 - Streamlit が実ブラウザで表示できることを確認する
-- `ゲームを始める` から `ゲーム卓`、`これまでの流れ`、`あなたの手番` まで到達することを確認する
+- `新しいゲームを始める` から `ゲーム卓`、`これまでの流れ`、`あなたの手番` まで到達することを確認する
 - desktop / mobile のスクリーンショットを残す
 - console error / warning を確認する
 
@@ -14,15 +14,15 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 別 terminal で API と Streamlit を起動します。
 
 ```bash
-uv run --extra api alembic upgrade head
-uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8000
-uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+uv run --no-sync --group dev --extra api alembic upgrade head
+uv run --no-sync --group dev --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8765
+uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
 HTTP smoke:
 
 ```bash
-uv run python -c "import httpx; print(httpx.get('http://127.0.0.1:8000/api/v1/health', timeout=5).json()); print(httpx.get('http://127.0.0.1:8501', timeout=5).status_code)"
+uv run --no-sync --group dev --extra api --extra streamlit python -c "import httpx; print(httpx.get('http://127.0.0.1:8765/api/v1/health', timeout=5).json()); print(httpx.get('http://127.0.0.1:8766', timeout=5).status_code)"
 ```
 
 ## Browser plugin
@@ -52,20 +52,20 @@ plugin version が変わった場合は、Browser skill の `scripts/browser-cli
 ## desktop 確認
 
 ```js
-await tab.goto("http://127.0.0.1:8501");
+await tab.goto("http://127.0.0.1:8766");
 await tab.playwright.waitForLoadState({ state: "load", timeoutMs: 30000 });
 await tab.playwright.waitForTimeout(3000);
 
 const snapshot = await tab.playwright.domSnapshot();
-const required = ["Werewolf Agent", "API 接続", "新しいゲーム", "ゲームを始める", "現在のゲーム"];
+const required = ["Werewolf Agent", "API 接続", "新しいゲーム", "新しいゲームを始める", "現在のゲーム"];
 console.log(required.map((text) => [text, snapshot.includes(text)]));
 console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 50 }));
 ```
 
-`ゲームを始める` を押して playable state を確認します。
+`新しいゲームを始める` を押して playable state を確認します。
 
 ```js
-const startButton = tab.playwright.getByRole("button", { name: "ゲームを始める", exact: true });
+const startButton = tab.playwright.getByRole("button", { name: "新しいゲームを始める", exact: true });
 if ((await startButton.count()) !== 1) {
   throw new Error("start button must be unique");
 }
@@ -80,7 +80,7 @@ console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 50 }));
 
 ## mobile 確認
 
-Streamlit は mobile 幅で sidebar が閉じるため、`ゲームを始める` を押す前に sidebar を開きます。
+Streamlit は mobile 幅で sidebar が閉じるため、`新しいゲームを始める` を押す前に sidebar を開きます。
 
 ```js
 const viewport = await browser.capabilities.get("viewport");
@@ -99,7 +99,7 @@ if ((await openSidebar.count()) === 1 && (await openSidebar.isVisible())) {
 }
 
 const mobileStartButton = tab.playwright.getByRole("button", {
-  name: "ゲームを始める",
+  name: "新しいゲームを始める",
   exact: true,
 });
 if ((await mobileStartButton.count()) !== 1) {
@@ -137,9 +137,10 @@ mobile は viewport を `390x844` にしてから
 - 実行日: 2026-05-29
 - API: `http://127.0.0.1:8765/api/v1`
 - Streamlit: `http://127.0.0.1:8766`
-- desktop: `ゲームを始める` から playable state まで到達
-- mobile: sidebar を開いて `ゲームを始める` から playable state まで到達
-- console error / warning: なし
+- desktop: `新しいゲームを始める` から A案画面まで到達
+- desktop: `ゲーム卓`、`これまでの流れ`、`あなたの手番`、`現在の手番` を同一画面で確認
+- mobile: sidebar から game を開いた後、上部ステータス、`ゲーム卓`、`これまでの流れ`、`あなたの手番` が縦積みで DOM に存在することを確認
+- raw HTML 表示: なし
+- console error / warning: 確認開始時刻以降はなし
 - Browser output に desktop / mobile の screenshot を表示できることを確認
-- `tab.screenshot({ path })` は成功を返しても、この環境では PowerShell 側から保存ファイルを確認できない場合がある
-- host filesystem 上の保存が必要な場合は、Browser output の画像取得後に app 側の artifact 保存経路を使う
+- Browser runtime から host filesystem へ screenshot を保存する操作は、この環境では `EPERM` になるため未使用

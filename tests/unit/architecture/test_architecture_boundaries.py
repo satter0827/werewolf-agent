@@ -301,6 +301,16 @@ def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
     ]
 
 
+def test_streamlit_app_keeps_api_workflows_out_of_screen_assembly() -> None:
+    app_source = (PACKAGE / "interface" / "entrypoint" / "streamlit" / "app.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "interface.shared" not in app_source
+    assert "workflows." not in app_source
+    assert "build_game_api_client" not in app_source
+
+
 def test_contracts_do_not_import_api_frameworks() -> None:
     forbidden_modules = (
         "fastapi",

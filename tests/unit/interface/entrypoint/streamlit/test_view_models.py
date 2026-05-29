@@ -2,12 +2,15 @@ from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
     PrivateObservationResponse,
+    PublicGameRunSummary,
     PublicGameState,
     PublicGameTurn,
     PublicPlayerState,
 )
+from werewolf_agent.interface.entrypoint.streamlit.icons import action_icon, event_icon
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     build_game_screen_view,
+    game_run_option_label,
     target_candidates_for_action,
 )
 
@@ -68,6 +71,8 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     timeline_text = " ".join(f"{item.title} {item.detail}" for item in screen.timeline)
     assert "werewolf" not in timeline_text
     assert "player-2" not in timeline_text
+    assert screen.can_submit_action is True
+    assert screen.seats[0].activity == "入力待ち"
 
 
 def test_target_candidates_exclude_unavailable_targets() -> None:
@@ -81,6 +86,17 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     assert candidates == ["player-2"]
 
 
+def test_target_candidates_hide_self_and_known_werewolves_for_night_attack() -> None:
+    candidates = target_candidates_for_action(
+        "werewolf_attack",
+        state=_state(),
+        observation={"known_roles": {"player-1": "werewolf", "player-2": "werewolf"}},
+        human_player_id="player-1",
+    )
+
+    assert candidates == []
+
+
 def test_finished_timeline_without_winner_uses_safe_detail() -> None:
     screen = build_game_screen_view(
         state=_state(),
@@ -90,3 +106,45 @@ def test_finished_timeline_without_winner_uses_safe_detail() -> None:
     )
 
     assert screen.timeline[0].detail == "勝敗が決まりました。"
+
+
+def test_completed_game_hides_submit_state_even_with_available_actions() -> None:
+    observation = PrivateObservationResponse(
+        game_id="game-1",
+        player_id="player-1",
+        observation={
+            "me": {"id": "player-1", "role": "villager"},
+            "available_actions": ["speech", "vote"],
+        },
+    )
+    screen = build_game_screen_view(
+        state=_state().model_copy(update={"status": "completed", "phase": "finished"}),
+        turns=[],
+        observation=observation,
+        human_player_id="player-1",
+    )
+
+    assert screen.is_completed is True
+    assert screen.can_submit_action is False
+    assert screen.current_turn_title == "ゲームは終了しました"
+
+
+def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
+    run = PublicGameRunSummary(
+        game_id="game-unknown",
+        status="running",
+        phase="day_discussion",
+        day=1,
+        version=1,
+        seed=None,
+        player_count=6,
+        alive_count=6,
+        step_count=0,
+        turn_count=0,
+        created_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+        updated_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
+    )
+
+    assert event_icon("unknown_event").label == "出来事"
+    assert action_icon("unknown_action").label == "行動"
+    assert game_run_option_label(run) == "進行中 / Day 1 / game-unknown"

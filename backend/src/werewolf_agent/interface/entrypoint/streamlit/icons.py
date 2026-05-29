@@ -15,6 +15,8 @@ class UiIcon:
 
 
 DEFAULT_EVENT_ICON = UiIcon("•", "出来事")
+DEFAULT_ACTION_ICON = UiIcon("•", "行動")
+DEFAULT_STATUS_ICON = UiIcon("•", "状態")
 
 EVENT_ICONS: dict[str, UiIcon] = {
     "game_started": UiIcon("▶", "ゲーム開始", "day"),
@@ -28,6 +30,15 @@ EVENT_ICONS: dict[str, UiIcon] = {
     "game_finished": UiIcon("🏁", "決着", "danger"),
 }
 
+ACTION_ICONS: dict[str, UiIcon] = {
+    "speech": UiIcon("💬", "発言", "safe"),
+    "vote": UiIcon("☑", "投票", "day"),
+    "werewolf_attack": UiIcon("◆", "襲撃", "danger"),
+    "seer_inspect": UiIcon("◇", "占い", "safe"),
+    "knight_guard": UiIcon("◈", "護衛", "safe"),
+    "pass": UiIcon("▷", "パス", "neutral"),
+}
+
 ACTION_LABELS: dict[str, str] = {
     "speech": "発言",
     "vote": "投票",
@@ -35,6 +46,15 @@ ACTION_LABELS: dict[str, str] = {
     "seer_inspect": "占い",
     "knight_guard": "護衛",
     "pass": "パス",
+}
+
+STATUS_ICONS: dict[str, UiIcon] = {
+    "phase": UiIcon("◌", "現在のフェーズ", "day"),
+    "alive": UiIcon("●", "生存プレイヤー", "safe"),
+    "turn": UiIcon("▶", "経過ターン", "day"),
+    "hand": UiIcon("✋", "現在の手番", "danger"),
+    "status": UiIcon("■", "状態", "neutral"),
+    "winner": UiIcon("🏁", "勝利", "neutral"),
 }
 
 PHASE_LABELS: dict[str, str] = {
@@ -62,9 +82,19 @@ def event_icon(event_type: str) -> UiIcon:
     return EVENT_ICONS.get(event_type, DEFAULT_EVENT_ICON)
 
 
+def action_icon(action_type: str) -> UiIcon:
+    """Return the configured marker for one action."""
+    return ACTION_ICONS.get(action_type, DEFAULT_ACTION_ICON)
+
+
 def action_label(action_type: str) -> str:
     """Return a human-facing action label."""
     return ACTION_LABELS.get(action_type, action_type.replace("_", " "))
+
+
+def status_icon(status_type: str) -> UiIcon:
+    """Return the configured marker for one status metric."""
+    return STATUS_ICONS.get(status_type, DEFAULT_STATUS_ICON)
 
 
 def phase_label(phase: str | None) -> str:

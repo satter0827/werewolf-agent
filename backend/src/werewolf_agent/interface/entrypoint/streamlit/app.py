@@ -3,17 +3,20 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any, cast
+from html import escape
+from textwrap import dedent
+from typing import Any
 
 from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.contracts import AppError
-from werewolf_agent.contracts.schemas import (
-    PrivateObservationResponse,
-    PublicGameRunSummary,
-    PublicGameState,
-    SubmitPlayerActionRequest,
+from werewolf_agent.interface.entrypoint.streamlit.operations import (
+    advance_until_input,
+    check_connection,
+    create_playable_game,
+    list_recent_games,
+    load_game_screen,
+    submit_screen_action,
 )
-from werewolf_agent.interface.entrypoint.streamlit.icons import action_label
 from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_API_URL,
     KEY_CONTROL_TOKEN,
@@ -26,12 +29,12 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
 )
 from werewolf_agent.interface.entrypoint.streamlit.styles import STREAMLIT_CSS
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
+    ActionChoiceView,
     GameScreenView,
-    build_game_screen_view,
+    PlayerSeatView,
+    TimelineItemView,
+    game_run_option_label,
 )
-from werewolf_agent.interface.shared import workflows
-from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
-from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 
 def main() -> None:
@@ -42,7 +45,6 @@ def main() -> None:
     st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
     api_url = _render_sidebar(st, settings)
-    client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
     game_id = text_value(st.session_state, KEY_GAME_ID)
     human_player_id = text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1")
     control_token = text_value(st.session_state, KEY_CONTROL_TOKEN)
@@ -52,10 +54,9 @@ def main() -> None:
         return
 
     try:
-        state = workflows.get_game(client, game_id).state
-        turns = workflows.list_turns(client, game_id, limit=settings.streamlit_turn_limit).turns
-        observation = _load_observation(
-            client,
+        screen = load_game_screen(
+            api_url=api_url,
+            settings=settings,
             game_id=game_id,
             human_player_id=human_player_id,
             control_token=control_token,
@@ -64,12 +65,6 @@ def main() -> None:
         st.error(exc.detail)
         return
 
-    screen = build_game_screen_view(
-        state=state,
-        turns=turns,
-        observation=observation,
-        human_player_id=human_player_id,
-    )
     _render_status_bar(st, screen)
     center, right = st.columns([2.15, 1], gap="medium")
     with center:
@@ -78,9 +73,8 @@ def main() -> None:
     with right:
         _render_action_panel(
             st,
-            client=client,
             settings=settings,
-            state=state,
+            api_url=api_url,
             screen=screen,
             game_id=game_id,
             human_player_id=human_player_id,
@@ -89,8 +83,8 @@ def main() -> None:
 
 
 def _render_sidebar(st: Any, settings: AppSettings) -> str:
-    st.sidebar.title("🐺 Werewolf Agent")
-    st.sidebar.caption("プレイ")
+    st.sidebar.title("プレイ")
+    st.sidebar.markdown('<div class="wa-sidebar-mode">Werewolf Agent</div>', unsafe_allow_html=True)
     st.sidebar.divider()
     st.sidebar.subheader("API 接続")
     default_api_url = text_value(
@@ -98,13 +92,11 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
         KEY_API_URL,
         settings.streamlit_resolved_api_url,
     )
-    api_url = st.sidebar.text_input("API Base URL", value=default_api_url)
+    api_url = str(st.sidebar.text_input("接続先", value=default_api_url))
     st.session_state[KEY_API_URL] = api_url
     if st.sidebar.button("接続を確認", use_container_width=True):
         try:
-            workflows.check_health(
-                build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
-            )
+            check_connection(api_url=api_url, settings=settings)
         except AppError as exc:
             st.sidebar.error(exc.detail)
         else:
@@ -112,7 +104,7 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
 
     st.sidebar.divider()
     st.sidebar.subheader("現在のゲーム")
-    _render_recent_games(st, settings=settings, api_url=str(api_url))
+    _render_recent_games(st, settings=settings, api_url=api_url)
 
     st.sidebar.divider()
     st.sidebar.subheader("新しいゲーム")
@@ -130,7 +122,7 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             [f"player-{index}" for index in range(1, int(player_count) + 1)],
             index=0,
         )
-        submitted = st.form_submit_button("ゲームを始める", use_container_width=True)
+        submitted = st.form_submit_button("新しいゲームを始める", use_container_width=True)
     if submitted:
         _create_game(
             st,
@@ -149,18 +141,18 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             "プレイヤー ID",
             value=text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1"),
         )
-        token = st.text_input(
-            "操作用 token",
+        control_key = st.text_input(
+            "操作用キー",
             value=text_value(st.session_state, KEY_CONTROL_TOKEN),
             type="password",
         )
         resumed = st.form_submit_button("再開する", use_container_width=True)
-    if resumed and game_id and human_player and token:
+    if resumed and game_id and human_player and control_key:
         set_game_session(
             st.session_state,
             game_id=game_id,
             human_player_id=human_player,
-            control_token=token,
+            control_token=control_key,
         )
         st.rerun()
 
@@ -168,7 +160,7 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
         clear_game_session(st.session_state)
         st.rerun()
 
-    return str(api_url)
+    return api_url
 
 
 def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> None:
@@ -177,8 +169,7 @@ def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> Non
     if current_game_id:
         st.sidebar.caption(f"選択中: {current_game_id}")
     try:
-        client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
-        runs = workflows.list_games(client, limit=settings.streamlit_run_limit).runs
+        runs = list_recent_games(api_url=api_url, settings=settings)
     except AppError:
         st.sidebar.caption("ゲーム一覧は API 接続後に表示されます。")
         return
@@ -186,7 +177,7 @@ def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> Non
         st.sidebar.caption("まだゲームがありません。")
         return
 
-    option_labels = [_game_run_option(run) for run in runs]
+    option_labels = [game_run_option_label(run) for run in runs]
     selected_label = st.sidebar.selectbox(
         "最近のゲーム",
         option_labels,
@@ -194,8 +185,8 @@ def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> Non
     )
     selected_run = runs[option_labels.index(selected_label)]
     human_player = st.sidebar.text_input("操作するプレイヤー", value=current_human_player)
-    token = st.sidebar.text_input(
-        "操作用 token",
+    control_key = st.sidebar.text_input(
+        "操作用キー",
         value=text_value(st.session_state, KEY_CONTROL_TOKEN),
         type="password",
     )
@@ -204,14 +195,9 @@ def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> Non
             st.session_state,
             game_id=selected_run.game_id,
             human_player_id=human_player,
-            control_token=token,
+            control_token=control_key,
         )
         st.rerun()
-
-
-def _game_run_option(run: PublicGameRunSummary) -> str:
-    status = "終了" if run.status == "completed" else "進行中"
-    return f"{status} / Day {run.day} / {run.game_id}"
 
 
 def _create_game(
@@ -224,19 +210,13 @@ def _create_game(
     human_player_id: str,
 ) -> None:
     try:
-        seed = int(seed_text) if seed_text.strip() else None
-        request = build_create_game_request(
-            players=player_count,
-            seed=seed,
-            human_player=human_player_id,
-            role_count_entries=[],
-            tie_break_policy="no_elimination",
-            day_speech_turns=1,
-            allow_self_vote=False,
-            default_player_count=settings.game_default_player_count,
+        created = create_playable_game(
+            api_url=api_url,
+            settings=settings,
+            player_count=player_count,
+            seed_text=seed_text,
+            human_player_id=human_player_id,
         )
-        client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
-        created = workflows.create_game(client, request)
     except (AppError, ValueError) as exc:
         st.sidebar.error(str(exc))
         return
@@ -253,126 +233,130 @@ def _create_game(
 
 
 def _render_empty_state(st: Any) -> None:
-    st.markdown("## Werewolf Agent")
     st.info("サイドバーで API 接続を確認し、新しいゲームを始めてください。")
 
 
-def _load_observation(
-    client: GameApiClient,
-    *,
-    game_id: str,
-    human_player_id: str,
-    control_token: str,
-) -> PrivateObservationResponse | None:
-    if not game_id or not human_player_id or not control_token:
-        return None
-    return workflows.get_private_observation(
-        client,
-        game_id,
-        human_player_id,
-        control_token=control_token,
-    )
-
-
 def _render_status_bar(st: Any, screen: GameScreenView) -> None:
-    columns = st.columns(6)
-    values = [
-        ("現在のフェーズ", f"{screen.day_label} {screen.phase_label}"),
-        ("生存プレイヤー", screen.alive_label),
-        ("経過ターン", screen.turn_label),
-        ("現在の手番", screen.current_turn_title),
-        ("状態", screen.status_label),
-        ("勝利", screen.winner_label),
-    ]
-    for column, (label, value) in zip(columns, values, strict=True):
-        column.markdown(
-            f'<div class="wa-status"><div class="wa-muted">{label}</div><b>{value}</b></div>',
-            unsafe_allow_html=True,
+    items = []
+    for metric in screen.status_metrics:
+        tone = _css_token(metric.tone)
+        items.append(
+            _html(
+                f"""
+            <div class="wa-status wa-status-{tone}">
+                <div class="wa-status-icon">{escape(metric.icon)}</div>
+                <div>
+                    <div class="wa-muted">{escape(metric.label)}</div>
+                    <b>{escape(metric.value)}</b>
+                    <div class="wa-status-detail">{escape(metric.detail)}</div>
+                </div>
+            </div>
+            """
+            )
         )
+    st.markdown(f'<div class="wa-status-grid">{"".join(items)}</div>', unsafe_allow_html=True)
 
 
 def _render_game_table(st: Any, screen: GameScreenView) -> None:
-    st.markdown("### ゲーム卓")
-    st.caption("プレイヤーの現在状態")
-    columns = st.columns(len(screen.seats))
-    for column, seat in zip(columns, screen.seats, strict=True):
-        classes = ["wa-seat"]
-        if seat.is_human:
-            classes.append("wa-seat-human")
-        if not seat.is_alive:
-            classes.append("wa-seat-dead")
-        chip_class = "wa-chip" if seat.is_alive else "wa-chip wa-chip-danger"
-        column.markdown(
+    seat_html = "".join(_seat_html(seat) for seat in screen.seats)
+    legend_html = "".join(
+        _html(
             f"""
-            <div class="{" ".join(classes)}">
-                <div style="font-size:26px;">👤</div>
-                <b>{seat.player_id}</b>
-                <div class="{chip_class}">{seat.status}</div>
-                <div class="wa-muted">{seat.activity}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+        <span class="wa-legend-item wa-legend-{_css_token(item.tone)}">
+            <span>{escape(item.symbol)}</span>{escape(item.label)}
+        </span>
+        """
         )
+        for item in screen.table_legend
+    )
+    st.markdown(
+        _html(
+            f"""
+        <section class="wa-table-surface">
+            <div class="wa-section-head">
+                <div>
+                    <h3>ゲーム卓</h3>
+                    <p>プレイヤーの生存状態と、いま卓で起きている動きです。</p>
+                </div>
+                <div class="wa-table-legend">{legend_html}</div>
+            </div>
+            <div class="wa-seat-grid">{seat_html}</div>
+        </section>
+        """,
+        ),
+        unsafe_allow_html=True,
+    )
 
 
 def _render_timeline(st: Any, screen: GameScreenView) -> None:
-    st.markdown("### これまでの流れ")
-    st.caption("公開された出来事を時系列で表示します。非公開情報は出ません。")
+    st.markdown(
+        _html(
+            """
+        <div class="wa-section-head wa-section-head-spaced">
+            <div>
+                <h3>これまでの流れ</h3>
+                <p>公開された出来事を時系列で表示します。</p>
+            </div>
+        </div>
+        """,
+        ),
+        unsafe_allow_html=True,
+    )
     if not screen.timeline:
         st.info("まだ表示できる出来事がありません。")
         return
 
-    st.markdown('<div class="wa-timeline">', unsafe_allow_html=True)
-    for item in screen.timeline:
-        st.markdown(
-            f"""
-            <div class="wa-timeline-item wa-timeline-item-{item.tone}">
-                <div class="wa-muted">{item.day_label} / {item.time_text}</div>
-                <b>{item.icon} {item.title}</b>
-                <div>{item.detail}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-    st.markdown("</div>", unsafe_allow_html=True)
+    items = "".join(_timeline_html(item) for item in screen.timeline)
+    st.markdown(f'<div class="wa-timeline">{items}</div>', unsafe_allow_html=True)
 
 
 def _render_action_panel(
     st: Any,
     *,
-    client: GameApiClient,
     settings: AppSettings,
-    state: PublicGameState,
+    api_url: str,
     screen: GameScreenView,
     game_id: str,
     human_player_id: str,
     control_token: str,
 ) -> None:
-    st.markdown("### あなたの手番")
     st.markdown(
-        f"""
-        <div class="wa-primary-note">
-            <b>{screen.current_turn_title}</b>
-            <div>{screen.current_turn_detail}</div>
-        </div>
+        _html(
+            f"""
+        <aside class="wa-hand-panel">
+            <div class="wa-section-head">
+                <div>
+                    <h3>あなたの手番</h3>
+                    <p>{escape(screen.current_turn_title)}</p>
+                </div>
+            </div>
+            <div class="wa-primary-note">
+                <b>{escape(screen.current_turn_title)}</b>
+                <div>{escape(screen.current_turn_detail)}</div>
+            </div>
+        </aside>
         """,
+        ),
         unsafe_allow_html=True,
     )
     if screen.observation is not None:
         st.markdown("#### あなたの役職")
-        st.info(f"{screen.observation.role}。他のプレイヤーには表示されません。")
+        st.info(f"{screen.observation.role}。あなただけに見えている情報です。")
+        st.markdown("#### 見えている情報")
         if screen.observation.known_role_lines:
-            st.markdown("#### 見えている情報")
             for line in screen.observation.known_role_lines:
                 st.write(f"- {line}")
+        else:
+            st.caption("いま表示できる追加情報はありません。")
 
-    if state.status == "completed":
+    if screen.is_completed:
         return
 
-    if screen.observation is not None and screen.observation.available_actions:
+    if screen.can_submit_action:
         _render_action_form(
             st,
-            client=client,
+            settings=settings,
+            api_url=api_url,
             game_id=game_id,
             human_player_id=human_player_id,
             control_token=control_token,
@@ -386,8 +370,8 @@ def _render_action_panel(
     if st.button("次の入力待ちまで進める", type="primary", use_container_width=True):
         _run_until_input(
             st,
-            client=client,
             settings=settings,
+            api_url=api_url,
             game_id=game_id,
             human_player_id=human_player_id,
             control_token=control_token,
@@ -397,7 +381,8 @@ def _render_action_panel(
 def _render_action_form(
     st: Any,
     *,
-    client: GameApiClient,
+    settings: AppSettings,
+    api_url: str,
     game_id: str,
     human_player_id: str,
     control_token: str,
@@ -405,23 +390,30 @@ def _render_action_form(
 ) -> None:
     if screen.observation is None:
         return
+
     st.divider()
     st.markdown("#### できる行動")
-    actions = screen.observation.available_actions
-    selected_label = st.radio(
+    action_choices = screen.observation.action_choices
+    selected_action_type = st.radio(
         "行動",
-        [action_label(action) for action in actions],
+        [choice.action_type for choice in action_choices],
+        format_func=lambda value: _action_choice_label(_find_action_choice(action_choices, value)),
         horizontal=True,
         label_visibility="collapsed",
     )
-    selected_action = actions[[action_label(action) for action in actions].index(selected_label)]
-    candidates = screen.observation.target_candidates.get(selected_action, [])
+    selected_action = _find_action_choice(action_choices, str(selected_action_type))
+    candidates = screen.observation.target_candidates.get(selected_action.action_type, [])
+
     target_id = None
-    if candidates:
-        target_id = st.selectbox("対象を選ぶ", candidates)
+    if selected_action.requires_target:
+        if candidates:
+            selected_target = st.selectbox("対象を選ぶ", candidates)
+            target_id = str(selected_target) if selected_target else None
+        else:
+            st.warning("選べる対象がありません。")
 
     message = None
-    if selected_action == "speech":
+    if selected_action.requires_message:
         message = st.text_area(
             "発言内容",
             key=KEY_MESSAGE,
@@ -429,63 +421,122 @@ def _render_action_form(
             max_chars=200,
         )
 
-    send_label = f"{action_label(selected_action)}を送信"
-    if st.button(send_label, type="primary", use_container_width=True):
-        if selected_action == "speech" and not str(message or "").strip():
+    missing_target = selected_action.requires_target and not target_id
+    if st.button(
+        "入力を送信",
+        type="primary",
+        use_container_width=True,
+        disabled=missing_target,
+    ):
+        if selected_action.requires_message and not str(message or "").strip():
             st.warning("発言内容を入力してください。")
             return
-        if selected_action not in {"speech", "pass"} and not target_id:
-            st.warning("対象を選んでください。")
-            return
         try:
-            workflows.submit_player_action(
-                client,
-                game_id,
-                human_player_id,
-                SubmitPlayerActionRequest(
-                    type=cast(Any, selected_action),
-                    target_id=str(target_id) if target_id else None,
-                    message=str(message).strip() if message else None,
-                ),
+            submit_screen_action(
+                api_url=api_url,
+                settings=settings,
+                game_id=game_id,
+                human_player_id=human_player_id,
                 control_token=control_token,
+                action_type=selected_action.action_type,
+                target_id=target_id,
+                message=str(message).strip() if message else None,
             )
         except AppError as exc:
             st.error(exc.detail)
             return
         st.session_state[KEY_MESSAGE] = ""
-        st.success("行動を送信しました。")
+        st.success("入力を送信しました。")
         st.rerun()
 
 
 def _run_until_input(
     st: Any,
     *,
-    client: GameApiClient,
     settings: AppSettings,
+    api_url: str,
     game_id: str,
     human_player_id: str,
     control_token: str,
 ) -> None:
     try:
-        for _ in range(settings.streamlit_max_auto_steps):
-            current = workflows.get_game(client, game_id).state
-            if current.status == "completed":
-                st.rerun()
-                return
-            observation = _load_observation(
-                client,
-                game_id=game_id,
-                human_player_id=human_player_id,
-                control_token=control_token,
-            )
-            if observation is not None and observation.observation.get("available_actions"):
-                st.rerun()
-                return
-            workflows.step_game(client, game_id)
+        result = advance_until_input(
+            api_url=api_url,
+            settings=settings,
+            game_id=game_id,
+            human_player_id=human_player_id,
+            control_token=control_token,
+        )
     except AppError as exc:
         st.error(exc.detail)
         return
-    st.warning("自動進行の上限に達しました。現在の状態を確認してください。")
+    if result.completed or result.reached_input:
+        st.rerun()
+        return
+    if result.hit_limit:
+        st.warning("進行の上限に達しました。現在の状態を確認してください。")
+
+
+def _seat_html(seat: PlayerSeatView) -> str:
+    classes = ["wa-seat", f"wa-seat-activity-{_css_token(seat.activity_tone)}"]
+    if seat.is_human:
+        classes.append("wa-seat-human")
+    if seat.is_current:
+        classes.append("wa-seat-current")
+    if not seat.is_alive:
+        classes.append("wa-seat-dead")
+    status_class = "wa-chip" if seat.is_alive else "wa-chip wa-chip-muted"
+    return _html(
+        f"""
+    <article class="{" ".join(classes)}">
+        <div class="wa-seat-avatar">👤</div>
+        <b>{escape(seat.name)}</b>
+        <span class="wa-seat-id">{escape(seat.player_id)}</span>
+        <div class="{status_class}">{escape(seat.status)}</div>
+        <div class="wa-activity">{escape(seat.activity)}</div>
+    </article>
+    """
+    )
+
+
+def _timeline_html(item: TimelineItemView) -> str:
+    tone = _css_token(item.tone)
+    return _html(
+        f"""
+    <div class="wa-timeline-row wa-timeline-row-{tone}">
+        <div class="wa-timeline-day">
+            <b>{escape(item.day_label)}</b>
+            <span>{escape(item.time_text)}</span>
+        </div>
+        <div class="wa-timeline-card">
+            <b>{escape(item.icon)} {escape(item.title)}</b>
+            <div>{escape(item.detail)}</div>
+        </div>
+    </div>
+    """
+    )
+
+
+def _find_action_choice(
+    action_choices: list[ActionChoiceView],
+    action_type: object,
+) -> ActionChoiceView:
+    for choice in action_choices:
+        if choice.action_type == str(action_type):
+            return choice
+    return action_choices[0]
+
+
+def _action_choice_label(action: ActionChoiceView) -> str:
+    return f"{action.icon} {action.label}"
+
+
+def _css_token(value: str) -> str:
+    return "".join(char for char in value.lower() if char.isalnum() or char == "-") or "neutral"
+
+
+def _html(markup: str) -> str:
+    return dedent(markup).strip()
 
 
 def _streamlit() -> Any:
