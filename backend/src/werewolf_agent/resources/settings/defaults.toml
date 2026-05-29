@@ -26,10 +26,16 @@ cli_poll_interval_seconds = 0.0
 cli_event_limit = 100
 cli_output_format = "table"
 
-streamlit_api_url = "http://127.0.0.1:8000/api/v1"
+streamlit_api_url = ""
 streamlit_http_timeout_seconds = 10.0
+streamlit_refresh_interval_seconds = 5.0
 streamlit_event_limit = 100
+streamlit_turn_limit = 100
+streamlit_run_limit = 20
 streamlit_max_auto_steps = 64
+streamlit_language = "ja"
+streamlit_page_title = "Werewolf Agent"
+streamlit_service_name = "werewolf-agent-streamlit"
 
 api_title = "Werewolf Agent API"
 api_version = "0.1.0"

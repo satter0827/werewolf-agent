@@ -19,10 +19,14 @@ def load_app_settings() -> AppSettings:
     return get_settings()
 
 
-def configure_interface_logging(settings: AppSettings | None = None) -> AppSettings:
+def configure_interface_logging(
+    settings: AppSettings | None = None,
+    *,
+    service_name: str | None = None,
+) -> AppSettings:
     """Configure logging for an interface process and return the settings used."""
     loaded_settings = settings or load_app_settings()
-    configure_logging(loaded_settings)
+    configure_logging(loaded_settings, service_name=service_name)
     return loaded_settings
 
 

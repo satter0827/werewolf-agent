@@ -31,7 +31,7 @@ from werewolf_agent.contracts.schemas import (
 from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
 from werewolf_agent.interface.entrypoint.cui.app import app
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
-from werewolf_agent.interface.entrypoint.shared.client import HttpGameApiClient
+from werewolf_agent.interface.shared.api_client import HttpGameApiClient
 
 
 def _state(

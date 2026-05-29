@@ -2897,8 +2897,14 @@ llm = [
     { name = "langchain-openai" },
     { name = "openai" },
 ]
-ui = [
+streamlit = [
+    { name = "alembic" },
+    { name = "fastapi" },
+    { name = "psycopg", extra = ["binary"] },
+    { name = "sqlalchemy" },
+    { name = "sse-starlette" },
     { name = "streamlit" },
+    { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.dev-dependencies]
@@ -2916,24 +2922,30 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", marker = "extra == 'api'", specifier = ">=1.14,<2" },
+    { name = "alembic", marker = "extra == 'streamlit'", specifier = ">=1.14,<2" },
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,<1" },
+    { name = "fastapi", marker = "extra == 'streamlit'", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "langchain-core", specifier = ">=0.3,<0.4" },
     { name = "langchain-openai", marker = "extra == 'llm'", specifier = ">=0.3,<0.4" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.59,<2" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'api'", specifier = ">=3.2,<4" },
+    { name = "psycopg", extras = ["binary"], marker = "extra == 'streamlit'", specifier = ">=3.2,<4" },
     { name = "pydantic", specifier = ">=2.10,<3" },
     { name = "pydantic-settings", specifier = ">=2.7,<3" },
     { name = "python-dotenv", specifier = ">=1.0,<2" },
     { name = "rich", specifier = ">=13.9,<15" },
     { name = "sqlalchemy", marker = "extra == 'api'", specifier = ">=2.0,<3" },
+    { name = "sqlalchemy", marker = "extra == 'streamlit'", specifier = ">=2.0,<3" },
     { name = "sse-starlette", marker = "extra == 'api'", specifier = ">=2.2,<4" },
-    { name = "streamlit", marker = "extra == 'ui'", specifier = ">=1.40,<2" },
+    { name = "sse-starlette", marker = "extra == 'streamlit'", specifier = ">=2.2,<4" },
+    { name = "streamlit", marker = "extra == 'streamlit'", specifier = ">=1.41,<2" },
     { name = "structlog", specifier = ">=24.4,<26" },
     { name = "typer", specifier = ">=0.15,<1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.34,<1" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'streamlit'", specifier = ">=0.34,<1" },
 ]
-provides-extras = ["api", "llm", "ui"]
+provides-extras = ["api", "llm", "streamlit"]
 
 [package.metadata.requires-dev]
 dev = [

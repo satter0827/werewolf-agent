@@ -13,11 +13,6 @@ from werewolf_agent.contracts.schemas import (
     PublicGameState,
     SubmitPlayerActionRequest,
 )
-from werewolf_agent.interface.entrypoint.shared import (
-    GameApiClient,
-    HttpGameApiClient,
-    build_create_game_request,
-)
 from werewolf_agent.interface.entrypoint.streamlit.icons import action_label
 from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_API_URL,
@@ -34,17 +29,20 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     build_game_screen_view,
 )
+from werewolf_agent.interface.shared import workflows
+from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
+from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 
 def main() -> None:
     """Render the Streamlit application."""
     st = _streamlit()
     settings = get_settings()
-    st.set_page_config(page_title="Werewolf Agent", page_icon="🐺", layout="wide")
+    st.set_page_config(page_title=settings.streamlit_page_title, page_icon="🐺", layout="wide")
     st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
     api_url = _render_sidebar(st, settings)
-    client = HttpGameApiClient(api_url, timeout=settings.streamlit_http_timeout_seconds)
+    client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
     game_id = text_value(st.session_state, KEY_GAME_ID)
     human_player_id = text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1")
     control_token = text_value(st.session_state, KEY_CONTROL_TOKEN)
@@ -54,8 +52,8 @@ def main() -> None:
         return
 
     try:
-        state = client.get_game(game_id).state
-        turns = client.list_turns(game_id, limit=settings.streamlit_event_limit).turns
+        state = workflows.get_game(client, game_id).state
+        turns = workflows.list_turns(client, game_id, limit=settings.streamlit_turn_limit).turns
         observation = _load_observation(
             client,
             game_id=game_id,
@@ -95,12 +93,18 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
     st.sidebar.caption("プレイ")
     st.sidebar.divider()
     st.sidebar.subheader("API 接続")
-    default_api_url = text_value(st.session_state, KEY_API_URL, settings.streamlit_api_url)
+    default_api_url = text_value(
+        st.session_state,
+        KEY_API_URL,
+        settings.streamlit_resolved_api_url,
+    )
     api_url = st.sidebar.text_input("API Base URL", value=default_api_url)
     st.session_state[KEY_API_URL] = api_url
     if st.sidebar.button("接続を確認", use_container_width=True):
         try:
-            HttpGameApiClient(api_url, timeout=settings.streamlit_http_timeout_seconds).health()
+            workflows.check_health(
+                build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
+            )
         except AppError as exc:
             st.sidebar.error(exc.detail)
         else:
@@ -173,14 +177,8 @@ def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> Non
     if current_game_id:
         st.sidebar.caption(f"選択中: {current_game_id}")
     try:
-        runs = (
-            HttpGameApiClient(
-                api_url,
-                timeout=settings.streamlit_http_timeout_seconds,
-            )
-            .list_games(limit=10)
-            .runs
-        )
+        client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
+        runs = workflows.list_games(client, limit=settings.streamlit_run_limit).runs
     except AppError:
         st.sidebar.caption("ゲーム一覧は API 接続後に表示されます。")
         return
@@ -231,16 +229,14 @@ def _create_game(
             players=player_count,
             seed=seed,
             human_player=human_player_id,
-            role_count=[],
+            role_count_entries=[],
             tie_break_policy="no_elimination",
             day_speech_turns=1,
             allow_self_vote=False,
             default_player_count=settings.game_default_player_count,
         )
-        created = HttpGameApiClient(
-            api_url,
-            timeout=settings.streamlit_http_timeout_seconds,
-        ).create_game(request)
+        client = build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
+        created = workflows.create_game(client, request)
     except (AppError, ValueError) as exc:
         st.sidebar.error(str(exc))
         return
@@ -270,7 +266,8 @@ def _load_observation(
 ) -> PrivateObservationResponse | None:
     if not game_id or not human_player_id or not control_token:
         return None
-    return client.get_private_observation(
+    return workflows.get_private_observation(
+        client,
         game_id,
         human_player_id,
         control_token=control_token,
@@ -441,7 +438,8 @@ def _render_action_form(
             st.warning("対象を選んでください。")
             return
         try:
-            client.submit_player_action(
+            workflows.submit_player_action(
+                client,
                 game_id,
                 human_player_id,
                 SubmitPlayerActionRequest(
@@ -470,7 +468,7 @@ def _run_until_input(
 ) -> None:
     try:
         for _ in range(settings.streamlit_max_auto_steps):
-            current = client.get_game(game_id).state
+            current = workflows.get_game(client, game_id).state
             if current.status == "completed":
                 st.rerun()
                 return
@@ -483,7 +481,7 @@ def _run_until_input(
             if observation is not None and observation.observation.get("available_actions"):
                 st.rerun()
                 return
-            client.step_game(game_id)
+            workflows.step_game(client, game_id)
     except AppError as exc:
         st.error(exc.detail)
         return

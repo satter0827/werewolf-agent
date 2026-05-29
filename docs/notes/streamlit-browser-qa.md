@@ -16,7 +16,7 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ```bash
 uv run --extra api alembic upgrade head
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8000
-uv run --extra ui streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
+uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8501 --server.headless true
 ```
 
 HTTP smoke:
@@ -134,9 +134,12 @@ mobile は viewport を `390x844` にしてから
 
 ## 今回の確認結果
 
+- 実行日: 2026-05-29
+- API: `http://127.0.0.1:8765/api/v1`
+- Streamlit: `http://127.0.0.1:8766`
 - desktop: `ゲームを始める` から playable state まで到達
 - mobile: sidebar を開いて `ゲームを始める` から playable state まで到達
 - console error / warning: なし
-- screenshot 保存先:
-  - `.werewolf-agent/qa/streamlit-browser-qa-desktop.png`
-  - `.werewolf-agent/qa/streamlit-browser-qa-mobile.png`
+- Browser output に desktop / mobile の screenshot を表示できることを確認
+- `tab.screenshot({ path })` は成功を返しても、この環境では PowerShell 側から保存ファイルを確認できない場合がある
+- host filesystem 上の保存が必要な場合は、Browser output の画像取得後に app 側の artifact 保存経路を使う

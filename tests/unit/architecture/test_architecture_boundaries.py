@@ -20,7 +20,6 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
     entrypoint_path = PACKAGE / "interface" / "entrypoint"
     imported = _imports_under(entrypoint_path / "api")
     imported.extend(_imports_under(entrypoint_path / "cui"))
-    imported.extend(_imports_under(entrypoint_path / "shared"))
     imported.extend(_imports_under(entrypoint_path / "streamlit"))
 
     assert not [
@@ -263,6 +262,45 @@ def test_external_wire_schemas_are_imported_from_contracts() -> None:
     ]
 
 
+def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
+    forbidden_modules = (
+        "rich",
+        "streamlit",
+        "typer",
+        "werewolf_agent.interface.entrypoint",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "shared")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
+def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
+    forbidden_modules = (
+        "rich",
+        "streamlit",
+        "typer",
+        "werewolf_agent.domain",
+        "werewolf_agent.interface.shared",
+        "werewolf_agent.usecase",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
+    view_model_imports = [
+        (path, module) for path, module in imported if path.name == "view_models.py"
+    ]
+
+    assert not [
+        (path, module)
+        for path, module in view_model_imports
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
 def test_contracts_do_not_import_api_frameworks() -> None:
     forbidden_modules = (
         "fastapi",
@@ -314,6 +352,7 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not list((PACKAGE / "commons" / "events").glob("*.py"))
     assert not list((PACKAGE / "interface" / "events").glob("*.py"))
     assert not (PACKAGE / "interface" / "shared" / "schemas.py").exists()
+    assert not (PACKAGE / "interface" / "entrypoint" / "shared").exists()
     assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "agents.py").exists()

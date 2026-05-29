@@ -92,6 +92,17 @@ def test_structlog_uses_same_jsonl_processors(tmp_path: Path) -> None:
     assert payload["token"] == "[REDACTED]"
 
 
+def test_configure_logging_supports_service_name_override(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_logging(settings, service_name="werewolf-agent-streamlit")
+
+    logging.getLogger("werewolf_agent.tests").info("streamlit log")
+
+    payload = _read_log(settings.log_file_path)
+
+    assert payload["service.name"] == "werewolf-agent-streamlit"
+
+
 def test_bound_log_context_does_not_leak_outside_scope() -> None:
     assert get_log_context() == {}
 

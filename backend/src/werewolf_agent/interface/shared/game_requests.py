@@ -1,4 +1,4 @@
-"""Request builders shared by human-facing entry points."""
+"""Shared request builders for public game API clients."""
 
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ def build_create_game_request(
     players: int | None,
     seed: int | None,
     human_player: str | None,
-    role_count: list[str],
+    role_count_entries: list[str],
     tie_break_policy: str,
     day_speech_turns: int,
     allow_self_vote: bool,
     default_player_count: int,
 ) -> CreateGameRequest:
-    """Build a public create-game request for CLI and Streamlit entry points."""
+    """Build a public create-game request shared by CLI and Streamlit."""
     explicit_players = None
     if human_player is not None:
         player_count = players or default_player_count
@@ -50,8 +50,9 @@ def build_create_game_request(
             )
             for index in range(1, player_count + 1)
         ]
+
     rule_config = CreateGameRuleConfig(
-        role_counts=parse_role_counts(role_count) or None,
+        role_counts=parse_role_counts(role_count_entries) or None,
         tie_break_policy=cast(TieBreakPolicyId, tie_break_policy),
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
@@ -65,7 +66,7 @@ def build_create_game_request(
 
 
 def parse_role_counts(entries: list[str]) -> dict[RoleId, int]:
-    """Parse CLI-style role count entries into request schema values."""
+    """Parse role=count entries into API role count payload values."""
     role_counts: dict[RoleId, int] = {}
     for entry in entries:
         key, separator, value = entry.partition("=")

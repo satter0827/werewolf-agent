@@ -69,6 +69,29 @@
       "justMyCode": true
     },
     {
+      "name": "UI: Streamlit",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py",
+        "--server.headless=true",
+        "--server.port",
+        "${input:streamlitPort}",
+        "--browser.gatherUsageStats=false"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
+        "WEREWOLF_STREAMLIT_LANGUAGE": "ja"
+      },
+      "justMyCode": true
+    },
+    {
       "name": "CLI: create",
       "type": "debugpy",
       "request": "launch",
@@ -315,6 +338,14 @@
       "justMyCode": true
     }
   ],
+  "compounds": [
+    {
+      "name": "App: API + Streamlit",
+      "configurations": ["API: uvicorn", "UI: Streamlit"],
+      "preLaunchTask": "API: migrate",
+      "stopAll": true
+    }
+  ],
   "inputs": [
     {
       "id": "gameId",
@@ -327,6 +358,12 @@
       "type": "promptString",
       "description": "Public event JSONL path for CLI replay",
       "default": ".werewolf-agent/logs/game-001.jsonl"
+    },
+    {
+      "id": "streamlitPort",
+      "type": "promptString",
+      "description": "Streamlit port",
+      "default": "8501"
     }
   ]
 }

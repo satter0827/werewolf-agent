@@ -13,7 +13,7 @@ FastAPI は CLI と将来の UI が使う公開契約です。DB には完全状
 - `llm` agent と LangChain `fake` provider による自動進行
 - game 作成、一覧、状態取得、1 step 進行、public event、turn history 取得
 - Problem Details 形式の error response
-- Streamlit play 画面は 1 human player を操作できる。React UI、永続 login/session 管理は未実装
+- Streamlit のプレイ画面は public API 経由で実装済み。React UI、永続 login/session 管理は未実装
 - 手動 action と private observation は、作成時に返す player token で 1 人分だけ操作できる
 
 ## Endpoints

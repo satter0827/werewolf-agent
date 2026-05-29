@@ -88,10 +88,17 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.cli_poll_interval_seconds == 0.0
     assert settings.cli_event_limit == 100
     assert settings.cli_output_format == "table"
-    assert settings.streamlit_api_url == "http://127.0.0.1:8000/api/v1"
+    assert settings.streamlit_api_url == ""
+    assert settings.streamlit_resolved_api_url == settings.cli_api_url
     assert settings.streamlit_http_timeout_seconds == 10.0
+    assert settings.streamlit_refresh_interval_seconds == 5.0
     assert settings.streamlit_event_limit == 100
+    assert settings.streamlit_turn_limit == 100
+    assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
+    assert settings.streamlit_language == "ja"
+    assert settings.streamlit_page_title == "Werewolf Agent"
+    assert settings.streamlit_service_name == "werewolf-agent-streamlit"
     assert settings.api_title == "Werewolf Agent API"
     assert settings.api_service_name == "werewolf-agent-api"
     assert settings.api_version == "0.1.0"
@@ -153,8 +160,14 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_API_URL", "http://ui-api.test/api/v1")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS", "5")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS", "2")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_EVENT_LIMIT", "50")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_TURN_LIMIT", "40")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_RUN_LIMIT", "9")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
 
     settings = AppSettings(_env_file=None)
@@ -174,9 +187,16 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.cli_api_url == "http://api.test/api/v1"
     assert settings.cli_output_format == "json"
     assert settings.streamlit_api_url == "http://ui-api.test/api/v1"
+    assert settings.streamlit_resolved_api_url == "http://ui-api.test/api/v1"
     assert settings.streamlit_http_timeout_seconds == 5.0
+    assert settings.streamlit_refresh_interval_seconds == 2.0
     assert settings.streamlit_event_limit == 50
+    assert settings.streamlit_turn_limit == 40
+    assert settings.streamlit_run_limit == 9
     assert settings.streamlit_max_auto_steps == 12
+    assert settings.streamlit_language == "en"
+    assert settings.streamlit_page_title == "Werewolf Console"
+    assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
 
 
@@ -244,6 +264,7 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("log_output", "socket"),
         ("log_third_party_level", "VERBOSE"),
         ("cli_output_format", "xml"),
+        ("streamlit_language", "fr"),
         ("game_supported_agent_type", "bot"),
         ("llm_provider", "openai"),
     ],
