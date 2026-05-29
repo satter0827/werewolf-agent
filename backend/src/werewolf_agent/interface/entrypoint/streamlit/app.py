@@ -1,7 +1,8 @@
-"""Streamlit console for the public Werewolf Agent API."""
+"""Streamlit observer console for the public Werewolf Agent API."""
 
 from __future__ import annotations
 
+import html
 import importlib
 import logging
 from collections.abc import Callable
@@ -19,14 +20,17 @@ from werewolf_agent.commons.configuration import (
 from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
+    LOG_STREAMLIT_CONNECTION_CHECKED,
     LOG_STREAMLIT_GAME_CREATED,
     LOG_STREAMLIT_GAME_STEPPED,
     LOG_STREAMLIT_REFRESHED,
 )
 from werewolf_agent.contracts import AppError, ConfigError
 from werewolf_agent.contracts.schemas import (
+    GameEventsResponse,
     GameResponse,
     GameRunsResponse,
+    GameTurnsResponse,
     PrivateObservationResponse,
     PublicGameState,
     SubmitPlayerActionRequest,
@@ -36,6 +40,15 @@ from werewolf_agent.interface.entrypoint.streamlit.i18n import (
     Language,
     normalize_language,
     text,
+)
+from werewolf_agent.interface.entrypoint.streamlit.view_models import (
+    ObserverHint,
+    TimelineItem,
+    build_observer_hint,
+    build_player_status_rows,
+    build_timeline_items_from_events,
+    build_timeline_items_from_turns,
+    resolve_phase_style,
 )
 from werewolf_agent.interface.shared import workflows
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
@@ -75,21 +88,22 @@ def render_app(
     language = _render_language_control(loaded_settings)
     api_url = _render_api_url_control(loaded_settings, language)
     client = client_factory(api_url, loaded_settings.streamlit_http_timeout_seconds)
-
-    st.title(text(language, "main_title"))
-    runs = _load_runs(client, loaded_settings, language)
-    active_game_id = _render_sidebar(
+    health = _check_connection(client, language=language, api_url=api_url)
+    runs = _load_runs(client, loaded_settings, language) if health is not None else None
+    active_game_id, auto_refresh = _render_sidebar(
         client=client,
         settings=loaded_settings,
         language=language,
         runs=runs,
-        api_url=api_url,
+        health=health,
     )
     _render_main_console(
         client=client,
         settings=loaded_settings,
         language=language,
         active_game_id=active_game_id,
+        runs=runs,
+        auto_refresh=auto_refresh,
     )
 
 
@@ -111,6 +125,7 @@ def _init_session(settings: AppSettings) -> None:
 
 
 def _render_language_control(settings: AppSettings) -> Language:
+    _render_sidebar_brand(settings)
     configured = normalize_language(
         str(st.session_state.get("language", settings.streamlit_language))
     )
@@ -120,19 +135,53 @@ def _render_language_control(settings: AppSettings) -> Language:
         text(configured, "language"),
         labels,
         index=0 if configured == "ja" else 1,
-        key="language_label",
     )
     language = normalize_language(str(label_to_language.get(str(selected), "ja")))
     st.session_state["language"] = language
     return language
 
 
+def _render_sidebar_brand(settings: AppSettings) -> None:
+    st.sidebar.markdown(
+        f"""
+        <div class="wa-sidebar-brand">
+          <div class="wa-brand-mark">W</div>
+          <div>
+            <div class="wa-brand-title">{_escape(settings.streamlit_page_title)}</div>
+            <div class="wa-brand-caption">Observer Console</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _render_api_url_control(settings: AppSettings, language: Language) -> str:
     st.sidebar.header(text(language, "api_connection"))
-    default_api_url = str(st.session_state.get("api_url", settings.streamlit_resolved_api_url))
-    api_url = str(st.sidebar.text_input(text(language, "api_url"), value=default_api_url))
-    st.session_state["api_url"] = api_url
-    return api_url
+    return str(
+        st.sidebar.text_input(
+            text(language, "api_url"),
+            value=settings.streamlit_resolved_api_url,
+        )
+    )
+
+
+def _check_connection(
+    client: GameApiClient,
+    *,
+    language: Language,
+    api_url: str,
+) -> dict[str, str] | None:
+    health = _safe_call(language, lambda: workflows.check_health(client))
+    logger.info(
+        LOG_STREAMLIT_CONNECTION_CHECKED,
+        extra={
+            "api_url": api_url,
+            "connected": health is not None,
+            "api_service": health.get("service", "") if health is not None else "",
+        },
+    )
+    return health
 
 
 def _render_sidebar(
@@ -141,35 +190,42 @@ def _render_sidebar(
     settings: AppSettings,
     language: Language,
     runs: GameRunsResponse | None,
-    api_url: str,
-) -> str:
-    health = _safe_call(language, lambda: workflows.check_health(client))
+    health: dict[str, str] | None,
+) -> tuple[str, bool]:
     if health is None:
         st.sidebar.error(text(language, "connection_failed"))
     else:
         st.sidebar.success(text(language, "connection_ok"))
-    logger.debug(
-        LOG_STREAMLIT_REFRESHED,
-        extra={"api_url": api_url, "has_health": health is not None},
-    )
 
+    st.sidebar.divider()
+    active_game_id = _render_game_selector(runs=runs, language=language)
+    _render_create_game_controls(client=client, settings=settings, language=language)
+    auto_refresh = _render_refresh_controls(settings=settings, language=language)
+    _render_sidebar_nav(language)
+    return active_game_id, auto_refresh
+
+
+def _render_game_selector(
+    *,
+    runs: GameRunsResponse | None,
+    language: Language,
+) -> str:
+    st.sidebar.header(text(language, "active_game"))
     run_ids = [run.game_id for run in runs.runs] if runs is not None else []
     active_game_id = str(st.session_state.get("active_game_id", ""))
     if active_game_id and active_game_id not in run_ids:
         run_ids.insert(0, active_game_id)
-    if run_ids:
-        selected = st.sidebar.selectbox(
-            text(language, "active_game"),
-            run_ids,
-            index=run_ids.index(active_game_id) if active_game_id in run_ids else 0,
-        )
-        active_game_id = str(selected)
-        st.session_state["active_game_id"] = active_game_id
-    else:
+    if not run_ids:
         st.sidebar.info(text(language, "no_active_game"))
+        return active_game_id
 
-    _render_create_game_controls(client=client, settings=settings, language=language)
-    _render_refresh_controls(settings=settings, language=language)
+    selected = st.sidebar.selectbox(
+        text(language, "active_game"),
+        run_ids,
+        index=run_ids.index(active_game_id) if active_game_id in run_ids else 0,
+    )
+    active_game_id = str(selected)
+    st.session_state["active_game_id"] = active_game_id
     return active_game_id
 
 
@@ -179,6 +235,7 @@ def _render_create_game_controls(
     settings: AppSettings,
     language: Language,
 ) -> None:
+    st.sidebar.divider()
     st.sidebar.header(text(language, "create_game"))
     players = int(
         st.sidebar.number_input(
@@ -189,8 +246,9 @@ def _render_create_game_controls(
             step=1,
         )
     )
-    seed_text = str(st.sidebar.text_input(text(language, "seed"), value="1")).strip()
-    seed = int(seed_text) if seed_text else None
+    seed_label = text(language, "seed")
+    seed_text = str(st.sidebar.text_input(seed_label, value="1")).strip()
+    seed = _parse_optional_int(seed_text, label=seed_label, language=language)
     include_human = bool(st.sidebar.checkbox(text(language, "use_human_player"), value=False))
     human_player = None
     if include_human:
@@ -198,9 +256,11 @@ def _render_create_game_controls(
         human_player = str(st.sidebar.selectbox(text(language, "human_player"), player_options))
 
     if st.sidebar.button(text(language, "create_game"), type="primary"):
+        if seed is _INVALID_INTEGER:
+            return
         request = build_create_game_request(
             players=players,
-            seed=seed,
+            seed=cast(int | None, seed),
             human_player=human_player,
             role_count_entries=[],
             tie_break_policy="no_elimination",
@@ -224,10 +284,12 @@ def _render_create_game_controls(
         st.rerun()
 
 
-def _render_refresh_controls(*, settings: AppSettings, language: Language) -> None:
+def _render_refresh_controls(*, settings: AppSettings, language: Language) -> bool:
+    st.sidebar.divider()
     st.sidebar.header(text(language, "refresh_controls"))
     auto_refresh = bool(st.sidebar.checkbox(text(language, "auto_refresh"), value=False))
     if st.sidebar.button(text(language, "manual_refresh")):
+        logger.info(LOG_STREAMLIT_REFRESHED, extra={"trigger": "manual"})
         st.rerun()
     if auto_refresh and settings.streamlit_refresh_interval_seconds > 0:
         interval = max(1, int(settings.streamlit_refresh_interval_seconds))
@@ -235,6 +297,22 @@ def _render_refresh_controls(*, settings: AppSettings, language: Language) -> No
             f"<meta http-equiv='refresh' content='{interval}'>",
             unsafe_allow_html=True,
         )
+    return auto_refresh
+
+
+def _render_sidebar_nav(language: Language) -> None:
+    st.sidebar.divider()
+    st.sidebar.header(text(language, "nav"))
+    st.sidebar.radio(
+        text(language, "nav"),
+        [
+            text(language, "nav_observe"),
+            text(language, "nav_manage"),
+            text(language, "nav_diagnostics"),
+        ],
+        index=0,
+        label_visibility="collapsed",
+    )
 
 
 def _render_main_console(
@@ -243,185 +321,331 @@ def _render_main_console(
     settings: AppSettings,
     language: Language,
     active_game_id: str,
+    runs: GameRunsResponse | None,
+    auto_refresh: bool,
 ) -> None:
+    last_refreshed_at = datetime.now().astimezone()
     if not active_game_id:
-        st.info(text(language, "no_active_game"))
-        _render_runs_tab_content(None, language)
+        _render_empty_console(language=language, runs=runs, auto_refresh=auto_refresh)
         return
 
     game = _safe_call(language, lambda: workflows.get_game(client, active_game_id))
     if game is None:
         return
 
-    _render_status_strip(game.state, language)
-    _render_players_and_step(client=client, game=game, language=language)
-
-    timeline_tab, events_tab, action_tab, runs_tab = st.tabs(
-        [
-            text(language, "timeline"),
-            text(language, "events"),
-            text(language, "human_action"),
-            text(language, "runs"),
-        ]
+    turns = _safe_call(
+        language,
+        lambda: workflows.list_turns(client, active_game_id, limit=settings.streamlit_turn_limit),
     )
-    with timeline_tab:
-        _render_timeline_tab(client, settings, language, active_game_id)
-    with events_tab:
-        _render_events_tab(client, settings, language, active_game_id)
-    with action_tab:
-        _render_human_action_tab(client, language, game.state)
-    with runs_tab:
-        _render_runs_tab(client, settings, language)
-
-
-def _render_status_strip(state: PublicGameState, language: Language) -> None:
-    columns = st.columns(6)
-    columns[0].metric(text(language, "game_id"), state.game_id)
-    columns[1].metric(text(language, "status"), state.status)
-    columns[2].metric(text(language, "phase"), state.phase)
-    columns[3].metric(text(language, "day"), state.day)
-    columns[4].metric(
-        text(language, "alive_count"),
-        f"{len(state.alive_player_ids)} / {len(state.players)}",
+    events = _safe_call(
+        language,
+        lambda: workflows.list_events(client, active_game_id, limit=settings.streamlit_event_limit),
     )
-    columns[5].metric(
-        text(language, "current_winner"),
-        state.winner or text(language, "winner_pending"),
+    timeline_items = _timeline_items(turns=turns, events=events)
+    turn_count = _turn_count_for_game(
+        runs=runs,
+        game_id=active_game_id,
+        fallback=max((item.sequence for item in timeline_items), default=0),
     )
 
+    _render_status_strip(
+        client=client,
+        game=game,
+        language=language,
+        turn_count=turn_count,
+        last_refreshed_at=last_refreshed_at,
+    )
+    timeline_column, side_column = st.columns([2.35, 1.0], gap="medium")
+    with timeline_column:
+        _render_timeline(timeline_items, language=language)
+        _render_events_panel(events, language=language)
+    with side_column:
+        _render_observer_hint(build_observer_hint(game.state), game.state, language=language)
+        _render_player_status_panel(game.state, language=language)
+        _render_human_action_panel(client=client, language=language, state=game.state)
+        _render_update_panel(
+            auto_refresh=auto_refresh,
+            last_refreshed_at=last_refreshed_at,
+            language=language,
+        )
+        _render_runs_panel(runs, language=language)
 
-def _render_players_and_step(
+
+def _render_empty_console(
+    *,
+    language: Language,
+    runs: GameRunsResponse | None,
+    auto_refresh: bool,
+) -> None:
+    _render_empty_status_strip(language)
+    timeline_column, side_column = st.columns([2.35, 1.0], gap="medium")
+    with timeline_column:
+        st.subheader(text(language, "game_flow"))
+        st.info(text(language, "no_active_game"))
+    with side_column:
+        _render_update_panel(
+            auto_refresh=auto_refresh,
+            last_refreshed_at=datetime.now().astimezone(),
+            language=language,
+        )
+        _render_runs_panel(runs, language=language)
+
+
+def _render_empty_status_strip(language: Language) -> None:
+    columns = st.columns(5, gap="small")
+    values = [
+        (text(language, "phase"), "-"),
+        (text(language, "alive_players"), "-"),
+        (text(language, "elapsed_turns"), "-"),
+        (text(language, "last_refreshed"), _format_clock(datetime.now().astimezone())),
+        (text(language, "current_winner"), text(language, "winner_pending")),
+    ]
+    for column, (label, value) in zip(columns, values, strict=True):
+        with column:
+            _metric_card(label, value)
+
+
+def _render_status_strip(
     *,
     client: GameApiClient,
     game: GameResponse,
     language: Language,
+    turn_count: int,
+    last_refreshed_at: datetime,
 ) -> None:
-    st.subheader(text(language, "players"))
-    st.dataframe(_player_rows(game.state, language), width="stretch", hide_index=True)
-    if st.button(text(language, "step_game"), type="primary"):
-        stepped = _safe_call(language, lambda: workflows.step_game(client, game.game_id))
-        if stepped is not None:
-            logger.info(LOG_STREAMLIT_GAME_STEPPED, extra={"game_id": game.game_id})
-            st.success(text(language, "stepped_game"))
-            st.rerun()
+    state = game.state
+    columns = st.columns([1.1, 1.0, 1.0, 1.0, 1.0, 0.95], gap="small")
+    phase_label = _phase_label(state.phase, state.day, language)
+    values = [
+        (text(language, "phase"), phase_label),
+        (text(language, "alive_players"), f"{len(state.alive_player_ids)} / {len(state.players)}"),
+        (text(language, "elapsed_turns"), str(turn_count)),
+        (text(language, "last_refreshed"), _format_clock(last_refreshed_at)),
+        (text(language, "current_winner"), state.winner or text(language, "winner_pending")),
+    ]
+    for column, (label, value) in zip(columns[:5], values, strict=True):
+        with column:
+            _metric_card(label, value)
+    with columns[5]:
+        if st.button(text(language, "step_game"), type="primary", width="stretch"):
+            stepped = _safe_call(language, lambda: workflows.step_game(client, game.game_id))
+            if stepped is not None:
+                logger.info(LOG_STREAMLIT_GAME_STEPPED, extra={"game_id": game.game_id})
+                st.success(text(language, "stepped_game"))
+                st.rerun()
 
 
-def _render_timeline_tab(
-    client: GameApiClient,
-    settings: AppSettings,
-    language: Language,
-    game_id: str,
-) -> None:
-    turns = _safe_call(
-        language,
-        lambda: workflows.list_turns(client, game_id, limit=settings.streamlit_turn_limit),
+def _metric_card(label: str, value: object) -> None:
+    st.markdown(
+        f"""
+        <div class="wa-metric-card">
+          <div class="wa-metric-label">{_escape(label)}</div>
+          <div class="wa-metric-value">{_escape(value)}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if turns is None or not turns.turns:
+
+
+def _render_timeline(items: list[TimelineItem], *, language: Language) -> None:
+    st.subheader(text(language, "game_flow"))
+    st.caption(text(language, "game_flow_caption"))
+    if not items:
         st.info(text(language, "timeline_empty"))
         return
-    rows = [
-        {
-            "sequence": turn.sequence,
-            "day": turn.day,
-            "phase": turn.phase,
-            "event_type": turn.event_type,
-            "actor_id": turn.actor_id or "",
-            "occurred_at": _format_datetime(turn.occurred_at),
-        }
-        for turn in turns.turns
+
+    for item in items:
+        _render_timeline_item(item, language=language)
+
+
+def _render_timeline_item(item: TimelineItem, *, language: Language) -> None:
+    day_label = _phase_label(item.phase, item.day, language)
+    title = _timeline_title(item, language)
+    meta_parts = [
+        f"{text(language, 'source')}: {item.source}",
+        f"{text(language, 'event_type')}: {item.event_type}",
     ]
-    st.dataframe(rows, width="stretch", hide_index=True)
-
-
-def _render_events_tab(
-    client: GameApiClient,
-    settings: AppSettings,
-    language: Language,
-    game_id: str,
-) -> None:
-    events = _safe_call(
-        language,
-        lambda: workflows.list_events(client, game_id, limit=settings.streamlit_event_limit),
+    if item.actor_id:
+        meta_parts.append(f"actor_id: {item.actor_id}")
+    meta = " | ".join(meta_parts)
+    st.markdown(
+        f"""
+        <div class="wa-timeline-row">
+          <div class="wa-timeline-marker" style="border-color:{item.style.border};">
+            <div class="wa-phase-pill" style="color:{item.style.accent};">
+              {_escape(day_label)}
+            </div>
+            <div class="wa-timeline-time">{_escape(_format_clock(item.occurred_at))}</div>
+          </div>
+          <div class="wa-timeline-card"
+               style="border-color:{item.style.border}; background:{item.style.background};">
+            <div class="wa-timeline-card-accent" style="background:{item.style.accent};"></div>
+            <div class="wa-timeline-content">
+              <div class="wa-timeline-title">{_escape(title)}</div>
+              <div class="wa-timeline-summary">
+                {_escape(text(language, item.summary_key))}
+              </div>
+              <div class="wa-timeline-meta">{_escape(meta)}</div>
+            </div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-    if events is None or not events.events:
-        st.info(text(language, "events_empty"))
-        return
-    rows = [
-        {
-            "sequence": event.sequence,
-            "day": event.day,
-            "phase": event.phase,
-            "event_type": event.event_type,
-            "actor_id": event.actor_id or "",
-            "occurred_at": _format_datetime(event.occurred_at),
-        }
-        for event in events.events
-    ]
-    st.dataframe(rows, width="stretch", hide_index=True)
+    with st.expander(f"{text(language, 'detail')} #{item.sequence}"):
+        st.json(
+            {
+                "source": item.source,
+                "sequence": item.sequence,
+                "event_sequence": item.event_sequence,
+                "version": item.version,
+                "phase": item.phase,
+                "day": item.day,
+                "event_type": item.event_type,
+                "actor_id": item.actor_id,
+                "occurred_at": _format_datetime(item.occurred_at),
+                "payload": item.payload,
+            }
+        )
 
 
-def _render_human_action_tab(
+def _timeline_title(item: TimelineItem, language: Language) -> str:
+    translated = text(language, item.headline_key)
+    if item.actor_id and item.headline_key in {
+        "timeline_headline_player_spoke",
+        "timeline_headline_vote_cast",
+    }:
+        return f"{translated}: {item.actor_id}"
+    return translated
+
+
+def _render_events_panel(events: GameEventsResponse | None, *, language: Language) -> None:
+    with st.expander(text(language, "public_events"), expanded=False):
+        if events is None or not events.events:
+            st.info(text(language, "events_empty"))
+            return
+        rows = [
+            {
+                "sequence": event.sequence,
+                "day": event.day or "",
+                "phase": event.phase or "",
+                "event_type": event.event_type,
+                "actor_id": event.actor_id or "",
+                "occurred_at": _format_datetime(event.occurred_at),
+            }
+            for event in events.events
+        ]
+        st.dataframe(rows, width="stretch", hide_index=True)
+        for event in events.events:
+            with st.expander(f"{text(language, 'event_detail')} #{event.sequence}"):
+                st.json(event.model_dump(mode="json"))
+
+
+def _render_observer_hint(
+    hint: ObserverHint,
+    state: PublicGameState,
+    *,
+    language: Language,
+) -> None:
+    with st.container(border=True):
+        st.subheader(text(language, "observer_hint"))
+        st.markdown(f"**{text(language, hint.title_key).format(day=state.day)}**")
+        st.write(text(language, hint.body_key))
+        for bullet_key in hint.bullet_keys:
+            st.markdown(f"- {text(language, bullet_key)}")
+        st.info(text(language, hint.next_key))
+
+
+def _render_player_status_panel(state: PublicGameState, *, language: Language) -> None:
+    with st.container(border=True):
+        st.subheader(text(language, "player_status"))
+        for row in build_player_status_rows(state, human_player_id=_session_player_id()):
+            relation = f" ({text(language, row.relation_key)})" if row.relation_key else ""
+            status_class = "alive" if row.alive else "dead"
+            st.markdown(
+                f"""
+                <div class="wa-player-row">
+                  <span class="wa-player-dot {status_class}"></span>
+                  <span class="wa-player-name">
+                    {_escape(row.name)} <span class="wa-player-id">{_escape(row.player_id)}</span>
+                    {_escape(relation)}
+                  </span>
+                  <span class="wa-player-status {status_class}">
+                    {_escape(text(language, row.status_key))}
+                  </span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+
+def _render_human_action_panel(
+    *,
     client: GameApiClient,
     language: Language,
     state: PublicGameState,
 ) -> None:
-    st.caption(text(language, "token_help"))
-    player_ids = [player.id for player in state.players]
-    player_id = str(
-        st.selectbox(
-            text(language, "player_id"),
-            player_ids,
-            index=(
-                player_ids.index(_session_player_id()) if _session_player_id() in player_ids else 0
-            ),
+    with st.container(border=True):
+        st.subheader(text(language, "human_action"))
+        st.caption(text(language, "token_help"))
+        player_ids = [player.id for player in state.players]
+        player_id = str(
+            st.selectbox(
+                text(language, "player_id"),
+                player_ids,
+                index=(
+                    player_ids.index(_session_player_id())
+                    if _session_player_id() in player_ids
+                    else 0
+                ),
+            )
         )
-    )
-    st.session_state["human_player_id"] = player_id
-    token_default = _session_control_tokens().get(player_id, "")
-    control_token = str(
-        st.text_input(
-            text(language, "control_token"),
-            value=token_default,
-            type="password",
+        st.session_state["human_player_id"] = player_id
+        token_default = _session_control_tokens().get(player_id, "")
+        control_token = str(
+            st.text_input(
+                text(language, "control_token"),
+                value=token_default,
+                type="password",
+            )
         )
-    )
-    if control_token:
-        control_tokens = _session_control_tokens()
-        control_tokens[player_id] = control_token
-        st.session_state["control_tokens"] = control_tokens
-    if st.button(text(language, "clear_token")):
-        control_tokens = _session_control_tokens()
-        control_tokens.pop(player_id, None)
-        st.session_state["control_tokens"] = control_tokens
-        st.session_state["last_observation"] = None
-        st.rerun()
+        if control_token:
+            control_tokens = _session_control_tokens()
+            control_tokens[player_id] = control_token
+            st.session_state["control_tokens"] = control_tokens
+        if st.button(text(language, "clear_token")):
+            control_tokens = _session_control_tokens()
+            control_tokens.pop(player_id, None)
+            st.session_state["control_tokens"] = control_tokens
+            st.session_state["last_observation"] = None
+            st.rerun()
 
-    if st.button(text(language, "show_observation")) and control_token:
-        observation = _safe_call(
-            language,
-            lambda: workflows.get_private_observation(
-                client,
-                state.game_id,
-                player_id,
-                control_token=control_token,
-            ),
-        )
+        if st.button(text(language, "show_observation")) and control_token:
+            observation = _safe_call(
+                language,
+                lambda: workflows.get_private_observation(
+                    client,
+                    state.game_id,
+                    player_id,
+                    control_token=control_token,
+                ),
+            )
+            if observation is not None:
+                st.session_state["last_observation"] = observation
+                st.success(text(language, "observation_loaded"))
+
+        observation = _session_observation()
         if observation is not None:
-            st.session_state["last_observation"] = observation
-            st.success(text(language, "observation_loaded"))
-
-    observation = _session_observation()
-    if observation is not None:
-        st.subheader(text(language, "observation"))
-        st.json(observation.observation)
-        _render_action_composer(
-            client=client,
-            language=language,
-            state=state,
-            player_id=player_id,
-            control_token=control_token,
-            observation=observation,
-        )
+            st.markdown(f"**{text(language, 'observation')}**")
+            st.json(observation.observation)
+            _render_action_composer(
+                client=client,
+                language=language,
+                state=state,
+                player_id=player_id,
+                control_token=control_token,
+                observation=observation,
+            )
 
 
 def _render_action_composer(
@@ -473,38 +697,47 @@ def _render_action_composer(
                     "action_type": action_type,
                 },
             )
+            st.session_state["last_observation"] = None
             st.success(text(language, "action_submitted"))
             st.rerun()
 
 
-def _render_runs_tab(
-    client: GameApiClient,
-    settings: AppSettings,
+def _render_update_panel(
+    *,
+    auto_refresh: bool,
+    last_refreshed_at: datetime,
     language: Language,
 ) -> None:
-    runs = _load_runs(client, settings, language)
-    _render_runs_tab_content(runs, language)
+    with st.container(border=True):
+        st.subheader(text(language, "refresh_panel"))
+        st.caption(text(language, "auto_refresh_on" if auto_refresh else "auto_refresh_off"))
+        if st.button(text(language, "refresh_latest"), width="stretch"):
+            logger.info(LOG_STREAMLIT_REFRESHED, extra={"trigger": "panel"})
+            st.rerun()
+        st.caption(f"{text(language, 'last_refreshed')}: {_format_clock(last_refreshed_at)}")
 
 
-def _render_runs_tab_content(runs: GameRunsResponse | None, language: Language) -> None:
-    st.subheader(text(language, "recent_runs"))
-    if runs is None or not runs.runs:
-        st.info(text(language, "runs_empty"))
-        return
-    rows = [
-        {
-            "game_id": run.game_id,
-            "status": run.status,
-            "phase": run.phase,
-            "day": run.day,
-            "winner": run.winner or "",
-            "players": run.player_count,
-            "alive": run.alive_count,
-            "updated_at": _format_datetime(run.updated_at),
-        }
-        for run in runs.runs
-    ]
-    st.dataframe(rows, width="stretch", hide_index=True)
+def _render_runs_panel(runs: GameRunsResponse | None, *, language: Language) -> None:
+    with st.container(border=True):
+        st.subheader(text(language, "recent_runs"))
+        if runs is None or not runs.runs:
+            st.info(text(language, "runs_empty"))
+            return
+        rows = [
+            {
+                "game_id": run.game_id,
+                "status": run.status,
+                "phase": run.phase,
+                "day": run.day,
+                "winner": run.winner or "",
+                "players": run.player_count,
+                "alive": run.alive_count,
+                "turns": run.turn_count,
+                "updated_at": _format_datetime(run.updated_at),
+            }
+            for run in runs.runs
+        ]
+        st.dataframe(rows, width="stretch", hide_index=True)
 
 
 def _load_runs(
@@ -527,24 +760,54 @@ def _safe_call(language: Language, action: Callable[[], T]) -> T | None:
         return None
 
 
-def _player_rows(state: PublicGameState, language: Language) -> list[dict[str, object]]:
-    return [
-        {
-            "id": player.id,
-            "name": player.name,
-            "status": text(language, "alive") if player.alive else text(language, "dead"),
-            "alive": player.alive,
-            "eliminated_day": player.eliminated_day or "",
-            "killed_night": player.killed_night or "",
-        }
-        for player in state.players
-    ]
+def _timeline_items(
+    *,
+    turns: GameTurnsResponse | None,
+    events: GameEventsResponse | None,
+) -> list[TimelineItem]:
+    if turns is not None and turns.turns:
+        return build_timeline_items_from_turns(turns.turns)
+    if events is not None and events.events:
+        return build_timeline_items_from_events(events.events)
+    return []
+
+
+def _turn_count_for_game(
+    *,
+    runs: GameRunsResponse | None,
+    game_id: str,
+    fallback: int,
+) -> int:
+    if runs is None:
+        return fallback
+    for run in runs.runs:
+        if run.game_id == game_id:
+            return run.turn_count
+    return fallback
+
+
+def _phase_label(phase: str | None, day: int | None, language: Language) -> str:
+    style = resolve_phase_style(phase)
+    label = text(language, style.label_key)
+    if phase in {"day_discussion", "voting", "night"} and day is not None:
+        return f"{label} {day}"
+    return label
 
 
 def _format_datetime(value: datetime | None) -> str:
     if value is None:
         return ""
-    return value.isoformat()
+    return value.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _format_clock(value: datetime | None) -> str:
+    if value is None:
+        return ""
+    return value.astimezone().strftime("%H:%M:%S")
+
+
+def _escape(value: object) -> str:
+    return html.escape(str(value), quote=True)
 
 
 def _session_control_tokens() -> dict[str, str]:
@@ -569,21 +832,213 @@ def _inject_css() -> None:
     st.markdown(
         """
         <style>
-        .block-container { padding-top: 1.5rem; }
-        div[data-testid="stMetric"] {
+        header[data-testid="stHeader"],
+        div[data-testid="stToolbar"] {
+            display: none;
+        }
+        .block-container {
+            padding-top: 1.15rem;
+            padding-bottom: 2.0rem;
+            max-width: 1500px;
+        }
+        section[data-testid="stSidebar"] {
+            background: #fbfbfc;
+            border-right: 1px solid #e5e7eb;
+        }
+        .wa-sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: 0.85rem;
+            padding: 0.35rem 0 0.9rem;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 1.0rem;
+        }
+        .wa-brand-mark {
+            width: 42px;
+            height: 42px;
+            border-radius: 8px;
+            background: #b11226;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 1.15rem;
+        }
+        .wa-brand-title {
+            font-size: 1.1rem;
+            font-weight: 750;
+            color: #111827;
+            line-height: 1.15;
+        }
+        .wa-brand-caption {
+            color: #6b7280;
+            font-size: 0.82rem;
+            margin-top: 0.18rem;
+        }
+        .wa-metric-card {
+            min-height: 74px;
             border: 1px solid #e5e7eb;
             border-radius: 8px;
-            padding: 0.75rem 0.9rem;
+            padding: 0.72rem 0.85rem;
             background: #ffffff;
+            box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+        }
+        .wa-metric-label {
+            font-size: 0.74rem;
+            color: #6b7280;
+            line-height: 1.2;
+            margin-bottom: 0.22rem;
+        }
+        .wa-metric-value {
+            color: #111827;
+            font-size: 1.15rem;
+            font-weight: 760;
+            line-height: 1.25;
+            overflow-wrap: anywhere;
         }
         .stButton > button[kind="primary"] {
             background: #b11226;
             border-color: #b11226;
         }
+        .wa-timeline-row {
+            display: grid;
+            grid-template-columns: minmax(86px, 110px) minmax(0, 1fr);
+            column-gap: 0.8rem;
+            align-items: stretch;
+            margin: 0.62rem 0;
+        }
+        .wa-timeline-marker {
+            border-right: 2px solid #d1d5db;
+            padding: 0.35rem 0.75rem 0.35rem 0;
+            text-align: right;
+        }
+        .wa-phase-pill {
+            border: 1px solid currentColor;
+            border-radius: 8px;
+            padding: 0.32rem 0.45rem;
+            font-weight: 740;
+            display: inline-block;
+            min-width: 68px;
+            text-align: center;
+            background: #fff;
+        }
+        .wa-timeline-time {
+            margin-top: 0.32rem;
+            color: #6b7280;
+            font-size: 0.78rem;
+        }
+        .wa-timeline-card {
+            position: relative;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            background: #fff;
+            min-height: 86px;
+            overflow: hidden;
+        }
+        .wa-timeline-card-accent {
+            position: absolute;
+            left: 0;
+            top: 0;
+            bottom: 0;
+            width: 4px;
+        }
+        .wa-timeline-content {
+            padding: 0.82rem 0.95rem 0.76rem 1.05rem;
+        }
+        .wa-timeline-title {
+            color: #111827;
+            font-weight: 760;
+            font-size: 1.02rem;
+            line-height: 1.35;
+        }
+        .wa-timeline-summary {
+            color: #374151;
+            font-size: 0.88rem;
+            line-height: 1.45;
+            margin-top: 0.18rem;
+        }
+        .wa-timeline-meta {
+            color: #6b7280;
+            font-size: 0.74rem;
+            margin-top: 0.34rem;
+            overflow-wrap: anywhere;
+        }
+        .wa-player-row {
+            display: grid;
+            grid-template-columns: 16px minmax(0, 1fr) auto;
+            gap: 0.48rem;
+            align-items: center;
+            border-bottom: 1px solid #edf2f7;
+            padding: 0.38rem 0;
+        }
+        .wa-player-row:last-child { border-bottom: 0; }
+        .wa-player-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 999px;
+            display: inline-block;
+        }
+        .wa-player-dot.alive { background: #0f766e; }
+        .wa-player-dot.dead { background: #dc2626; }
+        .wa-player-name {
+            color: #111827;
+            font-size: 0.87rem;
+            overflow-wrap: anywhere;
+        }
+        .wa-player-id {
+            color: #6b7280;
+            font-size: 0.76rem;
+        }
+        .wa-player-status {
+            border-radius: 6px;
+            padding: 0.1rem 0.38rem;
+            font-size: 0.72rem;
+            white-space: nowrap;
+        }
+        .wa-player-status.alive {
+            background: #ccfbf1;
+            color: #0f766e;
+        }
+        .wa-player-status.dead {
+            background: #fee2e2;
+            color: #b91c1c;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            border-radius: 8px;
+        }
+        @media (max-width: 900px) {
+            .wa-timeline-row {
+                grid-template-columns: 1fr;
+            }
+            .wa-timeline-marker {
+                border-right: 0;
+                text-align: left;
+                padding-right: 0;
+            }
+        }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+_INVALID_INTEGER = object()
+
+
+def _parse_optional_int(
+    value: str,
+    *,
+    label: str,
+    language: Language,
+) -> int | None | object:
+    if not value:
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        st.sidebar.error(text(language, "invalid_integer").format(label=label))
+        return _INVALID_INTEGER
 
 
 if __name__ == "__main__":

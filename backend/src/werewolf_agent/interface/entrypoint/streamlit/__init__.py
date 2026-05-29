@@ -1,1 +1,1 @@
-"""Future Streamlit interface package."""
+"""Streamlit interface entry point package."""

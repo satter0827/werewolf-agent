@@ -279,6 +279,28 @@ def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
     ]
 
 
+def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
+    forbidden_modules = (
+        "rich",
+        "streamlit",
+        "typer",
+        "werewolf_agent.domain",
+        "werewolf_agent.interface.shared",
+        "werewolf_agent.usecase",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
+    view_model_imports = [
+        (path, module) for path, module in imported if path.name == "view_models.py"
+    ]
+
+    assert not [
+        (path, module)
+        for path, module in view_model_imports
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
 def test_contracts_do_not_import_api_frameworks() -> None:
     forbidden_modules = (
         "fastapi",

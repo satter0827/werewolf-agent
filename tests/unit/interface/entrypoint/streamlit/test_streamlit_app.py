@@ -82,6 +82,26 @@ def _text_area(app_test: AppTest, label: str):
     return next(item for item in app_test.text_area if item.label == label)
 
 
+def _visible_text(app_test: AppTest) -> str:
+    values: list[str] = []
+    for element_group_name in (
+        "caption",
+        "error",
+        "header",
+        "info",
+        "markdown",
+        "subheader",
+        "success",
+        "title",
+        "warning",
+    ):
+        for element in getattr(app_test, element_group_name, []):
+            value = getattr(element, "value", "")
+            if value:
+                values.append(str(value))
+    return "\n".join(values)
+
+
 def _state() -> PublicGameState:
     return PublicGameState(
         game_id="game-1",
@@ -97,6 +117,7 @@ def _state() -> PublicGameState:
         alive_player_ids=["player-1", "player-2"],
         eliminated_player_ids=[],
         summary={"alive_count": 2},
+        updated_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
 
 
@@ -252,6 +273,7 @@ class FakeGameApiClient:
 def test_i18n_defaults_to_japanese_and_supports_english() -> None:
     assert normalize_language("fr") == "ja"
     assert text("ja", "create_game") == "ゲーム作成"
+    assert text("ja", "human_action") == "Human Action"
     assert text("en", "create_game") == "Create Game"
 
 
@@ -267,13 +289,14 @@ def test_streamlit_app_renders_console_with_fake_api(
     app_test.run(timeout=10)
 
     assert not app_test.exception
-    assert app_test.title[0].value == "Werewolf Agent Console"
-    assert [tab.label for tab in app_test.tabs] == [
-        "タイムライン",
-        "イベント",
-        "人間操作",
-        "実行履歴",
-    ]
+    visible_text = _visible_text(app_test)
+    assert "ゲームの流れ" in visible_text
+    assert "いま見るポイント" in visible_text
+    assert "プレイヤーの状態" in visible_text
+    assert "Human Action" in visible_text
+    assert "実行履歴" in visible_text
+    assert "Events" in [expander.label for expander in app_test.expander]
+    assert not app_test.tabs
     assert app_test.success[0].value == "接続済み"
 
     _button(app_test, "1ステップ進める").click().run(timeout=10)
@@ -287,7 +310,7 @@ def test_streamlit_app_renders_console_with_fake_api(
     assert app_test.session_state["control_tokens"] == {"player-1": "token"}
 
     _text_input(app_test, "Control token").set_value("token").run(timeout=10)
-    _button(app_test, "Observation を取得").click().run(timeout=10)
+    _button(app_test, "秘匿観測を取得").click().run(timeout=10)
     assert not app_test.exception
     assert app_test.session_state["observation_calls"] == 1
 
@@ -295,6 +318,26 @@ def test_streamlit_app_renders_console_with_fake_api(
     _button(app_test, "アクション送信").click().run(timeout=10)
     assert not app_test.exception
     assert app_test.session_state["action_calls"] == 1
+    assert app_test.session_state["last_observation"] is None
+
+
+def test_streamlit_app_rejects_invalid_seed_without_creating_game(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("TEMP", str(tmp_path))
+    monkeypatch.setenv("TMP", str(tmp_path))
+    monkeypatch.setattr(tempfile, "tempdir", str(tmp_path))
+    monkeypatch.setattr(app_test_module, "TMP_DIR", SimpleNamespace(name=str(tmp_path)))
+    app_test = AppTest.from_string(_FAKE_APP_SCRIPT)
+    app_test.run(timeout=10)
+
+    _text_input(app_test, "Seed").set_value("abc").run(timeout=10)
+    _button(app_test, "ゲーム作成").click().run(timeout=10)
+
+    assert not app_test.exception
+    assert app_test.error[0].value == "Seed は整数で入力してください。"
+    assert "create_calls" not in app_test.session_state
 
 
 def test_streamlit_app_can_switch_language_to_english(
@@ -311,9 +354,13 @@ def test_streamlit_app_can_switch_language_to_english(
     language_selectbox.set_value("English").run(timeout=10)
 
     assert not app_test.exception
-    assert app_test.title[0].value == "Werewolf Agent Console"
+    visible_text = _visible_text(app_test)
+    assert "Game Flow" in visible_text
+    assert "Viewing Points" in visible_text
+    assert "Player Status" in visible_text
+    assert "Runs" in visible_text
     updated_language_selectbox = next(
         item for item in app_test.selectbox if item.label in {"言語", "Language"}
     )
     assert updated_language_selectbox.value == "English"
-    assert any(tab.label == "Timeline" for tab in app_test.tabs)
+    assert not app_test.tabs
