@@ -10,25 +10,27 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 現在の状態:
 
-- `fake_llm` provider だけで FastAPI 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、FastAPI、CLI、public event stream、turn read model は実装済み
-- 実 LLM provider、手動 action API、private observation API、Streamlit / React UI は未実装
+- LangChain `fake` provider だけで FastAPI 経由の 1 game を CLI から完走できる
+- `domain`、`usecase`、FastAPI、CLI、manual action API、private observation API、public event stream、turn read model は実装済み
+- 実 LLM provider、複数 human player、Streamlit / React UI は未実装
 
 ## Read First
 
 変更前に、近い実装・テスト・文書を確認してください。
 
 - 入口: `README.md`
-- domain 境界: `docs/domain.md`
-- API 契約: `docs/api.md`
-- 再開メモ: `docs/development.md`
+- domain 境界: `docs/design/domain.md`
+- API 契約: `docs/design/api.md`
+- 再開メモ: `docs/notes/development.md`
+- Sphinx 入口: `docs/sphinx/index.md`
 
 ## Architecture
 
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision、provider port |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider、prompt loader、provider port |
+| `backend/src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い usecase facade、DTO、repository port |
 | `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
@@ -135,7 +137,9 @@ docker compose run --rm test
 ## Documentation
 
 - README は利用者向けの入口として保つ
-- 詳細設計と判断理由は `docs/` に置く
+- 完成版の設計書は `docs/design/` に置く
+- 修正の積み重ね、判断履歴、handoff は `docs/notes/` に置く
+- Sphinx の設定、入口、軽い見た目調整は `docs/sphinx/` に置く
 - 文書は日本語を基本にし、コード識別子と外部 API 名は英語のまま扱う
 - 「目的」「現在地」「実行コマンド」「未実装」「次の一手」を優先する
 - 長い背景説明より、途中参加者がすぐ再開できる構造を優先する
@@ -157,7 +161,7 @@ docker compose run --rm test
 - 実行したコマンド
 - 次に人間が判断すべき選択肢
 
-外部 API なしで動く FakeLLM / mock provider を先に実装できる場合は、そちらを優先してください。
+外部 API なしで動く LangChain fake / mock provider を先に実装できる場合は、そちらを優先してください。
 
 ## Commit Message
 

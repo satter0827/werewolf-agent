@@ -1,13 +1,16 @@
 # API
 
-FastAPI は CLI と将来の UI が使う公開契約です。
-DB には完全状態を保存しますが、レスポンスは public state / public event だけです。
+この文書は、Sphinx で公開する完成版の API 設計書です。
+作業途中の判断、handoff、未確定メモは `docs/notes/` に置きます。
+
+FastAPI は CLI と将来の UI が使う公開契約です。DB には完全状態を保存しますが、
+レスポンスは public state / public event だけです。
 
 ## 現在の範囲
 
 - 同期 REST API
 - public event SSE
-- `llm` agent と `fake_llm` provider による自動進行
+- `llm` agent と LangChain `fake` provider による自動進行
 - game 作成、一覧、状態取得、1 step 進行、public event、turn history 取得
 - Problem Details 形式の error response
 - Streamlit / React UI、永続 login/session 管理は未実装
@@ -63,7 +66,7 @@ DB には完全状態を保存しますが、レスポンスは public state / p
 
 - `player_count`: 既定では 5〜8。省略時は `WEREWOLF_GAME_DEFAULT_PLAYER_COUNT`。実際の範囲は `WEREWOLF_GAME_MIN_PLAYERS` / `WEREWOLF_GAME_MAX_PLAYERS` で決まる
 - `players`: 指定時は 5〜8 件。`id` は一意
-- `agent.type`: 現在は `llm` のみ。実体 provider は `WEREWOLF_LLM_PROVIDER=fake_llm`
+- `agent.type`: 現在は `llm` のみ。実体 provider は `WEREWOLF_LLM_PROVIDER=fake`
 - `players[].agent_type`: `llm` または `human`。`human` は 1 game につき 1 人まで
 - `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
 - `tie_break_policy`: `no_elimination` または `random_elimination`
@@ -172,6 +175,7 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 `interface/api` は domain / usecase を直接 import しません。
 usecase との接続は `interface/application` から `usecase.jobs` top-level 公開面への import に閉じます。
 `usecase.jobs` は domain を import せず、domain 接続は `usecase.internal` に閉じます。
+`usecase.internal` は interface / wire schema に依存しません。
 HTTP DTO、Problem Details schema、error code metadata は `contracts` に置きます。
 FastAPI の exception handler と Problem Details response 生成は `interface/shared/http.py` に置きます。
 表示名、response 整形は interface 側に置きます。

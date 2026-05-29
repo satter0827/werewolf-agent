@@ -8,7 +8,7 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 - 5〜8 人の同期ゲームを実行できる
 - 役職は `villager`、`werewolf`、`seer`、`knight`
 - フェーズは `night`、`day_discussion`、`voting`、`finished`
-- `fake_llm` provider で FastAPI 経由の 1 ゲームを CLI から完走できる
+- LangChain `FakeListLLM` provider で FastAPI 経由の 1 ゲームを CLI から完走できる
 - API は game 作成、状態取得、一覧、1 step 進行、public event、turn history、public SSE を持つ
 - CLI は `doctor`、`ruleset`、`create`、`state`、`step`、`play`、`watch`、`replay`、`runs`、`turns` を持つ
 - 1 game につき 1 人の `human` player を CLI から操作できる
@@ -79,14 +79,15 @@ uv run werewolf-agent step <game_id>
 | `GET` | `/api/v1/games/{game_id}/events/stream?after=<seq>` | public event SSE |
 | `GET` | `/api/v1/games/{game_id}/turns?after=<seq>` | UI 向け public timeline |
 
-詳細は [docs/api.md](docs/api.md)。
+詳細は [docs/design/api.md](docs/design/api.md)。
 
 ## 設計
 
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、FakeLLM decision |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider、prompt loader |
+| `backend/src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い usecase facade、公開 DTO、repository port |
 | `backend/src/werewolf_agent/usecase/internal/` | usecase 実処理、workflow、projection、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
@@ -99,7 +100,7 @@ uv run werewolf-agent step <game_id>
 
 境界:
 
-- `domain` は `.env`、I/O、logging 設定、LLM provider を知らない
+- `domain` は `.env`、logging 設定、interface/usecase を知らない
 - `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換して接続する
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - usecase 接続は `interface/application` から `werewolf_agent.usecase.jobs` の top-level import に閉じる
@@ -110,28 +111,25 @@ uv run werewolf-agent step <game_id>
 - CLI 表示、画面向けの表示名や整形は interface に閉じる
 - public state / public event に role、night action、secret を出さない
 
-詳細は [docs/domain.md](docs/domain.md)。
+詳細は [docs/design/domain.md](docs/design/domain.md)。
 
 ## 設定
 
-設定 default は `backend/src/werewolf_agent/default_settings/defaults.toml` に置きます。
+設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` に置きます。
+prompt は `backend/src/werewolf_agent/resources/prompts/agent_decision.toml`、FakeListLLM response fixture は `backend/src/werewolf_agent/resources/llm/fake_responses.toml` に置きます。
 `commons/configuration` が `defaults.toml`、`.env`、環境変数を読み取り、interface の浅い場所で usecase へ依存として注入します。
 `.env` はコミットしません。
 
 主な値:
 
 ```env
-WEREWOLF_LLM_PROVIDER=fake_llm
-WEREWOLF_MODEL=fake-llm-local
+WEREWOLF_LLM_PROVIDER=fake
+WEREWOLF_MODEL=fake-list-llm
 WEREWOLF_LLM_TIMEOUT_SECONDS=30
 WEREWOLF_LLM_MAX_RETRIES=2
 WEREWOLF_LLM_TEMPERATURE=0.7
-WEREWOLF_FAKE_LLM_STRATEGY=seeded
-WEREWOLF_FAKE_LLM_RANDOMNESS=0.7
-WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES=[{persona}] I want to {intent} {target_name}.|[{persona}] {target_name}'s public history looks worth checking.|[{persona}] I will compare today's claims before voting.
-WEREWOLF_FAKE_LLM_PERSONA_PROFILES=cautious|assertive|analytical
-WEREWOLF_FAKE_LLM_SPEECH_INTENTS=question|compare|pressure
-WEREWOLF_FAKE_LLM_REASON_TEMPLATES=fake_llm {persona} {action} from public signals|fake_llm {persona} {action} with {intent} intent
+WEREWOLF_LLM_PROMPT_FILE=
+WEREWOLF_LLM_FAKE_RESPONSES_FILE=
 WEREWOLF_LOG_LEVEL=INFO
 WEREWOLF_LOG_OUTPUT=file
 WEREWOLF_LOG_DIR=.werewolf-agent/logs
@@ -198,9 +196,14 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 
 ## ドキュメント
 
-- [docs/domain.md](docs/domain.md): domain core と境界
-- [docs/api.md](docs/api.md): 公開 API 契約
-- [docs/development.md](docs/development.md): 再開用メモ
+- 完成版設計書
+  - [docs/design/domain.md](docs/design/domain.md): domain core と境界
+  - [docs/design/api.md](docs/design/api.md): 公開 API 契約
+- 作業メモ
+  - [docs/notes/development.md](docs/notes/development.md): 再開用メモ、未実装、handoff
+- Sphinx
+  - [docs/sphinx/index.md](docs/sphinx/index.md): Sphinx 用入口
+  - HTML 生成: `uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html`
 
 ## 次の一手
 

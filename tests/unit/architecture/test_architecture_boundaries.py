@@ -57,8 +57,6 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "AdvanceGameRunResult",
             "ActionTypeId",
             "CreateGameRunCommand",
-            "FakeLlmConfig",
-            "FakeLlmStrategy",
             "GameEventCreate",
             "GamePhase",
             "GameRepository",
@@ -75,6 +73,7 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "ListPublicGameEventsQuery",
             "ListPublicGameTurnsQuery",
             "ListPublicGameTurnsResult",
+            "LlmProviderConfig",
             "PlayerObservationResult",
             "PublicGameEventsResult",
             "PublicGameRunSummary",
@@ -136,11 +135,15 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentPhase",
             "AgentPlayerStatus",
             "AgentRole",
-            "FakeLlmConfig",
-            "FakeLlmStrategy",
+            "FakeResponseResource",
+            "LangChainDecisionProvider",
             "LlmDecisionProvider",
+            "PromptMessage",
+            "PromptResource",
             "VisiblePlayer",
-            "choose_decision",
+            "build_fake_decision_provider",
+            "load_fake_response_resource",
+            "load_prompt_resource",
         },
     )
 
@@ -174,6 +177,7 @@ def test_usecase_imports_domain_only_from_internal_boundary() -> None:
         "werewolf_agent.domain.game.models",
         "werewolf_agent.domain.game.service",
         "werewolf_agent.domain.llm.models",
+        "werewolf_agent.domain.llm.ports",
         "werewolf_agent.domain.llm.service",
     }
 
@@ -312,6 +316,8 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "agents.py").exists()
+    assert not (PACKAGE / "default_settings").exists()
+    assert not (PACKAGE / "domain" / "llm" / "rules").exists()
     assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
     assert not [
         path for path in (PACKAGE / "usecase" / "jobs").glob("_*.py") if path.name != "__init__.py"

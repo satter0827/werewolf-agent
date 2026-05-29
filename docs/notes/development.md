@@ -1,6 +1,8 @@
 # Development
 
-途中参加者が最短で再開するためのメモです。
+途中参加者が最短で再開するための作業メモです。
+完成版の設計書は `docs/design/`、Sphinx の入口と設定は `docs/sphinx/` に置きます。
+このファイルには、再開に必要な現在地、未実装、handoff、判断履歴を残します。
 
 ## 現在地
 
@@ -9,7 +11,7 @@
 - `usecase.jobs` は interface から usecase へ入る薄い facade であり、domain core を呼ぶ実処理は `usecase.internal` に集約する
 - FastAPI は game 作成、一覧、状態取得、step 進行、private observation、manual action、public event、turn history、public SSE まで実装済み
 - CLI `doctor` / `ruleset` / `create` / `state` / `step` / `play` / `watch` / `replay` / `runs` / `turns` は HTTP API だけを使う
-- 現在の LLM provider は `fake_llm`。実 LLM provider、複数 human player、Streamlit / React UI は未実装
+- 現在の LLM provider は LangChain `fake`。実 LLM provider、複数 human player、Streamlit / React UI は未実装
 
 ## 最初に実行
 
@@ -43,8 +45,9 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/domain/game/models.py` | headless game が扱う `Player` / `Action` / snapshot / observation / event |
 | `backend/src/werewolf_agent/domain/game/service.py` | snapshot と pending action を受け取る stateless game 関数 |
 | `backend/src/werewolf_agent/domain/game/rules/` | game 内部 rules |
-| `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO / FakeLLM 設定 / 公開履歴 DTO |
-| `backend/src/werewolf_agent/domain/llm/service.py` | `choose_decision(...)` |
+| `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO / 公開履歴 DTO |
+| `backend/src/werewolf_agent/domain/llm/service.py` | MLflow-compatible prompt loader / LangChain decision provider |
+| `backend/src/werewolf_agent/resources/` | packaged defaults、prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
 | `backend/src/werewolf_agent/usecase/jobs/games.py` | stateless facade、公開 DTO |
 | `backend/src/werewolf_agent/usecase/jobs/ports.py` | repository port |
@@ -58,6 +61,20 @@ uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、validation、redaction |
 | `tests/unit/` | process 内 unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
+
+## Docs
+
+| Path | 役割 |
+| --- | --- |
+| `docs/design/` | Sphinx で読む完成版の設計書 |
+| `docs/notes/` | 修正の積み重ね、再開メモ、handoff |
+| `docs/sphinx/` | Sphinx の設定、入口、軽い CSS |
+
+Sphinx は最小構成です。HTML を確認する場合は次を実行します。
+
+```bash
+uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
+```
 
 ## 境界
 

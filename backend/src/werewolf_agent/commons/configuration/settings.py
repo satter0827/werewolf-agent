@@ -20,22 +20,22 @@ from werewolf_agent.commons.shared.messages import (
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
 
-DEFAULTS_PACKAGE: Final = "werewolf_agent.default_settings"
+DEFAULTS_PACKAGE: Final = "werewolf_agent.resources.settings"
 DEFAULTS_FILE: Final = "defaults.toml"
 
 
-def _load_default_settings() -> Mapping[str, object]:
+def _load_packaged_defaults() -> Mapping[str, object]:
     default_path = files(DEFAULTS_PACKAGE).joinpath(DEFAULTS_FILE)
     with default_path.open("rb") as default_file:
         return tomllib.load(default_file)
 
 
-DEFAULT_SETTINGS = _load_default_settings()
+PACKAGED_DEFAULTS = _load_packaged_defaults()
 
 
 def _default_value(key: str) -> object:
     try:
-        return DEFAULT_SETTINGS[key]
+        return PACKAGED_DEFAULTS[key]
     except KeyError as exc:
         raise RuntimeError(f"Missing default setting: {key}") from exc
 
@@ -81,12 +81,8 @@ DEFAULT_LLM_MODEL: Final = _string_default("model")
 DEFAULT_LLM_TIMEOUT_SECONDS: Final = _float_default("llm_timeout_seconds")
 DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
-DEFAULT_FAKE_LLM_STRATEGY: Final = _string_default("fake_llm_strategy")
-DEFAULT_FAKE_LLM_RANDOMNESS: Final = _float_default("fake_llm_randomness")
-DEFAULT_FAKE_LLM_SPEECH_TEMPLATES: Final = _string_default("fake_llm_speech_templates")
-DEFAULT_FAKE_LLM_PERSONA_PROFILES: Final = _string_default("fake_llm_persona_profiles")
-DEFAULT_FAKE_LLM_SPEECH_INTENTS: Final = _string_default("fake_llm_speech_intents")
-DEFAULT_FAKE_LLM_REASON_TEMPLATES: Final = _string_default("fake_llm_reason_templates")
+DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
+DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
 DEFAULT_LOG_LEVEL: Final = _string_default("log_level")
 DEFAULT_LOG_OUTPUT: Final = _string_default("log_output")
 DEFAULT_LOG_DIR: Final = _path_default("log_dir")
@@ -122,7 +118,6 @@ LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITIC
 LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"})
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
-FAKE_LLM_STRATEGY_NAMES: Final = frozenset({"seeded", "random"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
@@ -136,6 +131,16 @@ def repository_root() -> Path:
         if (parent / "pyproject.toml").exists():
             return parent
     return Path.cwd()
+
+
+def _optional_repository_path(value: str) -> Path | None:
+    path_text = value.strip()
+    if not path_text:
+        return None
+    path = Path(path_text).expanduser()
+    if path.is_absolute():
+        return path
+    return repository_root() / path
 
 
 def split_csv(value: str) -> list[str]:
@@ -182,31 +187,13 @@ class AppSettings(BaseSettings):
         le=2,
         validation_alias="WEREWOLF_LLM_TEMPERATURE",
     )
-    fake_llm_strategy: str = Field(
-        default=DEFAULT_FAKE_LLM_STRATEGY,
-        validation_alias="WEREWOLF_FAKE_LLM_STRATEGY",
+    llm_prompt_file: str = Field(
+        default=DEFAULT_LLM_PROMPT_FILE,
+        validation_alias="WEREWOLF_LLM_PROMPT_FILE",
     )
-    fake_llm_randomness: float = Field(
-        default=DEFAULT_FAKE_LLM_RANDOMNESS,
-        ge=0,
-        le=1,
-        validation_alias="WEREWOLF_FAKE_LLM_RANDOMNESS",
-    )
-    fake_llm_speech_templates: str = Field(
-        default=DEFAULT_FAKE_LLM_SPEECH_TEMPLATES,
-        validation_alias="WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES",
-    )
-    fake_llm_persona_profiles: str = Field(
-        default=DEFAULT_FAKE_LLM_PERSONA_PROFILES,
-        validation_alias="WEREWOLF_FAKE_LLM_PERSONA_PROFILES",
-    )
-    fake_llm_speech_intents: str = Field(
-        default=DEFAULT_FAKE_LLM_SPEECH_INTENTS,
-        validation_alias="WEREWOLF_FAKE_LLM_SPEECH_INTENTS",
-    )
-    fake_llm_reason_templates: str = Field(
-        default=DEFAULT_FAKE_LLM_REASON_TEMPLATES,
-        validation_alias="WEREWOLF_FAKE_LLM_REASON_TEMPLATES",
+    llm_fake_responses_file: str = Field(
+        default=DEFAULT_LLM_FAKE_RESPONSES_FILE,
+        validation_alias="WEREWOLF_LLM_FAKE_RESPONSES_FILE",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_output: LogOutput = Field(
@@ -362,32 +349,22 @@ class AppSettings(BaseSettings):
         return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
-    def fake_llm_speech_template_list(self) -> list[str]:
-        """Return configured FakeLLM speech templates."""
-        return [item.strip() for item in self.fake_llm_speech_templates.split("|") if item.strip()]
-
-    @property
-    def fake_llm_persona_profile_list(self) -> list[str]:
-        """Return configured FakeLLM persona profiles."""
-        return [item.strip() for item in self.fake_llm_persona_profiles.split("|") if item.strip()]
-
-    @property
-    def fake_llm_speech_intent_list(self) -> list[str]:
-        """Return configured FakeLLM speech intents."""
-        return [item.strip() for item in self.fake_llm_speech_intents.split("|") if item.strip()]
-
-    @property
-    def fake_llm_reason_template_list(self) -> list[str]:
-        """Return configured FakeLLM reason templates."""
-        return [item.strip() for item in self.fake_llm_reason_templates.split("|") if item.strip()]
-
-    @property
     def sqlite_database_path(self) -> Path:
         """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
         sqlite_path = self.sqlite_path.expanduser()
         if sqlite_path.is_absolute():
             return sqlite_path
         return repository_root() / sqlite_path
+
+    @property
+    def llm_prompt_path(self) -> Path | None:
+        """Return the configured external LLM prompt file, if any."""
+        return _optional_repository_path(self.llm_prompt_file)
+
+    @property
+    def llm_fake_responses_path(self) -> Path | None:
+        """Return the configured external FakeListLLM response file, if any."""
+        return _optional_repository_path(self.llm_fake_responses_file)
 
     @property
     def log_directory_path(self) -> Path:
@@ -483,17 +460,6 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
-    @field_validator("fake_llm_strategy", mode="before")
-    @classmethod
-    def normalize_fake_llm_strategy(cls, value: object) -> str:
-        """Return the configured FakeLLM strategy."""
-        return normalize_choice(
-            value,
-            field_name="fake_llm_strategy",
-            choices=FAKE_LLM_STRATEGY_NAMES,
-            case="lower",
-        )
-
     @field_validator("game_supported_agent_type", mode="before")
     @classmethod
     def normalize_supported_agent_type(cls, value: object) -> str:
@@ -512,10 +478,6 @@ class AppSettings(BaseSettings):
         "game_ruleset_description_template",
         "game_role_names",
         "game_phase_names",
-        "fake_llm_speech_templates",
-        "fake_llm_persona_profiles",
-        "fake_llm_speech_intents",
-        "fake_llm_reason_templates",
         "api_title",
         "api_service_name",
         "api_version",
@@ -536,14 +498,6 @@ class AppSettings(BaseSettings):
             raise ValueError(message_game_default_player_count_between())
         split_mapping(self.game_role_names, field_name="game_role_names")
         split_mapping(self.game_phase_names, field_name="game_phase_names")
-        if not self.fake_llm_speech_template_list:
-            raise ValueError("fake_llm_speech_templates must include at least one template")
-        if not self.fake_llm_persona_profile_list:
-            raise ValueError("fake_llm_persona_profiles must include at least one profile")
-        if not self.fake_llm_speech_intent_list:
-            raise ValueError("fake_llm_speech_intents must include at least one intent")
-        if not self.fake_llm_reason_template_list:
-            raise ValueError("fake_llm_reason_templates must include at least one template")
         try:
             self.game_ruleset_description_template.format(
                 min_players=self.game_min_players,

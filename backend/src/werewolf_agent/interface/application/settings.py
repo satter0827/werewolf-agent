@@ -2,14 +2,20 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from werewolf_agent.commons.configuration import AppSettings, get_settings
-from werewolf_agent.usecase.jobs import FakeLlmConfig, FakeLlmStrategy, GameUseCaseConfig
+from werewolf_agent.usecase.jobs import GameUseCaseConfig, LlmProviderConfig
 
 
 def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCaseConfig:
-    """Return use case configuration from interface settings."""
+    """Return use case configuration from interface settings.
+
+    Args:
+        settings: Optional preloaded application settings. When omitted, settings are loaded from
+            the default runtime sources.
+
+    Returns:
+        Use case configuration without interface-only settings.
+    """
     app_settings = settings or get_settings()
     return GameUseCaseConfig(
         min_players=app_settings.game_min_players,
@@ -20,14 +26,20 @@ def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCas
     )
 
 
-def build_fake_llm_config(settings: AppSettings | None = None) -> FakeLlmConfig:
-    """Return FakeLLM configuration from interface settings."""
+def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProviderConfig:
+    """Return LLM provider configuration from interface settings.
+
+    Args:
+        settings: Optional preloaded application settings. When omitted, settings are loaded from
+            the default runtime sources.
+
+    Returns:
+        LLM provider configuration for automated players.
+    """
     app_settings = settings or get_settings()
-    return FakeLlmConfig(
-        strategy=cast(FakeLlmStrategy, app_settings.fake_llm_strategy),
-        randomness=app_settings.fake_llm_randomness,
-        persona_profiles=tuple(app_settings.fake_llm_persona_profile_list),
-        speech_intents=tuple(app_settings.fake_llm_speech_intent_list),
-        speech_templates=tuple(app_settings.fake_llm_speech_template_list),
-        reason_templates=tuple(app_settings.fake_llm_reason_template_list),
+    return LlmProviderConfig(
+        provider=app_settings.llm_provider,
+        model=app_settings.model,
+        prompt_file=app_settings.llm_prompt_path,
+        fake_responses_file=app_settings.llm_fake_responses_path,
     )

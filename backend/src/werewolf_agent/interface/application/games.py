@@ -36,8 +36,8 @@ from werewolf_agent.contracts.schemas import (
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
 from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
 from werewolf_agent.interface.application.settings import (
-    build_fake_llm_config,
     build_game_usecase_config,
+    build_llm_provider_config,
 )
 
 TModel = TypeVar("TModel", bound=BaseModel)
@@ -45,7 +45,14 @@ logger = logging.getLogger(__name__)
 
 
 def get_default_ruleset(*, settings: AppSettings) -> RulesetResponse:
-    """Return the public ruleset."""
+    """Return the public ruleset.
+
+    Args:
+        settings: Loaded application settings.
+
+    Returns:
+        Wire schema containing ruleset metadata and display names.
+    """
     ruleset = game_jobs.get_default_ruleset(config=build_game_usecase_config(settings))
     return _ruleset_response(ruleset, settings)
 
@@ -56,7 +63,16 @@ def create_game_run(
     session_factory: SessionFactory,
     settings: AppSettings,
 ) -> GameResponse:
-    """Create and persist one deterministic game."""
+    """Create and persist one deterministic game.
+
+    Args:
+        request: Validated HTTP request body.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+
+    Returns:
+        Public game response for API and CUI clients.
+    """
     command = game_jobs.CreateGameRunCommand.model_validate(request.model_dump(mode="json"))
     with session_scope(session_factory) as session:
         response = game_jobs.create_game_run(command, dependencies=_dependencies(session, settings))
@@ -73,7 +89,19 @@ def get_game_run(
     session_factory: SessionFactory,
     settings: AppSettings,
 ) -> GameResponse:
-    """Return the current public state for one game run."""
+    """Return the current public state for one game run.
+
+    Args:
+        game_id: Game id from the public route.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+
+    Returns:
+        Public game response.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.get_game_run(
@@ -93,7 +121,18 @@ def list_game_runs(
     limit: int = 20,
     offset: int = 0,
 ) -> GameRunsResponse:
-    """Return public game run summaries."""
+    """Return public game run summaries.
+
+    Args:
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+        status: Optional public run status filter.
+        limit: Maximum number of rows to return.
+        offset: Result offset for pagination.
+
+    Returns:
+        Public run summaries and pagination metadata.
+    """
     with session_scope(session_factory) as session:
         response = game_jobs.list_game_runs(
             game_jobs.ListGameRunsQuery(status=status, limit=limit, offset=offset),
@@ -112,7 +151,19 @@ def advance_game_run(
     session_factory: SessionFactory,
     settings: AppSettings,
 ) -> StepGameResponse:
-    """Advance one game run by one deterministic use case step."""
+    """Advance one game run by one deterministic use case step.
+
+    Args:
+        game_id: Game id from the public route.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+
+    Returns:
+        Updated public state and emitted public events.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.advance_game_run(
@@ -141,7 +192,21 @@ def list_public_game_events(
     after: int = 0,
     limit: int = 100,
 ) -> GameEventsResponse:
-    """List public events after a sequence number."""
+    """List public events after a sequence number.
+
+    Args:
+        game_id: Game id from the public route.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+        after: Exclusive sequence cursor.
+        limit: Maximum number of events to return.
+
+    Returns:
+        Public events and the next sequence cursor.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.list_public_game_events(
@@ -171,7 +236,21 @@ def list_public_game_turns(
     after: int = 0,
     limit: int = 100,
 ) -> GameTurnsResponse:
-    """List public timeline turns after a sequence number."""
+    """List public timeline turns after a sequence number.
+
+    Args:
+        game_id: Game id from the public route.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+        after: Exclusive sequence cursor.
+        limit: Maximum number of turn records to return.
+
+    Returns:
+        Public timeline records and the next sequence cursor.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.list_public_game_turns(
@@ -201,7 +280,21 @@ def get_player_observation(
     settings: AppSettings,
     control_token: str,
 ) -> PrivateObservationResponse:
-    """Return a private observation for one authenticated manual player."""
+    """Return a private observation for one authenticated manual player.
+
+    Args:
+        game_id: Game id from the public route.
+        player_id: Player id from the public route.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+        control_token: Bearer token supplied by the client.
+
+    Returns:
+        Private observation visible to the authenticated player.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.get_player_observation(
@@ -230,7 +323,22 @@ def submit_player_action(
     settings: AppSettings,
     control_token: str,
 ) -> SubmitPlayerActionResponse:
-    """Submit one authenticated manual player action."""
+    """Submit one authenticated manual player action.
+
+    Args:
+        game_id: Game id from the public route.
+        player_id: Player id from the public route.
+        request: Validated manual action body.
+        session_factory: SQLAlchemy session factory for one transaction.
+        settings: Loaded application settings.
+        control_token: Bearer token supplied by the client.
+
+    Returns:
+        Updated public state and public events caused by the action.
+
+    Raises:
+        ResourceNotFoundError: If the id is invalid or the run is absent.
+    """
     with session_scope(session_factory) as session:
         try:
             response = game_jobs.submit_player_action(
@@ -258,7 +366,7 @@ def _dependencies(
     return game_jobs.GameUseCaseDependencies(
         repository=SqlAlchemyGameRunRepository(session),
         config=build_game_usecase_config(settings),
-        fake_llm_config=build_fake_llm_config(settings),
+        llm_provider_config=build_llm_provider_config(settings),
     )
 
 

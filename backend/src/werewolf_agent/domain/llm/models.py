@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from enum import StrEnum
-from typing import Any, ClassVar, Literal, Self
+from typing import Any, ClassVar, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -54,46 +53,6 @@ class AgentActionType(StrEnum):
     SEER_INSPECT = "seer_inspect"
     KNIGHT_GUARD = "knight_guard"
     PASS = "pass"
-
-
-FakeLlmStrategy = Literal["seeded", "random"]
-
-
-@dataclass(frozen=True)
-class FakeLlmConfig:
-    """Settings used by the FakeLLM automated player implementation."""
-
-    strategy: FakeLlmStrategy = "seeded"
-    randomness: float = 0.7
-    persona_profiles: tuple[str, ...] = ("cautious", "assertive", "analytical")
-    speech_intents: tuple[str, ...] = ("question", "compare", "pressure")
-    speech_templates: tuple[str, ...] = (
-        "[{persona}] I want to {intent} {target_name}.",
-        "[{persona}] {target_name}'s public history looks worth checking.",
-        "[{persona}] I will compare today's claims before voting.",
-    )
-    reason_templates: tuple[str, ...] = (
-        "fake_llm {persona} {action} from public signals",
-        "fake_llm {persona} {action} with {intent} intent",
-    )
-
-    def __post_init__(self) -> None:
-        """Validate FakeLLM configuration invariants."""
-        if self.strategy not in {"seeded", "random"}:
-            raise ValueError("fake_llm strategy must be one of: random, seeded")
-        if self.randomness < 0 or self.randomness > 1:
-            raise ValueError("fake_llm randomness must be between 0 and 1")
-        _validate_template_values("persona_profiles", self.persona_profiles)
-        _validate_template_values("speech_intents", self.speech_intents)
-        _validate_template_values("speech_templates", self.speech_templates)
-        _validate_template_values("reason_templates", self.reason_templates)
-
-
-def _validate_template_values(field_name: str, values: tuple[str, ...]) -> None:
-    if not values:
-        raise ValueError(f"fake_llm {field_name} must include at least one value")
-    for value in values:
-        non_blank(value, f"fake_llm {field_name}")
 
 
 class _LlmModel(BaseModel):
@@ -283,7 +242,5 @@ __all__ = [
     "AgentPhase",
     "AgentPlayerStatus",
     "AgentRole",
-    "FakeLlmConfig",
-    "FakeLlmStrategy",
     "VisiblePlayer",
 ]

@@ -16,6 +16,24 @@
       "justMyCode": true
     },
     {
+      "name": "CLI: ruleset",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "ruleset",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
       "name": "API: migrate",
       "type": "debugpy",
       "request": "launch",
@@ -30,17 +48,77 @@
       "justMyCode": true
     },
     {
-      "name": "API: runserver",
+      "name": "API: uvicorn",
       "type": "debugpy",
       "request": "launch",
       "module": "uvicorn",
       "args": [
-        "werewolf_agent.interface.entrypoint.api.app:create_app",
+        "werewolf_agent.interface.api.app:create_app",
         "--factory",
         "--host",
         "127.0.0.1",
         "--port",
         "8000"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "CLI: create",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "create",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "CLI: state",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "state",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "CLI: step",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "step",
+        "${input:gameId}",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -63,6 +141,54 @@
         "6",
         "--seed",
         "1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "CLI: play (human player)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1",
+        "--human-player",
+        "player-1"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "CLI: play (save replay log)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "play",
+        "--api-url",
+        "http://127.0.0.1:8000/api/v1",
+        "--players",
+        "6",
+        "--seed",
+        "1",
+        "--log-jsonl",
+        "${input:eventLogPath}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -129,6 +255,24 @@
       "justMyCode": true
     },
     {
+      "name": "CLI: replay",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent",
+      "args": [
+        "replay",
+        "--events",
+        "${input:eventLogPath}"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
+      },
+      "justMyCode": true
+    },
+    {
       "name": "Pytest: all tests",
       "type": "debugpy",
       "request": "launch",
@@ -175,8 +319,14 @@
     {
       "id": "gameId",
       "type": "promptString",
-      "description": "Game ID for CLI watch / turns",
+      "description": "Game ID for CLI state / step / watch / turns",
       "default": ""
+    },
+    {
+      "id": "eventLogPath",
+      "type": "promptString",
+      "description": "Public event JSONL path for CLI replay",
+      "default": ".werewolf-agent/logs/game-001.jsonl"
     }
   ]
 }

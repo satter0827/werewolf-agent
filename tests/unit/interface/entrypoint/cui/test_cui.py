@@ -242,7 +242,7 @@ def test_doctor_command_succeeds() -> None:
 
     assert result.exit_code == 0
     assert "Werewolf Agent Doctor" in result.output
-    assert "fake_llm" in result.output
+    assert "fake-list-llm" in result.output
 
 
 def test_doctor_json_output_is_machine_readable() -> None:
@@ -250,7 +250,8 @@ def test_doctor_json_output_is_machine_readable() -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["provider"] == "fake_llm"
+    assert payload["provider"] == "fake"
+    assert payload["prompt file"] == "packaged"
     assert payload["api url"]
 
 

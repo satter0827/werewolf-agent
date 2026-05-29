@@ -17,7 +17,14 @@ SessionFactory: TypeAlias = sessionmaker[Session]
 
 
 def create_database_engine(settings: AppSettings) -> Engine:
-    """Create a SQLAlchemy engine from settings."""
+    """Create a SQLAlchemy engine from settings.
+
+    Args:
+        settings: Loaded application settings with database URL and SQLite path.
+
+    Returns:
+        Configured SQLAlchemy engine.
+    """
     if not settings.configured_database_url:
         settings.sqlite_database_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -37,13 +44,27 @@ def create_database_engine(settings: AppSettings) -> Engine:
 
 
 def create_session_factory(engine: Engine) -> SessionFactory:
-    """Return a session factory bound to an engine."""
+    """Return a session factory bound to an engine.
+
+    Args:
+        engine: SQLAlchemy engine used by application repositories.
+
+    Returns:
+        Session factory configured for explicit unit-of-work boundaries.
+    """
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
 
 @contextmanager
 def session_scope(session_factory: SessionFactory) -> Iterator[Session]:
-    """Run one unit of work inside a database transaction."""
+    """Run one unit of work inside a database transaction.
+
+    Args:
+        session_factory: Factory used to create a SQLAlchemy session.
+
+    Yields:
+        An open session inside a transaction.
+    """
     session = session_factory()
     try:
         with session.begin():

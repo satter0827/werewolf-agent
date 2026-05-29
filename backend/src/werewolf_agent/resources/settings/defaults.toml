@@ -4,18 +4,13 @@ api_service_name = "werewolf-agent-api"
 generated_dir = ".werewolf-agent"
 sqlite_path = ".werewolf-agent/db/db.sqlite3"
 
-llm_provider = "fake_llm"
-model = "fake-llm-local"
+llm_provider = "fake"
+model = "fake-list-llm"
 llm_timeout_seconds = 30.0
 llm_max_retries = 2
 llm_temperature = 0.7
-
-fake_llm_strategy = "seeded"
-fake_llm_randomness = 0.7
-fake_llm_speech_templates = "[{persona}] I want to {intent} {target_name}.|[{persona}] {target_name}'s public history looks worth checking.|[{persona}] I will compare today's claims before voting."
-fake_llm_persona_profiles = "cautious|assertive|analytical"
-fake_llm_speech_intents = "question|compare|pressure"
-fake_llm_reason_templates = "fake_llm {persona} {action} from public signals|fake_llm {persona} {action} with {intent} intent"
+llm_prompt_file = ""
+llm_fake_responses_file = ""
 
 log_level = "INFO"
 log_output = "file"

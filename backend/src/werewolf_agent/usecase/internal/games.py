@@ -43,7 +43,7 @@ from werewolf_agent.domain.game.models import (
     TieBreakPolicy,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
-from werewolf_agent.usecase.internal.agents import AgentFactory, fake_llm_agent_factory
+from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
 from werewolf_agent.usecase.internal.projections import (
     events_to_create,
     public_event_payload_from_record,
@@ -181,7 +181,7 @@ def advance_game_run(
         seed=run.seed,
         version=run.version,
         pending_actions=pending_actions,
-        agent_factory=fake_llm_agent_factory(dependencies.fake_llm_config),
+        agent_factory=langchain_agent_factory(dependencies.llm_provider_config),
         human_player_ids=_human_player_ids(run.config),
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(

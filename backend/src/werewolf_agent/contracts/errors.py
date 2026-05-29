@@ -151,10 +151,24 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
 
 
 def get_error_spec(code: ErrorCode) -> ErrorSpec:
-    """Return public metadata for an application error code."""
+    """Return public metadata for an application error code.
+
+    Args:
+        code: Stable application error code.
+
+    Returns:
+        Public title, status, default detail, and retryability metadata.
+    """
     return ERROR_SPECS[code]
 
 
 def problem_type_uri(code: ErrorCode | str) -> str:
-    """Return the stable RFC 9457 problem type URI for a code."""
+    """Return the stable RFC 9457 problem type URI for a code.
+
+    Args:
+        code: Error code value to embed in the URI.
+
+    Returns:
+        Stable tag URI used as the Problem Details `type`.
+    """
     return f"{PROBLEM_TYPE_TAG_PREFIX}{code}"

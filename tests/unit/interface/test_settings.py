@@ -7,16 +7,16 @@ from werewolf_agent.commons.configuration import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
     DEFAULT_GAME_MIN_PLAYERS,
-    DEFAULT_SETTINGS,
     DEFAULT_SQLITE_PATH,
+    PACKAGED_DEFAULTS,
     AppSettings,
     repository_root,
     split_csv,
     split_mapping,
 )
 from werewolf_agent.interface.application.settings import (
-    build_fake_llm_config,
     build_game_usecase_config,
+    build_llm_provider_config,
 )
 
 
@@ -35,9 +35,10 @@ def test_split_mapping_parses_key_value_items() -> None:
     }
 
 
-def test_packaged_defaults_are_loaded_from_default_settings_resource() -> None:
-    assert DEFAULT_SETTINGS["app_name"] == "werewolf-agent"
-    assert DEFAULT_SETTINGS["fake_llm_persona_profiles"] == "cautious|assertive|analytical"
+def test_packaged_defaults_are_loaded_from_resources() -> None:
+    assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
+    assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
+    assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
 
 
 def test_database_settings_default_to_sqlite_path_under_generated_dir() -> None:
@@ -91,13 +92,10 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_service_name == "werewolf-agent-api"
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
-    assert settings.llm_provider == "fake_llm"
-    assert settings.model == "fake-llm-local"
-    assert settings.fake_llm_strategy == "seeded"
-    assert settings.fake_llm_speech_template_list
-    assert settings.fake_llm_persona_profile_list
-    assert settings.fake_llm_speech_intent_list
-    assert settings.fake_llm_reason_template_list
+    assert settings.llm_provider == "fake"
+    assert settings.model == "fake-list-llm"
+    assert settings.llm_prompt_path is None
+    assert settings.llm_fake_responses_path is None
     assert settings.cors_allowed_methods_list == ["GET", "POST"]
     assert settings.cors_allowed_headers_list == ["*"]
     assert settings.game_role_name_map["werewolf"] == "人狼"
@@ -127,13 +125,11 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.supported_agent_type == "llm"
     assert usecase_config.default_ruleset_id == "default"
 
-    fake_llm_config = build_fake_llm_config(settings)
-    assert fake_llm_config.strategy == "seeded"
-    assert fake_llm_config.randomness == settings.fake_llm_randomness
-    assert fake_llm_config.persona_profiles
-    assert fake_llm_config.speech_intents
-    assert fake_llm_config.speech_templates
-    assert fake_llm_config.reason_templates
+    llm_config = build_llm_provider_config(settings)
+    assert llm_config.provider == "fake"
+    assert llm_config.model == "fake-list-llm"
+    assert llm_config.prompt_file is None
+    assert llm_config.fake_responses_file is None
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -142,11 +138,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_PLAYER_COUNT", "7")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_TYPE", "llm")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable LLM Agent")
-    monkeypatch.setenv("WEREWOLF_FAKE_LLM_STRATEGY", "random")
-    monkeypatch.setenv("WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES", "hello {target_name}|watching")
-    monkeypatch.setenv("WEREWOLF_FAKE_LLM_PERSONA_PROFILES", "cautious|bold")
-    monkeypatch.setenv("WEREWOLF_FAKE_LLM_SPEECH_INTENTS", "ask|press")
-    monkeypatch.setenv("WEREWOLF_FAKE_LLM_REASON_TEMPLATES", "reason {action}|reason {persona}")
+    monkeypatch.setenv("WEREWOLF_LLM_PROMPT_FILE", "prompts/custom.toml")
+    monkeypatch.setenv("WEREWOLF_LLM_FAKE_RESPONSES_FILE", "llm/fake.toml")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
@@ -163,11 +156,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_default_player_count == 7
     assert settings.game_supported_agent_type == "llm"
     assert settings.game_supported_agent_name == "Configurable LLM Agent"
-    assert settings.fake_llm_strategy == "random"
-    assert settings.fake_llm_speech_template_list == ["hello {target_name}", "watching"]
-    assert settings.fake_llm_persona_profile_list == ["cautious", "bold"]
-    assert settings.fake_llm_speech_intent_list == ["ask", "press"]
-    assert settings.fake_llm_reason_template_list == ["reason {action}", "reason {persona}"]
+    assert settings.llm_prompt_path == repository_root() / "prompts/custom.toml"
+    assert settings.llm_fake_responses_path == repository_root() / "llm/fake.toml"
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
@@ -242,9 +232,8 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("log_output", "socket"),
         ("log_third_party_level", "VERBOSE"),
         ("cli_output_format", "xml"),
-        ("game_supported_agent_type", "fake_llm"),
+        ("game_supported_agent_type", "bot"),
         ("llm_provider", "openai"),
-        ("fake_llm_strategy", "scripted"),
     ],
 )
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:

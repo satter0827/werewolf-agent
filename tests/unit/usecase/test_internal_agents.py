@@ -4,6 +4,7 @@ import pytest
 
 from werewolf_agent.domain.game.models import (
     Action,
+    ActionType,
     GameHistory,
     Observation,
     Phase,
@@ -13,9 +14,10 @@ from werewolf_agent.domain.game.models import (
     VoteResult,
 )
 from werewolf_agent.usecase.internal.agents import (
-    FakeLlmAgentFactory,
     _agent_observation_from_game,
+    langchain_agent_factory,
 )
+from werewolf_agent.usecase.jobs import LlmProviderConfig
 
 
 def test_agent_observation_from_game_carries_public_history_only() -> None:
@@ -51,7 +53,7 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
     assert agent_observation.known_roles == {"p1": Role.SEER.value}
 
 
-def test_fake_llm_debug_log_avoids_secret_decision_fields(
+def test_llm_debug_log_avoids_secret_decision_fields(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     game_observation = Observation(
@@ -63,15 +65,14 @@ def test_fake_llm_debug_log_avoids_secret_decision_fields(
             Player(id="p2", name="Bob", status=PlayerStatus.ALIVE),
         ],
         known_roles={"p1": Role.SEER},
+        available_actions=[ActionType.VOTE],
     )
-    agent = FakeLlmAgentFactory().create("p1", seed=1)
+    agent = langchain_agent_factory(LlmProviderConfig()).create("p1", seed=1)
 
     with caplog.at_level(logging.DEBUG, logger="werewolf_agent.usecase.internal.agents"):
         agent.act(game_observation)
 
-    record = next(
-        record for record in caplog.records if record.message == "fake_llm decision selected"
-    )
+    record = next(record for record in caplog.records if record.message == "llm decision selected")
     assert record.actor_id == "p1"
     assert record.phase == "voting"
     assert record.day == 2

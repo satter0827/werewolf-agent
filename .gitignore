@@ -59,6 +59,7 @@ MANIFEST
 
 # Documentation builds
 /docs/_build/
+/docs/sphinx/_build/
 /site/
 
 # JavaScript/web artifacts

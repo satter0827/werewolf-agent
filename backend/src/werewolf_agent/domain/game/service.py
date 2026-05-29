@@ -33,7 +33,16 @@ def start_game(
     players: Sequence[Player],
     rng: random.Random,
 ) -> tuple[GameSnapshot, list[DomainEvent]]:
-    """Create a validated initial game snapshot and startup events."""
+    """Create a validated initial game snapshot and startup events.
+
+    Args:
+        config: Deterministic game configuration.
+        players: Players participating in the game.
+        rng: Random source used for role assignment.
+
+    Returns:
+        The initial full snapshot and domain events emitted during setup.
+    """
     snapshot = game_setup.create_game_snapshot(config, players, rng)
     events = [
         DomainEvent(
@@ -51,7 +60,15 @@ def start_game(
 
 
 def observe(snapshot: GameSnapshot, player_id: str) -> Observation:
-    """Return the information visible to one player."""
+    """Return the information visible to one player.
+
+    Args:
+        snapshot: Full game state.
+        player_id: Observer player id.
+
+    Returns:
+        A role-aware observation redacted for the requested player.
+    """
     return observations.build_player_observation(snapshot, player_id)
 
 
@@ -60,7 +77,19 @@ def submit_action(
     pending_actions: PendingActions,
     action: Action,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
-    """Validate and record one player action without advancing the phase."""
+    """Validate and record one player action without advancing the phase.
+
+    Args:
+        snapshot: Current full game state.
+        pending_actions: Actions already collected for the active phase.
+        action: Structured action submitted by a player or agent.
+
+    Returns:
+        The updated snapshot, pending action buffer, and emitted domain events.
+
+    Raises:
+        GameError: If the action type is unsupported.
+    """
     if action.type is ActionType.SPEECH:
         next_snapshot, events = day_speech.record_day_speech(snapshot, action)
         return next_snapshot, pending_actions, events
@@ -115,7 +144,16 @@ def advance_phase(
     pending_actions: PendingActions,
     rng: random.Random,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
-    """Advance the state machine by one phase."""
+    """Advance the state machine by one phase.
+
+    Args:
+        snapshot: Current full game state.
+        pending_actions: Buffered votes and night actions for phase resolution.
+        rng: Random source used for tie breaks and phase resolution.
+
+    Returns:
+        The next snapshot, next pending action buffer, and emitted domain events.
+    """
     outcome = phase_transitions.advance_game_phase(
         snapshot,
         snapshot.config,

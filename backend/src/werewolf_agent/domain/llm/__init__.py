@@ -7,12 +7,18 @@ from werewolf_agent.domain.llm.models import (
     AgentPhase,
     AgentPlayerStatus,
     AgentRole,
-    FakeLlmConfig,
-    FakeLlmStrategy,
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
-from werewolf_agent.domain.llm.service import choose_decision
+from werewolf_agent.domain.llm.service import (
+    FakeResponseResource,
+    LangChainDecisionProvider,
+    PromptMessage,
+    PromptResource,
+    build_fake_decision_provider,
+    load_fake_response_resource,
+    load_prompt_resource,
+)
 
 __all__ = [
     "AgentActionType",
@@ -21,9 +27,13 @@ __all__ = [
     "AgentPhase",
     "AgentPlayerStatus",
     "AgentRole",
-    "FakeLlmConfig",
-    "FakeLlmStrategy",
+    "FakeResponseResource",
+    "LangChainDecisionProvider",
     "LlmDecisionProvider",
+    "PromptMessage",
+    "PromptResource",
     "VisiblePlayer",
-    "choose_decision",
+    "build_fake_decision_provider",
+    "load_fake_response_resource",
+    "load_prompt_resource",
 ]

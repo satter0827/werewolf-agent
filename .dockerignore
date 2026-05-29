@@ -17,6 +17,7 @@ build
 dist
 htmlcov
 docs/_build
+docs/sphinx/_build
 node_modules
 front-web/node_modules
 coverage.xml

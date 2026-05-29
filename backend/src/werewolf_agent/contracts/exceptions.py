@@ -20,6 +20,14 @@ class AppError(Exception):
         context: Mapping[str, object] | None = None,
         retryable: bool | None = None,
     ) -> None:
+        """Initialize an application error with safe public metadata.
+
+        Args:
+            detail: Optional user-facing detail. Defaults to the error spec detail.
+            code: Optional stable error code override.
+            context: Structured diagnostic context for logs and Problem Details.
+            retryable: Optional retryability override. Defaults to the error spec value.
+        """
         self.code = code or self.code
         self.spec: ErrorSpec = get_error_spec(self.code)
         self.detail = detail or self.spec.detail
@@ -28,7 +36,14 @@ class AppError(Exception):
         super().__init__(self.detail)
 
     def log_extra(self, *, trace_id: str | None = None) -> dict[str, object]:
-        """Return structured logging fields for this error."""
+        """Return structured logging fields for this error.
+
+        Args:
+            trace_id: Optional request trace id to include in logs.
+
+        Returns:
+            Safe structured fields without raw secrets.
+        """
         extra: dict[str, object] = {
             "error_code": self.code.value,
             "retryable": self.retryable,

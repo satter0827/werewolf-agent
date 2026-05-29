@@ -1,2 +1,0 @@
-"""Internal FakeLLM decision rules."""
-

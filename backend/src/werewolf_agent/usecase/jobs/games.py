@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 from uuid import UUID
 
@@ -16,7 +16,6 @@ from werewolf_agent.commons.shared.validation import non_blank
 if TYPE_CHECKING:
     from werewolf_agent.usecase.jobs.ports import GameRepository
 
-FakeLlmStrategy = Literal["seeded", "random"]
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 EventVisibility = Literal["public", "player_private", "debug"]
@@ -28,33 +27,20 @@ RoleCount = Annotated[int, Field(ge=0)]
 
 
 @dataclass(frozen=True)
-class FakeLlmConfig:
-    """Use case settings for the FakeLLM automated player."""
+class LlmProviderConfig:
+    """Use case settings for automated LangChain-backed players."""
 
-    strategy: FakeLlmStrategy = "seeded"
-    randomness: float = 0.7
-    persona_profiles: tuple[str, ...] = ("cautious", "assertive", "analytical")
-    speech_intents: tuple[str, ...] = ("question", "compare", "pressure")
-    speech_templates: tuple[str, ...] = (
-        "[{persona}] I want to {intent} {target_name}.",
-        "[{persona}] {target_name}'s public history looks worth checking.",
-        "[{persona}] I will compare today's claims before voting.",
-    )
-    reason_templates: tuple[str, ...] = (
-        "fake_llm {persona} {action} from public signals",
-        "fake_llm {persona} {action} with {intent} intent",
-    )
+    provider: str = "fake"
+    model: str = "fake-list-llm"
+    prompt_file: Path | None = None
+    fake_responses_file: Path | None = None
 
     def __post_init__(self) -> None:
-        """Validate FakeLLM settings without importing domain models."""
-        if self.strategy not in {"seeded", "random"}:
-            raise ValueError("fake_llm strategy must be one of: random, seeded")
-        if self.randomness < 0 or self.randomness > 1:
-            raise ValueError("fake_llm randomness must be between 0 and 1")
-        _validate_template_values("persona_profiles", self.persona_profiles)
-        _validate_template_values("speech_intents", self.speech_intents)
-        _validate_template_values("speech_templates", self.speech_templates)
-        _validate_template_values("reason_templates", self.reason_templates)
+        """Validate provider settings without importing interface settings."""
+        non_blank(self.provider, "llm provider")
+        non_blank(self.model, "llm model")
+        if self.provider != "fake":
+            raise ValueError("llm provider must be one of: fake")
 
 
 @dataclass(frozen=True)
@@ -74,7 +60,7 @@ class GameUseCaseDependencies:
 
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
-    fake_llm_config: FakeLlmConfig = field(default_factory=FakeLlmConfig)
+    llm_provider_config: LlmProviderConfig = field(default_factory=LlmProviderConfig)
 
 
 class _UseCaseModel(BaseModel):
@@ -502,7 +488,14 @@ class StoredGameEvent(_UseCaseModel):
 
 
 def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
-    """Return business metadata for the default ruleset."""
+    """Return business metadata for the default ruleset.
+
+    Args:
+        config: Use case settings that define supported table sizes and agent types.
+
+    Returns:
+        Ruleset metadata for client bootstrapping.
+    """
     from werewolf_agent.usecase.internal.rulesets import default_ruleset
 
     return default_ruleset(config)
@@ -513,7 +506,15 @@ def create_game_run(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> GameRunResult:
-    """Create and persist one deterministic game."""
+    """Create and persist one deterministic game.
+
+    Args:
+        command: Game creation command supplied by an interface adapter.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Public game state plus one-time control tokens when manual players exist.
+    """
     from werewolf_agent.usecase.internal.games import create_game_run as _create_game_run
 
     return _create_game_run(command, dependencies=dependencies)
@@ -524,7 +525,15 @@ def get_game_run(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> GameRunResult:
-    """Return the current public state for one game run."""
+    """Return the current public state for one game run.
+
+    Args:
+        query: Game lookup query.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Public state for the stored game run.
+    """
     from werewolf_agent.usecase.internal.games import get_game_run as _get_game_run
 
     return _get_game_run(query, dependencies=dependencies)
@@ -535,7 +544,15 @@ def list_game_runs(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> ListGameRunsResult:
-    """Return a page of public game run summaries."""
+    """Return a page of public game run summaries.
+
+    Args:
+        query: Status filter and pagination cursor.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Public run summaries and the next offset when another page is available.
+    """
     from werewolf_agent.usecase.internal.games import list_game_runs as _list_game_runs
 
     return _list_game_runs(query, dependencies=dependencies)
@@ -546,7 +563,15 @@ def advance_game_run(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> AdvanceGameRunResult:
-    """Advance one game run by one business step."""
+    """Advance one game run by one business step.
+
+    Args:
+        command: Game advancement command.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Updated public state and public events emitted by the step.
+    """
     from werewolf_agent.usecase.internal.games import advance_game_run as _advance_game_run
 
     return _advance_game_run(command, dependencies=dependencies)
@@ -557,7 +582,15 @@ def get_player_observation(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> PlayerObservationResult:
-    """Return one authenticated player's private observation."""
+    """Return one authenticated player's private observation.
+
+    Args:
+        query: Game id, player id, and control token.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Private observation visible to the authenticated player.
+    """
     from werewolf_agent.usecase.internal.games import (
         get_player_observation as _get_player_observation,
     )
@@ -570,7 +603,15 @@ def submit_player_action(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> SubmitPlayerActionResult:
-    """Submit one authenticated manual player action."""
+    """Submit one authenticated manual player action.
+
+    Args:
+        command: Manual action command with the player's control token.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Updated public state and public events caused by the action.
+    """
     from werewolf_agent.usecase.internal.games import (
         submit_player_action as _submit_player_action,
     )
@@ -583,7 +624,15 @@ def list_public_game_events(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> PublicGameEventsResult:
-    """List public events after a sequence number."""
+    """List public events after a sequence number.
+
+    Args:
+        query: Game id, sequence cursor, and page size.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Public events and the next sequence cursor.
+    """
     from werewolf_agent.usecase.internal.games import (
         list_public_game_events as _list_public_game_events,
     )
@@ -596,16 +645,17 @@ def list_public_game_turns(
     *,
     dependencies: GameUseCaseDependencies,
 ) -> ListPublicGameTurnsResult:
-    """List public turn records after a sequence number."""
+    """List public turn records after a sequence number.
+
+    Args:
+        query: Game id, sequence cursor, and page size.
+        dependencies: Repository and configuration supplied by the outer layer.
+
+    Returns:
+        Public timeline records and the next sequence cursor.
+    """
     from werewolf_agent.usecase.internal.games import (
         list_public_game_turns as _list_public_game_turns,
     )
 
     return _list_public_game_turns(query, dependencies=dependencies)
-
-
-def _validate_template_values(field_name: str, values: Sequence[str]) -> None:
-    if not values:
-        raise ValueError(f"fake_llm {field_name} must include at least one value")
-    for value in values:
-        non_blank(value, f"fake_llm {field_name}")

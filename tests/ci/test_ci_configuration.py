@@ -37,7 +37,7 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
     docs = "\n".join(
         [
             _read("README.md"),
-            _read("docs/development.md"),
+            _read("docs/notes/development.md"),
             _read("AGENTS.md"),
         ]
     )

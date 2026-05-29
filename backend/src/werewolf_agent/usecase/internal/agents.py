@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Protocol
 
 from werewolf_agent.commons.shared.messages import (
@@ -24,11 +23,9 @@ from werewolf_agent.domain.llm.models import (
     AgentRole,
     VisiblePlayer,
 )
-from werewolf_agent.domain.llm.models import (
-    FakeLlmConfig as DomainFakeLlmConfig,
-)
-from werewolf_agent.domain.llm.service import choose_decision
-from werewolf_agent.usecase.jobs.games import FakeLlmConfig
+from werewolf_agent.domain.llm.ports import LlmDecisionProvider
+from werewolf_agent.domain.llm.service import build_fake_decision_provider
+from werewolf_agent.usecase.jobs.games import LlmProviderConfig
 
 logger = logging.getLogger(__name__)
 
@@ -48,24 +45,18 @@ class AgentFactory(Protocol):
 
 
 @dataclass(frozen=True)
-class FakeLlmAgent:
+class LlmAgent:
     """Automated player backed by an LLM decision provider."""
 
     player_id: str
-    config: DomainFakeLlmConfig
-    rng: random.Random
+    provider: LlmDecisionProvider
 
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
         agent_observation = _agent_observation_from_game(observation)
-        decision = choose_decision(
-            self.player_id,
-            agent_observation,
-            config=self.config,
-            rng=self.rng,
-        )
+        decision = self.provider.choose_decision(self.player_id, agent_observation)
         logger.debug(
-            "fake_llm decision selected",
+            "llm decision selected",
             extra={
                 "actor_id": self.player_id,
                 "candidate_count": _safe_candidate_count(agent_observation),
@@ -78,32 +69,25 @@ class FakeLlmAgent:
 
 
 @dataclass(frozen=True)
-class FakeLlmAgentFactory:
-    """Create FakeLLM agents for automated game runs."""
+class LlmAgentFactory:
+    """Create LLM agents for automated game runs."""
 
-    config: DomainFakeLlmConfig = field(default_factory=DomainFakeLlmConfig)
+    provider: LlmDecisionProvider
 
-    def create(self, player_id: str, *, seed: int) -> FakeLlmAgent:
-        """Create one FakeLLM agent using the configured seed policy."""
-        seed_offset = int(self.config.randomness * 10000)
-        rng = (
-            random.Random(seed + seed_offset)
-            if self.config.strategy == "seeded"
-            else random.Random()
-        )
-        return FakeLlmAgent(player_id=player_id, config=self.config, rng=rng)
+    def create(self, player_id: str, *, seed: int) -> LlmAgent:
+        """Create one LLM agent for a deterministic run step."""
+        _ = seed
+        return LlmAgent(player_id=player_id, provider=self.provider)
 
 
-def fake_llm_agent_factory(config: FakeLlmConfig) -> FakeLlmAgentFactory:
-    """Return a domain-facing FakeLLM factory from use case settings."""
-    return FakeLlmAgentFactory(
-        config=DomainFakeLlmConfig(
-            strategy=config.strategy,
-            randomness=config.randomness,
-            persona_profiles=config.persona_profiles,
-            speech_intents=config.speech_intents,
-            speech_templates=config.speech_templates,
-            reason_templates=config.reason_templates,
+def langchain_agent_factory(config: LlmProviderConfig) -> LlmAgentFactory:
+    """Return a LangChain-backed agent factory from use case settings."""
+    if config.provider != "fake":
+        raise ValueError(f"Unsupported LLM provider: {config.provider}.")
+    return LlmAgentFactory(
+        provider=build_fake_decision_provider(
+            prompt_path=config.prompt_file,
+            fake_responses_path=config.fake_responses_file,
         )
     )
 
