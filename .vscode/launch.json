@@ -11,7 +11,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -29,7 +34,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -44,7 +54,11 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-migrate.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO",
         "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
       },
       "justMyCode": true
@@ -67,7 +81,11 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-api.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO",
         "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
       },
       "justMyCode": true
@@ -90,7 +108,11 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-streamlit.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO",
         "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
         "WEREWOLF_STREAMLIT_SAVE_FILE": "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
       },
@@ -114,7 +136,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -133,7 +160,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -152,7 +184,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -174,7 +211,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -198,7 +240,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -222,7 +269,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -240,7 +292,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -259,7 +316,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -278,7 +340,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
@@ -296,7 +363,12 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_LEVEL": "DEBUG",
+        "WEREWOLF_LOG_OUTPUT": "both",
+        "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
+        "WEREWOLF_LOG_FILE_NAME": "vscode-cli.jsonl",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO"
       },
       "justMyCode": true
     },
