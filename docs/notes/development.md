@@ -173,6 +173,7 @@ Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` �
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
 - operational logs: 既定は `.werewolf-agent\logs\`、永続運用では `WEREWOLF_LOG_DIR` で指定
+- Streamlit save: game metadata だけを保存し、`control_token` は現在の Streamlit session 内だけに保持する
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
 - coverage data: `.werewolf-agent/coverage/.coverage`
@@ -233,6 +234,7 @@ uv build --no-sources
 - API と Streamlit は `trace.id` を共有し、HTTP client は `X-Trace-Id` を伝播する
 - usecase の進行診断は `TelemetrySink` 経由で `event.action=game.phase.*` / `game.manual_action.accepted` として出る
 - `control_token`、`authorization`、`private_state`、`role`、`night_action` 系 field は redaction 対象にする
+- Streamlit save JSON に `control_token` を出さず、再起動後の保存 game は観戦モードで開く
 
 ## 未実装
 

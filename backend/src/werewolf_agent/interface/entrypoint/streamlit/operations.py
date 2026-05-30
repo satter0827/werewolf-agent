@@ -15,6 +15,7 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_CONNECTION_CHECKED,
     LOG_STREAMLIT_GAME_CREATED,
     LOG_STREAMLIT_REFRESHED,
+    LOG_STREAMLIT_RERUN_STARTED,
 )
 from werewolf_agent.contracts.schemas import (
     GameResponse,
@@ -46,6 +47,23 @@ class AdvanceResult:
 def build_streamlit_client(api_url: str, settings: AppSettings) -> GameApiClient:
     """Build the shared public API client with Streamlit settings."""
     return build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
+
+
+def log_streamlit_rerun_started(settings: AppSettings) -> None:
+    """Log the Streamlit rerun context without private gameplay data."""
+    logger.debug(
+        LOG_STREAMLIT_RERUN_STARTED,
+        extra={
+            "event_action": LOG_STREAMLIT_RERUN_STARTED,
+            "event_outcome": "success",
+            "api_url": settings.streamlit_resolved_api_url,
+            "save_file_path": str(settings.streamlit_save_file_path),
+            "log_level": settings.log_level,
+            "log_output": settings.log_output,
+            "log_file_path": str(settings.log_file_path),
+            "log_third_party_level": settings.log_third_party_level,
+        },
+    )
 
 
 def check_connection(*, api_url: str, settings: AppSettings) -> dict[str, str]:

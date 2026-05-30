@@ -356,6 +356,42 @@ def test_doctor_command_reports_invalid_configuration_safely() -> None:
     assert "log_level must be one of" in result.output
 
 
+def test_cli_startup_log_writes_trace_settings(tmp_path: Path) -> None:
+    get_settings.cache_clear()
+    log_file = tmp_path / "cli.jsonl"
+    try:
+        result = CliRunner().invoke(
+            app,
+            ["doctor"],
+            env={
+                "WEREWOLF_LOG_LEVEL": "DEBUG",
+                "WEREWOLF_LOG_OUTPUT": "file",
+                "WEREWOLF_LOG_DIR": str(tmp_path),
+                "WEREWOLF_LOG_FILE_NAME": log_file.name,
+                "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO",
+            },
+        )
+    finally:
+        get_settings.cache_clear()
+
+    assert result.exit_code == 0
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    payloads = [
+        json.loads(line) for line in log_file.read_text(encoding="utf-8").splitlines() if line
+    ]
+    startup_payload = next(
+        payload for payload in payloads if payload["event.action"] == "cli.application.started"
+    )
+    assert startup_payload["event.outcome"] == "success"
+    assert startup_payload["cli_command"] == "doctor"
+    assert startup_payload["log_level"] == "DEBUG"
+    assert startup_payload["log_output"] == "file"
+    assert startup_payload["log_file_path"] == str(log_file)
+    assert startup_payload["log_third_party_level"] == "INFO"
+    assert "control_token" not in startup_payload
+
+
 def test_play_command_uses_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

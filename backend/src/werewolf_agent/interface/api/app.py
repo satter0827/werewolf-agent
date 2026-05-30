@@ -35,7 +35,10 @@ from werewolf_agent.interface.shared.http import (
     request_validation_error_handler,
     unhandled_exception_handler,
 )
-from werewolf_agent.interface.shared.messages import LOG_API_REQUEST_COMPLETED
+from werewolf_agent.interface.shared.messages import (
+    LOG_API_APPLICATION_STARTED,
+    LOG_API_REQUEST_COMPLETED,
+)
 
 TRACE_ID_HEADER = "X-Trace-Id"
 REQUEST_ID_HEADER = "X-Request-Id"
@@ -52,6 +55,7 @@ def create_app(
     """Create the FastAPI ASGI app."""
     loaded_settings = settings or get_settings()
     configure_interface_logging(loaded_settings)
+    _log_api_startup(loaded_settings)
 
     engine = create_database_engine(loaded_settings)
     if create_schema:
@@ -94,6 +98,44 @@ def create_app(
     app.include_router(router)
 
     return app
+
+
+def _log_api_startup(settings: AppSettings) -> None:
+    startup_fields: dict[str, object] = {
+        "event_action": LOG_API_APPLICATION_STARTED,
+        "event_outcome": "success",
+        "api_title": settings.api_title,
+        "api_version": settings.api_version,
+        "api_debug": settings.api_debug,
+        "log_level": settings.log_level,
+        "log_output": settings.log_output,
+        "log_file_path": str(settings.log_file_path),
+        "log_third_party_level": settings.log_third_party_level,
+    }
+    startup_fields.update(_database_log_fields(settings))
+    logger.info(LOG_API_APPLICATION_STARTED, extra=startup_fields)
+
+
+def _database_log_fields(settings: AppSettings) -> dict[str, object]:
+    if settings.configured_database_url:
+        return {
+            "database_backend": _database_backend(settings.sqlalchemy_database_url),
+            "database_source": "database_url",
+        }
+    return {
+        "database_backend": "sqlite",
+        "database_source": "sqlite_path",
+        "sqlite_path": str(settings.sqlite_database_path),
+    }
+
+
+def _database_backend(database_url: str) -> str:
+    normalized_url = database_url.lower()
+    if normalized_url.startswith("sqlite"):
+        return "sqlite"
+    if normalized_url.startswith(("postgres://", "postgresql://", "postgresql+")):
+        return "postgresql"
+    return "configured"
 
 
 async def _trace_request(

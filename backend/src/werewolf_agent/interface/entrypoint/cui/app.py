@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 import typer
 from pydantic import ValidationError
 
@@ -9,7 +11,10 @@ from werewolf_agent.commons.configuration import (
     configure_interface_logging,
     settings_error_detail,
 )
-from werewolf_agent.commons.shared.messages import message_error_line
+from werewolf_agent.commons.shared.messages import (
+    LOG_CLI_APPLICATION_STARTED,
+    message_error_line,
+)
 from werewolf_agent.contracts import ConfigError
 from werewolf_agent.interface.entrypoint.cui.commands import (
     create,
@@ -24,6 +29,8 @@ from werewolf_agent.interface.entrypoint.cui.commands import (
     watch,
 )
 
+logger = logging.getLogger(__name__)
+
 app = typer.Typer(
     help="Werewolf Agent development and gameplay commands.",
     no_args_is_help=True,
@@ -31,14 +38,26 @@ app = typer.Typer(
 
 
 @app.callback()
-def main() -> None:
+def main(ctx: typer.Context) -> None:
     """Werewolf Agent command group."""
     try:
-        configure_interface_logging()
+        settings = configure_interface_logging()
     except ValidationError as exc:
         error = ConfigError(settings_error_detail(exc))
         typer.echo(message_error_line(error.detail), err=True)
         raise typer.Exit(code=1) from exc
+    logger.debug(
+        LOG_CLI_APPLICATION_STARTED,
+        extra={
+            "event_action": LOG_CLI_APPLICATION_STARTED,
+            "event_outcome": "success",
+            "cli_command": ctx.invoked_subcommand,
+            "log_level": settings.log_level,
+            "log_output": settings.log_output,
+            "log_file_path": str(settings.log_file_path),
+            "log_third_party_level": settings.log_third_party_level,
+        },
+    )
 
 
 app.command(name="doctor")(doctor)

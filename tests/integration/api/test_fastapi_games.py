@@ -52,7 +52,7 @@ def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
     settings = AppSettings(
         _env_file=None,
         api_debug=False,
-        database_url="sqlite+pysqlite:///:memory:",
+        sqlite_path=tmp_path / "api.sqlite3",
         log_output="file",
         log_dir=tmp_path,
         log_file_name="api.jsonl",
@@ -66,17 +66,33 @@ def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
 
     for handler in logging.getLogger().handlers:
         handler.flush()
-    payload = json.loads(settings.log_file_path.read_text(encoding="utf-8").splitlines()[0])
+    payloads = [
+        json.loads(line)
+        for line in settings.log_file_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    startup_payload = next(
+        payload for payload in payloads if payload["event.action"] == "api.application.started"
+    )
+    request_payload = next(
+        payload for payload in payloads if payload["event.action"] == "http.request.completed"
+    )
 
     assert response.status_code == 200
-    assert payload["message"] == "http.request.completed"
-    assert payload["event.action"] == "http.request.completed"
-    assert payload["event.outcome"] == "success"
-    assert payload["trace.id"] == "trace-log"
-    assert payload["http.request.method"] == "GET"
-    assert payload["url.path"] == "/api/v1/health"
-    assert payload["http.response.status_code"] == 200
-    assert isinstance(payload["event.duration"], int)
+    assert startup_payload["event.outcome"] == "success"
+    assert startup_payload["database_backend"] == "sqlite"
+    assert startup_payload["database_source"] == "sqlite_path"
+    assert startup_payload["sqlite_path"] == str(settings.sqlite_database_path)
+    assert startup_payload["log_output"] == "file"
+    assert startup_payload["log_file_path"] == str(settings.log_file_path)
+    assert "database_url" not in startup_payload
+    assert request_payload["message"] == "http.request.completed"
+    assert request_payload["event.outcome"] == "success"
+    assert request_payload["trace.id"] == "trace-log"
+    assert request_payload["http.request.method"] == "GET"
+    assert request_payload["url.path"] == "/api/v1/health"
+    assert request_payload["http.response.status_code"] == 200
+    assert isinstance(request_payload["event.duration"], int)
 
 
 def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:

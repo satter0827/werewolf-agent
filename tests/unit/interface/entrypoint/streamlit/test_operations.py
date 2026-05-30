@@ -12,6 +12,36 @@ from werewolf_agent.contracts.schemas import (
 from werewolf_agent.interface.entrypoint.streamlit import operations
 
 
+def test_streamlit_rerun_startup_log_includes_runtime_paths(
+    tmp_path,
+    caplog,
+) -> None:
+    settings = AppSettings(
+        _env_file=None,
+        log_dir=tmp_path,
+        log_level="DEBUG",
+        log_output="both",
+        log_third_party_level="INFO",
+        streamlit_api_url="http://api.test/api/v1",
+        streamlit_save_file=tmp_path / "saves.json",
+    )
+
+    with caplog.at_level(logging.DEBUG, logger=operations.__name__):
+        operations.log_streamlit_rerun_started(settings)
+
+    record = next(
+        record for record in caplog.records if record.event_action == "streamlit.rerun.started"
+    )
+    assert record.event_outcome == "success"
+    assert record.api_url == "http://api.test/api/v1"
+    assert record.save_file_path == str(tmp_path / "saves.json")
+    assert record.log_level == "DEBUG"
+    assert record.log_output == "both"
+    assert record.log_file_path == str(settings.log_file_path)
+    assert record.log_third_party_level == "INFO"
+    assert not hasattr(record, "control_token")
+
+
 class FakeStreamlitClient:
     def __init__(self) -> None:
         self.stepped = False

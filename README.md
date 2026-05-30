@@ -192,6 +192,8 @@ WEREWOLF_DATABASE_URL=
 
 DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。コード上の `WEREWOLF_API_DEBUG` 既定値は `false` で、`.env.example` と `compose.yaml` はローカル開発用に `true` を明示しています。
 
+Streamlit の保存ファイルは game metadata だけを永続化し、`control_token` は現在の Streamlit session 内だけに保持します。画面を再起動した後の保存 game は、公開情報だけを表示する観戦モードとして開きます。
+
 運用ログは既定で `.werewolf-agent/logs/werewolf-agent.jsonl` に ECS 風 field の JSON Lines で出力し、UTC の日次 rollover と保持日数で管理します。`WEREWOLF_LOG_OUTPUT` は `file`、`stderr`、`stdout`、`both`、`none` を選べます。`DEBUG` は操作追跡、`INFO` は通常運用、`WARNING` は回復可能な異常、`ERROR` は処理失敗、`CRITICAL` は停止級の異常に使います。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
 
 ## Docker

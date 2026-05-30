@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
 from werewolf_agent.contracts.schemas import GameResponse, PublicGameRunSummary, PublicGameState
-from werewolf_agent.interface.entrypoint.streamlit.view_models import SavedGameOptionView
+from werewolf_agent.interface.entrypoint.streamlit.view_models import (
+    SavedGameOptionView,
+    ScreenMode,
+)
 
-SAVE_FILE_VERSION = 1
+SAVE_FILE_VERSION = 2
 
 
 @dataclass(frozen=True)
@@ -21,7 +25,6 @@ class SaveSlot:
     slot_id: str
     game_id: str
     human_player_id: str
-    control_token: str
     status: str
     phase: str
     day: int
@@ -36,7 +39,6 @@ class SaveSlot:
             slot_id=self.slot_id,
             game_id=self.game_id,
             human_player_id=self.human_player_id,
-            control_token=self.control_token,
             status=state.status,
             phase=state.phase,
             day=state.day,
@@ -48,14 +50,16 @@ class SaveSlot:
 
 
 def load_save_slots(save_file: Path) -> list[SaveSlot]:
-    """Load v1 save slots, returning an empty list for old or broken files."""
+    """Load current save slots, returning an empty list for invalid files."""
     if not save_file.exists():
         return []
     try:
         payload = json.loads(save_file.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return []
-    if not isinstance(payload, dict) or payload.get("version") != SAVE_FILE_VERSION:
+    if not isinstance(payload, dict):
+        return []
+    if payload.get("version") != SAVE_FILE_VERSION:
         return []
     raw_slots = payload.get("slots")
     if not isinstance(raw_slots, list):
@@ -94,7 +98,6 @@ def create_save_slot(
     response: GameResponse,
     *,
     human_player_id: str,
-    control_token: str,
 ) -> SaveSlot:
     """Create a playable save slot from a newly created game response."""
     state = response.state
@@ -102,7 +105,6 @@ def create_save_slot(
         slot_id=uuid4().hex,
         game_id=response.game_id,
         human_player_id=human_player_id,
-        control_token=control_token,
         status=state.status,
         phase=state.phase,
         day=state.day,
@@ -116,17 +118,22 @@ def create_save_slot(
 def build_saved_game_options(
     slots: list[SaveSlot],
     runs: list[PublicGameRunSummary],
+    *,
+    control_tokens: Mapping[str, str] | None = None,
 ) -> list[SavedGameOptionView]:
     """Return save-selector options without exposing internal ids in labels."""
     options: list[SavedGameOptionView] = []
     runs_by_game = {run.game_id: run for run in runs}
     saved_game_ids = {slot.game_id for slot in slots}
+    control_tokens_by_slot = control_tokens or {}
     for index, slot in enumerate(slots, start=1):
         run = runs_by_game.get(slot.game_id)
         status = run.status if run is not None else slot.status
         day = run.day if run is not None else slot.day
         player_count = run.player_count if run is not None else slot.player_count
         updated_at = run.updated_at if run is not None else slot.updated_at
+        control_token = control_tokens_by_slot.get(slot.slot_id, "")
+        mode: ScreenMode = "playable" if control_token else "observer"
         options.append(
             SavedGameOptionView(
                 option_id=f"slot:{slot.slot_id}",
@@ -136,12 +143,12 @@ def build_saved_game_options(
                     day=day,
                     player_count=player_count,
                     updated_at=updated_at,
-                    mode_label="プレイ可能",
+                    mode_label="プレイ可能" if control_token else "観戦のみ",
                 ),
                 game_id=slot.game_id,
-                mode="playable",
-                human_player_id=slot.human_player_id,
-                control_token=slot.control_token,
+                mode=mode,
+                human_player_id=slot.human_player_id if control_token else None,
+                control_token=control_token,
             )
         )
     observer_runs = [run for run in runs if run.game_id not in saved_game_ids]
@@ -165,12 +172,13 @@ def build_saved_game_options(
 
 
 def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
+    if "control_token" in payload:
+        return None
     try:
         return SaveSlot(
             slot_id=_required_text(payload, "slot_id"),
             game_id=_required_text(payload, "game_id"),
             human_player_id=_required_text(payload, "human_player_id"),
-            control_token=_required_text(payload, "control_token"),
             status=_required_text(payload, "status"),
             phase=_required_text(payload, "phase"),
             day=_required_int(payload, "day"),
@@ -188,7 +196,6 @@ def _slot_to_dict(slot: SaveSlot) -> dict[str, object]:
         "slot_id": slot.slot_id,
         "game_id": slot.game_id,
         "human_player_id": slot.human_player_id,
-        "control_token": slot.control_token,
         "status": slot.status,
         "phase": slot.phase,
         "day": slot.day,

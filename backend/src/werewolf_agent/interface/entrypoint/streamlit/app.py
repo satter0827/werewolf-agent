@@ -27,6 +27,7 @@ from werewolf_agent.interface.entrypoint.streamlit.operations import (
     create_playable_game,
     list_recent_games,
     load_game_screen,
+    log_streamlit_rerun_started,
     submit_screen_action,
 )
 from werewolf_agent.interface.entrypoint.streamlit.saves import (
@@ -40,6 +41,8 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_MESSAGE,
     KEY_SELECTED_SAVE_ID,
     clear_message,
+    control_tokens_by_slot,
+    remember_control_token,
     remember_selected_save,
     text_value,
 )
@@ -57,6 +60,7 @@ def main() -> None:
     settings = get_settings()
     configure_interface_logging(settings, service_name=settings.streamlit_service_name)
     with bind_observation_context(trace_id=str(uuid4())):
+        log_streamlit_rerun_started(settings)
         _render_app(st, settings)
 
 
@@ -180,7 +184,11 @@ def _render_save_selector(
     except AppError:
         runs = []
         st.sidebar.caption("保存データは API 接続後に更新されます。")
-    options = build_saved_game_options(slots, runs)
+    options = build_saved_game_options(
+        slots,
+        runs,
+        control_tokens=control_tokens_by_slot(st.session_state),
+    )
     if not options:
         st.sidebar.caption("保存データはまだありません。")
         return None
@@ -259,9 +267,13 @@ def _create_game(
     slot = create_save_slot(
         created,
         human_player_id=human_player_id,
-        control_token=control_token,
     )
     upsert_save_slot(settings.streamlit_save_file_path, slot)
+    remember_control_token(
+        st.session_state,
+        slot_id=slot.slot_id,
+        control_token=control_token,
+    )
     remember_selected_save(st.session_state, f"slot:{slot.slot_id}")
     clear_message(st.session_state)
     st.sidebar.success("ゲームを作成しました")
