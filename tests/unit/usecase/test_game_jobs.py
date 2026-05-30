@@ -16,26 +16,18 @@ from werewolf_agent.usecase.jobs import (
     GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
+    GameUseCases,
     GetGameRunQuery,
+    GetGameTimelineQuery,
     ListGameRunsQuery,
-    ListPublicGameEventsQuery,
-    ListPublicGameTurnsQuery,
     NullTelemetrySink,
+    PlayerActionCommand,
     StoredGameEvent,
     StoredGameRun,
     StoredGameRunSummary,
     StoredGameTurn,
-    SubmitPlayerActionCommand,
     TelemetryEvent,
     TelemetrySink,
-    advance_game_run,
-    create_game_run,
-    get_default_ruleset,
-    get_game_run,
-    list_game_runs,
-    list_public_game_events,
-    list_public_game_turns,
-    submit_player_action,
 )
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -152,18 +144,9 @@ class InMemoryGameRepository(GameRepository):
         )
         return records
 
-    def list_public_events(
-        self,
-        run_id: UUID,
-        *,
-        after: int,
-        limit: int,
-    ) -> list[StoredGameEvent]:
-        return [
-            event
-            for event in self.events.get(run_id, [])
-            if event.visibility == "public" and event.sequence > after
-        ][:limit]
+    def latest_public_turn_sequence(self, run_id: UUID) -> int:
+        turns = self.turns.get(run_id, [])
+        return turns[-1].sequence if turns else 0
 
     def list_public_turns(
         self,
@@ -227,7 +210,7 @@ def explicit_players() -> list[dict[str, str]]:
 
 
 def test_default_ruleset_returns_business_identifiers_only() -> None:
-    result = get_default_ruleset(
+    deps, _repository = dependencies(
         config=GameUseCaseConfig(
             min_players=4,
             max_players=10,
@@ -235,6 +218,7 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
             default_ruleset_id="custom",
         )
     )
+    result = GameUseCases(deps).get_default_ruleset()
 
     assert result.id == "custom"
     assert result.player_count == {"min": 4, "max": 10}
@@ -245,9 +229,8 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
 def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
-    result = create_game_run(
+    result = GameUseCases(deps).create_game_run(
         CreateGameRunCommand(players=explicit_players(), seed=42),
-        dependencies=deps,
     )
 
     assert result.state["players"][0]["id"] == "p1"
@@ -263,16 +246,15 @@ def test_create_game_rejects_duplicate_normalized_player_ids() -> None:
     players[1]["id"] = "p1"
 
     with pytest.raises(GameError):
-        create_game_run(CreateGameRunCommand(players=players), dependencies=deps)
+        GameUseCases(deps).create_game_run(CreateGameRunCommand(players=players))
 
 
 def test_create_game_rejects_unsupported_agent_type() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        create_game_run(
-            CreateGameRunCommand(player_count=5, agent={"type": "dummy"}),
-            dependencies=deps,
+        GameUseCases(deps).create_game_run(
+            CreateGameRunCommand(player_count=5, agent={"type": "dummy"})
         )
 
 
@@ -280,31 +262,26 @@ def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(InvalidGameIdError):
-        get_game_run(GetGameRunQuery(game_id="not-a-uuid"), dependencies=deps)
+        GameUseCases(deps).get_game_run(GetGameRunQuery(game_id="not-a-uuid"))
 
     with pytest.raises(GameNotFoundError):
-        get_game_run(GetGameRunQuery(game_id=str(uuid4())), dependencies=deps)
+        GameUseCases(deps).get_game_run(GetGameRunQuery(game_id=str(uuid4())))
 
 
 def test_advance_game_delegates_core_progression_and_returns_public_payloads() -> None:
     telemetry = CollectingTelemetrySink()
     deps, repository = dependencies(telemetry=telemetry)
-    created = create_game_run(CreateGameRunCommand(player_count=5, seed=1), dependencies=deps)
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(CreateGameRunCommand(player_count=5, seed=1))
 
-    advanced = advance_game_run(
-        AdvanceGameRunCommand(game_id=created.game_id),
-        dependencies=deps,
-    )
-    events = list_public_game_events(
-        ListPublicGameEventsQuery(game_id=created.game_id, after=0),
-        dependencies=deps,
-    )
+    advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id, after=0))
 
     assert advanced.state["version"] == 2
-    assert all(event["visibility"] == "public" for event in advanced.events)
-    assert "role_counts" not in json.dumps(events.model_dump(mode="json"))
-    assert events.events
-    assert events.next_after <= repository.events[UUID(created.game_id)][-1].sequence
+    assert advanced.timeline
+    assert "role_counts" not in json.dumps(timeline.model_dump(mode="json"))
+    assert timeline.items
+    assert timeline.next_after <= repository.latest_public_turn_sequence(UUID(created.game_id))
     assert "game.phase.drive_started" in [event.action for event in telemetry.events]
     assert "game.phase.advance_completed" in [event.action for event in telemetry.events]
     assert all("private_state" not in event.fields for event in telemetry.events)
@@ -320,7 +297,8 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
 def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     telemetry = CollectingTelemetrySink()
     deps, _repository = dependencies(telemetry=telemetry)
-    created = create_game_run(
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(
         CreateGameRunCommand(
             players=[
                 {"id": "p1", "name": "Alice", "agent_type": "human"},
@@ -331,19 +309,17 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
             ],
             seed=1,
         ),
-        dependencies=deps,
     )
-    advance_game_run(AdvanceGameRunCommand(game_id=created.game_id), dependencies=deps)
+    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
 
-    submit_player_action(
-        SubmitPlayerActionCommand(
+    use_cases.submit_player_action(
+        PlayerActionCommand(
             game_id=created.game_id,
             player_id="p1",
             control_token=created.control_tokens["p1"] if created.control_tokens else "",
             type="speech",
             message="hello",
-        ),
-        dependencies=deps,
+        )
     )
 
     event = next(
@@ -358,16 +334,14 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
 
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
-    created = create_game_run(CreateGameRunCommand(player_count=5, seed=1), dependencies=deps)
-    advance_game_run(AdvanceGameRunCommand(game_id=created.game_id), dependencies=deps)
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(CreateGameRunCommand(player_count=5, seed=1))
+    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
 
-    runs = list_game_runs(ListGameRunsQuery(limit=10), dependencies=deps)
-    turns = list_public_game_turns(
-        ListPublicGameTurnsQuery(game_id=created.game_id),
-        dependencies=deps,
-    )
+    runs = use_cases.list_game_runs(ListGameRunsQuery(limit=10))
+    timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id))
 
     assert runs.runs[0]["game_id"] == created.game_id
-    assert runs.runs[0]["turn_count"] == len(turns.turns)
-    assert turns.turns
-    assert "role_counts" not in json.dumps(turns.model_dump(mode="json"))
+    assert runs.runs[0]["turn_count"] == len(timeline.items)
+    assert timeline.items
+    assert "role_counts" not in json.dumps(timeline.model_dump(mode="json"))

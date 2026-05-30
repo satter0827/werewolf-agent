@@ -37,6 +37,7 @@ class SqlAlchemyGameRunRepository(GameRepository):
     """SQLAlchemy-backed implementation of the game run repository port."""
 
     def __init__(self, session: Session) -> None:
+        """Create a repository bound to one SQLAlchemy session."""
         self._session = session
 
     def create(self, run: GameRunCreate) -> StoredGameRun:
@@ -146,25 +147,14 @@ class SqlAlchemyGameRunRepository(GameRepository):
             self._upsert_summary(run)
         return [_stored_event(record) for record in records]
 
-    def list_public_events(
-        self,
-        run_id: UUID,
-        *,
-        after: int,
-        limit: int,
-    ) -> list[StoredGameEvent]:
-        """Return public events after the sequence cursor."""
-        statement = (
-            select(GameEventModel)
-            .where(
-                GameEventModel.run_id == str(run_id),
-                GameEventModel.visibility == "public",
-                GameEventModel.sequence > after,
+    def latest_public_turn_sequence(self, run_id: UUID) -> int:
+        """Return the latest public timeline sequence for one game run."""
+        return int(
+            self._session.scalar(
+                select(max_turn_sequence()).where(GameTurnModel.run_id == str(run_id))
             )
-            .order_by(GameEventModel.sequence)
-            .limit(limit)
+            or 0
         )
-        return [_stored_event(record) for record in self._session.scalars(statement)]
 
     def list_public_turns(
         self,

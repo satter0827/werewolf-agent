@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create base game run and event tables."""
     op.create_table(
         "game_runs",
         sa.Column("id", sa.String(length=36), primary_key=True),
@@ -54,5 +55,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop base game run and event tables."""
     op.drop_table("game_events")
     op.drop_table("game_runs")

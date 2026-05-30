@@ -55,12 +55,12 @@ if exist "%PYTHON%" (
 where uv >nul 2>nul
 if errorlevel 1 (
     echo Sphinx is not installed in .venv and uv was not found on PATH. 1>&2
-    echo Run: uv sync --group docs 1>&2
+    echo Run: uv sync --group docs --extra api --extra streamlit 1>&2
     popd
     exit /b 1
 )
 
-uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-build %SPHINX_ARGS%
+uv run --group docs --extra api --extra streamlit sphinx-build %SPHINX_ARGS%
 set "EXIT_CODE=%ERRORLEVEL%"
 
 :publish_output

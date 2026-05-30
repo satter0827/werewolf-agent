@@ -46,7 +46,6 @@ from werewolf_agent.domain.game.service import advance_phase, observe, start_gam
 from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
 from werewolf_agent.usecase.internal.projections import (
     events_to_create,
-    public_event_payload_from_record,
     public_run_summary_payload_from_record,
     public_state_payload_from_run,
     public_state_payload_from_snapshot,
@@ -62,21 +61,19 @@ from werewolf_agent.usecase.jobs.games import (
     GameRunResult,
     GameRunUpdate,
     GameStatus,
+    GameTimelineResult,
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameRunQuery,
+    GetGameTimelineQuery,
     GetPlayerObservationQuery,
     ListGameRunsQuery,
     ListGameRunsResult,
-    ListPublicGameEventsQuery,
-    ListPublicGameTurnsQuery,
-    ListPublicGameTurnsResult,
+    PlayerActionCommand,
+    PlayerActionResult,
     PlayerObservationResult,
-    PublicGameEventsResult,
     RoleId,
     StoredGameRun,
-    SubmitPlayerActionCommand,
-    SubmitPlayerActionResult,
 )
 from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
 
@@ -244,19 +241,21 @@ def advance_game_run(
             version=run.version + 1,
         )
     )
+    latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)
     records = dependencies.repository.append_events(
         updated_run.id,
         events_to_create([*action_events, *phase_events]),
+    )
+    turns = dependencies.repository.list_public_turns(
+        updated_run.id,
+        after=latest_turn_sequence,
+        limit=max(len(records), 1),
     )
     return AdvanceGameRunResult(
         game_id=str(updated_run.id),
         status=updated_run.status,
         state=public_state_payload_from_run(updated_run),
-        events=[
-            public_event_payload_from_record(record)
-            for record in records
-            if record.visibility == "public"
-        ],
+        timeline=[public_turn_payload_from_record(record) for record in turns],
     )
 
 
@@ -281,10 +280,10 @@ def get_player_observation(
 
 
 def submit_player_action(
-    command: SubmitPlayerActionCommand,
+    command: PlayerActionCommand,
     *,
     dependencies: GameUseCaseDependencies,
-) -> SubmitPlayerActionResult:
+) -> PlayerActionResult:
     """Submit one authenticated manual player action."""
     game_id = _parse_game_id(command.game_id)
     run = dependencies.repository.get_for_update(game_id)
@@ -334,49 +333,27 @@ def submit_player_action(
             version=run.version,
         )
     )
+    latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)
     records = dependencies.repository.append_events(updated_run.id, events_to_create(events))
-    return SubmitPlayerActionResult(
+    turns = dependencies.repository.list_public_turns(
+        updated_run.id,
+        after=latest_turn_sequence,
+        limit=max(len(records), 1),
+    )
+    return PlayerActionResult(
         game_id=str(updated_run.id),
         player_id=command.player_id,
         state=public_state_payload_from_run(updated_run),
-        events=[
-            public_event_payload_from_record(record)
-            for record in records
-            if record.visibility == "public"
-        ],
+        timeline=[public_turn_payload_from_record(record) for record in turns],
     )
 
 
-def list_public_game_events(
-    query: ListPublicGameEventsQuery,
+def get_game_timeline(
+    query: GetGameTimelineQuery,
     *,
     dependencies: GameUseCaseDependencies,
-) -> PublicGameEventsResult:
-    """List public events after a sequence number."""
-    game_id = _parse_game_id(query.game_id)
-    run = dependencies.repository.get(game_id)
-    if run is None:
-        raise GameNotFoundError(str(game_id))
-
-    records = dependencies.repository.list_public_events(
-        run.id,
-        after=query.after,
-        limit=query.limit,
-    )
-    next_after = records[-1].sequence if records else query.after
-    return PublicGameEventsResult(
-        game_id=str(run.id),
-        events=[public_event_payload_from_record(record) for record in records],
-        next_after=next_after,
-    )
-
-
-def list_public_game_turns(
-    query: ListPublicGameTurnsQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> ListPublicGameTurnsResult:
-    """List public turn records after a sequence number."""
+) -> GameTimelineResult:
+    """List public timeline records after a sequence number."""
     game_id = _parse_game_id(query.game_id)
     run = dependencies.repository.get(game_id)
     if run is None:
@@ -388,9 +365,9 @@ def list_public_game_turns(
         limit=query.limit,
     )
     next_after = records[-1].sequence if records else query.after
-    return ListPublicGameTurnsResult(
+    return GameTimelineResult(
         game_id=str(run.id),
-        turns=[public_turn_payload_from_record(record) for record in records],
+        items=[public_turn_payload_from_record(record) for record in records],
         next_after=next_after,
     )
 

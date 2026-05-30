@@ -11,7 +11,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from werewolf_agent.commons.configuration import AppSettings
+from werewolf_agent.interface.runtime import AppSettings
 
 SessionFactory: TypeAlias = sessionmaker[Session]
 
@@ -24,6 +24,7 @@ def create_database_engine(settings: AppSettings) -> Engine:
 
     Returns:
         Configured SQLAlchemy engine.
+
     """
     if not settings.configured_database_url:
         settings.sqlite_database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -52,6 +53,7 @@ def create_session_factory(engine: Engine) -> SessionFactory:
 
     Returns:
         Session factory configured for explicit unit-of-work boundaries.
+
     """
     return sessionmaker(bind=engine, autoflush=False, expire_on_commit=False, future=True)
 
@@ -65,6 +67,7 @@ def session_scope(session_factory: SessionFactory) -> Iterator[Session]:
 
     Yields:
         An open session inside a transaction.
+
     """
     session = session_factory()
     try:

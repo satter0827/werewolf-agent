@@ -19,6 +19,7 @@ class LlmDecisionProvider(Protocol):
 
         Returns:
             Structured decision that can be adapted to a game action.
+
         """
 
 

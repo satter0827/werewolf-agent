@@ -1,1 +1,1 @@
-"""Internal shared helpers for observability, replay events, security, and constants."""
+"""Side-effect-free shared helpers, messages, redaction, and constants."""

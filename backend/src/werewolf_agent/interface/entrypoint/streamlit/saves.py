@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from werewolf_agent.contracts.schemas import GameResponse, PublicGameRunSummary, PublicGameState
+from werewolf_agent.contracts.schemas import GameRunResponse, PublicGameRunSummary, PublicGameState
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     SavedGameOptionView,
     ScreenMode,
@@ -95,7 +95,7 @@ def upsert_save_slot(save_file: Path, slot: SaveSlot) -> None:
 
 
 def create_save_slot(
-    response: GameResponse,
+    response: GameRunResponse,
     *,
     human_player_id: str,
 ) -> SaveSlot:

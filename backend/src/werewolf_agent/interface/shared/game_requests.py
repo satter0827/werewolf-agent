@@ -13,8 +13,8 @@ from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGamePlayer,
-    CreateGameRequest,
     CreateGameRuleConfig,
+    CreateGameRunRequest,
     RoleId,
     TieBreakPolicyId,
 )
@@ -30,7 +30,7 @@ def build_create_game_request(
     day_speech_turns: int,
     allow_self_vote: bool,
     default_player_count: int,
-) -> CreateGameRequest:
+) -> CreateGameRunRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
     explicit_players = None
     if human_player is not None:
@@ -57,7 +57,7 @@ def build_create_game_request(
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
     )
-    return CreateGameRequest(
+    return CreateGameRunRequest(
         player_count=None if explicit_players is not None else players,
         seed=seed,
         players=explicit_players,

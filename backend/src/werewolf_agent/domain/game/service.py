@@ -42,6 +42,7 @@ def start_game(
 
     Returns:
         The initial full snapshot and domain events emitted during setup.
+
     """
     snapshot = game_setup.create_game_snapshot(config, players, rng)
     events = [
@@ -68,6 +69,7 @@ def observe(snapshot: GameSnapshot, player_id: str) -> Observation:
 
     Returns:
         A role-aware observation redacted for the requested player.
+
     """
     return observations.build_player_observation(snapshot, player_id)
 
@@ -89,6 +91,7 @@ def submit_action(
 
     Raises:
         GameError: If the action type is unsupported.
+
     """
     if action.type is ActionType.SPEECH:
         next_snapshot, events = day_speech.record_day_speech(snapshot, action)
@@ -153,6 +156,7 @@ def advance_phase(
 
     Returns:
         The next snapshot, next pending action buffer, and emitted domain events.
+
     """
     outcome = phase_transitions.advance_game_phase(
         snapshot,

@@ -5,14 +5,14 @@ from pathlib import Path
 
 import structlog
 
-from werewolf_agent.commons.configuration import AppSettings
-from werewolf_agent.commons.observability import (
+from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
+from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
+from werewolf_agent.interface.runtime import (
+    AppSettings,
     bind_observation_context,
     configure_observability,
     get_observation_context,
 )
-from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
-from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
 from werewolf_agent.usecase.jobs import TelemetryEvent
 
 

@@ -29,6 +29,7 @@ class GameRepository(Protocol):
 
         Returns:
             Stored game run with repository-assigned timestamps.
+
         """
 
     def get(self, game_id: UUID) -> StoredGameRun | None:
@@ -39,6 +40,7 @@ class GameRepository(Protocol):
 
         Returns:
             Stored game run, or `None` when absent.
+
         """
 
     def get_for_update(self, game_id: UUID) -> StoredGameRun | None:
@@ -49,6 +51,7 @@ class GameRepository(Protocol):
 
         Returns:
             Stored game run, or `None` when absent.
+
         """
 
     def list_run_summaries(
@@ -67,6 +70,7 @@ class GameRepository(Protocol):
 
         Returns:
             Public run summaries in display order.
+
         """
 
     def save(self, update: GameRunUpdate) -> StoredGameRun:
@@ -77,6 +81,7 @@ class GameRepository(Protocol):
 
         Returns:
             Updated stored game run.
+
         """
 
     def append_events(
@@ -92,24 +97,18 @@ class GameRepository(Protocol):
 
         Returns:
             Stored events with assigned sequence numbers.
+
         """
 
-    def list_public_events(
-        self,
-        run_id: UUID,
-        *,
-        after: int,
-        limit: int,
-    ) -> list[StoredGameEvent]:
-        """Return public events after the sequence cursor.
+    def latest_public_turn_sequence(self, run_id: UUID) -> int:
+        """Return the latest public timeline sequence for one game run.
 
         Args:
-            run_id: Game run id that owns the stream.
-            after: Exclusive event sequence cursor.
-            limit: Maximum number of events to return.
+            run_id: Game run id that owns the timeline.
 
         Returns:
-            Public events ordered by sequence.
+            Latest public timeline sequence, or `0` when the timeline is empty.
+
         """
 
     def list_public_turns(
@@ -128,4 +127,5 @@ class GameRepository(Protocol):
 
         Returns:
             Public turn records ordered by sequence.
+
         """

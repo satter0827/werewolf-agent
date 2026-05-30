@@ -7,10 +7,10 @@ from datetime import datetime
 from typing import Any, Literal
 
 from werewolf_agent.contracts.schemas import (
-    PrivateObservationResponse,
+    GameTimelineItem,
+    PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
-    PublicGameTurn,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.icons import (
@@ -153,8 +153,8 @@ class GameScreenView:
 def build_game_screen_view(
     *,
     state: PublicGameState,
-    turns: list[PublicGameTurn],
-    observation: PrivateObservationResponse | None,
+    turns: list[GameTimelineItem],
+    observation: PlayerObservationResponse | None,
     human_player_id: str | None,
     screen_mode: ScreenMode | None = None,
     refresh_interval_seconds: float = 0,
@@ -267,7 +267,7 @@ def table_legend_items() -> list[TableLegendItemView]:
 def player_seats(
     players: list[PublicPlayerState],
     *,
-    turns: list[PublicGameTurn],
+    turns: list[GameTimelineItem],
     observation: ObservationView | None,
     human_player_id: str | None,
 ) -> list[PlayerSeatView]:
@@ -312,7 +312,7 @@ def player_seats(
     return seats
 
 
-def timeline_items(turns: list[PublicGameTurn]) -> list[TimelineItemView]:
+def timeline_items(turns: list[GameTimelineItem]) -> list[TimelineItemView]:
     """Return public timeline rows without exposing raw payloads."""
     return [
         TimelineItemView(
@@ -329,7 +329,7 @@ def timeline_items(turns: list[PublicGameTurn]) -> list[TimelineItemView]:
 
 
 def observation_view_from_response(
-    response: PrivateObservationResponse,
+    response: PlayerObservationResponse,
     *,
     state: PublicGameState,
     human_player_id: str | None,
@@ -487,7 +487,7 @@ def game_run_option_label(run: PublicGameRunSummary) -> str:
     )
 
 
-def _event_title(turn: PublicGameTurn) -> str:
+def _event_title(turn: GameTimelineItem) -> str:
     icon = event_icon(turn.event_type)
     if turn.event_type == "phase_started":
         phase = str(turn.payload.get("phase", turn.phase or ""))
@@ -495,7 +495,7 @@ def _event_title(turn: PublicGameTurn) -> str:
     return icon.label
 
 
-def _event_detail(turn: PublicGameTurn) -> str:
+def _event_detail(turn: GameTimelineItem) -> str:
     actor = turn.actor_id or str(turn.payload.get("player_id", ""))
     actor_label = _public_actor_label(actor)
     if turn.event_type == "game_started":
@@ -525,7 +525,7 @@ def _event_detail(turn: PublicGameTurn) -> str:
     return "出来事が記録されました。"
 
 
-def _last_actor(turns: list[PublicGameTurn], *, event_type: str) -> str | None:
+def _last_actor(turns: list[GameTimelineItem], *, event_type: str) -> str | None:
     for turn in reversed(turns):
         if turn.event_type == event_type:
             return turn.actor_id or _payload_text(turn.payload, "player_id")

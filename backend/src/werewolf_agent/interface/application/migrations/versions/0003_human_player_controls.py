@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Add pending action and human control token storage."""
     op.add_column(
         "game_runs",
         sa.Column("pending_actions", sa.JSON(), nullable=False, server_default=sa.text("'{}'")),
@@ -33,5 +34,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop pending action and human control token storage."""
     op.drop_column("game_runs", "control_token_hashes")
     op.drop_column("game_runs", "pending_actions")

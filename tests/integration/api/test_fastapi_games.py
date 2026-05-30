@@ -9,8 +9,8 @@ import pytest
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
-from werewolf_agent.commons.configuration import AppSettings  # noqa: E402
 from werewolf_agent.interface.api.app import create_app  # noqa: E402
+from werewolf_agent.interface.runtime import AppSettings  # noqa: E402
 
 
 @pytest.fixture
@@ -175,7 +175,7 @@ def test_api_logs_expected_user_error_at_info(tmp_path: Path) -> None:
 
 
 def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> None:
-    response = client.get("/api/v1/rulesets/default")
+    response = client.get("/api/v1/ruleset")
 
     assert response.status_code == 200
     payload = response.json()
@@ -227,10 +227,10 @@ def test_human_player_create_returns_control_token_once(client: TestClient) -> N
     assert created["control_tokens"]["p1"]
 
     state_response = client.get(f"/api/v1/games/{game_id}")
-    events_response = client.get(f"/api/v1/games/{game_id}/events?after=0")
+    timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
 
     assert "control_tokens" not in state_response.json()
-    serialized_public = json.dumps([state_response.json(), events_response.json()])
+    serialized_public = json.dumps([state_response.json(), timeline_response.json()])
     assert created["control_tokens"]["p1"] not in serialized_public
     assert "control_token" not in serialized_public
 
@@ -290,7 +290,7 @@ def test_human_player_can_submit_manual_action(client: TestClient) -> None:
 
     observation = {}
     for _ in range(8):
-        client.post(f"/api/v1/games/{game_id}/steps")
+        client.post(f"/api/v1/games/{game_id}/advance")
         observation = client.get(
             f"/api/v1/games/{game_id}/players/p1/observation",
             headers=headers,
@@ -319,68 +319,67 @@ def test_human_player_can_submit_manual_action(client: TestClient) -> None:
     assert "control_token" not in serialized
 
 
-def test_steps_complete_game_and_events_are_public_only(client: TestClient) -> None:
+def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) -> None:
     create_response = client.post("/api/v1/games", json={"player_count": 6, "seed": 1})
     game_id = create_response.json()["game_id"]
 
     state = create_response.json()["state"]
-    event_payload = {"events": []}
+    timeline_payload = {"items": []}
     for _ in range(32):
-        step_response = client.post(f"/api/v1/games/{game_id}/steps")
-        assert step_response.status_code == 200
-        step_payload = step_response.json()
-        state = step_payload["state"]
-        event_payload = client.get(f"/api/v1/games/{game_id}/events?after=0").json()
+        advance_response = client.post(f"/api/v1/games/{game_id}/advance")
+        assert advance_response.status_code == 200
+        advance_payload = advance_response.json()
+        state = advance_payload["state"]
+        timeline_payload = client.get(f"/api/v1/games/{game_id}/timeline?after=0").json()
         if state["status"] == "completed":
             break
 
     assert state["status"] == "completed"
     assert state["winner"] in {"villagers", "werewolves"}
-    assert event_payload["events"]
-    assert all(event["visibility"] == "public" for event in event_payload["events"])
-    assert "role" not in json.dumps(event_payload)
-    assert "private_state" not in json.dumps(event_payload)
+    assert timeline_payload["items"]
+    assert "role" not in json.dumps(timeline_payload)
+    assert "private_state" not in json.dumps(timeline_payload)
 
 
-def test_game_list_and_turns_return_public_read_models(client: TestClient) -> None:
+def test_game_list_and_timeline_return_public_read_models(client: TestClient) -> None:
     created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
     game_id = created["game_id"]
-    client.post(f"/api/v1/games/{game_id}/steps")
+    client.post(f"/api/v1/games/{game_id}/advance")
 
     runs_response = client.get("/api/v1/games?limit=10")
-    turns_response = client.get(f"/api/v1/games/{game_id}/turns?after=0")
+    timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
 
     assert runs_response.status_code == 200
-    assert turns_response.status_code == 200
+    assert timeline_response.status_code == 200
     runs_payload = runs_response.json()
-    turns_payload = turns_response.json()
+    timeline_payload = timeline_response.json()
     assert any(run["game_id"] == game_id for run in runs_payload["runs"])
-    assert turns_payload["turns"]
-    assert "role_counts" not in json.dumps(turns_payload)
+    assert timeline_payload["items"]
+    assert "role_counts" not in json.dumps(timeline_payload)
 
 
-def test_public_event_stream_returns_sse_batch(client: TestClient) -> None:
+def test_public_timeline_stream_returns_sse_batch(client: TestClient) -> None:
     created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
 
-    response = client.get(f"/api/v1/games/{created['game_id']}/events/stream?after=0")
+    response = client.get(f"/api/v1/games/{created['game_id']}/timeline/stream?after=0")
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
-    assert "event: game_event" in response.text
+    assert "event: timeline_item" in response.text
     assert "data:" in response.text
 
 
-def test_finished_game_step_returns_problem_details(client: TestClient) -> None:
+def test_finished_game_advance_returns_problem_details(client: TestClient) -> None:
     created = client.post("/api/v1/games", json={"player_count": 6, "seed": 1}).json()
-    step_url = f"/api/v1/games/{created['game_id']}/steps"
+    advance_url = f"/api/v1/games/{created['game_id']}/advance"
     state = created["state"]
     for _ in range(32):
-        response = client.post(step_url)
+        response = client.post(advance_url)
         state = response.json()["state"]
         if state["status"] == "completed":
             break
 
-    response = client.post(step_url)
+    response = client.post(advance_url)
 
     assert state["status"] == "completed"
     assert response.status_code == 409
@@ -435,12 +434,12 @@ def test_day_speech_turns_controls_api_discussion_actions(client: TestClient) ->
     ).json()
     game_id = created["game_id"]
 
-    after_night = client.post(f"/api/v1/games/{game_id}/steps").json()["state"]
-    response = client.post(f"/api/v1/games/{game_id}/steps")
+    after_night = client.post(f"/api/v1/games/{game_id}/advance").json()["state"]
+    response = client.post(f"/api/v1/games/{game_id}/advance")
 
     assert response.status_code == 200
     speech_events = [
-        event for event in response.json()["events"] if event["event_type"] == "speech_recorded"
+        item for item in response.json()["timeline"] if item["event_type"] == "speech_recorded"
     ]
     assert len(speech_events) == len(after_night["alive_player_ids"]) * 2
 

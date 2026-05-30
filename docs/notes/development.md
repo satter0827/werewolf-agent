@@ -2,21 +2,21 @@
 
 途中参加者が最短で再開するための作業メモです。
 完成版の設計書は `docs/design/`、Sphinx の入口と設定は `docs/sphinx/` に置きます。
-このファイルには、再開に必要な現在地、未実装、handoff、判断履歴を残します。
 
 ## 現在地
 
-- backend 中心
 - deterministic domain core 実装済み
-- `usecase.jobs` は interface から usecase へ入る薄い facade であり、domain core を呼ぶ実処理は `usecase.internal` に集約する
-- FastAPI は game 作成、一覧、状態取得、step 進行、private observation、manual action、public event、turn history、public SSE まで実装済み
-- CLI `doctor` / `ruleset` / `create` / `state` / `step` / `play` / `watch` / `replay` / `runs` / `turns` は HTTP API だけを使う
-- 現在の LLM provider は LangChain `fake`。Streamlit は public API 経由で 1 人の human player が遊べる画面として実装済み。実 LLM provider、複数 human player、React UI は未実装
+- `GameUseCases` facade 経由で game 作成、一覧、状態取得、進行、timeline、private observation、manual action を扱う
+- FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/timeline`、manual player endpoint に絞った
+- CLI `doctor` / `ruleset` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `runs` は HTTP API だけを使う
+- Streamlit は public API 経由で 1 人の human player が遊べる画面として実装済み
+- 現在の LLM provider は LangChain `fake`
+- 実 LLM provider、複数 human player、React UI は未実装
 
 ## 最初に実行
 
 ```bash
-uv sync --group dev --extra api
+uv sync --group dev --extra api --extra streamlit
 uv run werewolf-agent doctor
 uv run pytest
 uv run --extra api alembic upgrade head
@@ -34,30 +34,25 @@ CLI で確認:
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1 --human-player player-1
 uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent watch <game_id> --api-url http://127.0.0.1:8000/api/v1
+uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
 ```
 
-Streamlit のプレイ画面を起動:
+Streamlit:
 
 ```bash
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
 
-### Windows / OneDrive / Codex の注意
+## Windows / OneDrive / Codex
 
-この repository は OneDrive の reparse point 配下で作業されることがあります。Codex の sandbox から
-PowerShell で repository 配下へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite
-`disk I/O error` が出る場合があります。
+この repository は OneDrive の reparse point 配下で作業されることがあります。Codex の sandbox から repository 配下へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite `disk I/O error` が出る場合があります。
 
-AI が検証や browser QA を行う場合は、cache、SQLite、Streamlit save、screenshot を repository 配下ではなく
-`%TEMP%\werewolf-agent` 配下へ置きます。運用ログだけは `.werewolf-agent/logs` 配下へ統一します。依存関係が同期済みなら `uv run --no-sync ...` を使い、Ruff は
-`--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
+AI が検証や browser QA を行う場合は、cache、SQLite、Streamlit save、screenshot を `%TEMP%\werewolf-agent` 配下へ置きます。運用ログだけは `.werewolf-agent/logs` 配下へ統一します。依存関係が同期済みなら `uv run --no-sync ...` を優先し、Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
 
 検証をまとめて実行する場合:
 
 ```bat
-scripts\check-all.cmd
-scripts\check-all.cmd --api
+scripts\check-all.cmd --api --keep-going
 ```
 
 API を一時 DB で起動する場合:
@@ -66,32 +61,25 @@ API を一時 DB で起動する場合:
 scripts\run-api.cmd --temp-state --reload
 ```
 
-VS Code の Run and Debug から起動する場合は、`.vscode/launch.json` と `.vscode/tasks.json` が
-`WEREWOLF_SQLITE_PATH` と `WEREWOLF_STREAMLIT_SAVE_FILE` を `%TEMP%\werewolf-agent` 配下へ向けます。
-運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。launch 設定を変更する場合も、repository 配下に検証用 DB / save を戻さないでください。
+VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-agent` 配下へ向けます。運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 ## 配置
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/__main__.py` | `python -m werewolf_agent` の薄い CLI 委譲 |
-| `backend/src/werewolf_agent/domain/game/models.py` | headless game が扱う `Player` / `Action` / snapshot / observation / event |
-| `backend/src/werewolf_agent/domain/game/service.py` | snapshot と pending action を受け取る stateless game 関数 |
-| `backend/src/werewolf_agent/domain/game/rules/` | game 内部 rules |
-| `backend/src/werewolf_agent/domain/llm/models.py` | provider 非依存の agent observation / decision DTO / 公開履歴 DTO |
-| `backend/src/werewolf_agent/domain/llm/service.py` | MLflow-compatible prompt loader / LangChain decision provider |
+| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存 DTO、prompt loader、LangChain fake provider |
 | `backend/src/werewolf_agent/resources/` | packaged defaults、prompt、FakeListLLM response fixture |
-| `backend/src/werewolf_agent/domain/llm/ports.py` | 将来の LLM provider adapter port |
-| `backend/src/werewolf_agent/usecase/jobs/games.py` | stateless facade、公開 DTO |
-| `backend/src/werewolf_agent/usecase/jobs/ports.py` | repository port |
-| `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
+| `backend/src/werewolf_agent/usecase/jobs/` | `GameUseCases` facade、公開 DTO、repository / telemetry port |
+| `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
+| `backend/src/werewolf_agent/interface/runtime/` | settings、logging bootstrap、structlog context |
+| `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、依存注入、wire schema 変換 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI app、router、SSE |
-| `backend/src/werewolf_agent/interface/application/` | stateless application bridge、SQLAlchemy repository、transaction、依存注入、Alembic migration |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、入力、表示 |
-| `backend/src/werewolf_agent/interface/shared/` | interface 共通の HTTP client、public API workflow、request builder、diagnostics、HTTP 例外変換、event sink |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit のプレイ画面、画面状態、表示 model |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
+| `backend/src/werewolf_agent/interface/shared/` | HTTP client、request builder、diagnostics、HTTP 例外変換、event sink |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | configuration、observability、message catalog、validation、redaction |
+| `backend/src/werewolf_agent/commons/` | constants、messages、validation、redaction |
 | `tests/unit/` | process 内 unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
@@ -102,29 +90,27 @@ VS Code の Run and Debug から起動する場合は、`.vscode/launch.json` �
 | `docs/design/` | Sphinx で読む完成版の設計書 |
 | `docs/notes/` | 修正の積み重ね、再開メモ、handoff |
 | `docs/sphinx/` | Sphinx の設定、入口、軽い CSS |
+| `docs/reference/` | autodoc API reference |
 
-Sphinx は最小構成です。HTML を確認する場合は次を実行します。
+HTML を確認する場合:
 
 ```bash
-uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
+uv run --group docs --extra api --extra streamlit sphinx-build -b html docs docs/sphinx/_build/html
 ```
 
 ## 境界
 
-- CLI は `contracts/schemas.py` と HTTP client だけを使う
+- CLI は `contracts/schemas.py` と `GameApiClient` だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
-- 設定読み込みは `commons/configuration`、ログ出力基盤は `commons/observability` に置き、domain / usecase には注入済み値だけ渡す
+- 設定読み込み、ログ bootstrap、structlog context は `interface/runtime` に置く
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `usecase/jobs` は domain を import せず、public DTO と stateless facade に限定する
-- usecase から domain へ入る code は `usecase/internal` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
+- usecase から domain へ入る code は `usecase/internal` 配下に限定する
 - `usecase/internal` は interface / wire schema に依存させない
-- `domain.game` と `domain.llm` は互いに import せず、observation / decision / action の変換は `usecase.internal` に置く
-- 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
+- `domain.game` と `domain.llm` は互いに import しない
 - domain から `commons` を使う場合は副作用のない `commons.shared.messages` / `commons.shared.validation` だけに限定する
-- domain の公開 model は `Player`、`Action`、`GameSnapshot`、`Observation` のような headless 利用単位を優先する
-- API は `private_state` を保存してよいが public response へ出さない
-- public event に role、night action、secret、token、API key を混ぜない
+- public response / public timeline / operational log に role、night action target、secret、token、API key を混ぜない
 
 ## DB
 
@@ -135,12 +121,9 @@ DB は設定値で選びます。
 - SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
 - Postgres などは `WEREWOLF_DATABASE_URL` を設定する
 - usecase の保存単位は `game_runs`、`game_events`、`game_run_summaries`、`game_turns`
-- `game_run_summaries` と `game_turns` は CLI と将来 UI 用の public read model
-- ruleset metadata の説明文、role 表示名、phase 表示名は `WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE`、`WEREWOLF_GAME_ROLE_NAMES`、`WEREWOLF_GAME_PHASE_NAMES` で変更できる
-- agent type は `llm` と `human`。たたき台では `human` は 1 game につき 1 人まで
+- 外部公開の履歴は `GameTimelineItem` だけに統一する
 - human player の control token は作成時だけ平文で返し、DB には hash だけを保存する
 - API の表示名、version、debug、CORS は `WEREWOLF_API_TITLE`、`WEREWOLF_API_VERSION`、`WEREWOLF_API_DEBUG`、`WEREWOLF_CORS_ALLOWED_*` で変更できる
-- コード上の `WEREWOLF_API_DEBUG` 既定値は `false`。ローカル開発用の `.env.example` と `compose.yaml` は `true` を明示する
 
 Migration:
 
@@ -156,6 +139,7 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src
 uv run --extra api pytest tests/integration/api
+uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
 ```
 
 配置方針:
@@ -177,13 +161,9 @@ Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` �
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
 - coverage data: `.werewolf-agent/coverage/.coverage`
-- public event JSONL logs
+- public timeline JSONL logs
 
 `.werewolf-agent/` は Git 管理しません。トップレベルの `.gitkeep` だけを置きます。
-
-Codex / OneDrive 環境の一時検証では、運用ログを除く repository 配下生成物ではなく `%TEMP%\werewolf-agent` を使います。
-これは権限エラーと SQLite の I/O エラーを避けるための作業時方針であり、アプリの通常設定値は
-`backend/src/werewolf_agent/resources/settings/defaults.toml` を正とします。`.env.example` は override の雛形だけです。
 
 ## Optional Dependencies
 
@@ -213,29 +193,6 @@ docker compose -f compose.yaml -f compose.postgres.yaml run --rm migrate
 docker compose -f compose.yaml -f compose.postgres.yaml up api
 docker compose -f compose.yaml -f compose.postgres.yaml run --rm test
 ```
-
-## 配布
-
-```bash
-uv build --no-sources
-```
-
-本番相当:
-
-- `WEREWOLF_API_DEBUG=false`
-- `WEREWOLF_DATABASE_URL` または永続 volume 上の `WEREWOLF_SQLITE_PATH`
-- 運用方針に合わせた `WEREWOLF_LOG_OUTPUT` と永続 volume 上の `WEREWOLF_LOG_DIR`
-- 公開 UI に合わせた `WEREWOLF_CORS_ALLOWED_ORIGINS`
-- migration は release command / one-off job で実行
-
-ログ確認:
-
-- 運用ログの既定値は `.werewolf-agent/logs/werewolf-agent.jsonl`
-- script / VS Code / Docker Compose では同じ log directory を明示し、log file name は用途名だけにする。`api.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl` のように命名し、起動手段や作業者由来のメタ名称を入れない
-- API と Streamlit は `trace.id` を共有し、HTTP client は `X-Trace-Id` を伝播する
-- usecase の進行診断は `TelemetrySink` 経由で `event.action=game.phase.*` / `game.manual_action.accepted` として出る
-- `control_token`、`authorization`、`private_state`、`role`、`night_action`、`player_id`、`game_action_type` 系 field は redaction または破棄の対象にする
-- Streamlit save JSON に `control_token` を出さず、再起動後の保存 game は観戦モードで開く
 
 ## 未実装
 

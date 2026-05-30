@@ -47,6 +47,10 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
         "uv run pytest",
         "uv run ruff check .",
         "uv run ruff format --check .",
+        (
+            "uv run --no-sync ruff check --no-cache --select D "
+            "--ignore D100,D104 backend/src/werewolf_agent"
+        ),
         "uv run mypy backend/src",
         "uv run --extra api alembic upgrade head",
         "uv run werewolf-agent doctor",

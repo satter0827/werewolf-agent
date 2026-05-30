@@ -25,6 +25,7 @@ class JsonlEventWriter:
     """Append game events to a newline-delimited JSON file."""
 
     def __init__(self, path: str | Path, *, append: bool = True) -> None:
+        """Create a writer for one JSONL replay file."""
         self.path = Path(path)
         self._append = append
         self._has_written = False

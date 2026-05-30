@@ -8,8 +8,8 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from werewolf_agent.commons.configuration import APP_NAME, AppSettings, repository_root
 from werewolf_agent.commons.shared.constants import REDACTED
+from werewolf_agent.interface.runtime import APP_NAME, AppSettings, repository_root
 
 
 def build_interface_diagnostics(

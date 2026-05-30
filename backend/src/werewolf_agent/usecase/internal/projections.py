@@ -16,12 +16,10 @@ from werewolf_agent.usecase.jobs.games import (
     GameEventCreate,
     GamePhase,
     GameStatus,
-    PublicGameEvent,
+    GameTimelineItem,
     PublicGameRunSummary,
     PublicGameState,
-    PublicGameTurn,
     PublicPlayerState,
-    StoredGameEvent,
     StoredGameRun,
     StoredGameRunSummary,
     StoredGameTurn,
@@ -85,22 +83,6 @@ def public_state_payload_from_snapshot(
     return state.model_dump(mode="json")
 
 
-def public_event_payload_from_record(record: StoredGameEvent) -> dict[str, Any]:
-    """Project a stored public event into a public event payload."""
-    event = PublicGameEvent(
-        sequence=record.sequence,
-        event_id=record.event_id,
-        event_type=record.event_type,
-        phase=record.phase,
-        day=record.day,
-        actor_id=record.actor_id,
-        visibility="public",
-        payload=dict(record.payload),
-        occurred_at=record.occurred_at,
-    )
-    return event.model_dump(mode="json")
-
-
 def public_run_summary_payload_from_record(record: StoredGameRunSummary) -> dict[str, Any]:
     """Project a stored run summary into a public payload."""
     summary = PublicGameRunSummary(
@@ -124,7 +106,7 @@ def public_run_summary_payload_from_record(record: StoredGameRunSummary) -> dict
 
 def public_turn_payload_from_record(record: StoredGameTurn) -> dict[str, Any]:
     """Project a stored turn record into a public timeline payload."""
-    turn = PublicGameTurn(
+    turn = GameTimelineItem(
         sequence=record.sequence,
         event_sequence=record.event_sequence,
         version=record.version,

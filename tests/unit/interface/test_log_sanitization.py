@@ -8,6 +8,6 @@ def test_safe_http_log_path_removes_game_and_player_identifiers() -> None:
 
 
 def test_safe_http_log_path_keeps_collection_routes_readable() -> None:
-    path = "games/game-1/events"
+    path = "games/game-1/timeline"
 
-    assert safe_http_log_path(path) == "games/{game_id}/events"
+    assert safe_http_log_path(path) == "games/{game_id}/timeline"

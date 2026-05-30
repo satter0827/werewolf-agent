@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from werewolf_agent.commons.configuration import AppSettings, settings_error_detail
+from werewolf_agent.interface.runtime import AppSettings, settings_error_detail
 
 
 def test_settings_error_detail_reports_first_invalid_setting() -> None:

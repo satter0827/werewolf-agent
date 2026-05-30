@@ -39,7 +39,7 @@ if not exist "pyproject.toml" (
 set "PYTHON=%CD%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" (
     echo Missing virtual environment: %PYTHON% 1>&2
-    echo Run: uv sync --group dev --extra api 1>&2
+    echo Run: uv sync --group dev --group docs --extra api --extra streamlit --link-mode=copy 1>&2
     popd
     exit /b 1
 )
@@ -96,6 +96,12 @@ if errorlevel 1 goto finish
 echo.
 echo === ruff check ===
 "%PYTHON%" -m ruff check --no-cache .
+call :check_status %ERRORLEVEL%
+if errorlevel 1 goto finish
+
+echo.
+echo === ruff docstring check ===
+"%PYTHON%" -m ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
 call :check_status %ERRORLEVEL%
 if errorlevel 1 goto finish
 

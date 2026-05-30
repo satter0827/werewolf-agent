@@ -108,7 +108,7 @@ start_game -> night -> day_discussion -> voting -> night -> ... -> finished
 - 他 role、夜行動、private event、debug event は見えない
 
 API は `GameSnapshot` をそのまま返しません。
-`usecase.internal` が public state / public event の業務 payload に変換し、
+`usecase.internal` が public state / public timeline の業務 payload に変換し、
 interface が HTTP / CLI / 画面向け schema に整えます。
 
 ## 乱数

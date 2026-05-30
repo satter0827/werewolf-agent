@@ -54,10 +54,10 @@ mobile では `ゲーム卓`、`あなたの手番`、`公開タイムライン`
 - イベント種別、行動、フェーズ、役職の表示名は `streamlit/icons.py` のマップに閉じる
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
 - `app.py` は Streamlit widget と画面配置だけを担当する
-- API 呼び出しは `streamlit/operations.py` から `interface/shared.workflows` を使う
+- API 呼び出しは `streamlit/operations.py` から `GameApiClient` protocol を直接使う
 - HTML 断片と escape は `streamlit/components.py` に閉じ、`app.py` に重複させない
 - `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`interface/shared` に依存させない
-- `公開タイムライン` には `/turns` の公開 read model だけを使う
+- `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
 - 操作用キーは `.werewolf-agent/streamlit/saves.json` の新形式保存スロットに閉じ、画面やログには出さない
 - seed、発言文字数、作成時ルールは `AppSettings` から読む
 

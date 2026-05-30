@@ -165,6 +165,7 @@ def get_error_spec(code: ErrorCode) -> ErrorSpec:
 
     Returns:
         Public title, status, default detail, and retryability metadata.
+
     """
     return ERROR_SPECS[code]
 
@@ -177,5 +178,6 @@ def problem_type_uri(code: ErrorCode | str) -> str:
 
     Returns:
         Stable tag URI used as the Problem Details `type`.
+
     """
     return f"{PROBLEM_TYPE_TAG_PREFIX}{code}"

@@ -129,12 +129,12 @@
       "justMyCode": true
     },
     {
-      "name": "CLI: create",
+      "name": "CLI: new",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "create",
+        "new",
         "--api-url",
         "http://127.0.0.1:8000/api/v1",
         "--players",
@@ -157,12 +157,12 @@
       "justMyCode": true
     },
     {
-      "name": "CLI: state",
+      "name": "CLI: show",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "state",
+        "show",
         "${input:gameId}",
         "--api-url",
         "http://127.0.0.1:8000/api/v1"
@@ -182,12 +182,12 @@
       "justMyCode": true
     },
     {
-      "name": "CLI: step",
+      "name": "CLI: advance",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "step",
+        "advance",
         "${input:gameId}",
         "--api-url",
         "http://127.0.0.1:8000/api/v1"
@@ -278,7 +278,7 @@
         "--seed",
         "1",
         "--log-jsonl",
-        "${input:eventLogPath}"
+        "${input:timelineLogPath}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -319,37 +319,12 @@
       "justMyCode": true
     },
     {
-      "name": "CLI: watch",
+      "name": "CLI: timeline",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "watch",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: turns",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "turns",
+        "timeline",
         "${input:gameId}",
         "--api-url",
         "http://127.0.0.1:8000/api/v1"
@@ -375,8 +350,8 @@
       "module": "werewolf_agent",
       "args": [
         "replay",
-        "--events",
-        "${input:eventLogPath}"
+        "--timeline",
+        "${input:timelineLogPath}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -456,13 +431,13 @@
     {
       "id": "gameId",
       "type": "promptString",
-      "description": "Game ID for CLI state / step / watch / turns",
+      "description": "Game ID for CLI show / advance / timeline",
       "default": ""
     },
     {
-      "id": "eventLogPath",
+      "id": "timelineLogPath",
       "type": "promptString",
-      "description": "Public event JSONL path for CLI replay",
+      "description": "Public timeline JSONL path for CLI replay",
       "default": ".werewolf-agent/logs/game-001.jsonl"
     },
     {

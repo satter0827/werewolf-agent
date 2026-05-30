@@ -6,12 +6,12 @@
 ## Project
 
 Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動かす Python backend です。
-ゲームルールは deterministic domain core が管理し、外側には公開状態と public event だけを出します。
+ゲームルールは deterministic domain core が管理し、外側には公開状態と public timeline だけを出します。
 
 現在の状態:
 
 - LangChain `fake` provider だけで FastAPI 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、FastAPI、CLI、manual action API、private observation API、public event stream、turn read model は実装済み
+- `domain`、`usecase`、FastAPI、CLI、manual action API、private observation API、public timeline stream は実装済み
 - 実 LLM provider、複数 human player、Streamlit / React UI は未実装
 
 ## Read First
@@ -55,7 +55,7 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 - `usecase/internal` は interface / wire schema に依存させない
 - `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換してつなぐ
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
-- API は `private_state` を保存してよいが、公開 DTO や public event へ role / night action / secret を出さない
+- API は `private_state` を保存してよいが、公開 DTO や public timeline へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
 - LLM 出力は自由文のまま使わず、Pydantic / JSON Schema 相当で検証する
 
@@ -126,7 +126,7 @@ Windows / OneDrive / Codex での実行:
 - 設定、provider、model、DB、ログ、秘密情報が hard-code されていないか
 - 重複した定数や処理を既存設定、共通関数、標準 API に寄せられるか
 - CLI / API / UI 境界で内部例外、stack trace、secret を露出していないか
-- public state / public event に role、night action、API key、token が混ざらないか
+- public state / public timeline に role、night action、API key、token が混ざらないか
 - 変更範囲に見合う test、lint、format check、type check を実行したか
 - 不要となったファイル、モジュールを残していないか
 
@@ -144,7 +144,7 @@ Windows / OneDrive / Codex での実行:
 - `.env.example` はダミー値だけにする
 - ログ出力前に `secret`、`token`、`api_key`、`authorization`、`password` 系を mask する
 - 外部入力をそのまま prompt、file path、shell command に渡さない
-- public response と public event に private state を出さない
+- public response と public timeline に private state を出さない
 
 ## Documentation
 
@@ -182,5 +182,5 @@ Windows / OneDrive / Codex での実行:
 例:
 
 - `feat: FastAPI 経由のゲーム進行を追加`
-- `fix: public event から秘匿情報を除外`
+- `fix: public timeline から秘匿情報を除外`
 - `docs: 開発メモを最新化`

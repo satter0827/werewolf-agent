@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
-    GameResponse,
+    GameRunResponse,
     PublicGameRunSummary,
     PublicGameState,
     PublicPlayerState,
@@ -54,7 +54,7 @@ def _run() -> PublicGameRunSummary:
 
 def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
     save_file = tmp_path / "saves.json"
-    response = GameResponse(
+    response = GameRunResponse(
         game_id="game-secret-1",
         state=_state(),
         control_tokens={"player-1": "token-secret"},
@@ -90,7 +90,7 @@ def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
 def test_saved_slot_without_session_token_becomes_observer_option(tmp_path) -> None:
     save_file = tmp_path / "saves.json"
     slot = create_save_slot(
-        GameResponse(game_id="game-secret-1", state=_state()),
+        GameRunResponse(game_id="game-secret-1", state=_state()),
         human_player_id="player-1",
     )
     upsert_save_slot(save_file, slot)

@@ -26,7 +26,7 @@
 
 ![Story timeline](assets/streamlit-ui/02-story-timeline.png)
 
-- 狙い: public event を物語として読みやすくする。
+- 狙い: public timeline を物語として読みやすくする。
 - 不採用理由: 観戦体験は良いが、作成、Step、Human Action、Runs を同時に扱う今回の v1 には分割が多い。
 
 ### 03 Learning Tabs
@@ -62,5 +62,5 @@
 - Sidebar: API URL、接続確認、最近のゲーム、新規作成、再開
 - Main: status bar、ゲーム卓、これまでの流れ
 - Right panel: あなたの手番、役職、見えている情報、行動入力、次の入力待ちまで進行
-- Backend access: すべて `interface/shared` の API client と workflow 経由
+- Backend access: すべて `interface/shared` の `GameApiClient` 経由
 - Text: 日本語を既定とし、現時点では runtime i18n module を持たない

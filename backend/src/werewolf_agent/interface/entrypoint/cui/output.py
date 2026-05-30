@@ -11,11 +11,10 @@ from rich.console import Console
 from rich.table import Table
 
 from werewolf_agent.contracts.schemas import (
-    PrivateObservationResponse,
-    PublicGameEvent,
+    GameTimelineItem,
+    PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
-    PublicGameTurn,
     RulesetResponse,
 )
 
@@ -75,7 +74,7 @@ def print_state(state: PublicGameState, *, output_format: OutputFormat = "table"
 
 
 def print_observation(
-    response: PrivateObservationResponse,
+    response: PlayerObservationResponse,
     *,
     output_format: OutputFormat = "table",
 ) -> None:
@@ -98,36 +97,34 @@ def print_observation(
     console.print(table)
 
 
-def consume_events(
-    events: list[PublicGameEvent],
+def consume_timeline(
+    items: list[GameTimelineItem],
     *,
     next_after: int,
     log_jsonl: Path | None,
-    show_events: bool,
+    show_items: bool,
     output_format: OutputFormat = "table",
 ) -> int:
-    """Print and optionally persist public events."""
+    """Print and optionally persist public timeline items."""
     if log_jsonl is not None:
         log_jsonl.parent.mkdir(parents=True, exist_ok=True)
         with log_jsonl.open("a", encoding="utf-8") as file:
-            for event in events:
-                file.write(event.model_dump_json() + "\n")
+            for item in items:
+                file.write(item.model_dump_json() + "\n")
 
-    if show_events:
-        print_events(events, output_format=output_format)
+    if show_items:
+        print_timeline(items, output_format=output_format)
     return next_after
 
 
-def print_events(events: list[PublicGameEvent], *, output_format: OutputFormat = "table") -> None:
-    """Print public events."""
+def print_timeline(items: list[GameTimelineItem], *, output_format: OutputFormat = "table") -> None:
+    """Print public timeline items."""
     if output_format != "table":
-        print_json(events, output_format=output_format)
+        print_json(items, output_format=output_format)
         return
 
-    for event in events:
-        console.print(
-            f"[dim]{event.sequence}[/dim] [bold]{event.event_type}[/bold] {event.payload}"
-        )
+    for item in items:
+        console.print(f"[dim]{item.sequence}[/dim] [bold]{item.event_type}[/bold] {item.payload}")
 
 
 def print_run_summaries(
@@ -159,25 +156,29 @@ def print_run_summaries(
     console.print(table)
 
 
-def print_turns(turns: list[PublicGameTurn], *, output_format: OutputFormat = "table") -> None:
-    """Print public turn timeline records."""
+def print_timeline_table(
+    items: list[GameTimelineItem],
+    *,
+    output_format: OutputFormat = "table",
+) -> None:
+    """Print public timeline records in a table."""
     if output_format != "table":
-        print_json(turns, output_format=output_format)
+        print_json(items, output_format=output_format)
         return
 
-    table = Table(title="Game Turns")
+    table = Table(title="Game Timeline")
     table.add_column("Seq", justify="right", no_wrap=True)
     table.add_column("Event", no_wrap=True)
     table.add_column("Phase", no_wrap=True)
     table.add_column("Actor", overflow="fold")
     table.add_column("Payload", overflow="fold")
-    for turn in turns:
+    for item in items:
         table.add_row(
-            str(turn.sequence),
-            turn.event_type,
-            turn.phase or "-",
-            turn.actor_id or "-",
-            str(turn.payload),
+            str(item.sequence),
+            item.event_type,
+            item.phase or "-",
+            item.actor_id or "-",
+            str(item.payload),
         )
     console.print(table)
 

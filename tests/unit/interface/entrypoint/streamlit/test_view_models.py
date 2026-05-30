@@ -1,10 +1,10 @@
 from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
-    PrivateObservationResponse,
+    GameTimelineItem,
+    PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
-    PublicGameTurn,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.icons import action_icon, event_icon
@@ -35,8 +35,8 @@ def _state() -> PublicGameState:
     )
 
 
-def _turn(event_type: str, payload: dict[str, object]) -> PublicGameTurn:
-    return PublicGameTurn(
+def _turn(event_type: str, payload: dict[str, object]) -> GameTimelineItem:
+    return GameTimelineItem(
         sequence=1,
         event_sequence=1,
         version=1,
@@ -50,7 +50,7 @@ def _turn(event_type: str, payload: dict[str, object]) -> PublicGameTurn:
 
 
 def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
-    observation = PrivateObservationResponse(
+    observation = PlayerObservationResponse(
         game_id="game-1",
         player_id="player-1",
         observation={
@@ -79,7 +79,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
 
 
 def test_waiting_hand_panel_can_advance_until_next_input() -> None:
-    observation = PrivateObservationResponse(
+    observation = PlayerObservationResponse(
         game_id="game-1",
         player_id="player-1",
         observation={
@@ -146,7 +146,7 @@ def test_default_player_names_are_shown_as_compact_seat_labels() -> None:
             ]
         }
     )
-    observation = PrivateObservationResponse(
+    observation = PlayerObservationResponse(
         game_id="game-1",
         player_id="player-1",
         observation={
@@ -205,7 +205,7 @@ def test_finished_timeline_without_winner_uses_safe_detail() -> None:
 
 
 def test_completed_game_hides_submit_state_even_with_available_actions() -> None:
-    observation = PrivateObservationResponse(
+    observation = PlayerObservationResponse(
         game_id="game-1",
         player_id="player-1",
         observation={

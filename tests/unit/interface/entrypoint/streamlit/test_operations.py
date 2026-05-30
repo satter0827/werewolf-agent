@@ -1,15 +1,15 @@
 import logging
 
-from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.contracts.schemas import (
-    GameResponse,
-    GameTurnsResponse,
-    PrivateObservationResponse,
+    AdvanceGameRunResponse,
+    GameRunResponse,
+    GameTimelineResponse,
+    PlayerObservationResponse,
     PublicGameState,
     PublicPlayerState,
-    StepGameResponse,
 )
 from werewolf_agent.interface.entrypoint.streamlit import operations
+from werewolf_agent.interface.runtime import AppSettings
 
 
 def test_streamlit_rerun_startup_log_includes_runtime_paths(
@@ -46,14 +46,20 @@ class FakeStreamlitClient:
     def __init__(self) -> None:
         self.stepped = False
 
-    def get_game(self, game_id: str) -> GameResponse:
+    def get_game(self, game_id: str) -> GameRunResponse:
         phase = "finished" if self.stepped else "day_discussion"
         status = "completed" if self.stepped else "running"
-        return GameResponse(game_id=game_id, state=_state(status=status, phase=phase))
+        return GameRunResponse(game_id=game_id, state=_state(status=status, phase=phase))
 
-    def list_turns(self, game_id: str, *, after: int = 0, limit: int = 100) -> GameTurnsResponse:
+    def get_timeline(
+        self,
+        game_id: str,
+        *,
+        after: int = 0,
+        limit: int = 100,
+    ) -> GameTimelineResponse:
         _ = after, limit
-        return GameTurnsResponse(game_id=game_id, turns=[], next_after=0)
+        return GameTimelineResponse(game_id=game_id, items=[], next_after=0)
 
     def get_private_observation(
         self,
@@ -61,9 +67,9 @@ class FakeStreamlitClient:
         player_id: str,
         *,
         control_token: str,
-    ) -> PrivateObservationResponse:
+    ) -> PlayerObservationResponse:
         _ = control_token
-        return PrivateObservationResponse(
+        return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
             observation={
@@ -73,13 +79,13 @@ class FakeStreamlitClient:
             },
         )
 
-    def step_game(self, game_id: str) -> StepGameResponse:
+    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
         self.stepped = True
-        return StepGameResponse(
+        return AdvanceGameRunResponse(
             game_id=game_id,
             status="completed",
             state=_state(status="completed", phase="finished"),
-            events=[],
+            timeline=[],
         )
 
 

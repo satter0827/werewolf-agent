@@ -13,9 +13,9 @@ from typing import Any, Final, TextIO, cast
 import structlog
 from structlog.typing import EventDict
 
-from werewolf_agent.commons.configuration.settings import AppSettings
 from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
 from werewolf_agent.commons.shared.constants import JSON_ENCODING, JSON_SEPARATORS
+from werewolf_agent.interface.runtime.settings import AppSettings
 
 LOG_OUTPUT_BOTH: Final = "both"
 LOG_OUTPUT_FILE: Final = "file"

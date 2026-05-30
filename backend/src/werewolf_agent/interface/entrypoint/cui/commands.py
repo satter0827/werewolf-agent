@@ -11,16 +11,12 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
-from werewolf_agent.commons.configuration import (
-    AppSettings,
-    get_settings,
-)
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_ACTION_SUBMITTED,
     LOG_CLI_GAME_CREATED,
     LOG_CLI_PLAY_COMPLETED,
     LOG_CLI_REPLAY_COMPLETED,
-    LOG_CLI_WATCH_POLLED,
+    LOG_CLI_TIMELINE_POLLED,
     MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW,
     MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE,
     MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID,
@@ -30,24 +26,23 @@ from werewolf_agent.commons.shared.messages import (
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGameRequest,
-    PublicGameEvent,
-    SubmitPlayerActionRequest,
+    CreateGameRunRequest,
+    GameTimelineItem,
+    PlayerActionRequest,
 )
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.entrypoint.cui.output import (
     OutputFormat,
     console,
-    consume_events,
-    print_events,
+    consume_timeline,
     print_json,
     print_observation,
     print_ruleset,
     print_run_summaries,
     print_state,
-    print_turns,
+    print_timeline,
 )
-from werewolf_agent.interface.shared import workflows
+from werewolf_agent.interface.runtime import AppSettings, get_settings
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
 from werewolf_agent.interface.shared.diagnostics import build_interface_diagnostics
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
@@ -109,18 +104,14 @@ def ruleset(
 ) -> None:
     """Print default ruleset metadata."""
     run_app_command(
-        lambda: _ruleset(
-            client=_client(api_url),
+        lambda: print_ruleset(
+            _client(api_url).get_ruleset(),
             output_format=_output_format(output, get_settings()),
         )
     )
 
 
-def _ruleset(*, client: GameApiClient, output_format: OutputFormat) -> None:
-    print_ruleset(workflows.get_ruleset(client), output_format=output_format)
-
-
-def create(
+def new(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
     players: Annotated[int | None, typer.Option("--players", help="Number of players.")] = None,
     seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
@@ -148,7 +139,7 @@ def create(
 ) -> None:
     """Create one game through the public HTTP API."""
     run_app_command(
-        lambda: _create(
+        lambda: _new(
             players=players,
             seed=seed,
             human_player=human_player,
@@ -162,7 +153,7 @@ def create(
     )
 
 
-def _create(
+def _new(
     *,
     players: int | None,
     seed: int | None,
@@ -183,7 +174,7 @@ def _create(
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
     )
-    created = workflows.create_game(client, request)
+    created = client.create_game(request)
     logger.info(
         LOG_CLI_GAME_CREATED,
         extra={
@@ -203,7 +194,7 @@ def _create(
             console.print(f"[yellow]control token[/yellow] {player_id}: {control_token}")
 
 
-def state(
+def show(
     game_id: Annotated[str, typer.Argument(help="Game id to inspect.")],
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
     output: Annotated[
@@ -214,13 +205,13 @@ def state(
     """Print public game state."""
     run_app_command(
         lambda: print_state(
-            workflows.get_game(_client(api_url), game_id).state,
+            _client(api_url).get_game(game_id).state,
             output_format=_output_format(output, get_settings()),
         )
     )
 
 
-def step(
+def advance(
     game_id: Annotated[str, typer.Argument(help="Game id to advance.")],
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
     output: Annotated[
@@ -230,7 +221,7 @@ def step(
 ) -> None:
     """Advance one game by one API step."""
     run_app_command(
-        lambda: _step(
+        lambda: _advance(
             game_id=game_id,
             client=_client(api_url),
             output_format=_output_format(output, get_settings()),
@@ -238,13 +229,13 @@ def step(
     )
 
 
-def _step(*, game_id: str, client: GameApiClient, output_format: OutputFormat) -> None:
-    response = workflows.step_game(client, game_id)
+def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat) -> None:
+    response = client.advance_game(game_id)
     if output_format != "table":
         print_json(response, output_format=output_format)
         return
     print_state(response.state)
-    print_events(response.events)
+    print_timeline(response.timeline)
 
 
 def play(
@@ -256,14 +247,14 @@ def play(
         typer.Option("--human-player", help="Player id controlled by this CLI."),
     ] = None,
     max_steps: Annotated[int | None, typer.Option(help="Maximum API step calls.")] = None,
-    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public event JSONL.")] = None,
+    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public timeline JSONL.")] = None,
     poll_interval: Annotated[
         float | None,
         typer.Option(help="Seconds to wait between API step calls."),
     ] = None,
-    show_events: Annotated[
+    show_timeline: Annotated[
         bool,
-        typer.Option("--show-events/--no-show-events", help="Print public events."),
+        typer.Option("--show-timeline/--no-show-timeline", help="Print public timeline items."),
     ] = True,
     output: Annotated[
         str | None,
@@ -282,7 +273,7 @@ def play(
             poll_interval=(
                 settings.cli_poll_interval_seconds if poll_interval is None else poll_interval
             ),
-            show_events=show_events,
+            show_timeline=show_timeline,
             client=_client(api_url),
             output_format=_output_format(output, settings),
         )
@@ -297,7 +288,7 @@ def _play(
     max_steps: int,
     log_jsonl: Path | None,
     poll_interval: float,
-    show_events: bool,
+    show_timeline: bool,
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
@@ -309,19 +300,20 @@ def _play(
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 
-    request = _create_request(
-        players=players,
-        seed=seed,
-        human_player=human_player,
-        role_count=[],
-        tie_break_policy="no_elimination",
-        day_speech_turns=1,
-        allow_self_vote=False,
+    created = client.create_game(
+        _create_request(
+            players=players,
+            seed=seed,
+            human_player=human_player,
+            role_count=[],
+            tie_break_policy="no_elimination",
+            day_speech_turns=1,
+            allow_self_vote=False,
+        )
     )
-    created = workflows.create_game(client, request)
     state = created.state
     last_sequence = 0
-    emitted_events: list[PublicGameEvent] = []
+    emitted_items: list[GameTimelineItem] = []
     control_token = (
         created.control_tokens.get(human_player)
         if created.control_tokens is not None and human_player is not None
@@ -332,13 +324,13 @@ def _play(
         console.print(Panel.fit(f"Created game [bold]{created.game_id}[/bold]"))
         print_state(state)
 
-    initial_events = workflows.list_events(client, created.game_id, after=last_sequence)
-    emitted_events.extend(initial_events.events)
-    last_sequence = consume_events(
-        initial_events.events,
-        next_after=initial_events.next_after,
+    initial_timeline = client.get_timeline(created.game_id, after=last_sequence)
+    emitted_items.extend(initial_timeline.items)
+    last_sequence = consume_timeline(
+        initial_timeline.items,
+        next_after=initial_timeline.next_after,
         log_jsonl=log_jsonl,
-        show_events=show_events and output_format != "json",
+        show_items=show_timeline and output_format != "json",
         output_format=output_format,
     )
 
@@ -354,17 +346,16 @@ def _play(
             )
         if poll_interval:
             time.sleep(poll_interval)
-        stepped = workflows.step_game(client, created.game_id)
-        state = stepped.state
+        state = client.advance_game(created.game_id).state
         steps += 1
 
-        event_batch = workflows.list_events(client, created.game_id, after=last_sequence)
-        emitted_events.extend(event_batch.events)
-        last_sequence = consume_events(
-            event_batch.events,
-            next_after=event_batch.next_after,
+        timeline_batch = client.get_timeline(created.game_id, after=last_sequence)
+        emitted_items.extend(timeline_batch.items)
+        last_sequence = consume_timeline(
+            timeline_batch.items,
+            next_after=timeline_batch.next_after,
             log_jsonl=log_jsonl,
-            show_events=show_events and output_format != "json",
+            show_items=show_timeline and output_format != "json",
             output_format=output_format,
         )
 
@@ -395,7 +386,7 @@ def _play(
                 "winner": winner,
                 "steps": steps,
                 "state": state,
-                "events": emitted_events if show_events else [],
+                "timeline": emitted_items if show_timeline else [],
             },
             output_format=output_format,
         )
@@ -406,29 +397,29 @@ def _play(
         )
 
 
-def watch(
-    game_id: Annotated[str, typer.Argument(help="Game id to watch.")],
+def timeline(
+    game_id: Annotated[str, typer.Argument(help="Game id to inspect.")],
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    after: Annotated[int, typer.Option(help="Start after this event sequence.")] = 0,
-    limit: Annotated[int | None, typer.Option(help="Maximum events per poll.")] = None,
+    after: Annotated[int, typer.Option(help="Start after this timeline sequence.")] = 0,
+    limit: Annotated[int | None, typer.Option(help="Maximum items per poll.")] = None,
     poll_interval: Annotated[
         float | None,
         typer.Option(help="Seconds to wait between polls when following."),
     ] = None,
     follow: Annotated[
         bool,
-        typer.Option("--follow/--no-follow", help="Keep polling for new events."),
+        typer.Option("--follow/--no-follow", help="Keep polling for new items."),
     ] = False,
-    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public event JSONL.")] = None,
+    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public timeline JSONL.")] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help="Output format: table, json, or jsonl."),
     ] = None,
 ) -> None:
-    """Watch public game events through the public HTTP API."""
+    """Read or follow public game timeline items."""
     settings = get_settings()
     run_app_command(
-        lambda: _watch(
+        lambda: _timeline(
             game_id=game_id,
             after=after,
             limit=limit or settings.cli_event_limit,
@@ -443,7 +434,7 @@ def watch(
     )
 
 
-def _watch(
+def _timeline(
     *,
     game_id: str,
     after: int,
@@ -465,23 +456,23 @@ def _watch(
     last_sequence = after
     while True:
         previous_sequence = last_sequence
-        batch = workflows.list_events(client, game_id, after=last_sequence, limit=limit)
-        last_sequence = consume_events(
-            batch.events,
+        batch = client.get_timeline(game_id, after=last_sequence, limit=limit)
+        last_sequence = consume_timeline(
+            batch.items,
             next_after=batch.next_after,
             log_jsonl=log_jsonl,
-            show_events=True,
+            show_items=True,
             output_format=output_format,
         )
         logger.debug(
-            LOG_CLI_WATCH_POLLED,
+            LOG_CLI_TIMELINE_POLLED,
             extra={
-                "event_action": LOG_CLI_WATCH_POLLED,
+                "event_action": LOG_CLI_TIMELINE_POLLED,
                 "event_outcome": "success",
                 "game_id": game_id,
                 "after": previous_sequence,
                 "next_after": last_sequence,
-                "event_count": len(batch.events),
+                "event_count": len(batch.items),
             },
         )
         if not follow:
@@ -490,22 +481,25 @@ def _watch(
 
 
 def replay(
-    events: Annotated[Path | None, typer.Option("--events", help="Public event JSONL.")] = None,
+    timeline_file: Annotated[
+        Path | None,
+        typer.Option("--timeline", help="Public timeline JSONL."),
+    ] = None,
     game_id: Annotated[
         str | None,
         typer.Option("--game-id", help="Game id to replay from the API."),
     ] = None,
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    delay: Annotated[float, typer.Option(help="Seconds to wait between events.")] = 0.0,
+    delay: Annotated[float, typer.Option(help="Seconds to wait between items.")] = 0.0,
     output: Annotated[
         str | None,
         typer.Option("--output", help="Output format: table, json, or jsonl."),
     ] = None,
 ) -> None:
-    """Replay public events from JSONL or the public HTTP API."""
+    """Replay public timeline items from JSONL or the public HTTP API."""
     run_app_command(
         lambda: _replay(
-            events=events,
+            timeline_file=timeline_file,
             game_id=game_id,
             delay=delay,
             client=_client(api_url),
@@ -516,7 +510,7 @@ def replay(
 
 def _replay(
     *,
-    events: Path | None,
+    timeline_file: Path | None,
     game_id: str | None,
     delay: float,
     client: GameApiClient,
@@ -527,31 +521,31 @@ def _replay(
             MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
-    replay_events = _load_replay_events(events, game_id=game_id, client=client)
+    replay_items = _load_replay_items(timeline_file, game_id=game_id, client=client)
     if output_format == "json":
-        for _ in replay_events:
+        for _ in replay_items:
             if delay:
                 time.sleep(delay)
-        print_events(replay_events, output_format=output_format)
+        print_timeline(replay_items, output_format=output_format)
         logger.info(
             LOG_CLI_REPLAY_COMPLETED,
             extra={
                 "event_action": LOG_CLI_REPLAY_COMPLETED,
                 "event_outcome": "success",
-                "event_count": len(replay_events),
+                "event_count": len(replay_items),
             },
         )
         return
-    for event in replay_events:
+    for item in replay_items:
         if delay:
             time.sleep(delay)
-        print_events([event], output_format=output_format)
+        print_timeline([item], output_format=output_format)
     logger.info(
         LOG_CLI_REPLAY_COMPLETED,
         extra={
             "event_action": LOG_CLI_REPLAY_COMPLETED,
             "event_outcome": "success",
-            "event_count": len(replay_events),
+            "event_count": len(replay_items),
         },
     )
 
@@ -586,47 +580,10 @@ def _runs(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    response = workflows.list_games(client, status=status, limit=limit, offset=offset)
+    response = client.list_games(status=status, limit=limit, offset=offset)
     print_run_summaries(response.runs, output_format=output_format)
     if response.next_offset is not None and output_format == "table":
         console.print(f"[dim]next offset: {response.next_offset}[/dim]")
-
-
-def turns(
-    game_id: Annotated[str, typer.Argument(help="Game id to inspect.")],
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    after: Annotated[int, typer.Option(help="Start after this turn sequence.")] = 0,
-    limit: Annotated[int | None, typer.Option(help="Maximum turns to return.")] = None,
-    output: Annotated[
-        str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
-    ] = None,
-) -> None:
-    """List public turn history for one game."""
-    settings = get_settings()
-    run_app_command(
-        lambda: _turns(
-            game_id=game_id,
-            after=after,
-            limit=limit or settings.cli_event_limit,
-            client=_client(api_url),
-            output_format=_output_format(output, settings),
-        )
-    )
-
-
-def _turns(
-    *,
-    game_id: str,
-    after: int,
-    limit: int,
-    client: GameApiClient,
-    output_format: OutputFormat,
-) -> None:
-    response = workflows.list_turns(client, game_id, after=after, limit=limit)
-    print_turns(response.turns, output_format=output_format)
-    if response.next_after != after and output_format == "table":
-        console.print(f"[dim]next after: {response.next_after}[/dim]")
 
 
 def _client(api_url: str | None) -> GameApiClient:
@@ -648,7 +605,7 @@ def _create_request(
     tie_break_policy: str,
     day_speech_turns: int,
     allow_self_vote: bool,
-) -> CreateGameRequest:
+) -> CreateGameRunRequest:
     return build_create_game_request(
         players=players,
         seed=seed,
@@ -669,8 +626,7 @@ def _prompt_and_submit_human_action(
     control_token: str,
     output_format: OutputFormat,
 ) -> None:
-    observation = workflows.get_private_observation(
-        client,
+    observation = client.get_private_observation(
         game_id,
         player_id,
         control_token=control_token,
@@ -687,11 +643,10 @@ def _prompt_and_submit_human_action(
         message = typer.prompt("speech")
     elif action_type != "pass":
         target_id = typer.prompt(f"{action_type} target_id")
-    response = workflows.submit_player_action(
-        client,
+    response = client.submit_player_action(
         game_id,
         player_id,
-        SubmitPlayerActionRequest(
+        PlayerActionRequest(
             type=cast(Any, action_type),
             target_id=target_id,
             message=message,
@@ -709,25 +664,25 @@ def _prompt_and_submit_human_action(
         },
     )
     if output_format == "table":
-        print_events(response.events)
+        print_timeline(response.timeline)
 
 
-def _load_replay_events(
-    events: Path | None,
+def _load_replay_items(
+    timeline_file: Path | None,
     *,
     game_id: str | None,
     client: GameApiClient,
-) -> list[PublicGameEvent]:
-    if events is not None:
+) -> list[GameTimelineItem]:
+    if timeline_file is not None:
         return [
-            PublicGameEvent.model_validate_json(line)
-            for line in events.read_text(encoding="utf-8").splitlines()
+            GameTimelineItem.model_validate_json(line)
+            for line in timeline_file.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
     if game_id is not None:
-        return workflows.list_events(client, game_id, after=0, limit=500).events
+        return client.get_timeline(game_id, after=0, limit=500).items
     raise AppError(
-        "Either --events or --game-id is required.",
+        "Either --timeline or --game-id is required.",
         code=ErrorCode.CONFIG_INVALID_VALUE,
     )
 

@@ -4,11 +4,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Annotated, Any, Literal, Self
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from werewolf_agent.commons.configuration import DEFAULT_GAME_DEFAULT_PLAYER_COUNT
 from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
 from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
 
@@ -63,7 +61,7 @@ class CreateGameRuleConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class CreateGameRequest(BaseModel):
+class CreateGameRunRequest(BaseModel):
     """Payload for creating one game."""
 
     player_count: int | None = Field(default=None, ge=1)
@@ -84,15 +82,6 @@ class CreateGameRequest(BaseModel):
         ):
             raise ValueError(MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS)
         return self
-
-    @property
-    def resolved_player_count(self) -> int:
-        """Return the requested player count, defaulting to the MVP table size."""
-        if self.players is not None:
-            return len(self.players)
-        if self.player_count is not None:
-            return self.player_count
-        return DEFAULT_GAME_DEFAULT_PLAYER_COUNT
 
 
 class PublicPlayerState(BaseModel):
@@ -128,23 +117,7 @@ class PublicGameState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameEvent(BaseModel):
-    """One public event in the API event stream."""
-
-    sequence: int = Field(ge=1)
-    event_id: UUID
-    event_type: str
-    phase: GamePhase | None = None
-    day: int | None = None
-    actor_id: str | None = None
-    visibility: Literal["public"] = "public"
-    payload: dict[str, Any] = Field(default_factory=dict)
-    occurred_at: datetime
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameResponse(BaseModel):
+class GameRunResponse(BaseModel):
     """Response containing the current public game state."""
 
     game_id: str
@@ -154,51 +127,13 @@ class GameResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class StepGameResponse(BaseModel):
+class AdvanceGameRunResponse(BaseModel):
     """Response from advancing a game by one API-side step."""
 
     game_id: str
     status: GameStatus
     state: PublicGameState
-    events: list[PublicGameEvent]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameEventsQuery(BaseModel):
-    """Query parameters for listing public events."""
-
-    after: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameRunsQuery(BaseModel):
-    """Query parameters for listing public runs."""
-
-    status: GameStatus | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameTurnsQuery(BaseModel):
-    """Query parameters for listing public turn history."""
-
-    after: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class GameEventsResponse(BaseModel):
-    """Public event stream response."""
-
-    game_id: str
-    events: list[PublicGameEvent]
-    next_after: int
+    timeline: list[GameTimelineItem]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -233,8 +168,8 @@ class GameRunsResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameTurn(BaseModel):
-    """Public timeline item for CLI and future UI timelines."""
+class GameTimelineItem(BaseModel):
+    """Public timeline item shared by API, CLI, replay, SSE, and UI."""
 
     sequence: int = Field(ge=1)
     event_sequence: int = Field(ge=1)
@@ -249,12 +184,31 @@ class PublicGameTurn(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameTurnsResponse(BaseModel):
-    """Public turn history response."""
+class GameTimelineResponse(BaseModel):
+    """Public game timeline response."""
 
     game_id: str
-    turns: list[PublicGameTurn]
+    items: list[GameTimelineItem]
     next_after: int
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRunsQuery(BaseModel):
+    """Query parameters for listing public runs."""
+
+    status: GameStatus | None = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameTimelineQuery(BaseModel):
+    """Query parameters for reading the public game timeline."""
+
+    after: int = Field(default=0, ge=0)
+    limit: int = Field(default=100, ge=1, le=500)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -273,7 +227,7 @@ class RulesetResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PrivateObservationResponse(BaseModel):
+class PlayerObservationResponse(BaseModel):
     """Private observation visible to one authenticated player."""
 
     game_id: str
@@ -283,7 +237,7 @@ class PrivateObservationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class SubmitPlayerActionRequest(BaseModel):
+class PlayerActionRequest(BaseModel):
     """One manual player action submitted through the API."""
 
     type: ActionType
@@ -306,13 +260,13 @@ class SubmitPlayerActionRequest(BaseModel):
         return value.strip()
 
 
-class SubmitPlayerActionResponse(BaseModel):
+class PlayerActionResponse(BaseModel):
     """Response after accepting a manual action."""
 
     game_id: str
     player_id: str
     state: PublicGameState
-    events: list[PublicGameEvent]
+    timeline: list[GameTimelineItem]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -373,35 +327,32 @@ class ErrorEventPayload(BaseModel):
 
 __all__ = [
     "ActionType",
+    "AdvanceGameRunResponse",
     "CreateGameAgentConfig",
     "CreateGamePlayer",
-    "CreateGameRequest",
     "CreateGameRuleConfig",
+    "CreateGameRunRequest",
     "ErrorEventPayload",
-    "GameEventsQuery",
-    "GameEventsResponse",
     "GamePhase",
-    "GameResponse",
+    "GameRunResponse",
     "GameRunsQuery",
     "GameRunsResponse",
     "GameStatus",
-    "GameTurnsQuery",
-    "GameTurnsResponse",
+    "GameTimelineItem",
+    "GameTimelineQuery",
+    "GameTimelineResponse",
+    "PlayerActionRequest",
+    "PlayerActionResponse",
+    "PlayerObservationResponse",
     "PlayerStatus",
-    "PrivateObservationResponse",
     "ProblemDetails",
     "ProblemIssue",
-    "PublicGameEvent",
     "PublicGameRunSummary",
     "PublicGameState",
-    "PublicGameTurn",
     "PublicPlayerState",
     "RoleCount",
     "RoleId",
     "RulesetResponse",
-    "StepGameResponse",
-    "SubmitPlayerActionRequest",
-    "SubmitPlayerActionResponse",
     "TieBreakPolicyId",
     "Winner",
 ]

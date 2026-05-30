@@ -48,6 +48,13 @@ def test_sdist_includes_scripts() -> None:
     assert '"scripts",' in pyproject
 
 
+def test_rebuild_sphinx_uses_project_environment_for_autodoc() -> None:
+    script = _read("scripts/rebuild-sphinx-docs.cmd")
+
+    assert "uv run --group docs --extra api --extra streamlit sphinx-build" in script
+    assert "uv run --no-project" not in script
+
+
 @pytest.mark.skipif(os.name != "nt", reason="batch smoke tests run on Windows")
 def test_batch_help_and_dry_run_commands_do_not_require_project_build() -> None:
     for command in (

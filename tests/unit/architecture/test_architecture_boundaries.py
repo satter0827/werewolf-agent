@@ -65,39 +65,29 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GameRunResult",
             "GameRunUpdate",
             "GameStatus",
+            "GameTimelineItem",
+            "GameTimelineResult",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
+            "GameUseCases",
             "GetGameRunQuery",
+            "GetGameTimelineQuery",
             "GetPlayerObservationQuery",
             "ListGameRunsQuery",
             "ListGameRunsResult",
-            "ListPublicGameEventsQuery",
-            "ListPublicGameTurnsQuery",
-            "ListPublicGameTurnsResult",
             "LlmProviderConfig",
             "NullTelemetrySink",
-            "PlayerObservationResult",
-            "PublicGameEventsResult",
+            "PlayerActionCommand",
+            "PlayerActionResult",
             "PublicGameRunSummary",
-            "PublicGameTurn",
+            "PlayerObservationResult",
             "RulesetResult",
             "StoredGameEvent",
             "StoredGameRun",
             "StoredGameRunSummary",
             "StoredGameTurn",
-            "SubmitPlayerActionCommand",
-            "SubmitPlayerActionResult",
             "TelemetryEvent",
             "TelemetrySink",
-            "advance_game_run",
-            "create_game_run",
-            "get_default_ruleset",
-            "get_player_observation",
-            "get_game_run",
-            "list_game_runs",
-            "list_public_game_events",
-            "list_public_game_turns",
-            "submit_player_action",
         },
     )
 
@@ -110,8 +100,10 @@ def test_old_usecase_jobs_names_are_not_public() -> None:
         "GameResult",
         "GameRunsResult",
         "GameTurnsResult",
+        "GameTimelineItemsResult",
         "GetGameQuery",
         "GetPrivateObservationQuery",
+        "ListGameTimelineItemsQuery",
         "ListGameTurnsQuery",
         "ListGamesQuery",
         "ListPublicEventsQuery",
@@ -124,6 +116,8 @@ def test_old_usecase_jobs_names_are_not_public() -> None:
         "list_game_turns",
         "list_games",
         "list_public_events",
+        "list_public_game_events",
+        "list_public_game_turns",
     }
 
     assert not [name for name in removed_names if hasattr(game_jobs, name)]
@@ -152,28 +146,26 @@ def test_domain_llm_public_surface_is_minimal() -> None:
     )
 
 
-def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
-    for function_name in (
+def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
+    workflow_names = {
+        "advance_game_run",
         "create_game_run",
+        "get_default_ruleset",
         "get_game_run",
         "get_player_observation",
-        "submit_player_action",
-        "advance_game_run",
+        "get_game_timeline",
         "list_game_runs",
-        "list_public_game_events",
-        "list_public_game_turns",
-    ):
-        signature = inspect.signature(getattr(game_jobs, function_name))
+        "submit_player_action",
+    }
+
+    assert not [name for name in workflow_names if hasattr(game_jobs, name)]
+
+    for method_name in workflow_names:
+        signature = inspect.signature(getattr(game_jobs.GameUseCases, method_name))
         parameters = list(signature.parameters.values())
 
-        assert len(parameters) == 2
-        assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
-        assert parameters[1].name == "dependencies"
-        assert parameters[1].kind is inspect.Parameter.KEYWORD_ONLY
-
-    ruleset_signature = inspect.signature(game_jobs.get_default_ruleset)
-    assert list(ruleset_signature.parameters) == ["config"]
-    assert ruleset_signature.parameters["config"].kind is inspect.Parameter.KEYWORD_ONLY
+        assert parameters[0].name == "self"
+        assert all(parameter.name != "dependencies" for parameter in parameters)
 
 
 def test_usecase_imports_domain_only_from_internal_boundary() -> None:
@@ -520,6 +512,9 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
     assert not (PACKAGE / "interface" / "application" / "agents.py").exists()
+    assert not (PACKAGE / "interface" / "shared" / "workflows.py").exists()
+    assert not list((PACKAGE / "commons" / "configuration").glob("*.py"))
+    assert not list((PACKAGE / "commons" / "observability").glob("*.py"))
     assert not (PACKAGE / "default_settings").exists()
     assert not (PACKAGE / "domain" / "llm" / "rules").exists()
     assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()

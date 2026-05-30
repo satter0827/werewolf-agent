@@ -14,6 +14,7 @@ class LoggingTelemetrySink:
     """Write use case telemetry events through process logging."""
 
     def __init__(self, logger_name: str = DEFAULT_TELEMETRY_LOGGER) -> None:
+        """Create a sink that writes to the named process logger."""
         self._logger = logging.getLogger(logger_name)
 
     def record(self, event: TelemetryEvent) -> None:

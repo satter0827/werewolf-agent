@@ -1,9 +1,14 @@
+import os
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.commons.configuration import (
+from werewolf_agent.interface.application.settings import (
+    build_game_usecase_config,
+    build_llm_provider_config,
+)
+from werewolf_agent.interface.runtime import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
     DEFAULT_GAME_MIN_PLAYERS,
@@ -14,10 +19,14 @@ from werewolf_agent.commons.configuration import (
     split_csv,
     split_mapping,
 )
-from werewolf_agent.interface.application.settings import (
-    build_game_usecase_config,
-    build_llm_provider_config,
-)
+
+
+@pytest.fixture(autouse=True)
+def clear_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep default-setting assertions independent from caller environment."""
+    for key in list(os.environ):
+        if key.startswith("WEREWOLF_") or key == "DATABASE_URL":
+            monkeypatch.delenv(key, raising=False)
 
 
 def test_split_csv_removes_empty_items_and_whitespace() -> None:

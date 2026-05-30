@@ -6,7 +6,6 @@ import logging
 from dataclasses import dataclass
 from typing import Any, cast
 
-from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
@@ -18,17 +17,17 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_RERUN_STARTED,
 )
 from werewolf_agent.contracts.schemas import (
-    GameResponse,
-    PrivateObservationResponse,
+    GameRunResponse,
+    PlayerActionRequest,
+    PlayerObservationResponse,
     PublicGameRunSummary,
-    SubmitPlayerActionRequest,
 )
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     ScreenMode,
     build_game_screen_view,
 )
-from werewolf_agent.interface.shared import workflows
+from werewolf_agent.interface.runtime import AppSettings
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
@@ -68,7 +67,7 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
 
 def check_connection(*, api_url: str, settings: AppSettings) -> dict[str, str]:
     """Check API health from the Streamlit screen."""
-    health = workflows.check_health(build_streamlit_client(api_url, settings))
+    health = build_streamlit_client(api_url, settings).health()
     logger.info(
         LOG_STREAMLIT_CONNECTION_CHECKED,
         extra={
@@ -83,7 +82,7 @@ def check_connection(*, api_url: str, settings: AppSettings) -> dict[str, str]:
 def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameRunSummary]:
     """Return recent public game runs for the sidebar selector."""
     client = build_streamlit_client(api_url, settings)
-    return workflows.list_games(client, limit=settings.streamlit_run_limit).runs
+    return client.list_games(limit=settings.streamlit_run_limit).runs
 
 
 def create_playable_game(
@@ -93,7 +92,7 @@ def create_playable_game(
     player_count: int,
     seed_text: str,
     human_player_id: str,
-) -> GameResponse:
+) -> GameRunResponse:
     """Create a game with one human player and return the API response."""
     seed = int(seed_text) if seed_text.strip() else None
     request = build_create_game_request(
@@ -106,7 +105,7 @@ def create_playable_game(
         allow_self_vote=settings.game_default_allow_self_vote,
         default_player_count=settings.game_default_player_count,
     )
-    response = workflows.create_game(build_streamlit_client(api_url, settings), request)
+    response = build_streamlit_client(api_url, settings).create_game(request)
     logger.info(
         LOG_STREAMLIT_GAME_CREATED,
         extra={
@@ -132,8 +131,8 @@ def load_game_screen(
 ) -> GameScreenView:
     """Load public and private data needed by the playable screen."""
     client = build_streamlit_client(api_url, settings)
-    state = workflows.get_game(client, game_id).state
-    turns = workflows.list_turns(client, game_id, limit=settings.streamlit_turn_limit).turns
+    state = client.get_game(game_id).state
+    timeline = client.get_timeline(game_id, limit=settings.streamlit_turn_limit).items
     observation = load_observation(
         client=client,
         game_id=game_id,
@@ -142,7 +141,7 @@ def load_game_screen(
     )
     screen = build_game_screen_view(
         state=state,
-        turns=turns,
+        turns=timeline,
         observation=observation,
         human_player_id=human_player_id,
         screen_mode=screen_mode,
@@ -159,7 +158,7 @@ def load_game_screen(
             "game_phase": state.phase,
             "game_day": state.day,
             "game_version": state.version,
-            "turn_count": len(turns),
+            "turn_count": len(timeline),
             "has_observation": observation is not None,
             "available_action_count": len(screen.observation.available_actions)
             if screen.observation is not None
@@ -175,12 +174,11 @@ def load_observation(
     game_id: str,
     human_player_id: str | None,
     control_token: str,
-) -> PrivateObservationResponse | None:
+) -> PlayerObservationResponse | None:
     """Return private observation only when the screen has enough operation context."""
     if not game_id or not human_player_id or not control_token:
         return None
-    return workflows.get_private_observation(
-        client,
+    return client.get_private_observation(
         game_id,
         human_player_id,
         control_token=control_token,
@@ -199,13 +197,12 @@ def submit_screen_action(
     message: str | None,
 ) -> None:
     """Submit one action selected in the Streamlit hand panel."""
-    request = SubmitPlayerActionRequest(
+    request = PlayerActionRequest(
         type=cast(Any, action_type),
         target_id=target_id,
         message=message,
     )
-    workflows.submit_player_action(
-        build_streamlit_client(api_url, settings),
+    build_streamlit_client(api_url, settings).submit_player_action(
         game_id,
         human_player_id,
         request,
@@ -243,7 +240,7 @@ def advance_until_input(
         },
     )
     for iteration in range(settings.streamlit_max_auto_steps):
-        current = workflows.get_game(client, game_id).state
+        current = client.get_game(game_id).state
         logger.debug(
             LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
             extra={
@@ -278,7 +275,7 @@ def advance_until_input(
                 available_action_count=len(observation.observation.get("available_actions") or []),
             )
             return AdvanceResult(reached_input=True)
-        workflows.step_game(client, game_id)
+        client.advance_game(game_id)
     _log_advance_stop(
         game_id=game_id,
         stop_reason="hit_limit",

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from werewolf_agent.commons.configuration import AppSettings, get_settings
+from werewolf_agent.interface.runtime import AppSettings, get_settings
 from werewolf_agent.usecase.jobs import GameUseCaseConfig, LlmProviderConfig
 
 
@@ -15,6 +15,7 @@ def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCas
 
     Returns:
         Use case configuration without interface-only settings.
+
     """
     app_settings = settings or get_settings()
     return GameUseCaseConfig(
@@ -35,6 +36,7 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
 
     Returns:
         LLM provider configuration for automated players.
+
     """
     app_settings = settings or get_settings()
     return LlmProviderConfig(

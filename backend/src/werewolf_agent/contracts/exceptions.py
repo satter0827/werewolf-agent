@@ -27,6 +27,7 @@ class AppError(Exception):
             code: Optional stable error code override.
             context: Structured diagnostic context for logs and Problem Details.
             retryable: Optional retryability override. Defaults to the error spec value.
+
         """
         self.code = code or self.code
         self.spec: ErrorSpec = get_error_spec(self.code)
@@ -43,6 +44,7 @@ class AppError(Exception):
 
         Returns:
             Safe structured fields without raw secrets.
+
         """
         extra: dict[str, object] = {
             "error_code": self.code.value,

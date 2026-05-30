@@ -17,6 +17,7 @@ depends_on = None
 
 
 def upgrade() -> None:
+    """Create public run summary and timeline read model tables."""
     op.create_table(
         "game_run_summaries",
         sa.Column("run_id", sa.String(length=36), nullable=False),
@@ -56,5 +57,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    """Drop public run summary and timeline read model tables."""
     op.drop_table("game_turns")
     op.drop_table("game_run_summaries")

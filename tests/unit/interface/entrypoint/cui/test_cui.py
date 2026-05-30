@@ -3,35 +3,32 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
 
 import httpx
 import pytest
 import typer
 from typer.testing import CliRunner
 
-from werewolf_agent.commons.configuration import get_settings
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGameRequest,
-    GameEventsResponse,
-    GameResponse,
+    AdvanceGameRunResponse,
+    CreateGameRunRequest,
+    GameRunResponse,
     GameRunsResponse,
-    GameTurnsResponse,
-    PrivateObservationResponse,
-    PublicGameEvent,
+    GameTimelineItem,
+    GameTimelineResponse,
+    PlayerActionRequest,
+    PlayerActionResponse,
+    PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
-    PublicGameTurn,
     PublicPlayerState,
     RulesetResponse,
-    StepGameResponse,
-    SubmitPlayerActionRequest,
-    SubmitPlayerActionResponse,
 )
 from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
 from werewolf_agent.interface.entrypoint.cui.app import app
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
+from werewolf_agent.interface.runtime import get_settings
 from werewolf_agent.interface.shared.api_client import HttpGameApiClient
 
 
@@ -71,10 +68,11 @@ def _state(
     )
 
 
-def _event(sequence: int, event_type: str, payload: dict[str, object]) -> PublicGameEvent:
-    return PublicGameEvent(
+def _event(sequence: int, event_type: str, payload: dict[str, object]) -> GameTimelineItem:
+    return GameTimelineItem(
         sequence=sequence,
-        event_id=uuid4(),
+        event_sequence=sequence,
+        version=sequence,
         event_type=event_type,
         phase="finished" if event_type == "game_finished" else "night",
         day=1,
@@ -102,19 +100,6 @@ def _run_summary() -> PublicGameRunSummary:
     )
 
 
-def _turn(sequence: int) -> PublicGameTurn:
-    return PublicGameTurn(
-        sequence=sequence,
-        event_sequence=sequence,
-        version=2,
-        phase="night",
-        day=1,
-        event_type="phase_started",
-        payload={"phase": "night"},
-        occurred_at=datetime(2026, 1, 1, tzinfo=UTC),
-    )
-
-
 class FakeGameApiClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
@@ -125,19 +110,20 @@ class FakeGameApiClient:
             _event(3, "game_finished", {"winner": "villagers"}),
         ]
 
-    def create_game(self, request: CreateGameRequest) -> GameResponse:
-        self.calls.append(("create", request.resolved_player_count))
+    def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
+        player_count = len(request.players) if request.players is not None else request.player_count
+        self.calls.append(("create", player_count))
         self.available_sequence = 1
         control_tokens = (
             {"player-1": "token"}
             if request.players and request.players[0].agent_type == "human"
             else None
         )
-        return GameResponse(game_id="game-1", state=_state(), control_tokens=control_tokens)
+        return GameRunResponse(game_id="game-1", state=_state(), control_tokens=control_tokens)
 
-    def get_game(self, game_id: str) -> GameResponse:
+    def get_game(self, game_id: str) -> GameRunResponse:
         self.calls.append(("get", game_id))
-        return GameResponse(game_id="game-1", state=_state())
+        return GameRunResponse(game_id="game-1", state=_state())
 
     def health(self) -> dict[str, str]:
         self.calls.append(("health", "ok"))
@@ -155,34 +141,34 @@ class FakeGameApiClient:
             agent_types=[{"id": "llm", "name": "LLM Agent"}],
         )
 
-    def step_game(self, game_id: str) -> StepGameResponse:
-        self.calls.append(("step", game_id))
+    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
+        self.calls.append(("advance", game_id))
         self.available_sequence += 1
         status = "completed" if self.available_sequence >= 3 else "running"
         phase = "finished" if status == "completed" else "day_discussion"
         winner = "villagers" if status == "completed" else None
-        events = [event for event in self.events if event.sequence == self.available_sequence]
-        return StepGameResponse(
+        timeline = [item for item in self.events if item.sequence == self.available_sequence]
+        return AdvanceGameRunResponse(
             game_id=game_id,
             status=status,
             state=_state(status=status, phase=phase, winner=winner),
-            events=events,
+            timeline=timeline,
         )
 
-    def list_events(
+    def get_timeline(
         self,
         game_id: str,
         *,
         after: int = 0,
         limit: int = 100,
-    ) -> GameEventsResponse:
+    ) -> GameTimelineResponse:
         _ = limit
-        self.calls.append(("events", after))
-        events = [
+        self.calls.append(("timeline", after))
+        items = [
             event for event in self.events if after < event.sequence <= self.available_sequence
         ]
-        next_after = events[-1].sequence if events else after
-        return GameEventsResponse(game_id=game_id, events=events, next_after=next_after)
+        next_after = items[-1].sequence if items else after
+        return GameTimelineResponse(game_id=game_id, items=items, next_after=next_after)
 
     def list_games(
         self,
@@ -194,25 +180,15 @@ class FakeGameApiClient:
         self.calls.append(("runs", (status, limit, offset)))
         return GameRunsResponse(runs=[_run_summary()])
 
-    def list_turns(
-        self,
-        game_id: str,
-        *,
-        after: int = 0,
-        limit: int = 100,
-    ) -> GameTurnsResponse:
-        self.calls.append(("turns", (game_id, after, limit)))
-        return GameTurnsResponse(game_id=game_id, turns=[_turn(1)], next_after=1)
-
     def get_private_observation(
         self,
         game_id: str,
         player_id: str,
         *,
         control_token: str,
-    ) -> PrivateObservationResponse:
+    ) -> PlayerObservationResponse:
         self.calls.append(("observation", (game_id, player_id, control_token)))
-        return PrivateObservationResponse(
+        return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
             observation={
@@ -229,16 +205,16 @@ class FakeGameApiClient:
         self,
         game_id: str,
         player_id: str,
-        request: SubmitPlayerActionRequest,
+        request: PlayerActionRequest,
         *,
         control_token: str,
-    ) -> SubmitPlayerActionResponse:
+    ) -> PlayerActionResponse:
         self.calls.append(("action", (game_id, player_id, request.type, control_token)))
-        return SubmitPlayerActionResponse(
+        return PlayerActionResponse(
             game_id=game_id,
             player_id=player_id,
             state=_state(),
-            events=[_event(4, "speech_recorded", {"player_id": player_id})],
+            timeline=[_event(4, "speech_recorded", {"player_id": player_id})],
         )
 
 
@@ -398,7 +374,7 @@ def test_play_command_uses_public_api_client(
 ) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
-    log_path = tmp_path / "events.jsonl"
+    log_path = tmp_path / "timeline.jsonl"
 
     result = CliRunner().invoke(
         app,
@@ -414,7 +390,7 @@ def test_play_command_uses_public_api_client(
             "4",
             "--log-jsonl",
             str(log_path),
-            "--no-show-events",
+            "--no-show-timeline",
         ],
     )
 
@@ -422,11 +398,11 @@ def test_play_command_uses_public_api_client(
     assert "Game completed" in result.output
     assert fake_client.calls == [
         ("create", 6),
-        ("events", 0),
-        ("step", "game-1"),
-        ("events", 1),
-        ("step", "game-1"),
-        ("events", 2),
+        ("timeline", 0),
+        ("advance", "game-1"),
+        ("timeline", 1),
+        ("advance", "game-1"),
+        ("timeline", 2),
     ]
     lines = log_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 3
@@ -466,17 +442,17 @@ def test_play_json_output_is_single_machine_readable_document(
     payload = json.loads(result.output)
     assert payload["game_id"] == "game-1"
     assert payload["winner"] == "villagers"
-    assert [event["sequence"] for event in payload["events"]] == [1, 2, 3]
+    assert [item["sequence"] for item in payload["timeline"]] == [1, 2, 3]
 
 
-def test_create_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
 
     result = CliRunner().invoke(
         app,
         [
-            "create",
+            "new",
             "--api-url",
             "http://api.test/api/v1",
             "--players",
@@ -495,39 +471,39 @@ def test_create_command_can_request_one_human_player(monkeypatch: pytest.MonkeyP
     assert fake_client.calls == [("create", 5)]
 
 
-def test_create_command_rejects_unknown_human_player() -> None:
+def test_new_command_rejects_unknown_human_player() -> None:
     result = CliRunner().invoke(
         app,
-        ["create", "--players", "5", "--human-player", "player-9"],
+        ["new", "--players", "5", "--human-player", "player-9"],
     )
 
     assert result.exit_code == 1
     assert "human_player must match a generated player id" in result.output
 
 
-def test_ruleset_state_and_step_commands_use_public_api_client(
+def test_ruleset_show_and_advance_commands_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
 
     ruleset_result = CliRunner().invoke(app, ["ruleset", "--api-url", "http://api.test/api/v1"])
-    state_result = CliRunner().invoke(
-        app, ["state", "game-1", "--api-url", "http://api.test/api/v1"]
+    show_result = CliRunner().invoke(app, ["show", "game-1", "--api-url", "http://api.test/api/v1"])
+    advance_result = CliRunner().invoke(
+        app, ["advance", "game-1", "--api-url", "http://api.test/api/v1"]
     )
-    step_result = CliRunner().invoke(app, ["step", "game-1", "--api-url", "http://api.test/api/v1"])
 
     assert ruleset_result.exit_code == 0
-    assert state_result.exit_code == 0
-    assert step_result.exit_code == 0
+    assert show_result.exit_code == 0
+    assert advance_result.exit_code == 0
     assert ("ruleset", "default") in fake_client.calls
     assert ("get", "game-1") in fake_client.calls
-    assert ("step", "game-1") in fake_client.calls
+    assert ("advance", "game-1") in fake_client.calls
 
 
 def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingGameApiClient(FakeGameApiClient):
-        def create_game(self, request: CreateGameRequest) -> GameResponse:
+        def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
             _ = request
             raise AppError(
                 "game.invalid_action: The selected action is not allowed.",
@@ -548,45 +524,40 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
     assert "secret" not in result.output
 
 
-def test_watch_replay_runs_and_turns_use_public_api_client(
+def test_timeline_replay_and_runs_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     fake_client = FakeGameApiClient()
     fake_client.available_sequence = 3
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
-    log_path = tmp_path / "watch.jsonl"
-    events_path = tmp_path / "events.jsonl"
-    events_path.write_text(_event(1, "game_started", {"player_count": 6}).model_dump_json())
+    log_path = tmp_path / "timeline-watch.jsonl"
+    timeline_path = tmp_path / "timeline.jsonl"
+    timeline_path.write_text(_event(1, "game_started", {"player_count": 6}).model_dump_json())
 
-    watch_result = CliRunner().invoke(
+    timeline_result = CliRunner().invoke(
         app,
-        ["watch", "game-1", "--api-url", "http://api.test/api/v1", "--log-jsonl", str(log_path)],
+        ["timeline", "game-1", "--api-url", "http://api.test/api/v1", "--log-jsonl", str(log_path)],
     )
-    replay_result = CliRunner().invoke(app, ["replay", "--events", str(events_path)])
+    replay_result = CliRunner().invoke(app, ["replay", "--timeline", str(timeline_path)])
     runs_result = CliRunner().invoke(app, ["runs", "--api-url", "http://api.test/api/v1"])
-    turns_result = CliRunner().invoke(
-        app,
-        ["turns", "game-1", "--api-url", "http://api.test/api/v1"],
-    )
 
-    assert watch_result.exit_code == 0
+    assert timeline_result.exit_code == 0
     assert replay_result.exit_code == 0
     assert runs_result.exit_code == 0
-    assert turns_result.exit_code == 0
     assert "Game Runs" in runs_result.output
-    assert "Game Turns" in turns_result.output
+    assert "game_started" in timeline_result.output
     assert log_path.exists()
 
 
-def test_watch_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_timeline_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
 
     result = CliRunner().invoke(
         app,
         [
-            "watch",
+            "timeline",
             "game-1",
             "--api-url",
             "http://api.test/api/v1",
@@ -597,7 +568,7 @@ def test_watch_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) -> No
     )
 
     assert result.exit_code == 1
-    assert "Use jsonl output when following streamed events." in result.output
+    assert "Use jsonl output when following streamed timeline items." in result.output
 
 
 def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:

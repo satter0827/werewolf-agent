@@ -6,12 +6,6 @@ import importlib
 from typing import Any, cast
 from uuid import uuid4
 
-from werewolf_agent.commons.configuration import (
-    AppSettings,
-    configure_interface_logging,
-    get_settings,
-)
-from werewolf_agent.commons.observability import bind_observation_context
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.entrypoint.streamlit.components import (
     advance_note_html,
@@ -51,6 +45,12 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ActionChoiceView,
     GameScreenView,
     SavedGameOptionView,
+)
+from werewolf_agent.interface.runtime import (
+    AppSettings,
+    bind_observation_context,
+    configure_interface_logging,
+    get_settings,
 )
 
 

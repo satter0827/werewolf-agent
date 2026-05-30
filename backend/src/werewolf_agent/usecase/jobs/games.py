@@ -1,4 +1,4 @@
-"""Public game use case job DTOs and stateless facade functions."""
+"""Public game use case DTOs and a small stateless facade."""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ class GameUseCaseConfig:
 
 @dataclass(frozen=True)
 class GameUseCaseDependencies:
-    """Externally supplied dependencies for stateless game jobs."""
+    """Externally supplied dependencies for game use cases."""
 
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
@@ -157,7 +157,7 @@ class GetPlayerObservationQuery(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class SubmitPlayerActionCommand(_UseCaseModel):
+class PlayerActionCommand(_UseCaseModel):
     """Command for submitting one manual player action."""
 
     game_id: str | UUID
@@ -181,18 +181,8 @@ class ListGameRunsQuery(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ListPublicGameEventsQuery(_UseCaseModel):
-    """Query for listing public events after a sequence cursor."""
-
-    game_id: str | UUID
-    after: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class ListPublicGameTurnsQuery(_UseCaseModel):
-    """Query for listing public turn records after a sequence cursor."""
+class GetGameTimelineQuery(_UseCaseModel):
+    """Query for listing public timeline items after a sequence cursor."""
 
     game_id: str | UUID
     after: int = Field(default=0, ge=0)
@@ -233,13 +223,13 @@ class PlayerObservationResult(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class SubmitPlayerActionResult(_UseCaseModel):
+class PlayerActionResult(_UseCaseModel):
     """Result after accepting one manual player action."""
 
     game_id: str
     player_id: str
     state: dict[str, Any]
-    events: list[dict[str, Any]]
+    timeline: list[dict[str, Any]]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -250,16 +240,16 @@ class AdvanceGameRunResult(_UseCaseModel):
     game_id: str
     status: GameStatus
     state: dict[str, Any]
-    events: list[dict[str, Any]]
+    timeline: list[dict[str, Any]]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameEventsResult(_UseCaseModel):
-    """Public event stream returned by use cases."""
+class GameTimelineResult(_UseCaseModel):
+    """Page of public timeline items."""
 
     game_id: str
-    events: list[dict[str, Any]]
+    items: list[dict[str, Any]]
     next_after: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -270,16 +260,6 @@ class ListGameRunsResult(_UseCaseModel):
 
     runs: list[dict[str, Any]]
     next_offset: int | None = None
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class ListPublicGameTurnsResult(_UseCaseModel):
-    """Page of public turn history."""
-
-    game_id: str
-    turns: list[dict[str, Any]]
-    next_after: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -317,22 +297,6 @@ class PublicGameState(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameEvent(_UseCaseModel):
-    """Internal public event projected from a stored event record."""
-
-    sequence: int = Field(ge=1)
-    event_id: UUID
-    event_type: str
-    phase: GamePhase | None = None
-    day: int | None = None
-    actor_id: str | None = None
-    visibility: Literal["public"] = "public"
-    payload: dict[str, Any] = Field(default_factory=dict)
-    occurred_at: datetime
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
 class PublicGameRunSummary(_UseCaseModel):
     """Public summary of a persisted game run."""
 
@@ -354,8 +318,8 @@ class PublicGameRunSummary(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameTurn(_UseCaseModel):
-    """Public turn/event record optimized for UI timelines."""
+class GameTimelineItem(_UseCaseModel):
+    """Public turn/event record optimized for external timelines."""
 
     sequence: int = Field(ge=1)
     event_sequence: int = Field(ge=1)
@@ -489,175 +453,60 @@ class StoredGameEvent(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-def get_default_ruleset(*, config: GameUseCaseConfig) -> RulesetResult:
-    """Return business metadata for the default ruleset.
+class GameUseCases:
+    """Small facade over internal game workflows with injected dependencies."""
 
-    Args:
-        config: Use case settings that define supported table sizes and agent types.
+    def __init__(self, dependencies: GameUseCaseDependencies) -> None:
+        """Store dependencies used by all game use case calls."""
+        self._dependencies = dependencies
 
-    Returns:
-        Ruleset metadata for client bootstrapping.
-    """
-    from werewolf_agent.usecase.internal.rulesets import default_ruleset
+    def get_default_ruleset(self) -> RulesetResult:
+        """Return business metadata for the default ruleset."""
+        from werewolf_agent.usecase.internal.rulesets import default_ruleset
 
-    return default_ruleset(config)
+        return default_ruleset(self._dependencies.config)
 
+    def create_game_run(self, command: CreateGameRunCommand) -> GameRunResult:
+        """Create and persist one deterministic game."""
+        from werewolf_agent.usecase.internal.games import create_game_run
 
-def create_game_run(
-    command: CreateGameRunCommand,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> GameRunResult:
-    """Create and persist one deterministic game.
+        return create_game_run(command, dependencies=self._dependencies)
 
-    Args:
-        command: Game creation command supplied by an interface adapter.
-        dependencies: Repository and configuration supplied by the outer layer.
+    def get_game_run(self, query: GetGameRunQuery) -> GameRunResult:
+        """Return the current public state for one game run."""
+        from werewolf_agent.usecase.internal.games import get_game_run
 
-    Returns:
-        Public game state plus one-time control tokens when manual players exist.
-    """
-    from werewolf_agent.usecase.internal.games import create_game_run as _create_game_run
+        return get_game_run(query, dependencies=self._dependencies)
 
-    return _create_game_run(command, dependencies=dependencies)
+    def list_game_runs(self, query: ListGameRunsQuery) -> ListGameRunsResult:
+        """Return a page of public game run summaries."""
+        from werewolf_agent.usecase.internal.games import list_game_runs
 
+        return list_game_runs(query, dependencies=self._dependencies)
 
-def get_game_run(
-    query: GetGameRunQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> GameRunResult:
-    """Return the current public state for one game run.
+    def advance_game_run(self, command: AdvanceGameRunCommand) -> AdvanceGameRunResult:
+        """Advance one game run by one business step."""
+        from werewolf_agent.usecase.internal.games import advance_game_run
 
-    Args:
-        query: Game lookup query.
-        dependencies: Repository and configuration supplied by the outer layer.
+        return advance_game_run(command, dependencies=self._dependencies)
 
-    Returns:
-        Public state for the stored game run.
-    """
-    from werewolf_agent.usecase.internal.games import get_game_run as _get_game_run
+    def get_player_observation(
+        self,
+        query: GetPlayerObservationQuery,
+    ) -> PlayerObservationResult:
+        """Return one authenticated player's private observation."""
+        from werewolf_agent.usecase.internal.games import get_player_observation
 
-    return _get_game_run(query, dependencies=dependencies)
+        return get_player_observation(query, dependencies=self._dependencies)
 
+    def submit_player_action(self, command: PlayerActionCommand) -> PlayerActionResult:
+        """Submit one authenticated manual player action."""
+        from werewolf_agent.usecase.internal.games import submit_player_action
 
-def list_game_runs(
-    query: ListGameRunsQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> ListGameRunsResult:
-    """Return a page of public game run summaries.
+        return submit_player_action(command, dependencies=self._dependencies)
 
-    Args:
-        query: Status filter and pagination cursor.
-        dependencies: Repository and configuration supplied by the outer layer.
+    def get_game_timeline(self, query: GetGameTimelineQuery) -> GameTimelineResult:
+        """Return public timeline items after a sequence number."""
+        from werewolf_agent.usecase.internal.games import get_game_timeline
 
-    Returns:
-        Public run summaries and the next offset when another page is available.
-    """
-    from werewolf_agent.usecase.internal.games import list_game_runs as _list_game_runs
-
-    return _list_game_runs(query, dependencies=dependencies)
-
-
-def advance_game_run(
-    command: AdvanceGameRunCommand,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> AdvanceGameRunResult:
-    """Advance one game run by one business step.
-
-    Args:
-        command: Game advancement command.
-        dependencies: Repository and configuration supplied by the outer layer.
-
-    Returns:
-        Updated public state and public events emitted by the step.
-    """
-    from werewolf_agent.usecase.internal.games import advance_game_run as _advance_game_run
-
-    return _advance_game_run(command, dependencies=dependencies)
-
-
-def get_player_observation(
-    query: GetPlayerObservationQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> PlayerObservationResult:
-    """Return one authenticated player's private observation.
-
-    Args:
-        query: Game id, player id, and control token.
-        dependencies: Repository and configuration supplied by the outer layer.
-
-    Returns:
-        Private observation visible to the authenticated player.
-    """
-    from werewolf_agent.usecase.internal.games import (
-        get_player_observation as _get_player_observation,
-    )
-
-    return _get_player_observation(query, dependencies=dependencies)
-
-
-def submit_player_action(
-    command: SubmitPlayerActionCommand,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> SubmitPlayerActionResult:
-    """Submit one authenticated manual player action.
-
-    Args:
-        command: Manual action command with the player's control token.
-        dependencies: Repository and configuration supplied by the outer layer.
-
-    Returns:
-        Updated public state and public events caused by the action.
-    """
-    from werewolf_agent.usecase.internal.games import (
-        submit_player_action as _submit_player_action,
-    )
-
-    return _submit_player_action(command, dependencies=dependencies)
-
-
-def list_public_game_events(
-    query: ListPublicGameEventsQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> PublicGameEventsResult:
-    """List public events after a sequence number.
-
-    Args:
-        query: Game id, sequence cursor, and page size.
-        dependencies: Repository and configuration supplied by the outer layer.
-
-    Returns:
-        Public events and the next sequence cursor.
-    """
-    from werewolf_agent.usecase.internal.games import (
-        list_public_game_events as _list_public_game_events,
-    )
-
-    return _list_public_game_events(query, dependencies=dependencies)
-
-
-def list_public_game_turns(
-    query: ListPublicGameTurnsQuery,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> ListPublicGameTurnsResult:
-    """List public turn records after a sequence number.
-
-    Args:
-        query: Game id, sequence cursor, and page size.
-        dependencies: Repository and configuration supplied by the outer layer.
-
-    Returns:
-        Public timeline records and the next sequence cursor.
-    """
-    from werewolf_agent.usecase.internal.games import (
-        list_public_game_turns as _list_public_game_turns,
-    )
-
-    return _list_public_game_turns(query, dependencies=dependencies)
+        return get_game_timeline(query, dependencies=self._dependencies)

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pydantic import ValidationError
 
-from werewolf_agent.commons.configuration.settings import AppSettings, get_settings
-from werewolf_agent.commons.observability import configure_observability
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_INVALID_APPLICATION_CONFIGURATION,
     MESSAGE_INVALID_VALUE,
     MESSAGE_SETTINGS,
     message_invalid_configuration_for,
 )
+from werewolf_agent.interface.runtime.observability import configure_observability
+from werewolf_agent.interface.runtime.settings import AppSettings, get_settings
 
 
 def load_app_settings() -> AppSettings:

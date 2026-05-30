@@ -15,12 +15,6 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 
-from werewolf_agent.commons.configuration import (
-    AppSettings,
-    configure_interface_logging,
-    get_settings,
-)
-from werewolf_agent.commons.observability import bind_observation_context
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.routers import router
 from werewolf_agent.interface.application.database import (
@@ -28,6 +22,12 @@ from werewolf_agent.interface.application.database import (
     create_session_factory,
 )
 from werewolf_agent.interface.application.models import Base
+from werewolf_agent.interface.runtime import (
+    AppSettings,
+    bind_observation_context,
+    configure_interface_logging,
+    get_settings,
+)
 from werewolf_agent.interface.shared.http import (
     app_error_handler,
     http_exception_handler,

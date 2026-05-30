@@ -6,8 +6,8 @@ from typing import cast
 
 from fastapi import Request
 
-from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.interface.application.database import SessionFactory
+from werewolf_agent.interface.runtime import AppSettings
 
 
 def app_settings(request: Request) -> AppSettings:
