@@ -15,13 +15,16 @@ from werewolf_agent.commons.shared.messages import (
 )
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
+    ABILITY_GUARD,
+    ABILITY_INSPECT,
+    ABILITY_NIGHT_ATTACK,
+    FACTION_WEREWOLF,
     Action,
     ActionType,
     GameSnapshot,
     InspectionResult,
     NightResult,
     Phase,
-    Role,
 )
 from werewolf_agent.domain.game.rules.player_rules import (
     faction_for_role,
@@ -29,7 +32,6 @@ from werewolf_agent.domain.game.rules.player_rules import (
     player_by_id,
     require_alive,
     require_phase,
-    require_role,
 )
 
 
@@ -94,26 +96,60 @@ def resolve_night(
 def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
     target_id = _night_target(action)
     if action.type is ActionType.WEREWOLF_ATTACK:
-        require_role(snapshot, action.player_id, Role.WEREWOLF)
+        actor = require_alive(snapshot, action.player_id)
+        if not snapshot.config.roles.role_has_ability(actor.role, ABILITY_NIGHT_ATTACK):
+            raise GameError(
+                MESSAGE_UNSUPPORTED_NIGHT_ACTION,
+                context={"player_id": action.player_id, "action_type": action.type.value},
+            )
         target = require_alive(snapshot, target_id)
-        if target.role is Role.WEREWOLF:
+        if (
+            not snapshot.config.rules.allow_werewolf_friendly_fire
+            and target.role is not None
+            and faction_for_role(snapshot, target.role) == FACTION_WEREWOLF
+        ):
             raise GameError(
                 MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         return
     if action.type is ActionType.SEER_INSPECT:
-        require_role(snapshot, action.player_id, Role.SEER)
+        actor = require_alive(snapshot, action.player_id)
+        if not snapshot.config.roles.role_has_ability(actor.role, ABILITY_INSPECT):
+            raise GameError(
+                MESSAGE_UNSUPPORTED_NIGHT_ACTION,
+                context={"player_id": action.player_id, "action_type": action.type.value},
+            )
         require_alive(snapshot, target_id)
-        if action.player_id == target_id:
+        if not snapshot.config.rules.allow_seer_self_inspect and action.player_id == target_id:
             raise GameError(
                 MESSAGE_SEER_CANNOT_INSPECT_SELF,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         return
     if action.type is ActionType.KNIGHT_GUARD:
-        require_role(snapshot, action.player_id, Role.KNIGHT)
+        actor = require_alive(snapshot, action.player_id)
+        if not snapshot.config.roles.role_has_ability(actor.role, ABILITY_GUARD):
+            raise GameError(
+                MESSAGE_UNSUPPORTED_NIGHT_ACTION,
+                context={"player_id": action.player_id, "action_type": action.type.value},
+            )
         require_alive(snapshot, target_id)
+        if not snapshot.config.rules.allow_knight_self_guard and action.player_id == target_id:
+            raise GameError(
+                "knight cannot guard self",
+                context={"player_id": action.player_id, "target_id": target_id},
+            )
+        last_night = snapshot.history.nights[-1] if snapshot.history.nights else None
+        if (
+            not snapshot.config.rules.allow_knight_repeat_guard
+            and last_night is not None
+            and last_night.protected_player_id == target_id
+        ):
+            raise GameError(
+                "knight cannot guard the same target on consecutive nights",
+                context={"player_id": action.player_id, "target_id": target_id},
+            )
         return
     raise GameError(MESSAGE_UNSUPPORTED_NIGHT_ACTION)
 
@@ -155,5 +191,5 @@ def _inspect(snapshot: GameSnapshot, action: Action) -> InspectionResult:
         seer_id=seer.id,
         target_id=target.id,
         target_role=target.role,
-        target_faction=faction_for_role(target.role),
+        target_faction=faction_for_role(snapshot, target.role),
     )

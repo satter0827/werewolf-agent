@@ -36,15 +36,15 @@ from werewolf_agent.domain.game.models import (
     DomainEvent,
     GameConfig,
     GameSnapshot,
+    LocalRules,
     PendingActions,
-    Phase,
     Player,
     PlayerStatus,
-    Role,
-    TieBreakPolicy,
+    RoleCatalog,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
 from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
+from werewolf_agent.usecase.internal.definitions import to_local_rules, to_role_catalog
 from werewolf_agent.usecase.internal.projections import (
     events_to_create,
     public_run_summary_payload_from_record,
@@ -75,7 +75,6 @@ from werewolf_agent.usecase.jobs.games import (
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
-    RoleId,
     StoredGameRun,
 )
 from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
@@ -91,19 +90,26 @@ def create_game_run(
     _validate_agent_config(command, dependencies.config)
     players = _player_configs(command, dependencies.config)
     control_tokens = _control_tokens_for(command)
-    config = _domain_config(command, game_id=str(game_id), player_count=len(players))
-    run_config = config.model_dump(mode="json")
-    run_config["player_agent_types"] = {
-        player.id: command_player.agent_type
-        for player, command_player in zip(
-            players,
-            _requested_player_configs(command, players),
-            strict=True,
-        )
+    config = _domain_config(
+        command,
+        player_count=len(players),
+        rules=to_local_rules(dependencies.game_definitions.rules),
+        roles=to_role_catalog(dependencies.game_definitions.roles),
+    )
+    run_config = {
+        "player_agent_types": {
+            player.id: command_player.agent_type
+            for player, command_player in zip(
+                players,
+                _requested_player_configs(command, players, dependencies.config),
+                strict=True,
+            )
+        }
     }
     snapshot, events = start_game(config, players, random.Random(command.seed))
     public_state = public_state_payload_from_snapshot(
         snapshot,
+        game_id=str(game_id),
         version=1,
         seed=command.seed,
     )
@@ -199,7 +205,11 @@ def advance_game_run(
         seed=run.seed,
         version=run.version,
         pending_actions=pending_actions,
-        agent_factory=langchain_agent_factory(dependencies.llm_provider_config),
+        agent_factory=langchain_agent_factory(
+            dependencies.llm_provider_config,
+            definitions=dependencies.llm_definitions,
+        ),
+        agent_type=dependencies.config.supported_agent_type,
         human_player_ids=human_player_ids,
         telemetry=dependencies.telemetry,
     )
@@ -237,6 +247,7 @@ def advance_game_run(
     )
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
+        game_id=str(run.id),
         version=run.version + 1,
         seed=run.seed,
         created_at=run.created_at,
@@ -362,7 +373,7 @@ def submit_player_action(
     snapshot = GameSnapshot.model_validate(run.private_state)
     pending_actions = PendingActions.model_validate(run.pending_actions)
     action = Action(
-        type=ActionType(command.type),
+        type=_action_type(command.type),
         player_id=command.player_id,
         target_id=command.target_id,
         message=command.message,
@@ -383,6 +394,7 @@ def submit_player_action(
     )
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
+        game_id=str(run.id),
         version=run.version,
         seed=run.seed,
         created_at=run.created_at,
@@ -447,6 +459,16 @@ def _parse_game_id(value: str | UUID) -> UUID:
         raise InvalidGameIdError(MESSAGE_GAME_ID_MUST_BE_VALID_UUID) from exc
 
 
+def _action_type(value: str) -> ActionType:
+    try:
+        return ActionType(value)
+    except ValueError as exc:
+        raise GameError(
+            f"Unsupported action type: {value}",
+            context={"action_type": value},
+        ) from exc
+
+
 def _player_configs(
     command: CreateGameRunCommand,
     config: GameUseCaseConfig,
@@ -508,31 +530,29 @@ def _validate_agent_config(command: CreateGameRunCommand, config: GameUseCaseCon
 def _domain_config(
     command: CreateGameRunCommand,
     *,
-    game_id: str,
     player_count: int,
+    rules: LocalRules,
+    roles: RoleCatalog,
 ) -> GameConfig:
     rule_config = command.rule_config
-    role_counts = _role_counts(player_count, rule_config.role_counts)
     return GameConfig(
-        game_id=game_id,
         player_count=player_count,
-        role_counts=role_counts,
-        seed=command.seed,
-        day_speech_turns=rule_config.day_speech_turns,
-        tie_break_policy=TieBreakPolicy(rule_config.tie_break_policy),
-        allow_self_vote=rule_config.allow_self_vote,
-        allow_action_revisions=rule_config.allow_action_revisions,
+        role_counts={str(role): count for role, count in rule_config.role_counts.items()},
+        rules=rules,
+        roles=roles,
     )
 
 
 def _requested_player_configs(
     command: CreateGameRunCommand,
     players: Sequence[Player],
+    config: GameUseCaseConfig,
 ) -> list[CreateGamePlayer]:
     if command.players is not None:
         return list(command.players)
     return [
-        CreateGamePlayer(id=player.id, name=player.name, agent_type="llm") for player in players
+        CreateGamePlayer(id=player.id, name=player.name, agent_type=config.supported_agent_type)
+        for player in players
     ]
 
 
@@ -597,13 +617,14 @@ def _drive_current_phase(
     version: int,
     pending_actions: PendingActions,
     agent_factory: AgentFactory,
+    agent_type: str,
     human_player_ids: set[str],
     telemetry: TelemetrySink,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
     current_pending_actions = pending_actions
     events: list[DomainEvent] = []
-    turn_count = snapshot.config.day_speech_turns if snapshot.phase is Phase.DAY_DISCUSSION else 1
+    turn_count = 1
     for turn in range(turn_count):
         turn_snapshot = current_snapshot
         for index, player in enumerate(turn_snapshot.players.values()):
@@ -623,7 +644,7 @@ def _drive_current_phase(
                     level="DEBUG",
                     fields={
                         **_telemetry_snapshot_fields(current_snapshot, version=version),
-                        "agent_type": "llm",
+                        "agent_type": agent_type,
                         "candidate_count": _candidate_count(observation.players, player.id),
                         "turn_index": turn,
                     },
@@ -641,13 +662,13 @@ def _drive_current_phase(
 def _telemetry_state_fields(run: StoredGameRun, snapshot: GameSnapshot) -> dict[str, object]:
     return {
         **_telemetry_snapshot_fields(snapshot, version=run.version),
+        "game_id": str(run.id),
         "game_status": run.status,
     }
 
 
 def _telemetry_snapshot_fields(snapshot: GameSnapshot, *, version: int) -> dict[str, object]:
     return {
-        "game_id": snapshot.game_id,
         "game_phase": snapshot.phase.value,
         "game_day": snapshot.day,
         "game_version": version,
@@ -658,20 +679,6 @@ def _candidate_count(players: Sequence[Player], player_id: str) -> int:
     return sum(
         1 for player in players if player.status is PlayerStatus.ALIVE and player.id != player_id
     )
-
-
-def _role_counts(
-    player_count: int,
-    requested_counts: Mapping[RoleId, int] | None,
-) -> dict[Role, int]:
-    if requested_counts is not None:
-        return {Role(role): count for role, count in requested_counts.items()}
-    return {
-        Role.WEREWOLF: 1,
-        Role.SEER: 1,
-        Role.KNIGHT: 1,
-        Role.VILLAGER: player_count - 3,
-    }
 
 
 def _runtime_seed(seed: int | None, version: int) -> int:

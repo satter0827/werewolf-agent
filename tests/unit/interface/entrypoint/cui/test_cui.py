@@ -139,6 +139,19 @@ class FakeGameApiClient:
             roles=[{"id": "villager", "name": "Villager"}],
             phases=[{"id": "night", "name": "Night"}],
             agent_types=[{"id": "llm", "name": "LLM Agent"}],
+            local_rules={
+                "allow_self_vote": False,
+                "allow_vote_revision": False,
+                "allow_night_action_revision": False,
+                "enable_first_night_attack": False,
+                "enable_no_elimination_on_tie": True,
+                "enable_random_elimination_on_tie": False,
+                "allow_knight_self_guard": True,
+                "allow_knight_repeat_guard": True,
+                "allow_seer_self_inspect": False,
+                "allow_werewolf_friendly_fire": False,
+                "reveal_role_on_death": False,
+            },
         )
 
     def advance_game(self, game_id: str) -> AdvanceGameRunResponse:

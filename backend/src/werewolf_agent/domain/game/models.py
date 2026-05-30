@@ -5,10 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.definitions import LocalRulesDefinition
 from werewolf_agent.commons.shared.messages import (
-    MESSAGE_DAY_SPEECH_TURNS_AT_LEAST_ONE,
     MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD,
     MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
     MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT,
@@ -21,23 +21,26 @@ from werewolf_agent.commons.shared.messages import (
     message_target_required,
     message_unsupported_type,
 )
+from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
 
+FACTION_VILLAGE = "village"
+FACTION_WEREWOLF = "werewolf"
 
-class Role(StrEnum):
-    """Playable roles supported by the MVP rules."""
+ABILITY_NIGHT_ATTACK = "night_attack"
+ABILITY_PACK_KNOWLEDGE = "pack_knowledge"
+ABILITY_INSPECT = "inspect"
+ABILITY_GUARD = "guard"
 
-    VILLAGER = "villager"
-    WEREWOLF = "werewolf"
-    SEER = "seer"
-    KNIGHT = "knight"
-
-
-class Faction(StrEnum):
-    """Win-condition factions."""
-
-    VILLAGE = "village"
-    WEREWOLF = "werewolf"
+SUPPORTED_FACTIONS = frozenset({FACTION_VILLAGE, FACTION_WEREWOLF})
+SUPPORTED_ABILITIES = frozenset(
+    {
+        ABILITY_NIGHT_ATTACK,
+        ABILITY_PACK_KNOWLEDGE,
+        ABILITY_INSPECT,
+        ABILITY_GUARD,
+    }
+)
 
 
 class Phase(StrEnum):
@@ -55,13 +58,6 @@ class PlayerStatus(StrEnum):
 
     ALIVE = "alive"
     DEAD = "dead"
-
-
-class TieBreakPolicy(StrEnum):
-    """How vote ties are resolved."""
-
-    NO_ELIMINATION = "no_elimination"
-    RANDOM_ELIMINATION = "random_elimination"
 
 
 class ActionType(StrEnum):
@@ -83,8 +79,8 @@ class EventVisibility(StrEnum):
     DEBUG = "debug"
 
 
-class _DomainModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class _DomainModel(StrictModel):
+    """Base model for game domain values."""
 
 
 class _PlayerBase(_DomainModel):
@@ -103,10 +99,16 @@ class _PlayerBase(_DomainModel):
 class Player(_PlayerBase):
     """Player data used by setup, full snapshots, and observations."""
 
-    role: Role | None = None
+    role: str | None = None
     status: PlayerStatus = PlayerStatus.ALIVE
     eliminated_day: int | None = None
     killed_night: int | None = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str | None) -> str | None:
+        """Return a normalized role id when assigned."""
+        return optional_non_blank(value, "role")
 
     @property
     def is_alive(self) -> bool:
@@ -114,42 +116,110 @@ class Player(_PlayerBase):
         return self.status is PlayerStatus.ALIVE
 
 
+class LocalRules(LocalRulesDefinition):
+    """Resolved local rule flags used by the game core."""
+
+
+class RoleDefinition(_DomainModel):
+    """Game-only role definition resolved from the role catalog."""
+
+    faction: str
+    abilities: tuple[str, ...] = ()
+
+    @field_validator("faction")
+    @classmethod
+    def validate_faction(cls, value: str) -> str:
+        """Return a supported faction id."""
+        faction = non_blank(value, "faction")
+        if faction not in SUPPORTED_FACTIONS:
+            raise ValueError(f"unsupported faction: {faction}")
+        return faction
+
+    @field_validator("abilities")
+    @classmethod
+    def validate_abilities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Return supported ability ids without duplicates."""
+        abilities = tuple(non_blank(item, "ability") for item in value)
+        if len(set(abilities)) != len(abilities):
+            raise ValueError("role abilities must be unique")
+        unknown = sorted(set(abilities) - SUPPORTED_ABILITIES)
+        if unknown:
+            raise ValueError(f"unsupported abilities: {', '.join(unknown)}")
+        return abilities
+
+    def has_ability(self, ability: str) -> bool:
+        """Return whether the role has the requested game ability."""
+        return ability in self.abilities
+
+
+class RoleCatalog(_DomainModel):
+    """Game-only role catalog resolved from role definitions."""
+
+    roles: dict[str, RoleDefinition]
+
+    @field_validator("roles")
+    @classmethod
+    def validate_roles(cls, value: dict[str, RoleDefinition]) -> dict[str, RoleDefinition]:
+        """Return role definitions keyed by normalized role id."""
+        roles = {
+            non_blank(str(role_id), "role id"): definition for role_id, definition in value.items()
+        }
+        if not roles:
+            raise ValueError("roles must include at least one role")
+        return roles
+
+    def require_role(self, role: str) -> RoleDefinition:
+        """Return a role definition or raise ``KeyError`` for unknown roles."""
+        return self.roles[role]
+
+    def faction_for_role(self, role: str) -> str:
+        """Return the configured faction for one role."""
+        return self.require_role(role).faction
+
+    def role_has_ability(self, role: str | None, ability: str) -> bool:
+        """Return whether a role has one configured game ability."""
+        if role is None:
+            return False
+        return self.require_role(role).has_ability(ability)
+
+
 class GameConfig(_DomainModel):
     """Settings for one deterministic game run."""
 
-    game_id: str = "game"
     player_count: int
-    role_counts: dict[Role, int]
-    seed: int | None = None
-    day_speech_turns: int = 1
-    tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION
-    allow_self_vote: bool = False
-    allow_action_revisions: bool = False
-
-    @field_validator("game_id")
-    @classmethod
-    def validate_game_id(cls, value: str) -> str:
-        """Return a trimmed non-empty game id."""
-        return non_blank(value, "game_id")
+    role_counts: dict[str, int]
+    rules: LocalRules
+    roles: RoleCatalog
 
     @model_validator(mode="after")
     def validate_counts(self) -> Self:
         """Validate role-count invariants for one game state."""
         if self.player_count < 1:
             raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
-        if self.day_speech_turns < 1:
-            raise ValueError(MESSAGE_DAY_SPEECH_TURNS_AT_LEAST_ONE)
 
         role_total = 0
         for role, count in self.role_counts.items():
+            role_id = non_blank(str(role), "role_counts key")
+            if role_id not in self.roles.roles:
+                raise ValueError(f"unknown role in role_counts: {role_id}")
             if count < 0:
-                raise ValueError(message_role_count_must_be_zero_or_greater(role.value))
+                raise ValueError(message_role_count_must_be_zero_or_greater(role_id))
             role_total += count
         if role_total != self.player_count:
             raise ValueError(MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT)
-        if self.role_counts.get(Role.WEREWOLF, 0) < 1:
+        werewolf_side_count = sum(
+            count
+            for role, count in self.role_counts.items()
+            if self.roles.faction_for_role(role) == FACTION_WEREWOLF
+        )
+        if werewolf_side_count < 1:
             raise ValueError(MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF)
-        if role_total - self.role_counts.get(Role.WEREWOLF, 0) < 1:
+        village_side_count = sum(
+            count
+            for role, count in self.role_counts.items()
+            if self.roles.faction_for_role(role) == FACTION_VILLAGE
+        )
+        if village_side_count < 1:
             raise ValueError(MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE)
         return self
 
@@ -290,7 +360,7 @@ class VoteResult(_RoundResult):
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)
     eliminated_player_id: str | None = None
-    tie_break_policy: TieBreakPolicy
+    tie_break_policy: str
 
 
 class InspectionResult(_RoundResult):
@@ -298,8 +368,8 @@ class InspectionResult(_RoundResult):
 
     seer_id: str
     target_id: str
-    target_role: Role
-    target_faction: Faction
+    target_role: str
+    target_faction: str
 
 
 class NightResult(_RoundResult):
@@ -334,7 +404,7 @@ class SpeechRecord(_RoundResult):
 class WinResult(_DomainModel):
     """Resolved game winner."""
 
-    winner: Faction
+    winner: str
     reason: str
     day: int
     winning_player_ids: list[str]
@@ -351,7 +421,6 @@ class GameHistory(_DomainModel):
 class GameSnapshot(_DomainModel):
     """Serializable full game state for application boundaries."""
 
-    game_id: str
     config: GameConfig
     phase: Phase
     day: int
@@ -374,7 +443,7 @@ class Observation(_DomainModel):
     day: int
     me: Player
     players: list[Player]
-    known_roles: dict[str, Role] = Field(default_factory=dict)
+    known_roles: dict[str, str] = Field(default_factory=dict)
     available_actions: list[ActionType] = Field(default_factory=list)
     history: GameHistory = Field(default_factory=GameHistory)
     win_result: WinResult | None = None
@@ -384,14 +453,13 @@ class DomainEvent(_DomainModel):
     """Headless domain event that an outer layer may log or adapt."""
 
     event_type: str
-    game_id: str
     phase: Phase | None = None
     day: int | None = None
     actor_id: str | None = None
     visibility: EventVisibility = EventVisibility.PUBLIC
     payload: dict[str, Any] = Field(default_factory=dict)
 
-    @field_validator("event_type", "game_id")
+    @field_validator("event_type")
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
@@ -399,24 +467,32 @@ class DomainEvent(_DomainModel):
 
 
 __all__ = [
+    "ABILITY_GUARD",
+    "ABILITY_INSPECT",
+    "ABILITY_NIGHT_ATTACK",
+    "ABILITY_PACK_KNOWLEDGE",
+    "FACTION_VILLAGE",
+    "FACTION_WEREWOLF",
+    "SUPPORTED_ABILITIES",
+    "SUPPORTED_FACTIONS",
     "Action",
     "ActionType",
     "DomainEvent",
     "EventVisibility",
-    "Faction",
     "GameConfig",
     "GameHistory",
     "GameSnapshot",
     "InspectionResult",
+    "LocalRules",
     "NightResult",
     "Observation",
     "PendingActions",
     "Phase",
     "Player",
     "PlayerStatus",
-    "Role",
+    "RoleCatalog",
+    "RoleDefinition",
     "SpeechRecord",
-    "TieBreakPolicy",
     "VoteResult",
     "WinResult",
 ]

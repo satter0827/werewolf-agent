@@ -5,8 +5,9 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, ClassVar, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.definitions import AgentDefinition
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
     MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
@@ -15,16 +16,8 @@ from werewolf_agent.commons.shared.messages import (
     message_target_required,
     message_unsupported_type,
 )
+from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
-
-
-class AgentRole(StrEnum):
-    """Roles visible to a player decision provider."""
-
-    VILLAGER = "villager"
-    WEREWOLF = "werewolf"
-    SEER = "seer"
-    KNIGHT = "knight"
 
 
 class AgentPhase(StrEnum):
@@ -55,8 +48,8 @@ class AgentActionType(StrEnum):
     PASS = "pass"
 
 
-class _LlmModel(BaseModel):
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class _LlmModel(StrictModel):
+    """Base model for LLM domain values."""
 
 
 class VisiblePlayer(_LlmModel):
@@ -116,18 +109,64 @@ class _AgentVoteRound(_LlmModel):
         return optional_non_blank(value, "eliminated_player_id")
 
 
+class AgentProfile(AgentDefinition):
+    """LLM-only agent behavior profile."""
+
+
 class AgentObservation(_LlmModel):
     """Provider-independent observation for one player decision."""
 
     phase: AgentPhase
     day: int
     me: VisiblePlayer
-    role: AgentRole | None = None
+    role: str | None = None
+    profile: AgentProfile | None = None
     players: list[VisiblePlayer]
-    known_roles: dict[str, AgentRole] = Field(default_factory=dict)
+    known_roles: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
     speeches: list[_AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[_AgentVoteRound] = Field(default_factory=list)
+
+    @field_validator("role")
+    @classmethod
+    def validate_optional_role(cls, value: str | None) -> str | None:
+        """Return a trimmed optional role id."""
+        return optional_non_blank(value, "role")
+
+    @field_validator("known_roles")
+    @classmethod
+    def validate_known_roles(cls, value: dict[str, str]) -> dict[str, str]:
+        """Return known role ids keyed by player id."""
+        return {
+            non_blank(str(player_id), "known role player id"): non_blank(role, "known role")
+            for player_id, role in value.items()
+        }
+
+
+class AgentProfileCatalog(_LlmModel):
+    """LLM-only catalog of available agent behavior profiles."""
+
+    agents: dict[str, AgentProfile]
+
+    @field_validator("agents")
+    @classmethod
+    def validate_agents(cls, value: dict[str, AgentProfile]) -> dict[str, AgentProfile]:
+        """Return enabled agent profiles keyed by normalized profile id."""
+        agents = {
+            non_blank(str(agent_id), "agent id"): profile
+            for agent_id, profile in value.items()
+            if profile.enabled
+        }
+        if not agents:
+            raise ValueError("agents must include at least one enabled profile")
+        return agents
+
+    def profile_for(self, agent_id: str | None) -> AgentProfile:
+        """Return a selected profile or the first enabled profile."""
+        if agent_id is not None:
+            return self.agents[agent_id]
+        first_id = sorted(self.agents)[0]
+        return self.agents[first_id]
 
 
 class AgentDecision(_LlmModel):
@@ -241,6 +280,7 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
-    "AgentRole",
+    "AgentProfile",
+    "AgentProfileCatalog",
     "VisiblePlayer",
 ]

@@ -5,6 +5,19 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from werewolf_agent.commons.shared.definitions import (
+    AgentDefinition,
+    FakeResponsesDefinition,
+    GameDefinitions,
+    GameRoleDefinitions,
+    GameRuleDefinitions,
+    LlmAgentDefinitions,
+    LlmDefinitions,
+    LocalRulesDefinition,
+    PromptDefinition,
+    PromptMessageDefinition,
+    RoleDefinition,
+)
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
 from werewolf_agent.usecase.jobs import (
     AdvanceGameRunCommand,
@@ -22,7 +35,7 @@ from werewolf_agent.usecase.jobs import (
     GetGameTimelineQuery,
     GetPlayerObservationQuery,
     ListGameRunsQuery,
-    NullTelemetrySink,
+    LlmProviderConfig,
     PlayerActionCommand,
     StoredGameEvent,
     StoredGameRun,
@@ -31,12 +44,20 @@ from werewolf_agent.usecase.jobs import (
     TelemetryEvent,
     TelemetrySink,
 )
+from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+DEFAULT_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
+DEFAULT_AGENT_TYPE = "llm"
 
 
 def test_null_telemetry_sink_accepts_events() -> None:
     NullTelemetrySink().record(TelemetryEvent("game.phase.advance_started"))
+
+
+def test_dependencies_require_definition_values() -> None:
+    with pytest.raises(TypeError):
+        GameUseCaseDependencies(repository=object())  # type: ignore[arg-type,call-arg]
 
 
 class InMemoryGameRepository(GameRepository):
@@ -196,18 +217,142 @@ def dependencies(
     repository = InMemoryGameRepository()
     return GameUseCaseDependencies(
         repository=repository,
-        config=config or GameUseCaseConfig(),
+        game_definitions=game_definitions(),
+        llm_definitions=llm_definitions(),
+        config=config or usecase_config(),
+        llm_provider_config=LlmProviderConfig(provider="fake", model="fake-list-llm"),
         telemetry=telemetry or CollectingTelemetrySink(),
     ), repository
 
 
+def usecase_config(
+    *,
+    min_players: int = 5,
+    max_players: int = 8,
+    default_player_count: int = 5,
+    supported_agent_type: str = DEFAULT_AGENT_TYPE,
+    default_ruleset_id: str = "default",
+    advance_until_input_max_steps: int = 64,
+) -> GameUseCaseConfig:
+    return GameUseCaseConfig(
+        min_players=min_players,
+        max_players=max_players,
+        default_player_count=default_player_count,
+        supported_agent_type=supported_agent_type,
+        default_ruleset_id=default_ruleset_id,
+        advance_until_input_max_steps=advance_until_input_max_steps,
+    )
+
+
+def local_rules_definition() -> LocalRulesDefinition:
+    return LocalRulesDefinition(
+        allow_self_vote=False,
+        allow_vote_revision=False,
+        allow_night_action_revision=False,
+        enable_first_night_attack=True,
+        enable_no_elimination_on_tie=True,
+        enable_random_elimination_on_tie=False,
+        allow_knight_self_guard=True,
+        allow_knight_repeat_guard=True,
+        allow_seer_self_inspect=False,
+        allow_werewolf_friendly_fire=False,
+        reveal_role_on_death=False,
+    )
+
+
+def game_definitions() -> GameDefinitions:
+    return GameDefinitions(
+        rules=GameRuleDefinitions(local_rules=local_rules_definition()),
+        roles=GameRoleDefinitions(
+            roles={
+                "villager": RoleDefinition(faction="village", abilities=()),
+                "werewolf": RoleDefinition(
+                    faction="werewolf",
+                    abilities=("night_attack", "pack_knowledge"),
+                ),
+                "seer": RoleDefinition(faction="village", abilities=("inspect",)),
+                "knight": RoleDefinition(faction="village", abilities=("guard",)),
+            },
+            default_role_counts={5: DEFAULT_ROLE_COUNTS},
+        ),
+    )
+
+
+def llm_definitions() -> LlmDefinitions:
+    return LlmDefinitions(
+        agents=LlmAgentDefinitions(
+            agents={
+                "default": AgentDefinition(
+                    name="Default",
+                    personality="Careful",
+                    speaking_style="Short",
+                    reasoning_style="Logical",
+                    risk_tolerance="medium",
+                )
+            }
+        ),
+        prompt=PromptDefinition(
+            name="test",
+            version=1,
+            alias="local",
+            input_variables=[
+                "player_id",
+                "phase",
+                "day",
+                "role",
+                "available_actions",
+                "observation_json",
+                "format_instructions",
+            ],
+            response_format={"schema": "AgentDecision"},
+            messages=[
+                PromptMessageDefinition(
+                    role="human",
+                    content=(
+                        "{{player_id}} {{phase}} {{day}} {{role}} "
+                        "{{available_actions}} {{observation_json}} {{format_instructions}}"
+                    ),
+                )
+            ],
+        ),
+        fake_responses=FakeResponsesDefinition(
+            name="test",
+            version=1,
+            alias="local",
+            responses={
+                "speech": '{"type":"speech","player_id":"{{player_id}}","message":"hello"}',
+                "vote": ('{"type":"vote","player_id":"{{player_id}}","target_id":"{{target_id}}"}'),
+                "werewolf_attack": (
+                    '{"type":"werewolf_attack","player_id":"{{player_id}}",'
+                    '"target_id":"{{target_id}}"}'
+                ),
+                "seer_inspect": (
+                    '{"type":"seer_inspect","player_id":"{{player_id}}",'
+                    '"target_id":"{{target_id}}"}'
+                ),
+                "knight_guard": (
+                    '{"type":"knight_guard","player_id":"{{player_id}}",'
+                    '"target_id":"{{target_id}}"}'
+                ),
+                "pass": '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}',
+            },
+        ),
+    )
+
+
+def create_command(**values: object) -> CreateGameRunCommand:
+    values.setdefault("agent", {"type": DEFAULT_AGENT_TYPE})
+    values.setdefault("rule_config", {"role_counts": DEFAULT_ROLE_COUNTS})
+    return CreateGameRunCommand.model_validate(values)
+
+
 def explicit_players() -> list[dict[str, str]]:
     return [
-        {"id": " p1 ", "name": "Alice", "agent_type": "llm"},
-        {"id": "p2", "name": "Bob", "agent_type": "llm"},
-        {"id": "p3", "name": "Carol", "agent_type": "llm"},
-        {"id": "p4", "name": "Dave", "agent_type": "llm"},
-        {"id": "p5", "name": "Eve", "agent_type": "llm"},
+        {"id": " p1 ", "name": "Alice", "agent_type": DEFAULT_AGENT_TYPE},
+        {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
+        {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
+        {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
+        {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
     ]
 
 
@@ -233,10 +378,11 @@ def _first_target(observation: dict[str, object], *, player_id: str) -> str:
 
 def test_default_ruleset_returns_business_identifiers_only() -> None:
     deps, _repository = dependencies(
-        config=GameUseCaseConfig(
+        config=usecase_config(
             min_players=4,
             max_players=10,
-            supported_agent_type="llm",
+            default_player_count=5,
+            supported_agent_type=DEFAULT_AGENT_TYPE,
             default_ruleset_id="custom",
         )
     )
@@ -245,14 +391,14 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
     assert result.id == "custom"
     assert result.player_count == {"min": 4, "max": 10}
     assert result.roles == ["villager", "werewolf", "seer", "knight"]
-    assert result.agent_types == ["llm", "human"]
+    assert result.agent_types == [DEFAULT_AGENT_TYPE, "human"]
 
 
 def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
     result = GameUseCases(deps).create_game_run(
-        CreateGameRunCommand(players=explicit_players(), seed=42),
+        create_command(players=explicit_players(), seed=42),
     )
 
     assert result.state["players"][0]["id"] == "p1"
@@ -268,16 +414,14 @@ def test_create_game_rejects_duplicate_normalized_player_ids() -> None:
     players[1]["id"] = "p1"
 
     with pytest.raises(GameError):
-        GameUseCases(deps).create_game_run(CreateGameRunCommand(players=players))
+        GameUseCases(deps).create_game_run(create_command(players=players))
 
 
 def test_create_game_rejects_unsupported_agent_type() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        GameUseCases(deps).create_game_run(
-            CreateGameRunCommand(player_count=5, agent={"type": "dummy"})
-        )
+        GameUseCases(deps).create_game_run(create_command(player_count=5, agent={"type": "dummy"}))
 
 
 def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
@@ -294,7 +438,7 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     telemetry = CollectingTelemetrySink()
     deps, repository = dependencies(telemetry=telemetry)
     use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(CreateGameRunCommand(player_count=5, seed=1))
+    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
 
     advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
     timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id, after=0))
@@ -321,19 +465,19 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     deps, _repository = dependencies(telemetry=telemetry)
     use_cases = GameUseCases(deps)
     created = use_cases.create_game_run(
-        CreateGameRunCommand(
+        create_command(
             players=[
                 {"id": "p1", "name": "Alice", "agent_type": "human"},
-                {"id": "p2", "name": "Bob", "agent_type": "llm"},
-                {"id": "p3", "name": "Carol", "agent_type": "llm"},
-                {"id": "p4", "name": "Dave", "agent_type": "llm"},
-                {"id": "p5", "name": "Eve", "agent_type": "llm"},
+                {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
             ],
             seed=1,
         ),
     )
     control_token = created.control_tokens["p1"] if created.control_tokens else ""
-    use_cases.advance_until_input(AdvanceUntilInputCommand(game_id=created.game_id))
+    use_cases.advance_until_input(AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8))
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
@@ -374,13 +518,13 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
     created = use_cases.create_game_run(
-        CreateGameRunCommand(
+        create_command(
             players=[
                 {"id": "p1", "name": "Alice", "agent_type": "human"},
-                {"id": "p2", "name": "Bob", "agent_type": "llm"},
-                {"id": "p3", "name": "Carol", "agent_type": "llm"},
-                {"id": "p4", "name": "Dave", "agent_type": "llm"},
-                {"id": "p5", "name": "Eve", "agent_type": "llm"},
+                {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
+                {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
             ],
             seed=1,
         ),
@@ -422,7 +566,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(CreateGameRunCommand(player_count=5, seed=1))
+    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
     use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
 
     runs = use_cases.list_game_runs(ListGameRunsQuery(limit=10))

@@ -6,19 +6,12 @@ from werewolf_agent.domain.llm.models import (
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
-    AgentRole,
+    AgentProfile,
+    AgentProfileCatalog,
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
-from werewolf_agent.domain.llm.service import (
-    FakeResponseResource,
-    LangChainDecisionProvider,
-    PromptMessage,
-    PromptResource,
-    build_fake_decision_provider,
-    load_fake_response_resource,
-    load_prompt_resource,
-)
+from werewolf_agent.domain.llm.service import LangChainDecisionProvider
 
 __all__ = [
     "AgentActionType",
@@ -26,14 +19,9 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
-    "AgentRole",
-    "FakeResponseResource",
+    "AgentProfile",
+    "AgentProfileCatalog",
     "LangChainDecisionProvider",
     "LlmDecisionProvider",
-    "PromptMessage",
-    "PromptResource",
     "VisiblePlayer",
-    "build_fake_decision_provider",
-    "load_fake_response_resource",
-    "load_prompt_resource",
 ]

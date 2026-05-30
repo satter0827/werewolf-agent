@@ -5,13 +5,15 @@ from __future__ import annotations
 from werewolf_agent.commons.shared.messages import message_action_not_available
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
+    ABILITY_GUARD,
+    ABILITY_INSPECT,
+    ABILITY_NIGHT_ATTACK,
     Action,
     ActionType,
     GameSnapshot,
     PendingActions,
     Phase,
     PlayerStatus,
-    Role,
 )
 from werewolf_agent.domain.game.rules.player_rules import player_by_id
 
@@ -26,22 +28,27 @@ def available_actions(
     if player.status is not PlayerStatus.ALIVE:
         return []
     if snapshot.phase is Phase.DAY_DISCUSSION:
-        if _speech_count_for_today(snapshot, player_id) < snapshot.config.day_speech_turns:
+        if _speech_count_for_today(snapshot, player_id) < 1:
             return [ActionType.SPEECH]
         return []
     if snapshot.phase is Phase.VOTING:
-        if snapshot.config.allow_action_revisions or player_id not in pending_actions.votes:
+        if snapshot.config.rules.allow_vote_revision or player_id not in pending_actions.votes:
             return [ActionType.VOTE]
         return []
     if snapshot.phase is Phase.NIGHT:
         has_submitted = player_id in pending_actions.night_actions
-        if not snapshot.config.allow_action_revisions and has_submitted:
+        if not snapshot.config.rules.allow_night_action_revision and has_submitted:
             return []
-        if player.role is Role.WEREWOLF:
+        if snapshot.day == 1 and not snapshot.config.rules.enable_first_night_attack:
+            attack_enabled = False
+        else:
+            attack_enabled = True
+        roles = snapshot.config.roles
+        if attack_enabled and roles.role_has_ability(player.role, ABILITY_NIGHT_ATTACK):
             return [ActionType.WEREWOLF_ATTACK]
-        if player.role is Role.SEER:
+        if roles.role_has_ability(player.role, ABILITY_INSPECT):
             return [ActionType.SEER_INSPECT]
-        if player.role is Role.KNIGHT:
+        if roles.role_has_ability(player.role, ABILITY_GUARD):
             return [ActionType.KNIGHT_GUARD]
     return []
 

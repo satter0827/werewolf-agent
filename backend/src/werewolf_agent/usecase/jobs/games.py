@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
+from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import non_blank
 from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink, TelemetrySink
 
@@ -20,9 +21,8 @@ if TYPE_CHECKING:
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 EventVisibility = Literal["public", "player_private", "debug"]
-ActionTypeId = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knight_guard", "pass"]
-RoleId = Literal["villager", "werewolf", "seer", "knight"]
-TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
+ActionTypeId = str
+RoleId = str
 Winner = Literal["villagers", "werewolves"]
 AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
@@ -32,29 +32,25 @@ RoleCount = Annotated[int, Field(ge=0)]
 class LlmProviderConfig:
     """Use case settings for automated LangChain-backed players."""
 
-    provider: str = "fake"
-    model: str = "fake-list-llm"
-    prompt_file: Path | None = None
-    fake_responses_file: Path | None = None
+    provider: str
+    model: str
 
     def __post_init__(self) -> None:
         """Validate provider settings without importing interface settings."""
         non_blank(self.provider, "llm provider")
         non_blank(self.model, "llm model")
-        if self.provider != "fake":
-            raise ValueError("llm provider must be one of: fake")
 
 
 @dataclass(frozen=True)
 class GameUseCaseConfig:
     """Business settings used by stateless game jobs."""
 
-    min_players: int = 5
-    max_players: int = 8
-    default_player_count: int = 6
-    supported_agent_type: str = "llm"
-    default_ruleset_id: str = "default"
-    advance_until_input_max_steps: int = 64
+    min_players: int
+    max_players: int
+    default_player_count: int
+    supported_agent_type: str
+    default_ruleset_id: str
+    advance_until_input_max_steps: int
 
 
 @dataclass(frozen=True)
@@ -62,13 +58,15 @@ class GameUseCaseDependencies:
     """Externally supplied dependencies for game use cases."""
 
     repository: GameRepository
-    config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
-    llm_provider_config: LlmProviderConfig = field(default_factory=LlmProviderConfig)
+    game_definitions: GameDefinitions
+    llm_definitions: LlmDefinitions
+    config: GameUseCaseConfig
+    llm_provider_config: LlmProviderConfig
     telemetry: TelemetrySink = field(default_factory=NullTelemetrySink)
 
 
-class _UseCaseModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+class _UseCaseModel(StrictModel):
+    """Base model for public use case DTOs."""
 
 
 class CreateGamePlayer(_UseCaseModel):
@@ -76,7 +74,7 @@ class CreateGamePlayer(_UseCaseModel):
 
     id: str
     name: str
-    agent_type: str = "llm"
+    agent_type: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -90,7 +88,7 @@ class CreateGamePlayer(_UseCaseModel):
 class CreateGameAgentConfig(_UseCaseModel):
     """Agent selection for automated game runs."""
 
-    type: str = "llm"
+    type: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -104,11 +102,7 @@ class CreateGameAgentConfig(_UseCaseModel):
 class CreateGameRuleConfig(_UseCaseModel):
     """Rule knobs accepted when creating a game."""
 
-    role_counts: dict[RoleId, RoleCount] | None = None
-    tie_break_policy: TieBreakPolicyId = "no_elimination"
-    day_speech_turns: int = Field(default=1, ge=1, le=5)
-    allow_self_vote: bool = False
-    allow_action_revisions: bool = False
+    role_counts: dict[RoleId, RoleCount]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -119,8 +113,8 @@ class CreateGameRunCommand(_UseCaseModel):
     player_count: int | None = Field(default=None, ge=1)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
-    agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
-    rule_config: CreateGameRuleConfig = Field(default_factory=CreateGameRuleConfig)
+    agent: CreateGameAgentConfig
+    rule_config: CreateGameRuleConfig
 
     @model_validator(mode="after")
     def validate_players_and_count(self) -> Self:
@@ -154,7 +148,7 @@ class AdvanceUntilInputCommand(_UseCaseModel):
     """Command for advancing a game until manual input, completion, or limit."""
 
     game_id: str | UUID
-    max_steps: int = Field(default=64, ge=1)
+    max_steps: int = Field(ge=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -209,6 +203,7 @@ class RulesetResult(_UseCaseModel):
     id: str
     player_count: dict[str, int]
     roles: list[RoleId]
+    local_rules: dict[str, bool]
     phases: list[GamePhase]
     agent_types: list[str]
 
@@ -489,7 +484,7 @@ class GameUseCases:
         """Return business metadata for the default ruleset."""
         from werewolf_agent.usecase.internal.rulesets import default_ruleset
 
-        return default_ruleset(self._dependencies.config)
+        return default_ruleset(self._dependencies.config, self._dependencies.game_definitions)
 
     def create_game_run(self, command: CreateGameRunCommand) -> GameRunResult:
         """Create and persist one deterministic game."""

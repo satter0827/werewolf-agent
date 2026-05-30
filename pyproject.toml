@@ -79,6 +79,9 @@ packages = ["backend/src/werewolf_agent"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "backend/src/werewolf_agent/resources/settings/defaults.toml" = "werewolf_agent/resources/settings/defaults.toml"
+"backend/src/werewolf_agent/resources/game/rules.toml" = "werewolf_agent/resources/game/rules.toml"
+"backend/src/werewolf_agent/resources/game/roles.toml" = "werewolf_agent/resources/game/roles.toml"
+"backend/src/werewolf_agent/resources/llm/agents.toml" = "werewolf_agent/resources/llm/agents.toml"
 "backend/src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
 "backend/src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
 

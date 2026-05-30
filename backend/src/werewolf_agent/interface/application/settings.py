@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.interface.runtime import AppSettings, get_settings
 from werewolf_agent.usecase.jobs import GameUseCaseConfig, LlmProviderConfig
 
@@ -43,6 +44,16 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
     return LlmProviderConfig(
         provider=app_settings.llm_provider,
         model=app_settings.model,
-        prompt_file=app_settings.llm_prompt_path,
-        fake_responses_file=app_settings.llm_fake_responses_path,
     )
+
+
+def build_game_definitions(settings: AppSettings | None = None) -> GameDefinitions:
+    """Return loaded game definitions from interface runtime settings."""
+    app_settings = settings or get_settings()
+    return app_settings.game_definitions
+
+
+def build_llm_definitions(settings: AppSettings | None = None) -> LlmDefinitions:
+    """Return loaded LLM definitions from interface runtime settings."""
+    app_settings = settings or get_settings()
+    return app_settings.llm_definitions

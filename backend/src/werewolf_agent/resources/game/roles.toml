@@ -1,0 +1,39 @@
+[roles.villager]
+faction = "village"
+abilities = []
+
+[roles.werewolf]
+faction = "werewolf"
+abilities = ["night_attack", "pack_knowledge"]
+
+[roles.seer]
+faction = "village"
+abilities = ["inspect"]
+
+[roles.knight]
+faction = "village"
+abilities = ["guard"]
+
+[default_role_counts.5]
+werewolf = 1
+seer = 1
+knight = 1
+villager = 2
+
+[default_role_counts.6]
+werewolf = 1
+seer = 1
+knight = 1
+villager = 3
+
+[default_role_counts.7]
+werewolf = 2
+seer = 1
+knight = 1
+villager = 3
+
+[default_role_counts.8]
+werewolf = 2
+seer = 1
+knight = 1
+villager = 4

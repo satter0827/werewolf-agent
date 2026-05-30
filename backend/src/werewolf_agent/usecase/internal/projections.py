@@ -6,8 +6,8 @@ from datetime import datetime
 from typing import Any, cast
 
 from werewolf_agent.domain.game.models import (
+    FACTION_VILLAGE,
     DomainEvent,
-    Faction,
     GameSnapshot,
     Phase,
     PlayerStatus,
@@ -38,6 +38,7 @@ def public_state_payload_from_run(run: StoredGameRun) -> dict[str, Any]:
 def public_state_payload_from_snapshot(
     snapshot: GameSnapshot,
     *,
+    game_id: str,
     version: int,
     seed: int | None,
     created_at: datetime | None = None,
@@ -61,7 +62,7 @@ def public_state_payload_from_snapshot(
         player.id for player in snapshot.players.values() if player.status is PlayerStatus.DEAD
     ]
     state = PublicGameState(
-        game_id=snapshot.game_id,
+        game_id=game_id,
         status=status_from_snapshot(snapshot),
         phase=cast(GamePhase, snapshot.phase.value),
         day=snapshot.day,
@@ -156,6 +157,6 @@ def winner_from_snapshot(snapshot: GameSnapshot) -> Winner | None:
     """Return the public winner value for a domain snapshot."""
     if snapshot.win_result is None:
         return None
-    if snapshot.win_result.winner is Faction.VILLAGE:
+    if snapshot.win_result.winner == FACTION_VILLAGE:
         return "villagers"
     return "werewolves"

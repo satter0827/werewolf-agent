@@ -20,7 +20,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | Method | Path | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | `{"status":"ok","service":"werewolf-agent-api"}` |
-| `GET` | `/api/v1/ruleset` | player count、roles、phases、agent types |
+| `GET` | `/api/v1/ruleset` | player count、roles、local rules、phases、agent types |
 | `POST` | `/api/v1/games` | game run 作成 |
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
@@ -45,6 +45,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | `GameTimelineItem` | API / CLI / replay / SSE / UI 共通の公開履歴 |
 | `PlayerObservationResponse` | manual player の private observation |
 | `PlayerActionRequest` / `PlayerActionResponse` | manual action 入出力 |
+| `RulesetResponse` | client bootstrapping 用の既定 ruleset metadata |
 
 互換 alias、旧 DTO 名、旧 endpoint fallback は持ちません。
 
@@ -63,33 +64,38 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
   "seed": 42,
   "agent": {"type": "llm"},
   "rule_config": {
-    "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
-    "tie_break_policy": "no_elimination",
-    "day_speech_turns": 1,
-    "allow_self_vote": false,
-    "allow_action_revisions": false
+    "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
   },
   "players": [
-    {"id": "p1", "name": "Alice", "agent_type": "llm"},
-    {"id": "p2", "name": "Bob", "agent_type": "llm"},
-    {"id": "p3", "name": "Carol", "agent_type": "llm"},
-    {"id": "p4", "name": "Dave", "agent_type": "llm"},
-    {"id": "p5", "name": "Eve", "agent_type": "llm"}
+    {"id": "p1", "name": "Alice", "agent_type": "human"},
+    {"id": "p2", "name": "Bob"},
+    {"id": "p3", "name": "Carol"},
+    {"id": "p4", "name": "Dave"},
+    {"id": "p5", "name": "Eve"}
   ]
 }
 ```
 
 制約:
 
-- `player_count`: 既定では 5〜8。省略時の解決は interface / usecase の設定値で行う
+- `player_count`: 既定では 5〜8。省略時の解決は `interface/application` が runtime settings から行う
 - `players`: 指定時は player count と件数を一致させる。`id` は normalize 後に一意
-- `agent.type`: 現在は `llm` のみ。provider は `WEREWOLF_LLM_PROVIDER=fake`
-- `players[].agent_type`: `llm` または `human`。`human` は 1 game につき 1 人まで
-- `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
-- `tie_break_policy`: `no_elimination` または `random_elimination`
-- `day_speech_turns`: 1〜5
-- `allow_self_vote`: `false` の場合、自分への投票を拒否する
-- `allow_action_revisions`: 既定 `false`。同じ phase / day の発言、投票、夜行動の再提出を拒否する
+- `agent.type`: 現在は `llm` のみ。省略時は `interface/application` が runtime settings から補完する。provider は `WEREWOLF_LLM_PROVIDER=fake`
+- `players[].agent_type`: `llm` または `human`。省略時は `interface/application` が runtime settings から補完する。`human` は 1 game につき 1 人まで
+- `rule_config`: game run ごとの入力値だけを受け取る。現在は `role_counts` のみ
+- `role_counts`: 合計が player count と一致し、人狼側 1 以上、村側 1 以上。省略時は `interface/application` が runtime で読み込んだ role 定義体の `default_role_counts` から補完する
+
+ローカルルール、role の faction / ability、LLM agent の名前や性格は request body では受け取りません。これらは definition resource として読み込みます。
+
+| 定義体 | 既定 | override |
+| --- | --- | --- |
+| game rules | `backend/src/werewolf_agent/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` |
+| game roles | `backend/src/werewolf_agent/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` |
+| LLM agents | `backend/src/werewolf_agent/resources/llm/agents.toml` | `WEREWOLF_LLM_AGENTS_FILE` |
+| LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
+| LLM fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
+
+定義体 path と定義体値の読み込みは `interface/runtime` の共通 loader に集約します。定義体は `AppSettings` 構築時に読み込み・検証し、role 定義体の `default_role_counts` は configured player count 範囲をすべて持つ必要があります。`domain` と `usecase` は source path と省略時 default を知らず、`interface/application` から値として注入されたものだけを使います。`GET /ruleset` は client 起動用に `local_rules` を返しますが、create request では local rule override を受け付けません。
 
 ## Public State
 
@@ -208,19 +214,19 @@ API response には `X-Trace-Id` header を付け、Problem Details の `trace_i
 | --- | --- |
 | `contracts/schemas.py` | HTTP wire DTO、Problem Details schema |
 | `contracts/errors.py` | error code metadata |
-| `interface/runtime/` | settings、logging bootstrap、structlog context |
+| `interface/runtime/` | settings、definition TOML loader、logging bootstrap、structlog context |
 | `interface/shared/http.py` | FastAPI Problem Details 変換 |
 | `interface/api/routers.py` | endpoint |
 | `interface/application/games.py` | transaction、依存注入、wire schema 変換 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `interface/application/models.py` | `game_runs` / `game_events` / public read model ORM |
-| `usecase/jobs/` | `GameUseCases` facade、DTO、repository / telemetry port |
+| `usecase/jobs/` | `GameUseCases` facade、command、repository / telemetry port |
 | `usecase/internal/` | usecase 実処理、projection、agent adapter、唯一の domain 接点 |
 
 境界:
 
 - `interface/api` は domain / usecase を直接 import しない
-- usecase との接続は `interface/application` から `werewolf_agent.usecase.jobs` top-level 公開面への import に閉じる
+- usecase との接続は `interface/application` から `werewolf_agent.usecase.jobs` top-level 公開面への import に閉じる。top-level 公開面は facade、command、query、repository / telemetry port、application bridge が必要とする永続化 contract に絞る
 - `usecase/jobs` は domain を import せず、domain 接続は `usecase/internal` に閉じる
 - `usecase/internal` は interface / wire schema に依存しない
 - HTTP DTO、Problem Details schema、error code metadata は `contracts` に置く

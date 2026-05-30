@@ -438,23 +438,24 @@ def test_create_game_rejects_invalid_rule_config_as_validation_error(
         "/api/v1/games",
         json={
             "player_count": 5,
-            "rule_config": {"tie_break_policy": "coin_flip"},
+            "rule_config": {"role_counts": {"werewolf": -1}},
         },
     )
 
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["code"] == "request.validation_failed"
-    assert response.json()["errors"][0]["pointer"] == "/rule_config/tie_break_policy"
+    assert response.json()["errors"][0]["pointer"] == "/rule_config/role_counts/werewolf"
 
 
-def test_day_speech_turns_controls_api_discussion_actions(client: TestClient) -> None:
+def test_api_discussion_records_one_speech_per_alive_player_from_definition(
+    client: TestClient,
+) -> None:
     created = client.post(
         "/api/v1/games",
         json={
             "player_count": 5,
             "seed": 3,
-            "rule_config": {"day_speech_turns": 2},
         },
     ).json()
     game_id = created["game_id"]
@@ -466,7 +467,7 @@ def test_day_speech_turns_controls_api_discussion_actions(client: TestClient) ->
     speech_events = [
         item for item in response.json()["timeline"] if item["event_type"] == "speech_recorded"
     ]
-    assert len(speech_events) == len(after_night["alive_player_ids"]) * 2
+    assert len(speech_events) == len(after_night["alive_player_ids"])
 
 
 def test_create_game_validation_errors_use_problem_details(client: TestClient) -> None:

@@ -17,7 +17,6 @@ from werewolf_agent.domain.game.models import (
     GameConfig,
     GameSnapshot,
     Phase,
-    TieBreakPolicy,
     VoteResult,
 )
 from werewolf_agent.domain.game.rules.player_rules import (
@@ -39,7 +38,7 @@ def record_vote(
     require_alive(snapshot, action.player_id)
     target_id = _vote_target(action)
     require_alive(snapshot, target_id)
-    if not config.allow_self_vote and action.player_id == target_id:
+    if not config.rules.allow_self_vote and action.player_id == target_id:
         raise GameError(
             MESSAGE_SELF_VOTING_DISABLED,
             context={"player_id": action.player_id, "target_id": target_id},
@@ -75,7 +74,7 @@ def resolve_votes(
         )
         if len(tied_player_ids) == 1:
             eliminated_player_id = tied_player_ids[0]
-        elif config.tie_break_policy is TieBreakPolicy.RANDOM_ELIMINATION:
+        elif config.rules.enable_random_elimination_on_tie:
             eliminated_player_id = rng.choice(tied_player_ids)
 
     updated_snapshot = snapshot
@@ -93,7 +92,11 @@ def resolve_votes(
         tied_player_ids=tied_player_ids,
         missing_voter_ids=missing_voter_ids,
         eliminated_player_id=eliminated_player_id,
-        tie_break_policy=config.tie_break_policy,
+        tie_break_policy=(
+            "random_elimination"
+            if config.rules.enable_random_elimination_on_tie
+            else "no_elimination"
+        ),
     )
     history = updated_snapshot.history.model_copy(
         update={"votes": [*updated_snapshot.history.votes, result]}

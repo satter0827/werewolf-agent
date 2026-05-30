@@ -6,20 +6,31 @@ from pydantic import ValidationError
 
 from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
+    ABILITY_GUARD,
+    ABILITY_INSPECT,
+    ABILITY_NIGHT_ATTACK,
+    ABILITY_PACK_KNOWLEDGE,
+    FACTION_VILLAGE,
+    FACTION_WEREWOLF,
     Action,
     ActionType,
     DomainEvent,
-    Faction,
     GameConfig,
     GameSnapshot,
+    LocalRules,
     PendingActions,
     Phase,
     Player,
     PlayerStatus,
-    Role,
-    TieBreakPolicy,
+    RoleCatalog,
+    RoleDefinition,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
+
+ROLE_PLAIN = "plain"
+ROLE_SHADOW = "shadow"
+ROLE_READER = "reader"
+ROLE_SHIELD = "shield"
 
 
 @dataclass
@@ -50,38 +61,67 @@ class HeadlessRun:
         return self.snapshot
 
 
-def mvp_config(*, tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION) -> GameConfig:
+def role_catalog() -> RoleCatalog:
+    return RoleCatalog(
+        roles={
+            ROLE_PLAIN: RoleDefinition(faction=FACTION_VILLAGE, abilities=()),
+            ROLE_SHADOW: RoleDefinition(
+                faction=FACTION_WEREWOLF,
+                abilities=(ABILITY_NIGHT_ATTACK, ABILITY_PACK_KNOWLEDGE),
+            ),
+            ROLE_READER: RoleDefinition(faction=FACTION_VILLAGE, abilities=(ABILITY_INSPECT,)),
+            ROLE_SHIELD: RoleDefinition(faction=FACTION_VILLAGE, abilities=(ABILITY_GUARD,)),
+        }
+    )
+
+
+def local_rules(*, random_tie: bool = False) -> LocalRules:
+    return LocalRules(
+        allow_self_vote=False,
+        allow_vote_revision=False,
+        allow_night_action_revision=False,
+        enable_first_night_attack=True,
+        enable_no_elimination_on_tie=not random_tie,
+        enable_random_elimination_on_tie=random_tie,
+        allow_knight_self_guard=True,
+        allow_knight_repeat_guard=True,
+        allow_seer_self_inspect=False,
+        allow_werewolf_friendly_fire=False,
+        reveal_role_on_death=False,
+    )
+
+
+def mvp_config(*, random_tie: bool = False) -> GameConfig:
     return GameConfig(
-        game_id="game-1",
         player_count=5,
         role_counts={
-            Role.WEREWOLF: 1,
-            Role.SEER: 1,
-            Role.KNIGHT: 1,
-            Role.VILLAGER: 2,
+            ROLE_SHADOW: 1,
+            ROLE_READER: 1,
+            ROLE_SHIELD: 1,
+            ROLE_PLAIN: 2,
         },
-        seed=7,
-        tie_break_policy=tie_break_policy,
+        rules=local_rules(random_tie=random_tie),
+        roles=role_catalog(),
     )
 
 
 def fixed_players() -> list[Player]:
     return [
-        Player(id="p1", name="Alice", role=Role.WEREWOLF),
-        Player(id="p2", name="Bob", role=Role.SEER),
-        Player(id="p3", name="Chika", role=Role.KNIGHT),
-        Player(id="p4", name="Dan", role=Role.VILLAGER),
-        Player(id="p5", name="Eve", role=Role.VILLAGER),
+        Player(id="p1", name="Alice", role=ROLE_SHADOW),
+        Player(id="p2", name="Bob", role=ROLE_READER),
+        Player(id="p3", name="Chika", role=ROLE_SHIELD),
+        Player(id="p4", name="Dan", role=ROLE_PLAIN),
+        Player(id="p5", name="Eve", role=ROLE_PLAIN),
     ]
 
 
 def start_fixed_run(
     *,
-    tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION,
+    random_tie: bool = False,
 ) -> HeadlessRun:
     rng = random.Random(7)
     snapshot, events = start_game(
-        mvp_config(tie_break_policy=tie_break_policy),
+        mvp_config(random_tie=random_tie),
         fixed_players(),
         rng,
     )
@@ -103,7 +143,9 @@ def test_game_config_validates_role_counts() -> None:
     with pytest.raises(ValidationError):
         GameConfig(
             player_count=5,
-            role_counts={Role.WEREWOLF: 1, Role.VILLAGER: 3},
+            role_counts={ROLE_SHADOW: 1, ROLE_PLAIN: 3},
+            rules=local_rules(),
+            roles=role_catalog(),
         )
 
 
@@ -114,13 +156,13 @@ def test_start_game_is_headless_and_returns_events() -> None:
 
     assert snapshot.phase is Phase.NIGHT
     assert snapshot.day == 1
-    assert snapshot.players["p1"].role is Role.WEREWOLF
+    assert snapshot.players["p1"].role == ROLE_SHADOW
     assert run.events[0].event_type == "game_started"
     assert run.events[0].payload["role_counts"] == {
-        "werewolf": 1,
-        "seer": 1,
-        "knight": 1,
-        "villager": 2,
+        ROLE_SHADOW: 1,
+        ROLE_READER: 1,
+        ROLE_SHIELD: 1,
+        ROLE_PLAIN: 2,
     }
 
 
@@ -130,15 +172,15 @@ def test_observation_hides_secret_roles_but_shows_allowed_knowledge() -> None:
     seer_observation = run.observe("p2")
     wolf_observation = run.observe("p1")
 
-    assert seer_observation.known_roles == {"p2": Role.SEER}
+    assert seer_observation.known_roles == {"p2": ROLE_READER}
     assert {player.id: player.role for player in seer_observation.players} == {
         "p1": None,
-        "p2": Role.SEER,
+        "p2": ROLE_READER,
         "p3": None,
         "p4": None,
         "p5": None,
     }
-    assert wolf_observation.known_roles == {"p1": Role.WEREWOLF}
+    assert wolf_observation.known_roles == {"p1": ROLE_SHADOW}
 
 
 def test_night_actions_resolve_guard_and_private_seer_knowledge() -> None:
@@ -153,7 +195,7 @@ def test_night_actions_resolve_guard_and_private_seer_knowledge() -> None:
     assert snapshot.players["p4"].status is PlayerStatus.ALIVE
     assert snapshot.history.nights[-1].protected_player_id == "p4"
     assert snapshot.history.nights[-1].killed_player_id is None
-    assert run.observe("p2").known_roles["p1"] is Role.WEREWOLF
+    assert run.observe("p2").known_roles["p1"] == ROLE_SHADOW
     assert "p1" not in run.observe("p4").known_roles
 
 
@@ -170,7 +212,7 @@ def test_vote_resolution_eliminates_player_and_finishes_game() -> None:
     assert snapshot.players["p1"].status is PlayerStatus.DEAD
     assert snapshot.history.votes[-1].eliminated_player_id == "p1"
     assert snapshot.win_result is not None
-    assert snapshot.win_result.winner is Faction.VILLAGE
+    assert snapshot.win_result.winner == FACTION_VILLAGE
 
 
 def test_vote_tie_policy_can_leave_everyone_alive() -> None:

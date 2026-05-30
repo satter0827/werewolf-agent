@@ -36,7 +36,6 @@ def record_day_speech(
     return updated, [
         DomainEvent(
             event_type="speech_recorded",
-            game_id=snapshot.game_id,
             phase=snapshot.phase,
             day=snapshot.day,
             actor_id=action.player_id,

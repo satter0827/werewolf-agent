@@ -10,21 +10,19 @@ from werewolf_agent.commons.shared.messages import (
 )
 from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
-    Faction,
+    FACTION_VILLAGE,
+    FACTION_WEREWOLF,
     GameSnapshot,
     Phase,
     Player,
     PlayerStatus,
-    Role,
     WinResult,
 )
 
 
-def faction_for_role(role: Role) -> Faction:
+def faction_for_role(snapshot: GameSnapshot, role: str) -> str:
     """Return the faction for one role."""
-    if role is Role.WEREWOLF:
-        return Faction.WEREWOLF
-    return Faction.VILLAGE
+    return snapshot.config.roles.faction_for_role(role)
 
 
 def require_phase(snapshot: GameSnapshot, expected: Phase) -> None:
@@ -58,16 +56,16 @@ def require_alive(snapshot: GameSnapshot, player_id: str) -> Player:
     return player
 
 
-def require_role(snapshot: GameSnapshot, player_id: str, expected: Role) -> Player:
+def require_role(snapshot: GameSnapshot, player_id: str, expected: str) -> Player:
     """Return an alive player with the expected role."""
     player = require_alive(snapshot, player_id)
-    if player.role is not expected:
-        actual_role = player.role.value if player.role is not None else None
+    if player.role != expected:
+        actual_role = player.role if player.role is not None else None
         raise GameError(
-            message_player_cannot_perform_role_action(player_id, expected.value),
+            message_player_cannot_perform_role_action(player_id, expected),
             context={
                 "player_id": player_id,
-                "expected_role": expected.value,
+                "expected_role": expected,
                 "actual_role": actual_role,
             },
         )
@@ -103,21 +101,29 @@ def mark_dead(
 def check_win(snapshot: GameSnapshot) -> WinResult | None:
     """Return a win result when either faction has met its win condition."""
     alive = alive_players(snapshot)
-    alive_wolves = [player for player in alive if player.role is Role.WEREWOLF]
-    alive_village = [player for player in alive if player.role is not Role.WEREWOLF]
+    alive_wolves = [
+        player
+        for player in alive
+        if player.role is not None and faction_for_role(snapshot, player.role) == FACTION_WEREWOLF
+    ]
+    alive_village = [
+        player
+        for player in alive
+        if player.role is not None and faction_for_role(snapshot, player.role) == FACTION_VILLAGE
+    ]
 
     if not alive_wolves:
-        return _win_result(snapshot, Faction.VILLAGE, "all_werewolves_eliminated")
+        return _win_result(snapshot, FACTION_VILLAGE, "all_werewolves_eliminated")
     if len(alive_wolves) >= len(alive_village):
-        return _win_result(snapshot, Faction.WEREWOLF, "werewolves_reached_parity")
+        return _win_result(snapshot, FACTION_WEREWOLF, "werewolves_reached_parity")
     return None
 
 
-def _win_result(snapshot: GameSnapshot, winner: Faction, reason: str) -> WinResult:
+def _win_result(snapshot: GameSnapshot, winner: str, reason: str) -> WinResult:
     winning_player_ids = [
         player.id
         for player in snapshot.players.values()
-        if player.role is not None and faction_for_role(player.role) is winner
+        if player.role is not None and faction_for_role(snapshot, player.role) == winner
     ]
     return WinResult(
         winner=winner,

@@ -4,7 +4,6 @@ from werewolf_agent.domain.game.models import (
     Phase,
     Player,
     PlayerStatus,
-    Role,
     SpeechRecord,
     VoteResult,
 )
@@ -17,12 +16,12 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
     game_observation = Observation(
         phase=Phase.VOTING,
         day=2,
-        me=Player(id="p1", name="Alice", role=Role.SEER),
+        me=Player(id="p1", name="Alice", role="seer"),
         players=[
-            Player(id="p1", name="Alice", role=Role.SEER),
+            Player(id="p1", name="Alice", role="seer"),
             Player(id="p2", name="Bob", status=PlayerStatus.ALIVE),
         ],
-        known_roles={"p1": Role.SEER},
+        known_roles={"p1": "seer"},
         history=GameHistory(
             speeches=[SpeechRecord(day=2, player_id="p2", message="I want to hear from Alice.")],
             votes=[
@@ -43,4 +42,4 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
     assert agent_observation.speeches[0].message == "I want to hear from Alice."
     assert agent_observation.vote_rounds[0].votes == {"p1": "p2"}
     assert agent_observation.vote_rounds[0].counts == {"p2": 1}
-    assert agent_observation.known_roles == {"p1": Role.SEER.value}
+    assert agent_observation.known_roles == {"p1": "seer"}

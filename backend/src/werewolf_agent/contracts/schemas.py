@@ -13,9 +13,8 @@ from werewolf_agent.commons.shared.validation import non_blank, optional_non_bla
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 PlayerStatus = Literal["alive", "dead"]
-ActionType = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knight_guard", "pass"]
-RoleId = Literal["villager", "werewolf", "seer", "knight"]
-TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
+ActionType = str
+RoleId = str
 Winner = Literal["villagers", "werewolves"]
 AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
@@ -26,39 +25,45 @@ class CreateGamePlayer(BaseModel):
 
     id: str
     name: str
-    agent_type: str = "llm"
+    agent_type: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @field_validator("id", "name", "agent_type")
+    @field_validator("id", "name")
     @classmethod
     def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
         """Return a stripped non-empty string."""
         return non_blank(value, str(info.field_name))
 
+    @field_validator("agent_type")
+    @classmethod
+    def validate_optional_agent_type(
+        cls,
+        value: str | None,
+        info: ValidationInfo,
+    ) -> str | None:
+        """Return a stripped optional agent type."""
+        return optional_non_blank(value, str(info.field_name))
+
 
 class CreateGameAgentConfig(BaseModel):
     """Agent selection for API-driven game runs."""
 
-    type: str = "llm"
+    type: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @field_validator("type")
     @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty agent type."""
-        return non_blank(value, str(info.field_name))
+    def validate_optional_type(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Return a stripped optional agent type."""
+        return optional_non_blank(value, str(info.field_name))
 
 
 class CreateGameRuleConfig(BaseModel):
     """Rule knobs accepted by the create-game endpoint."""
 
     role_counts: dict[RoleId, RoleCount] | None = None
-    tie_break_policy: TieBreakPolicyId = "no_elimination"
-    day_speech_turns: int = Field(default=1, ge=1, le=5)
-    allow_self_vote: bool = False
-    allow_action_revisions: bool = False
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -69,7 +74,7 @@ class CreateGameRunRequest(BaseModel):
     player_count: int | None = Field(default=None, ge=1)
     seed: int | None = None
     players: list[CreateGamePlayer] | None = None
-    agent: CreateGameAgentConfig = Field(default_factory=CreateGameAgentConfig)
+    agent: CreateGameAgentConfig | None = None
     rule_config: CreateGameRuleConfig = Field(default_factory=CreateGameRuleConfig)
 
     model_config = ConfigDict(extra="forbid")
@@ -236,6 +241,7 @@ class RulesetResponse(BaseModel):
     description: str
     player_count: dict[str, int]
     roles: list[dict[str, str]]
+    local_rules: dict[str, bool]
     phases: list[dict[str, str]]
     agent_types: list[dict[str, str]]
 
@@ -369,6 +375,5 @@ __all__ = [
     "RoleCount",
     "RoleId",
     "RulesetResponse",
-    "TieBreakPolicyId",
     "Winner",
 ]

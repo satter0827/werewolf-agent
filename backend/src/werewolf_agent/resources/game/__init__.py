@@ -1,0 +1,1 @@
+"""Packaged game definition resources."""

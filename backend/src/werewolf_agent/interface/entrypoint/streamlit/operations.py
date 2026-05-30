@@ -100,10 +100,6 @@ def create_playable_game(
         seed=seed,
         human_player=human_player_id,
         role_count_entries=[],
-        tie_break_policy=settings.game_default_tie_break_policy,
-        day_speech_turns=settings.game_default_day_speech_turns,
-        allow_self_vote=settings.game_default_allow_self_vote,
-        allow_action_revisions=settings.game_default_allow_action_revisions,
         default_player_count=settings.game_default_player_count,
     )
     response = build_streamlit_client(api_url, settings).create_game(request)

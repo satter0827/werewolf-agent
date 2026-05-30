@@ -49,12 +49,11 @@ def start_game(
     events = [
         DomainEvent(
             event_type="game_started",
-            game_id=snapshot.game_id,
             phase=snapshot.phase,
             day=snapshot.day,
             payload={
                 "player_count": config.player_count,
-                "role_counts": {role.value: count for role, count in config.role_counts.items()},
+                "role_counts": dict(config.role_counts),
             },
         )
     ]
@@ -116,7 +115,6 @@ def submit_action(
             [
                 DomainEvent(
                     event_type="vote_submitted",
-                    game_id=snapshot.game_id,
                     phase=snapshot.phase,
                     day=snapshot.day,
                     actor_id=action.player_id,
@@ -137,7 +135,6 @@ def submit_action(
             [
                 DomainEvent(
                     event_type="night_action_submitted",
-                    game_id=snapshot.game_id,
                     phase=snapshot.phase,
                     day=snapshot.day,
                     actor_id=action.player_id,

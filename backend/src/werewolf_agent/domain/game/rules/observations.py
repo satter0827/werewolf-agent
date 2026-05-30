@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from werewolf_agent.domain.game.models import (
+    ABILITY_PACK_KNOWLEDGE,
+    FACTION_WEREWOLF,
     GameHistory,
     GameSnapshot,
     Observation,
     PendingActions,
     Player,
-    Role,
 )
 from werewolf_agent.domain.game.rules.action_availability import available_actions
 from werewolf_agent.domain.game.rules.player_rules import player_by_id
@@ -55,15 +56,18 @@ def build_player_observation(
     )
 
 
-def _known_roles(snapshot: GameSnapshot, player_id: str) -> dict[str, Role]:
+def _known_roles(snapshot: GameSnapshot, player_id: str) -> dict[str, str]:
     observer = player_by_id(snapshot, player_id)
-    known_roles: dict[str, Role] = {}
+    known_roles: dict[str, str] = {}
     if observer.role is not None:
         known_roles[observer.id] = observer.role
 
-    if observer.role is Role.WEREWOLF:
+    if snapshot.config.roles.role_has_ability(observer.role, ABILITY_PACK_KNOWLEDGE):
         for player in snapshot.players.values():
-            if player.role is Role.WEREWOLF:
+            if (
+                player.role is not None
+                and snapshot.config.roles.faction_for_role(player.role) == FACTION_WEREWOLF
+            ):
                 known_roles[player.id] = player.role
 
     for night_result in snapshot.history.nights:

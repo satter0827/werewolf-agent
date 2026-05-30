@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import os
-import tomllib
 from collections.abc import Mapping
-from functools import lru_cache
-from importlib.resources import files
+from functools import cached_property, lru_cache
 from pathlib import Path
 from typing import Final, Literal, Self, cast
 
@@ -20,6 +18,7 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.commons.shared.messages import (
     message_game_default_player_count_between,
     message_game_min_players_le_max_players,
@@ -27,18 +26,13 @@ from werewolf_agent.commons.shared.messages import (
     message_ruleset_description_template_invalid,
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
+from werewolf_agent.interface.runtime.resources import (
+    load_game_definitions,
+    load_llm_definitions,
+    load_packaged_defaults,
+)
 
-DEFAULTS_PACKAGE: Final = "werewolf_agent.resources.settings"
-DEFAULTS_FILE: Final = "defaults.toml"
-
-
-def _load_packaged_defaults() -> Mapping[str, object]:
-    default_path = files(DEFAULTS_PACKAGE).joinpath(DEFAULTS_FILE)
-    with default_path.open("rb") as default_file:
-        return tomllib.load(default_file)
-
-
-PACKAGED_DEFAULTS = _load_packaged_defaults()
+PACKAGED_DEFAULTS: Mapping[str, object] = load_packaged_defaults()
 
 
 def _default_value(key: str) -> object:
@@ -91,6 +85,7 @@ DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
 DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
 DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
+DEFAULT_LLM_AGENTS_FILE: Final = _string_default("llm_agents_file")
 DEFAULT_LOG_LEVEL: Final = _string_default("log_level")
 DEFAULT_LOG_OUTPUT: Final = _string_default("log_output")
 DEFAULT_LOG_DIR: Final = _path_default("log_dir")
@@ -138,12 +133,8 @@ DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = _string_default("game_supported_agent
 DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = _string_default("game_supported_agent_name")
 DEFAULT_GAME_DEFAULT_RULESET_ID: Final = _string_default("game_default_ruleset_id")
 DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset_name")
-DEFAULT_GAME_DEFAULT_TIE_BREAK_POLICY: Final = _string_default("game_default_tie_break_policy")
-DEFAULT_GAME_DEFAULT_DAY_SPEECH_TURNS: Final = _integer_default("game_default_day_speech_turns")
-DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE: Final = _bool_default("game_default_allow_self_vote")
-DEFAULT_GAME_DEFAULT_ALLOW_ACTION_REVISIONS: Final = _bool_default(
-    "game_default_allow_action_revisions"
-)
+DEFAULT_GAME_RULES_FILE: Final = _string_default("game_rules_file")
+DEFAULT_GAME_ROLES_FILE: Final = _string_default("game_roles_file")
 DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS: Final = _integer_default(
     "game_advance_until_input_max_steps"
 )
@@ -159,14 +150,12 @@ CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
-TIE_BREAK_POLICY_NAMES: Final = frozenset({"no_elimination", "random_elimination"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
 CliOutputFormat = Literal["table", "json", "jsonl"]
 StreamlitLanguage = Literal["ja", "en"]
 StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]
-TieBreakPolicyName = Literal["no_elimination", "random_elimination"]
 
 
 @lru_cache(maxsize=1)
@@ -239,6 +228,10 @@ class AppSettings(BaseSettings):
     llm_fake_responses_file: str = Field(
         default=DEFAULT_LLM_FAKE_RESPONSES_FILE,
         validation_alias="WEREWOLF_LLM_FAKE_RESPONSES_FILE",
+    )
+    llm_agents_file: str = Field(
+        default=DEFAULT_LLM_AGENTS_FILE,
+        validation_alias="WEREWOLF_LLM_AGENTS_FILE",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_output: LogOutput = Field(
@@ -394,23 +387,13 @@ class AppSettings(BaseSettings):
         default=DEFAULT_GAME_DEFAULT_RULESET_NAME,
         validation_alias="WEREWOLF_GAME_DEFAULT_RULESET_NAME",
     )
-    game_default_tie_break_policy: TieBreakPolicyName = Field(
-        default=cast(TieBreakPolicyName, DEFAULT_GAME_DEFAULT_TIE_BREAK_POLICY),
-        validation_alias="WEREWOLF_GAME_DEFAULT_TIE_BREAK_POLICY",
+    game_rules_file: str = Field(
+        default=DEFAULT_GAME_RULES_FILE,
+        validation_alias="WEREWOLF_GAME_RULES_FILE",
     )
-    game_default_day_speech_turns: int = Field(
-        default=DEFAULT_GAME_DEFAULT_DAY_SPEECH_TURNS,
-        ge=1,
-        le=5,
-        validation_alias="WEREWOLF_GAME_DEFAULT_DAY_SPEECH_TURNS",
-    )
-    game_default_allow_self_vote: bool = Field(
-        default=DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE,
-        validation_alias="WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE",
-    )
-    game_default_allow_action_revisions: bool = Field(
-        default=DEFAULT_GAME_DEFAULT_ALLOW_ACTION_REVISIONS,
-        validation_alias="WEREWOLF_GAME_DEFAULT_ALLOW_ACTION_REVISIONS",
+    game_roles_file: str = Field(
+        default=DEFAULT_GAME_ROLES_FILE,
+        validation_alias="WEREWOLF_GAME_ROLES_FILE",
     )
     game_advance_until_input_max_steps: int = Field(
         default=DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS,
@@ -521,6 +504,38 @@ class AppSettings(BaseSettings):
     def llm_fake_responses_path(self) -> Path | None:
         """Return the configured external FakeListLLM response file, if any."""
         return _optional_repository_path(self.llm_fake_responses_file)
+
+    @property
+    def llm_agents_path(self) -> Path | None:
+        """Return the configured external LLM agent definition file, if any."""
+        return _optional_repository_path(self.llm_agents_file)
+
+    @property
+    def game_rules_path(self) -> Path | None:
+        """Return the configured external game rule definition file, if any."""
+        return _optional_repository_path(self.game_rules_file)
+
+    @property
+    def game_roles_path(self) -> Path | None:
+        """Return the configured external game role definition file, if any."""
+        return _optional_repository_path(self.game_roles_file)
+
+    @cached_property
+    def game_definitions(self) -> GameDefinitions:
+        """Return game definitions loaded by runtime settings."""
+        return load_game_definitions(
+            rules_path=self.game_rules_path,
+            roles_path=self.game_roles_path,
+        )
+
+    @cached_property
+    def llm_definitions(self) -> LlmDefinitions:
+        """Return LLM definitions loaded by runtime settings."""
+        return load_llm_definitions(
+            agents_path=self.llm_agents_path,
+            prompt_path=self.llm_prompt_path,
+            fake_responses_path=self.llm_fake_responses_path,
+        )
 
     @property
     def log_directory_path(self) -> Path:
@@ -670,17 +685,6 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
-    @field_validator("game_default_tie_break_policy", mode="before")
-    @classmethod
-    def normalize_game_default_tie_break_policy(cls, value: object) -> str:
-        """Return a validated default tie-break policy."""
-        return normalize_choice(
-            value,
-            field_name="game_default_tie_break_policy",
-            choices=TIE_BREAK_POLICY_NAMES,
-            case="lower",
-        )
-
     @field_validator(
         "game_supported_agent_name",
         "game_default_ruleset_id",
@@ -716,7 +720,27 @@ class AppSettings(BaseSettings):
             )
         except (KeyError, ValueError) as exc:
             raise ValueError(message_ruleset_description_template_invalid()) from exc
+        self._validate_definition_settings()
         return self
+
+    def _validate_definition_settings(self) -> None:
+        """Ensure runtime definitions are loadable and match configured settings."""
+        try:
+            game_definitions = self.game_definitions
+            _ = self.llm_definitions
+            missing_counts = [
+                player_count
+                for player_count in range(self.game_min_players, self.game_max_players + 1)
+                if player_count not in game_definitions.roles.default_role_counts
+            ]
+        except Exception as exc:
+            raise ValueError(f"definition settings are invalid: {exc}") from exc
+        if missing_counts:
+            missing = ", ".join(str(player_count) for player_count in missing_counts)
+            raise ValueError(
+                "game role definition default_role_counts must define configured "
+                f"player counts: {missing}"
+            )
 
 
 @lru_cache(maxsize=1)

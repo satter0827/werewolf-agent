@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import cast
-
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
     MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
@@ -16,7 +14,6 @@ from werewolf_agent.contracts.schemas import (
     CreateGameRuleConfig,
     CreateGameRunRequest,
     RoleId,
-    TieBreakPolicyId,
 )
 
 
@@ -26,10 +23,6 @@ def build_create_game_request(
     seed: int | None,
     human_player: str | None,
     role_count_entries: list[str],
-    tie_break_policy: str,
-    day_speech_turns: int,
-    allow_self_vote: bool,
-    allow_action_revisions: bool,
     default_player_count: int,
 ) -> CreateGameRunRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
@@ -47,17 +40,13 @@ def build_create_game_request(
             CreateGamePlayer(
                 id=f"player-{index}",
                 name=f"Player {index}",
-                agent_type="human" if f"player-{index}" == human_player else "llm",
+                agent_type="human" if f"player-{index}" == human_player else None,
             )
             for index in range(1, player_count + 1)
         ]
 
     rule_config = CreateGameRuleConfig(
         role_counts=parse_role_counts(role_count_entries) or None,
-        tie_break_policy=cast(TieBreakPolicyId, tie_break_policy),
-        day_speech_turns=day_speech_turns,
-        allow_self_vote=allow_self_vote,
-        allow_action_revisions=allow_action_revisions,
     )
     return CreateGameRunRequest(
         player_count=None if explicit_players is not None else players,
@@ -84,5 +73,5 @@ def parse_role_counts(entries: list[str]) -> dict[RoleId, int]:
                 MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
                 code=ErrorCode.CONFIG_INVALID_VALUE,
             ) from exc
-        role_counts[cast(RoleId, key.strip())] = count
+        role_counts[key.strip()] = count
     return role_counts

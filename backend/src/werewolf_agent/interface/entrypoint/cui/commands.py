@@ -123,15 +123,6 @@ def new(
         list[str] | None,
         typer.Option("--role-count", help="Role count entry, e.g. werewolf=1."),
     ] = None,
-    tie_break_policy: Annotated[
-        str,
-        typer.Option(help="Tie break policy: no_elimination or random_elimination."),
-    ] = "no_elimination",
-    day_speech_turns: Annotated[int, typer.Option(help="Speech turns per day.")] = 1,
-    allow_self_vote: Annotated[
-        bool,
-        typer.Option("--allow-self-vote/--no-allow-self-vote", help="Allow self voting."),
-    ] = False,
     output: Annotated[
         str | None,
         typer.Option("--output", help="Output format: table, json, or jsonl."),
@@ -144,9 +135,6 @@ def new(
             seed=seed,
             human_player=human_player,
             role_count=role_count or [],
-            tie_break_policy=tie_break_policy,
-            day_speech_turns=day_speech_turns,
-            allow_self_vote=allow_self_vote,
             client=_client(api_url),
             output_format=_output_format(output, get_settings()),
         )
@@ -159,9 +147,6 @@ def _new(
     seed: int | None,
     human_player: str | None,
     role_count: list[str],
-    tie_break_policy: str,
-    day_speech_turns: int,
-    allow_self_vote: bool,
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
@@ -170,9 +155,6 @@ def _new(
         seed=seed,
         human_player=human_player,
         role_count=role_count,
-        tie_break_policy=tie_break_policy,
-        day_speech_turns=day_speech_turns,
-        allow_self_vote=allow_self_vote,
     )
     created = client.create_game(request)
     logger.info(
@@ -306,9 +288,6 @@ def _play(
             seed=seed,
             human_player=human_player,
             role_count=[],
-            tie_break_policy="no_elimination",
-            day_speech_turns=1,
-            allow_self_vote=False,
         )
     )
     state = created.state
@@ -602,19 +581,12 @@ def _create_request(
     seed: int | None,
     human_player: str | None,
     role_count: list[str],
-    tie_break_policy: str,
-    day_speech_turns: int,
-    allow_self_vote: bool,
 ) -> CreateGameRunRequest:
     return build_create_game_request(
         players=players,
         seed=seed,
         human_player=human_player,
         role_count_entries=role_count,
-        tie_break_policy=tie_break_policy,
-        day_speech_turns=day_speech_turns,
-        allow_self_vote=allow_self_vote,
-        allow_action_revisions=get_settings().game_default_allow_action_revisions,
         default_player_count=get_settings().game_default_player_count,
     )
 

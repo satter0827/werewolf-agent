@@ -115,9 +115,8 @@ MESSAGE_EVENT_TYPE_MUST_NOT_BE_BLANK = "event_type must not be blank"
 MESSAGE_DAY_MUST_BE_NON_NEGATIVE = "day must be zero or greater"
 MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS = "player_count must match the number of players"
 MESSAGE_PLAYER_COUNT_AT_LEAST_ONE = "player_count must be at least 1"
-MESSAGE_DAY_SPEECH_TURNS_AT_LEAST_ONE = "day_speech_turns must be at least 1"
 MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT = "role_counts must sum to player_count"
-MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF = "role_counts must include at least one werewolf"
+MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF = "role_counts must include at least one werewolf-side player"
 MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE = (
     "role_counts must include at least one village-side player"
 )

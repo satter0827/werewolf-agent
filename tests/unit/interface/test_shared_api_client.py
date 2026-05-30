@@ -17,10 +17,6 @@ def test_build_create_game_request_supports_human_player() -> None:
         seed=1,
         human_player="player-2",
         role_count_entries=["werewolf=1", "villager=4"],
-        tie_break_policy="no_elimination",
-        day_speech_turns=1,
-        allow_self_vote=False,
-        allow_action_revisions=False,
         default_player_count=6,
     )
 
@@ -28,6 +24,7 @@ def test_build_create_game_request_supports_human_player() -> None:
     assert request.player_count is None
     assert request.players is not None
     assert len(request.players) == 5
+    assert request.players[0].agent_type is None
     assert request.players[1].agent_type == "human"
     assert request.rule_config.role_counts == {"werewolf": 1, "villager": 4}
 
@@ -39,10 +36,6 @@ def test_build_create_game_request_rejects_unknown_human_player() -> None:
             seed=None,
             human_player="player-9",
             role_count_entries=[],
-            tie_break_policy="no_elimination",
-            day_speech_turns=1,
-            allow_self_vote=False,
-            allow_action_revisions=False,
             default_player_count=6,
         )
 
@@ -100,10 +93,6 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         seed=1,
         human_player=None,
         role_count_entries=[],
-        tie_break_policy="no_elimination",
-        day_speech_turns=1,
-        allow_self_vote=False,
-        allow_action_revisions=False,
         default_player_count=6,
     )
 
@@ -273,4 +262,17 @@ def _ruleset_payload() -> dict[str, object]:
         "roles": [{"id": "villager", "name": "Villager"}],
         "phases": [{"id": "night", "name": "Night"}],
         "agent_types": [{"id": "llm", "name": "LLM Agent"}],
+        "local_rules": {
+            "allow_self_vote": False,
+            "allow_vote_revision": False,
+            "allow_night_action_revision": False,
+            "enable_first_night_attack": False,
+            "enable_no_elimination_on_tie": True,
+            "enable_random_elimination_on_tie": False,
+            "allow_knight_self_guard": True,
+            "allow_knight_repeat_guard": True,
+            "allow_seer_self_inspect": False,
+            "allow_werewolf_friendly_fire": False,
+            "reveal_role_on_death": False,
+        },
     }

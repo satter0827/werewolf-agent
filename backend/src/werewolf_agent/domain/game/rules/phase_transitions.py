@@ -60,7 +60,6 @@ def _advance_from_night(
     events = [
         DomainEvent(
             event_type="night_resolved",
-            game_id=snapshot.game_id,
             phase=snapshot.phase,
             day=snapshot.day,
             visibility=EventVisibility.DEBUG,
@@ -89,7 +88,6 @@ def _advance_from_voting(
     events = [
         DomainEvent(
             event_type="vote_resolved",
-            game_id=snapshot.game_id,
             phase=snapshot.phase,
             day=snapshot.day,
             payload={
@@ -129,11 +127,10 @@ def _finish_or_move(
         return finished, [
             DomainEvent(
                 event_type="game_finished",
-                game_id=snapshot.game_id,
                 phase=Phase.FINISHED,
                 day=snapshot.day,
                 payload={
-                    "winner": win_result.winner.value,
+                    "winner": win_result.winner,
                     "reason": win_result.reason,
                     "winning_player_ids": win_result.winning_player_ids,
                 },
@@ -146,7 +143,6 @@ def _finish_or_move(
 def _phase_started(snapshot: GameSnapshot) -> DomainEvent:
     return DomainEvent(
         event_type="phase_started",
-        game_id=snapshot.game_id,
         phase=snapshot.phase,
         day=snapshot.day,
         payload={"phase": snapshot.phase.value},

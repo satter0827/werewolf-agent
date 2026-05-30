@@ -6,7 +6,8 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 ## 現在地
 
 - 5〜8 人の同期ゲームを FastAPI 経由で作成、進行、一覧、再生できる
-- 役職は `villager`、`werewolf`、`seer`、`knight`
+- packaged default の役職は `villager`、`werewolf`、`seer`、`knight`
+- ルール、役職、LLM agent profile、prompt、fake response は runtime definition として読み込む
 - フェーズは `night`、`day_discussion`、`voting`、`finished`
 - LangChain `FakeListLLM` provider で 1 game を CLI から完走できる
 - CLI は `doctor`、`ruleset`、`new`、`show`、`advance`、`play`、`timeline`、`replay`、`runs` を持つ
@@ -78,23 +79,26 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider、prompt loader |
-| `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い `GameUseCases` facade、公開 DTO、repository / telemetry port |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider |
+| `backend/src/werewolf_agent/resources/` | packaged settings、game / LLM definition、prompt、FakeListLLM response fixture |
+| `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い `GameUseCases` facade、command、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | usecase 実処理、projection、唯一の domain 接点 |
-| `backend/src/werewolf_agent/interface/runtime/` | settings、logging bootstrap、structlog context |
+| `backend/src/werewolf_agent/interface/runtime/` | settings、definition TOML loader、logging bootstrap、structlog context |
 | `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、依存注入、wire schema 変換 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、public HTTP client 利用、表示 |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP client、request builder、diagnostics、HTTP 例外変換、event sink |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | 副作用のない constants、messages、validation、redaction |
+| `backend/src/werewolf_agent/commons/` | 副作用のない constants、messages、validation、definition value、redaction |
 
 ## 設定とログ
 
 設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` が正です。`.env.example` は override 用の雛形であり、既定値の二重管理には使いません。
 
-`interface/runtime` が `defaults.toml`、`.env`、環境変数を読み取り、API / CLI / Streamlit の浅い場所で usecase へ依存として注入します。DB は `WEREWOLF_DATABASE_URL` が空なら `WEREWOLF_SQLITE_PATH` の SQLite を使います。
+`interface/runtime` が `defaults.toml`、`.env`、環境変数、定義体 TOML を読み取り、設定構築時に検証します。API / CLI / Streamlit の浅い場所では、検証済みの設定値を usecase へ依存として注入します。DB は `WEREWOLF_DATABASE_URL` が空なら `WEREWOLF_SQLITE_PATH` の SQLite を使います。
+
+定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、LLM agents は `WEREWOLF_LLM_AGENTS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE` で外部ファイルに差し替えられます。game 用定義体は `domain.game` だけ、LLM 用定義体は `domain.llm` だけに渡します。`agent.type`、`players[].agent_type`、`role_counts` 省略時の default は `interface/application` が runtime settings / role 定義体から補完し、usecase / domain は具体 agent type、role id、local rule の default を生成しません。
 
 運用ログは ECS 風 field の JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。public response、public timeline、operational log には role、night action target、private state、token、API key を出しません。
 
@@ -103,7 +107,7 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 ```bash
 scripts\check-all.cmd --api --keep-going
 uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
-uv run --group docs --extra api --extra streamlit sphinx-build -b html docs docs/sphinx/_build/html
+uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
 ```
 
 個別に確認する場合:

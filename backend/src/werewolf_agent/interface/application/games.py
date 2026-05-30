@@ -34,7 +34,9 @@ from werewolf_agent.contracts.schemas import (
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
 from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
 from werewolf_agent.interface.application.settings import (
+    build_game_definitions,
     build_game_usecase_config,
+    build_llm_definitions,
     build_llm_provider_config,
 )
 from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
@@ -75,7 +77,7 @@ def create_game_run(
         Public game response for API and CUI clients.
 
     """
-    command = game_jobs.CreateGameRunCommand.model_validate(request.model_dump(mode="json"))
+    command = _create_command(request, settings)
     with session_scope(session_factory) as session:
         response = _use_cases(session, settings).create_game_run(command)
     logger.info(
@@ -390,6 +392,8 @@ def _ruleset_use_cases(settings: AppSettings) -> game_jobs.GameUseCases:
         game_jobs.GameUseCaseDependencies(
             repository=cast(game_jobs.GameRepository, object()),
             config=build_game_usecase_config(settings),
+            game_definitions=build_game_definitions(settings),
+            llm_definitions=build_llm_definitions(settings),
             llm_provider_config=build_llm_provider_config(settings),
             telemetry=LoggingTelemetrySink(),
         )
@@ -403,6 +407,8 @@ def _dependencies(
     return game_jobs.GameUseCaseDependencies(
         repository=SqlAlchemyGameRunRepository(session),
         config=build_game_usecase_config(settings),
+        game_definitions=build_game_definitions(settings),
+        llm_definitions=build_llm_definitions(settings),
         llm_provider_config=build_llm_provider_config(settings),
         telemetry=LoggingTelemetrySink(),
     )
@@ -410,6 +416,34 @@ def _dependencies(
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
     return model_type.model_validate(source.model_dump(mode="json"))
+
+
+def _create_command(
+    request: CreateGameRunRequest,
+    settings: AppSettings,
+) -> game_jobs.CreateGameRunCommand:
+    data = request.model_dump(mode="json")
+    agent = data.get("agent") or {}
+    if agent.get("type") is None:
+        agent["type"] = settings.game_supported_agent_type
+    data["agent"] = agent
+
+    players = data.get("players")
+    if players is not None:
+        for player in players:
+            if player.get("agent_type") is None:
+                player["agent_type"] = settings.game_supported_agent_type
+
+    rule_config = data.setdefault("rule_config", {})
+    if rule_config.get("role_counts") is None:
+        player_count = _requested_player_count(request, settings)
+        role_counts = (
+            settings.game_definitions.roles.default_counts_for(player_count)
+            if settings.game_min_players <= player_count <= settings.game_max_players
+            else {}
+        )
+        rule_config["role_counts"] = role_counts
+    return game_jobs.CreateGameRunCommand.model_validate(data)
 
 
 def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -> RulesetResponse:
@@ -423,6 +457,7 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
         roles=[
             {"id": role_id, "name": role_names.get(role_id, role_id)} for role_id in ruleset.roles
         ],
+        local_rules=ruleset.local_rules,
         phases=[
             {"id": phase_id, "name": phase_names.get(phase_id, phase_id)}
             for phase_id in ruleset.phases

@@ -13,7 +13,7 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_PLAYER_ROLES_ALL_OR_NONE,
 )
 from werewolf_agent.contracts import GameError
-from werewolf_agent.domain.game.models import GameConfig, GameSnapshot, Phase, Player, Role
+from werewolf_agent.domain.game.models import GameConfig, GameSnapshot, Phase, Player
 
 
 def create_game_snapshot(
@@ -41,7 +41,6 @@ def create_game_snapshot(
         for player, role in zip(players, assigned_roles, strict=True)
     }
     return GameSnapshot(
-        game_id=config.game_id,
         config=config,
         phase=Phase.NIGHT,
         day=1,
@@ -65,7 +64,7 @@ def _assign_roles(
     config: GameConfig,
     players: Sequence[Player],
     rng: random.Random,
-) -> list[Role]:
+) -> list[str]:
     explicit_roles = [player.role for player in players]
     if any(role is not None for role in explicit_roles):
         if any(role is None for role in explicit_roles):
@@ -76,17 +75,17 @@ def _assign_roles(
                 MESSAGE_EXPLICIT_ROLES_MUST_MATCH_ROLE_COUNTS,
                 context={
                     "expected_role_counts": {
-                        role.value: count for role, count in config.role_counts.items()
+                        role: count for role, count in config.role_counts.items()
                     },
                     "actual_role_counts": {
-                        role.value: count for role, count in Counter(assigned_roles).items()
+                        role: count for role, count in Counter(assigned_roles).items()
                     },
                 },
             )
         return assigned_roles
 
-    roles: list[Role] = []
-    for role, count in sorted(config.role_counts.items(), key=lambda item: item[0].value):
+    roles: list[str] = []
+    for role, count in sorted(config.role_counts.items(), key=lambda item: item[0]):
         roles.extend([role] * count)
     rng.shuffle(roles)
     return roles

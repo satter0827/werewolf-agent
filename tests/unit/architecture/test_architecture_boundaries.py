@@ -1,11 +1,13 @@
 import ast
 import inspect
 import json
+from dataclasses import MISSING, fields
 from pathlib import Path
 from types import ModuleType
 
 import werewolf_agent.domain.llm as llm_domain
 import werewolf_agent.usecase.jobs as game_jobs
+import werewolf_agent.usecase.jobs.games as game_job_models
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "backend" / "src" / "werewolf_agent"
@@ -54,21 +56,14 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
     _assert_public_surface(
         game_jobs,
         {
-            "AdvanceGameRunCommand",
-            "AdvanceGameRunResult",
-            "AdvanceUntilInputCommand",
-            "AdvanceUntilInputResult",
-            "ActionTypeId",
             "CreateGameRunCommand",
+            "AdvanceGameRunCommand",
+            "AdvanceUntilInputCommand",
             "GameEventCreate",
-            "GamePhase",
             "GameRepository",
             "GameRunCreate",
-            "GameRunResult",
             "GameRunUpdate",
             "GameStatus",
-            "GameTimelineItem",
-            "GameTimelineResult",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
             "GameUseCases",
@@ -76,13 +71,8 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GetGameTimelineQuery",
             "GetPlayerObservationQuery",
             "ListGameRunsQuery",
-            "ListGameRunsResult",
             "LlmProviderConfig",
-            "NullTelemetrySink",
             "PlayerActionCommand",
-            "PlayerActionResult",
-            "PublicGameRunSummary",
-            "PlayerObservationResult",
             "RulesetResult",
             "StoredGameEvent",
             "StoredGameRun",
@@ -96,21 +86,33 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
 
 def test_old_usecase_jobs_names_are_not_public() -> None:
     removed_names = {
+        "ActionTypeId",
         "AdvanceGameCommand",
         "AdvanceGameResult",
+        "AdvanceGameRunResult",
+        "AdvanceUntilInputResult",
         "CreateGameCommand",
+        "GamePhase",
         "GameResult",
+        "GameRunResult",
         "GameRunsResult",
         "GameTurnsResult",
         "GameTimelineItemsResult",
+        "GameTimelineItem",
+        "GameTimelineResult",
         "GetGameQuery",
         "GetPrivateObservationQuery",
         "ListGameTimelineItemsQuery",
+        "ListGameRunsResult",
         "ListGameTurnsQuery",
         "ListGamesQuery",
         "ListPublicEventsQuery",
+        "NullTelemetrySink",
+        "PlayerActionResult",
+        "PlayerObservationResult",
         "PrivateObservationResult",
         "PublicEventsResult",
+        "PublicGameRunSummary",
         "advance_game",
         "create_game",
         "get_game",
@@ -133,17 +135,12 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentDecision",
             "AgentObservation",
             "AgentPhase",
+            "AgentProfile",
+            "AgentProfileCatalog",
             "AgentPlayerStatus",
-            "AgentRole",
-            "FakeResponseResource",
             "LangChainDecisionProvider",
             "LlmDecisionProvider",
-            "PromptMessage",
-            "PromptResource",
             "VisiblePlayer",
-            "build_fake_decision_provider",
-            "load_fake_response_resource",
-            "load_prompt_resource",
         },
     )
 
@@ -169,6 +166,26 @@ def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
 
         assert parameters[0].name == "self"
         assert all(parameter.name != "dependencies" for parameter in parameters)
+
+
+def test_usecase_runtime_values_must_be_supplied_by_outer_layer() -> None:
+    for model_type in (game_jobs.GameUseCaseConfig, game_jobs.LlmProviderConfig):
+        for dataclass_field in fields(model_type):
+            assert dataclass_field.default is MISSING
+            assert dataclass_field.default_factory is MISSING
+
+    dependency_fields = {
+        dataclass_field.name: dataclass_field
+        for dataclass_field in fields(game_jobs.GameUseCaseDependencies)
+    }
+    for field_name in ("config", "llm_provider_config"):
+        assert dependency_fields[field_name].default is MISSING
+        assert dependency_fields[field_name].default_factory is MISSING
+
+    assert game_job_models.CreateGamePlayer.model_fields["agent_type"].is_required()
+    assert game_job_models.CreateGameAgentConfig.model_fields["type"].is_required()
+    assert game_job_models.CreateGameRunCommand.model_fields["agent"].is_required()
+    assert game_job_models.AdvanceUntilInputCommand.model_fields["max_steps"].is_required()
 
 
 def test_usecase_imports_domain_only_from_internal_boundary() -> None:
@@ -478,7 +495,9 @@ def test_contracts_do_not_import_api_frameworks() -> None:
 
 def test_domain_does_not_import_outer_layers() -> None:
     allowed_commons_modules = {
+        "werewolf_agent.commons.shared.definitions",
         "werewolf_agent.commons.shared.messages",
+        "werewolf_agent.commons.shared.models",
         "werewolf_agent.commons.shared.validation",
     }
     forbidden_prefixes = (
@@ -496,6 +515,44 @@ def test_domain_does_not_import_outer_layers() -> None:
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
         and module not in allowed_commons_modules
     ]
+
+
+def test_file_resource_loading_is_confined_to_interface_runtime() -> None:
+    allowed_path = PACKAGE / "interface" / "runtime"
+    forbidden_tokens = (
+        "tomllib",
+        "importlib.resources",
+        "from importlib.resources",
+        '.open("rb")',
+        ".open('rb')",
+    )
+    offenders: list[tuple[Path, str]] = []
+
+    for source_path in PACKAGE.rglob("*.py"):
+        source = source_path.read_text(encoding="utf-8")
+        if source_path.is_relative_to(allowed_path):
+            continue
+        offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
+
+    assert not offenders
+
+
+def test_domain_and_usecase_do_not_depend_on_fixed_role_ids() -> None:
+    forbidden_tokens = (
+        "ROLE_VILLAGER",
+        "ROLE_WEREWOLF",
+        "ROLE_SEER",
+        "ROLE_KNIGHT",
+        "player_count - 3",
+    )
+    offenders: list[tuple[Path, str]] = []
+
+    for base_path in (PACKAGE / "domain", PACKAGE / "usecase"):
+        for source_path in base_path.rglob("*.py"):
+            source = source_path.read_text(encoding="utf-8")
+            offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
+
+    assert not offenders
 
 
 def test_removed_import_paths_do_not_exist() -> None:

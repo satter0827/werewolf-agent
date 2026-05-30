@@ -5,7 +5,9 @@ import pytest
 from pydantic import ValidationError
 
 from werewolf_agent.interface.application.settings import (
+    build_game_definitions,
     build_game_usecase_config,
+    build_llm_definitions,
     build_llm_provider_config,
 )
 from werewolf_agent.interface.runtime import (
@@ -48,6 +50,9 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
     assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
+    assert PACKAGED_DEFAULTS["llm_agents_file"] == ""
+    assert PACKAGED_DEFAULTS["game_rules_file"] == ""
+    assert PACKAGED_DEFAULTS["game_roles_file"] == ""
 
 
 def test_database_settings_default_to_sqlite_path_under_generated_dir() -> None:
@@ -128,6 +133,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.model == "fake-list-llm"
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
+    assert settings.llm_agents_path is None
     assert settings.cors_allowed_methods_list == ["GET", "POST"]
     assert settings.cors_allowed_headers_list == ["*"]
     assert settings.game_role_name_map["werewolf"] == "人狼"
@@ -135,18 +141,16 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
     assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
-    assert settings.game_default_tie_break_policy == "no_elimination"
-    assert settings.game_default_day_speech_turns == 1
-    assert settings.game_default_allow_self_vote is False
-    assert settings.game_default_allow_action_revisions is False
+    assert settings.game_rules_path is None
+    assert settings.game_roles_path is None
     assert settings.game_advance_until_input_max_steps == 64
 
 
 def test_game_usecase_config_is_built_from_interface_settings() -> None:
     settings = AppSettings(
         _env_file=None,
-        game_min_players=4,
-        game_max_players=10,
+        game_min_players=5,
+        game_max_players=8,
         game_default_player_count=7,
         game_supported_agent_type="llm",
         game_supported_agent_name="LLM Agent",
@@ -157,8 +161,8 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
 
     usecase_config = build_game_usecase_config(settings)
 
-    assert usecase_config.min_players == 4
-    assert usecase_config.max_players == 10
+    assert usecase_config.min_players == 5
+    assert usecase_config.max_players == 8
     assert usecase_config.default_player_count == 7
     assert usecase_config.supported_agent_type == "llm"
     assert usecase_config.default_ruleset_id == "default"
@@ -167,24 +171,49 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
     assert llm_config.model == "fake-list-llm"
-    assert llm_config.prompt_file is None
-    assert llm_config.fake_responses_file is None
+
+    game_definitions = build_game_definitions(settings)
+    assert sorted(game_definitions.roles.roles) == ["knight", "seer", "villager", "werewolf"]
+    assert game_definitions.roles.default_counts_for(5) == {
+        "werewolf": 1,
+        "seer": 1,
+        "knight": 1,
+        "villager": 2,
+    }
+
+    llm_definitions = build_llm_definitions(settings)
+    assert sorted(llm_definitions.agents.agents) == ["aggressive_debater", "calm_analyst"]
+    assert llm_definitions.prompt.response_format["schema"] == "AgentDecision"
 
 
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("WEREWOLF_GAME_MIN_PLAYERS", "4")
-    monkeypatch.setenv("WEREWOLF_GAME_MAX_PLAYERS", "10")
+    monkeypatch.setenv("WEREWOLF_GAME_MIN_PLAYERS", "5")
+    monkeypatch.setenv("WEREWOLF_GAME_MAX_PLAYERS", "8")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_PLAYER_COUNT", "7")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_TYPE", "llm")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable LLM Agent")
-    monkeypatch.setenv("WEREWOLF_LLM_PROMPT_FILE", "prompts/custom.toml")
-    monkeypatch.setenv("WEREWOLF_LLM_FAKE_RESPONSES_FILE", "llm/fake.toml")
+    monkeypatch.setenv(
+        "WEREWOLF_LLM_PROMPT_FILE",
+        "backend/src/werewolf_agent/resources/prompts/agent_decision.toml",
+    )
+    monkeypatch.setenv(
+        "WEREWOLF_LLM_FAKE_RESPONSES_FILE",
+        "backend/src/werewolf_agent/resources/llm/fake_responses.toml",
+    )
+    monkeypatch.setenv(
+        "WEREWOLF_LLM_AGENTS_FILE",
+        "backend/src/werewolf_agent/resources/llm/agents.toml",
+    )
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_TIE_BREAK_POLICY", "random_elimination")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_DAY_SPEECH_TURNS", "2")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE", "true")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_ALLOW_ACTION_REVISIONS", "true")
+    monkeypatch.setenv(
+        "WEREWOLF_GAME_RULES_FILE",
+        "backend/src/werewolf_agent/resources/game/rules.toml",
+    )
+    monkeypatch.setenv(
+        "WEREWOLF_GAME_ROLES_FILE",
+        "backend/src/werewolf_agent/resources/game/roles.toml",
+    )
     monkeypatch.setenv("WEREWOLF_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS", "13")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
@@ -211,19 +240,33 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
 
     settings = AppSettings(_env_file=None)
 
-    assert settings.game_min_players == 4
-    assert settings.game_max_players == 10
+    assert settings.game_min_players == 5
+    assert settings.game_max_players == 8
     assert settings.game_default_player_count == 7
     assert settings.game_supported_agent_type == "llm"
     assert settings.game_supported_agent_name == "Configurable LLM Agent"
-    assert settings.llm_prompt_path == repository_root() / "prompts/custom.toml"
-    assert settings.llm_fake_responses_path == repository_root() / "llm/fake.toml"
+    assert (
+        settings.llm_prompt_path
+        == repository_root() / "backend/src/werewolf_agent/resources/prompts/agent_decision.toml"
+    )
+    assert (
+        settings.llm_fake_responses_path
+        == repository_root() / "backend/src/werewolf_agent/resources/llm/fake_responses.toml"
+    )
+    assert (
+        settings.llm_agents_path
+        == repository_root() / "backend/src/werewolf_agent/resources/llm/agents.toml"
+    )
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
-    assert settings.game_default_tie_break_policy == "random_elimination"
-    assert settings.game_default_day_speech_turns == 2
-    assert settings.game_default_allow_self_vote is True
-    assert settings.game_default_allow_action_revisions is True
+    assert (
+        settings.game_rules_path
+        == repository_root() / "backend/src/werewolf_agent/resources/game/rules.toml"
+    )
+    assert (
+        settings.game_roles_path
+        == repository_root() / "backend/src/werewolf_agent/resources/game/roles.toml"
+    )
     assert settings.game_advance_until_input_max_steps == 13
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
@@ -248,6 +291,173 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
+
+
+def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:
+    rules_file = tmp_path / "rules.toml"
+    roles_file = tmp_path / "roles.toml"
+    agents_file = tmp_path / "agents.toml"
+    prompt_file = tmp_path / "prompt.toml"
+    fake_responses_file = tmp_path / "fake_responses.toml"
+
+    rules_file.write_text(
+        """
+[local_rules]
+allow_self_vote = false
+allow_vote_revision = false
+allow_night_action_revision = false
+enable_first_night_attack = true
+enable_no_elimination_on_tie = true
+enable_random_elimination_on_tie = false
+allow_knight_self_guard = true
+allow_knight_repeat_guard = true
+allow_seer_self_inspect = false
+allow_werewolf_friendly_fire = false
+reveal_role_on_death = false
+""".strip(),
+        encoding="utf-8",
+    )
+    roles_file.write_text(
+        """
+[roles.plain]
+faction = "village"
+abilities = []
+
+[roles.beast]
+faction = "werewolf"
+abilities = ["night_attack", "pack_knowledge"]
+
+[default_role_counts.5]
+beast = 1
+plain = 4
+""".strip(),
+        encoding="utf-8",
+    )
+    agents_file.write_text(
+        """
+[agents.quiet]
+enabled = true
+name = "Quiet"
+personality = "Careful"
+speaking_style = "Short"
+reasoning_style = "Evidence first"
+risk_tolerance = "low"
+""".strip(),
+        encoding="utf-8",
+    )
+    prompt_file.write_text(
+        """
+name = "test"
+version = 1
+alias = "local"
+input_variables = ["player_id"]
+response_format = { schema = "AgentDecision" }
+[[messages]]
+role = "human"
+content = "{{player_id}}"
+""".strip(),
+        encoding="utf-8",
+    )
+    fake_responses_file.write_text(
+        """
+name = "test"
+version = 1
+alias = "local"
+[responses]
+pass = '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}'
+""".strip(),
+        encoding="utf-8",
+    )
+
+    settings = AppSettings(
+        _env_file=None,
+        game_min_players=5,
+        game_max_players=5,
+        game_default_player_count=5,
+        game_rules_file=str(rules_file),
+        game_roles_file=str(roles_file),
+        llm_agents_file=str(agents_file),
+        llm_prompt_file=str(prompt_file),
+        llm_fake_responses_file=str(fake_responses_file),
+    )
+
+    assert settings.game_definitions.roles.default_counts_for(5) == {
+        "beast": 1,
+        "plain": 4,
+    }
+    assert sorted(settings.llm_definitions.agents.agents) == ["quiet"]
+    assert settings.llm_definitions.prompt.name == "test"
+
+
+def test_invalid_definition_values_fail_in_runtime_settings(tmp_path: Path) -> None:
+    roles_file = tmp_path / "roles.toml"
+    roles_file.write_text(
+        """
+[roles.plain]
+faction = "village"
+abilities = []
+
+[default_role_counts.5]
+missing = 5
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="unknown roles"):
+        AppSettings(
+            _env_file=None,
+            game_min_players=5,
+            game_max_players=5,
+            game_default_player_count=5,
+            game_roles_file=str(roles_file),
+        )
+
+
+def test_missing_local_rule_flags_fail_during_settings_load(tmp_path: Path) -> None:
+    rules_file = tmp_path / "rules.toml"
+    rules_file.write_text(
+        """
+[local_rules]
+enable_no_elimination_on_tie = true
+enable_random_elimination_on_tie = false
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="allow_self_vote"):
+        AppSettings(
+            _env_file=None,
+            game_rules_file=str(rules_file),
+        )
+
+
+def test_missing_default_role_counts_fail_during_settings_load(tmp_path: Path) -> None:
+    roles_file = tmp_path / "roles.toml"
+    roles_file.write_text(
+        """
+[roles.plain]
+faction = "village"
+abilities = []
+
+[roles.beast]
+faction = "werewolf"
+abilities = ["night_attack", "pack_knowledge"]
+
+[default_role_counts.5]
+beast = 1
+plain = 4
+""".strip(),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValidationError, match="6"):
+        AppSettings(
+            _env_file=None,
+            game_min_players=5,
+            game_max_players=6,
+            game_default_player_count=5,
+            game_roles_file=str(roles_file),
+        )
 
 
 def test_logging_settings_load_from_environment(
@@ -316,7 +526,6 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("cli_output_format", "xml"),
         ("streamlit_language", "fr"),
         ("streamlit_initial_sidebar_state", "hidden"),
-        ("game_default_tie_break_policy", "coin_flip"),
         ("game_supported_agent_type", "bot"),
         ("llm_provider", "openai"),
     ],
