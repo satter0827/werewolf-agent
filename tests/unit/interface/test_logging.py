@@ -6,12 +6,14 @@ from pathlib import Path
 import structlog
 
 from werewolf_agent.commons.configuration import AppSettings
-from werewolf_agent.commons.logging import (
-    bind_log_context,
-    configure_logging,
-    get_log_context,
+from werewolf_agent.commons.observability import (
+    bind_observation_context,
+    configure_observability,
+    get_observation_context,
 )
 from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
+from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
+from werewolf_agent.usecase.jobs import TelemetryEvent
 
 
 def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
@@ -38,18 +40,22 @@ def _read_log(path: Path) -> dict[str, object]:
     return json.loads(lines[0])
 
 
-def test_configure_logging_writes_ecs_jsonl_with_context_and_extra(tmp_path: Path) -> None:
+def test_configure_observability_writes_ecs_jsonl_with_context_and_extra(
+    tmp_path: Path,
+) -> None:
     settings = _settings(tmp_path)
-    configure_logging(settings)
+    configure_observability(settings)
 
     logger = logging.getLogger("werewolf_agent.tests")
-    with bind_log_context(trace_id="trace-1", method="GET", path="/api/v1/health"):
+    with bind_observation_context(trace_id="trace-1", method="GET", path="/api/v1/health"):
         logger.info(
             "hello %s",
             "world",
             extra={
                 "api_key": "secret-value",
                 "count": 2,
+                "event_action": "test.event",
+                "game_id": "game-1",
                 "http_status": 200,
                 "duration_ms": 1.25,
             },
@@ -64,7 +70,9 @@ def test_configure_logging_writes_ecs_jsonl_with_context_and_extra(tmp_path: Pat
     assert payload["service.name"] == "werewolf-agent-api"
     assert payload["service.version"] == "0.1.0"
     assert payload["event.dataset"] == "werewolf_agent.tests"
+    assert payload["event.action"] == "test.event"
     assert payload["trace.id"] == "trace-1"
+    assert payload["game.id"] == "game-1"
     assert payload["http.request.method"] == "GET"
     assert payload["url.path"] == "/api/v1/health"
     assert payload["http.response.status_code"] == 200
@@ -75,7 +83,7 @@ def test_configure_logging_writes_ecs_jsonl_with_context_and_extra(tmp_path: Pat
 
 def test_structlog_uses_same_jsonl_processors(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
-    configure_logging(settings)
+    configure_observability(settings)
 
     structlog.get_logger("werewolf_agent.tests.structlog").info(
         "structured event",
@@ -88,13 +96,13 @@ def test_structlog_uses_same_jsonl_processors(tmp_path: Path) -> None:
     assert payload["log.level"] == "INFO"
     assert payload["log.logger"] == "werewolf_agent.tests.structlog"
     assert payload["message"] == "structured event"
-    assert payload["game_id"] == "game-1"
+    assert payload["game.id"] == "game-1"
     assert payload["token"] == "[REDACTED]"
 
 
 def test_configure_logging_supports_service_name_override(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
-    configure_logging(settings, service_name="werewolf-agent-streamlit")
+    configure_observability(settings, service_name="werewolf-agent-streamlit")
 
     logging.getLogger("werewolf_agent.tests").info("streamlit log")
 
@@ -103,18 +111,18 @@ def test_configure_logging_supports_service_name_override(tmp_path: Path) -> Non
     assert payload["service.name"] == "werewolf-agent-streamlit"
 
 
-def test_bound_log_context_does_not_leak_outside_scope() -> None:
-    assert get_log_context() == {}
+def test_bound_observation_context_does_not_leak_outside_scope() -> None:
+    assert get_observation_context() == {}
 
-    with bind_log_context(game_id="game-1"):
-        assert get_log_context()["game_id"] == "game-1"
+    with bind_observation_context(game_id="game-1"):
+        assert get_observation_context()["game_id"] == "game-1"
 
-    assert "game_id" not in get_log_context()
+    assert "game_id" not in get_observation_context()
 
 
 def test_configure_logging_includes_redacted_exception_payload(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
-    configure_logging(settings)
+    configure_observability(settings)
     logger = logging.getLogger("werewolf_agent.tests")
 
     try:
@@ -136,7 +144,7 @@ def test_configure_logging_supports_stdout_output(
     capsys,
 ) -> None:
     settings = _settings(tmp_path, log_output="stdout")
-    configure_logging(settings)
+    configure_observability(settings)
 
     logging.getLogger("werewolf_agent.tests").warning("stdout log")
     _flush_handlers()
@@ -152,7 +160,7 @@ def test_configure_logging_supports_both_and_none_outputs(
     capsys,
 ) -> None:
     both_settings = _settings(tmp_path / "both", log_output="both")
-    configure_logging(both_settings)
+    configure_observability(both_settings)
     logging.getLogger("werewolf_agent.tests").error("both log")
     both_payload = _read_log(both_settings.log_file_path)
     captured = capsys.readouterr()
@@ -160,10 +168,38 @@ def test_configure_logging_supports_both_and_none_outputs(
     assert both_payload["message"] == "both log"
 
     none_settings = _settings(tmp_path / "none", log_output="none")
-    configure_logging(none_settings)
+    configure_observability(none_settings)
     logging.getLogger("werewolf_agent.tests").critical("dropped log")
     _flush_handlers()
     assert not none_settings.log_file_path.exists()
+
+
+def test_logging_telemetry_sink_writes_structured_event(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_observability(settings)
+
+    sink = LoggingTelemetrySink(logger_name="werewolf_agent.tests.telemetry")
+    sink.record(
+        TelemetryEvent(
+            "game.phase.advance_completed",
+            level="DEBUG",
+            fields={
+                "game_id": "game-1",
+                "game_phase": "voting",
+                "game_version": 3,
+                "control_token": "secret",
+            },
+        )
+    )
+
+    payload = _read_log(settings.log_file_path)
+
+    assert payload["message"] == "game.phase.advance_completed"
+    assert payload["event.action"] == "game.phase.advance_completed"
+    assert payload["game.id"] == "game-1"
+    assert payload["game.phase"] == "voting"
+    assert payload["game.version"] == 3
+    assert payload["control_token"] == "[REDACTED]"
 
 
 def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
@@ -171,7 +207,7 @@ def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
         {
             "safe": "value",
             "authorization": "Bearer abc",
-            "nested": {"api_token": "abc", "model": "fake"},
+            "nested": {"api_token": "abc", "model": "fake", "role": "seer"},
             "items": [{"password": "pw"}],
         }
     )
@@ -179,7 +215,11 @@ def test_redact_mapping_masks_sensitive_keys_recursively() -> None:
     assert redacted == {
         "safe": "value",
         "authorization": "[REDACTED]",
-        "nested": {"api_token": "[REDACTED]", "model": "fake"},
+        "nested": {
+            "api_token": "[REDACTED]",
+            "model": "fake",
+            "role": "[REDACTED]",
+        },
         "items": [{"password": "[REDACTED]"}],
     }
 

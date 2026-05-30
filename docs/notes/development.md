@@ -91,7 +91,7 @@ launch 設定を変更する場合も、repository 配下に検証用 DB / save 
 | `backend/src/werewolf_agent/interface/shared/` | interface 共通の HTTP client、public API workflow、request builder、diagnostics、HTTP 例外変換、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit のプレイ画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、validation、redaction |
+| `backend/src/werewolf_agent/commons/` | configuration、observability、message catalog、validation、redaction |
 | `tests/unit/` | process 内 unit test |
 | `tests/integration/api/` | FastAPI / DB / API integration test |
 
@@ -114,7 +114,7 @@ uv run --no-project --with "sphinx>=8,<9" --with "myst-parser>=4,<5" sphinx-buil
 - CLI は `contracts/schemas.py` と HTTP client だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
 - interface 層から usecase を呼ぶ場所は `interface/application` に限定する
-- 設定読み込みは `commons/configuration`、logging は `commons/logging` に置き、domain / usecase には注入済み値だけ渡す
+- 設定読み込みは `commons/configuration`、ログ出力基盤は `commons/observability` に置き、domain / usecase には注入済み値だけ渡す
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `usecase/jobs` は domain を import せず、public DTO と stateless facade に限定する
 - usecase から domain へ入る code は `usecase/internal` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを import する
@@ -169,10 +169,10 @@ uv run --extra api pytest tests/integration/api
 
 ## 生成物
 
-Git 管理しないものは `.werewolf-agent/` に集約します。
+Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` または `%TEMP%\werewolf-agent` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
-- operational logs: `.werewolf-agent/logs/`
+- operational logs: 既定は `.werewolf-agent\logs\`、永続運用では `WEREWOLF_LOG_DIR` で指定
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
 - coverage data: `.werewolf-agent/coverage/.coverage`
@@ -226,6 +226,13 @@ uv build --no-sources
 - `WEREWOLF_LOG_OUTPUT=file` と永続 volume 上の `WEREWOLF_LOG_DIR`
 - 公開 UI に合わせた `WEREWOLF_CORS_ALLOWED_ORIGINS`
 - migration は release command / one-off job で実行
+
+ログ確認:
+
+- 既定の運用ログは `.werewolf-agent/logs/werewolf-agent.jsonl` へ出力する
+- API と Streamlit は `trace.id` を共有し、HTTP client は `X-Trace-Id` を伝播する
+- usecase の進行診断は `TelemetrySink` 経由で `event.action=game.phase.*` / `game.manual_action.accepted` として出る
+- `control_token`、`authorization`、`private_state`、`role`、`night_action` 系 field は redaction 対象にする
 
 ## 未実装
 

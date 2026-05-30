@@ -20,10 +20,14 @@ from werewolf_agent.usecase.jobs import (
     ListGameRunsQuery,
     ListPublicGameEventsQuery,
     ListPublicGameTurnsQuery,
+    NullTelemetrySink,
     StoredGameEvent,
     StoredGameRun,
     StoredGameRunSummary,
     StoredGameTurn,
+    SubmitPlayerActionCommand,
+    TelemetryEvent,
+    TelemetrySink,
     advance_game_run,
     create_game_run,
     get_default_ruleset,
@@ -31,9 +35,14 @@ from werewolf_agent.usecase.jobs import (
     list_game_runs,
     list_public_game_events,
     list_public_game_turns,
+    submit_player_action,
 )
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def test_null_telemetry_sink_accepts_events() -> None:
+    NullTelemetrySink().record(TelemetryEvent("game.phase.advance_started"))
 
 
 class InMemoryGameRepository(GameRepository):
@@ -52,6 +61,8 @@ class InMemoryGameRepository(GameRepository):
             config=run.config,
             public_state=run.public_state,
             private_state=run.private_state,
+            pending_actions=run.pending_actions,
+            control_token_hashes=run.control_token_hashes,
             version=run.version,
             created_at=NOW,
             updated_at=NOW,
@@ -92,6 +103,8 @@ class InMemoryGameRepository(GameRepository):
             config=current.config,
             public_state=update.public_state,
             private_state=update.private_state,
+            pending_actions=update.pending_actions,
+            control_token_hashes=current.control_token_hashes,
             version=update.version,
             created_at=current.created_at,
             updated_at=NOW,
@@ -182,14 +195,24 @@ class InMemoryGameRepository(GameRepository):
         )
 
 
+class CollectingTelemetrySink:
+    def __init__(self) -> None:
+        self.events: list[TelemetryEvent] = []
+
+    def record(self, event: TelemetryEvent) -> None:
+        self.events.append(event)
+
+
 def dependencies(
     *,
     config: GameUseCaseConfig | None = None,
+    telemetry: TelemetrySink | None = None,
 ) -> tuple[GameUseCaseDependencies, InMemoryGameRepository]:
     repository = InMemoryGameRepository()
     return GameUseCaseDependencies(
         repository=repository,
         config=config or GameUseCaseConfig(),
+        telemetry=telemetry or CollectingTelemetrySink(),
     ), repository
 
 
@@ -264,7 +287,8 @@ def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
 
 
 def test_advance_game_delegates_core_progression_and_returns_public_payloads() -> None:
-    deps, repository = dependencies()
+    telemetry = CollectingTelemetrySink()
+    deps, repository = dependencies(telemetry=telemetry)
     created = create_game_run(CreateGameRunCommand(player_count=5, seed=1), dependencies=deps)
 
     advanced = advance_game_run(
@@ -281,6 +305,47 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert "role_counts" not in json.dumps(events.model_dump(mode="json"))
     assert events.events
     assert events.next_after <= repository.events[UUID(created.game_id)][-1].sequence
+    assert "game.phase.drive_started" in [event.action for event in telemetry.events]
+    assert "game.phase.advance_completed" in [event.action for event in telemetry.events]
+    assert all("private_state" not in event.fields for event in telemetry.events)
+
+
+def test_submit_manual_action_emits_sanitized_telemetry() -> None:
+    telemetry = CollectingTelemetrySink()
+    deps, _repository = dependencies(telemetry=telemetry)
+    created = create_game_run(
+        CreateGameRunCommand(
+            players=[
+                {"id": "p1", "name": "Alice", "agent_type": "human"},
+                {"id": "p2", "name": "Bob", "agent_type": "llm"},
+                {"id": "p3", "name": "Carol", "agent_type": "llm"},
+                {"id": "p4", "name": "Dave", "agent_type": "llm"},
+                {"id": "p5", "name": "Eve", "agent_type": "llm"},
+            ],
+            seed=1,
+        ),
+        dependencies=deps,
+    )
+    advance_game_run(AdvanceGameRunCommand(game_id=created.game_id), dependencies=deps)
+
+    submit_player_action(
+        SubmitPlayerActionCommand(
+            game_id=created.game_id,
+            player_id="p1",
+            control_token=created.control_tokens["p1"] if created.control_tokens else "",
+            type="speech",
+            message="hello",
+        ),
+        dependencies=deps,
+    )
+
+    event = next(
+        event for event in telemetry.events if event.action == "game.manual_action.accepted"
+    )
+    assert event.fields["game_action_type"] == "speech"
+    assert event.fields["has_message"] is True
+    assert "control_token" not in event.fields
+    assert "message" not in event.fields
 
 
 def test_list_games_and_turns_return_public_read_models() -> None:

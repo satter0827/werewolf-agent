@@ -36,6 +36,21 @@ def test_error_codes_are_unique_and_all_have_specs() -> None:
         assert isinstance(spec.status, HTTPStatus)
         assert spec.title
         assert spec.detail
+        assert spec.log_level in {"INFO", "WARNING", "ERROR"}
+
+
+def test_error_specs_classify_expected_user_errors_as_info() -> None:
+    assert ERROR_SPECS[ErrorCode.CONFIG_INVALID_VALUE].log_level == "INFO"
+    assert ERROR_SPECS[ErrorCode.GAME_INVALID_ACTION].log_level == "INFO"
+    assert ERROR_SPECS[ErrorCode.GAME_INVALID_PHASE].log_level == "INFO"
+    assert ERROR_SPECS[ErrorCode.RESOURCE_NOT_FOUND].log_level == "INFO"
+
+
+def test_error_specs_classify_operational_failures_above_info() -> None:
+    assert ERROR_SPECS[ErrorCode.API_UNAVAILABLE].log_level == "WARNING"
+    assert ERROR_SPECS[ErrorCode.LLM_PROVIDER_UNAVAILABLE].log_level == "WARNING"
+    assert ERROR_SPECS[ErrorCode.OBSERVATION_WRITE_FAILED].log_level == "WARNING"
+    assert ERROR_SPECS[ErrorCode.INTERNAL_UNEXPECTED].log_level == "ERROR"
 
 
 def test_problem_type_uri_uses_stable_tag_scheme() -> None:

@@ -10,6 +10,7 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from werewolf_agent.commons.observability import get_observation_context
 from werewolf_agent.commons.shared.messages import (
     LOG_SHARED_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
@@ -37,6 +38,7 @@ from werewolf_agent.contracts.schemas import (
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
+TRACE_ID_HEADER = "X-Trace-Id"
 
 
 class GameApiClient(Protocol):
@@ -226,17 +228,20 @@ class HttpGameApiClient:
         headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         started = time.perf_counter()
+        request_headers = _request_headers(headers)
         try:
             response = self._client.request(
                 method,
                 path,
                 json=body,
                 params=params,
-                headers=headers,
+                headers=request_headers,
             )
             logger.debug(
                 LOG_SHARED_API_REQUEST_COMPLETED,
                 extra={
+                    "event_action": LOG_SHARED_API_REQUEST_COMPLETED,
+                    "event_outcome": "success" if response.status_code < 400 else "failure",
                     "method": method,
                     "path": path,
                     "http_status": response.status_code,
@@ -323,3 +328,11 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
 
 def _authorization_header(control_token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {control_token}"}
+
+
+def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:
+    request_headers = dict(headers or {})
+    trace_id = get_observation_context().get("trace_id")
+    if trace_id and TRACE_ID_HEADER not in request_headers:
+        request_headers[TRACE_ID_HEADER] = trace_id
+    return request_headers

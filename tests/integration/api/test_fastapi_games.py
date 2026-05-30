@@ -69,12 +69,93 @@ def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
     payload = json.loads(settings.log_file_path.read_text(encoding="utf-8").splitlines()[0])
 
     assert response.status_code == 200
-    assert payload["message"] == "API request completed"
+    assert payload["message"] == "http.request.completed"
+    assert payload["event.action"] == "http.request.completed"
+    assert payload["event.outcome"] == "success"
     assert payload["trace.id"] == "trace-log"
     assert payload["http.request.method"] == "GET"
     assert payload["url.path"] == "/api/v1/health"
     assert payload["http.response.status_code"] == 200
     assert isinstance(payload["event.duration"], int)
+
+
+def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="file",
+        log_dir=tmp_path,
+        log_file_name="api.jsonl",
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            response = test_client.post(
+                "/api/v1/games",
+                json={"player_count": 5, "seed": 1},
+                headers={"X-Trace-Id": "trace-create"},
+            )
+    finally:
+        app.state.engine.dispose()
+
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    payloads = [
+        json.loads(line)
+        for line in settings.log_file_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+
+    assert response.status_code == 201
+    game_log = next(
+        payload for payload in payloads if payload["event.action"] == "game.run.created"
+    )
+    request_log = next(
+        payload for payload in payloads if payload["event.action"] == "http.request.completed"
+    )
+    assert game_log["trace.id"] == "trace-create"
+    assert request_log["trace.id"] == "trace-create"
+
+
+def test_api_logs_expected_user_error_at_info(tmp_path: Path) -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="file",
+        log_dir=tmp_path,
+        log_file_name="api.jsonl",
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            response = test_client.post(
+                "/api/v1/games",
+                json={"player_count": 5, "agent": {"type": "dummy"}},
+                headers={"X-Trace-Id": "trace-invalid-action"},
+            )
+    finally:
+        app.state.engine.dispose()
+
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    payloads = [
+        json.loads(line)
+        for line in settings.log_file_path.read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+
+    assert response.status_code == 422
+    error_log = next(
+        payload
+        for payload in payloads
+        if payload["event.action"] == "http.application_error.handled"
+    )
+    assert error_log["log.level"] == "INFO"
+    assert error_log["event.outcome"] == "failure"
+    assert error_log["trace.id"] == "trace-invalid-action"
+    assert error_log["error.code"] == "game.invalid_action"
 
 
 def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> None:

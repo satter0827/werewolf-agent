@@ -43,6 +43,11 @@ from werewolf_agent.usecase.jobs.games import (
     submit_player_action,
 )
 from werewolf_agent.usecase.jobs.ports import GameRepository
+from werewolf_agent.usecase.jobs.telemetry import (
+    NullTelemetrySink,
+    TelemetryEvent,
+    TelemetrySink,
+)
 
 __all__ = [
     "ActionTypeId",
@@ -66,6 +71,7 @@ __all__ = [
     "ListPublicGameTurnsQuery",
     "ListPublicGameTurnsResult",
     "LlmProviderConfig",
+    "NullTelemetrySink",
     "PlayerObservationResult",
     "PublicGameEventsResult",
     "PublicGameRunSummary",
@@ -77,6 +83,8 @@ __all__ = [
     "StoredGameTurn",
     "SubmitPlayerActionCommand",
     "SubmitPlayerActionResult",
+    "TelemetryEvent",
+    "TelemetrySink",
     "advance_game_run",
     "create_game_run",
     "get_default_ruleset",

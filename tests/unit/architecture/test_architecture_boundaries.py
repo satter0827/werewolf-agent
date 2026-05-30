@@ -75,6 +75,7 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "ListPublicGameTurnsQuery",
             "ListPublicGameTurnsResult",
             "LlmProviderConfig",
+            "NullTelemetrySink",
             "PlayerObservationResult",
             "PublicGameEventsResult",
             "PublicGameRunSummary",
@@ -86,6 +87,8 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "StoredGameTurn",
             "SubmitPlayerActionCommand",
             "SubmitPlayerActionResult",
+            "TelemetryEvent",
+            "TelemetrySink",
             "advance_game_run",
             "create_game_run",
             "get_default_ruleset",
@@ -363,14 +366,22 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
 
 
 def test_vscode_migration_task_matches_launch_runtime_state() -> None:
+    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
     tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
-    migrate_task = next(task for task in tasks["tasks"] if task["label"] == "API: migrate")
+    app_compound = next(
+        compound for compound in launch["compounds"] if compound["name"] == "App: API + Streamlit"
+    )
+    migrate_task = next(
+        task for task in tasks["tasks"] if task["label"] == app_compound["preLaunchTask"]
+    )
 
     assert migrate_task["args"] == [
         "run",
         "--no-sync",
         "--extra",
         "api",
+        "python",
+        "-m",
         "alembic",
         "upgrade",
         "head",

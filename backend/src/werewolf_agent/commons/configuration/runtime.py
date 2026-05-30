@@ -5,7 +5,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from werewolf_agent.commons.configuration.settings import AppSettings, get_settings
-from werewolf_agent.commons.logging import configure_logging
+from werewolf_agent.commons.observability import configure_observability
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_INVALID_APPLICATION_CONFIGURATION,
     MESSAGE_INVALID_VALUE,
@@ -26,7 +26,7 @@ def configure_interface_logging(
 ) -> AppSettings:
     """Configure logging for an interface process and return the settings used."""
     loaded_settings = settings or load_app_settings()
-    configure_logging(loaded_settings, service_name=service_name)
+    configure_observability(loaded_settings, service_name=service_name)
     return loaded_settings
 
 

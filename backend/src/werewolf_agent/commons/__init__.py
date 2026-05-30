@@ -1,1 +1,1 @@
-"""Internal shared helpers for logging, replay events, security, and constants."""
+"""Internal shared helpers for observability, replay events, security, and constants."""

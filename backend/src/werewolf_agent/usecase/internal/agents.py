@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -26,8 +25,6 @@ from werewolf_agent.domain.llm.models import (
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
 from werewolf_agent.domain.llm.service import build_fake_decision_provider
 from werewolf_agent.usecase.jobs.games import LlmProviderConfig
-
-logger = logging.getLogger(__name__)
 
 
 class PlayerAgent(Protocol):
@@ -55,16 +52,6 @@ class LlmAgent:
         """Return one structured action for the current observation."""
         agent_observation = _agent_observation_from_game(observation)
         decision = self.provider.choose_decision(self.player_id, agent_observation)
-        logger.debug(
-            "llm decision selected",
-            extra={
-                "actor_id": self.player_id,
-                "candidate_count": _safe_candidate_count(agent_observation),
-                "day": agent_observation.day,
-                "decision_type": decision.type.value,
-                "phase": agent_observation.phase.value,
-            },
-        )
         return _game_action_from_decision(decision)
 
 
@@ -132,14 +119,6 @@ def _visible_player_from_game(player: Player) -> VisiblePlayer:
         id=player.id,
         name=player.name,
         status=AgentPlayerStatus(player.status.value),
-    )
-
-
-def _safe_candidate_count(observation: AgentObservation) -> int:
-    return sum(
-        1
-        for player in observation.players
-        if player.status is AgentPlayerStatus.ALIVE and player.id != observation.me.id
     )
 
 

@@ -1,5 +1,6 @@
 import ast
 import json
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -32,6 +33,12 @@ from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
 from werewolf_agent.interface.entrypoint.cui.app import app
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.shared.api_client import HttpGameApiClient
+
+
+@pytest.fixture(autouse=True)
+def disable_operational_log_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    get_settings.cache_clear()
+    monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
 
 
 def _state(
@@ -275,7 +282,7 @@ def test_doctor_command_redacts_database_password() -> None:
     assert "[REDACTED]" in result.output
 
 
-def test_run_app_command_handles_app_error_safely() -> None:
+def test_run_app_command_handles_app_error_safely(caplog: pytest.LogCaptureFixture) -> None:
     test_app = typer.Typer()
 
     def fail() -> None:
@@ -293,11 +300,48 @@ def test_run_app_command_handles_app_error_safely() -> None:
     def ok() -> None:
         pass
 
-    result = CliRunner().invoke(test_app, ["broken"])
+    with caplog.at_level(logging.INFO, logger="werewolf_agent.interface.entrypoint.cui.errors"):
+        result = CliRunner().invoke(test_app, ["broken"])
 
     assert result.exit_code == 1
     assert "The selected action is not allowed." in result.output
     assert "secret" not in result.output
+    record = next(
+        record
+        for record in caplog.records
+        if record.event_action == "cli.application_error.handled"
+    )
+    assert record.levelname == "INFO"
+    assert record.error_code == "game.invalid_action"
+
+
+def test_run_app_command_logs_operational_app_error_as_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    test_app = typer.Typer()
+
+    def fail() -> None:
+        raise AppError("The API server could not be reached.", code=ErrorCode.API_UNAVAILABLE)
+
+    @test_app.command()
+    def broken() -> None:
+        run_app_command(fail)
+
+    @test_app.command()
+    def ok() -> None:
+        pass
+
+    with caplog.at_level(logging.INFO, logger="werewolf_agent.interface.entrypoint.cui.errors"):
+        result = CliRunner().invoke(test_app, ["broken"])
+
+    assert result.exit_code == 1
+    record = next(
+        record
+        for record in caplog.records
+        if record.event_action == "cli.application_error.handled"
+    )
+    assert record.levelname == "WARNING"
+    assert record.error_code == "api.unavailable"
 
 
 def test_doctor_command_reports_invalid_configuration_safely() -> None:

@@ -15,6 +15,7 @@ from werewolf_agent.commons.shared.messages import (
     message_error_line,
 )
 from werewolf_agent.contracts import AppError, InternalError
+from werewolf_agent.interface.shared.log_levels import log_level_number
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -25,12 +26,27 @@ def run_app_command(command: Callable[[], T]) -> T:
     try:
         return command()
     except AppError as exc:
-        logger.warning(LOG_CLI_APPLICATION_ERROR_HANDLED, extra=exc.log_extra())
+        logger.log(
+            log_level_number(exc.spec.log_level),
+            LOG_CLI_APPLICATION_ERROR_HANDLED,
+            extra={
+                **exc.log_extra(),
+                "event_action": LOG_CLI_APPLICATION_ERROR_HANDLED,
+                "event_outcome": "failure",
+            },
+        )
         typer.echo(_safe_error_message(exc), err=True)
         raise typer.Exit(code=1) from exc
     except Exception as exc:
         error = InternalError()
-        logger.exception(LOG_CLI_UNHANDLED_EXCEPTION, extra=error.log_extra())
+        logger.exception(
+            LOG_CLI_UNHANDLED_EXCEPTION,
+            extra={
+                **error.log_extra(),
+                "event_action": LOG_CLI_UNHANDLED_EXCEPTION,
+                "event_outcome": "failure",
+            },
+        )
         typer.echo(_safe_error_message(error), err=True)
         raise typer.Exit(code=1) from exc
 

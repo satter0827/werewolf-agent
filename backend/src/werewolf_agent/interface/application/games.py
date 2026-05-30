@@ -39,6 +39,7 @@ from werewolf_agent.interface.application.settings import (
     build_game_usecase_config,
     build_llm_provider_config,
 )
+from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
@@ -78,7 +79,12 @@ def create_game_run(
         response = game_jobs.create_game_run(command, dependencies=_dependencies(session, settings))
     logger.info(
         LOG_GAME_RUN_CREATED,
-        extra={"game_id": response.game_id, "player_count": request.resolved_player_count},
+        extra={
+            "event_action": LOG_GAME_RUN_CREATED,
+            "event_outcome": "success",
+            "game_id": response.game_id,
+            "player_count": request.resolved_player_count,
+        },
     )
     return _wire_model(GameResponse, response)
 
@@ -140,7 +146,14 @@ def list_game_runs(
         )
     logger.debug(
         LOG_GAME_RUNS_LISTED,
-        extra={"status": status, "limit": limit, "offset": offset, "count": len(response.runs)},
+        extra={
+            "event_action": LOG_GAME_RUNS_LISTED,
+            "event_outcome": "success",
+            "game_status": status,
+            "limit": limit,
+            "offset": offset,
+            "count": len(response.runs),
+        },
     )
     return _wire_model(GameRunsResponse, response)
 
@@ -175,9 +188,13 @@ def advance_game_run(
     logger.info(
         LOG_GAME_RUN_STEPPED,
         extra={
+            "event_action": LOG_GAME_RUN_STEPPED,
+            "event_outcome": "success",
             "game_id": response.game_id,
-            "status": response.status,
-            "version": response.state.get("version"),
+            "game_status": response.status,
+            "game_phase": response.state.get("phase"),
+            "game_day": response.state.get("day"),
+            "game_version": response.state.get("version"),
             "event_count": len(response.events),
         },
     )
@@ -218,6 +235,8 @@ def list_public_game_events(
     logger.debug(
         LOG_GAME_EVENTS_LISTED,
         extra={
+            "event_action": LOG_GAME_EVENTS_LISTED,
+            "event_outcome": "success",
             "game_id": game_id,
             "after": after,
             "limit": limit,
@@ -262,6 +281,8 @@ def list_public_game_turns(
     logger.debug(
         LOG_GAME_TURNS_LISTED,
         extra={
+            "event_action": LOG_GAME_TURNS_LISTED,
+            "event_outcome": "success",
             "game_id": game_id,
             "after": after,
             "limit": limit,
@@ -309,7 +330,12 @@ def get_player_observation(
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
     logger.debug(
         LOG_PRIVATE_OBSERVATION_RETURNED,
-        extra={"game_id": game_id, "player_id": player_id},
+        extra={
+            "event_action": LOG_PRIVATE_OBSERVATION_RETURNED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": player_id,
+        },
     )
     return _wire_model(PrivateObservationResponse, response)
 
@@ -354,7 +380,15 @@ def submit_player_action(
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
     logger.info(
         LOG_PLAYER_ACTION_SUBMITTED,
-        extra={"game_id": game_id, "player_id": player_id, "action_type": request.type},
+        extra={
+            "event_action": LOG_PLAYER_ACTION_SUBMITTED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": player_id,
+            "game_action_type": request.type,
+            "has_target": request.target_id is not None,
+            "has_message": bool(request.message),
+        },
     )
     return _wire_model(SubmitPlayerActionResponse, response)
 
@@ -367,6 +401,7 @@ def _dependencies(
         repository=SqlAlchemyGameRunRepository(session),
         config=build_game_usecase_config(settings),
         llm_provider_config=build_llm_provider_config(settings),
+        telemetry=LoggingTelemetrySink(),
     )
 
 

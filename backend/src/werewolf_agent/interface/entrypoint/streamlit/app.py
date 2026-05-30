@@ -4,8 +4,14 @@ from __future__ import annotations
 
 import importlib
 from typing import Any, cast
+from uuid import uuid4
 
-from werewolf_agent.commons.configuration import AppSettings, get_settings
+from werewolf_agent.commons.configuration import (
+    AppSettings,
+    configure_interface_logging,
+    get_settings,
+)
+from werewolf_agent.commons.observability import bind_observation_context
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.entrypoint.streamlit.components import (
     advance_note_html,
@@ -49,6 +55,13 @@ def main() -> None:
     """Render the Streamlit application."""
     st = _streamlit()
     settings = get_settings()
+    configure_interface_logging(settings, service_name=settings.streamlit_service_name)
+    with bind_observation_context(trace_id=str(uuid4())):
+        _render_app(st, settings)
+
+
+def _render_app(st: Any, settings: AppSettings) -> None:
+    """Render one Streamlit rerun with a bound observation context."""
     st.set_page_config(page_title=settings.streamlit_page_title, page_icon="🐺", layout="wide")
     st.html(STREAMLIT_CSS)
 

@@ -5,6 +5,7 @@ import httpx
 import pytest
 
 from werewolf_agent.commons.configuration import AppSettings
+from werewolf_agent.commons.observability import bind_observation_context
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.schemas import (
     GameEventsResponse,
@@ -255,6 +256,24 @@ def test_http_client_parses_problem_details_from_public_api() -> None:
 
     assert exc_info.value.detail == "resource.not_found: Game not found."
     assert exc_info.value.context["http_status"] == 404
+
+
+def test_http_client_propagates_trace_id_header() -> None:
+    seen_headers: dict[str, str] = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen_headers["x-trace-id"] = request.headers["x-trace-id"]
+        return httpx.Response(200, json={"status": "ok", "service": "api"})
+
+    client = HttpGameApiClient(
+        "http://api.test/api/v1",
+        transport=httpx.MockTransport(handler),
+    )
+
+    with bind_observation_context(trace_id="trace-client"):
+        client.health()
+
+    assert seen_headers["x-trace-id"] == "trace-client"
 
 
 def test_diagnostics_redacts_database_password() -> None:

@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any, cast
 
 from werewolf_agent.commons.configuration import AppSettings
+from werewolf_agent.commons.shared.messages import (
+    LOG_STREAMLIT_ACTION_SUBMITTED,
+    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
+    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
+    LOG_STREAMLIT_CONNECTION_CHECKED,
+    LOG_STREAMLIT_GAME_CREATED,
+    LOG_STREAMLIT_REFRESHED,
+)
 from werewolf_agent.contracts.schemas import (
     GameResponse,
     PrivateObservationResponse,
@@ -20,6 +30,8 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
 from werewolf_agent.interface.shared import workflows
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -38,7 +50,16 @@ def build_streamlit_client(api_url: str, settings: AppSettings) -> GameApiClient
 
 def check_connection(*, api_url: str, settings: AppSettings) -> dict[str, str]:
     """Check API health from the Streamlit screen."""
-    return workflows.check_health(build_streamlit_client(api_url, settings))
+    health = workflows.check_health(build_streamlit_client(api_url, settings))
+    logger.info(
+        LOG_STREAMLIT_CONNECTION_CHECKED,
+        extra={
+            "event_action": LOG_STREAMLIT_CONNECTION_CHECKED,
+            "event_outcome": "success",
+            "api_url": api_url,
+        },
+    )
+    return health
 
 
 def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameRunSummary]:
@@ -67,7 +88,19 @@ def create_playable_game(
         allow_self_vote=settings.game_default_allow_self_vote,
         default_player_count=settings.game_default_player_count,
     )
-    return workflows.create_game(build_streamlit_client(api_url, settings), request)
+    response = workflows.create_game(build_streamlit_client(api_url, settings), request)
+    logger.info(
+        LOG_STREAMLIT_GAME_CREATED,
+        extra={
+            "event_action": LOG_STREAMLIT_GAME_CREATED,
+            "event_outcome": "success",
+            "game_id": response.game_id,
+            "player_id": human_player_id,
+            "player_count": len(response.state.players),
+            "seed": seed,
+        },
+    )
+    return response
 
 
 def load_game_screen(
@@ -89,7 +122,7 @@ def load_game_screen(
         human_player_id=human_player_id,
         control_token=control_token,
     )
-    return build_game_screen_view(
+    screen = build_game_screen_view(
         state=state,
         turns=turns,
         observation=observation,
@@ -97,6 +130,26 @@ def load_game_screen(
         screen_mode=screen_mode,
         refresh_interval_seconds=settings.streamlit_refresh_interval_seconds,
     )
+    logger.debug(
+        LOG_STREAMLIT_REFRESHED,
+        extra={
+            "event_action": LOG_STREAMLIT_REFRESHED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": human_player_id,
+            "screen_mode": screen_mode,
+            "game_status": state.status,
+            "game_phase": state.phase,
+            "game_day": state.day,
+            "game_version": state.version,
+            "turn_count": len(turns),
+            "has_observation": observation is not None,
+            "available_action_count": len(screen.observation.available_actions)
+            if screen.observation is not None
+            else 0,
+        },
+    )
+    return screen
 
 
 def load_observation(
@@ -141,6 +194,18 @@ def submit_screen_action(
         request,
         control_token=control_token,
     )
+    logger.info(
+        LOG_STREAMLIT_ACTION_SUBMITTED,
+        extra={
+            "event_action": LOG_STREAMLIT_ACTION_SUBMITTED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": human_player_id,
+            "game_action_type": action_type,
+            "has_target": target_id is not None,
+            "has_message": bool(message),
+        },
+    )
 
 
 def advance_until_input(
@@ -153,9 +218,39 @@ def advance_until_input(
 ) -> AdvanceResult:
     """Advance the game until completion, player input, or the configured limit."""
     client = build_streamlit_client(api_url, settings)
-    for _ in range(settings.streamlit_max_auto_steps):
+    logger.info(
+        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
+        extra={
+            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": human_player_id,
+            "max_steps": settings.streamlit_max_auto_steps,
+        },
+    )
+    for iteration in range(settings.streamlit_max_auto_steps):
         current = workflows.get_game(client, game_id).state
+        logger.debug(
+            LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+            extra={
+                "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+                "event_outcome": "success",
+                "game_id": game_id,
+                "player_id": human_player_id,
+                "iteration": iteration,
+                "game_status": current.status,
+                "game_phase": current.phase,
+                "game_day": current.day,
+                "game_version": current.version,
+            },
+        )
         if current.status == "completed":
+            _log_advance_stop(
+                game_id=game_id,
+                player_id=human_player_id,
+                stop_reason="completed",
+                iteration=iteration,
+            )
             return AdvanceResult(completed=True)
         observation = load_observation(
             client=client,
@@ -164,6 +259,41 @@ def advance_until_input(
             control_token=control_token,
         )
         if observation is not None and observation.observation.get("available_actions"):
+            _log_advance_stop(
+                game_id=game_id,
+                player_id=human_player_id,
+                stop_reason="reached_input",
+                iteration=iteration,
+                available_action_count=len(observation.observation.get("available_actions") or []),
+            )
             return AdvanceResult(reached_input=True)
         workflows.step_game(client, game_id)
+    _log_advance_stop(
+        game_id=game_id,
+        player_id=human_player_id,
+        stop_reason="hit_limit",
+        iteration=settings.streamlit_max_auto_steps,
+    )
     return AdvanceResult(hit_limit=True)
+
+
+def _log_advance_stop(
+    *,
+    game_id: str,
+    player_id: str,
+    stop_reason: str,
+    iteration: int,
+    available_action_count: int = 0,
+) -> None:
+    logger.info(
+        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
+        extra={
+            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": player_id,
+            "ui_stop_reason": stop_reason,
+            "iteration": iteration,
+            "available_action_count": available_action_count,
+        },
+    )

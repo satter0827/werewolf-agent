@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Final
+from typing import Final, Literal
 
 from pydantic import BaseModel, ConfigDict
 
@@ -41,6 +41,7 @@ from werewolf_agent.commons.shared.messages import (
 )
 
 PROBLEM_TYPE_TAG_PREFIX: Final = "tag:werewolf-agent,2026:problem:"
+ErrorLogLevel = Literal["INFO", "WARNING", "ERROR"]
 
 
 class ErrorCode(StrEnum):
@@ -69,6 +70,7 @@ class ErrorSpec(BaseModel):
     status: HTTPStatus
     detail: str
     retryable: bool = False
+    log_level: ErrorLogLevel = "INFO"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -104,6 +106,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_API_UNAVAILABLE,
         retryable=True,
+        log_level="WARNING",
     ),
     ErrorCode.RESOURCE_NOT_FOUND: ErrorSpec(
         title=TITLE_RESOURCE_NOT_FOUND,
@@ -129,23 +132,27 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_INVALID_AGENT_RESPONSE,
         status=HTTPStatus.UNPROCESSABLE_ENTITY,
         detail=DETAIL_AGENT_INVALID_RESPONSE,
+        log_level="WARNING",
     ),
     ErrorCode.LLM_PROVIDER_UNAVAILABLE: ErrorSpec(
         title=TITLE_LLM_PROVIDER_UNAVAILABLE,
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_LLM_PROVIDER_UNAVAILABLE,
         retryable=True,
+        log_level="WARNING",
     ),
     ErrorCode.OBSERVATION_WRITE_FAILED: ErrorSpec(
         title=TITLE_OBSERVATION_WRITE_FAILED,
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
         detail=DETAIL_OBSERVATION_WRITE_FAILED,
         retryable=True,
+        log_level="WARNING",
     ),
     ErrorCode.INTERNAL_UNEXPECTED: ErrorSpec(
         title=TITLE_UNEXPECTED_INTERNAL_ERROR,
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
         detail=DETAIL_INTERNAL_UNEXPECTED,
+        log_level="ERROR",
     ),
 }
 

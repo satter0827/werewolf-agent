@@ -78,6 +78,7 @@ from werewolf_agent.usecase.jobs.games import (
     SubmitPlayerActionCommand,
     SubmitPlayerActionResult,
 )
+from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
 
 
 def create_game_run(
@@ -176,6 +177,13 @@ def advance_game_run(
     snapshot = GameSnapshot.model_validate(run.private_state)
     runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
     pending_actions = PendingActions.model_validate(run.pending_actions)
+    dependencies.telemetry.record(
+        TelemetryEvent(
+            "game.phase.drive_started",
+            level="DEBUG",
+            fields=_telemetry_state_fields(run, snapshot),
+        )
+    )
     snapshot, pending_actions, action_events = _drive_current_phase(
         snapshot,
         seed=run.seed,
@@ -183,11 +191,39 @@ def advance_game_run(
         pending_actions=pending_actions,
         agent_factory=langchain_agent_factory(dependencies.llm_provider_config),
         human_player_ids=_human_player_ids(run.config),
+        telemetry=dependencies.telemetry,
+    )
+    dependencies.telemetry.record(
+        TelemetryEvent(
+            "game.phase.drive_completed",
+            level="DEBUG",
+            fields={
+                **_telemetry_snapshot_fields(snapshot, version=run.version),
+                "event_count": len(action_events),
+            },
+        )
+    )
+    dependencies.telemetry.record(
+        TelemetryEvent(
+            "game.phase.advance_started",
+            level="DEBUG",
+            fields=_telemetry_snapshot_fields(snapshot, version=run.version),
+        )
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(
         snapshot,
         pending_actions,
         runtime_rng,
+    )
+    dependencies.telemetry.record(
+        TelemetryEvent(
+            "game.phase.advance_completed",
+            level="DEBUG",
+            fields={
+                **_telemetry_snapshot_fields(next_snapshot, version=run.version + 1),
+                "event_count": len(phase_events),
+            },
+        )
     )
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
@@ -268,6 +304,20 @@ def submit_player_action(
         reason=command.reason,
     )
     next_snapshot, next_pending_actions, events = submit_action(snapshot, pending_actions, action)
+    dependencies.telemetry.record(
+        TelemetryEvent(
+            "game.manual_action.accepted",
+            level="INFO",
+            fields={
+                **_telemetry_snapshot_fields(next_snapshot, version=run.version),
+                "player_id": command.player_id,
+                "game_action_type": command.type,
+                "has_target": command.target_id is not None,
+                "has_message": bool(command.message),
+                "event_count": len(events),
+            },
+        )
+    )
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
         version=run.version,
@@ -494,6 +544,7 @@ def _drive_current_phase(
     pending_actions: PendingActions,
     agent_factory: AgentFactory,
     human_player_ids: set[str],
+    telemetry: TelemetrySink,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
     current_pending_actions = pending_actions
@@ -510,7 +561,22 @@ def _drive_current_phase(
                 player.id,
                 seed=_agent_seed(seed, version, index, turn),
             )
-            action = agent.act(observe(current_snapshot, player.id))
+            observation = observe(current_snapshot, player.id)
+            action = agent.act(observation)
+            telemetry.record(
+                TelemetryEvent(
+                    "game.agent_action.generated",
+                    level="DEBUG",
+                    fields={
+                        **_telemetry_snapshot_fields(current_snapshot, version=version),
+                        "player_id": player.id,
+                        "agent_type": "llm",
+                        "game_action_type": action.type.value,
+                        "candidate_count": _candidate_count(observation.players, player.id),
+                        "turn_index": turn,
+                    },
+                )
+            )
             current_snapshot, current_pending_actions, action_events = submit_action(
                 current_snapshot,
                 current_pending_actions,
@@ -518,6 +584,28 @@ def _drive_current_phase(
             )
             events.extend(action_events)
     return current_snapshot, current_pending_actions, events
+
+
+def _telemetry_state_fields(run: StoredGameRun, snapshot: GameSnapshot) -> dict[str, object]:
+    return {
+        **_telemetry_snapshot_fields(snapshot, version=run.version),
+        "game_status": run.status,
+    }
+
+
+def _telemetry_snapshot_fields(snapshot: GameSnapshot, *, version: int) -> dict[str, object]:
+    return {
+        "game_id": snapshot.game_id,
+        "game_phase": snapshot.phase.value,
+        "game_day": snapshot.day,
+        "game_version": version,
+    }
+
+
+def _candidate_count(players: Sequence[Player], player_id: str) -> int:
+    return sum(
+        1 for player in players if player.status is PlayerStatus.ALIVE and player.id != player_id
+    )
 
 
 def _role_counts(

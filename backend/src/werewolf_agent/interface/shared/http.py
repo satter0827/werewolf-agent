@@ -13,11 +13,12 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from werewolf_agent.commons.logging import get_log_context
+from werewolf_agent.commons.observability import get_observation_context
 from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
 from werewolf_agent.contracts.errors import ErrorCode, get_error_spec, problem_type_uri
 from werewolf_agent.contracts.exceptions import AppError, InternalError
 from werewolf_agent.contracts.schemas import ProblemDetails, ProblemIssue
+from werewolf_agent.interface.shared.log_levels import log_level_number
 from werewolf_agent.interface.shared.messages import (
     LOG_API_APPLICATION_ERROR_HANDLED,
     LOG_API_UNHANDLED_EXCEPTION,
@@ -77,7 +78,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     error = InternalError()
     logger.exception(
         LOG_API_UNHANDLED_EXCEPTION,
-        extra=error.log_extra(trace_id=_trace_id()),
+        extra={
+            **error.log_extra(trace_id=_trace_id()),
+            "event_action": LOG_API_UNHANDLED_EXCEPTION,
+            "event_outcome": "failure",
+        },
     )
     return problem_response(
         code=error.code.value,
@@ -190,14 +195,16 @@ def _http_error_code(status_code: int) -> ErrorCode:
 
 
 def _trace_id() -> str | None:
-    return get_log_context().get("trace_id")
+    return get_observation_context().get("trace_id")
 
 
 def _log_app_error(error: AppError) -> None:
-    log_method = logger.warning
-    if int(error.spec.status) >= HTTPStatus.INTERNAL_SERVER_ERROR:
-        log_method = logger.error
-    log_method(
+    logger.log(
+        log_level_number(error.spec.log_level),
         LOG_API_APPLICATION_ERROR_HANDLED,
-        extra=error.log_extra(trace_id=_trace_id()),
+        extra={
+            **error.log_extra(trace_id=_trace_id()),
+            "event_action": LOG_API_APPLICATION_ERROR_HANDLED,
+            "event_outcome": "failure",
+        },
     )

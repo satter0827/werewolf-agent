@@ -1,4 +1,4 @@
-"""Logging helpers for interface processes."""
+"""Structured observability helpers for interface processes."""
 
 from __future__ import annotations
 
@@ -35,8 +35,8 @@ THIRD_PARTY_LOGGER_NAMES: Final = (
 Processor = Callable[[Any, str, EventDict], EventDict]
 
 
-def configure_logging(settings: AppSettings, *, service_name: str | None = None) -> None:
-    """Configure process-level structured logging."""
+def configure_observability(settings: AppSettings, *, service_name: str | None = None) -> None:
+    """Configure process-level structured observability."""
     formatter = _processor_formatter(settings, service_name=service_name)
     handlers = _handlers(settings, formatter)
 
@@ -50,14 +50,14 @@ def configure_logging(settings: AppSettings, *, service_name: str | None = None)
     stdlib_logging.captureWarnings(True)
 
 
-def get_log_context() -> dict[str, str]:
-    """Return the current structured logging context."""
+def get_observation_context() -> dict[str, str]:
+    """Return the current structured observation context."""
     return {str(key): str(value) for key, value in structlog.contextvars.get_contextvars().items()}
 
 
 @contextmanager
-def bind_log_context(**values: object) -> Iterator[None]:
-    """Temporarily bind structured logging context values."""
+def bind_observation_context(**values: object) -> Iterator[None]:
+    """Temporarily bind structured observation context values."""
     normalized_values = {key: str(value) for key, value in values.items() if value is not None}
     tokens = structlog.contextvars.bind_contextvars(**normalized_values)
     try:
@@ -186,6 +186,8 @@ def _normalize_ecs_fields(
     _move_field(event_dict, "event", "message")
     _move_field(event_dict, "level", "log.level", transform=lambda value: str(value).upper())
     _move_field(event_dict, "logger", "log.logger")
+    _move_field(event_dict, "event_action", "event.action")
+    _move_field(event_dict, "event_outcome", "event.outcome")
     _move_field(event_dict, "trace_id", "trace.id")
     _move_field(event_dict, "method", "http.request.method")
     _move_field(event_dict, "http_method", "http.request.method")
@@ -193,6 +195,21 @@ def _normalize_ecs_fields(
     _move_field(event_dict, "http_path", "url.path")
     _move_field(event_dict, "http_status", "http.response.status_code")
     _move_field(event_dict, "duration_ms", "event.duration", transform=_duration_ms_to_ns)
+    _move_field(event_dict, "game_id", "game.id")
+    _move_field(event_dict, "game_phase", "game.phase")
+    _move_field(event_dict, "phase", "game.phase")
+    _move_field(event_dict, "game_day", "game.day")
+    _move_field(event_dict, "day", "game.day")
+    _move_field(event_dict, "game_version", "game.version")
+    _move_field(event_dict, "version", "game.version")
+    _move_field(event_dict, "game_status", "game.status")
+    _move_field(event_dict, "status", "game.status")
+    _move_field(event_dict, "game_action_type", "game.action.type")
+    _move_field(event_dict, "player_id", "player.id")
+    _move_field(event_dict, "actor_id", "player.id")
+    _move_field(event_dict, "agent_type", "agent.type")
+    _move_field(event_dict, "ui_action", "ui.action")
+    _move_field(event_dict, "ui_stop_reason", "ui.stop_reason")
     _move_field(event_dict, "error_code", "error.code")
     _move_field(event_dict, "exception", "error.stack_trace")
 

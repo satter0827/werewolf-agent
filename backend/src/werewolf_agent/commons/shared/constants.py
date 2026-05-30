@@ -24,8 +24,6 @@ JSON_SEPARATORS: Final[tuple[str, str]] = (",", ":")
 FILE_MODE_APPEND: Final = "a"
 FILE_MODE_WRITE: Final = "w"
 
-LOG_CONTEXT_VAR_NAME: Final = "werewolf_log_context"
-
 REDACTED: Final = "[REDACTED]"
 REDACTION_SOURCE_SEPARATOR: Final = "-"
 REDACTION_NORMALIZED_SEPARATOR: Final = "_"
@@ -35,5 +33,10 @@ SENSITIVE_KEY_PARTS: Final = (
     "api_key",
     "apikey",
     "authorization",
+    "known_roles",
+    "night_action",
     "password",
+    "private_state",
+    "raw_response",
+    "role",
 )

@@ -1,10 +1,5 @@
-import logging
-
-import pytest
-
 from werewolf_agent.domain.game.models import (
     Action,
-    ActionType,
     GameHistory,
     Observation,
     Phase,
@@ -15,9 +10,7 @@ from werewolf_agent.domain.game.models import (
 )
 from werewolf_agent.usecase.internal.agents import (
     _agent_observation_from_game,
-    langchain_agent_factory,
 )
-from werewolf_agent.usecase.jobs import LlmProviderConfig
 
 
 def test_agent_observation_from_game_carries_public_history_only() -> None:
@@ -51,34 +44,3 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
     assert agent_observation.vote_rounds[0].votes == {"p1": "p2"}
     assert agent_observation.vote_rounds[0].counts == {"p2": 1}
     assert agent_observation.known_roles == {"p1": Role.SEER.value}
-
-
-def test_llm_debug_log_avoids_secret_decision_fields(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    game_observation = Observation(
-        phase=Phase.VOTING,
-        day=2,
-        me=Player(id="p1", name="Alice", role=Role.SEER),
-        players=[
-            Player(id="p1", name="Alice", role=Role.SEER),
-            Player(id="p2", name="Bob", status=PlayerStatus.ALIVE),
-        ],
-        known_roles={"p1": Role.SEER},
-        available_actions=[ActionType.VOTE],
-    )
-    agent = langchain_agent_factory(LlmProviderConfig()).create("p1", seed=1)
-
-    with caplog.at_level(logging.DEBUG, logger="werewolf_agent.usecase.internal.agents"):
-        agent.act(game_observation)
-
-    record = next(record for record in caplog.records if record.message == "llm decision selected")
-    assert record.actor_id == "p1"
-    assert record.phase == "voting"
-    assert record.day == 2
-    assert record.decision_type == "vote"
-    assert record.candidate_count == 1
-    assert not hasattr(record, "role")
-    assert not hasattr(record, "known_roles")
-    assert not hasattr(record, "target_id")
-    assert not hasattr(record, "message_text")

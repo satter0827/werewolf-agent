@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
 from werewolf_agent.commons.shared.validation import non_blank
+from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink, TelemetrySink
 
 if TYPE_CHECKING:
     from werewolf_agent.usecase.jobs.ports import GameRepository
@@ -61,6 +62,7 @@ class GameUseCaseDependencies:
     repository: GameRepository
     config: GameUseCaseConfig = field(default_factory=GameUseCaseConfig)
     llm_provider_config: LlmProviderConfig = field(default_factory=LlmProviderConfig)
+    telemetry: TelemetrySink = field(default_factory=NullTelemetrySink)
 
 
 class _UseCaseModel(BaseModel):

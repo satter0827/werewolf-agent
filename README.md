@@ -110,7 +110,7 @@ uv run werewolf-agent step <game_id>
 | `backend/src/werewolf_agent/interface/shared/` | interface 共通の HTTP client、public API workflow、request builder、diagnostics、HTTP 例外変換、event sink |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit のプレイ画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
+| `backend/src/werewolf_agent/commons/` | configuration、observability、message catalog、redaction、shared helper |
 
 境界:
 
@@ -192,7 +192,7 @@ WEREWOLF_DATABASE_URL=
 
 DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。コード上の `WEREWOLF_API_DEBUG` 既定値は `false` で、`.env.example` と `compose.yaml` はローカル開発用に `true` を明示しています。
 
-運用ログは既定で `.werewolf-agent/logs/werewolf-agent.jsonl` に ECS 風 field の JSON Lines で出力し、UTC の日次 rollover と保持日数で管理します。`WEREWOLF_LOG_OUTPUT` は `file`、`stderr`、`stdout`、`both`、`none` を選べます。`DEBUG` は操作追跡、`INFO` は通常運用、`WARNING` は回復可能な異常、`ERROR` は処理失敗、`CRITICAL` は停止級の異常に使います。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
+運用ログは既定で `.werewolf-agent/logs/werewolf-agent.jsonl` に ECS 風 field の JSON Lines で出力し、UTC の日次 rollover と保持日数で管理します。`WEREWOLF_LOG_OUTPUT` は `file`、`stderr`、`stdout`、`both`、`none` を選べます。`DEBUG` は操作追跡、`INFO` は通常運用、`WARNING` は回復可能な異常、`ERROR` は処理失敗、`CRITICAL` は停止級の異常に使います。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
 
 ## Docker
 

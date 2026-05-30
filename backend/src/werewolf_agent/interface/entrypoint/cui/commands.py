@@ -186,7 +186,12 @@ def _create(
     created = workflows.create_game(client, request)
     logger.info(
         LOG_CLI_GAME_CREATED,
-        extra={"game_id": created.game_id, "human_player": human_player},
+        extra={
+            "event_action": LOG_CLI_GAME_CREATED,
+            "event_outcome": "success",
+            "game_id": created.game_id,
+            "player_id": human_player,
+        },
     )
     if output_format != "table":
         print_json(created, output_format=output_format)
@@ -372,7 +377,13 @@ def _play(
     winner = state.winner or "unknown"
     logger.info(
         LOG_CLI_PLAY_COMPLETED,
-        extra={"game_id": created.game_id, "winner": winner, "steps": steps},
+        extra={
+            "event_action": LOG_CLI_PLAY_COMPLETED,
+            "event_outcome": "success",
+            "game_id": created.game_id,
+            "winner": winner,
+            "steps": steps,
+        },
     )
     if output_format == "table":
         print_state(state)
@@ -465,6 +476,8 @@ def _watch(
         logger.debug(
             LOG_CLI_WATCH_POLLED,
             extra={
+                "event_action": LOG_CLI_WATCH_POLLED,
+                "event_outcome": "success",
                 "game_id": game_id,
                 "after": previous_sequence,
                 "next_after": last_sequence,
@@ -520,13 +533,27 @@ def _replay(
             if delay:
                 time.sleep(delay)
         print_events(replay_events, output_format=output_format)
-        logger.info(LOG_CLI_REPLAY_COMPLETED, extra={"event_count": len(replay_events)})
+        logger.info(
+            LOG_CLI_REPLAY_COMPLETED,
+            extra={
+                "event_action": LOG_CLI_REPLAY_COMPLETED,
+                "event_outcome": "success",
+                "event_count": len(replay_events),
+            },
+        )
         return
     for event in replay_events:
         if delay:
             time.sleep(delay)
         print_events([event], output_format=output_format)
-    logger.info(LOG_CLI_REPLAY_COMPLETED, extra={"event_count": len(replay_events)})
+    logger.info(
+        LOG_CLI_REPLAY_COMPLETED,
+        extra={
+            "event_action": LOG_CLI_REPLAY_COMPLETED,
+            "event_outcome": "success",
+            "event_count": len(replay_events),
+        },
+    )
 
 
 def runs(
@@ -673,7 +700,15 @@ def _prompt_and_submit_human_action(
     )
     logger.info(
         LOG_CLI_ACTION_SUBMITTED,
-        extra={"game_id": game_id, "player_id": player_id, "action_type": action_type},
+        extra={
+            "event_action": LOG_CLI_ACTION_SUBMITTED,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "player_id": player_id,
+            "game_action_type": action_type,
+            "has_target": target_id is not None,
+            "has_message": bool(message),
+        },
     )
     if output_format == "table":
         print_events(response.events)

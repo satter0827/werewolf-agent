@@ -20,7 +20,7 @@ from werewolf_agent.commons.configuration import (
     configure_interface_logging,
     get_settings,
 )
-from werewolf_agent.commons.logging import bind_log_context
+from werewolf_agent.commons.observability import bind_observation_context
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.routers import router
 from werewolf_agent.interface.application.database import (
@@ -106,12 +106,14 @@ async def _trace_request(
         trace_id = str(uuid4())
 
     started = time.perf_counter()
-    with bind_log_context(trace_id=trace_id, method=request.method, path=request.url.path):
+    with bind_observation_context(trace_id=trace_id, method=request.method, path=request.url.path):
         response = await call_next(request)
         response.headers[TRACE_ID_HEADER] = trace_id
         logger.info(
             LOG_API_REQUEST_COMPLETED,
             extra={
+                "event_action": LOG_API_REQUEST_COMPLETED,
+                "event_outcome": "success" if response.status_code < 400 else "failure",
                 "http_method": request.method,
                 "http_path": request.url.path,
                 "http_status": response.status_code,
