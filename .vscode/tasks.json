@@ -2,14 +2,25 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "API: migrate",
+      "label": "API: migrate (python -m alembic)",
       "type": "shell",
       "command": "uv",
-      "args": ["run", "--no-sync", "--extra", "api", "alembic", "upgrade", "head"],
+      "args": [
+        "run",
+        "--no-sync",
+        "--extra",
+        "api",
+        "python",
+        "-m",
+        "alembic",
+        "upgrade",
+        "head"
+      ],
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
           "PYTHONPATH": "${workspaceFolder}/backend/src",
+          "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
           "WEREWOLF_LOG_OUTPUT": "stderr",
           "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
         }

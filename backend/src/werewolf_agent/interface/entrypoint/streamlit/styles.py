@@ -20,19 +20,32 @@ STREAMLIT_CSS = """
     .stApp {
         background: var(--wa-bg);
     }
+    [data-testid="stHeader"] {
+        display: none;
+    }
     .block-container {
-        padding-top: 1.35rem;
-        padding-bottom: 2rem;
-        max-width: 1540px;
+        padding-top: 0.9rem;
+        padding-bottom: 1.75rem;
+        max-width: 1500px;
     }
     [data-testid="stSidebar"] {
         background: #fbfbfc;
         border-right: 1px solid var(--wa-line);
     }
+    [data-testid="stSidebarContent"] {
+        padding-top: 0.9rem;
+    }
     [data-testid="stSidebar"] .stButton > button,
     [data-testid="stSidebar"] .stFormSubmitButton > button {
         border-radius: 8px;
         font-weight: 700;
+    }
+    [data-testid="stSidebar"] h2 {
+        margin-top: 0;
+        padding-top: 0;
+    }
+    [data-testid="stSidebar"] hr {
+        margin: 1.25rem 0;
     }
     .wa-sidebar-brand {
         display: flex;
@@ -104,23 +117,23 @@ STREAMLIT_CSS = """
     .wa-status-grid {
         display: grid;
         grid-template-columns: repeat(6, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 12px;
+        gap: 9px;
+        margin-bottom: 10px;
     }
     .wa-status {
         display: flex;
-        gap: 11px;
-        min-height: 76px;
+        gap: 10px;
+        min-height: 68px;
         border: 1px solid var(--wa-line);
         border-radius: 8px;
-        padding: 12px;
+        padding: 10px;
         background: var(--wa-surface);
         box-shadow: var(--wa-shadow);
     }
     .wa-status-icon {
         flex: 0 0 auto;
-        width: 32px;
-        height: 32px;
+        width: 30px;
+        height: 30px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -132,14 +145,14 @@ STREAMLIT_CSS = """
     .wa-status b {
         display: block;
         color: var(--wa-text);
-        font-size: 18px;
+        font-size: 17px;
         line-height: 1.22;
         overflow-wrap: anywhere;
     }
     .wa-status-detail {
         margin-top: 2px;
         color: var(--wa-muted);
-        font-size: 12px;
+        font-size: 11px;
         line-height: 1.35;
     }
     .wa-status-danger {
@@ -163,7 +176,7 @@ STREAMLIT_CSS = """
         box-shadow: var(--wa-shadow);
     }
     .wa-table-surface {
-        padding: 16px 18px 14px;
+        padding: 15px 16px 14px;
     }
     .wa-section-head {
         display: flex;
@@ -189,21 +202,21 @@ STREAMLIT_CSS = """
     }
     .wa-seat-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+        grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 12px;
     }
     .wa-seat {
-        min-height: 132px;
+        min-height: 126px;
         border: 1px solid var(--wa-line-strong);
         border-radius: 8px;
-        padding: 12px 10px;
+        padding: 11px 10px;
         background: var(--wa-surface);
         text-align: center;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 7px;
+        gap: 6px;
     }
     .wa-seat-human {
         border-color: #fca5a5;
@@ -295,6 +308,23 @@ STREAMLIT_CSS = """
         flex-direction: column;
         gap: 9px;
     }
+    .wa-timeline-section {
+        margin-top: 14px;
+    }
+    .wa-timeline-section .wa-section-head {
+        margin-bottom: 10px;
+    }
+    .wa-timeline-mobile {
+        display: none;
+    }
+    .wa-empty-note {
+        border: 1px solid var(--wa-line);
+        border-radius: 8px;
+        padding: 12px 13px;
+        background: var(--wa-surface);
+        color: var(--wa-muted);
+        font-size: 13px;
+    }
     .wa-timeline-row {
         display: grid;
         grid-template-columns: 104px minmax(0, 1fr);
@@ -337,7 +367,7 @@ STREAMLIT_CSS = """
         background: var(--wa-teal-soft);
     }
     .wa-hand-panel {
-        padding: 15px;
+        padding: 14px;
         border-color: #fecaca;
         background: #fff7f7;
     }
@@ -356,6 +386,39 @@ STREAMLIT_CSS = """
     .wa-primary-note {
         color: var(--wa-text);
     }
+    .wa-private-panel {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        margin-top: 14px;
+    }
+    .wa-private-block h3 {
+        margin: 0 0 8px;
+        color: var(--wa-text);
+        font-size: 19px;
+        line-height: 1.3;
+    }
+    .wa-role-note {
+        border-radius: 8px;
+        padding: 11px 12px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 13px;
+        font-weight: 700;
+        line-height: 1.45;
+    }
+    .wa-private-block ul {
+        margin: 0;
+        padding-left: 1.1rem;
+        color: #344054;
+        font-size: 13px;
+        line-height: 1.55;
+    }
+    .wa-private-empty {
+        color: var(--wa-muted);
+        font-size: 13px;
+        line-height: 1.45;
+    }
     .wa-advance-note {
         border-left: 3px solid var(--wa-amber);
         padding: 2px 0 2px 10px;
@@ -372,9 +435,17 @@ STREAMLIT_CSS = """
         color: var(--wa-muted);
         font-size: 13px;
     }
+    @media (min-width: 1480px) {
+        .wa-seat-grid {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+    }
     @media (max-width: 1180px) {
         .wa-status-grid {
             grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+        .wa-seat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
     @media (max-width: 760px) {
@@ -384,6 +455,15 @@ STREAMLIT_CSS = """
         }
         .wa-status-grid {
             grid-template-columns: 1fr;
+        }
+        .wa-timeline-desktop {
+            display: none;
+        }
+        .wa-timeline-mobile {
+            display: block;
+        }
+        .wa-timeline-section {
+            margin-top: 14px;
         }
         .wa-section-head {
             display: block;
@@ -399,6 +479,11 @@ STREAMLIT_CSS = """
             display: flex;
             justify-content: space-between;
             gap: 8px;
+        }
+    }
+    @media (max-width: 460px) {
+        .wa-seat-grid {
+            grid-template-columns: 1fr;
         }
     }
 </style>

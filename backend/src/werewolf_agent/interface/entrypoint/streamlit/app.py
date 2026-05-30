@@ -11,9 +11,9 @@ from werewolf_agent.interface.entrypoint.streamlit.components import (
     advance_note_html,
     game_table_html,
     hand_panel_html,
+    observation_panel_html,
     status_grid_html,
-    timeline_header_html,
-    timeline_html,
+    timeline_section_html,
 )
 from werewolf_agent.interface.entrypoint.streamlit.operations import (
     advance_until_input,
@@ -50,7 +50,7 @@ def main() -> None:
     st = _streamlit()
     settings = get_settings()
     st.set_page_config(page_title=settings.streamlit_page_title, page_icon="🐺", layout="wide")
-    st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
+    st.html(STREAMLIT_CSS)
 
     api_url, selected_option = _render_sidebar(st, settings)
     if selected_option is None:
@@ -74,6 +74,7 @@ def main() -> None:
     table_column, hand_column = st.columns([2.15, 1], gap="medium")
     with table_column:
         _render_game_table(st, screen)
+        _render_timeline(st, screen, variant="desktop")
     with hand_column:
         _render_action_panel(
             st,
@@ -82,10 +83,7 @@ def main() -> None:
             screen=screen,
             selected_option=selected_option,
         )
-
-    timeline_column, _ = st.columns([2.15, 1], gap="medium")
-    with timeline_column:
-        _render_timeline(st, screen)
+    _render_timeline(st, screen, variant="mobile")
 
 
 def _render_sidebar(st: Any, settings: AppSettings) -> tuple[str, SavedGameOptionView | None]:
@@ -269,12 +267,8 @@ def _render_game_table(st: Any, screen: GameScreenView) -> None:
     st.markdown(game_table_html(screen), unsafe_allow_html=True)
 
 
-def _render_timeline(st: Any, screen: GameScreenView) -> None:
-    st.markdown(timeline_header_html(), unsafe_allow_html=True)
-    if not screen.timeline:
-        st.info("まだ表示できる出来事がありません。")
-        return
-    st.markdown(timeline_html(screen.timeline), unsafe_allow_html=True)
+def _render_timeline(st: Any, screen: GameScreenView, *, variant: str) -> None:
+    st.markdown(timeline_section_html(screen.timeline, variant=variant), unsafe_allow_html=True)
 
 
 def _render_action_panel(
@@ -291,14 +285,7 @@ def _render_action_panel(
         return
 
     if screen.observation is not None:
-        st.markdown("#### あなたの役職")
-        st.info(f"{screen.observation.role}。あなただけに見えている情報です。")
-        st.markdown("#### 見えている情報")
-        if screen.observation.known_role_lines:
-            for line in screen.observation.known_role_lines:
-                st.write(f"- {line}")
-        else:
-            st.caption("いま表示できる追加情報はありません。")
+        st.markdown(observation_panel_html(screen.observation), unsafe_allow_html=True)
 
     if screen.is_completed:
         return

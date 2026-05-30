@@ -8,6 +8,7 @@ from textwrap import dedent
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     HandPanelView,
+    ObservationView,
     PlayerSeatView,
     StatusMetricView,
     TableLegendItemView,
@@ -63,16 +64,50 @@ def timeline_html(items: list[TimelineItemView]) -> str:
     return f'<div class="wa-timeline">{rows}</div>'
 
 
-def timeline_header_html() -> str:
-    """Return timeline header markup."""
+def timeline_section_html(items: list[TimelineItemView], *, variant: str) -> str:
+    """Return a complete timeline section for one responsive placement."""
+    placement = css_token(variant)
+    body_html = (
+        timeline_html(items)
+        if items
+        else '<div class="wa-empty-note">まだ表示できる出来事がありません。</div>'
+    )
     return html(
-        """
-        <div class="wa-section-head wa-section-head-spaced">
-            <div>
-                <h3>公開タイムライン</h3>
-                <p>公開された出来事を時系列で表示します。(詳細は非公開です)</p>
+        f"""
+        <section class="wa-timeline-section wa-timeline-{placement}">
+            <div class="wa-section-head">
+                <div>
+                    <h3>公開タイムライン</h3>
+                    <p>公開された出来事を時系列で表示します。(詳細は非公開です)</p>
+                </div>
             </div>
-        </div>
+            {body_html}
+        </section>
+        """
+    )
+
+
+def observation_panel_html(observation: ObservationView) -> str:
+    """Return compact private observation markup for the right panel."""
+    role_note = f"{escape(observation.role)}。あなただけに見えている情報です。"
+    known_lines = "".join(f"<li>{escape(line)}</li>" for line in observation.known_role_lines)
+    known_body = (
+        f"<ul>{known_lines}</ul>"
+        if known_lines
+        else '<div class="wa-private-empty">いま表示できる追加情報はありません。</div>'
+    )
+    return html(
+        f"""
+        <section class="wa-private-panel">
+            <div class="wa-private-block">
+                <h3>あなたの役職</h3>
+                <div class="wa-role-note">{role_note}</div>
+            </div>
+            <div class="wa-private-block">
+                <h3>見えている情報</h3>
+                {known_body}
+            </div>
+        </section>
         """
     )
 

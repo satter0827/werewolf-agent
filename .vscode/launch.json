@@ -347,7 +347,7 @@
     {
       "name": "App: API + Streamlit",
       "configurations": ["API: uvicorn", "UI: Streamlit"],
-      "preLaunchTask": "API: migrate",
+      "preLaunchTask": "API: migrate (python -m alembic)",
       "stopAll": true
     }
   ],
