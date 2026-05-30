@@ -29,6 +29,7 @@ def build_create_game_request(
     tie_break_policy: str,
     day_speech_turns: int,
     allow_self_vote: bool,
+    allow_action_revisions: bool,
     default_player_count: int,
 ) -> CreateGameRunRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
@@ -56,6 +57,7 @@ def build_create_game_request(
         tie_break_policy=cast(TieBreakPolicyId, tie_break_policy),
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
+        allow_action_revisions=allow_action_revisions,
     )
     return CreateGameRunRequest(
         player_count=None if explicit_players is not None else players,

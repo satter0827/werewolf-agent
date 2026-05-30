@@ -8,6 +8,7 @@ import pytest
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
 from werewolf_agent.usecase.jobs import (
     AdvanceGameRunCommand,
+    AdvanceUntilInputCommand,
     CreateGameRunCommand,
     GameEventCreate,
     GameRepository,
@@ -19,6 +20,7 @@ from werewolf_agent.usecase.jobs import (
     GameUseCases,
     GetGameRunQuery,
     GetGameTimelineQuery,
+    GetPlayerObservationQuery,
     ListGameRunsQuery,
     NullTelemetrySink,
     PlayerActionCommand,
@@ -209,6 +211,26 @@ def explicit_players() -> list[dict[str, str]]:
     ]
 
 
+def _first_target(observation: dict[str, object], *, player_id: str) -> str:
+    known_roles = observation.get("known_roles")
+    known_wolves = set()
+    if isinstance(known_roles, dict):
+        known_wolves = {
+            str(target_id) for target_id, role in known_roles.items() if role == "werewolf"
+        }
+    players = observation.get("players")
+    assert isinstance(players, list)
+    for player in players:
+        assert isinstance(player, dict)
+        if (
+            player.get("id") != player_id
+            and player.get("status") == "alive"
+            and player.get("id") not in known_wolves
+        ):
+            return str(player["id"])
+    raise AssertionError("no target candidate")
+
+
 def test_default_ruleset_returns_business_identifiers_only() -> None:
     deps, _repository = dependencies(
         config=GameUseCaseConfig(
@@ -310,26 +332,91 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
             seed=1,
         ),
     )
-    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    control_token = created.control_tokens["p1"] if created.control_tokens else ""
+    use_cases.advance_until_input(AdvanceUntilInputCommand(game_id=created.game_id))
+    observation = use_cases.get_player_observation(
+        GetPlayerObservationQuery(
+            game_id=created.game_id,
+            player_id="p1",
+            control_token=control_token,
+        )
+    )
+    action_type = str(observation.observation["available_actions"][0])
+    target_id = None
+    message = None
+    if action_type == "speech":
+        message = "hello"
+    else:
+        target_id = _first_target(observation.observation, player_id="p1")
 
     use_cases.submit_player_action(
         PlayerActionCommand(
             game_id=created.game_id,
             player_id="p1",
-            control_token=created.control_tokens["p1"] if created.control_tokens else "",
-            type="speech",
-            message="hello",
+            control_token=control_token,
+            type=action_type,
+            target_id=target_id,
+            message=message,
         )
     )
 
     event = next(
         event for event in telemetry.events if event.action == "game.manual_action.accepted"
     )
-    assert event.fields["has_message"] is True
+    assert event.fields["has_message"] is bool(message)
     assert "player_id" not in event.fields
     assert "game_action_type" not in event.fields
     assert "control_token" not in event.fields
     assert "message" not in event.fields
+
+
+def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
+    deps, _repository = dependencies()
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(
+        CreateGameRunCommand(
+            players=[
+                {"id": "p1", "name": "Alice", "agent_type": "human"},
+                {"id": "p2", "name": "Bob", "agent_type": "llm"},
+                {"id": "p3", "name": "Carol", "agent_type": "llm"},
+                {"id": "p4", "name": "Dave", "agent_type": "llm"},
+                {"id": "p5", "name": "Eve", "agent_type": "llm"},
+            ],
+            seed=1,
+        ),
+    )
+    control_token = created.control_tokens["p1"] if created.control_tokens else ""
+
+    stopped = use_cases.advance_until_input(
+        AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8)
+    )
+    assert stopped.stop_reason == "manual_input_required"
+    with pytest.raises(GameError):
+        use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+
+    observation = use_cases.get_player_observation(
+        GetPlayerObservationQuery(
+            game_id=created.game_id,
+            player_id="p1",
+            control_token=control_token,
+        )
+    )
+    action_type = str(observation.observation["available_actions"][0])
+    target_id = None
+    if action_type != "speech":
+        target_id = _first_target(observation.observation, player_id="p1")
+    command = PlayerActionCommand(
+        game_id=created.game_id,
+        player_id="p1",
+        control_token=control_token,
+        type=action_type,
+        target_id=target_id,
+        message="hello" if action_type == "speech" else None,
+    )
+
+    use_cases.submit_player_action(command)
+    with pytest.raises(GameError):
+        use_cases.submit_player_action(command)
 
 
 def test_list_games_and_turns_return_public_read_models() -> None:

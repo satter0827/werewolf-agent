@@ -17,6 +17,7 @@ ActionType = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "knigh
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
+AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
 
 
@@ -57,6 +58,7 @@ class CreateGameRuleConfig(BaseModel):
     tie_break_policy: TieBreakPolicyId = "no_elimination"
     day_speech_turns: int = Field(default=1, ge=1, le=5)
     allow_self_vote: bool = False
+    allow_action_revisions: bool = False
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -134,6 +136,19 @@ class AdvanceGameRunResponse(BaseModel):
     status: GameStatus
     state: PublicGameState
     timeline: list[GameTimelineItem]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceUntilInputResponse(BaseModel):
+    """Response from advancing until manual input, completion, or configured limit."""
+
+    game_id: str
+    status: GameStatus
+    state: PublicGameState
+    timeline: list[GameTimelineItem]
+    stop_reason: AdvanceUntilInputStopReason
+    steps: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -328,6 +343,7 @@ class ErrorEventPayload(BaseModel):
 __all__ = [
     "ActionType",
     "AdvanceGameRunResponse",
+    "AdvanceUntilInputResponse",
     "CreateGameAgentConfig",
     "CreateGamePlayer",
     "CreateGameRuleConfig",

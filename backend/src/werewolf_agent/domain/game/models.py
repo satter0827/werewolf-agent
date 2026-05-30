@@ -124,6 +124,7 @@ class GameConfig(_DomainModel):
     day_speech_turns: int = 1
     tie_break_policy: TieBreakPolicy = TieBreakPolicy.NO_ELIMINATION
     allow_self_vote: bool = False
+    allow_action_revisions: bool = False
 
     @field_validator("game_id")
     @classmethod
@@ -310,6 +311,26 @@ class NightResult(_RoundResult):
     inspections: list[InspectionResult] = Field(default_factory=list)
 
 
+class SpeechRecord(_RoundResult):
+    """One accepted public day-discussion speech."""
+
+    player_id: str
+    message: str
+    reason: str = ""
+
+    @field_validator("player_id", "message")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: Any) -> str:
+        """Return a trimmed non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+    @field_validator("reason")
+    @classmethod
+    def validate_reason(cls, value: str) -> str:
+        """Return a trimmed optional reason string."""
+        return value.strip()
+
+
 class WinResult(_DomainModel):
     """Resolved game winner."""
 
@@ -322,7 +343,7 @@ class WinResult(_DomainModel):
 class GameHistory(_DomainModel):
     """Append-only records produced by game phases."""
 
-    speeches: list[Action] = Field(default_factory=list)
+    speeches: list[SpeechRecord] = Field(default_factory=list)
     votes: list[VoteResult] = Field(default_factory=list)
     nights: list[NightResult] = Field(default_factory=list)
 
@@ -394,6 +415,7 @@ __all__ = [
     "Player",
     "PlayerStatus",
     "Role",
+    "SpeechRecord",
     "TieBreakPolicy",
     "VoteResult",
     "WinResult",

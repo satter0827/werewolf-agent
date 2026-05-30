@@ -103,6 +103,7 @@ def create_playable_game(
         tie_break_policy=settings.game_default_tie_break_policy,
         day_speech_turns=settings.game_default_day_speech_turns,
         allow_self_vote=settings.game_default_allow_self_vote,
+        allow_action_revisions=settings.game_default_allow_action_revisions,
         default_player_count=settings.game_default_player_count,
     )
     response = build_streamlit_client(api_url, settings).create_game(request)
@@ -225,8 +226,6 @@ def advance_until_input(
     api_url: str,
     settings: AppSettings,
     game_id: str,
-    human_player_id: str,
-    control_token: str,
 ) -> AdvanceResult:
     """Advance the game until completion, player input, or the configured limit."""
     client = build_streamlit_client(api_url, settings)
@@ -239,47 +238,34 @@ def advance_until_input(
             "max_steps": settings.streamlit_max_auto_steps,
         },
     )
-    for iteration in range(settings.streamlit_max_auto_steps):
-        current = client.get_game(game_id).state
-        logger.debug(
-            LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
-            extra={
-                "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
-                "event_outcome": "success",
-                "game_id": game_id,
-                "iteration": iteration,
-                "game_status": current.status,
-                "game_phase": current.phase,
-                "game_day": current.day,
-                "game_version": current.version,
-            },
-        )
-        if current.status == "completed":
-            _log_advance_stop(
-                game_id=game_id,
-                stop_reason="completed",
-                iteration=iteration,
-            )
-            return AdvanceResult(completed=True)
-        observation = load_observation(
-            client=client,
+    response = client.advance_until_input(game_id, max_steps=settings.streamlit_max_auto_steps)
+    logger.debug(
+        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+        extra={
+            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+            "event_outcome": "success",
+            "game_id": game_id,
+            "iteration": response.steps,
+            "game_status": response.status,
+            "game_phase": response.state.phase,
+            "game_day": response.state.day,
+            "game_version": response.state.version,
+        },
+    )
+    if response.stop_reason == "completed":
+        _log_advance_stop(game_id=game_id, stop_reason="completed", iteration=response.steps)
+        return AdvanceResult(completed=True)
+    if response.stop_reason == "manual_input_required":
+        _log_advance_stop(
             game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
+            stop_reason="reached_input",
+            iteration=response.steps,
         )
-        if observation is not None and observation.observation.get("available_actions"):
-            _log_advance_stop(
-                game_id=game_id,
-                stop_reason="reached_input",
-                iteration=iteration,
-                available_action_count=len(observation.observation.get("available_actions") or []),
-            )
-            return AdvanceResult(reached_input=True)
-        client.advance_game(game_id)
+        return AdvanceResult(reached_input=True)
     _log_advance_stop(
         game_id=game_id,
         stop_reason="hit_limit",
-        iteration=settings.streamlit_max_auto_steps,
+        iteration=response.steps,
     )
     return AdvanceResult(hit_limit=True)
 

@@ -4,9 +4,10 @@ from dataclasses import dataclass, field
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.contracts import GameError, GamePhaseError
+from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
+    ActionType,
     DomainEvent,
     Faction,
     GameConfig,
@@ -29,7 +30,7 @@ class HeadlessRun:
     events: list[DomainEvent] = field(default_factory=list)
 
     def observe(self, player_id: str):
-        return observe(self.snapshot, player_id)
+        return observe(self.snapshot, self.pending, player_id)
 
     def submit(self, action: Action) -> None:
         self.snapshot, self.pending, events = submit_action(
@@ -192,7 +193,7 @@ def test_vote_tie_policy_can_leave_everyone_alive() -> None:
 def test_invalid_actions_raise_safe_game_errors() -> None:
     run = start_fixed_run()
 
-    with pytest.raises(GamePhaseError):
+    with pytest.raises(GameError):
         run.submit(Action.vote("p1", "p2"))
 
     with pytest.raises(GameError):
@@ -202,10 +203,42 @@ def test_invalid_actions_raise_safe_game_errors() -> None:
 def test_day_speech_is_only_recorded_during_discussion() -> None:
     run = start_fixed_run()
 
-    with pytest.raises(GamePhaseError):
+    with pytest.raises(GameError):
         run.submit(Action.speech("p2", "too early"))
 
     run.advance()
     run.submit(Action.speech("p2", "I have a read."))
 
     assert run.snapshot.history.speeches[-1].message == "I have a read."
+    assert run.snapshot.history.speeches[-1].day == 1
+    assert run.observe("p2").available_actions == []
+    with pytest.raises(GameError):
+        run.submit(Action.speech("p2", "same day duplicate"))
+
+
+def test_day_speech_limit_resets_on_next_day() -> None:
+    run = start_fixed_run()
+    run.advance()
+    run.submit(Action.speech("p2", "day one"))
+    run.advance()
+    run.advance()
+    run.advance()
+
+    assert run.snapshot.phase is Phase.DAY_DISCUSSION
+    assert run.snapshot.day == 2
+    assert run.observe("p2").available_actions == [ActionType.SPEECH]
+
+
+def test_vote_and_night_actions_are_single_submission_by_default() -> None:
+    run = start_fixed_run()
+
+    run.submit(Action.attack("p1", "p4"))
+    with pytest.raises(GameError):
+        run.submit(Action.attack("p1", "p5"))
+
+    run.advance()
+    run.advance()
+    run.submit(Action.vote("p2", "p1"))
+    assert run.observe("p2").available_actions == []
+    with pytest.raises(GameError):
+        run.submit(Action.vote("p2", "p4"))

@@ -23,6 +23,7 @@ from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
+    AdvanceUntilInputResponse,
     CreateGameRunRequest,
     GameRunResponse,
     GameRunsResponse,
@@ -67,6 +68,9 @@ class GameApiClient(Protocol):
 
     def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
         """Advance one game through the public API."""
+
+    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
+        """Advance a game until manual input, completion, or step limit."""
 
     def get_timeline(
         self,
@@ -157,6 +161,15 @@ class HttpGameApiClient:
         """Advance one game through the public API."""
         payload = self._request_json("POST", f"games/{game_id}/advance")
         return self._parse_model(AdvanceGameRunResponse, payload)
+
+    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
+        """Advance a game until manual input, completion, or step limit."""
+        payload = self._request_json(
+            "POST",
+            f"games/{game_id}/advance-until-input",
+            params={"max_steps": max_steps},
+        )
+        return self._parse_model(AdvanceUntilInputResponse, payload)
 
     def get_timeline(
         self,

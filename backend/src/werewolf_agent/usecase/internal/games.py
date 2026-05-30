@@ -8,13 +8,14 @@ import random
 import secrets
 from collections import Counter
 from collections.abc import Mapping, Sequence
-from typing import cast
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
     MESSAGE_INVALID_CONTROL_TOKEN,
+    MESSAGE_MANUAL_INPUT_REQUIRED,
     MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
     MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT,
@@ -54,6 +55,8 @@ from werewolf_agent.usecase.internal.projections import (
 from werewolf_agent.usecase.jobs.games import (
     AdvanceGameRunCommand,
     AdvanceGameRunResult,
+    AdvanceUntilInputCommand,
+    AdvanceUntilInputResult,
     CreateGamePlayer,
     CreateGameRunCommand,
     GamePhase,
@@ -174,6 +177,16 @@ def advance_game_run(
     snapshot = GameSnapshot.model_validate(run.private_state)
     runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
     pending_actions = PendingActions.model_validate(run.pending_actions)
+    human_player_ids = _human_player_ids(run.config)
+    if _manual_input_required(snapshot, pending_actions, human_player_ids):
+        raise GamePhaseError(
+            MESSAGE_MANUAL_INPUT_REQUIRED,
+            context={
+                "game_id": str(run.id),
+                "phase": snapshot.phase.value,
+                "day": snapshot.day,
+            },
+        )
     dependencies.telemetry.record(
         TelemetryEvent(
             "game.phase.drive_started",
@@ -187,7 +200,7 @@ def advance_game_run(
         version=run.version,
         pending_actions=pending_actions,
         agent_factory=langchain_agent_factory(dependencies.llm_provider_config),
-        human_player_ids=_human_player_ids(run.config),
+        human_player_ids=human_player_ids,
         telemetry=dependencies.telemetry,
     )
     dependencies.telemetry.record(
@@ -259,6 +272,58 @@ def advance_game_run(
     )
 
 
+def advance_until_input(
+    command: AdvanceUntilInputCommand,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> AdvanceUntilInputResult:
+    """Advance a game until a manual player can act, completion, or step limit."""
+    game_id = _parse_game_id(command.game_id)
+    timeline: list[dict[str, Any]] = []
+    steps = 0
+    while True:
+        run = dependencies.repository.get_for_update(game_id)
+        if run is None:
+            raise GameNotFoundError(str(game_id))
+
+        snapshot = GameSnapshot.model_validate(run.private_state)
+        pending_actions = PendingActions.model_validate(run.pending_actions)
+        if run.status == "completed":
+            return AdvanceUntilInputResult(
+                game_id=str(run.id),
+                status=run.status,
+                state=public_state_payload_from_run(run),
+                timeline=timeline,
+                stop_reason="completed",
+                steps=steps,
+            )
+        if _manual_input_required(snapshot, pending_actions, _human_player_ids(run.config)):
+            return AdvanceUntilInputResult(
+                game_id=str(run.id),
+                status=run.status,
+                state=public_state_payload_from_run(run),
+                timeline=timeline,
+                stop_reason="manual_input_required",
+                steps=steps,
+            )
+        if steps >= command.max_steps:
+            return AdvanceUntilInputResult(
+                game_id=str(run.id),
+                status=run.status,
+                state=public_state_payload_from_run(run),
+                timeline=timeline,
+                stop_reason="hit_limit",
+                steps=steps,
+            )
+
+        advanced = advance_game_run(
+            AdvanceGameRunCommand(game_id=game_id),
+            dependencies=dependencies,
+        )
+        timeline.extend(advanced.timeline)
+        steps += 1
+
+
 def get_player_observation(
     query: GetPlayerObservationQuery,
     *,
@@ -271,7 +336,8 @@ def get_player_observation(
         raise GameNotFoundError(str(game_id))
     _authorize_manual_player(run, query.player_id, query.control_token)
     snapshot = GameSnapshot.model_validate(run.private_state)
-    observation = observe(snapshot, query.player_id)
+    pending_actions = PendingActions.model_validate(run.pending_actions)
+    observation = observe(snapshot, pending_actions, query.player_id)
     return PlayerObservationResult(
         game_id=str(run.id),
         player_id=query.player_id,
@@ -455,6 +521,7 @@ def _domain_config(
         day_speech_turns=rule_config.day_speech_turns,
         tie_break_policy=TieBreakPolicy(rule_config.tie_break_policy),
         allow_self_vote=rule_config.allow_self_vote,
+        allow_action_revisions=rule_config.allow_action_revisions,
     )
 
 
@@ -511,6 +578,18 @@ def _human_player_ids(config: Mapping[str, object]) -> set[str]:
     }
 
 
+def _manual_input_required(
+    snapshot: GameSnapshot,
+    pending_actions: PendingActions,
+    human_player_ids: set[str],
+) -> bool:
+    return any(
+        player_id in snapshot.players
+        and bool(observe(snapshot, pending_actions, player_id).available_actions)
+        for player_id in human_player_ids
+    )
+
+
 def _drive_current_phase(
     snapshot: GameSnapshot,
     *,
@@ -536,7 +615,7 @@ def _drive_current_phase(
                 player.id,
                 seed=_agent_seed(seed, version, index, turn),
             )
-            observation = observe(current_snapshot, player.id)
+            observation = observe(current_snapshot, current_pending_actions, player.id)
             action = agent.act(observation)
             telemetry.record(
                 TelemetryEvent(

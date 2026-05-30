@@ -21,6 +21,7 @@ from werewolf_agent.commons.shared.messages import (
 from werewolf_agent.contracts import GameNotFoundError, InvalidGameIdError, ResourceNotFoundError
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
+    AdvanceUntilInputResponse,
     CreateGameRunRequest,
     GameRunResponse,
     GameRunsResponse,
@@ -199,6 +200,42 @@ def advance_game_run(
         },
     )
     return _wire_model(AdvanceGameRunResponse, response)
+
+
+def advance_until_input(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+    max_steps: int | None = None,
+) -> AdvanceUntilInputResponse:
+    """Advance one game until manual input, completion, or step limit."""
+    with session_scope(session_factory) as session:
+        try:
+            response = _use_cases(session, settings).advance_until_input(
+                game_jobs.AdvanceUntilInputCommand(
+                    game_id=game_id,
+                    max_steps=max_steps or settings.game_advance_until_input_max_steps,
+                )
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    logger.info(
+        LOG_GAME_RUN_STEPPED,
+        extra={
+            "event_action": LOG_GAME_RUN_STEPPED,
+            "event_outcome": "success",
+            "game_id": response.game_id,
+            "game_status": response.status,
+            "game_phase": response.state.get("phase"),
+            "game_day": response.state.get("day"),
+            "game_version": response.state.get("version"),
+            "event_count": len(response.timeline),
+            "stop_reason": response.stop_reason,
+            "steps": response.steps,
+        },
+    )
+    return _wire_model(AdvanceUntilInputResponse, response)
 
 
 def get_game_timeline(

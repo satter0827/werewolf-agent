@@ -112,6 +112,10 @@ DEFAULT_STREAMLIT_EVENT_LIMIT: Final = _integer_default("streamlit_event_limit")
 DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
 DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
 DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
+DEFAULT_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION: Final = _bool_default(
+    "streamlit_auto_advance_after_action"
+)
+DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE: Final = _string_default("streamlit_initial_sidebar_state")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
 DEFAULT_STREAMLIT_SAVE_FILE: Final = _path_default("streamlit_save_file")
 DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
@@ -137,6 +141,12 @@ DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset
 DEFAULT_GAME_DEFAULT_TIE_BREAK_POLICY: Final = _string_default("game_default_tie_break_policy")
 DEFAULT_GAME_DEFAULT_DAY_SPEECH_TURNS: Final = _integer_default("game_default_day_speech_turns")
 DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE: Final = _bool_default("game_default_allow_self_vote")
+DEFAULT_GAME_DEFAULT_ALLOW_ACTION_REVISIONS: Final = _bool_default(
+    "game_default_allow_action_revisions"
+)
+DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS: Final = _integer_default(
+    "game_advance_until_input_max_steps"
+)
 DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = _string_default(
     "game_ruleset_description_template"
 )
@@ -147,6 +157,7 @@ LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITIC
 LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"})
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
+STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
 TIE_BREAK_POLICY_NAMES: Final = frozenset({"no_elimination", "random_elimination"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
@@ -154,6 +165,7 @@ SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
 CliOutputFormat = Literal["table", "json", "jsonl"]
 StreamlitLanguage = Literal["ja", "en"]
+StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]
 TieBreakPolicyName = Literal["no_elimination", "random_elimination"]
 
 
@@ -313,6 +325,14 @@ class AppSettings(BaseSettings):
         ge=1,
         validation_alias="WEREWOLF_STREAMLIT_MAX_AUTO_STEPS",
     )
+    streamlit_auto_advance_after_action: bool = Field(
+        default=DEFAULT_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION,
+        validation_alias="WEREWOLF_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION",
+    )
+    streamlit_initial_sidebar_state: StreamlitSidebarState = Field(
+        default=cast(StreamlitSidebarState, DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE),
+        validation_alias="WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE",
+    )
     streamlit_language: StreamlitLanguage = Field(
         default=cast(StreamlitLanguage, DEFAULT_STREAMLIT_LANGUAGE),
         validation_alias="WEREWOLF_STREAMLIT_LANGUAGE",
@@ -387,6 +407,15 @@ class AppSettings(BaseSettings):
     game_default_allow_self_vote: bool = Field(
         default=DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE,
         validation_alias="WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE",
+    )
+    game_default_allow_action_revisions: bool = Field(
+        default=DEFAULT_GAME_DEFAULT_ALLOW_ACTION_REVISIONS,
+        validation_alias="WEREWOLF_GAME_DEFAULT_ALLOW_ACTION_REVISIONS",
+    )
+    game_advance_until_input_max_steps: int = Field(
+        default=DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS,
+        ge=1,
+        validation_alias="WEREWOLF_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS",
     )
     game_ruleset_description_template: str = Field(
         default=DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE,
@@ -574,6 +603,17 @@ class AppSettings(BaseSettings):
             value,
             field_name="streamlit_language",
             choices=STREAMLIT_LANGUAGE_NAMES,
+            case="lower",
+        )
+
+    @field_validator("streamlit_initial_sidebar_state", mode="before")
+    @classmethod
+    def normalize_streamlit_sidebar_state(cls, value: object) -> str:
+        """Return a validated Streamlit sidebar initial state."""
+        return normalize_choice(
+            value,
+            field_name="streamlit_initial_sidebar_state",
+            choices=STREAMLIT_SIDEBAR_STATE_NAMES,
             case="lower",
         )
 

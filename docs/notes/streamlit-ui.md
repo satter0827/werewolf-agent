@@ -22,7 +22,8 @@ A案を実装の基準にします。中央の `ゲーム卓` にプレイヤー
 
 画面構成:
 
-- 左サイドバー: `API 接続`、`保存データ`、`新しいゲーム`、`ナビゲーション`
+- メイン初期画面: `新しいゲーム`。初回導線は sidebar に依存させない
+- 左サイドバー: `API 接続`、`保存データ`、補助的な `新しいゲーム`、`ナビゲーション`
 - `保存データ`: プルダウンから保存スロットを選び、game ID や操作用キーは画面に出さない
 - 上部ステータス: フェーズ、日数、生存人数、経過ターン、現在の手番、状態、勝敗
 - 中央: `ゲーム卓`
@@ -55,6 +56,8 @@ mobile では `ゲーム卓`、`あなたの手番`、`公開タイムライン`
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
 - `app.py` は Streamlit widget と画面配置だけを担当する
 - API 呼び出しは `streamlit/operations.py` から `GameApiClient` protocol を直接使う
+- 発言・投票送信後は API の `advance-until-input` に進行を集約し、画面側で独自 loop を持たない
+- domain / usecase の `available_actions` を正とし、画面側だけで多重発言や多重投票を隠す実装にはしない
 - HTML 断片と escape は `streamlit/components.py` に閉じ、`app.py` に重複させない
 - `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`interface/shared` に依存させない
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う

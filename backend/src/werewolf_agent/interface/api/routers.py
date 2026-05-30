@@ -5,13 +5,14 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
 from sse_starlette.sse import EventSourceResponse
 
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
+    AdvanceUntilInputResponse,
     CreateGameRunRequest,
     GameRunResponse,
     GameRunsQuery,
@@ -111,6 +112,22 @@ def advance_game(
         game_id,
         session_factory=session_factory,
         settings=settings,
+    )
+
+
+@router.post("/games/{game_id}/advance-until-input", response_model=AdvanceUntilInputResponse)
+def advance_until_input(
+    game_id: str,
+    max_steps: int | None = Query(default=None, ge=1),
+    session_factory: SessionFactory = SESSION_FACTORY,
+    settings: AppSettings = APP_SETTINGS,
+) -> AdvanceUntilInputResponse:
+    """Advance a game until manual input, completion, or the configured step limit."""
+    return game_application.advance_until_input(
+        game_id,
+        session_factory=session_factory,
+        settings=settings,
+        max_steps=max_steps,
     )
 
 

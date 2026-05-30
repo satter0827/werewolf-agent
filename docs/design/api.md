@@ -25,6 +25,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
 | `POST` | `/api/v1/games/{game_id}/advance` | 現在の usecase step を 1 回進める |
+| `POST` | `/api/v1/games/{game_id}/advance-until-input?max_steps=<n>` | manual input、完了、上限まで自動進行 |
 | `GET` | `/api/v1/games/{game_id}/timeline?after=<seq>&limit=<n>` | public timeline を sequence 昇順で取得 |
 | `GET` | `/api/v1/games/{game_id}/timeline/stream?after=<seq>&limit=<n>` | public timeline を SSE 形式で取得 |
 | `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | token 付き private observation |
@@ -39,6 +40,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | `CreateGameRunRequest` | game run 作成 request |
 | `GameRunResponse` | 1 game run の現在 public state |
 | `AdvanceGameRunResponse` | 進行後の public state と追加 timeline |
+| `AdvanceUntilInputResponse` | manual input / 完了 / 上限まで進めた結果 |
 | `GameTimelineResponse` | `GameTimelineItem` の page |
 | `GameTimelineItem` | API / CLI / replay / SSE / UI 共通の公開履歴 |
 | `PlayerObservationResponse` | manual player の private observation |
@@ -64,7 +66,8 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
     "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
     "tie_break_policy": "no_elimination",
     "day_speech_turns": 1,
-    "allow_self_vote": false
+    "allow_self_vote": false,
+    "allow_action_revisions": false
   },
   "players": [
     {"id": "p1", "name": "Alice", "agent_type": "llm"},
@@ -85,6 +88,8 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 - `role_counts`: 合計が player count と一致し、人狼 1 以上、村側 1 以上
 - `tie_break_policy`: `no_elimination` または `random_elimination`
 - `day_speech_turns`: 1〜5
+- `allow_self_vote`: `false` の場合、自分への投票を拒否する
+- `allow_action_revisions`: 既定 `false`。同じ phase / day の発言、投票、夜行動の再提出を拒否する
 
 ## Public State
 
@@ -158,6 +163,10 @@ manual action body:
 ```
 
 `type` は `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass` です。target が必要な action は `target_id` を指定します。
+
+`available_actions` は「今その player が送信できる action」だけを返します。発言済み、投票済み、夜行動済みの場合は既定で空になります。再送された action は保存せず、`422 game.invalid_action` を返します。
+
+`POST /games/{game_id}/advance` は manual player の入力待ちが残っている場合、phase を進めず `409 game.invalid_phase` を返します。UI は `advance-until-input` を使い、LLM action と phase 進行をまとめて進め、`stop_reason` が `manual_input_required`、`completed`、`hit_limit` のいずれかになるまで待ちます。
 
 ## Run Summary
 

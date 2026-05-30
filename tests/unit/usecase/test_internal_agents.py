@@ -1,11 +1,11 @@
 from werewolf_agent.domain.game.models import (
-    Action,
     GameHistory,
     Observation,
     Phase,
     Player,
     PlayerStatus,
     Role,
+    SpeechRecord,
     VoteResult,
 )
 from werewolf_agent.usecase.internal.agents import (
@@ -24,7 +24,7 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
         ],
         known_roles={"p1": Role.SEER},
         history=GameHistory(
-            speeches=[Action.speech("p2", "I want to hear from Alice.")],
+            speeches=[SpeechRecord(day=2, player_id="p2", message="I want to hear from Alice.")],
             votes=[
                 VoteResult(
                     day=1,

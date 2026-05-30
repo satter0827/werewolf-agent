@@ -24,6 +24,7 @@ def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCas
         default_player_count=app_settings.game_default_player_count,
         supported_agent_type=app_settings.game_supported_agent_type,
         default_ruleset_id=app_settings.game_default_ruleset_id,
+        advance_until_input_max_steps=app_settings.game_advance_until_input_max_steps,
     )
 
 

@@ -19,6 +19,7 @@ from werewolf_agent.domain.game.models import (
     Player,
 )
 from werewolf_agent.domain.game.rules import (
+    action_availability,
     day_speech,
     game_setup,
     night_actions,
@@ -60,18 +61,23 @@ def start_game(
     return snapshot, events
 
 
-def observe(snapshot: GameSnapshot, player_id: str) -> Observation:
+def observe(
+    snapshot: GameSnapshot,
+    pending_actions: PendingActions,
+    player_id: str,
+) -> Observation:
     """Return the information visible to one player.
 
     Args:
         snapshot: Full game state.
+        pending_actions: Actions already collected for the active phase.
         player_id: Observer player id.
 
     Returns:
         A role-aware observation redacted for the requested player.
 
     """
-    return observations.build_player_observation(snapshot, player_id)
+    return observations.build_player_observation(snapshot, pending_actions, player_id)
 
 
 def submit_action(
@@ -93,6 +99,11 @@ def submit_action(
         GameError: If the action type is unsupported.
 
     """
+    if action.type is ActionType.PASS:
+        return snapshot, pending_actions, []
+
+    action_availability.require_action_available(snapshot, pending_actions, action)
+
     if action.type is ActionType.SPEECH:
         next_snapshot, events = day_speech.record_day_speech(snapshot, action)
         return next_snapshot, pending_actions, events
@@ -135,9 +146,6 @@ def submit_action(
                 )
             ],
         )
-
-    if action.type is ActionType.PASS:
-        return snapshot, pending_actions, []
 
     raise GameError(MESSAGE_UNSUPPORTED_AGENT_ACTION)
 

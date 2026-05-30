@@ -20,9 +20,6 @@ STREAMLIT_CSS = """
     .stApp {
         background: var(--wa-bg);
     }
-    [data-testid="stHeader"] {
-        display: none;
-    }
     .block-container {
         padding-top: 0.9rem;
         padding-bottom: 1.75rem;

@@ -20,6 +20,7 @@ def test_build_create_game_request_supports_human_player() -> None:
         tie_break_policy="no_elimination",
         day_speech_turns=1,
         allow_self_vote=False,
+        allow_action_revisions=False,
         default_player_count=6,
     )
 
@@ -41,6 +42,7 @@ def test_build_create_game_request_rejects_unknown_human_player() -> None:
             tie_break_policy="no_elimination",
             day_speech_turns=1,
             allow_self_vote=False,
+            allow_action_revisions=False,
             default_player_count=6,
         )
 
@@ -63,6 +65,17 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         if request.url.path.endswith("/games/game-1/advance"):
             return httpx.Response(
                 200, json={**_game_payload(), "status": "running", "timeline": []}
+            )
+        if request.url.path.endswith("/games/game-1/advance-until-input"):
+            return httpx.Response(
+                200,
+                json={
+                    **_game_payload(),
+                    "status": "running",
+                    "timeline": [],
+                    "stop_reason": "manual_input_required",
+                    "steps": 1,
+                },
             )
         if request.url.path.endswith("/games/game-1/timeline"):
             return httpx.Response(
@@ -90,6 +103,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         tie_break_policy="no_elimination",
         day_speech_turns=1,
         allow_self_vote=False,
+        allow_action_revisions=False,
         default_player_count=6,
     )
 
@@ -99,6 +113,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
     assert client.list_games().runs
     assert client.get_game("game-1").game_id == "game-1"
     assert client.advance_game("game-1").game_id == "game-1"
+    assert client.advance_until_input("game-1", max_steps=3).stop_reason == "manual_input_required"
     assert client.get_timeline("game-1").items
     assert (
         client.get_private_observation(
@@ -125,6 +140,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         ("GET", "/api/v1/games"),
         ("GET", "/api/v1/games/game-1"),
         ("POST", "/api/v1/games/game-1/advance"),
+        ("POST", "/api/v1/games/game-1/advance-until-input"),
         ("GET", "/api/v1/games/game-1/timeline"),
         ("GET", "/api/v1/games/game-1/players/player-1/observation"),
         ("POST", "/api/v1/games/game-1/players/player-1/actions"),

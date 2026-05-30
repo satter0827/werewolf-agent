@@ -56,6 +56,8 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
         {
             "AdvanceGameRunCommand",
             "AdvanceGameRunResult",
+            "AdvanceUntilInputCommand",
+            "AdvanceUntilInputResult",
             "ActionTypeId",
             "CreateGameRunCommand",
             "GameEventCreate",
@@ -149,6 +151,7 @@ def test_domain_llm_public_surface_is_minimal() -> None:
 def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
     workflow_names = {
         "advance_game_run",
+        "advance_until_input",
         "create_game_run",
         "get_default_ruleset",
         "get_game_run",

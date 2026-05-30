@@ -66,12 +66,17 @@ def main() -> None:
 
 def _render_app(st: Any, settings: AppSettings) -> None:
     """Render one Streamlit rerun with a bound observation context."""
-    st.set_page_config(page_title=settings.streamlit_page_title, page_icon="🐺", layout="wide")
+    st.set_page_config(
+        page_title=settings.streamlit_page_title,
+        page_icon="🐺",
+        layout="wide",
+        initial_sidebar_state=settings.streamlit_initial_sidebar_state,
+    )
     st.html(STREAMLIT_CSS)
 
     api_url, selected_option = _render_sidebar(st, settings)
     if selected_option is None:
-        _render_empty_state(st)
+        _render_empty_state(st, settings=settings, api_url=api_url)
         return
 
     try:
@@ -129,7 +134,13 @@ def _render_sidebar(st: Any, settings: AppSettings) -> tuple[str, SavedGameOptio
 
     st.sidebar.divider()
     st.sidebar.subheader("新しいゲーム")
-    _render_create_game(st, settings=settings, api_url=api_url)
+    _render_create_game(
+        st,
+        container=st.sidebar,
+        form_key="create-game-sidebar",
+        settings=settings,
+        api_url=api_url,
+    )
 
     st.sidebar.divider()
     st.sidebar.subheader("ナビゲーション")
@@ -208,8 +219,15 @@ def _render_save_selector(
     return selected_option
 
 
-def _render_create_game(st: Any, *, settings: AppSettings, api_url: str) -> None:
-    with st.sidebar.form("create-game"):
+def _render_create_game(
+    st: Any,
+    *,
+    container: Any,
+    form_key: str,
+    settings: AppSettings,
+    api_url: str,
+) -> None:
+    with container.form(form_key):
         player_count = st.number_input(
             "プレイヤー数",
             min_value=settings.game_min_players,
@@ -234,6 +252,7 @@ def _render_create_game(st: Any, *, settings: AppSettings, api_url: str) -> None
     if submitted:
         _create_game(
             st,
+            feedback=container,
             settings=settings,
             api_url=api_url,
             player_count=int(player_count),
@@ -245,6 +264,7 @@ def _render_create_game(st: Any, *, settings: AppSettings, api_url: str) -> None
 def _create_game(
     st: Any,
     *,
+    feedback: Any,
     settings: AppSettings,
     api_url: str,
     player_count: int,
@@ -260,7 +280,7 @@ def _create_game(
             human_player_id=human_player_id,
         )
     except (AppError, ValueError) as exc:
-        st.sidebar.error(str(exc))
+        feedback.error(str(exc))
         return
 
     control_token = (created.control_tokens or {}).get(human_player_id, "")
@@ -276,12 +296,19 @@ def _create_game(
     )
     remember_selected_save(st.session_state, f"slot:{slot.slot_id}")
     clear_message(st.session_state)
-    st.sidebar.success("ゲームを作成しました")
+    feedback.success("ゲームを作成しました")
     st.rerun()
 
 
-def _render_empty_state(st: Any) -> None:
-    st.info("左の保存データを選ぶか、新しいゲームを始めてください。")
+def _render_empty_state(st: Any, *, settings: AppSettings, api_url: str) -> None:
+    st.info("新しいゲームを始めるか、保存データを選んでください。")
+    _render_create_game(
+        st,
+        container=st,
+        form_key="create-game-main",
+        settings=settings,
+        api_url=api_url,
+    )
 
 
 def _render_status_bar(st: Any, screen: GameScreenView) -> None:
@@ -413,6 +440,14 @@ def _render_action_form(
             return
         clear_message(st.session_state)
         st.success("入力を送信しました。")
+        if settings.streamlit_auto_advance_after_action:
+            _run_until_input(
+                st,
+                settings=settings,
+                api_url=api_url,
+                selected_option=selected_option,
+            )
+            return
         st.rerun()
 
 
@@ -431,8 +466,6 @@ def _run_until_input(
             api_url=api_url,
             settings=settings,
             game_id=selected_option.game_id,
-            human_player_id=human_player_id,
-            control_token=selected_option.control_token,
         )
     except AppError as exc:
         st.error(exc.detail)

@@ -6,8 +6,8 @@
 ## 現在地
 
 - deterministic domain core 実装済み
-- `GameUseCases` facade 経由で game 作成、一覧、状態取得、進行、timeline、private observation、manual action を扱う
-- FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/timeline`、manual player endpoint に絞った
+- `GameUseCases` facade 経由で game 作成、一覧、状態取得、進行、次入力待ちまでの進行、timeline、private observation、manual action を扱う
+- FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/advance-until-input`、`/timeline`、manual player endpoint に絞った
 - CLI `doctor` / `ruleset` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `runs` は HTTP API だけを使う
 - Streamlit は public API 経由で 1 人の human player が遊べる画面として実装済み
 - 現在の LLM provider は LangChain `fake`

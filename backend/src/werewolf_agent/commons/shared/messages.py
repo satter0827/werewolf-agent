@@ -69,6 +69,7 @@ MESSAGE_INVALID_CONTROL_TOKEN = "Invalid control token."
 MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS = "human_player must match a generated player id."
 MESSAGE_PLAYER_IS_NOT_MANUAL = "Player is not configured for manual control."
 MESSAGE_EXPECTED_SPEECH_ACTION = "Expected a speech action."
+MESSAGE_MANUAL_INPUT_REQUIRED = "Manual player input is required before advancing."
 MESSAGE_PLAYER_LIST_LENGTH_MUST_MATCH_CONFIG = (
     "Player list length must match game config player_count."
 )
@@ -184,6 +185,11 @@ def message_message_not_allowed(action_type: str, subject: str) -> str:
 def message_unsupported_type(value: str, subject: str) -> str:
     """Return an unsupported-type validation message."""
     return f"unsupported {subject} type: {value}"
+
+
+def message_action_not_available(action_type: str, phase: str) -> str:
+    """Return an action availability validation message."""
+    return f"Action is not available now: {action_type} during {phase}."
 
 
 def message_expected_phase(expected: str, current: str) -> str:

@@ -65,6 +65,7 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 | `GET` | `/api/v1/games` | game run 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | 公開状態取得 |
 | `POST` | `/api/v1/games/{game_id}/advance` | 1 usecase step 進行 |
+| `POST` | `/api/v1/games/{game_id}/advance-until-input` | 次の manual 入力待ちまで進行 |
 | `GET` | `/api/v1/games/{game_id}/timeline` | 公開 timeline 取得 |
 | `GET` | `/api/v1/games/{game_id}/timeline/stream` | 公開 timeline SSE |
 | `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | private observation 取得 |

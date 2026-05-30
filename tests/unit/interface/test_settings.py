@@ -108,6 +108,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_turn_limit == 100
     assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
+    assert settings.streamlit_auto_advance_after_action is True
+    assert settings.streamlit_initial_sidebar_state == "expanded"
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_save_file == Path(".werewolf-agent/streamlit/saves.json")
     assert settings.streamlit_save_file_path == (
@@ -136,6 +138,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_default_tie_break_policy == "no_elimination"
     assert settings.game_default_day_speech_turns == 1
     assert settings.game_default_allow_self_vote is False
+    assert settings.game_default_allow_action_revisions is False
+    assert settings.game_advance_until_input_max_steps == 64
 
 
 def test_game_usecase_config_is_built_from_interface_settings() -> None:
@@ -148,6 +152,7 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
         game_supported_agent_name="LLM Agent",
         game_default_ruleset_id="default",
         game_default_ruleset_name="Custom Rules",
+        game_advance_until_input_max_steps=9,
     )
 
     usecase_config = build_game_usecase_config(settings)
@@ -157,6 +162,7 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.default_player_count == 7
     assert usecase_config.supported_agent_type == "llm"
     assert usecase_config.default_ruleset_id == "default"
+    assert usecase_config.advance_until_input_max_steps == 9
 
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
@@ -178,6 +184,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_TIE_BREAK_POLICY", "random_elimination")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_DAY_SPEECH_TURNS", "2")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE", "true")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_ALLOW_ACTION_REVISIONS", "true")
+    monkeypatch.setenv("WEREWOLF_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS", "13")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
@@ -192,6 +200,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SAVE_FILE", "tmp/streamlit/saves.json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION", "false")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE", "collapsed")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID", "player-2")
@@ -213,6 +223,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_default_tie_break_policy == "random_elimination"
     assert settings.game_default_day_speech_turns == 2
     assert settings.game_default_allow_self_vote is True
+    assert settings.game_default_allow_action_revisions is True
+    assert settings.game_advance_until_input_max_steps == 13
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
@@ -226,6 +238,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_turn_limit == 40
     assert settings.streamlit_run_limit == 9
     assert settings.streamlit_max_auto_steps == 12
+    assert settings.streamlit_auto_advance_after_action is False
+    assert settings.streamlit_initial_sidebar_state == "collapsed"
     assert settings.streamlit_language == "en"
     assert settings.streamlit_save_file_path == repository_root() / "tmp/streamlit/saves.json"
     assert settings.streamlit_page_title == "Werewolf Console"
@@ -301,6 +315,7 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("log_third_party_level", "VERBOSE"),
         ("cli_output_format", "xml"),
         ("streamlit_language", "fr"),
+        ("streamlit_initial_sidebar_state", "hidden"),
         ("game_default_tie_break_policy", "coin_flip"),
         ("game_supported_agent_type", "bot"),
         ("llm_provider", "openai"),

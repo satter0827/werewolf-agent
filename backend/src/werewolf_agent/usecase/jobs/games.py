@@ -24,6 +24,7 @@ ActionTypeId = Literal["speech", "vote", "werewolf_attack", "seer_inspect", "kni
 RoleId = Literal["villager", "werewolf", "seer", "knight"]
 TieBreakPolicyId = Literal["no_elimination", "random_elimination"]
 Winner = Literal["villagers", "werewolves"]
+AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
 
 
@@ -53,6 +54,7 @@ class GameUseCaseConfig:
     default_player_count: int = 6
     supported_agent_type: str = "llm"
     default_ruleset_id: str = "default"
+    advance_until_input_max_steps: int = 64
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,7 @@ class CreateGameRuleConfig(_UseCaseModel):
     tie_break_policy: TieBreakPolicyId = "no_elimination"
     day_speech_turns: int = Field(default=1, ge=1, le=5)
     allow_self_vote: bool = False
+    allow_action_revisions: bool = False
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -143,6 +146,15 @@ class AdvanceGameRunCommand(_UseCaseModel):
     """Command for advancing one game by one business step."""
 
     game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceUntilInputCommand(_UseCaseModel):
+    """Command for advancing a game until manual input, completion, or limit."""
+
+    game_id: str | UUID
+    max_steps: int = Field(default=64, ge=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -241,6 +253,19 @@ class AdvanceGameRunResult(_UseCaseModel):
     status: GameStatus
     state: dict[str, Any]
     timeline: list[dict[str, Any]]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceUntilInputResult(_UseCaseModel):
+    """Result from advancing until a manual player needs to act."""
+
+    game_id: str
+    status: GameStatus
+    state: dict[str, Any]
+    timeline: list[dict[str, Any]]
+    stop_reason: AdvanceUntilInputStopReason
+    steps: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -489,6 +514,12 @@ class GameUseCases:
         from werewolf_agent.usecase.internal.games import advance_game_run
 
         return advance_game_run(command, dependencies=self._dependencies)
+
+    def advance_until_input(self, command: AdvanceUntilInputCommand) -> AdvanceUntilInputResult:
+        """Advance a game until a manual player needs input or the game stops."""
+        from werewolf_agent.usecase.internal.games import advance_until_input
+
+        return advance_until_input(command, dependencies=self._dependencies)
 
     def get_player_observation(
         self,

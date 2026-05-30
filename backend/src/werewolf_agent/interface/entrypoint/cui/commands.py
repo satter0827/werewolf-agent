@@ -614,6 +614,7 @@ def _create_request(
         tie_break_policy=tie_break_policy,
         day_speech_turns=day_speech_turns,
         allow_self_vote=allow_self_vote,
+        allow_action_revisions=get_settings().game_default_allow_action_revisions,
         default_player_count=get_settings().game_default_player_count,
     )
 

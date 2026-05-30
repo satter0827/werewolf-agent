@@ -2,6 +2,7 @@ import logging
 
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
+    AdvanceUntilInputResponse,
     GameRunResponse,
     GameTimelineResponse,
     PlayerObservationResponse,
@@ -88,6 +89,18 @@ class FakeStreamlitClient:
             timeline=[],
         )
 
+    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
+        _ = max_steps
+        self.stepped = True
+        return AdvanceUntilInputResponse(
+            game_id=game_id,
+            status="completed",
+            state=_state(status="completed", phase="finished"),
+            timeline=[],
+            stop_reason="completed",
+            steps=1,
+        )
+
 
 def test_advance_until_input_logs_iteration_and_stop_reason(
     monkeypatch,
@@ -102,8 +115,6 @@ def test_advance_until_input_logs_iteration_and_stop_reason(
             api_url="http://api.test/api/v1",
             settings=settings,
             game_id="game-1",
-            human_player_id="player-1",
-            control_token="secret",
         )
 
     assert result.completed is True

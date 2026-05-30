@@ -5,7 +5,7 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 目的
 
 - Streamlit が実ブラウザで表示できることを確認する
-- `新しいゲームを始める` から `ゲーム卓`、`これまでの流れ`、`あなたの手番` まで到達することを確認する
+- `新しいゲームを始める` から `ゲーム卓`、`公開タイムライン`、`あなたの手番` まで到達することを確認する
 - desktop / mobile のスクリーンショットを残す
 - console error / warning を確認する
 
@@ -77,14 +77,14 @@ await startButton.click({ timeoutMs: 10000 });
 await tab.playwright.waitForTimeout(5000);
 
 const afterCreate = await tab.playwright.domSnapshot();
-const playable = ["ゲーム卓", "これまでの流れ", "あなたの手番", "現在のフェーズ", "現在の手番"];
+const playable = ["ゲーム卓", "公開タイムライン", "あなたの手番", "現在のフェーズ", "現在の手番"];
 console.log(playable.map((text) => [text, afterCreate.includes(text)]));
 console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 50 }));
 ```
 
 ## mobile 確認
 
-Streamlit は mobile 幅で sidebar が閉じるため、`新しいゲームを始める` を押す前に sidebar を開きます。
+mobile 幅でも初回の `新しいゲームを始める` はメイン画面から押せます。sidebar は補助導線としてだけ確認します。
 
 ```js
 const viewport = await browser.capabilities.get("viewport");
@@ -113,7 +113,7 @@ await mobileStartButton.click({ timeoutMs: 10000 });
 await tab.playwright.waitForTimeout(5000);
 
 const mobileAfterCreate = await tab.playwright.domSnapshot();
-console.log(["ゲーム卓", "これまでの流れ", "あなたの手番", "現在のフェーズ"].map(
+console.log(["ゲーム卓", "公開タイムライン", "あなたの手番", "現在のフェーズ"].map(
   (text) => [text, mobileAfterCreate.includes(text)]
 ));
 console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 50 }));
@@ -140,8 +140,8 @@ QA screenshot は `.werewolf-agent/cache` に残しません。保存が必要�
 - API: `http://127.0.0.1:8765/api/v1`
 - Streamlit: `http://127.0.0.1:8766`
 - desktop: `新しいゲームを始める` から A案画面まで到達
-- desktop: `ゲーム卓`、`あなたの手番`、`これまでの流れ` を A案構成で確認
-- mobile: sidebar から game を開いた後、上部ステータス、`ゲーム卓`、`あなたの手番`、`これまでの流れ` が縦積みで DOM に存在することを確認
+- desktop: `ゲーム卓`、`あなたの手番`、`公開タイムライン` を A案構成で確認
+- mobile: メイン画面から game を作成した後、上部ステータス、`ゲーム卓`、`あなたの手番`、`公開タイムライン` が縦積みで DOM に存在することを確認
 - raw HTML 表示: なし
 - console error / warning: 確認開始時刻以降はなし
 - Browser output に desktop / mobile の screenshot を表示できることを確認

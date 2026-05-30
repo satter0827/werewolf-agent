@@ -40,6 +40,32 @@ def _create_payload() -> dict[str, object]:
     }
 
 
+def _manual_action_payload(observation: dict[str, object], *, player_id: str) -> dict[str, object]:
+    action_type = str(observation["available_actions"][0])
+    payload: dict[str, object] = {"type": action_type}
+    if action_type == "speech":
+        payload["message"] = "I am checking the table."
+        return payload
+    known_roles = observation.get("known_roles")
+    known_wolves = set()
+    if isinstance(known_roles, dict):
+        known_wolves = {
+            str(target_id) for target_id, role in known_roles.items() if role == "werewolf"
+        }
+    players = observation.get("players")
+    assert isinstance(players, list)
+    target = next(
+        str(player["id"])
+        for player in players
+        if isinstance(player, dict)
+        and player.get("id") != player_id
+        and player.get("status") == "alive"
+        and player.get("id") not in known_wolves
+    )
+    payload["target_id"] = target
+    return payload
+
+
 def test_health_endpoint_returns_ok(client: TestClient) -> None:
     response = client.get("/api/v1/health", headers={"X-Trace-Id": "trace-test"})
 
@@ -288,32 +314,31 @@ def test_human_player_can_submit_manual_action(client: TestClient) -> None:
     token = created["control_tokens"]["p1"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    observation = {}
-    for _ in range(8):
-        client.post(f"/api/v1/games/{game_id}/advance")
-        observation = client.get(
-            f"/api/v1/games/{game_id}/players/p1/observation",
-            headers=headers,
-        ).json()["observation"]
-        if observation["available_actions"]:
-            break
+    stopped = client.post(f"/api/v1/games/{game_id}/advance-until-input?max_steps=8")
+    observation = client.get(
+        f"/api/v1/games/{game_id}/players/p1/observation",
+        headers=headers,
+    ).json()["observation"]
 
+    assert stopped.status_code == 200
+    assert stopped.json()["stop_reason"] == "manual_input_required"
     assert observation["available_actions"]
-    action_type = observation["available_actions"][0]
-    action_payload = {"type": action_type}
-    if action_type == "speech":
-        action_payload["message"] = "I am checking the table."
-    elif action_type != "pass":
-        target = next(player["id"] for player in observation["players"] if player["id"] != "p1")
-        action_payload["target_id"] = target
+    action_payload = _manual_action_payload(observation, player_id="p1")
 
     response = client.post(
         f"/api/v1/games/{game_id}/players/p1/actions",
         json=action_payload,
         headers=headers,
     )
+    duplicate = client.post(
+        f"/api/v1/games/{game_id}/players/p1/actions",
+        json=action_payload,
+        headers=headers,
+    )
 
     assert response.status_code == 200
+    assert duplicate.status_code == 422
+    assert duplicate.json()["code"] == "game.invalid_action"
     serialized = json.dumps(response.json())
     assert token not in serialized
     assert "control_token" not in serialized
