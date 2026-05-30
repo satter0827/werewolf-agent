@@ -5,11 +5,13 @@
       "label": "API: migrate",
       "type": "shell",
       "command": "uv",
-      "args": ["run", "--extra", "api", "alembic", "upgrade", "head"],
+      "args": ["run", "--no-sync", "--extra", "api", "alembic", "upgrade", "head"],
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "PYTHONPATH": "${workspaceFolder}/backend/src"
+          "PYTHONPATH": "${workspaceFolder}/backend/src",
+          "WEREWOLF_LOG_OUTPUT": "stderr",
+          "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
         }
       },
       "presentation": {

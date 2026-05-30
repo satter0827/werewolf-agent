@@ -14,6 +14,7 @@ from werewolf_agent.contracts.schemas import (
 )
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
+    ScreenMode,
     build_game_screen_view,
 )
 from werewolf_agent.interface.shared import workflows
@@ -74,8 +75,9 @@ def load_game_screen(
     api_url: str,
     settings: AppSettings,
     game_id: str,
-    human_player_id: str,
+    human_player_id: str | None,
     control_token: str,
+    screen_mode: ScreenMode,
 ) -> GameScreenView:
     """Load public and private data needed by the playable screen."""
     client = build_streamlit_client(api_url, settings)
@@ -92,6 +94,8 @@ def load_game_screen(
         turns=turns,
         observation=observation,
         human_player_id=human_player_id,
+        screen_mode=screen_mode,
+        refresh_interval_seconds=settings.streamlit_refresh_interval_seconds,
     )
 
 
@@ -99,7 +103,7 @@ def load_observation(
     *,
     client: GameApiClient,
     game_id: str,
-    human_player_id: str,
+    human_player_id: str | None,
     control_token: str,
 ) -> PrivateObservationResponse | None:
     """Return private observation only when the screen has enough operation context."""

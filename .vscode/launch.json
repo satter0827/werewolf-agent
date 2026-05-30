@@ -43,7 +43,9 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
       },
       "justMyCode": true
     },
@@ -64,7 +66,9 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
       },
       "justMyCode": true
     },
@@ -85,7 +89,10 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_OUTPUT": "stderr",
+        "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
+        "WEREWOLF_STREAMLIT_SAVE_FILE": "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
       },
       "justMyCode": true
     },

@@ -31,6 +31,7 @@ def _state() -> PublicGameState:
         alive_player_ids=["player-1", "player-2"],
         eliminated_player_ids=["player-3"],
         summary={"alive_count": 2},
+        updated_at=datetime(2026, 1, 1, 12, 34, 56, tzinfo=UTC),
     )
 
 
@@ -64,8 +65,10 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         turns=[_turn("night_action_recorded", {"target_id": "player-2", "role": "werewolf"})],
         observation=observation,
         human_player_id="player-1",
+        screen_mode="playable",
     )
 
+    assert screen.screen_mode == "playable"
     assert screen.observation is not None
     assert screen.observation.role == "占い師"
     timeline_text = " ".join(f"{item.title} {item.detail}" for item in screen.timeline)
@@ -90,6 +93,7 @@ def test_waiting_hand_panel_can_advance_until_next_input() -> None:
         turns=[],
         observation=observation,
         human_player_id="player-1",
+        screen_mode="playable",
     )
 
     assert screen.can_submit_action is False
@@ -98,18 +102,72 @@ def test_waiting_hand_panel_can_advance_until_next_input() -> None:
     assert screen.hand_panel.can_advance is True
 
 
-def test_missing_operation_key_does_not_offer_advance() -> None:
+def test_observer_mode_hides_private_and_action_state() -> None:
     screen = build_game_screen_view(
         state=_state(),
         turns=[],
         observation=None,
-        human_player_id="player-1",
+        human_player_id=None,
+        screen_mode="observer",
     )
 
+    assert screen.screen_mode == "observer"
     assert screen.can_submit_action is False
-    assert screen.current_turn_title == "操作情報が必要"
-    assert screen.hand_panel.title == "操作情報が必要です"
+    assert screen.current_turn_title == "観戦中"
+    assert screen.hand_panel.title == "観戦モード"
     assert screen.hand_panel.can_advance is False
+    assert screen.player_label == "観戦中"
+
+
+def test_status_metrics_use_public_game_context_without_ids() -> None:
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[],
+        observation=None,
+        human_player_id=None,
+        screen_mode="observer",
+        refresh_interval_seconds=5,
+    )
+
+    text = " ".join(f"{item.label} {item.value} {item.detail}" for item in screen.status_metrics)
+    assert "次の更新 5 秒" in text
+    assert "最終更新 12:34:56" in text
+    assert "game-1" not in text
+    assert "player-1" not in text
+
+
+def test_default_player_names_are_shown_as_compact_seat_labels() -> None:
+    state = _state().model_copy(
+        update={
+            "players": [
+                PublicPlayerState(id="player-1", name="Player 1", alive=True, status="alive"),
+                PublicPlayerState(id="player-2", name="Player 2", alive=True, status="alive"),
+                PublicPlayerState(id="player-3", name="Player 3", alive=False, status="dead"),
+            ]
+        }
+    )
+    observation = PrivateObservationResponse(
+        game_id="game-1",
+        player_id="player-1",
+        observation={
+            "me": {"id": "player-1", "role": "villager"},
+            "known_roles": {"player-2": "werewolf"},
+            "available_actions": [],
+        },
+    )
+
+    screen = build_game_screen_view(
+        state=state,
+        turns=[],
+        observation=observation,
+        human_player_id="player-1",
+        screen_mode="playable",
+    )
+
+    assert screen.player_label == "P1"
+    assert [seat.name for seat in screen.seats] == ["P1", "P2", "P3"]
+    assert screen.observation is not None
+    assert screen.observation.known_role_lines == ["P2: 人狼"]
 
 
 def test_target_candidates_exclude_unavailable_targets() -> None:
@@ -139,7 +197,8 @@ def test_finished_timeline_without_winner_uses_safe_detail() -> None:
         state=_state(),
         turns=[_turn("game_finished", {})],
         observation=None,
-        human_player_id="player-1",
+        human_player_id=None,
+        screen_mode="observer",
     )
 
     assert screen.timeline[0].detail == "勝敗が決まりました。"
@@ -159,6 +218,7 @@ def test_completed_game_hides_submit_state_even_with_available_actions() -> None
         turns=[],
         observation=observation,
         human_player_id="player-1",
+        screen_mode="playable",
     )
 
     assert screen.is_completed is True
@@ -186,4 +246,4 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
 
     assert event_icon("unknown_event").label == "出来事"
     assert action_icon("unknown_action").label == "行動"
-    assert game_run_option_label(run) == "進行中 / Day 1 / game-unknown"
+    assert game_run_option_label(run) == "進行中 / Day 1 / 6人 / 最終更新 12:00:00 / 観戦のみ"

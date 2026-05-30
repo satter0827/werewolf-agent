@@ -34,6 +34,7 @@ streamlit_turn_limit = 100
 streamlit_run_limit = 20
 streamlit_max_auto_steps = 64
 streamlit_language = "ja"
+streamlit_save_file = ".werewolf-agent/streamlit/saves.json"
 streamlit_default_seed = 1
 streamlit_default_human_player_id = "player-1"
 streamlit_message_max_chars = 200

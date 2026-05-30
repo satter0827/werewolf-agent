@@ -112,6 +112,7 @@ DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
 DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
 DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
+DEFAULT_STREAMLIT_SAVE_FILE: Final = _path_default("streamlit_save_file")
 DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
 DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID: Final = _string_default(
     "streamlit_default_human_player_id"
@@ -315,6 +316,10 @@ class AppSettings(BaseSettings):
         default=cast(StreamlitLanguage, DEFAULT_STREAMLIT_LANGUAGE),
         validation_alias="WEREWOLF_STREAMLIT_LANGUAGE",
     )
+    streamlit_save_file: Path = Field(
+        default=DEFAULT_STREAMLIT_SAVE_FILE,
+        validation_alias="WEREWOLF_STREAMLIT_SAVE_FILE",
+    )
     streamlit_page_title: str = Field(
         default=DEFAULT_STREAMLIT_PAGE_TITLE,
         validation_alias="WEREWOLF_STREAMLIT_PAGE_TITLE",
@@ -462,6 +467,14 @@ class AppSettings(BaseSettings):
         return api_url or self.cli_api_url
 
     @property
+    def streamlit_save_file_path(self) -> Path:
+        """Return the absolute local save-slot file for the Streamlit UI."""
+        save_file = self.streamlit_save_file.expanduser()
+        if save_file.is_absolute():
+            return save_file
+        return repository_root() / save_file
+
+    @property
     def sqlite_database_path(self) -> Path:
         """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
         sqlite_path = self.sqlite_path.expanduser()
@@ -573,6 +586,14 @@ class AppSettings(BaseSettings):
     def normalize_streamlit_player_id(cls, value: object) -> str:
         """Return the default Streamlit player id."""
         return normalize_non_blank(value, field_name="streamlit_default_human_player_id")
+
+    @field_validator("streamlit_save_file", mode="before")
+    @classmethod
+    def normalize_streamlit_save_file(cls, value: object) -> Path:
+        """Return a non-empty Streamlit save file path."""
+        if isinstance(value, Path):
+            return value
+        return Path(normalize_non_blank(value, field_name="streamlit_save_file"))
 
     @field_validator("cli_output_format", mode="before")
     @classmethod

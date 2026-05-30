@@ -97,6 +97,10 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
     assert settings.streamlit_language == "ja"
+    assert settings.streamlit_save_file == Path(".werewolf-agent/streamlit/saves.json")
+    assert settings.streamlit_save_file_path == (
+        repository_root() / ".werewolf-agent/streamlit/saves.json"
+    )
     assert settings.streamlit_page_title == "Werewolf Agent"
     assert settings.streamlit_default_seed == 1
     assert settings.streamlit_default_human_player_id == "player-1"
@@ -174,6 +178,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_TURN_LIMIT", "40")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_RUN_LIMIT", "9")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_SAVE_FILE", "tmp/streamlit/saves.json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
@@ -210,6 +215,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_run_limit == 9
     assert settings.streamlit_max_auto_steps == 12
     assert settings.streamlit_language == "en"
+    assert settings.streamlit_save_file_path == repository_root() / "tmp/streamlit/saves.json"
     assert settings.streamlit_page_title == "Werewolf Console"
     assert settings.streamlit_default_seed == 33
     assert settings.streamlit_default_human_player_id == "player-2"

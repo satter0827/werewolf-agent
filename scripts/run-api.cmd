@@ -5,6 +5,7 @@ set "MIGRATE=1"
 set "HOST=127.0.0.1"
 set "PORT=8000"
 set "RELOAD="
+set "TEMP_STATE=0"
 
 :parse_args
 if "%~1"=="" goto run_api
@@ -17,6 +18,11 @@ if /I "%~1"=="--no-migrate" (
 )
 if /I "%~1"=="--reload" (
     set "RELOAD=--reload"
+    shift
+    goto parse_args
+)
+if /I "%~1"=="--temp-state" (
+    set "TEMP_STATE=1"
     shift
     goto parse_args
 )
@@ -71,6 +77,21 @@ if defined PYTHONPATH (
     set "PYTHONPATH=%CD%\backend\src"
 )
 
+if "%TEMP_STATE%"=="1" (
+    if not defined WEREWOLF_AGENT_RUNTIME_DIR (
+        set "WEREWOLF_AGENT_RUNTIME_DIR=%TEMP%\werewolf-agent"
+    )
+    if not exist "%WEREWOLF_AGENT_RUNTIME_DIR%\db" (
+        mkdir "%WEREWOLF_AGENT_RUNTIME_DIR%\db" >nul 2>nul
+    )
+    if not defined WEREWOLF_SQLITE_PATH (
+        set "WEREWOLF_SQLITE_PATH=%WEREWOLF_AGENT_RUNTIME_DIR%\db\api.sqlite3"
+    )
+    if not defined WEREWOLF_LOG_OUTPUT (
+        set "WEREWOLF_LOG_OUTPUT=stderr"
+    )
+)
+
 if not "%MIGRATE%"=="1" goto start_server
 
 "%PYTHON%" -m alembic upgrade head
@@ -91,8 +112,9 @@ popd
 exit /b %EXIT_CODE%
 
 :print_help
-echo Usage: scripts\run-api.cmd [--no-migrate] [--host HOST] [--port PORT] [--reload]
+echo Usage: scripts\run-api.cmd [--no-migrate] [--host HOST] [--port PORT] [--reload] [--temp-state]
 echo.
 echo Starts the FastAPI application with the local virtual environment.
 echo Defaults: --host 127.0.0.1 --port 8000
+echo   --temp-state  Use %%TEMP%%\werewolf-agent for SQLite and stderr logging.
 exit /b 0

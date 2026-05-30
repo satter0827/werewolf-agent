@@ -60,6 +60,8 @@ VS Code から起動する場合は、Run and Debug で `App: API + Streamlit` �
 起動前に `.vscode/tasks.json` の `API: migrate` が実行され、SQLite DB を最新 migration へ更新します。
 API だけ、または UI だけを確認したい場合は `API: uvicorn` / `UI: Streamlit` を個別に起動できます。
 Streamlit の既定 URL は `http://localhost:8501`、接続先 API は `http://127.0.0.1:8000/api/v1` です。
+VS Code 起動では、OneDrive / sandbox の権限差分を避けるため、SQLite と Streamlit 保存データを
+`%TEMP%\werewolf-agent` 配下へ置きます。
 
 1 人だけ手動で操作する:
 
@@ -162,7 +164,11 @@ WEREWOLF_STREAMLIT_TURN_LIMIT=100
 WEREWOLF_STREAMLIT_RUN_LIMIT=20
 WEREWOLF_STREAMLIT_MAX_AUTO_STEPS=64
 WEREWOLF_STREAMLIT_LANGUAGE=ja
+WEREWOLF_STREAMLIT_SAVE_FILE=.werewolf-agent/streamlit/saves.json
 WEREWOLF_STREAMLIT_PAGE_TITLE=Werewolf Agent
+WEREWOLF_STREAMLIT_DEFAULT_SEED=1
+WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID=player-1
+WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS=200
 WEREWOLF_STREAMLIT_SERVICE_NAME=werewolf-agent-streamlit
 WEREWOLF_GAME_MIN_PLAYERS=5
 WEREWOLF_GAME_MAX_PLAYERS=8

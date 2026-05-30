@@ -5,11 +5,9 @@ from __future__ import annotations
 from collections.abc import MutableMapping
 from typing import Any
 
-KEY_API_URL = "werewolf_api_url"
-KEY_GAME_ID = "werewolf_game_id"
-KEY_HUMAN_PLAYER_ID = "werewolf_human_player_id"
-KEY_CONTROL_TOKEN = "werewolf_control_token"
-KEY_MESSAGE = "werewolf_message"
+KEY_API_URL = "werewolf_streamlit_api_url"
+KEY_SELECTED_SAVE_ID = "werewolf_streamlit_selected_save_id"
+KEY_MESSAGE = "werewolf_streamlit_message"
 
 
 def text_value(session: MutableMapping[str, Any], key: str, default: str = "") -> str:
@@ -18,20 +16,11 @@ def text_value(session: MutableMapping[str, Any], key: str, default: str = "") -
     return str(value) if value is not None else default
 
 
-def set_game_session(
-    session: MutableMapping[str, Any],
-    *,
-    game_id: str,
-    human_player_id: str,
-    control_token: str,
-) -> None:
-    """Store the active playable game context."""
-    session[KEY_GAME_ID] = game_id
-    session[KEY_HUMAN_PLAYER_ID] = human_player_id
-    session[KEY_CONTROL_TOKEN] = control_token
+def remember_selected_save(session: MutableMapping[str, Any], option_id: str) -> None:
+    """Store the selected save option id."""
+    session[KEY_SELECTED_SAVE_ID] = option_id
 
 
-def clear_game_session(session: MutableMapping[str, Any]) -> None:
-    """Clear the active game context while preserving connection settings."""
-    for key in (KEY_GAME_ID, KEY_HUMAN_PLAYER_ID, KEY_CONTROL_TOKEN, KEY_MESSAGE):
-        session.pop(key, None)
+def clear_message(session: MutableMapping[str, Any]) -> None:
+    """Clear the current action message."""
+    session.pop(KEY_MESSAGE, None)

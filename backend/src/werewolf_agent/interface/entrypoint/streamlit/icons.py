@@ -50,9 +50,12 @@ ACTION_LABELS: dict[str, str] = {
 
 STATUS_ICONS: dict[str, UiIcon] = {
     "phase": UiIcon("◌", "現在のフェーズ", "day"),
+    "next_update": UiIcon("↻", "次の更新", "day"),
     "alive": UiIcon("●", "生存プレイヤー", "safe"),
     "turn": UiIcon("▶", "経過ターン", "day"),
     "hand": UiIcon("✋", "現在の手番", "danger"),
+    "player": UiIcon("●", "あなた", "neutral"),
+    "updated": UiIcon("↺", "最終更新", "neutral"),
     "status": UiIcon("■", "状態", "neutral"),
     "winner": UiIcon("🏁", "勝利", "neutral"),
 }

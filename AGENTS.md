@@ -95,8 +95,19 @@ docker compose up api
 docker compose run --rm test
 ```
 
+Windows / OneDrive / Codex での実行:
+
+- この checkout は OneDrive の reparse point 配下に置かれることがある。Codex の sandbox から PowerShell で repository 内へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite `disk I/O error` が起きる場合がある
+- AI は検証用の cache、SQLite、Streamlit save、browser QA screenshot を repository 配下へ直接書かず、`%TEMP%\werewolf-agent` 配下を使う
+- 依存関係がすでに同期済みなら、AI は `uv run --no-sync ...` を優先する。Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使う
+- まとめて検証する場合は `scripts\check-all.cmd` を使う。この script は pytest / mypy cache と検証用 SQLite を `%TEMP%\werewolf-agent` に置く
+- API の手動 QA で一時 DB を使う場合は `scripts\run-api.cmd --temp-state` を使う。直接起動する場合は `WEREWOLF_SQLITE_PATH` と `WEREWOLF_STREAMLIT_SAVE_FILE` を `%TEMP%\werewolf-agent` 配下へ向ける
+- VS Code の `launch.json` / `tasks.json` から起動する場合も、API 用 SQLite と Streamlit save は `%TEMP%\werewolf-agent` 配下へ向ける。launch 設定を変更する場合は、この方針を維持する
+
 ## Working Rules
 
+- 後方互換は原則として維持しない。ユーザーが明示しない限り、既存 UI、保存形式、設定名、内部 DTO、session state、local generated data は破壊的に変更してよい
+- 互換レイヤー、migration、旧形式 fallback は原則として作らず、現在の設計品質、疎結合、設定値駆動、UX、テスト容易性を優先する
 - 小さく、検証しやすい変更にする
 - 既存の設計、命名、依存関係に合わせる
 - 関係ないリファクタリングや整形だけの変更を混ぜない

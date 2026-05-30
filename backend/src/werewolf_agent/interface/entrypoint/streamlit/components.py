@@ -69,8 +69,8 @@ def timeline_header_html() -> str:
         """
         <div class="wa-section-head wa-section-head-spaced">
             <div>
-                <h3>これまでの流れ</h3>
-                <p>公開された出来事を時系列で表示します。</p>
+                <h3>公開タイムライン</h3>
+                <p>公開された出来事を時系列で表示します。(詳細は非公開です)</p>
             </div>
         </div>
         """
@@ -133,7 +133,6 @@ def _seat_html(seat: PlayerSeatView) -> str:
         <article class="{" ".join(classes)}">
             <div class="wa-seat-avatar">👤</div>
             <b>{escape(seat.name)}</b>
-            <span class="wa-seat-id">{escape(seat.player_id)}</span>
             <div class="{status_class}">{escape(seat.status)}</div>
             <div class="wa-activity">{escape(seat.activity)}</div>
         </article>

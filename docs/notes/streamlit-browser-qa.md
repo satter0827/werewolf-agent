@@ -12,6 +12,8 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 起動
 
 VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
+VS Code から `App: API + Streamlit` を起動する場合は、migration task、API、Streamlit が同じ一時 runtime を使います。
+SQLite は `%TEMP%\werewolf-agent\db\vscode.sqlite3`、Streamlit save は `%TEMP%\werewolf-agent\streamlit\saves.json` です。
 
 別 terminal で API と Streamlit を起動します。
 

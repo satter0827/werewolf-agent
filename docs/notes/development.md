@@ -43,6 +43,33 @@ Streamlit のプレイ画面を起動:
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
 
+### Windows / OneDrive / Codex の注意
+
+この repository は OneDrive の reparse point 配下で作業されることがあります。Codex の sandbox から
+PowerShell で repository 配下へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite
+`disk I/O error` が出る場合があります。
+
+AI が検証や browser QA を行う場合は、cache、SQLite、Streamlit save、screenshot を repository 配下ではなく
+`%TEMP%\werewolf-agent` 配下へ置きます。依存関係が同期済みなら `uv run --no-sync ...` を使い、Ruff は
+`--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
+
+検証をまとめて実行する場合:
+
+```bat
+scripts\check-all.cmd
+scripts\check-all.cmd --api
+```
+
+API を一時 DB で起動する場合:
+
+```bat
+scripts\run-api.cmd --temp-state --reload
+```
+
+VS Code の Run and Debug から起動する場合は、`.vscode/launch.json` と `.vscode/tasks.json` が
+`WEREWOLF_SQLITE_PATH` と `WEREWOLF_STREAMLIT_SAVE_FILE` を `%TEMP%\werewolf-agent` 配下へ向けます。
+launch 設定を変更する場合も、repository 配下に検証用 DB / save を戻さないでください。
+
 ## 配置
 
 | Path | 責務 |
@@ -152,6 +179,10 @@ Git 管理しないものは `.werewolf-agent/` に集約します。
 - public event JSONL logs
 
 `.werewolf-agent/` は Git 管理しません。トップレベルの `.gitkeep` だけを置きます。
+
+Codex / OneDrive 環境の一時検証では、上記の repository 配下生成物ではなく `%TEMP%\werewolf-agent` を使います。
+これは権限エラーと SQLite の I/O エラーを避けるための作業時方針であり、アプリの通常設定値は
+`.env.example` と `backend/src/werewolf_agent/resources/settings/defaults.toml` を正とします。
 
 ## Optional Dependencies
 

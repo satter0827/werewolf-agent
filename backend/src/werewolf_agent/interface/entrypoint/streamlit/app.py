@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import importlib
-from typing import Any
+from typing import Any, cast
 
 from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.contracts import AppError
@@ -23,21 +23,25 @@ from werewolf_agent.interface.entrypoint.streamlit.operations import (
     load_game_screen,
     submit_screen_action,
 )
+from werewolf_agent.interface.entrypoint.streamlit.saves import (
+    build_saved_game_options,
+    create_save_slot,
+    load_save_slots,
+    upsert_save_slot,
+)
 from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_API_URL,
-    KEY_CONTROL_TOKEN,
-    KEY_GAME_ID,
-    KEY_HUMAN_PLAYER_ID,
     KEY_MESSAGE,
-    clear_game_session,
-    set_game_session,
+    KEY_SELECTED_SAVE_ID,
+    clear_message,
+    remember_selected_save,
     text_value,
 )
 from werewolf_agent.interface.entrypoint.streamlit.styles import STREAMLIT_CSS
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ActionChoiceView,
     GameScreenView,
-    game_run_option_label,
+    SavedGameOptionView,
 )
 
 
@@ -48,16 +52,8 @@ def main() -> None:
     st.set_page_config(page_title=settings.streamlit_page_title, page_icon="🐺", layout="wide")
     st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
-    api_url = _render_sidebar(st, settings)
-    game_id = text_value(st.session_state, KEY_GAME_ID)
-    human_player_id = text_value(
-        st.session_state,
-        KEY_HUMAN_PLAYER_ID,
-        settings.streamlit_default_human_player_id,
-    )
-    control_token = text_value(st.session_state, KEY_CONTROL_TOKEN)
-
-    if not game_id:
+    api_url, selected_option = _render_sidebar(st, settings)
+    if selected_option is None:
         _render_empty_state(st)
         return
 
@@ -65,9 +61,10 @@ def main() -> None:
         screen = load_game_screen(
             api_url=api_url,
             settings=settings,
-            game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
+            game_id=selected_option.game_id,
+            human_player_id=selected_option.human_player_id,
+            control_token=selected_option.control_token,
+            screen_mode=selected_option.mode,
         )
     except AppError as exc:
         st.error(exc.detail)
@@ -83,9 +80,7 @@ def main() -> None:
             settings=settings,
             api_url=api_url,
             screen=screen,
-            game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
+            selected_option=selected_option,
         )
 
     timeline_column, _ = st.columns([2.15, 1], gap="medium")
@@ -93,17 +88,17 @@ def main() -> None:
         _render_timeline(st, screen)
 
 
-def _render_sidebar(st: Any, settings: AppSettings) -> str:
-    st.sidebar.title("プレイ")
-    st.sidebar.markdown('<div class="wa-sidebar-mode">Werewolf Agent</div>', unsafe_allow_html=True)
+def _render_sidebar(st: Any, settings: AppSettings) -> tuple[str, SavedGameOptionView | None]:
+    _render_sidebar_brand(st)
     st.sidebar.divider()
+
     st.sidebar.subheader("API 接続")
     default_api_url = text_value(
         st.session_state,
         KEY_API_URL,
         settings.streamlit_resolved_api_url,
     )
-    api_url = str(st.sidebar.text_input("接続先", value=default_api_url))
+    api_url = str(st.sidebar.text_input("API Base URL", value=default_api_url))
     st.session_state[KEY_API_URL] = api_url
     if st.sidebar.button("接続を確認", use_container_width=True):
         try:
@@ -114,11 +109,87 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             st.sidebar.success("接続済み")
 
     st.sidebar.divider()
-    st.sidebar.subheader("現在のゲーム")
-    _render_current_game(st, settings=settings, api_url=api_url)
+    st.sidebar.subheader("保存データ")
+    selected_option = _render_save_selector(st, settings=settings, api_url=api_url)
 
     st.sidebar.divider()
     st.sidebar.subheader("新しいゲーム")
+    _render_create_game(st, settings=settings, api_url=api_url)
+
+    st.sidebar.divider()
+    st.sidebar.subheader("ナビゲーション")
+    st.sidebar.markdown(
+        """
+        <div class="wa-nav-list">
+            <div class="wa-nav-item wa-nav-item-active">▶ プレイ</div>
+            <div class="wa-nav-item">◉ 観戦</div>
+            <div class="wa-nav-item">□ 履歴</div>
+            <div class="wa-nav-item">⚙ 設定</div>
+            <div class="wa-nav-item">⌁ 診断</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.sidebar.markdown(
+        """
+        <div class="wa-help-card">
+            <b>このページについて</b><br>
+            画面の見方やルールを確認できます
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    return api_url, selected_option
+
+
+def _render_sidebar_brand(st: Any) -> None:
+    st.sidebar.markdown(
+        """
+        <div class="wa-sidebar-brand">
+            <div class="wa-brand-mark">🐺</div>
+            <div>
+                <div class="wa-brand-title">Werewolf Agent</div>
+                <div class="wa-brand-mode">プレイモード</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_save_selector(
+    st: Any,
+    *,
+    settings: AppSettings,
+    api_url: str,
+) -> SavedGameOptionView | None:
+    slots = load_save_slots(settings.streamlit_save_file_path)
+    try:
+        runs = list_recent_games(api_url=api_url, settings=settings)
+    except AppError:
+        runs = []
+        st.sidebar.caption("保存データは API 接続後に更新されます。")
+    options = build_saved_game_options(slots, runs)
+    if not options:
+        st.sidebar.caption("保存データはまだありません。")
+        return None
+
+    selected_id = text_value(st.session_state, KEY_SELECTED_SAVE_ID)
+    index = _selected_option_index(options, selected_id)
+    selected_option = cast(
+        SavedGameOptionView,
+        st.sidebar.selectbox(
+            "保存データを選択",
+            options,
+            index=index,
+            format_func=lambda option: option.label,
+        ),
+    )
+    remember_selected_save(st.session_state, selected_option.option_id)
+    return selected_option
+
+
+def _render_create_game(st: Any, *, settings: AppSettings, api_url: str) -> None:
     with st.sidebar.form("create-game"):
         player_count = st.number_input(
             "プレイヤー数",
@@ -128,15 +199,17 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             step=1,
         )
         seed_text = st.text_input("シード", value=str(settings.streamlit_default_seed))
-        player_options = [f"player-{index}" for index in range(1, int(player_count) + 1)]
+        seat_options = _human_seat_options(int(player_count))
         default_human = settings.streamlit_default_human_player_id
-        selected_index = (
-            player_options.index(default_human) if default_human in player_options else 0
+        default_index = next(
+            (index for index, option in enumerate(seat_options) if option[0] == default_human),
+            0,
         )
-        human_player_id = st.selectbox(
-            "あなたのプレイヤー",
-            player_options,
-            index=selected_index,
+        selected_seat = st.selectbox(
+            "あなたの席",
+            seat_options,
+            index=default_index,
+            format_func=lambda option: option[1],
         )
         submitted = st.form_submit_button("新しいゲームを始める", use_container_width=True)
     if submitted:
@@ -146,86 +219,8 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             api_url=api_url,
             player_count=int(player_count),
             seed_text=seed_text,
-            human_player_id=str(human_player_id),
+            human_player_id=cast(tuple[str, str], selected_seat)[0],
         )
-
-    if st.sidebar.button("ゲーム選択をクリア", use_container_width=True):
-        clear_game_session(st.session_state)
-        st.rerun()
-
-    return api_url
-
-
-def _render_current_game(st: Any, *, settings: AppSettings, api_url: str) -> None:
-    current_game_id = text_value(st.session_state, KEY_GAME_ID)
-    current_human_player = text_value(
-        st.session_state,
-        KEY_HUMAN_PLAYER_ID,
-        settings.streamlit_default_human_player_id,
-    )
-    current_control_key = text_value(st.session_state, KEY_CONTROL_TOKEN)
-    if current_game_id:
-        st.sidebar.caption(f"選択中: {current_game_id}")
-
-    try:
-        runs = list_recent_games(api_url=api_url, settings=settings)
-    except AppError:
-        runs = []
-        st.sidebar.caption("ゲーム一覧は API 接続後に表示されます。")
-
-    if runs:
-        option_labels = [game_run_option_label(run) for run in runs]
-        selected_label = st.sidebar.selectbox(
-            "最近のゲーム",
-            option_labels,
-            label_visibility="collapsed",
-            key="wa-current-game-select",
-        )
-        selected_run = runs[option_labels.index(selected_label)]
-        human_player = st.sidebar.text_input(
-            "操作するプレイヤー",
-            value=current_human_player,
-            key="wa-current-game-human-player",
-        )
-        control_key = st.sidebar.text_input(
-            "操作用キー",
-            value=current_control_key,
-            type="password",
-            key="wa-current-game-control-key",
-        )
-        if st.sidebar.button("このゲームを開く", use_container_width=True):
-            set_game_session(
-                st.session_state,
-                game_id=selected_run.game_id,
-                human_player_id=human_player,
-                control_token=control_key,
-            )
-            st.rerun()
-    elif not current_game_id:
-        st.sidebar.caption("まだゲームがありません。")
-
-    with st.sidebar.form("open-game-by-id"):
-        game_id = st.text_input("ゲーム ID", value=current_game_id, key="wa-open-game-id")
-        human_player = st.text_input(
-            "操作するプレイヤー",
-            value=current_human_player,
-            key="wa-open-game-human-player",
-        )
-        control_key = st.text_input(
-            "操作用キー",
-            value=current_control_key,
-            type="password",
-            key="wa-open-game-control-key",
-        )
-        opened = st.form_submit_button("ゲームIDで開く", use_container_width=True)
-    if opened and game_id and human_player and control_key:
-        set_game_session(
-            st.session_state,
-            game_id=game_id,
-            human_player_id=human_player,
-            control_token=control_key,
-        )
-        st.rerun()
 
 
 def _create_game(
@@ -250,18 +245,20 @@ def _create_game(
         return
 
     control_token = (created.control_tokens or {}).get(human_player_id, "")
-    set_game_session(
-        st.session_state,
-        game_id=created.game_id,
+    slot = create_save_slot(
+        created,
         human_player_id=human_player_id,
         control_token=control_token,
     )
+    upsert_save_slot(settings.streamlit_save_file_path, slot)
+    remember_selected_save(st.session_state, f"slot:{slot.slot_id}")
+    clear_message(st.session_state)
     st.sidebar.success("ゲームを作成しました")
     st.rerun()
 
 
 def _render_empty_state(st: Any) -> None:
-    st.info("サイドバーで API 接続を確認し、新しいゲームを始めてください。")
+    st.info("左の保存データを選ぶか、新しいゲームを始めてください。")
 
 
 def _render_status_bar(st: Any, screen: GameScreenView) -> None:
@@ -286,11 +283,13 @@ def _render_action_panel(
     settings: AppSettings,
     api_url: str,
     screen: GameScreenView,
-    game_id: str,
-    human_player_id: str,
-    control_token: str,
+    selected_option: SavedGameOptionView,
 ) -> None:
     st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
+    if screen.screen_mode == "observer":
+        st.caption("公開情報だけを表示しています。")
+        return
+
     if screen.observation is not None:
         st.markdown("#### あなたの役職")
         st.info(f"{screen.observation.role}。あなただけに見えている情報です。")
@@ -309,10 +308,8 @@ def _render_action_panel(
             st,
             settings=settings,
             api_url=api_url,
-            game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
             screen=screen,
+            selected_option=selected_option,
         )
         return
 
@@ -327,9 +324,7 @@ def _render_action_panel(
             st,
             settings=settings,
             api_url=api_url,
-            game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
+            selected_option=selected_option,
         )
 
 
@@ -338,16 +333,15 @@ def _render_action_form(
     *,
     settings: AppSettings,
     api_url: str,
-    game_id: str,
-    human_player_id: str,
-    control_token: str,
     screen: GameScreenView,
+    selected_option: SavedGameOptionView,
 ) -> None:
-    if screen.observation is None:
+    human_player_id = selected_option.human_player_id
+    if screen.observation is None or human_player_id is None:
         return
 
     st.divider()
-    st.markdown("#### できる行動")
+    st.markdown("#### 利用可能な行動")
     action_choices = screen.observation.action_choices
     selected_action_type = st.radio(
         "行動",
@@ -358,11 +352,16 @@ def _render_action_form(
     )
     selected_action = _find_action_choice(action_choices, str(selected_action_type))
     candidates = screen.observation.target_candidates.get(selected_action.action_type, [])
+    target_labels = {seat.player_id: seat.name for seat in screen.seats}
 
     target_id = None
     if selected_action.requires_target:
         if candidates:
-            selected_target = st.selectbox("対象を選ぶ", candidates)
+            selected_target = st.selectbox(
+                "対象を選ぶ",
+                candidates,
+                format_func=lambda value: target_labels.get(str(value), str(value)),
+            )
             target_id = str(selected_target) if selected_target else None
         else:
             st.warning("選べる対象がありません。")
@@ -372,7 +371,7 @@ def _render_action_form(
         message = st.text_area(
             "発言内容",
             key=KEY_MESSAGE,
-            placeholder="ここに発言を入力...",
+            placeholder="ここに発言内容を入力してください...",
             max_chars=settings.streamlit_message_max_chars,
         )
 
@@ -390,9 +389,9 @@ def _render_action_form(
             submit_screen_action(
                 api_url=api_url,
                 settings=settings,
-                game_id=game_id,
+                game_id=selected_option.game_id,
                 human_player_id=human_player_id,
-                control_token=control_token,
+                control_token=selected_option.control_token,
                 action_type=selected_action.action_type,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
@@ -400,7 +399,7 @@ def _render_action_form(
         except AppError as exc:
             st.error(exc.detail)
             return
-        st.session_state[KEY_MESSAGE] = ""
+        clear_message(st.session_state)
         st.success("入力を送信しました。")
         st.rerun()
 
@@ -410,17 +409,18 @@ def _run_until_input(
     *,
     settings: AppSettings,
     api_url: str,
-    game_id: str,
-    human_player_id: str,
-    control_token: str,
+    selected_option: SavedGameOptionView,
 ) -> None:
+    human_player_id = selected_option.human_player_id
+    if human_player_id is None:
+        return
     try:
         result = advance_until_input(
             api_url=api_url,
             settings=settings,
-            game_id=game_id,
+            game_id=selected_option.game_id,
             human_player_id=human_player_id,
-            control_token=control_token,
+            control_token=selected_option.control_token,
         )
     except AppError as exc:
         st.error(exc.detail)
@@ -430,6 +430,17 @@ def _run_until_input(
         return
     if result.hit_limit:
         st.warning("進行の上限に達しました。現在の状態を確認してください。")
+
+
+def _selected_option_index(options: list[SavedGameOptionView], selected_id: str) -> int:
+    for index, option in enumerate(options):
+        if option.option_id == selected_id:
+            return index
+    return 0
+
+
+def _human_seat_options(player_count: int) -> list[tuple[str, str]]:
+    return [(f"player-{index}", f"P{index}") for index in range(1, player_count + 1)]
 
 
 def _find_action_choice(

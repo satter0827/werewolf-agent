@@ -1,5 +1,6 @@
 import ast
 import inspect
+import json
 from pathlib import Path
 from types import ModuleType
 
@@ -337,8 +338,48 @@ def test_vscode_launch_uses_open_workspace_without_branch_pinning() -> None:
     assert "${workspaceFolder}" in launch_source
     assert ".codex/worktrees" not in launch_source.replace("\\", "/")
     assert "refs/heads" not in launch_source
-    assert "WEREWOLF_STREAMLIT_API_URL" not in launch_source
-    assert "WEREWOLF_STREAMLIT_LANGUAGE" not in launch_source
+
+
+def test_vscode_launch_uses_temp_runtime_state() -> None:
+    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    configurations = {
+        configuration["name"]: configuration for configuration in launch["configurations"]
+    }
+
+    api_env = configurations["API: uvicorn"]["env"]
+    migrate_env = configurations["API: migrate"]["env"]
+    streamlit_env = configurations["UI: Streamlit"]["env"]
+
+    assert api_env["WEREWOLF_LOG_OUTPUT"] == "stderr"
+    assert api_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
+    assert migrate_env["WEREWOLF_LOG_OUTPUT"] == "stderr"
+    assert migrate_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
+    assert streamlit_env["WEREWOLF_LOG_OUTPUT"] == "stderr"
+    assert streamlit_env["WEREWOLF_STREAMLIT_API_URL"] == "http://127.0.0.1:8000/api/v1"
+    assert (
+        streamlit_env["WEREWOLF_STREAMLIT_SAVE_FILE"]
+        == "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
+    )
+
+
+def test_vscode_migration_task_matches_launch_runtime_state() -> None:
+    tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
+    migrate_task = next(task for task in tasks["tasks"] if task["label"] == "API: migrate")
+
+    assert migrate_task["args"] == [
+        "run",
+        "--no-sync",
+        "--extra",
+        "api",
+        "alembic",
+        "upgrade",
+        "head",
+    ]
+    assert migrate_task["options"]["env"]["WEREWOLF_LOG_OUTPUT"] == "stderr"
+    assert (
+        migrate_task["options"]["env"]["WEREWOLF_SQLITE_PATH"]
+        == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
+    )
 
 
 def test_contracts_do_not_import_api_frameworks() -> None:
