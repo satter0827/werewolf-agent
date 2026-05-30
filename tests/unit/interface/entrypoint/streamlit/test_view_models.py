@@ -75,6 +75,43 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     assert screen.seats[0].activity == "入力待ち"
 
 
+def test_waiting_hand_panel_can_advance_until_next_input() -> None:
+    observation = PrivateObservationResponse(
+        game_id="game-1",
+        player_id="player-1",
+        observation={
+            "me": {"id": "player-1", "role": "villager"},
+            "available_actions": [],
+        },
+    )
+
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[],
+        observation=observation,
+        human_player_id="player-1",
+    )
+
+    assert screen.can_submit_action is False
+    assert screen.current_turn_title == "進行待ち"
+    assert screen.hand_panel.title == "進行待ち"
+    assert screen.hand_panel.can_advance is True
+
+
+def test_missing_operation_key_does_not_offer_advance() -> None:
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[],
+        observation=None,
+        human_player_id="player-1",
+    )
+
+    assert screen.can_submit_action is False
+    assert screen.current_turn_title == "操作情報が必要"
+    assert screen.hand_panel.title == "操作情報が必要です"
+    assert screen.hand_panel.can_advance is False
+
+
 def test_target_candidates_exclude_unavailable_targets() -> None:
     candidates = target_candidates_for_action(
         "vote",
@@ -127,6 +164,8 @@ def test_completed_game_hides_submit_state_even_with_available_actions() -> None
     assert screen.is_completed is True
     assert screen.can_submit_action is False
     assert screen.current_turn_title == "ゲームは終了しました"
+    assert screen.hand_panel.title == "ゲームは終了しました"
+    assert screen.hand_panel.can_advance is False
 
 
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:

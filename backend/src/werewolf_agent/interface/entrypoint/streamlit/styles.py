@@ -254,14 +254,28 @@ STREAMLIT_CSS = """
         padding: 14px;
         background: #fff7f7;
     }
-    .wa-primary-note {
-        border: 1px solid #fecaca;
-        border-radius: 8px;
-        padding: 12px;
+    .wa-hand-panel-neutral {
+        border-color: #e5e7eb;
         background: #ffffff;
+    }
+    .wa-hand-panel-day {
+        border-color: #fed7aa;
+        background: #fffaf2;
+    }
+    .wa-hand-panel-safe {
+        border-color: #99f6e4;
+        background: #f0fdfa;
+    }
+    .wa-primary-note {
         color: #111827;
     }
-    .wa-primary-note div {
+    .wa-advance-note {
+        border-left: 3px solid #f97316;
+        padding: 2px 0 2px 10px;
+        color: #111827;
+    }
+    .wa-primary-note div,
+    .wa-advance-note div {
         margin-top: 3px;
         color: #4b5563;
         font-size: 13px;

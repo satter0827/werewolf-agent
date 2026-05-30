@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import importlib
-from html import escape
-from textwrap import dedent
 from typing import Any
 
 from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.contracts import AppError
+from werewolf_agent.interface.entrypoint.streamlit.components import (
+    advance_note_html,
+    game_table_html,
+    hand_panel_html,
+    status_grid_html,
+    timeline_header_html,
+    timeline_html,
+)
 from werewolf_agent.interface.entrypoint.streamlit.operations import (
     advance_until_input,
     check_connection,
@@ -31,8 +37,6 @@ from werewolf_agent.interface.entrypoint.streamlit.styles import STREAMLIT_CSS
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ActionChoiceView,
     GameScreenView,
-    PlayerSeatView,
-    TimelineItemView,
     game_run_option_label,
 )
 
@@ -46,7 +50,11 @@ def main() -> None:
 
     api_url = _render_sidebar(st, settings)
     game_id = text_value(st.session_state, KEY_GAME_ID)
-    human_player_id = text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1")
+    human_player_id = text_value(
+        st.session_state,
+        KEY_HUMAN_PLAYER_ID,
+        settings.streamlit_default_human_player_id,
+    )
     control_token = text_value(st.session_state, KEY_CONTROL_TOKEN)
 
     if not game_id:
@@ -66,11 +74,10 @@ def main() -> None:
         return
 
     _render_status_bar(st, screen)
-    center, right = st.columns([2.15, 1], gap="medium")
-    with center:
+    table_column, hand_column = st.columns([2.15, 1], gap="medium")
+    with table_column:
         _render_game_table(st, screen)
-        _render_timeline(st, screen)
-    with right:
+    with hand_column:
         _render_action_panel(
             st,
             settings=settings,
@@ -80,6 +87,10 @@ def main() -> None:
             human_player_id=human_player_id,
             control_token=control_token,
         )
+
+    timeline_column, _ = st.columns([2.15, 1], gap="medium")
+    with timeline_column:
+        _render_timeline(st, screen)
 
 
 def _render_sidebar(st: Any, settings: AppSettings) -> str:
@@ -104,7 +115,7 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
 
     st.sidebar.divider()
     st.sidebar.subheader("現在のゲーム")
-    _render_recent_games(st, settings=settings, api_url=api_url)
+    _render_current_game(st, settings=settings, api_url=api_url)
 
     st.sidebar.divider()
     st.sidebar.subheader("新しいゲーム")
@@ -116,11 +127,16 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             value=settings.game_default_player_count,
             step=1,
         )
-        seed_text = st.text_input("シード", value="1")
+        seed_text = st.text_input("シード", value=str(settings.streamlit_default_seed))
+        player_options = [f"player-{index}" for index in range(1, int(player_count) + 1)]
+        default_human = settings.streamlit_default_human_player_id
+        selected_index = (
+            player_options.index(default_human) if default_human in player_options else 0
+        )
         human_player_id = st.selectbox(
             "あなたのプレイヤー",
-            [f"player-{index}" for index in range(1, int(player_count) + 1)],
-            index=0,
+            player_options,
+            index=selected_index,
         )
         submitted = st.form_submit_button("新しいゲームを始める", use_container_width=True)
     if submitted:
@@ -133,29 +149,6 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
             human_player_id=str(human_player_id),
         )
 
-    st.sidebar.divider()
-    st.sidebar.subheader("ゲームを再開")
-    with st.sidebar.form("resume-game"):
-        game_id = st.text_input("ゲーム ID", value=text_value(st.session_state, KEY_GAME_ID))
-        human_player = st.text_input(
-            "プレイヤー ID",
-            value=text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1"),
-        )
-        control_key = st.text_input(
-            "操作用キー",
-            value=text_value(st.session_state, KEY_CONTROL_TOKEN),
-            type="password",
-        )
-        resumed = st.form_submit_button("再開する", use_container_width=True)
-    if resumed and game_id and human_player and control_key:
-        set_game_session(
-            st.session_state,
-            game_id=game_id,
-            human_player_id=human_player,
-            control_token=control_key,
-        )
-        st.rerun()
-
     if st.sidebar.button("ゲーム選択をクリア", use_container_width=True):
         clear_game_session(st.session_state)
         st.rerun()
@@ -163,37 +156,72 @@ def _render_sidebar(st: Any, settings: AppSettings) -> str:
     return api_url
 
 
-def _render_recent_games(st: Any, *, settings: AppSettings, api_url: str) -> None:
+def _render_current_game(st: Any, *, settings: AppSettings, api_url: str) -> None:
     current_game_id = text_value(st.session_state, KEY_GAME_ID)
-    current_human_player = text_value(st.session_state, KEY_HUMAN_PLAYER_ID, "player-1")
+    current_human_player = text_value(
+        st.session_state,
+        KEY_HUMAN_PLAYER_ID,
+        settings.streamlit_default_human_player_id,
+    )
+    current_control_key = text_value(st.session_state, KEY_CONTROL_TOKEN)
     if current_game_id:
         st.sidebar.caption(f"選択中: {current_game_id}")
+
     try:
         runs = list_recent_games(api_url=api_url, settings=settings)
     except AppError:
+        runs = []
         st.sidebar.caption("ゲーム一覧は API 接続後に表示されます。")
-        return
-    if not runs:
-        st.sidebar.caption("まだゲームがありません。")
-        return
 
-    option_labels = [game_run_option_label(run) for run in runs]
-    selected_label = st.sidebar.selectbox(
-        "最近のゲーム",
-        option_labels,
-        label_visibility="collapsed",
-    )
-    selected_run = runs[option_labels.index(selected_label)]
-    human_player = st.sidebar.text_input("操作するプレイヤー", value=current_human_player)
-    control_key = st.sidebar.text_input(
-        "操作用キー",
-        value=text_value(st.session_state, KEY_CONTROL_TOKEN),
-        type="password",
-    )
-    if st.sidebar.button("このゲームを開く", use_container_width=True):
+    if runs:
+        option_labels = [game_run_option_label(run) for run in runs]
+        selected_label = st.sidebar.selectbox(
+            "最近のゲーム",
+            option_labels,
+            label_visibility="collapsed",
+            key="wa-current-game-select",
+        )
+        selected_run = runs[option_labels.index(selected_label)]
+        human_player = st.sidebar.text_input(
+            "操作するプレイヤー",
+            value=current_human_player,
+            key="wa-current-game-human-player",
+        )
+        control_key = st.sidebar.text_input(
+            "操作用キー",
+            value=current_control_key,
+            type="password",
+            key="wa-current-game-control-key",
+        )
+        if st.sidebar.button("このゲームを開く", use_container_width=True):
+            set_game_session(
+                st.session_state,
+                game_id=selected_run.game_id,
+                human_player_id=human_player,
+                control_token=control_key,
+            )
+            st.rerun()
+    elif not current_game_id:
+        st.sidebar.caption("まだゲームがありません。")
+
+    with st.sidebar.form("open-game-by-id"):
+        game_id = st.text_input("ゲーム ID", value=current_game_id, key="wa-open-game-id")
+        human_player = st.text_input(
+            "操作するプレイヤー",
+            value=current_human_player,
+            key="wa-open-game-human-player",
+        )
+        control_key = st.text_input(
+            "操作用キー",
+            value=current_control_key,
+            type="password",
+            key="wa-open-game-control-key",
+        )
+        opened = st.form_submit_button("ゲームIDで開く", use_container_width=True)
+    if opened and game_id and human_player and control_key:
         set_game_session(
             st.session_state,
-            game_id=selected_run.game_id,
+            game_id=game_id,
             human_player_id=human_player,
             control_token=control_key,
         )
@@ -237,77 +265,19 @@ def _render_empty_state(st: Any) -> None:
 
 
 def _render_status_bar(st: Any, screen: GameScreenView) -> None:
-    items = []
-    for metric in screen.status_metrics:
-        tone = _css_token(metric.tone)
-        items.append(
-            _html(
-                f"""
-            <div class="wa-status wa-status-{tone}">
-                <div class="wa-status-icon">{escape(metric.icon)}</div>
-                <div>
-                    <div class="wa-muted">{escape(metric.label)}</div>
-                    <b>{escape(metric.value)}</b>
-                    <div class="wa-status-detail">{escape(metric.detail)}</div>
-                </div>
-            </div>
-            """
-            )
-        )
-    st.markdown(f'<div class="wa-status-grid">{"".join(items)}</div>', unsafe_allow_html=True)
+    st.markdown(status_grid_html(screen.status_metrics), unsafe_allow_html=True)
 
 
 def _render_game_table(st: Any, screen: GameScreenView) -> None:
-    seat_html = "".join(_seat_html(seat) for seat in screen.seats)
-    legend_html = "".join(
-        _html(
-            f"""
-        <span class="wa-legend-item wa-legend-{_css_token(item.tone)}">
-            <span>{escape(item.symbol)}</span>{escape(item.label)}
-        </span>
-        """
-        )
-        for item in screen.table_legend
-    )
-    st.markdown(
-        _html(
-            f"""
-        <section class="wa-table-surface">
-            <div class="wa-section-head">
-                <div>
-                    <h3>ゲーム卓</h3>
-                    <p>プレイヤーの生存状態と、いま卓で起きている動きです。</p>
-                </div>
-                <div class="wa-table-legend">{legend_html}</div>
-            </div>
-            <div class="wa-seat-grid">{seat_html}</div>
-        </section>
-        """,
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown(game_table_html(screen), unsafe_allow_html=True)
 
 
 def _render_timeline(st: Any, screen: GameScreenView) -> None:
-    st.markdown(
-        _html(
-            """
-        <div class="wa-section-head wa-section-head-spaced">
-            <div>
-                <h3>これまでの流れ</h3>
-                <p>公開された出来事を時系列で表示します。</p>
-            </div>
-        </div>
-        """,
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown(timeline_header_html(), unsafe_allow_html=True)
     if not screen.timeline:
         st.info("まだ表示できる出来事がありません。")
         return
-
-    items = "".join(_timeline_html(item) for item in screen.timeline)
-    st.markdown(f'<div class="wa-timeline">{items}</div>', unsafe_allow_html=True)
+    st.markdown(timeline_html(screen.timeline), unsafe_allow_html=True)
 
 
 def _render_action_panel(
@@ -320,25 +290,7 @@ def _render_action_panel(
     human_player_id: str,
     control_token: str,
 ) -> None:
-    st.markdown(
-        _html(
-            f"""
-        <aside class="wa-hand-panel">
-            <div class="wa-section-head">
-                <div>
-                    <h3>あなたの手番</h3>
-                    <p>{escape(screen.current_turn_title)}</p>
-                </div>
-            </div>
-            <div class="wa-primary-note">
-                <b>{escape(screen.current_turn_title)}</b>
-                <div>{escape(screen.current_turn_detail)}</div>
-            </div>
-        </aside>
-        """,
-        ),
-        unsafe_allow_html=True,
-    )
+    st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
     if screen.observation is not None:
         st.markdown("#### あなたの役職")
         st.info(f"{screen.observation.role}。あなただけに見えている情報です。")
@@ -365,9 +317,12 @@ def _render_action_panel(
         return
 
     st.divider()
-    st.markdown("#### 現在の手番")
-    st.caption("次の入力が必要な場面まで進められます。")
-    if st.button("次の入力待ちまで進める", type="primary", use_container_width=True):
+    st.markdown(advance_note_html(screen.hand_panel), unsafe_allow_html=True)
+    if screen.hand_panel.can_advance and st.button(
+        "次の入力待ちまで進める",
+        type="primary",
+        use_container_width=True,
+    ):
         _run_until_input(
             st,
             settings=settings,
@@ -418,7 +373,7 @@ def _render_action_form(
             "発言内容",
             key=KEY_MESSAGE,
             placeholder="ここに発言を入力...",
-            max_chars=200,
+            max_chars=settings.streamlit_message_max_chars,
         )
 
     missing_target = selected_action.requires_target and not target_id
@@ -477,46 +432,6 @@ def _run_until_input(
         st.warning("進行の上限に達しました。現在の状態を確認してください。")
 
 
-def _seat_html(seat: PlayerSeatView) -> str:
-    classes = ["wa-seat", f"wa-seat-activity-{_css_token(seat.activity_tone)}"]
-    if seat.is_human:
-        classes.append("wa-seat-human")
-    if seat.is_current:
-        classes.append("wa-seat-current")
-    if not seat.is_alive:
-        classes.append("wa-seat-dead")
-    status_class = "wa-chip" if seat.is_alive else "wa-chip wa-chip-muted"
-    return _html(
-        f"""
-    <article class="{" ".join(classes)}">
-        <div class="wa-seat-avatar">👤</div>
-        <b>{escape(seat.name)}</b>
-        <span class="wa-seat-id">{escape(seat.player_id)}</span>
-        <div class="{status_class}">{escape(seat.status)}</div>
-        <div class="wa-activity">{escape(seat.activity)}</div>
-    </article>
-    """
-    )
-
-
-def _timeline_html(item: TimelineItemView) -> str:
-    tone = _css_token(item.tone)
-    return _html(
-        f"""
-    <div class="wa-timeline-row wa-timeline-row-{tone}">
-        <div class="wa-timeline-day">
-            <b>{escape(item.day_label)}</b>
-            <span>{escape(item.time_text)}</span>
-        </div>
-        <div class="wa-timeline-card">
-            <b>{escape(item.icon)} {escape(item.title)}</b>
-            <div>{escape(item.detail)}</div>
-        </div>
-    </div>
-    """
-    )
-
-
 def _find_action_choice(
     action_choices: list[ActionChoiceView],
     action_type: object,
@@ -529,14 +444,6 @@ def _find_action_choice(
 
 def _action_choice_label(action: ActionChoiceView) -> str:
     return f"{action.icon} {action.label}"
-
-
-def _css_token(value: str) -> str:
-    return "".join(char for char in value.lower() if char.isalnum() or char == "-") or "neutral"
-
-
-def _html(markup: str) -> str:
-    return dedent(markup).strip()
 
 
 def _streamlit() -> Any:

@@ -11,6 +11,8 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 
 ## 起動
 
+VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
+
 別 terminal で API と Streamlit を起動します。
 
 ```bash
@@ -118,19 +120,17 @@ await viewport.reset();
 
 ## スクリーンショット
 
-QA screenshot は repo 管理対象にせず、`.werewolf-agent/qa/` に保存します。
+QA screenshot は `.werewolf-agent/cache` に残しません。保存が必要な画像は
+`docs/notes/assets/streamlit-ui/` に置きます。
 
-```js
-const fs = await import("node:fs/promises");
-await fs.mkdir(".werewolf-agent/qa", { recursive: true });
-await fs.writeFile(
-  ".werewolf-agent/qa/streamlit-browser-qa-desktop.png",
-  Buffer.from(await tab.screenshot({ fullPage: false }))
-);
-```
+今回移動済みの画像:
 
-mobile は viewport を `390x844` にしてから
-`.werewolf-agent/qa/streamlit-browser-qa-mobile.png` に保存します。
+- `docs/notes/assets/streamlit-ui/07-qa-console-desktop.png`
+- `docs/notes/assets/streamlit-ui/08-qa-observer-desktop.png`
+- `docs/notes/assets/streamlit-ui/09-qa-observer-mobile.png`
+- `docs/notes/assets/streamlit-ui/10-qa-zero-base-review.png`
+
+一時ファイルとして保存する場合だけ `.werewolf-agent/qa/` を使い、採用する画像は docs 配下へ移します。
 
 ## 今回の確認結果
 
@@ -138,9 +138,8 @@ mobile は viewport を `390x844` にしてから
 - API: `http://127.0.0.1:8765/api/v1`
 - Streamlit: `http://127.0.0.1:8766`
 - desktop: `新しいゲームを始める` から A案画面まで到達
-- desktop: `ゲーム卓`、`これまでの流れ`、`あなたの手番`、`現在の手番` を同一画面で確認
-- mobile: sidebar から game を開いた後、上部ステータス、`ゲーム卓`、`これまでの流れ`、`あなたの手番` が縦積みで DOM に存在することを確認
+- desktop: `ゲーム卓`、`あなたの手番`、`これまでの流れ` を A案構成で確認
+- mobile: sidebar から game を開いた後、上部ステータス、`ゲーム卓`、`あなたの手番`、`これまでの流れ` が縦積みで DOM に存在することを確認
 - raw HTML 表示: なし
 - console error / warning: 確認開始時刻以降はなし
 - Browser output に desktop / mobile の screenshot を表示できることを確認
-- Browser runtime から host filesystem へ screenshot を保存する操作は、この環境では `EPERM` になるため未使用

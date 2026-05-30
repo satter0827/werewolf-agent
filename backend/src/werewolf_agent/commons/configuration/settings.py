@@ -112,6 +112,11 @@ DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
 DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
 DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
+DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
+DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID: Final = _string_default(
+    "streamlit_default_human_player_id"
+)
+DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS: Final = _integer_default("streamlit_message_max_chars")
 DEFAULT_STREAMLIT_PAGE_TITLE: Final = _string_default("streamlit_page_title")
 DEFAULT_STREAMLIT_SERVICE_NAME: Final = _string_default("streamlit_service_name")
 DEFAULT_API_TITLE: Final = _string_default("api_title")
@@ -127,6 +132,9 @@ DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = _string_default("game_supported_agent
 DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = _string_default("game_supported_agent_name")
 DEFAULT_GAME_DEFAULT_RULESET_ID: Final = _string_default("game_default_ruleset_id")
 DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset_name")
+DEFAULT_GAME_DEFAULT_TIE_BREAK_POLICY: Final = _string_default("game_default_tie_break_policy")
+DEFAULT_GAME_DEFAULT_DAY_SPEECH_TURNS: Final = _integer_default("game_default_day_speech_turns")
+DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE: Final = _bool_default("game_default_allow_self_vote")
 DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = _string_default(
     "game_ruleset_description_template"
 )
@@ -138,11 +146,13 @@ LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"}
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
+TIE_BREAK_POLICY_NAMES: Final = frozenset({"no_elimination", "random_elimination"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
 CliOutputFormat = Literal["table", "json", "jsonl"]
 StreamlitLanguage = Literal["ja", "en"]
+TieBreakPolicyName = Literal["no_elimination", "random_elimination"]
 
 
 @lru_cache(maxsize=1)
@@ -309,6 +319,19 @@ class AppSettings(BaseSettings):
         default=DEFAULT_STREAMLIT_PAGE_TITLE,
         validation_alias="WEREWOLF_STREAMLIT_PAGE_TITLE",
     )
+    streamlit_default_seed: int = Field(
+        default=DEFAULT_STREAMLIT_DEFAULT_SEED,
+        validation_alias="WEREWOLF_STREAMLIT_DEFAULT_SEED",
+    )
+    streamlit_default_human_player_id: str = Field(
+        default=DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID,
+        validation_alias="WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID",
+    )
+    streamlit_message_max_chars: int = Field(
+        default=DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS,
+        ge=1,
+        validation_alias="WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS",
+    )
     streamlit_service_name: str = Field(
         default=DEFAULT_STREAMLIT_SERVICE_NAME,
         validation_alias="WEREWOLF_STREAMLIT_SERVICE_NAME",
@@ -344,6 +367,20 @@ class AppSettings(BaseSettings):
     game_default_ruleset_name: str = Field(
         default=DEFAULT_GAME_DEFAULT_RULESET_NAME,
         validation_alias="WEREWOLF_GAME_DEFAULT_RULESET_NAME",
+    )
+    game_default_tie_break_policy: TieBreakPolicyName = Field(
+        default=cast(TieBreakPolicyName, DEFAULT_GAME_DEFAULT_TIE_BREAK_POLICY),
+        validation_alias="WEREWOLF_GAME_DEFAULT_TIE_BREAK_POLICY",
+    )
+    game_default_day_speech_turns: int = Field(
+        default=DEFAULT_GAME_DEFAULT_DAY_SPEECH_TURNS,
+        ge=1,
+        le=5,
+        validation_alias="WEREWOLF_GAME_DEFAULT_DAY_SPEECH_TURNS",
+    )
+    game_default_allow_self_vote: bool = Field(
+        default=DEFAULT_GAME_DEFAULT_ALLOW_SELF_VOTE,
+        validation_alias="WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE",
     )
     game_ruleset_description_template: str = Field(
         default=DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE,
@@ -531,6 +568,12 @@ class AppSettings(BaseSettings):
         """Return non-empty Streamlit display/service settings."""
         return normalize_non_blank(value, field_name=str(info.field_name))
 
+    @field_validator("streamlit_default_human_player_id", mode="before")
+    @classmethod
+    def normalize_streamlit_player_id(cls, value: object) -> str:
+        """Return the default Streamlit player id."""
+        return normalize_non_blank(value, field_name="streamlit_default_human_player_id")
+
     @field_validator("cli_output_format", mode="before")
     @classmethod
     def normalize_cli_output_format(cls, value: object) -> str:
@@ -561,6 +604,17 @@ class AppSettings(BaseSettings):
             value,
             field_name="game_supported_agent_type",
             choices=SUPPORTED_AGENT_TYPE_NAMES,
+            case="lower",
+        )
+
+    @field_validator("game_default_tie_break_policy", mode="before")
+    @classmethod
+    def normalize_game_default_tie_break_policy(cls, value: object) -> str:
+        """Return a validated default tie-break policy."""
+        return normalize_choice(
+            value,
+            field_name="game_default_tie_break_policy",
+            choices=TIE_BREAK_POLICY_NAMES,
             case="lower",
         )
 

@@ -71,6 +71,18 @@ class ActionChoiceView:
 
 
 @dataclass(frozen=True)
+class HandPanelView:
+    """Right-side player hand panel state."""
+
+    title: str
+    detail: str
+    tone: str
+    advance_title: str
+    advance_detail: str
+    can_advance: bool
+
+
+@dataclass(frozen=True)
 class TimelineItemView:
     """One public timeline row."""
 
@@ -110,6 +122,7 @@ class GameScreenView:
     table_legend: list[TableLegendItemView]
     seats: list[PlayerSeatView]
     timeline: list[TimelineItemView]
+    hand_panel: HandPanelView
     observation: ObservationView | None
     current_turn_title: str
     current_turn_detail: str
@@ -159,6 +172,7 @@ def build_game_screen_view(
             human_player_id=human_player_id,
         ),
         timeline=timeline_items(turns),
+        hand_panel=hand_panel_view(state, observation_view),
         observation=observation_view,
         current_turn_title=current_title,
         current_turn_detail=current_detail,
@@ -344,6 +358,49 @@ def target_candidates_for_action(
     return []
 
 
+def hand_panel_view(
+    state: PublicGameState,
+    observation: ObservationView | None,
+) -> HandPanelView:
+    """Return the right-side hand panel state."""
+    if state.status == "completed":
+        return HandPanelView(
+            title="ゲームは終了しました",
+            detail=f"勝利: {winner_label(state.winner)}",
+            tone="safe",
+            advance_title="最終状態",
+            advance_detail="このゲームで追加の入力はありません。",
+            can_advance=False,
+        )
+    if observation is None:
+        return HandPanelView(
+            title="操作情報が必要です",
+            detail="現在のゲームで操作するプレイヤーと操作用キーを入力してください。",
+            tone="neutral",
+            advance_title="入力待ちを確認できません",
+            advance_detail="操作用キーを入力すると、あなたの手番が表示されます。",
+            can_advance=False,
+        )
+    if observation.available_actions:
+        labels = " / ".join(action_label(action) for action in observation.available_actions)
+        return HandPanelView(
+            title="あなたの入力待ち",
+            detail=f"できる行動: {labels}",
+            tone="danger",
+            advance_title="入力を送信",
+            advance_detail="行動を選んで送信してください。",
+            can_advance=False,
+        )
+    return HandPanelView(
+        title="進行待ち",
+        detail="今はあなたの入力はありません。",
+        tone="day",
+        advance_title="今できること",
+        advance_detail="次にあなたの入力が必要な場面までゲームを進められます。",
+        can_advance=True,
+    )
+
+
 def current_turn_title(
     state: PublicGameState,
     observation: ObservationView | None,
@@ -355,8 +412,8 @@ def current_turn_title(
     if observation is not None and observation.available_actions:
         return "あなたの入力待ち"
     if observation is None and human_player_id:
-        return "ゲームを確認中"
-    return "進行できます"
+        return "操作情報が必要"
+    return "進行待ち"
 
 
 def current_turn_detail(state: PublicGameState, observation: ObservationView | None) -> str:
@@ -364,11 +421,11 @@ def current_turn_detail(state: PublicGameState, observation: ObservationView | N
     if state.status == "completed":
         return f"勝利: {winner_label(state.winner)}"
     if observation is None:
-        return "ゲームを再開すると、あなたの手番が表示されます。"
+        return "操作するプレイヤーと操作用キーを入力してください。"
     if observation.available_actions:
         labels = " / ".join(action_label(action) for action in observation.available_actions)
         return f"できる行動: {labels}"
-    return "次の入力が必要な場面まで進められます。"
+    return "次の入力待ちまで進められます。"
 
 
 def game_run_option_label(run: PublicGameRunSummary) -> str:

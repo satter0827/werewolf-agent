@@ -311,6 +311,36 @@ def test_streamlit_app_keeps_api_workflows_out_of_screen_assembly() -> None:
     assert "build_game_api_client" not in app_source
 
 
+def test_streamlit_components_do_not_import_ui_or_api_workflows() -> None:
+    forbidden_modules = (
+        "streamlit",
+        "werewolf_agent.domain",
+        "werewolf_agent.interface.shared",
+        "werewolf_agent.usecase",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
+    component_imports = [
+        (path, module) for path, module in imported if path.name == "components.py"
+    ]
+
+    assert not [
+        (path, module)
+        for path, module in component_imports
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
+def test_vscode_launch_uses_open_workspace_without_branch_pinning() -> None:
+    launch_source = (ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8")
+
+    assert "${workspaceFolder}" in launch_source
+    assert ".codex/worktrees" not in launch_source.replace("\\", "/")
+    assert "refs/heads" not in launch_source
+    assert "WEREWOLF_STREAMLIT_API_URL" not in launch_source
+    assert "WEREWOLF_STREAMLIT_LANGUAGE" not in launch_source
+
+
 def test_contracts_do_not_import_api_frameworks() -> None:
     forbidden_modules = (
         "fastapi",

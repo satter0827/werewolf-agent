@@ -85,9 +85,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
-        "WEREWOLF_STREAMLIT_LANGUAGE": "ja"
+        "PYTHONPATH": "${workspaceFolder}/backend/src"
       },
       "justMyCode": true
     },

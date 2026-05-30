@@ -61,9 +61,9 @@ def create_playable_game(
         seed=seed,
         human_player=human_player_id,
         role_count_entries=[],
-        tie_break_policy="no_elimination",
-        day_speech_turns=1,
-        allow_self_vote=False,
+        tie_break_policy=settings.game_default_tie_break_policy,
+        day_speech_turns=settings.game_default_day_speech_turns,
+        allow_self_vote=settings.game_default_allow_self_vote,
         default_player_count=settings.game_default_player_count,
     )
     return workflows.create_game(build_streamlit_client(api_url, settings), request)

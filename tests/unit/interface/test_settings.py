@@ -98,6 +98,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_max_auto_steps == 64
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_page_title == "Werewolf Agent"
+    assert settings.streamlit_default_seed == 1
+    assert settings.streamlit_default_human_player_id == "player-1"
+    assert settings.streamlit_message_max_chars == 200
     assert settings.streamlit_service_name == "werewolf-agent-streamlit"
     assert settings.api_title == "Werewolf Agent API"
     assert settings.api_service_name == "werewolf-agent-api"
@@ -114,6 +117,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
     assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
+    assert settings.game_default_tie_break_policy == "no_elimination"
+    assert settings.game_default_day_speech_turns == 1
+    assert settings.game_default_allow_self_vote is False
 
 
 def test_game_usecase_config_is_built_from_interface_settings() -> None:
@@ -153,6 +159,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_LLM_FAKE_RESPONSES_FILE", "llm/fake.toml")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_TIE_BREAK_POLICY", "random_elimination")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_DAY_SPEECH_TURNS", "2")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_ALLOW_SELF_VOTE", "true")
     monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
@@ -167,6 +176,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID", "player-2")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS", "120")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
 
@@ -181,6 +193,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.llm_fake_responses_path == repository_root() / "llm/fake.toml"
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
+    assert settings.game_default_tie_break_policy == "random_elimination"
+    assert settings.game_default_day_speech_turns == 2
+    assert settings.game_default_allow_self_vote is True
     assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
@@ -196,6 +211,9 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_max_auto_steps == 12
     assert settings.streamlit_language == "en"
     assert settings.streamlit_page_title == "Werewolf Console"
+    assert settings.streamlit_default_seed == 33
+    assert settings.streamlit_default_human_player_id == "player-2"
+    assert settings.streamlit_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
 
@@ -265,6 +283,7 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("log_third_party_level", "VERBOSE"),
         ("cli_output_format", "xml"),
         ("streamlit_language", "fr"),
+        ("game_default_tie_break_policy", "coin_flip"),
         ("game_supported_agent_type", "bot"),
         ("llm_provider", "openai"),
     ],
