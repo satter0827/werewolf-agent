@@ -87,9 +87,6 @@ if "%TEMP_STATE%"=="1" (
     if not defined WEREWOLF_SQLITE_PATH (
         set "WEREWOLF_SQLITE_PATH=%WEREWOLF_AGENT_RUNTIME_DIR%\db\api.sqlite3"
     )
-    if not defined WEREWOLF_LOG_OUTPUT (
-        set "WEREWOLF_LOG_OUTPUT=stderr"
-    )
 )
 
 if not "%MIGRATE%"=="1" goto start_server
@@ -116,5 +113,5 @@ echo Usage: scripts\run-api.cmd [--no-migrate] [--host HOST] [--port PORT] [--re
 echo.
 echo Starts the FastAPI application with the local virtual environment.
 echo Defaults: --host 127.0.0.1 --port 8000
-echo   --temp-state  Use %%TEMP%%\werewolf-agent for SQLite and stderr logging.
+echo   --temp-state  Use %%TEMP%%\werewolf-agent for SQLite.
 exit /b 0

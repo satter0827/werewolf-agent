@@ -349,46 +349,17 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
         configuration["name"]: configuration for configuration in launch["configurations"]
     }
 
-    cli_configuration_names = [
-        "CLI: doctor",
-        "CLI: ruleset",
-        "CLI: create",
-        "CLI: state",
-        "CLI: step",
-        "CLI: play",
-        "CLI: play (human player)",
-        "CLI: play (save replay log)",
-        "CLI: runs",
-        "CLI: watch",
-        "CLI: turns",
-        "CLI: replay",
-    ]
-    for configuration_name in cli_configuration_names:
-        _assert_vscode_trace_logging_env(
-            configurations[configuration_name]["env"],
-            log_file_name="vscode-cli.jsonl",
-        )
-
     api_env = configurations["API: uvicorn"]["env"]
     migrate_env = configurations["API: migrate"]["env"]
     streamlit_env = configurations["UI: Streamlit"]["env"]
 
-    _assert_vscode_trace_logging_env(api_env, log_file_name="vscode-api.jsonl")
     assert api_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
-    _assert_vscode_trace_logging_env(migrate_env, log_file_name="vscode-migrate.jsonl")
     assert migrate_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
-    _assert_vscode_trace_logging_env(streamlit_env, log_file_name="vscode-streamlit.jsonl")
     assert streamlit_env["WEREWOLF_STREAMLIT_API_URL"] == "http://127.0.0.1:8000/api/v1"
     assert (
         streamlit_env["WEREWOLF_STREAMLIT_SAVE_FILE"]
         == "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
     )
-    for configuration_name in (
-        "Pytest: all tests",
-        "Pytest: API integration",
-        "Pytest: current file",
-    ):
-        assert "WEREWOLF_LOG_OUTPUT" not in configurations[configuration_name]["env"]
 
 
 def test_vscode_migration_task_matches_launch_runtime_state() -> None:
@@ -412,14 +383,52 @@ def test_vscode_migration_task_matches_launch_runtime_state() -> None:
         "upgrade",
         "head",
     ]
-    _assert_vscode_trace_logging_env(
-        migrate_task["options"]["env"],
-        log_file_name="vscode-migrate.jsonl",
-    )
     assert (
         migrate_task["options"]["env"]["WEREWOLF_SQLITE_PATH"]
         == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
     )
+
+
+def test_execution_helpers_do_not_inject_log_settings() -> None:
+    log_env_names = (
+        "WEREWOLF_LOG_LEVEL",
+        "WEREWOLF_LOG_OUTPUT",
+        "WEREWOLF_LOG_DIR",
+        "WEREWOLF_LOG_FILE_NAME",
+        "WEREWOLF_LOG_RETENTION_DAYS",
+        "WEREWOLF_LOG_THIRD_PARTY_LEVEL",
+    )
+    paths = [
+        ROOT / ".vscode" / "launch.json",
+        ROOT / ".vscode" / "tasks.json",
+        ROOT / "scripts" / "check-all.cmd",
+        ROOT / "scripts" / "run-api.cmd",
+        ROOT / "compose.yaml",
+    ]
+
+    for path in paths:
+        source = path.read_text(encoding="utf-8")
+        assert not [name for name in log_env_names if name in source]
+
+
+def test_log_defaults_are_documented_as_packaged_defaults_only() -> None:
+    defaults_source = (
+        ROOT / "backend" / "src" / "werewolf_agent" / "resources" / "settings" / "defaults.toml"
+    ).read_text(encoding="utf-8")
+    for key in (
+        "log_level",
+        "log_output",
+        "log_dir",
+        "log_file_name",
+        "log_retention_days",
+        "log_third_party_level",
+    ):
+        assert f"{key} =" in defaults_source
+
+    for path in (ROOT / "README.md", ROOT / "docs" / "notes" / "development.md"):
+        source = path.read_text(encoding="utf-8")
+        assert "WEREWOLF_LOG_OUTPUT=file" not in source
+        assert ".werewolf-agent/logs/werewolf-agent.jsonl" not in source
 
 
 def test_contracts_do_not_import_api_frameworks() -> None:
@@ -497,14 +506,6 @@ def _assert_public_surface(module: ModuleType, expected: set[str]) -> None:
     assert actual == expected
     assert not [name for name in actual if name.startswith("_")]
     assert not [name for name in actual if not hasattr(module, name)]
-
-
-def _assert_vscode_trace_logging_env(env: dict[str, str], *, log_file_name: str) -> None:
-    assert env["WEREWOLF_LOG_LEVEL"] == "DEBUG"
-    assert env["WEREWOLF_LOG_OUTPUT"] == "both"
-    assert env["WEREWOLF_LOG_DIR"] == "${env:TEMP}\\werewolf-agent\\logs"
-    assert env["WEREWOLF_LOG_FILE_NAME"] == log_file_name
-    assert env["WEREWOLF_LOG_THIRD_PARTY_LEVEL"] == "INFO"
 
 
 def _imports_under(path: Path) -> list[tuple[Path, str]]:

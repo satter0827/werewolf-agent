@@ -21,11 +21,6 @@
         "env": {
           "PYTHONPATH": "${workspaceFolder}/backend/src",
           "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
-          "WEREWOLF_LOG_LEVEL": "DEBUG",
-          "WEREWOLF_LOG_OUTPUT": "both",
-          "WEREWOLF_LOG_DIR": "${env:TEMP}\\werewolf-agent\\logs",
-          "WEREWOLF_LOG_FILE_NAME": "vscode-migrate.jsonl",
-          "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "INFO",
           "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
         }
       },

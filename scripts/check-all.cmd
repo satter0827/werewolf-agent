@@ -63,17 +63,10 @@ if not exist "%WEREWOLF_AGENT_RUNTIME_DIR%\db" (
     mkdir "%WEREWOLF_AGENT_RUNTIME_DIR%\db" >nul 2>nul
 )
 
-set "RESTORE_WEREWOLF_LOG_OUTPUT=0"
-if not defined WEREWOLF_LOG_OUTPUT (
-    set "WEREWOLF_LOG_OUTPUT=stderr"
-    set "RESTORE_WEREWOLF_LOG_OUTPUT=1"
-)
-
 echo.
 echo === doctor ===
 "%PYTHON%" -m werewolf_agent doctor --output json
 call :check_status %ERRORLEVEL%
-if "%RESTORE_WEREWOLF_LOG_OUTPUT%"=="1" set "WEREWOLF_LOG_OUTPUT="
 if errorlevel 1 goto finish
 
 echo.
@@ -105,10 +98,6 @@ if not "%RUN_API_CHECKS%"=="1" goto finish
 if not defined WEREWOLF_SQLITE_PATH (
     set "WEREWOLF_SQLITE_PATH=%WEREWOLF_AGENT_RUNTIME_DIR%\db\check-all.sqlite3"
 )
-if not defined WEREWOLF_LOG_OUTPUT (
-    set "WEREWOLF_LOG_OUTPUT=stderr"
-)
-
 echo.
 echo === alembic upgrade head ===
 "%PYTHON%" -m alembic upgrade head

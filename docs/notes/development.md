@@ -172,7 +172,7 @@ uv run --extra api pytest tests/integration/api
 Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` または `%TEMP%\werewolf-agent` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
-- operational logs: 既定は `.werewolf-agent\logs\`、永続運用では `WEREWOLF_LOG_DIR` で指定
+- operational logs: 出力先や保持日数は `backend/src/werewolf_agent/resources/settings/defaults.toml` と環境変数で指定
 - Streamlit save: game metadata だけを保存し、`control_token` は現在の Streamlit session 内だけに保持する
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
@@ -183,7 +183,7 @@ Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` �
 
 Codex / OneDrive 環境の一時検証では、上記の repository 配下生成物ではなく `%TEMP%\werewolf-agent` を使います。
 これは権限エラーと SQLite の I/O エラーを避けるための作業時方針であり、アプリの通常設定値は
-`.env.example` と `backend/src/werewolf_agent/resources/settings/defaults.toml` を正とします。
+`backend/src/werewolf_agent/resources/settings/defaults.toml` を正とします。`.env.example` は override の雛形だけです。
 
 ## Optional Dependencies
 
@@ -224,13 +224,13 @@ uv build --no-sources
 
 - `WEREWOLF_API_DEBUG=false`
 - `WEREWOLF_DATABASE_URL` または永続 volume 上の `WEREWOLF_SQLITE_PATH`
-- `WEREWOLF_LOG_OUTPUT=file` と永続 volume 上の `WEREWOLF_LOG_DIR`
+- 運用方針に合わせた `WEREWOLF_LOG_OUTPUT` と永続 volume 上の `WEREWOLF_LOG_DIR`
 - 公開 UI に合わせた `WEREWOLF_CORS_ALLOWED_ORIGINS`
 - migration は release command / one-off job で実行
 
 ログ確認:
 
-- 既定の運用ログは `.werewolf-agent/logs/werewolf-agent.jsonl` へ出力する
+- 運用ログの既定値は `backend/src/werewolf_agent/resources/settings/defaults.toml` を正とし、script / VS Code / Docker Compose では上書きしない
 - API と Streamlit は `trace.id` を共有し、HTTP client は `X-Trace-Id` を伝播する
 - usecase の進行診断は `TelemetrySink` 経由で `event.action=game.phase.*` / `game.manual_action.accepted` として出る
 - `control_token`、`authorization`、`private_state`、`role`、`night_action` 系 field は redaction 対象にする

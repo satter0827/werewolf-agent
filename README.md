@@ -134,67 +134,13 @@ prompt は `backend/src/werewolf_agent/resources/prompts/agent_decision.toml`、
 `commons/configuration` が `defaults.toml`、`.env`、環境変数を読み取り、interface の浅い場所で usecase へ依存として注入します。
 `.env` はコミットしません。
 
-主な値:
+既定値の一覧は `defaults.toml` を正とします。`.env.example` は override 用の雛形であり、既定値の二重管理には使いません。実行経路ごとの script、VS Code、Docker Compose はログ設定を注入しないため、変更したい場合は `.env` または環境変数で同じ値を渡してください。
 
-```env
-WEREWOLF_LLM_PROVIDER=fake
-WEREWOLF_MODEL=fake-list-llm
-WEREWOLF_LLM_TIMEOUT_SECONDS=30
-WEREWOLF_LLM_MAX_RETRIES=2
-WEREWOLF_LLM_TEMPERATURE=0.7
-WEREWOLF_LLM_PROMPT_FILE=
-WEREWOLF_LLM_FAKE_RESPONSES_FILE=
-WEREWOLF_LOG_LEVEL=INFO
-WEREWOLF_LOG_OUTPUT=file
-WEREWOLF_LOG_DIR=.werewolf-agent/logs
-WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl
-WEREWOLF_LOG_RETENTION_DAYS=14
-WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
-WEREWOLF_CLI_API_URL=http://127.0.0.1:8000/api/v1
-WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS=10
-WEREWOLF_CLI_MAX_STEPS=64
-WEREWOLF_CLI_POLL_INTERVAL_SECONDS=0
-WEREWOLF_CLI_EVENT_LIMIT=100
-WEREWOLF_CLI_OUTPUT_FORMAT=table
-WEREWOLF_STREAMLIT_API_URL=
-WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS=10
-WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS=5
-WEREWOLF_STREAMLIT_EVENT_LIMIT=100
-WEREWOLF_STREAMLIT_TURN_LIMIT=100
-WEREWOLF_STREAMLIT_RUN_LIMIT=20
-WEREWOLF_STREAMLIT_MAX_AUTO_STEPS=64
-WEREWOLF_STREAMLIT_LANGUAGE=ja
-WEREWOLF_STREAMLIT_SAVE_FILE=.werewolf-agent/streamlit/saves.json
-WEREWOLF_STREAMLIT_PAGE_TITLE=Werewolf Agent
-WEREWOLF_STREAMLIT_DEFAULT_SEED=1
-WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID=player-1
-WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS=200
-WEREWOLF_STREAMLIT_SERVICE_NAME=werewolf-agent-streamlit
-WEREWOLF_GAME_MIN_PLAYERS=5
-WEREWOLF_GAME_MAX_PLAYERS=8
-WEREWOLF_GAME_DEFAULT_PLAYER_COUNT=6
-WEREWOLF_GAME_SUPPORTED_AGENT_TYPE=llm
-WEREWOLF_GAME_SUPPORTED_AGENT_NAME=LLM Agent
-WEREWOLF_GAME_DEFAULT_RULESET_ID=default
-WEREWOLF_GAME_DEFAULT_RULESET_NAME=MVP Default
-WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE={min_players}〜{max_players}人向けの最小同期 API ルールセットです。
-WEREWOLF_GAME_ROLE_NAMES=villager:村人,werewolf:人狼,seer:占い師,knight:騎士
-WEREWOLF_GAME_PHASE_NAMES=night:夜,day_discussion:昼チャット,voting:投票,finished:終了
-WEREWOLF_API_TITLE=Werewolf Agent API
-WEREWOLF_API_VERSION=0.1.0
-WEREWOLF_API_DEBUG=true
-WEREWOLF_CORS_ALLOWED_ORIGINS=
-WEREWOLF_CORS_ALLOWED_METHODS=GET,POST
-WEREWOLF_CORS_ALLOWED_HEADERS=*
-WEREWOLF_SQLITE_PATH=.werewolf-agent/db/db.sqlite3
-WEREWOLF_DATABASE_URL=
-```
-
-DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、既定の出力先は `.werewolf-agent/db/db.sqlite3` です。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。コード上の `WEREWOLF_API_DEBUG` 既定値は `false` で、`.env.example` と `compose.yaml` はローカル開発用に `true` を明示しています。
+DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、出力先は `WEREWOLF_SQLITE_PATH` で指定します。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。
 
 Streamlit の保存ファイルは game metadata だけを永続化し、`control_token` は現在の Streamlit session 内だけに保持します。画面を再起動した後の保存 game は、公開情報だけを表示する観戦モードとして開きます。
 
-運用ログは既定で `.werewolf-agent/logs/werewolf-agent.jsonl` に ECS 風 field の JSON Lines で出力し、UTC の日次 rollover と保持日数で管理します。`WEREWOLF_LOG_OUTPUT` は `file`、`stderr`、`stdout`、`both`、`none` を選べます。`DEBUG` は操作追跡、`INFO` は通常運用、`WARNING` は回復可能な異常、`ERROR` は処理失敗、`CRITICAL` は停止級の異常に使います。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
+運用ログは ECS 風 field の JSON Lines で出力します。設定項目は `WEREWOLF_LOG_LEVEL`、`WEREWOLF_LOG_OUTPUT`、`WEREWOLF_LOG_DIR`、`WEREWOLF_LOG_FILE_NAME`、`WEREWOLF_LOG_RETENTION_DAYS`、`WEREWOLF_LOG_THIRD_PARTY_LEVEL` です。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
 
 ## Docker
 

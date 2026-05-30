@@ -74,16 +74,14 @@ def test_database_url_overrides_sqlite_and_normalizes_postgres_scheme() -> None:
 def test_logging_settings_have_safe_defaults() -> None:
     settings = AppSettings(_env_file=None)
 
-    assert settings.log_level == "INFO"
-    assert settings.log_output == "file"
-    assert settings.log_dir == Path(".werewolf-agent/logs")
-    assert settings.log_file_name == "werewolf-agent.jsonl"
-    assert settings.log_retention_days == 14
-    assert settings.log_third_party_level == "WARNING"
-    assert settings.log_directory_path == repository_root() / ".werewolf-agent/logs"
-    assert settings.log_file_path == (
-        repository_root() / ".werewolf-agent/logs/werewolf-agent.jsonl"
-    )
+    assert settings.log_level == PACKAGED_DEFAULTS["log_level"]
+    assert settings.log_output == PACKAGED_DEFAULTS["log_output"]
+    assert settings.log_dir == Path(str(PACKAGED_DEFAULTS["log_dir"]))
+    assert settings.log_file_name == PACKAGED_DEFAULTS["log_file_name"]
+    assert settings.log_retention_days == PACKAGED_DEFAULTS["log_retention_days"]
+    assert settings.log_third_party_level == PACKAGED_DEFAULTS["log_third_party_level"]
+    assert settings.log_directory_path == repository_root() / str(PACKAGED_DEFAULTS["log_dir"])
+    assert settings.log_file_path == settings.log_directory_path / settings.log_file_name
     assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
     assert settings.cli_http_timeout_seconds == 10.0
     assert settings.cli_max_steps == 64

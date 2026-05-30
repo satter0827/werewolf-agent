@@ -46,7 +46,7 @@ def main(ctx: typer.Context) -> None:
         error = ConfigError(settings_error_detail(exc))
         typer.echo(message_error_line(error.detail), err=True)
         raise typer.Exit(code=1) from exc
-    logger.debug(
+    logger.info(
         LOG_CLI_APPLICATION_STARTED,
         extra={
             "event_action": LOG_CLI_APPLICATION_STARTED,
