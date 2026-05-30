@@ -18,6 +18,9 @@ cache permission failures from `uv run`. The Sphinx script may use
 builds in `%TEMP%` first and then copies HTML into `docs\sphinx\_build`.
 
 `check-all.cmd` writes pytest / mypy cache and validation SQLite files under
-`%TEMP%\werewolf-agent` by default. Use `run-api.cmd --temp-state` for Codex or
-OneDrive worktrees where writing generated runtime files under the repository
-can fail with access denied or SQLite disk I/O errors.
+`%TEMP%\werewolf-agent` by default. Operational logs always default to
+`.werewolf-agent\logs`; `check-all.cmd` uses `check-all.jsonl` and
+`run-api.cmd` uses `api.jsonl` unless environment variables override them. Use
+`run-api.cmd --temp-state` for Codex or OneDrive worktrees where writing
+generated runtime files under the repository can fail with access denied or
+SQLite disk I/O errors.

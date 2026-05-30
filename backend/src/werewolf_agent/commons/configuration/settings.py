@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
 import tomllib
 from collections.abc import Mapping
 from functools import lru_cache
@@ -498,9 +497,6 @@ class AppSettings(BaseSettings):
     def log_directory_path(self) -> Path:
         """Return the absolute directory for operational logs."""
         log_dir_text = str(self.log_dir).strip()
-        if log_dir_text.startswith("{temp}"):
-            suffix = log_dir_text.removeprefix("{temp}").lstrip("/\\")
-            return Path(tempfile.gettempdir()) / Path(suffix)
         log_dir = Path(os.path.expandvars(log_dir_text)).expanduser()
         if log_dir.is_absolute():
             return log_dir

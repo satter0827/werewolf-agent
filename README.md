@@ -62,6 +62,7 @@ API だけ、または UI だけを確認したい場合は `API: uvicorn` / `UI
 Streamlit の既定 URL は `http://localhost:8501`、接続先 API は `http://127.0.0.1:8000/api/v1` です。
 VS Code 起動では、OneDrive / sandbox の権限差分を避けるため、SQLite と Streamlit 保存データを
 `%TEMP%\werewolf-agent` 配下へ置きます。
+運用ログは起動手段に関係なく `.werewolf-agent/logs` 配下へ出力し、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 1 人だけ手動で操作する:
 
@@ -134,13 +135,13 @@ prompt は `backend/src/werewolf_agent/resources/prompts/agent_decision.toml`、
 `commons/configuration` が `defaults.toml`、`.env`、環境変数を読み取り、interface の浅い場所で usecase へ依存として注入します。
 `.env` はコミットしません。
 
-既定値の一覧は `defaults.toml` を正とします。`.env.example` は override 用の雛形であり、既定値の二重管理には使いません。実行経路ごとの script、VS Code、Docker Compose はログ設定を注入しないため、変更したい場合は `.env` または環境変数で同じ値を渡してください。
+既定値の一覧は `defaults.toml` を正とします。`.env.example` は override 用の雛形であり、既定値の二重管理には使いません。運用ログの既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は同じ log directory を明示し、プロセスごとの用途名で log file を分けます。
 
 DB は設定値で選びます。`WEREWOLF_DATABASE_URL` が空なら SQLite を使い、出力先は `WEREWOLF_SQLITE_PATH` で指定します。Postgres などを使う場合は `WEREWOLF_DATABASE_URL` を設定します。
 
 Streamlit の保存ファイルは game metadata だけを永続化し、`control_token` は現在の Streamlit session 内だけに保持します。画面を再起動した後の保存 game は、公開情報だけを表示する観戦モードとして開きます。
 
-運用ログは ECS 風 field の JSON Lines で出力します。設定項目は `WEREWOLF_LOG_LEVEL`、`WEREWOLF_LOG_OUTPUT`、`WEREWOLF_LOG_DIR`、`WEREWOLF_LOG_FILE_NAME`、`WEREWOLF_LOG_RETENTION_DAYS`、`WEREWOLF_LOG_THIRD_PARTY_LEVEL` です。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
+運用ログは ECS 風 field の JSON Lines で出力します。設定項目は `WEREWOLF_LOG_LEVEL`、`WEREWOLF_LOG_OUTPUT`、`WEREWOLF_LOG_DIR`、`WEREWOLF_LOG_FILE_NAME`、`WEREWOLF_LOG_RETENTION_DAYS`、`WEREWOLF_LOG_THIRD_PARTY_LEVEL` です。`event.action`、`trace.id`、`game.id`、`game.phase`、`game.version` を軸に API / Streamlit / usecase の流れを追跡します。third-party logger は既定で `WARNING` 以上に抑え、SQLAlchemy bind parameter は常に隠します。private route の player id、夜行動種別、role、`private_state`、token hash は運用ログへ出しません。public event JSONL は `--log-jsonl` の replay 用ログであり、運用ログとは別です。
 
 ## Docker
 

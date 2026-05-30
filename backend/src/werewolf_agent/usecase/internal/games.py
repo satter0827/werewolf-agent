@@ -310,8 +310,6 @@ def submit_player_action(
             level="INFO",
             fields={
                 **_telemetry_snapshot_fields(next_snapshot, version=run.version),
-                "player_id": command.player_id,
-                "game_action_type": command.type,
                 "has_target": command.target_id is not None,
                 "has_message": bool(command.message),
                 "event_count": len(events),
@@ -569,9 +567,7 @@ def _drive_current_phase(
                     level="DEBUG",
                     fields={
                         **_telemetry_snapshot_fields(current_snapshot, version=version),
-                        "player_id": player.id,
                         "agent_type": "llm",
-                        "game_action_type": action.type.value,
                         "candidate_count": _candidate_count(observation.players, player.id),
                         "turn_index": turn,
                     },

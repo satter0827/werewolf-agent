@@ -113,7 +113,7 @@ def create_playable_game(
             "event_action": LOG_STREAMLIT_GAME_CREATED,
             "event_outcome": "success",
             "game_id": response.game_id,
-            "player_id": human_player_id,
+            "has_human_player": bool(human_player_id),
             "player_count": len(response.state.players),
             "seed": seed,
         },
@@ -154,7 +154,6 @@ def load_game_screen(
             "event_action": LOG_STREAMLIT_REFRESHED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": human_player_id,
             "screen_mode": screen_mode,
             "game_status": state.status,
             "game_phase": state.phase,
@@ -218,8 +217,6 @@ def submit_screen_action(
             "event_action": LOG_STREAMLIT_ACTION_SUBMITTED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": human_player_id,
-            "game_action_type": action_type,
             "has_target": target_id is not None,
             "has_message": bool(message),
         },
@@ -242,7 +239,6 @@ def advance_until_input(
             "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": human_player_id,
             "max_steps": settings.streamlit_max_auto_steps,
         },
     )
@@ -254,7 +250,6 @@ def advance_until_input(
                 "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
                 "event_outcome": "success",
                 "game_id": game_id,
-                "player_id": human_player_id,
                 "iteration": iteration,
                 "game_status": current.status,
                 "game_phase": current.phase,
@@ -265,7 +260,6 @@ def advance_until_input(
         if current.status == "completed":
             _log_advance_stop(
                 game_id=game_id,
-                player_id=human_player_id,
                 stop_reason="completed",
                 iteration=iteration,
             )
@@ -279,7 +273,6 @@ def advance_until_input(
         if observation is not None and observation.observation.get("available_actions"):
             _log_advance_stop(
                 game_id=game_id,
-                player_id=human_player_id,
                 stop_reason="reached_input",
                 iteration=iteration,
                 available_action_count=len(observation.observation.get("available_actions") or []),
@@ -288,7 +281,6 @@ def advance_until_input(
         workflows.step_game(client, game_id)
     _log_advance_stop(
         game_id=game_id,
-        player_id=human_player_id,
         stop_reason="hit_limit",
         iteration=settings.streamlit_max_auto_steps,
     )
@@ -298,7 +290,6 @@ def advance_until_input(
 def _log_advance_stop(
     *,
     game_id: str,
-    player_id: str,
     stop_reason: str,
     iteration: int,
     available_action_count: int = 0,
@@ -309,7 +300,6 @@ def _log_advance_stop(
             "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": player_id,
             "ui_stop_reason": stop_reason,
             "iteration": iteration,
             "available_action_count": available_action_count,

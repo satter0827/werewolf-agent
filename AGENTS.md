@@ -114,6 +114,7 @@ Windows / OneDrive / Codex での実行:
 - ユーザーや他エージェントの未コミット変更を勝手に戻さない
 - 新しい設定値は安全な default、`.env.example`、README / docs、テストを揃える
 - DB、provider、API、ログは設定値で切り替えられるようにする
+- ログファイル名に `vscode`、`codex`、`local` など起動手段や作業者由来のメタ名称を入れない。`api.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl` のように実行される機能・プロセス名で命名する
 - 不確かな仕様は断定せず、docs に前提・未決・選択肢として残す
 - 大きな構成変更は、先に docs へ意図を残す
 

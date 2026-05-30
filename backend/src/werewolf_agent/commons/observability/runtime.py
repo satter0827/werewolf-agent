@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging as stdlib_logging
 import sys
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from logging.handlers import TimedRotatingFileHandler
 from typing import Any, Final, TextIO, cast
@@ -30,6 +30,21 @@ THIRD_PARTY_LOGGER_NAMES: Final = (
     "uvicorn",
     "uvicorn.access",
     "uvicorn.error",
+)
+PRIVATE_GAMEPLAY_LOG_FIELDS: Final = (
+    "actor_id",
+    "control_token_hashes",
+    "game.action.type",
+    "game_action_type",
+    "known_roles",
+    "night_action",
+    "pending_actions",
+    "player.id",
+    "player_id",
+    "private_state",
+    "role",
+    "target.id",
+    "target_id",
 )
 
 Processor = Callable[[Any, str, EventDict], EventDict]
@@ -107,6 +122,7 @@ def _processor_formatter(
         foreign_pre_chain=foreign_pre_chain,
         processors=[
             _add_service_fields(settings, service_name=service_name),
+            _drop_private_gameplay_fields,
             _normalize_ecs_fields,
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             _redact_event_dict,
@@ -178,6 +194,26 @@ def _add_service_fields(settings: AppSettings, *, service_name: str | None) -> P
     return processor
 
 
+def _drop_private_gameplay_fields(
+    _logger: Any,
+    _method_name: str,
+    event_dict: EventDict,
+) -> EventDict:
+    return cast(EventDict, _without_private_gameplay_fields(event_dict))
+
+
+def _without_private_gameplay_fields(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _without_private_gameplay_fields(item)
+            for key, item in value.items()
+            if str(key) not in PRIVATE_GAMEPLAY_LOG_FIELDS
+        }
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_without_private_gameplay_fields(item) for item in value]
+    return value
+
+
 def _normalize_ecs_fields(
     _logger: Any,
     _method_name: str,
@@ -204,9 +240,6 @@ def _normalize_ecs_fields(
     _move_field(event_dict, "version", "game.version")
     _move_field(event_dict, "game_status", "game.status")
     _move_field(event_dict, "status", "game.status")
-    _move_field(event_dict, "game_action_type", "game.action.type")
-    _move_field(event_dict, "player_id", "player.id")
-    _move_field(event_dict, "actor_id", "player.id")
     _move_field(event_dict, "agent_type", "agent.type")
     _move_field(event_dict, "ui_action", "ui.action")
     _move_field(event_dict, "ui_stop_reason", "ui.stop_reason")

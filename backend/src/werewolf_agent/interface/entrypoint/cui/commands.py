@@ -190,7 +190,7 @@ def _create(
             "event_action": LOG_CLI_GAME_CREATED,
             "event_outcome": "success",
             "game_id": created.game_id,
-            "player_id": human_player,
+            "has_human_player": human_player is not None,
         },
     )
     if output_format != "table":
@@ -704,8 +704,6 @@ def _prompt_and_submit_human_action(
             "event_action": LOG_CLI_ACTION_SUBMITTED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": player_id,
-            "game_action_type": action_type,
             "has_target": target_id is not None,
             "has_message": bool(message),
         },

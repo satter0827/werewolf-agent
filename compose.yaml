@@ -23,6 +23,11 @@ x-api-environment: &api-environment
   WEREWOLF_CORS_ALLOWED_ORIGINS: ${WEREWOLF_CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
   WEREWOLF_CORS_ALLOWED_METHODS: ${WEREWOLF_CORS_ALLOWED_METHODS:-GET,POST}
   WEREWOLF_CORS_ALLOWED_HEADERS: ${WEREWOLF_CORS_ALLOWED_HEADERS:-*}
+  WEREWOLF_LOG_LEVEL: ${WEREWOLF_LOG_LEVEL:-INFO}
+  WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-file}
+  WEREWOLF_LOG_DIR: ${WEREWOLF_LOG_DIR:-.werewolf-agent/logs}
+  WEREWOLF_LOG_RETENTION_DAYS: ${WEREWOLF_LOG_RETENTION_DAYS:-14}
+  WEREWOLF_LOG_THIRD_PARTY_LEVEL: ${WEREWOLF_LOG_THIRD_PARTY_LEVEL:-WARNING}
   WEREWOLF_SQLITE_PATH: /data/db.sqlite3
   WEREWOLF_DATABASE_URL: ${WEREWOLF_DATABASE_URL:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
@@ -42,7 +47,9 @@ services:
   api:
     build: *backend-build
     init: true
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      WEREWOLF_LOG_FILE_NAME: api.jsonl
     volumes: *backend-volumes
     ports:
       - "8000:8000"
@@ -63,14 +70,18 @@ services:
   migrate:
     build: *backend-build
     profiles: ["tools"]
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      WEREWOLF_LOG_FILE_NAME: migrate.jsonl
     volumes: *backend-volumes
     command: alembic upgrade head
 
   test:
     build: *backend-build
     profiles: ["tools"]
-    environment: *api-environment
+    environment:
+      <<: *api-environment
+      WEREWOLF_LOG_FILE_NAME: test.jsonl
     volumes: *backend-volumes
     command: pytest
 

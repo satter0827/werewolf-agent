@@ -39,6 +39,7 @@ def create_database_engine(settings: AppSettings) -> Engine:
         settings.sqlalchemy_database_url,
         connect_args=connect_args,
         future=True,
+        hide_parameters=True,
         **engine_options,
     )
 

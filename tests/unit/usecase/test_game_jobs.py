@@ -308,6 +308,13 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert "game.phase.drive_started" in [event.action for event in telemetry.events]
     assert "game.phase.advance_completed" in [event.action for event in telemetry.events]
     assert all("private_state" not in event.fields for event in telemetry.events)
+    agent_events = [
+        event for event in telemetry.events if event.action == "game.agent_action.generated"
+    ]
+    assert agent_events
+    assert all("player_id" not in event.fields for event in agent_events)
+    assert all("game_action_type" not in event.fields for event in agent_events)
+    assert all("agent_type" in event.fields for event in agent_events)
 
 
 def test_submit_manual_action_emits_sanitized_telemetry() -> None:
@@ -342,8 +349,9 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     event = next(
         event for event in telemetry.events if event.action == "game.manual_action.accepted"
     )
-    assert event.fields["game_action_type"] == "speech"
     assert event.fields["has_message"] is True
+    assert "player_id" not in event.fields
+    assert "game_action_type" not in event.fields
     assert "control_token" not in event.fields
     assert "message" not in event.fields
 

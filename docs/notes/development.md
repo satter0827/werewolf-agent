@@ -50,7 +50,7 @@ PowerShell で repository 配下へ新規生成物を書くと、`Access is deni
 `disk I/O error` が出る場合があります。
 
 AI が検証や browser QA を行う場合は、cache、SQLite、Streamlit save、screenshot を repository 配下ではなく
-`%TEMP%\werewolf-agent` 配下へ置きます。依存関係が同期済みなら `uv run --no-sync ...` を使い、Ruff は
+`%TEMP%\werewolf-agent` 配下へ置きます。運用ログだけは `.werewolf-agent/logs` 配下へ統一します。依存関係が同期済みなら `uv run --no-sync ...` を使い、Ruff は
 `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
 
 検証をまとめて実行する場合:
@@ -68,7 +68,7 @@ scripts\run-api.cmd --temp-state --reload
 
 VS Code の Run and Debug から起動する場合は、`.vscode/launch.json` と `.vscode/tasks.json` が
 `WEREWOLF_SQLITE_PATH` と `WEREWOLF_STREAMLIT_SAVE_FILE` を `%TEMP%\werewolf-agent` 配下へ向けます。
-launch 設定を変更する場合も、repository 配下に検証用 DB / save を戻さないでください。
+運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。launch 設定を変更する場合も、repository 配下に検証用 DB / save を戻さないでください。
 
 ## 配置
 
@@ -172,7 +172,7 @@ uv run --extra api pytest tests/integration/api
 Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` または `%TEMP%\werewolf-agent` に集約します。
 
 - SQLite: `.werewolf-agent/db/db.sqlite3`
-- operational logs: 出力先や保持日数は `backend/src/werewolf_agent/resources/settings/defaults.toml` と環境変数で指定
+- operational logs: `.werewolf-agent/logs/werewolf-agent.jsonl`
 - Streamlit save: game metadata だけを保存し、`control_token` は現在の Streamlit session 内だけに保持する
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
@@ -181,7 +181,7 @@ Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` �
 
 `.werewolf-agent/` は Git 管理しません。トップレベルの `.gitkeep` だけを置きます。
 
-Codex / OneDrive 環境の一時検証では、上記の repository 配下生成物ではなく `%TEMP%\werewolf-agent` を使います。
+Codex / OneDrive 環境の一時検証では、運用ログを除く repository 配下生成物ではなく `%TEMP%\werewolf-agent` を使います。
 これは権限エラーと SQLite の I/O エラーを避けるための作業時方針であり、アプリの通常設定値は
 `backend/src/werewolf_agent/resources/settings/defaults.toml` を正とします。`.env.example` は override の雛形だけです。
 
@@ -230,10 +230,11 @@ uv build --no-sources
 
 ログ確認:
 
-- 運用ログの既定値は `backend/src/werewolf_agent/resources/settings/defaults.toml` を正とし、script / VS Code / Docker Compose では上書きしない
+- 運用ログの既定値は `.werewolf-agent/logs/werewolf-agent.jsonl`
+- script / VS Code / Docker Compose では同じ log directory を明示し、log file name は用途名だけにする。`api.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl` のように命名し、起動手段や作業者由来のメタ名称を入れない
 - API と Streamlit は `trace.id` を共有し、HTTP client は `X-Trace-Id` を伝播する
 - usecase の進行診断は `TelemetrySink` 経由で `event.action=game.phase.*` / `game.manual_action.accepted` として出る
-- `control_token`、`authorization`、`private_state`、`role`、`night_action` 系 field は redaction 対象にする
+- `control_token`、`authorization`、`private_state`、`role`、`night_action`、`player_id`、`game_action_type` 系 field は redaction または破棄の対象にする
 - Streamlit save JSON に `control_token` を出さず、再起動後の保存 game は観戦モードで開く
 
 ## 未実装

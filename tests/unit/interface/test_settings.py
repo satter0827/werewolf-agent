@@ -82,6 +82,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_third_party_level == PACKAGED_DEFAULTS["log_third_party_level"]
     assert settings.log_directory_path == repository_root() / str(PACKAGED_DEFAULTS["log_dir"])
     assert settings.log_file_path == settings.log_directory_path / settings.log_file_name
+    assert settings.log_directory_path == repository_root() / ".werewolf-agent/logs"
+    assert settings.log_file_path == repository_root() / ".werewolf-agent/logs/werewolf-agent.jsonl"
+    assert settings.log_third_party_level == "WARNING"
     assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
     assert settings.cli_http_timeout_seconds == 10.0
     assert settings.cli_max_steps == 64

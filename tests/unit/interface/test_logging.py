@@ -111,6 +111,15 @@ def test_configure_logging_supports_service_name_override(tmp_path: Path) -> Non
     assert payload["service.name"] == "werewolf-agent-streamlit"
 
 
+def test_configure_observability_keeps_third_party_loggers_quiet(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, log_third_party_level="WARNING")
+    configure_observability(settings)
+
+    assert logging.getLogger("sqlalchemy").level == logging.WARNING
+    assert logging.getLogger("httpx").level == logging.WARNING
+    assert logging.getLogger("uvicorn").level == logging.WARNING
+
+
 def test_bound_observation_context_does_not_leak_outside_scope() -> None:
     assert get_observation_context() == {}
 
@@ -200,6 +209,49 @@ def test_logging_telemetry_sink_writes_structured_event(tmp_path: Path) -> None:
     assert payload["game.phase"] == "voting"
     assert payload["game.version"] == 3
     assert payload["control_token"] == "[REDACTED]"
+
+
+def test_observability_drops_private_gameplay_fields(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    configure_observability(settings)
+
+    logging.getLogger("werewolf_agent.tests").info(
+        "gameplay event",
+        extra={
+            "player_id": "player-1",
+            "actor_id": "player-2",
+            "game_action_type": "seer_inspect",
+            "target_id": "player-4",
+            "private_state": {"players": {"player-1": {"role": "seer"}}},
+            "pending_actions": {"night": {"player-1": "player-2"}},
+            "control_token_hashes": {"player-1": "hash"},
+            "role": "seer",
+            "error_context": {"player_id": "player-3", "safe": "kept"},
+            "count": 1,
+        },
+    )
+
+    payload = _read_log(settings.log_file_path)
+
+    assert payload["message"] == "gameplay event"
+    assert payload["count"] == 1
+    assert "player_id" not in payload
+    assert "actor_id" not in payload
+    assert "player.id" not in payload
+    assert "game_action_type" not in payload
+    assert "game.action.type" not in payload
+    assert "target_id" not in payload
+    assert "target.id" not in payload
+    assert "private_state" not in payload
+    assert "pending_actions" not in payload
+    assert "control_token_hashes" not in payload
+    assert "role" not in payload
+    assert payload["error_context"] == {"safe": "kept"}
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert "seer_inspect" not in serialized
+    assert "player-1" not in serialized
+    assert "player-4" not in serialized
+    assert "seer" not in serialized
 
 
 def test_redact_mapping_masks_sensitive_keys_recursively() -> None:

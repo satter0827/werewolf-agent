@@ -360,6 +360,16 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
         streamlit_env["WEREWOLF_STREAMLIT_SAVE_FILE"]
         == "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
     )
+    _assert_workspace_logging_env(api_env, "api.jsonl")
+    _assert_workspace_logging_env(migrate_env, "migrate.jsonl")
+    _assert_workspace_logging_env(streamlit_env, "streamlit.jsonl")
+
+    for name, configuration in configurations.items():
+        env = configuration["env"]
+        if name.startswith("CLI: "):
+            _assert_workspace_logging_env(env, "cli.jsonl")
+        elif name.startswith("Pytest: "):
+            assert "WEREWOLF_LOG_OUTPUT" not in env
 
 
 def test_vscode_migration_task_matches_launch_runtime_state() -> None:
@@ -387,17 +397,10 @@ def test_vscode_migration_task_matches_launch_runtime_state() -> None:
         migrate_task["options"]["env"]["WEREWOLF_SQLITE_PATH"]
         == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
     )
+    _assert_workspace_logging_env(migrate_task["options"]["env"], "migrate.jsonl")
 
 
-def test_execution_helpers_do_not_inject_log_settings() -> None:
-    log_env_names = (
-        "WEREWOLF_LOG_LEVEL",
-        "WEREWOLF_LOG_OUTPUT",
-        "WEREWOLF_LOG_DIR",
-        "WEREWOLF_LOG_FILE_NAME",
-        "WEREWOLF_LOG_RETENTION_DAYS",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL",
-    )
+def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None:
     paths = [
         ROOT / ".vscode" / "launch.json",
         ROOT / ".vscode" / "tasks.json",
@@ -408,10 +411,40 @@ def test_execution_helpers_do_not_inject_log_settings() -> None:
 
     for path in paths:
         source = path.read_text(encoding="utf-8")
-        assert not [name for name in log_env_names if name in source]
+        assert ".werewolf-agent" in source
+        assert "logs" in source
+        assert "{temp}/werewolf-agent/logs" not in source
+        assert "%TEMP%\\werewolf-agent\\logs" not in source
+        assert "${env:TEMP}\\werewolf-agent\\logs" not in source
 
 
-def test_log_defaults_are_documented_as_packaged_defaults_only() -> None:
+def test_operational_log_file_names_use_process_names_not_launcher_names() -> None:
+    sources = [
+        (ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"),
+        (ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "check-all.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "run-api.cmd").read_text(encoding="utf-8"),
+        (ROOT / "compose.yaml").read_text(encoding="utf-8"),
+        (ROOT / "AGENTS.md").read_text(encoding="utf-8"),
+        (ROOT / "README.md").read_text(encoding="utf-8"),
+        (ROOT / "docs" / "notes" / "development.md").read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(sources)
+
+    assert "vscode-api.jsonl" not in combined
+    assert "vscode-streamlit.jsonl" not in combined
+    assert "vscode-cli.jsonl" not in combined
+    assert "vscode-migrate.jsonl" not in combined
+    assert "codex-api.jsonl" not in combined
+    assert "local-api.jsonl" not in combined
+    assert "local.jsonl" not in combined
+    assert "api.jsonl" in combined
+    assert "streamlit.jsonl" in combined
+    assert "cli.jsonl" in combined
+    assert "migrate.jsonl" in combined
+
+
+def test_log_defaults_are_documented_as_workspace_log_defaults() -> None:
     defaults_source = (
         ROOT / "backend" / "src" / "werewolf_agent" / "resources" / "settings" / "defaults.toml"
     ).read_text(encoding="utf-8")
@@ -427,8 +460,9 @@ def test_log_defaults_are_documented_as_packaged_defaults_only() -> None:
 
     for path in (ROOT / "README.md", ROOT / "docs" / "notes" / "development.md"):
         source = path.read_text(encoding="utf-8")
-        assert "WEREWOLF_LOG_OUTPUT=file" not in source
-        assert ".werewolf-agent/logs/werewolf-agent.jsonl" not in source
+        assert ".werewolf-agent/logs/werewolf-agent.jsonl" in source
+        assert "%TEMP%\\werewolf-agent\\logs" not in source
+        assert "{temp}/werewolf-agent/logs" not in source
 
 
 def test_contracts_do_not_import_api_frameworks() -> None:
@@ -498,6 +532,15 @@ def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None
     pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
 
     assert "ignore_errors = true" not in pyproject
+
+
+def _assert_workspace_logging_env(env: dict[str, str], file_name: str) -> None:
+    assert env["WEREWOLF_LOG_LEVEL"] == "INFO"
+    assert env["WEREWOLF_LOG_OUTPUT"] == "file"
+    assert env["WEREWOLF_LOG_DIR"] == "${workspaceFolder}\\.werewolf-agent\\logs"
+    assert env["WEREWOLF_LOG_FILE_NAME"] == file_name
+    assert env["WEREWOLF_LOG_RETENTION_DAYS"] == "14"
+    assert env["WEREWOLF_LOG_THIRD_PARTY_LEVEL"] == "WARNING"
 
 
 def _assert_public_surface(module: ModuleType, expected: set[str]) -> None:

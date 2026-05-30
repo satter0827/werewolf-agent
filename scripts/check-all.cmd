@@ -49,6 +49,24 @@ if defined PYTHONPATH (
 ) else (
     set "PYTHONPATH=%CD%\backend\src"
 )
+if not defined WEREWOLF_LOG_LEVEL (
+    set "WEREWOLF_LOG_LEVEL=INFO"
+)
+if not defined WEREWOLF_LOG_OUTPUT (
+    set "WEREWOLF_LOG_OUTPUT=file"
+)
+if not defined WEREWOLF_LOG_DIR (
+    set "WEREWOLF_LOG_DIR=%CD%\.werewolf-agent\logs"
+)
+if not defined WEREWOLF_LOG_FILE_NAME (
+    set "WEREWOLF_LOG_FILE_NAME=check-all.jsonl"
+)
+if not defined WEREWOLF_LOG_RETENTION_DAYS (
+    set "WEREWOLF_LOG_RETENTION_DAYS=14"
+)
+if not defined WEREWOLF_LOG_THIRD_PARTY_LEVEL (
+    set "WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING"
+)
 
 if not defined WEREWOLF_AGENT_RUNTIME_DIR (
     set "WEREWOLF_AGENT_RUNTIME_DIR=%TEMP%\werewolf-agent"
@@ -136,6 +154,7 @@ echo Usage: scripts\check-all.cmd [--api] [--keep-going]
 echo.
 echo Runs local validation with .venv\Scripts\python.exe.
 echo Runtime cache and temporary SQLite files default to %%TEMP%%\werewolf-agent.
+echo Operational logs default to .werewolf-agent\logs\check-all.jsonl.
 echo   --api         Also run Alembic migration and API integration tests.
 echo   --keep-going  Continue after failed checks and exit non-zero at the end.
 exit /b 0

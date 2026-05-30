@@ -334,7 +334,6 @@ def get_player_observation(
             "event_action": LOG_PRIVATE_OBSERVATION_RETURNED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": player_id,
         },
     )
     return _wire_model(PrivateObservationResponse, response)
@@ -384,8 +383,6 @@ def submit_player_action(
             "event_action": LOG_PLAYER_ACTION_SUBMITTED,
             "event_outcome": "success",
             "game_id": game_id,
-            "player_id": player_id,
-            "game_action_type": request.type,
             "has_target": request.target_id is not None,
             "has_message": bool(request.message),
         },

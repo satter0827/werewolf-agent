@@ -35,6 +35,7 @@ from werewolf_agent.interface.shared.http import (
     request_validation_error_handler,
     unhandled_exception_handler,
 )
+from werewolf_agent.interface.shared.log_sanitization import safe_http_log_path
 from werewolf_agent.interface.shared.messages import (
     LOG_API_APPLICATION_STARTED,
     LOG_API_REQUEST_COMPLETED,
@@ -148,7 +149,8 @@ async def _trace_request(
         trace_id = str(uuid4())
 
     started = time.perf_counter()
-    with bind_observation_context(trace_id=trace_id, method=request.method, path=request.url.path):
+    log_path = safe_http_log_path(request.url.path)
+    with bind_observation_context(trace_id=trace_id, method=request.method, path=log_path):
         response = await call_next(request)
         response.headers[TRACE_ID_HEADER] = trace_id
         logger.info(
@@ -157,7 +159,7 @@ async def _trace_request(
                 "event_action": LOG_API_REQUEST_COMPLETED,
                 "event_outcome": "success" if response.status_code < 400 else "failure",
                 "http_method": request.method,
-                "http_path": request.url.path,
+                "http_path": log_path,
                 "http_status": response.status_code,
                 "duration_ms": round((time.perf_counter() - started) * 1000, 3),
             },

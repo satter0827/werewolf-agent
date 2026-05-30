@@ -35,6 +35,7 @@ from werewolf_agent.contracts.schemas import (
     SubmitPlayerActionRequest,
     SubmitPlayerActionResponse,
 )
+from werewolf_agent.interface.shared.log_sanitization import safe_http_log_path
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
@@ -243,7 +244,7 @@ class HttpGameApiClient:
                     "event_action": LOG_SHARED_API_REQUEST_COMPLETED,
                     "event_outcome": "success" if response.status_code < 400 else "failure",
                     "method": method,
-                    "path": path,
+                    "path": safe_http_log_path(path),
                     "http_status": response.status_code,
                     "duration_ms": round((time.perf_counter() - started) * 1000, 3),
                 },

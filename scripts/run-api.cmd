@@ -76,6 +76,24 @@ if defined PYTHONPATH (
 ) else (
     set "PYTHONPATH=%CD%\backend\src"
 )
+if not defined WEREWOLF_LOG_LEVEL (
+    set "WEREWOLF_LOG_LEVEL=INFO"
+)
+if not defined WEREWOLF_LOG_OUTPUT (
+    set "WEREWOLF_LOG_OUTPUT=file"
+)
+if not defined WEREWOLF_LOG_DIR (
+    set "WEREWOLF_LOG_DIR=%CD%\.werewolf-agent\logs"
+)
+if not defined WEREWOLF_LOG_FILE_NAME (
+    set "WEREWOLF_LOG_FILE_NAME=api.jsonl"
+)
+if not defined WEREWOLF_LOG_RETENTION_DAYS (
+    set "WEREWOLF_LOG_RETENTION_DAYS=14"
+)
+if not defined WEREWOLF_LOG_THIRD_PARTY_LEVEL (
+    set "WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING"
+)
 
 if "%TEMP_STATE%"=="1" (
     if not defined WEREWOLF_AGENT_RUNTIME_DIR (
@@ -113,5 +131,6 @@ echo Usage: scripts\run-api.cmd [--no-migrate] [--host HOST] [--port PORT] [--re
 echo.
 echo Starts the FastAPI application with the local virtual environment.
 echo Defaults: --host 127.0.0.1 --port 8000
+echo Operational logs default to .werewolf-agent\logs\api.jsonl.
 echo   --temp-state  Use %%TEMP%%\werewolf-agent for SQLite.
 exit /b 0
