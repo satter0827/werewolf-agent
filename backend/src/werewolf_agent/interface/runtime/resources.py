@@ -26,11 +26,13 @@ SETTINGS_FILE = "defaults.toml"
 GAME_DEFINITIONS_PACKAGE = "werewolf_agent.resources.game"
 LLM_DEFINITIONS_PACKAGE = "werewolf_agent.resources.llm"
 PROMPTS_PACKAGE = "werewolf_agent.resources.prompts"
+STREAMLIT_PACKAGE = "werewolf_agent.resources.streamlit"
 RULES_FILE = "rules.toml"
 ROLES_FILE = "roles.toml"
 PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
+STREAMLIT_I18N_FILE = "i18n.toml"
 
 
 def load_packaged_defaults() -> dict[str, object]:
@@ -68,6 +70,15 @@ def load_external_toml(path: Path) -> dict[str, object]:
     """Load an external TOML file."""
     with path.open("rb") as file:
         return tomllib.load(file)
+
+
+def load_streamlit_i18n(override_path: Path | None) -> dict[str, object]:
+    """Load Streamlit UI translations from settings."""
+    return (
+        load_external_toml(override_path)
+        if override_path is not None
+        else load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_I18N_FILE)
+    )
 
 
 def load_game_definitions(
@@ -127,5 +138,6 @@ __all__ = [
     "load_llm_definitions",
     "load_packaged_defaults",
     "load_packaged_toml",
+    "load_streamlit_i18n",
     "load_toml_model",
 ]

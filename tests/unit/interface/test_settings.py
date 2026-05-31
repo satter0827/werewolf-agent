@@ -116,6 +116,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_auto_advance_after_action is True
     assert settings.streamlit_initial_sidebar_state == "expanded"
     assert settings.streamlit_language == "ja"
+    assert settings.streamlit_i18n_file == ""
+    assert settings.streamlit_i18n_path is None
     assert settings.streamlit_save_file == Path(".werewolf-agent/streamlit/saves.json")
     assert settings.streamlit_save_file_path == (
         repository_root() / ".werewolf-agent/streamlit/saves.json"
@@ -129,6 +131,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_service_name == "werewolf-agent-api"
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
+    assert settings.reveal_api_enabled is True
     assert settings.llm_provider == "fake"
     assert settings.model == "fake-list-llm"
     assert settings.llm_prompt_path is None
@@ -230,6 +233,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_TURN_LIMIT", "40")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_RUN_LIMIT", "9")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_I18N_FILE", "tmp/streamlit/i18n.toml")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SAVE_FILE", "tmp/streamlit/saves.json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION", "false")
@@ -240,6 +244,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS", "120")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
+    monkeypatch.setenv("WEREWOLF_REVEAL_API_ENABLED", "false")
 
     settings = AppSettings(_env_file=None)
 
@@ -287,6 +292,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_auto_advance_after_action is False
     assert settings.streamlit_initial_sidebar_state == "collapsed"
     assert settings.streamlit_language == "en"
+    assert settings.streamlit_i18n_path == repository_root() / "tmp/streamlit/i18n.toml"
     assert settings.streamlit_save_file_path == repository_root() / "tmp/streamlit/saves.json"
     assert settings.streamlit_page_title == "Werewolf Console"
     assert settings.streamlit_default_seed == 33
@@ -294,6 +300,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
+    assert settings.reveal_api_enabled is False
 
 
 def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:

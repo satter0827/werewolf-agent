@@ -20,6 +20,37 @@ STREAMLIT_CSS = """
     .stApp {
         background: var(--wa-bg);
     }
+    header[data-testid="stHeader"],
+    [data-testid="stToolbar"] {
+        display: none !important;
+        background: transparent !important;
+        height: 0 !important;
+        min-height: 0 !important;
+        max-height: 0 !important;
+        overflow: hidden !important;
+        pointer-events: none !important;
+    }
+    [data-testid="stExpandSidebarButton"] {
+        display: inline-flex !important;
+        position: fixed !important;
+        top: 0.5rem !important;
+        left: 0.5rem !important;
+        z-index: 1000000 !important;
+        width: 2rem !important;
+        height: 2rem !important;
+        background: var(--wa-surface) !important;
+        border: 1px solid var(--wa-line) !important;
+        border-radius: 6px !important;
+        box-shadow: var(--wa-shadow) !important;
+        pointer-events: auto !important;
+    }
+    [data-testid="stToolbarActions"],
+    [data-testid="stAppDeployButton"],
+    [data-testid="stMainMenu"],
+    [data-testid="stDecoration"],
+    [data-testid="stStatusWidget"] {
+        display: none !important;
+    }
     .block-container {
         padding-top: 0.9rem;
         padding-bottom: 1.75rem;
@@ -258,6 +289,20 @@ STREAMLIT_CSS = """
         background: #e5e7eb;
         color: #4b5563;
     }
+    .wa-role-chip {
+        display: inline-block;
+        border-radius: 999px;
+        padding: 2px 9px;
+        background: #eef2ff;
+        color: #3730a3;
+        font-size: 12px;
+        font-weight: 800;
+    }
+    .wa-faction-note {
+        color: var(--wa-muted);
+        font-size: 11px;
+        line-height: 1.3;
+    }
     .wa-activity {
         min-height: 20px;
         color: #344054;
@@ -415,6 +460,33 @@ STREAMLIT_CSS = """
         color: var(--wa-muted);
         font-size: 13px;
         line-height: 1.45;
+    }
+    .wa-result-summary {
+        margin-top: 12px;
+        border: 1px solid var(--wa-line);
+        border-radius: 8px;
+        padding: 13px 14px;
+        background: var(--wa-surface);
+        box-shadow: var(--wa-shadow);
+    }
+    .wa-result-summary h3 {
+        margin: 0 0 5px;
+        color: var(--wa-text);
+        font-size: 19px;
+        line-height: 1.3;
+    }
+    .wa-result-summary p {
+        margin: 0 0 8px;
+        color: var(--wa-muted);
+        font-size: 13px;
+        line-height: 1.45;
+    }
+    .wa-result-summary ul {
+        margin: 0;
+        padding-left: 1.1rem;
+        color: #344054;
+        font-size: 13px;
+        line-height: 1.55;
     }
     .wa-advance-note {
         border-left: 3px solid var(--wa-amber);

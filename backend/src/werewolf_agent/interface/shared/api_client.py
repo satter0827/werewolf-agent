@@ -24,7 +24,8 @@ from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
     AdvanceUntilInputResponse,
-    CreateGameRunRequest,
+    CreateGameRequest,
+    GameRevealResponse,
     GameRunResponse,
     GameRunsResponse,
     GameTimelineResponse,
@@ -51,11 +52,14 @@ class GameApiClient(Protocol):
     def get_ruleset(self) -> RulesetResponse:
         """Fetch the default ruleset through the public API."""
 
-    def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
         """Create one game through the public API."""
 
     def get_game(self, game_id: str) -> GameRunResponse:
         """Fetch one game through the public API."""
+
+    def get_game_reveal(self, game_id: str) -> GameRevealResponse:
+        """Fetch full observer-only game information through the reveal API."""
 
     def list_games(
         self,
@@ -129,7 +133,7 @@ class HttpGameApiClient:
         payload = self._request_json("GET", "ruleset")
         return self._parse_model(RulesetResponse, payload)
 
-    def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
         """Create one game through the public API."""
         payload = self._request_json(
             "POST",
@@ -142,6 +146,11 @@ class HttpGameApiClient:
         """Fetch one game through the public API."""
         payload = self._request_json("GET", f"games/{game_id}")
         return self._parse_model(GameRunResponse, payload)
+
+    def get_game_reveal(self, game_id: str) -> GameRevealResponse:
+        """Fetch full observer-only game information through the reveal API."""
+        payload = self._request_json("GET", f"games/{game_id}/reveal")
+        return self._parse_model(GameRevealResponse, payload)
 
     def list_games(
         self,

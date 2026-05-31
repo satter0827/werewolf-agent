@@ -42,15 +42,12 @@ def print_ruleset(ruleset: RulesetResponse, *, output_format: OutputFormat = "ta
         print_json(ruleset, output_format=output_format)
         return
 
-    table = Table(title=f"Ruleset {ruleset.id}")
+    table = Table(title="Ruleset")
     table.add_column("Field", style="cyan", no_wrap=True)
     table.add_column("Value", overflow="fold")
-    table.add_row("name", ruleset.name)
-    table.add_row("description", ruleset.description)
     table.add_row("player count", str(ruleset.player_count))
-    table.add_row("roles", ", ".join(item["id"] for item in ruleset.roles))
-    table.add_row("phases", ", ".join(item["id"] for item in ruleset.phases))
-    table.add_row("agent types", ", ".join(item["id"] for item in ruleset.agent_types))
+    table.add_row("roles", ", ".join(role.id for role in ruleset.roles))
+    table.add_row("default role counts", str(ruleset.default_role_counts))
     console.print(table)
 
 

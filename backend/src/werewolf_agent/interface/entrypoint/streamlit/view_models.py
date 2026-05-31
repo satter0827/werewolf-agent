@@ -1,26 +1,28 @@
-"""Pure display models for the Streamlit play screen."""
+"""Pure display models for the Streamlit play and observer screens."""
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
 from werewolf_agent.contracts.schemas import (
+    GameRevealAction,
+    GameRevealPlayer,
+    GameRevealResponse,
     GameTimelineItem,
+    LocalRulesSettings,
     PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
     PublicPlayerState,
 )
+from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.interface.entrypoint.streamlit.icons import (
     action_icon,
-    action_label,
     event_icon,
-    phase_label,
-    role_label,
     status_icon,
-    winner_label,
 )
 
 ScreenMode = Literal["playable", "observer"]
@@ -36,6 +38,9 @@ class SavedGameOptionView:
     mode: ScreenMode
     human_player_id: str | None = None
     control_token: str = ""
+    role_counts: dict[str, int] | None = None
+    rules: LocalRulesSettings | None = None
+    seed: int | None = None
 
 
 @dataclass(frozen=True)
@@ -50,6 +55,8 @@ class PlayerSeatView:
     is_alive: bool
     is_human: bool
     is_current: bool
+    role_label: str | None = None
+    faction_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -88,6 +95,7 @@ class ActionChoiceView:
 class HandPanelView:
     """Right-side player hand panel state."""
 
+    heading: str
     title: str
     detail: str
     tone: str
@@ -121,8 +129,28 @@ class ObservationView:
 
 
 @dataclass(frozen=True)
+class ObserverLogView:
+    """Observer-only reveal summary."""
+
+    title: str
+    role_title: str
+    role_lines: list[str]
+    action_lines: list[str]
+    empty_text: str
+
+
+@dataclass(frozen=True)
+class ResultSummaryView:
+    """Completed-game result summary displayed after the timeline."""
+
+    title: str
+    detail: str
+    facts: list[str]
+
+
+@dataclass(frozen=True)
 class GameScreenView:
-    """Single display model for the playable Streamlit screen."""
+    """Single display model for the Streamlit game screen."""
 
     game_id: str
     screen_mode: ScreenMode
@@ -138,12 +166,17 @@ class GameScreenView:
     winner_label: str
     player_count: int
     alive_count: int
+    role_counts: dict[str, int]
+    rules: LocalRulesSettings | None
+    seed: int | None
     status_metrics: list[StatusMetricView]
     table_legend: list[TableLegendItemView]
     seats: list[PlayerSeatView]
     timeline: list[TimelineItemView]
     hand_panel: HandPanelView
     observation: ObservationView | None
+    observer_log: ObserverLogView | None
+    result_summary: ResultSummaryView | None
     current_turn_title: str
     current_turn_detail: str
     is_completed: bool
@@ -155,17 +188,26 @@ def build_game_screen_view(
     state: PublicGameState,
     turns: list[GameTimelineItem],
     observation: PlayerObservationResponse | None,
+    reveal: GameRevealResponse | None,
     human_player_id: str | None,
     screen_mode: ScreenMode | None = None,
+    catalog: I18nCatalog,
+    lang: Language,
     refresh_interval_seconds: float = 0,
 ) -> GameScreenView:
-    """Build a complete display model from public state and optional observation."""
+    """Build a complete display model from public state and optional private/reveal data."""
     effective_mode: ScreenMode = screen_mode or (
         "playable" if observation is not None else "observer"
     )
     observation_view = (
-        observation_view_from_response(observation, state=state, human_player_id=human_player_id)
-        if observation is not None
+        observation_view_from_response(
+            observation,
+            state=state,
+            human_player_id=human_player_id,
+            catalog=catalog,
+            lang=lang,
+        )
+        if observation is not None and effective_mode == "playable"
         else None
     )
     can_submit_action = (
@@ -174,25 +216,31 @@ def build_game_screen_view(
         and observation_view is not None
         and bool(observation_view.available_actions)
     )
-    current_title = current_turn_title(state, observation_view, effective_mode)
-    current_detail = current_turn_detail(state, observation_view, effective_mode)
-    human_label = _human_player_label(state.players, human_player_id, effective_mode)
-    updated_label = _optional_time_text(state.updated_at)
+    current_title = current_turn_title(state, observation_view, effective_mode, catalog, lang)
+    current_detail = current_turn_detail(state, observation_view, effective_mode, catalog, lang)
+    human_label = _human_player_label(state.players, human_player_id, effective_mode, catalog, lang)
+    updated_label = _optional_time_text(state.updated_at, catalog, lang)
+    role_counts = dict(reveal.role_counts) if reveal is not None else {}
     return GameScreenView(
         game_id=state.game_id,
         screen_mode=effective_mode,
         status=state.status,
         phase=state.phase,
-        phase_label=phase_label(state.phase),
-        day_label=f"Day {state.day}",
-        status_label="進行中" if state.status == "running" else "終了",
-        alive_label=f"{len(state.alive_player_ids)} / {len(state.players)} 人",
-        turn_label=f"{state.version} ターン目",
+        phase_label=catalog.label(lang, "phase", state.phase),
+        day_label=_day_label(state.day, catalog, lang),
+        status_label=catalog.t(lang, "status.running")
+        if state.status == "running"
+        else catalog.t(lang, "status.completed"),
+        alive_label=f"{len(state.alive_player_ids)} / {len(state.players)}",
+        turn_label=f"{state.version}",
         player_label=human_label,
         updated_label=updated_label,
-        winner_label=winner_label(state.winner),
+        winner_label=catalog.label(lang, "winner", state.winner),
         player_count=len(state.players),
         alive_count=len(state.alive_player_ids),
+        role_counts=role_counts,
+        rules=reveal.rules if reveal is not None else None,
+        seed=reveal.seed if reveal is not None else state.seed,
         status_metrics=status_metrics(
             state,
             current_turn=current_title,
@@ -200,17 +248,32 @@ def build_game_screen_view(
             human_label=human_label,
             updated_label=updated_label,
             refresh_interval_seconds=refresh_interval_seconds,
+            catalog=catalog,
+            lang=lang,
         ),
-        table_legend=table_legend_items(),
+        table_legend=table_legend_items(catalog, lang),
         seats=player_seats(
             state.players,
             turns=turns,
             observation=observation_view,
+            reveal=reveal,
             human_player_id=human_player_id if effective_mode == "playable" else None,
+            catalog=catalog,
+            lang=lang,
         ),
-        timeline=timeline_items(turns, players=state.players),
-        hand_panel=hand_panel_view(state, observation_view, effective_mode),
+        timeline=timeline_items(turns, players=state.players, catalog=catalog, lang=lang),
+        hand_panel=hand_panel_view(state, observation_view, effective_mode, catalog, lang),
         observation=observation_view,
+        observer_log=(
+            observer_log_view(reveal, catalog, lang) if effective_mode == "observer" else None
+        ),
+        result_summary=result_summary_view(
+            state,
+            turns=turns,
+            reveal=reveal if effective_mode == "observer" else None,
+            catalog=catalog,
+            lang=lang,
+        ),
         current_turn_title=current_title,
         current_turn_detail=current_detail,
         is_completed=state.status == "completed",
@@ -226,20 +289,37 @@ def status_metrics(
     human_label: str,
     updated_label: str,
     refresh_interval_seconds: float,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> list[StatusMetricView]:
     """Return top status strip items."""
     metrics = [
-        ("phase", "現在のフェーズ", f"Day {state.day}", phase_label(state.phase)),
-        ("next_update", "次の更新", _seconds_label(refresh_interval_seconds), "手動更新もできます"),
-        ("alive", "生存プレイヤー", f"{len(state.alive_player_ids)} / {len(state.players)} 人", ""),
-        ("turn", "経過ターン", f"{state.version} ターン目", ""),
+        (
+            "phase",
+            catalog.t(lang, "metric.phase"),
+            _day_label(state.day, catalog, lang),
+            catalog.label(lang, "phase", state.phase),
+        ),
+        (
+            "next_update",
+            catalog.t(lang, "metric.next_update"),
+            _seconds_label(refresh_interval_seconds, catalog, lang),
+            "",
+        ),
+        (
+            "alive",
+            catalog.t(lang, "metric.alive"),
+            f"{len(state.alive_player_ids)} / {len(state.players)}",
+            "",
+        ),
+        ("turn", catalog.t(lang, "metric.turn"), str(state.version), ""),
         (
             "player",
-            "あなた",
+            catalog.t(lang, "metric.player"),
             human_label,
-            current_turn_detail if current_turn == "あなたの入力待ち" else "",
+            current_turn_detail if current_turn == catalog.t(lang, "game.current.playable") else "",
         ),
-        ("updated", "最終更新", updated_label, ""),
+        ("updated", catalog.t(lang, "metric.updated"), updated_label, ""),
     ]
     return [
         StatusMetricView(
@@ -254,13 +334,13 @@ def status_metrics(
     ]
 
 
-def table_legend_items() -> list[TableLegendItemView]:
+def table_legend_items(catalog: I18nCatalog, lang: Language) -> list[TableLegendItemView]:
     """Return stable legend items for the game table."""
     return [
-        TableLegendItemView("●", "発言済み", "safe"),
-        TableLegendItemView("●", "発言中", "safe"),
-        TableLegendItemView("●", "あなたの手番", "danger"),
-        TableLegendItemView("●", "未発言", "muted"),
+        TableLegendItemView("●", catalog.label(lang, "activity", "acted"), "safe"),
+        TableLegendItemView("●", catalog.label(lang, "activity", "current"), "safe"),
+        TableLegendItemView("●", catalog.label(lang, "activity", "input"), "danger"),
+        TableLegendItemView("●", catalog.label(lang, "activity", "idle"), "muted"),
     ]
 
 
@@ -269,44 +349,55 @@ def player_seats(
     *,
     turns: list[GameTimelineItem],
     observation: ObservationView | None,
+    reveal: GameRevealResponse | None,
     human_player_id: str | None,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> list[PlayerSeatView]:
     """Return compact game-table player seats."""
     last_speaker = _last_actor(turns, event_type="speech_recorded")
-    active_player_id = (
-        human_player_id
-        if observation is not None and observation.available_actions
-        else last_speaker
-    )
+    active_player_id = human_player_id if _has_available_actions(observation) else last_speaker
+    reveal_players = {player.id: player for player in reveal.players} if reveal is not None else {}
     seats: list[PlayerSeatView] = []
     for player in players:
         is_human = player.id == human_player_id
         is_current = player.id == active_player_id
         if not player.alive:
-            activity = "退場"
+            activity = catalog.label(lang, "activity", "dead")
             activity_tone = "muted"
         elif is_human and observation is not None and observation.available_actions:
-            activity = "入力待ち"
+            activity = catalog.label(lang, "activity", "input")
             activity_tone = "danger"
         elif player.id == last_speaker:
-            activity = "発言済み"
+            activity = catalog.label(lang, "activity", "acted")
             activity_tone = "safe"
         elif is_human:
-            activity = "あなた"
+            activity = catalog.label(lang, "activity", "human")
             activity_tone = "danger"
         else:
-            activity = "未発言"
+            activity = catalog.label(lang, "activity", "idle")
             activity_tone = "muted"
+        reveal_player = reveal_players.get(player.id)
         seats.append(
             PlayerSeatView(
                 player_id=player.id,
                 name=_display_player_name(player.name, fallback=player.id),
-                status="生存" if player.alive else "退場",
+                status=(
+                    catalog.t(lang, "status.alive")
+                    if player.alive
+                    else catalog.t(lang, "status.dead")
+                ),
                 activity=activity,
                 activity_tone=activity_tone,
                 is_alive=player.alive,
                 is_human=is_human,
                 is_current=is_current,
+                role_label=catalog.label(lang, "role", reveal_player.role)
+                if reveal_player is not None
+                else None,
+                faction_label=catalog.label(lang, "faction", reveal_player.faction)
+                if reveal_player is not None
+                else None,
             )
         )
     return seats
@@ -316,6 +407,8 @@ def timeline_items(
     turns: list[GameTimelineItem],
     *,
     players: list[PublicPlayerState],
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> list[TimelineItemView]:
     """Return public timeline rows without exposing raw payloads."""
     player_names = _player_name_map(players)
@@ -324,10 +417,10 @@ def timeline_items(
             sequence=turn.sequence,
             icon=event_icon(turn.event_type).symbol,
             tone=event_icon(turn.event_type).tone,
-            title=_event_title(turn),
-            detail=_event_detail(turn, player_names=player_names),
+            title=_event_title(turn, catalog, lang),
+            detail=_event_detail(turn, player_names=player_names, catalog=catalog, lang=lang),
             time_text=_time_text(turn.occurred_at),
-            day_label=f"Day {turn.day}" if turn.day is not None else "-",
+            day_label=_day_label(turn.day, catalog, lang) if turn.day is not None else "-",
         )
         for turn in turns
     ]
@@ -338,6 +431,8 @@ def observation_view_from_response(
     *,
     state: PublicGameState,
     human_player_id: str | None,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> ObservationView:
     """Return private observation display data."""
     observation = response.observation
@@ -346,16 +441,16 @@ def observation_view_from_response(
     known_roles = observation.get("known_roles")
     known_role_lines = (
         [
-            f"{_player_name(state.players, player_id)}: {role_label(role_id)}"
+            f"{_player_name(state.players, player_id)}: {catalog.label(lang, 'role', role_id)}"
             for player_id, role_id in sorted(known_roles.items())
         ]
         if isinstance(known_roles, dict)
         else []
     )
     return ObservationView(
-        role=role_label(role),
+        role=catalog.label(lang, "role", role),
         available_actions=actions,
-        action_choices=[action_choice(action) for action in actions],
+        action_choices=[action_choice(action, catalog, lang) for action in actions],
         known_role_lines=known_role_lines,
         target_candidates={
             action: target_candidates_for_action(
@@ -369,12 +464,12 @@ def observation_view_from_response(
     )
 
 
-def action_choice(action_type: str) -> ActionChoiceView:
+def action_choice(action_type: str, catalog: I18nCatalog, lang: Language) -> ActionChoiceView:
     """Return display metadata for one action."""
     return ActionChoiceView(
         action_type=action_type,
         icon=action_icon(action_type).symbol,
-        label=action_label(action_type),
+        label=catalog.label(lang, "action", action_type),
         requires_target=action_type in {"vote", "werewolf_attack", "seer_inspect", "knight_guard"},
         requires_message=action_type == "speech",
     )
@@ -412,135 +507,356 @@ def hand_panel_view(
     state: PublicGameState,
     observation: ObservationView | None,
     screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> HandPanelView:
     """Return the right-side hand panel state."""
+    heading = (
+        catalog.t(lang, "game.observer.title")
+        if screen_mode == "observer"
+        else catalog.t(lang, "game.hand.heading")
+    )
     if state.status == "completed":
         return HandPanelView(
-            title="ゲームは終了しました",
-            detail=f"勝利: {winner_label(state.winner)}",
+            heading=heading,
+            title=catalog.t(lang, "game.completed.title"),
+            detail=catalog.t(
+                lang,
+                "result.fact.winner",
+                winner=catalog.label(lang, "winner", state.winner),
+            ),
             tone="safe",
-            advance_title="最終状態",
-            advance_detail="このゲームで追加の入力はありません。",
+            advance_title=catalog.t(lang, "game.completed.title"),
+            advance_detail=catalog.t(lang, "game.completed.detail"),
             can_advance=False,
         )
     if screen_mode == "observer":
         return HandPanelView(
-            title="観戦モード",
-            detail="公開情報だけを表示しています。",
+            heading=catalog.t(lang, "game.observer.title"),
+            title=catalog.t(lang, "game.observer.title"),
+            detail=catalog.t(lang, "game.observer.detail"),
             tone="neutral",
-            advance_title="公開情報",
-            advance_detail="手番入力は保存データから再開できる場合だけ表示されます。",
+            advance_title=catalog.t(lang, "game.observer.title"),
+            advance_detail=catalog.t(lang, "game.observer.detail"),
             can_advance=False,
         )
     if observation is not None and observation.available_actions:
-        labels = " / ".join(action_label(action) for action in observation.available_actions)
+        labels = " / ".join(
+            catalog.label(lang, "action", action) for action in observation.available_actions
+        )
         return HandPanelView(
-            title="あなたの入力待ち",
-            detail=f"できる行動: {labels}",
+            heading=heading,
+            title=catalog.t(lang, "game.current.playable"),
+            detail=f"{labels}",
             tone="danger",
-            advance_title="入力を送信",
-            advance_detail="行動を選んで送信してください。",
+            advance_title=catalog.t(lang, "action.send"),
+            advance_detail=catalog.t(lang, "game.current.playable"),
             can_advance=False,
         )
     return HandPanelView(
-        title="進行待ち",
-        detail="今はあなたの入力はありません。",
+        heading=heading,
+        title=catalog.t(lang, "game.play.waiting.title"),
+        detail=catalog.t(lang, "game.play.waiting.detail"),
         tone="day",
-        advance_title="今できること",
-        advance_detail="次にあなたの入力が必要な場面までゲームを進められます。",
+        advance_title=catalog.t(lang, "game.advance.title"),
+        advance_detail=catalog.t(lang, "game.advance.detail"),
         can_advance=True,
     )
+
+
+def observer_log_view(
+    reveal: GameRevealResponse | None,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> ObserverLogView:
+    """Return observer-only reveal log lines."""
+    if reveal is None:
+        return ObserverLogView(
+            title=catalog.t(lang, "game.observer.log.title"),
+            role_title=catalog.t(lang, "game.observer.log.roles"),
+            role_lines=[],
+            action_lines=[],
+            empty_text=catalog.t(lang, "game.observer.log.empty"),
+        )
+    player_names = _reveal_player_name_map(reveal.players)
+    role_lines = [
+        f"{_display_player_name(player.name, fallback=player.id)}: "
+        f"{catalog.label(lang, 'role', player.role)} / "
+        f"{catalog.label(lang, 'faction', player.faction)}"
+        for player in reveal.players
+    ]
+    action_lines = [
+        *[_action_line(action, player_names, catalog, lang) for action in reveal.pending_votes],
+        *[
+            _action_line(action, player_names, catalog, lang)
+            for action in reveal.pending_night_actions
+        ],
+    ]
+    if reveal.votes:
+        latest = reveal.votes[-1]
+        action_lines.append(
+            catalog.t(
+                lang,
+                "result.fact.last_vote",
+                player=_player_label(latest.eliminated_player_id, player_names)
+                or catalog.t(lang, "common.none"),
+            )
+        )
+    if reveal.nights:
+        latest_night = reveal.nights[-1]
+        action_lines.append(
+            catalog.t(
+                lang,
+                "result.fact.last_night",
+                attacked=_player_label(latest_night.attacked_player_id, player_names)
+                or catalog.t(lang, "common.none"),
+                guarded=_player_label(latest_night.protected_player_id, player_names)
+                or catalog.t(lang, "common.none"),
+                killed=_player_label(latest_night.killed_player_id, player_names)
+                or catalog.t(lang, "common.none"),
+            )
+        )
+    return ObserverLogView(
+        title=catalog.t(lang, "game.observer.log.title"),
+        role_title=catalog.t(lang, "game.observer.log.roles"),
+        role_lines=role_lines,
+        action_lines=action_lines,
+        empty_text=catalog.t(lang, "game.observer.log.empty"),
+    )
+
+
+def result_summary_view(
+    state: PublicGameState,
+    *,
+    turns: list[GameTimelineItem],
+    reveal: GameRevealResponse | None,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> ResultSummaryView | None:
+    """Return a completed-game summary after the public timeline."""
+    if state.status != "completed":
+        return None
+    public_names = _player_name_map(state.players)
+    facts = [
+        catalog.t(lang, "result.fact.winner", winner=catalog.label(lang, "winner", state.winner)),
+        catalog.t(lang, "result.fact.finish_day", day=state.day),
+        catalog.t(
+            lang,
+            "result.fact.survivors",
+            names=_player_list_label(state.alive_player_ids, public_names)
+            or catalog.t(lang, "common.none"),
+        ),
+        catalog.t(
+            lang,
+            "result.fact.eliminated",
+            names=_player_list_label(state.eliminated_player_ids, public_names)
+            or catalog.t(lang, "common.none"),
+        ),
+    ]
+    if turns:
+        last_turn = turns[-1]
+        facts.append(
+            catalog.t(
+                lang,
+                "result.fact.last_event",
+                detail=_event_detail(
+                    last_turn,
+                    player_names=public_names,
+                    catalog=catalog,
+                    lang=lang,
+                ),
+            )
+        )
+    detail = catalog.t(lang, "result.detail_play")
+    if reveal is not None:
+        reveal_names = _reveal_player_name_map(reveal.players)
+        role_lines = [
+            f"{_display_player_name(player.name, fallback=player.id)}="
+            f"{catalog.label(lang, 'role', player.role)}"
+            for player in reveal.players
+        ]
+        facts.append(catalog.t(lang, "result.fact.roles", roles=", ".join(role_lines)))
+        if reveal.votes:
+            facts.append(
+                catalog.t(
+                    lang,
+                    "result.fact.last_vote",
+                    player=_player_label(reveal.votes[-1].eliminated_player_id, reveal_names)
+                    or catalog.t(lang, "common.none"),
+                )
+            )
+        if reveal.nights:
+            latest_night = reveal.nights[-1]
+            facts.append(
+                catalog.t(
+                    lang,
+                    "result.fact.last_night",
+                    attacked=_player_label(latest_night.attacked_player_id, reveal_names)
+                    or catalog.t(lang, "common.none"),
+                    guarded=_player_label(latest_night.protected_player_id, reveal_names)
+                    or catalog.t(lang, "common.none"),
+                    killed=_player_label(latest_night.killed_player_id, reveal_names)
+                    or catalog.t(lang, "common.none"),
+                )
+            )
+        detail = catalog.t(lang, "result.detail_observer")
+    return ResultSummaryView(title=catalog.t(lang, "result.title"), detail=detail, facts=facts)
 
 
 def current_turn_title(
     state: PublicGameState,
     observation: ObservationView | None,
     screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> str:
     """Return the current hand title."""
     if state.status == "completed":
-        return "ゲームは終了しました"
+        return catalog.t(lang, "game.completed.title")
     if screen_mode == "observer":
-        return "観戦中"
+        return catalog.t(lang, "game.current.observer")
     if observation is not None and observation.available_actions:
-        return "あなたの入力待ち"
-    return "進行待ち"
+        return catalog.t(lang, "game.current.playable")
+    return catalog.t(lang, "game.play.waiting.title")
 
 
 def current_turn_detail(
     state: PublicGameState,
     observation: ObservationView | None,
     screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> str:
     """Return the current hand detail text."""
     if state.status == "completed":
-        return f"勝利: {winner_label(state.winner)}"
+        return catalog.t(
+            lang,
+            "result.fact.winner",
+            winner=catalog.label(lang, "winner", state.winner),
+        )
     if screen_mode == "observer":
-        return "公開情報だけを表示しています。"
+        return catalog.t(lang, "game.observer.detail")
     if observation is not None and observation.available_actions:
-        labels = " / ".join(action_label(action) for action in observation.available_actions)
-        return f"できる行動: {labels}"
-    return "次の入力待ちまで進められます。"
+        labels = " / ".join(
+            catalog.label(lang, "action", action) for action in observation.available_actions
+        )
+        return labels
+    return catalog.t(lang, "game.play.waiting.detail")
 
 
-def game_run_option_label(run: PublicGameRunSummary) -> str:
-    """Return one human-facing sidebar label without exposing the internal game id."""
-    status = "終了" if run.status == "completed" else "進行中"
+def game_run_option_label(
+    run: PublicGameRunSummary,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    """Return one sidebar label without exposing the internal game id."""
+    status = (
+        catalog.t(lang, "status.completed")
+        if run.status == "completed"
+        else catalog.t(lang, "status.running")
+    )
     return (
-        f"{status} / Day {run.day} / {run.player_count}人 / "
-        f"最終更新 {_time_text(run.updated_at)} / 観戦のみ"
+        f"{status} / {_day_label(run.day, catalog, lang)} / {run.player_count} / "
+        f"{catalog.t(lang, 'metric.updated')} {_time_text(run.updated_at)} / "
+        f"{catalog.t(lang, 'setup.mode.observe')}"
     )
 
 
-def _event_title(turn: GameTimelineItem) -> str:
-    icon = event_icon(turn.event_type)
+def _event_title(turn: GameTimelineItem, catalog: I18nCatalog, lang: Language) -> str:
     if turn.event_type == "phase_started":
         phase = str(turn.payload.get("phase", turn.phase or ""))
-        return f"{phase_label(phase)}フェーズ開始"
-    return icon.label
+        return (
+            f"{catalog.label(lang, 'phase', phase)} {catalog.label(lang, 'event', 'phase_started')}"
+        )
+    return catalog.label(lang, "event", turn.event_type if turn.event_type else "unknown")
 
 
-def _event_detail(turn: GameTimelineItem, *, player_names: dict[str, str]) -> str:
+def _event_detail(
+    turn: GameTimelineItem,
+    *,
+    player_names: Mapping[str, str],
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
     actor = turn.actor_id or str(turn.payload.get("player_id", ""))
     actor_label = _player_label(actor, player_names)
     if turn.event_type == "game_started":
         player_count = turn.payload.get("player_count")
         if player_count:
-            return f"{player_count}人でゲームが始まりました。"
-        return "ゲームが始まりました。"
+            return catalog.t(
+                lang,
+                "event_detail.game_started_with_count",
+                player_count=player_count,
+            )
+        return catalog.t(lang, "event_detail.game_started")
     if turn.event_type == "speech_recorded":
         message = str(turn.payload.get("message", "")).strip()
         if message and actor_label:
-            return f"{actor_label}: 「{message}」"
+            return catalog.t(
+                lang,
+                "event_detail.speech_with_actor",
+                actor=actor_label,
+                message=message,
+            )
         if message:
-            return f"「{message}」"
-        return f"{actor_label} が発言しました。" if actor_label else "プレイヤーが発言しました。"
+            return catalog.t(lang, "event_detail.speech_message", message=message)
+        if actor_label:
+            return catalog.t(lang, "event_detail.speech_actor", actor=actor_label)
+        return catalog.label(lang, "event", "speech_recorded")
     if turn.event_type == "vote_submitted":
         target_label = _player_label(turn.payload.get("target_id"), player_names)
         if actor_label and target_label:
-            return f"{actor_label} が {target_label} に投票しました。"
-        return "投票が行われました。"
+            return catalog.t(
+                lang,
+                "event_detail.vote_submitted_with_target",
+                actor=actor_label,
+                target=target_label,
+            )
+        return catalog.t(lang, "event_detail.vote_submitted")
     if turn.event_type == "vote_resolved":
         eliminated = _player_label(turn.payload.get("eliminated_player_id"), player_names)
         if eliminated:
-            return f"投票の結果、{eliminated} が退場しました。"
+            return catalog.t(
+                lang,
+                "event_detail.vote_resolved_eliminated",
+                player=eliminated,
+            )
         tied = _player_list_label(turn.payload.get("tied_player_ids"), player_names)
         if tied:
-            return f"投票は同数でした: {tied}。退場者はいません。"
-        return "投票の結果、退場者はいません。"
+            return catalog.t(
+                lang,
+                "event_detail.vote_resolved_tied",
+                players=tied,
+            )
+        return catalog.t(lang, "event_detail.vote_resolved_none")
     if turn.event_type == "night_resolved":
         killed = _player_label(turn.payload.get("killed_player_id"), player_names)
         if killed:
-            return f"夜が明け、{killed} が犠牲になりました。"
-        return "夜が明けました。昨夜の犠牲者はいません。"
+            return catalog.t(lang, "event_detail.night_resolved_killed", player=killed)
+        return catalog.t(lang, "event_detail.night_resolved_none")
     if turn.event_type == "game_finished":
         winner = turn.payload.get("winner")
         if isinstance(winner, str):
-            return f"{winner_label(winner)}の勝利です。"
-        return "勝敗が決まりました。"
+            return catalog.t(
+                lang,
+                "event_detail.game_finished_winner",
+                winner=catalog.label(lang, "winner", winner),
+            )
+        return catalog.t(lang, "event_detail.game_finished")
     if turn.event_type == "phase_started":
-        return "次の場面に進みました。"
-    return "出来事が記録されました。"
+        return catalog.t(lang, "event_detail.phase_started")
+    return catalog.t(lang, "event_detail.unknown")
+
+
+def _action_line(
+    action: GameRevealAction,
+    player_names: Mapping[str, str],
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    actor = _player_label(action.player_id, player_names)
+    target = _player_label(action.target_id, player_names) or catalog.t(lang, "common.none")
+    return f"{actor}: {catalog.label(lang, 'action', action.type)} -> {target}"
 
 
 def _last_actor(turns: list[GameTimelineItem], *, event_type: str) -> str | None:
@@ -555,21 +871,29 @@ def _payload_text(payload: dict[str, Any], key: str) -> str | None:
     return str(value) if value is not None else None
 
 
+def _has_available_actions(observation: ObservationView | None) -> bool:
+    return observation is not None and bool(observation.available_actions)
+
+
 def _player_name_map(players: list[PublicPlayerState]) -> dict[str, str]:
     return {player.id: _display_player_name(player.name, fallback=player.id) for player in players}
 
 
-def _player_label(value: object, player_names: dict[str, str]) -> str:
+def _reveal_player_name_map(players: list[GameRevealPlayer]) -> dict[str, str]:
+    return {player.id: _display_player_name(player.name, fallback=player.id) for player in players}
+
+
+def _player_label(value: object, player_names: Mapping[str, str]) -> str:
     if value is None:
         return ""
     player_id = str(value)
     return player_names.get(player_id) or _public_actor_label(player_id) or player_id
 
 
-def _player_list_label(value: object, player_names: dict[str, str]) -> str:
+def _player_list_label(value: object, player_names: Mapping[str, str]) -> str:
     if not isinstance(value, list):
         return ""
-    return "、".join(_player_label(item, player_names) for item in value if item is not None)
+    return ", ".join(_player_label(item, player_names) for item in value if item is not None)
 
 
 def _nested_text(payload: dict[str, Any], parent: str, child: str) -> str:
@@ -584,25 +908,30 @@ def _time_text(value: datetime) -> str:
     return value.strftime("%H:%M:%S")
 
 
-def _optional_time_text(value: datetime | None) -> str:
-    return _time_text(value) if value is not None else "-"
+def _optional_time_text(value: datetime | None, catalog: I18nCatalog, lang: Language) -> str:
+    return _time_text(value) if value is not None else catalog.t(lang, "game.updated.empty")
 
 
-def _seconds_label(value: float) -> str:
+def _day_label(value: int, catalog: I18nCatalog, lang: Language) -> str:
+    return catalog.t(lang, "time.day", day=value)
+
+
+def _seconds_label(value: float, catalog: I18nCatalog, lang: Language) -> str:
     if value <= 0:
-        return "手動"
-    if value.is_integer():
-        return f"{int(value)} 秒"
-    return f"{value:.1f} 秒"
+        return catalog.t(lang, "time.manual")
+    seconds: int | str = int(value) if value.is_integer() else f"{value:.1f}"
+    return catalog.t(lang, "time.seconds", seconds=seconds)
 
 
 def _human_player_label(
     players: list[PublicPlayerState],
     human_player_id: str | None,
     screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> str:
     if screen_mode == "observer" or human_player_id is None:
-        return "観戦中"
+        return catalog.t(lang, "metric.player_observer")
     return _player_name(players, human_player_id)
 
 

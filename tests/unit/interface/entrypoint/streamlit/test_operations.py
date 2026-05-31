@@ -3,13 +3,17 @@ import logging
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
     AdvanceUntilInputResponse,
+    CreateGameRequest,
+    GameRevealResponse,
     GameRunResponse,
     GameTimelineResponse,
+    LocalRulesSettings,
     PlayerObservationResponse,
     PublicGameState,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit import operations
+from werewolf_agent.interface.entrypoint.streamlit.i18n import load_i18n
 from werewolf_agent.interface.runtime import AppSettings
 
 
@@ -46,11 +50,48 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
 class FakeStreamlitClient:
     def __init__(self) -> None:
         self.stepped = False
+        self.created_request: CreateGameRequest | None = None
+
+    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+        self.created_request = request
+        return GameRunResponse(game_id="game-1", state=_state(status="running", phase="night"))
 
     def get_game(self, game_id: str) -> GameRunResponse:
         phase = "finished" if self.stepped else "day_discussion"
         status = "completed" if self.stepped else "running"
         return GameRunResponse(game_id=game_id, state=_state(status=status, phase=phase))
+
+    def get_game_reveal(self, game_id: str) -> GameRevealResponse:
+        return GameRevealResponse(
+            game_id=game_id,
+            status="completed" if self.stepped else "running",
+            phase="finished" if self.stepped else "day_discussion",
+            day=1,
+            version=2,
+            seed=1,
+            role_counts={"werewolf": 1, "villager": 1},
+            rules=_rules(),
+            players=[
+                {
+                    "id": "player-1",
+                    "name": "Player 1",
+                    "role": "villager",
+                    "faction": "village",
+                    "alive": True,
+                    "status": "alive",
+                },
+                {
+                    "id": "player-2",
+                    "name": "Player 2",
+                    "role": "werewolf",
+                    "faction": "werewolf",
+                    "alive": True,
+                    "status": "alive",
+                },
+            ],
+            alive_player_ids=["player-1", "player-2"],
+            eliminated_player_ids=[],
+        )
 
     def get_timeline(
         self,
@@ -129,6 +170,58 @@ def test_advance_until_input_logs_iteration_and_stop_reason(
     assert not hasattr(stopped, "control_token")
 
 
+def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -> None:
+    client = FakeStreamlitClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
+    settings = AppSettings(_env_file=None)
+    rules = _rules()
+
+    with caplog.at_level(logging.INFO, logger=operations.__name__):
+        created = operations.create_game_from_setup(
+            api_url="http://api.test/api/v1",
+            settings=settings,
+            role_counts={"werewolf": 1, "villager": 4},
+            rules=rules,
+            seed_text="7",
+            human_player_id="player-1",
+        )
+
+    assert created.game_id == "game-1"
+    assert client.created_request is not None
+    assert client.created_request.role_counts == {"werewolf": 1, "villager": 4}
+    assert client.created_request.human_player_id == "player-1"
+    assert client.created_request.seed == 7
+    assert client.created_request.rules == rules
+    record = next(
+        record for record in caplog.records if record.event_action == "streamlit.game.created"
+    )
+    assert record.player_count == 2
+    assert not hasattr(record, "control_token")
+
+
+def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -> None:
+    client = FakeStreamlitClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
+    settings = AppSettings(_env_file=None)
+    catalog = load_i18n(settings)
+
+    screen = operations.load_game_screen(
+        api_url="http://api.test/api/v1",
+        settings=settings,
+        game_id="game-1",
+        human_player_id=None,
+        control_token="",
+        screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert screen.screen_mode == "observer"
+    assert screen.observation is None
+    assert screen.observer_log is not None
+    assert screen.seats[1].role_label == "人狼"
+
+
 def _state(*, status: str, phase: str) -> PublicGameState:
     return PublicGameState(
         game_id="game-1",
@@ -145,4 +238,20 @@ def _state(*, status: str, phase: str) -> PublicGameState:
         eliminated_player_ids=[],
         winner=None,
         summary={"alive_count": 2},
+    )
+
+
+def _rules() -> LocalRulesSettings:
+    return LocalRulesSettings(
+        allow_self_vote=False,
+        allow_vote_revision=False,
+        allow_night_action_revision=False,
+        enable_first_night_attack=True,
+        enable_no_elimination_on_tie=True,
+        enable_random_elimination_on_tie=False,
+        allow_knight_self_guard=True,
+        allow_knight_repeat_guard=True,
+        allow_seer_self_inspect=False,
+        allow_werewolf_friendly_fire=False,
+        reveal_role_on_death=False,
     )

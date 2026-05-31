@@ -11,6 +11,7 @@
 - FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/advance-until-input`、`/timeline`、manual player endpoint に絞った
 - CLI `doctor` / `ruleset` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `runs` は HTTP API だけを使う
 - Streamlit は public API 経由で 1 人の human player が遊べる画面として実装済み
+- Streamlit は `resources/streamlit/i18n.toml` を既定の UI 文言定義体として使い、`WEREWOLF_STREAMLIT_I18N_FILE` で差し替えられる
 - 現在の LLM provider は LangChain `fake`
 - 実 LLM provider、複数 human player、React UI は未実装
 
@@ -32,8 +33,8 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 CLI で確認:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1 --human-player player-1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --human-player player-1
 uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
 ```
@@ -124,8 +125,9 @@ uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/s
 | Player 定義体 | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` | `domain.llm` |
 | Prompt 定義体 | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` | `domain.llm` |
 | Fake response 定義体 | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` | `domain.llm` |
+| Streamlit i18n 定義体 | `backend/src/werewolf_agent/resources/streamlit/i18n.toml` | `WEREWOLF_STREAMLIT_I18N_FILE` | `interface/entrypoint/streamlit` |
 
-game 用定義体と LLM 用定義体は混在させません。`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行い、`AppSettings` 構築時に定義体も検証します。`interface/application` は読み込まれた値だけを usecase へ注入します。`usecase/internal/definitions.py` は converter だけを持ち、domain / usecase には source path や definition id を持ち込みません。`agent.type`、`players[].agent_type`、`role_counts` 省略時の補完も `interface/application` で行い、usecase は具体 agent type、role id、local rule の default を生成しません。
+game 用定義体、LLM 用定義体、UI 文言定義体は混在させません。`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行い、`AppSettings` 構築時に定義体も検証します。`interface/application` は読み込まれた値だけを usecase へ注入します。`usecase/internal/definitions.py` は converter だけを持ち、domain / usecase には source path や definition id を持ち込みません。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。CLI の `--role-count` 省略時だけ `interface/entrypoint/cui` が runtime settings / role 定義体から既定構成を選びます。
 
 ## DB
 

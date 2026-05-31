@@ -9,7 +9,13 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
 
 
 def test_timeline_section_uses_responsive_variant_and_empty_state() -> None:
-    html = timeline_section_html([], variant="mobile")
+    html = timeline_section_html(
+        [],
+        variant="mobile",
+        title="公開タイムライン",
+        description="公開情報だけです。",
+        empty_text="まだ表示できる出来事がありません。",
+    )
 
     assert 'class="wa-timeline-section wa-timeline-mobile"' in html
     assert "まだ表示できる出来事がありません。" in html
@@ -29,6 +35,9 @@ def test_timeline_section_renders_public_rows() -> None:
             )
         ],
         variant="desktop",
+        title="公開タイムライン",
+        description="公開情報だけです。",
+        empty_text="空です。",
     )
 
     assert 'class="wa-timeline-section wa-timeline-desktop"' in html
@@ -44,7 +53,11 @@ def test_observation_panel_escapes_private_lines() -> None:
             action_choices=[],
             known_role_lines=["P1: <secret>"],
             target_candidates={},
-        )
+        ),
+        role_title="あなたの役職",
+        info_title="見えている情報",
+        role_note_template="{role}。あなただけに見えている情報です。",
+        empty_text="いま表示できる追加情報はありません。",
     )
 
     assert "村人。あなただけに見えている情報です。" in html

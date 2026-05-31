@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from werewolf_agent.commons.shared.definitions import (
     GameRoleDefinitions,
-    GameRuleDefinitions,
+    LocalRulesDefinition,
     PlayerRoster,
 )
 from werewolf_agent.domain.game.models import LocalRules, RoleCatalog
@@ -12,9 +12,9 @@ from werewolf_agent.domain.game.models import RoleDefinition as DomainRoleDefini
 from werewolf_agent.domain.llm.models import PlayerProfile, PlayerProfileCatalog
 
 
-def to_local_rules(definitions: GameRuleDefinitions) -> LocalRules:
-    """Convert game rule definitions to a domain rule model."""
-    return LocalRules.model_validate(definitions.local_rules.model_dump(mode="json"))
+def local_rules_to_domain(definitions: LocalRulesDefinition) -> LocalRules:
+    """Convert local rule settings to a domain rule model."""
+    return LocalRules.model_validate(definitions.model_dump(mode="json"))
 
 
 def to_role_catalog(definitions: GameRoleDefinitions) -> RoleCatalog:

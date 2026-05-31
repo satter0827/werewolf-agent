@@ -17,11 +17,15 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_RERUN_STARTED,
 )
 from werewolf_agent.contracts.schemas import (
+    GameRevealResponse,
     GameRunResponse,
+    LocalRulesSettings,
     PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameRunSummary,
+    RulesetResponse,
 )
+from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     ScreenMode,
@@ -85,22 +89,27 @@ def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGame
     return client.list_games(limit=settings.streamlit_run_limit).runs
 
 
-def create_playable_game(
+def load_ruleset(*, api_url: str, settings: AppSettings) -> RulesetResponse:
+    """Return setup metadata from the public API."""
+    return build_streamlit_client(api_url, settings).get_ruleset()
+
+
+def create_game_from_setup(
     *,
     api_url: str,
     settings: AppSettings,
-    player_count: int,
+    role_counts: dict[str, int],
+    rules: LocalRulesSettings,
     seed_text: str,
-    human_player_id: str,
+    human_player_id: str | None,
 ) -> GameRunResponse:
-    """Create a game with one human player and return the API response."""
+    """Create a game from the shared Play/Observe setup."""
     seed = int(seed_text) if seed_text.strip() else None
     request = build_create_game_request(
-        players=player_count,
         seed=seed,
-        human_player=human_player_id,
-        role_count_entries=[],
-        default_player_count=settings.game_default_player_count,
+        role_counts=role_counts,
+        human_player_id=human_player_id,
+        rules=rules,
     )
     response = build_streamlit_client(api_url, settings).create_game(request)
     logger.info(
@@ -109,7 +118,7 @@ def create_playable_game(
             "event_action": LOG_STREAMLIT_GAME_CREATED,
             "event_outcome": "success",
             "game_id": response.game_id,
-            "has_human_player": bool(human_player_id),
+            "has_human_player": human_player_id is not None,
             "player_count": len(response.state.players),
             "seed": seed,
         },
@@ -125,23 +134,33 @@ def load_game_screen(
     human_player_id: str | None,
     control_token: str,
     screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> GameScreenView:
     """Load public and private data needed by the playable screen."""
     client = build_streamlit_client(api_url, settings)
     state = client.get_game(game_id).state
     timeline = client.get_timeline(game_id, limit=settings.streamlit_turn_limit).items
-    observation = load_observation(
-        client=client,
-        game_id=game_id,
-        human_player_id=human_player_id,
-        control_token=control_token,
+    observation = (
+        load_observation(
+            client=client,
+            game_id=game_id,
+            human_player_id=human_player_id,
+            control_token=control_token,
+        )
+        if screen_mode == "playable"
+        else None
     )
+    reveal = client.get_game_reveal(game_id) if screen_mode == "observer" else None
     screen = build_game_screen_view(
         state=state,
         turns=timeline,
         observation=observation,
+        reveal=reveal,
         human_player_id=human_player_id,
         screen_mode=screen_mode,
+        catalog=catalog,
+        lang=lang,
         refresh_interval_seconds=settings.streamlit_refresh_interval_seconds,
     )
     logger.debug(
@@ -163,6 +182,15 @@ def load_game_screen(
         },
     )
     return screen
+
+
+def load_reveal(
+    *,
+    client: GameApiClient,
+    game_id: str,
+) -> GameRevealResponse:
+    """Return full observer information through the dedicated reveal API."""
+    return client.get_game_reveal(game_id)
 
 
 def load_observation(

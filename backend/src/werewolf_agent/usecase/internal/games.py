@@ -6,8 +6,8 @@ import hashlib
 import hmac
 import random
 import secrets
-from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -16,12 +16,8 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
     MESSAGE_INVALID_CONTROL_TOKEN,
     MESSAGE_MANUAL_INPUT_REQUIRED,
-    MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
-    MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT,
     message_player_count_between,
-    message_supported_agent_type_only,
-    message_supported_player_agent_type_only,
 )
 from werewolf_agent.contracts import (
     GameError,
@@ -44,7 +40,7 @@ from werewolf_agent.domain.game.models import (
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
 from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
-from werewolf_agent.usecase.internal.definitions import to_local_rules, to_role_catalog
+from werewolf_agent.usecase.internal.definitions import local_rules_to_domain, to_role_catalog
 from werewolf_agent.usecase.internal.players import (
     display_name_for,
     profile_ids_by_player,
@@ -56,15 +52,21 @@ from werewolf_agent.usecase.internal.projections import (
     public_state_payload_from_run,
     public_state_payload_from_snapshot,
     public_turn_payload_from_record,
+    winner_from_snapshot,
 )
 from werewolf_agent.usecase.jobs.games import (
     AdvanceGameRunCommand,
     AdvanceGameRunResult,
     AdvanceUntilInputCommand,
     AdvanceUntilInputResult,
-    CreateGamePlayer,
-    CreateGameRunCommand,
+    CreateGameCommand,
     GamePhase,
+    GameRevealAction,
+    GameRevealInspection,
+    GameRevealNight,
+    GameRevealPlayer,
+    GameRevealResult,
+    GameRevealVote,
     GameRunCreate,
     GameRunResult,
     GameRunUpdate,
@@ -72,6 +74,7 @@ from werewolf_agent.usecase.jobs.games import (
     GameTimelineResult,
     GameUseCaseConfig,
     GameUseCaseDependencies,
+    GetGameRevealQuery,
     GetGameRunQuery,
     GetGameTimelineQuery,
     GetPlayerObservationQuery,
@@ -85,14 +88,22 @@ from werewolf_agent.usecase.jobs.games import (
 from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
 
 
+@dataclass(frozen=True)
+class RequestedPlayer:
+    """Resolved player seat requested for a game."""
+
+    id: str
+    name: str
+    agent_type: str
+
+
 def create_game_run(
-    command: CreateGameRunCommand,
+    command: CreateGameCommand,
     *,
     dependencies: GameUseCaseDependencies,
 ) -> GameRunResult:
     """Create and persist one deterministic game."""
     game_id = uuid4()
-    _validate_agent_config(command, dependencies.config)
     requested_players = _requested_player_configs(command, dependencies.config)
     selected_profiles = select_players(
         dependencies.llm_definitions.players,
@@ -110,7 +121,7 @@ def create_game_run(
     config = _domain_config(
         command,
         player_count=len(players),
-        rules=to_local_rules(dependencies.game_definitions.rules),
+        rules=local_rules_to_domain(command.rules),
         roles=to_role_catalog(dependencies.game_definitions.roles),
     )
     run_config = {
@@ -164,6 +175,87 @@ def get_game_run(
     if run is None:
         raise GameNotFoundError(str(game_id))
     return GameRunResult(game_id=str(run.id), state=public_state_payload_from_run(run))
+
+
+def get_game_reveal(
+    query: GetGameRevealQuery,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> GameRevealResult:
+    """Return full game information for the dedicated observer reveal boundary."""
+    game_id = _parse_game_id(query.game_id)
+    run = dependencies.repository.get(game_id)
+    if run is None:
+        raise GameNotFoundError(str(game_id))
+
+    snapshot = GameSnapshot.model_validate(run.private_state)
+    pending_actions = PendingActions.model_validate(run.pending_actions)
+    alive_player_ids = [
+        player.id for player in snapshot.players.values() if player.status is PlayerStatus.ALIVE
+    ]
+    eliminated_player_ids = [
+        player.id for player in snapshot.players.values() if player.status is PlayerStatus.DEAD
+    ]
+    return GameRevealResult(
+        game_id=str(run.id),
+        status=run.status,
+        phase=cast(GamePhase, snapshot.phase.value),
+        day=snapshot.day,
+        version=run.version,
+        seed=run.seed,
+        role_counts=dict(snapshot.config.role_counts),
+        rules=snapshot.config.rules,
+        players=[
+            GameRevealPlayer(
+                id=player.id,
+                name=player.name,
+                role=str(player.role or ""),
+                faction=_player_faction(snapshot, player),
+                alive=player.status is PlayerStatus.ALIVE,
+                status=player.status.value,
+                eliminated_day=player.eliminated_day,
+                killed_night=player.killed_night,
+            )
+            for player in snapshot.players.values()
+        ],
+        alive_player_ids=alive_player_ids,
+        eliminated_player_ids=eliminated_player_ids,
+        winner=winner_from_snapshot(snapshot),
+        pending_votes=[_reveal_action(action) for action in pending_actions.votes.values()],
+        pending_night_actions=[
+            _reveal_action(action) for action in pending_actions.night_actions.values()
+        ],
+        votes=[
+            GameRevealVote(
+                day=vote.day,
+                votes=dict(vote.votes),
+                counts=dict(vote.counts),
+                tied_player_ids=list(vote.tied_player_ids),
+                missing_voter_ids=list(vote.missing_voter_ids),
+                eliminated_player_id=vote.eliminated_player_id,
+                tie_break_policy=vote.tie_break_policy,
+            )
+            for vote in snapshot.history.votes
+        ],
+        nights=[
+            GameRevealNight(
+                day=night.day,
+                attacked_player_id=night.attacked_player_id,
+                protected_player_id=night.protected_player_id,
+                killed_player_id=night.killed_player_id,
+                inspections=[
+                    GameRevealInspection(
+                        seer_id=inspection.seer_id,
+                        target_id=inspection.target_id,
+                        target_role=inspection.target_role,
+                        target_faction=inspection.target_faction,
+                    )
+                    for inspection in night.inspections
+                ],
+            )
+            for night in snapshot.history.nights
+        ],
+    )
 
 
 def list_game_runs(
@@ -468,6 +560,21 @@ def get_game_timeline(
     )
 
 
+def _player_faction(snapshot: GameSnapshot, player: Player) -> str:
+    if player.role is None:
+        return ""
+    return snapshot.config.roles.faction_for_role(player.role)
+
+
+def _reveal_action(action: Action) -> GameRevealAction:
+    return GameRevealAction(
+        player_id=action.player_id,
+        type=action.type.value,
+        target_id=action.target_id,
+        message=action.message,
+    )
+
+
 def _parse_game_id(value: str | UUID) -> UUID:
     if isinstance(value, UUID):
         return value
@@ -487,93 +594,46 @@ def _action_type(value: str) -> ActionType:
         ) from exc
 
 
-def _resolved_player_count(
-    command: CreateGameRunCommand,
-    config: GameUseCaseConfig,
-) -> int:
-    if command.player_count is not None:
-        return command.player_count
-    return config.default_player_count
-
-
-def _validate_players(
-    players: Sequence[CreateGamePlayer],
-    config: GameUseCaseConfig,
-) -> None:
-    if len(players) < config.min_players or len(players) > config.max_players:
-        raise GameError(message_player_count_between(config.min_players, config.max_players))
-
-    unsupported_agent_types = sorted(
-        {
-            player.agent_type
-            for player in players
-            if player.agent_type not in {config.supported_agent_type, "human"}
-        }
-    )
-    if unsupported_agent_types:
-        raise GameError(message_supported_player_agent_type_only(config.supported_agent_type))
-    if sum(1 for player in players if player.agent_type == "human") > 1:
-        raise GameError(MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT)
-
-    duplicate_ids = sorted(
-        player_id
-        for player_id, count in Counter(player.id for player in players).items()
-        if count > 1
-    )
-    if duplicate_ids:
-        raise GameError(MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE)
-
-
-def _validate_agent_config(command: CreateGameRunCommand, config: GameUseCaseConfig) -> None:
-    if command.agent.type != config.supported_agent_type:
-        raise GameError(message_supported_agent_type_only(config.supported_agent_type))
-
-
 def _domain_config(
-    command: CreateGameRunCommand,
+    command: CreateGameCommand,
     *,
     player_count: int,
     rules: LocalRules,
     roles: RoleCatalog,
 ) -> GameConfig:
-    rule_config = command.rule_config
     return GameConfig(
         player_count=player_count,
-        role_counts={str(role): count for role, count in rule_config.role_counts.items()},
+        role_counts={str(role): count for role, count in command.role_counts.items()},
         rules=rules,
         roles=roles,
     )
 
 
 def _requested_player_configs(
-    command: CreateGameRunCommand,
+    command: CreateGameCommand,
     config: GameUseCaseConfig,
-) -> list[CreateGamePlayer]:
-    if command.players is not None:
-        _validate_players(command.players, config)
-        return list(command.players)
-    player_count = _resolved_player_count(command, config)
+) -> list[RequestedPlayer]:
+    player_count = command.player_count
     if player_count < config.min_players or player_count > config.max_players:
         raise GameError(message_player_count_between(config.min_players, config.max_players))
-    players = [
-        CreateGamePlayer(id=player.id, name=player.name, agent_type=config.supported_agent_type)
-        for player in (
-            Player(id=f"player-{index}", name=f"Player {index}")
-            for index in range(1, player_count + 1)
+    return [
+        RequestedPlayer(
+            id=f"player-{index}",
+            name=f"Player {index}",
+            agent_type=(
+                "human"
+                if f"player-{index}" == command.human_player_id
+                else config.supported_agent_type
+            ),
         )
+        for index in range(1, player_count + 1)
     ]
-    _validate_players(players, config)
-    return players
 
 
-def _control_tokens_for(command: CreateGameRunCommand) -> dict[str, str]:
-    if command.players is None:
+def _control_tokens_for(command: CreateGameCommand) -> dict[str, str]:
+    if command.human_player_id is None:
         return {}
-    return {
-        player.id: secrets.token_urlsafe(32)
-        for player in command.players
-        if player.agent_type == "human"
-    }
+    return {command.human_player_id: secrets.token_urlsafe(32)}
 
 
 def _control_token_hashes(control_tokens: Mapping[str, str]) -> dict[str, str]:

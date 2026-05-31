@@ -18,17 +18,26 @@ from werewolf_agent.commons.shared.messages import (
     LOG_PRIVATE_OBSERVATION_RETURNED,
     MESSAGE_GAME_NOT_FOUND,
 )
-from werewolf_agent.contracts import GameNotFoundError, InvalidGameIdError, ResourceNotFoundError
+from werewolf_agent.contracts import (
+    AppError,
+    GameNotFoundError,
+    InvalidGameIdError,
+    ResourceNotFoundError,
+)
+from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
     AdvanceUntilInputResponse,
-    CreateGameRunRequest,
+    CreateGameRequest,
+    GameRevealResponse,
     GameRunResponse,
     GameRunsResponse,
     GameTimelineResponse,
+    LocalRulesSettings,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
+    RoleDefinitionView,
     RulesetResponse,
 )
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
@@ -61,7 +70,7 @@ def get_default_ruleset(*, settings: AppSettings) -> RulesetResponse:
 
 
 def create_game_run(
-    request: CreateGameRunRequest,
+    request: CreateGameRequest,
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
@@ -86,7 +95,7 @@ def create_game_run(
             "event_action": LOG_GAME_RUN_CREATED,
             "event_outcome": "success",
             "game_id": response.game_id,
-            "player_count": _requested_player_count(request, settings),
+            "player_count": request.player_count,
         },
     )
     return _wire_model(GameRunResponse, response)
@@ -120,6 +129,25 @@ def get_game_run(
         except (GameNotFoundError, InvalidGameIdError) as exc:
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
     return _wire_model(GameRunResponse, response)
+
+
+def get_game_reveal(
+    game_id: str,
+    *,
+    session_factory: SessionFactory,
+    settings: AppSettings,
+) -> GameRevealResponse:
+    """Return full observer-only game information when reveal API is enabled."""
+    if not settings.reveal_api_enabled:
+        raise AppError("Reveal API is disabled.", code=ErrorCode.AUTHORIZATION_FAILED)
+    with session_scope(session_factory) as session:
+        try:
+            response = _use_cases(session, settings).get_game_reveal(
+                game_jobs.GetGameRevealQuery(game_id=game_id)
+            )
+        except (GameNotFoundError, InvalidGameIdError) as exc:
+            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
+    return _wire_model(GameRevealResponse, response)
 
 
 def list_game_runs(
@@ -419,72 +447,32 @@ def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
 
 
 def _create_command(
-    request: CreateGameRunRequest,
+    request: CreateGameRequest,
     settings: AppSettings,
-) -> game_jobs.CreateGameRunCommand:
-    data = request.model_dump(mode="json")
-    agent = data.get("agent") or {}
-    if agent.get("type") is None:
-        agent["type"] = settings.game_supported_agent_type
-    data["agent"] = agent
-
-    players = data.get("players")
-    if players is not None:
-        for player in players:
-            if player.get("agent_type") is None:
-                player["agent_type"] = settings.game_supported_agent_type
-
-    rule_config = data.setdefault("rule_config", {})
-    if rule_config.get("role_counts") is None:
-        player_count = _requested_player_count(request, settings)
-        role_counts = (
-            settings.game_definitions.roles.default_counts_for(player_count)
-            if settings.game_min_players <= player_count <= settings.game_max_players
-            else {}
-        )
-        rule_config["role_counts"] = role_counts
-    return game_jobs.CreateGameRunCommand.model_validate(data)
+) -> game_jobs.CreateGameCommand:
+    return game_jobs.CreateGameCommand(
+        seed=request.seed,
+        role_counts=request.role_counts,
+        human_player_id=request.human_player_id,
+        rules=request.rules or settings.game_definitions.rules.local_rules,
+    )
 
 
 def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -> RulesetResponse:
     role_names = settings.game_role_name_map
-    phase_names = settings.game_phase_name_map
     return RulesetResponse(
-        id=ruleset.id,
-        name=settings.game_default_ruleset_name,
-        description=_ruleset_description(settings),
         player_count=ruleset.player_count,
         roles=[
-            {"id": role_id, "name": role_names.get(role_id, role_id)} for role_id in ruleset.roles
+            RoleDefinitionView(
+                id=role_id,
+                name=role_names.get(role_id, role_id),
+                faction=str(definition["faction"]),
+                abilities=[str(ability) for ability in definition.get("abilities") or []],
+            )
+            for role_id, definition in ruleset.roles.items()
         ],
-        local_rules=ruleset.local_rules,
-        phases=[
-            {"id": phase_id, "name": phase_names.get(phase_id, phase_id)}
-            for phase_id in ruleset.phases
-        ],
-        agent_types=[
-            {
-                "id": agent_type,
-                "name": (
-                    "Human Player" if agent_type == "human" else settings.game_supported_agent_name
-                ),
-            }
-            for agent_type in ruleset.agent_types
-        ],
+        default_role_counts=ruleset.default_role_counts,
+        default_rules=LocalRulesSettings.model_validate(
+            ruleset.default_rules.model_dump(mode="json")
+        ),
     )
-
-
-def _ruleset_description(settings: AppSettings) -> str:
-    return settings.game_ruleset_description_template.format(
-        min_players=settings.game_min_players,
-        max_players=settings.game_max_players,
-        default_player_count=settings.game_default_player_count,
-    )
-
-
-def _requested_player_count(request: CreateGameRunRequest, settings: AppSettings) -> int:
-    if request.players is not None:
-        return len(request.players)
-    if request.player_count is not None:
-        return request.player_count
-    return settings.game_default_player_count

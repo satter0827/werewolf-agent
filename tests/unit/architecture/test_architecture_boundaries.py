@@ -56,18 +56,25 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
     _assert_public_surface(
         game_jobs,
         {
-            "CreateGameRunCommand",
+            "CreateGameCommand",
             "AdvanceGameRunCommand",
             "AdvanceUntilInputCommand",
             "GameEventCreate",
             "GameRepository",
             "GameRunCreate",
             "GameRunUpdate",
+            "GameRevealAction",
+            "GameRevealInspection",
+            "GameRevealNight",
+            "GameRevealPlayer",
+            "GameRevealResult",
+            "GameRevealVote",
             "GameStatus",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
             "GameUseCases",
             "GetGameRunQuery",
+            "GetGameRevealQuery",
             "GetGameTimelineQuery",
             "GetPlayerObservationQuery",
             "ListGameRunsQuery",
@@ -91,7 +98,7 @@ def test_old_usecase_jobs_names_are_not_public() -> None:
         "AdvanceGameResult",
         "AdvanceGameRunResult",
         "AdvanceUntilInputResult",
-        "CreateGameCommand",
+        "CreateGameRunCommand",
         "GamePhase",
         "GameResult",
         "GameRunResult",
@@ -182,9 +189,8 @@ def test_usecase_runtime_values_must_be_supplied_by_outer_layer() -> None:
         assert dependency_fields[field_name].default is MISSING
         assert dependency_fields[field_name].default_factory is MISSING
 
-    assert game_job_models.CreateGamePlayer.model_fields["agent_type"].is_required()
-    assert game_job_models.CreateGameAgentConfig.model_fields["type"].is_required()
-    assert game_job_models.CreateGameRunCommand.model_fields["agent"].is_required()
+    assert game_job_models.CreateGameCommand.model_fields["role_counts"].is_required()
+    assert game_job_models.CreateGameCommand.model_fields["rules"].is_required()
     assert game_job_models.AdvanceUntilInputCommand.model_fields["max_steps"].is_required()
 
 

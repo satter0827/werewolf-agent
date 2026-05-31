@@ -9,7 +9,9 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     HandPanelView,
     ObservationView,
+    ObserverLogView,
     PlayerSeatView,
+    ResultSummaryView,
     StatusMetricView,
     TableLegendItemView,
     TimelineItemView,
@@ -38,7 +40,7 @@ def status_grid_html(metrics: list[StatusMetricView]) -> str:
     return f'<div class="wa-status-grid">{"".join(items)}</div>'
 
 
-def game_table_html(screen: GameScreenView) -> str:
+def game_table_html(screen: GameScreenView, *, title: str, description: str) -> str:
     """Return the game table markup."""
     seat_html = "".join(_seat_html(seat) for seat in screen.seats)
     legend_html = "".join(_legend_html(item) for item in screen.table_legend)
@@ -47,8 +49,8 @@ def game_table_html(screen: GameScreenView) -> str:
         <section class="wa-table-surface">
             <div class="wa-section-head">
                 <div>
-                    <h3>ゲーム卓</h3>
-                    <p>プレイヤーの生存状態と、いま卓で起きている動きです。</p>
+                    <h3>{escape(title)}</h3>
+                    <p>{escape(description)}</p>
                 </div>
                 <div class="wa-table-legend">{legend_html}</div>
             </div>
@@ -64,47 +66,62 @@ def timeline_html(items: list[TimelineItemView]) -> str:
     return f'<div class="wa-timeline">{rows}</div>'
 
 
-def timeline_section_html(items: list[TimelineItemView], *, variant: str) -> str:
+def timeline_section_html(
+    items: list[TimelineItemView],
+    *,
+    variant: str,
+    title: str,
+    description: str,
+    empty_text: str,
+    result_summary: ResultSummaryView | None = None,
+) -> str:
     """Return a complete timeline section for one responsive placement."""
     placement = css_token(variant)
     body_html = (
-        timeline_html(items)
-        if items
-        else '<div class="wa-empty-note">まだ表示できる出来事がありません。</div>'
+        timeline_html(items) if items else f'<div class="wa-empty-note">{escape(empty_text)}</div>'
     )
+    summary_html = result_summary_html(result_summary) if result_summary is not None else ""
     return html(
         f"""
         <section class="wa-timeline-section wa-timeline-{placement}">
             <div class="wa-section-head">
                 <div>
-                    <h3>公開タイムライン</h3>
-                    <p>公開された出来事を時系列で表示します。(詳細は非公開です)</p>
+                    <h3>{escape(title)}</h3>
+                    <p>{escape(description)}</p>
                 </div>
             </div>
             {body_html}
+            {summary_html}
         </section>
         """
     )
 
 
-def observation_panel_html(observation: ObservationView) -> str:
+def observation_panel_html(
+    observation: ObservationView,
+    *,
+    role_title: str,
+    info_title: str,
+    role_note_template: str,
+    empty_text: str,
+) -> str:
     """Return compact private observation markup for the right panel."""
-    role_note = f"{escape(observation.role)}。あなただけに見えている情報です。"
+    role_note = escape(role_note_template.format(role=observation.role))
     known_lines = "".join(f"<li>{escape(line)}</li>" for line in observation.known_role_lines)
     known_body = (
         f"<ul>{known_lines}</ul>"
         if known_lines
-        else '<div class="wa-private-empty">いま表示できる追加情報はありません。</div>'
+        else f'<div class="wa-private-empty">{escape(empty_text)}</div>'
     )
     return html(
         f"""
         <section class="wa-private-panel">
             <div class="wa-private-block">
-                <h3>あなたの役職</h3>
+                <h3>{escape(role_title)}</h3>
                 <div class="wa-role-note">{role_note}</div>
             </div>
             <div class="wa-private-block">
-                <h3>見えている情報</h3>
+                <h3>{escape(info_title)}</h3>
                 {known_body}
             </div>
         </section>
@@ -120,7 +137,7 @@ def hand_panel_html(hand: HandPanelView) -> str:
         <aside class="wa-hand-panel wa-hand-panel-{tone}">
             <div class="wa-section-head">
                 <div>
-                    <h3>あなたの手番</h3>
+                    <h3>{escape(hand.heading)}</h3>
                 </div>
             </div>
             <div class="wa-primary-note">
@@ -128,6 +145,49 @@ def hand_panel_html(hand: HandPanelView) -> str:
                 <div>{escape(hand.detail)}</div>
             </div>
         </aside>
+        """
+    )
+
+
+def observer_log_html(log: ObserverLogView) -> str:
+    """Return observer-only role/action reveal markup."""
+    role_lines = "".join(f"<li>{escape(line)}</li>" for line in log.role_lines)
+    action_lines = "".join(f"<li>{escape(line)}</li>" for line in log.action_lines)
+    action_body = (
+        f"<ul>{action_lines}</ul>"
+        if action_lines
+        else f'<div class="wa-private-empty">{escape(log.empty_text)}</div>'
+    )
+    return html(
+        f"""
+        <section class="wa-private-panel wa-observer-log">
+            <div class="wa-private-block">
+                <h3>{escape(log.title)}</h3>
+            </div>
+            <div class="wa-private-block">
+                <h3>{escape(log.role_title)}</h3>
+                <ul>{role_lines}</ul>
+            </div>
+            <div class="wa-private-block">
+                {action_body}
+            </div>
+        </section>
+        """
+    )
+
+
+def result_summary_html(summary: ResultSummaryView | None) -> str:
+    """Return completed-game summary markup."""
+    if summary is None:
+        return ""
+    facts = "".join(f"<li>{escape(fact)}</li>" for fact in summary.facts)
+    return html(
+        f"""
+        <section class="wa-result-summary">
+            <h3>{escape(summary.title)}</h3>
+            <p>{escape(summary.detail)}</p>
+            <ul>{facts}</ul>
+        </section>
         """
     )
 
@@ -151,7 +211,7 @@ def css_token(value: str) -> str:
 
 def html(markup: str) -> str:
     """Normalize indentation in inline HTML fragments."""
-    return dedent(markup).strip()
+    return "\n".join(line.strip() for line in dedent(markup).strip().splitlines())
 
 
 def _seat_html(seat: PlayerSeatView) -> str:
@@ -163,11 +223,23 @@ def _seat_html(seat: PlayerSeatView) -> str:
     if not seat.is_alive:
         classes.append("wa-seat-dead")
     status_class = "wa-chip" if seat.is_alive else "wa-chip wa-chip-muted"
+    role_html = (
+        f'<div class="wa-role-chip">{escape(seat.role_label)}</div>'
+        if seat.role_label is not None
+        else ""
+    )
+    faction_html = (
+        f'<div class="wa-faction-note">{escape(seat.faction_label)}</div>'
+        if seat.faction_label is not None
+        else ""
+    )
     return html(
         f"""
         <article class="{" ".join(classes)}">
             <div class="wa-seat-avatar">👤</div>
             <b>{escape(seat.name)}</b>
+            {role_html}
+            {faction_html}
             <div class="{status_class}">{escape(seat.status)}</div>
             <div class="wa-activity">{escape(seat.activity)}</div>
         </article>

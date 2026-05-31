@@ -2,58 +2,41 @@
 
 from __future__ import annotations
 
+from pydantic import ValidationError
+
 from werewolf_agent.commons.shared.messages import (
-    MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
     MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
     MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGamePlayer,
-    CreateGameRuleConfig,
-    CreateGameRunRequest,
+    CreateGameRequest,
+    LocalRulesSettings,
     RoleId,
 )
 
 
 def build_create_game_request(
     *,
-    players: int | None,
     seed: int | None,
-    human_player: str | None,
-    role_count_entries: list[str],
-    default_player_count: int,
-) -> CreateGameRunRequest:
+    role_counts: dict[RoleId, int],
+    human_player_id: str | None,
+    rules: LocalRulesSettings | None = None,
+) -> CreateGameRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
-    explicit_players = None
-    if human_player is not None:
-        player_count = players or default_player_count
-        generated_player_ids = {f"player-{index}" for index in range(1, player_count + 1)}
-        if human_player not in generated_player_ids:
-            raise AppError(
-                MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS,
-                code=ErrorCode.CONFIG_INVALID_VALUE,
-                context={"human_player": human_player, "player_count": player_count},
-            )
-        explicit_players = [
-            CreateGamePlayer(
-                id=f"player-{index}",
-                name=f"Player {index}",
-                agent_type="human" if f"player-{index}" == human_player else None,
-            )
-            for index in range(1, player_count + 1)
-        ]
-
-    rule_config = CreateGameRuleConfig(
-        role_counts=parse_role_counts(role_count_entries) or None,
-    )
-    return CreateGameRunRequest(
-        player_count=None if explicit_players is not None else players,
-        seed=seed,
-        players=explicit_players,
-        rule_config=rule_config,
-    )
+    try:
+        return CreateGameRequest(
+            seed=seed,
+            role_counts=role_counts,
+            human_player_id=human_player_id,
+            rules=rules,
+        )
+    except ValidationError as exc:
+        detail = "; ".join(
+            str(error.get("msg", "invalid create game request")) for error in exc.errors()
+        )
+        raise AppError(detail, code=ErrorCode.CONFIG_INVALID_VALUE) from exc
 
 
 def parse_role_counts(entries: list[str]) -> dict[RoleId, int]:

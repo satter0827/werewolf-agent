@@ -9,8 +9,12 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
-from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS
+from werewolf_agent.commons.shared.definitions import (
+    GameDefinitions,
+    LlmDefinitions,
+    LocalRulesDefinition,
+)
+from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_AT_LEAST_ONE
 from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import non_blank
 from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink, TelemetrySink
@@ -69,67 +73,59 @@ class _UseCaseModel(StrictModel):
     """Base model for public use case DTOs."""
 
 
-class CreateGamePlayer(_UseCaseModel):
-    """One player requested for a new game."""
+class CreateGameCommand(_UseCaseModel):
+    """Command for creating one game."""
 
-    id: str
-    name: str
-    agent_type: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("id", "name", "agent_type")
-    @classmethod
-    def validate_non_blank(cls, value: str) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, "value")
-
-
-class CreateGameAgentConfig(_UseCaseModel):
-    """Agent selection for automated game runs."""
-
-    type: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("type")
-    @classmethod
-    def validate_non_blank(cls, value: str) -> str:
-        """Return a stripped non-empty agent type."""
-        return non_blank(value, "value")
-
-
-class CreateGameRuleConfig(_UseCaseModel):
-    """Rule knobs accepted when creating a game."""
-
-    role_counts: dict[RoleId, RoleCount]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class CreateGameRunCommand(_UseCaseModel):
-    """Command for creating one game run."""
-
-    player_count: int | None = Field(default=None, ge=1)
     seed: int | None = None
-    players: list[CreateGamePlayer] | None = None
-    agent: CreateGameAgentConfig
-    rule_config: CreateGameRuleConfig
+    role_counts: dict[RoleId, RoleCount]
+    rules: LocalRulesDefinition
+    human_player_id: str | None = None
+
+    @field_validator("role_counts")
+    @classmethod
+    def validate_role_counts(cls, value: dict[RoleId, RoleCount]) -> dict[RoleId, RoleCount]:
+        """Return role counts keyed by normalized role id."""
+        normalized = {
+            non_blank(str(role_id), "role_counts key"): count for role_id, count in value.items()
+        }
+        if sum(normalized.values()) < 1:
+            raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
+        return normalized
+
+    @field_validator("human_player_id")
+    @classmethod
+    def validate_human_player_id(cls, value: str | None) -> str | None:
+        """Return a stripped optional human player id."""
+        if value is None:
+            return None
+        return non_blank(value, "human_player_id")
 
     @model_validator(mode="after")
-    def validate_players_and_count(self) -> Self:
-        """Ensure player_count and explicit players describe the same table."""
-        if (
-            self.players is not None
-            and self.player_count is not None
-            and len(self.players) != self.player_count
-        ):
-            raise ValueError(MESSAGE_PLAYER_COUNT_MUST_MATCH_PLAYERS)
+    def validate_human_player_within_generated_seats(self) -> Self:
+        """Ensure the requested human seat exists in the generated table."""
+        if self.human_player_id is None:
+            return self
+        valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
+        if self.human_player_id not in valid_player_ids:
+            raise ValueError("human_player_id must match a generated player id")
         return self
+
+    @property
+    def player_count(self) -> int:
+        """Return the player count derived from role counts."""
+        return sum(self.role_counts.values())
 
 
 class GetGameRunQuery(_UseCaseModel):
     """Query for loading one game."""
+
+    game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GetGameRevealQuery(_UseCaseModel):
+    """Query for loading full observer-only game information."""
 
     game_id: str | UUID
 
@@ -200,12 +196,10 @@ class GetGameTimelineQuery(_UseCaseModel):
 class RulesetResult(_UseCaseModel):
     """Ruleset business metadata returned by use cases."""
 
-    id: str
     player_count: dict[str, int]
-    roles: list[RoleId]
-    local_rules: dict[str, bool]
-    phases: list[GamePhase]
-    agent_types: list[str]
+    roles: dict[RoleId, dict[str, Any]]
+    default_role_counts: dict[RoleId, RoleCount]
+    default_rules: LocalRulesDefinition
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -216,6 +210,92 @@ class GameRunResult(_UseCaseModel):
     game_id: str
     state: dict[str, Any]
     control_tokens: dict[str, str] | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealPlayer(_UseCaseModel):
+    """Full player state for the dedicated reveal boundary."""
+
+    id: str
+    name: str
+    role: RoleId
+    faction: str
+    alive: bool
+    status: str
+    eliminated_day: int | None = None
+    killed_night: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealAction(_UseCaseModel):
+    """Pending action for the dedicated reveal boundary."""
+
+    player_id: str
+    type: ActionTypeId
+    target_id: str | None = None
+    message: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealInspection(_UseCaseModel):
+    """Resolved inspection for the dedicated reveal boundary."""
+
+    seer_id: str
+    target_id: str
+    target_role: RoleId
+    target_faction: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealNight(_UseCaseModel):
+    """Resolved night record for the dedicated reveal boundary."""
+
+    day: int
+    attacked_player_id: str | None = None
+    protected_player_id: str | None = None
+    killed_player_id: str | None = None
+    inspections: list[GameRevealInspection] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealVote(_UseCaseModel):
+    """Resolved vote record for the dedicated reveal boundary."""
+
+    day: int
+    votes: dict[str, str] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+    tied_player_ids: list[str] = Field(default_factory=list)
+    missing_voter_ids: list[str] = Field(default_factory=list)
+    eliminated_player_id: str | None = None
+    tie_break_policy: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameRevealResult(_UseCaseModel):
+    """Full table information for local observer/demo clients."""
+
+    game_id: str
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    version: int
+    seed: int | None
+    role_counts: dict[RoleId, RoleCount]
+    rules: LocalRulesDefinition
+    players: list[GameRevealPlayer]
+    alive_player_ids: list[str]
+    eliminated_player_ids: list[str]
+    winner: Winner | None = None
+    pending_votes: list[GameRevealAction] = Field(default_factory=list)
+    pending_night_actions: list[GameRevealAction] = Field(default_factory=list)
+    votes: list[GameRevealVote] = Field(default_factory=list)
+    nights: list[GameRevealNight] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -486,7 +566,7 @@ class GameUseCases:
 
         return default_ruleset(self._dependencies.config, self._dependencies.game_definitions)
 
-    def create_game_run(self, command: CreateGameRunCommand) -> GameRunResult:
+    def create_game_run(self, command: CreateGameCommand) -> GameRunResult:
         """Create and persist one deterministic game."""
         from werewolf_agent.usecase.internal.games import create_game_run
 
@@ -497,6 +577,12 @@ class GameUseCases:
         from werewolf_agent.usecase.internal.games import get_game_run
 
         return get_game_run(query, dependencies=self._dependencies)
+
+    def get_game_reveal(self, query: GetGameRevealQuery) -> GameRevealResult:
+        """Return observer-only full game information."""
+        from werewolf_agent.usecase.internal.games import get_game_reveal
+
+        return get_game_reveal(query, dependencies=self._dependencies)
 
     def list_game_runs(self, query: ListGameRunsQuery) -> ListGameRunsResult:
         """Return a page of public game run summaries."""

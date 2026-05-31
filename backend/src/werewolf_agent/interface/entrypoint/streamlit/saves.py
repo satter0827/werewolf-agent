@@ -9,13 +9,19 @@ from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
 
-from werewolf_agent.contracts.schemas import GameRunResponse, PublicGameRunSummary, PublicGameState
+from werewolf_agent.contracts.schemas import (
+    GameRunResponse,
+    LocalRulesSettings,
+    PublicGameRunSummary,
+    PublicGameState,
+)
+from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     SavedGameOptionView,
     ScreenMode,
 )
 
-SAVE_FILE_VERSION = 2
+SAVE_FILE_VERSION = 3
 
 
 @dataclass(frozen=True)
@@ -24,7 +30,10 @@ class SaveSlot:
 
     slot_id: str
     game_id: str
-    human_player_id: str
+    human_player_id: str | None
+    role_counts: dict[str, int]
+    rules: LocalRulesSettings
+    seed: int | None
     status: str
     phase: str
     day: int
@@ -39,6 +48,9 @@ class SaveSlot:
             slot_id=self.slot_id,
             game_id=self.game_id,
             human_player_id=self.human_player_id,
+            role_counts=dict(self.role_counts),
+            rules=self.rules,
+            seed=self.seed,
             status=state.status,
             phase=state.phase,
             day=state.day,
@@ -97,7 +109,10 @@ def upsert_save_slot(save_file: Path, slot: SaveSlot) -> None:
 def create_save_slot(
     response: GameRunResponse,
     *,
-    human_player_id: str,
+    human_player_id: str | None,
+    role_counts: Mapping[str, int],
+    rules: LocalRulesSettings,
+    seed: int | None,
 ) -> SaveSlot:
     """Create a playable save slot from a newly created game response."""
     state = response.state
@@ -105,6 +120,9 @@ def create_save_slot(
         slot_id=uuid4().hex,
         game_id=response.game_id,
         human_player_id=human_player_id,
+        role_counts={str(role_id): int(count) for role_id, count in role_counts.items()},
+        rules=rules,
+        seed=seed,
         status=state.status,
         phase=state.phase,
         day=state.day,
@@ -119,6 +137,8 @@ def build_saved_game_options(
     slots: list[SaveSlot],
     runs: list[PublicGameRunSummary],
     *,
+    catalog: I18nCatalog,
+    lang: Language,
     control_tokens: Mapping[str, str] | None = None,
 ) -> list[SavedGameOptionView]:
     """Return save-selector options without exposing internal ids in labels."""
@@ -138,17 +158,24 @@ def build_saved_game_options(
             SavedGameOptionView(
                 option_id=f"slot:{slot.slot_id}",
                 label=_option_label(
-                    prefix=f"保存 {index}",
+                    prefix=catalog.t(lang, "save.prefix.slot", index=index),
                     status=status,
                     day=day,
                     player_count=player_count,
                     updated_at=updated_at,
-                    mode_label="プレイ可能" if control_token else "観戦のみ",
+                    mode_label=catalog.t(lang, "setup.mode.play")
+                    if control_token
+                    else catalog.t(lang, "setup.mode.observe"),
+                    catalog=catalog,
+                    lang=lang,
                 ),
                 game_id=slot.game_id,
                 mode=mode,
                 human_player_id=slot.human_player_id if control_token else None,
                 control_token=control_token,
+                role_counts=dict(slot.role_counts),
+                rules=slot.rules,
+                seed=slot.seed,
             )
         )
     observer_runs = [run for run in runs if run.game_id not in saved_game_ids]
@@ -157,28 +184,32 @@ def build_saved_game_options(
             SavedGameOptionView(
                 option_id=f"run:{run.game_id}",
                 label=_option_label(
-                    prefix=f"観戦 {index}",
+                    prefix=catalog.t(lang, "save.prefix.observer", index=index),
                     status=run.status,
                     day=run.day,
                     player_count=run.player_count,
                     updated_at=run.updated_at,
-                    mode_label="観戦のみ",
+                    mode_label=catalog.t(lang, "setup.mode.observe"),
+                    catalog=catalog,
+                    lang=lang,
                 ),
                 game_id=run.game_id,
                 mode="observer",
+                seed=run.seed,
             )
         )
     return options
 
 
 def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
-    if "control_token" in payload:
-        return None
     try:
         return SaveSlot(
             slot_id=_required_text(payload, "slot_id"),
             game_id=_required_text(payload, "game_id"),
-            human_player_id=_required_text(payload, "human_player_id"),
+            human_player_id=_optional_text(payload.get("human_player_id")),
+            role_counts=_role_counts(payload.get("role_counts")),
+            rules=LocalRulesSettings.model_validate(payload["rules"]),
+            seed=_optional_int(payload.get("seed")),
             status=_required_text(payload, "status"),
             phase=_required_text(payload, "phase"),
             day=_required_int(payload, "day"),
@@ -196,6 +227,9 @@ def _slot_to_dict(slot: SaveSlot) -> dict[str, object]:
         "slot_id": slot.slot_id,
         "game_id": slot.game_id,
         "human_player_id": slot.human_player_id,
+        "role_counts": dict(slot.role_counts),
+        "rules": slot.rules.model_dump(mode="json"),
+        "seed": slot.seed,
         "status": slot.status,
         "phase": slot.phase,
         "day": slot.day,
@@ -214,6 +248,13 @@ def _required_text(payload: dict[str, object], key: str) -> str:
     return text
 
 
+def _optional_text(value: object) -> str | None:
+    if value in (None, ""):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _required_int(payload: dict[str, object], key: str) -> int:
     value = payload[key]
     if isinstance(value, (str, bytes, bytearray)):
@@ -221,6 +262,20 @@ def _required_int(payload: dict[str, object], key: str) -> int:
     if isinstance(value, int):
         return value
     raise ValueError(f"{key} must be an integer")
+
+
+def _optional_int(value: object) -> int | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, int):
+        return value
+    return int(str(value))
+
+
+def _role_counts(value: object) -> dict[str, int]:
+    if not isinstance(value, dict):
+        raise ValueError("role_counts must be an object")
+    return {str(role_id): int(count) for role_id, count in value.items()}
 
 
 def _optional_datetime(value: object) -> datetime | None:
@@ -241,10 +296,17 @@ def _option_label(
     player_count: int,
     updated_at: datetime | None,
     mode_label: str,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> str:
-    status_label = "終了" if status == "completed" else "進行中"
+    status_label = (
+        catalog.t(lang, "status.completed")
+        if status == "completed"
+        else catalog.t(lang, "status.running")
+    )
     updated_label = updated_at.strftime("%H:%M") if updated_at is not None else "-"
     return (
-        f"{prefix} / {status_label} / Day {day} / {player_count}人 / "
-        f"最終更新 {updated_label} / {mode_label}"
+        f"{prefix} / {status_label} / {catalog.t(lang, 'time.day', day=day)} / "
+        f"{player_count} / "
+        f"{catalog.t(lang, 'metric.updated')} {updated_label} / {mode_label}"
     )

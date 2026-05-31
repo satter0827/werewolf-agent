@@ -26,7 +26,7 @@ from werewolf_agent.commons.shared.messages import (
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    CreateGameRunRequest,
+    CreateGameRequest,
     GameTimelineItem,
     PlayerActionRequest,
 )
@@ -45,7 +45,10 @@ from werewolf_agent.interface.entrypoint.cui.output import (
 from werewolf_agent.interface.runtime import AppSettings, get_settings
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
 from werewolf_agent.interface.shared.diagnostics import build_interface_diagnostics
-from werewolf_agent.interface.shared.game_requests import build_create_game_request
+from werewolf_agent.interface.shared.game_requests import (
+    build_create_game_request,
+    parse_role_counts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +116,6 @@ def ruleset(
 
 def new(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    players: Annotated[int | None, typer.Option("--players", help="Number of players.")] = None,
     seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
     human_player: Annotated[
         str | None,
@@ -131,7 +133,6 @@ def new(
     """Create one game through the public HTTP API."""
     run_app_command(
         lambda: _new(
-            players=players,
             seed=seed,
             human_player=human_player,
             role_count=role_count or [],
@@ -143,7 +144,6 @@ def new(
 
 def _new(
     *,
-    players: int | None,
     seed: int | None,
     human_player: str | None,
     role_count: list[str],
@@ -151,7 +151,6 @@ def _new(
     output_format: OutputFormat,
 ) -> None:
     request = _create_request(
-        players=players,
         seed=seed,
         human_player=human_player,
         role_count=role_count,
@@ -222,13 +221,16 @@ def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat
 
 def play(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    players: Annotated[int | None, typer.Option("--players", help="Number of players.")] = None,
     seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
     human_player: Annotated[
         str | None,
         typer.Option("--human-player", help="Player id controlled by this CLI."),
     ] = None,
     max_steps: Annotated[int | None, typer.Option(help="Maximum API step calls.")] = None,
+    role_count: Annotated[
+        list[str] | None,
+        typer.Option("--role-count", help="Role count entry, e.g. werewolf=1."),
+    ] = None,
     log_jsonl: Annotated[Path | None, typer.Option(help="Optional public timeline JSONL.")] = None,
     poll_interval: Annotated[
         float | None,
@@ -247,9 +249,9 @@ def play(
     settings = get_settings()
     run_app_command(
         lambda: _play(
-            players=players,
             seed=seed,
             human_player=human_player,
+            role_count=role_count or [],
             max_steps=max_steps or settings.cli_max_steps,
             log_jsonl=log_jsonl,
             poll_interval=(
@@ -264,9 +266,9 @@ def play(
 
 def _play(
     *,
-    players: int | None,
     seed: int | None,
     human_player: str | None,
+    role_count: list[str],
     max_steps: int,
     log_jsonl: Path | None,
     poll_interval: float,
@@ -284,10 +286,9 @@ def _play(
 
     created = client.create_game(
         _create_request(
-            players=players,
             seed=seed,
             human_player=human_player,
-            role_count=[],
+            role_count=role_count,
         )
     )
     state = created.state
@@ -577,17 +578,20 @@ def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None)
 
 def _create_request(
     *,
-    players: int | None,
     seed: int | None,
     human_player: str | None,
     role_count: list[str],
-) -> CreateGameRunRequest:
+) -> CreateGameRequest:
+    settings = get_settings()
+    role_counts = (
+        parse_role_counts(role_count)
+        if role_count
+        else settings.game_definitions.roles.default_counts_for(settings.game_default_player_count)
+    )
     return build_create_game_request(
-        players=players,
         seed=seed,
-        human_player=human_player,
-        role_count_entries=role_count,
-        default_player_count=get_settings().game_default_player_count,
+        human_player_id=human_player,
+        role_counts=role_counts,
     )
 
 

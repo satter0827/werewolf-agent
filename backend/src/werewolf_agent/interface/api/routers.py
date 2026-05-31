@@ -13,7 +13,8 @@ from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
     AdvanceUntilInputResponse,
-    CreateGameRunRequest,
+    CreateGameRequest,
+    GameRevealResponse,
     GameRunResponse,
     GameRunsQuery,
     GameRunsResponse,
@@ -56,7 +57,7 @@ def ruleset(
     status_code=201,
 )
 def create_game(
-    request: CreateGameRunRequest,
+    request: CreateGameRequest,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
 ) -> GameRunResponse:
@@ -95,6 +96,20 @@ def get_game(
 ) -> GameRunResponse:
     """Return public game state."""
     return game_application.get_game_run(
+        game_id,
+        session_factory=session_factory,
+        settings=settings,
+    )
+
+
+@router.get("/games/{game_id}/reveal", response_model=GameRevealResponse)
+def get_game_reveal(
+    game_id: str,
+    session_factory: SessionFactory = SESSION_FACTORY,
+    settings: AppSettings = APP_SETTINGS,
+) -> GameRevealResponse:
+    """Return full observer-only game information through the dedicated reveal API."""
+    return game_application.get_game_reveal(
         game_id,
         session_factory=session_factory,
         settings=settings,

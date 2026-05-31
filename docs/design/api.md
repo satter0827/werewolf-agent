@@ -20,7 +20,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | Method | Path | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | `{"status":"ok","service":"werewolf-agent-api"}` |
-| `GET` | `/api/v1/ruleset` | player count、roles、local rules、phases、agent types |
+| `GET` | `/api/v1/ruleset` | player count、roles、default role counts、default local rules |
 | `POST` | `/api/v1/games` | game run 作成 |
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
@@ -37,7 +37,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 
 | Schema | 用途 |
 | --- | --- |
-| `CreateGameRunRequest` | game run 作成 request |
+| `CreateGameRequest` | game run 作成 request |
 | `GameRunResponse` | 1 game run の現在 public state |
 | `AdvanceGameRunResponse` | 進行後の public state と追加 timeline |
 | `AdvanceUntilInputResponse` | manual input / 完了 / 上限まで進めた結果 |
@@ -51,41 +51,57 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 
 ## Create Game
 
+game 作成時の人数は `role_counts` の合計から導出します。全体人数を直接指定する field は持ちません。
+
 最小:
-
-```json
-{"player_count": 6, "seed": 1}
-```
-
-明示:
 
 ```json
 {
   "seed": 42,
-  "agent": {"type": "llm"},
-  "rule_config": {
-    "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
-  },
-  "players": [
-    {"id": "p1", "name": "Alice", "agent_type": "human"},
-    {"id": "p2", "name": "Bob"},
-    {"id": "p3", "name": "Carol"},
-    {"id": "p4", "name": "Dave"},
-    {"id": "p5", "name": "Eve"}
-  ]
+  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
+}
+```
+
+manual player 付き:
+
+```json
+{
+  "seed": 42,
+  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3},
+  "human_player_id": "player-1"
+}
+```
+
+local rule override 付き:
+
+```json
+{
+  "seed": 42,
+  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
+  "human_player_id": "player-1",
+  "rules": {
+    "allow_self_vote": false,
+    "allow_vote_revision": false,
+    "allow_night_action_revision": false,
+    "enable_first_night_attack": true,
+    "enable_no_elimination_on_tie": true,
+    "enable_random_elimination_on_tie": false,
+    "allow_knight_self_guard": true,
+    "allow_knight_repeat_guard": true,
+    "allow_seer_self_inspect": false,
+    "allow_werewolf_friendly_fire": false,
+    "reveal_role_on_death": false
+  }
 }
 ```
 
 制約:
 
-- `player_count`: 既定では 5〜8。省略時の解決は `interface/application` が runtime settings から行う
-- `players`: 指定時は player count と件数を一致させる。`id` は normalize 後に一意
-- `agent.type`: 現在は `llm` のみ。省略時は `interface/application` が runtime settings から補完する。provider は `WEREWOLF_LLM_PROVIDER=fake`
-- `players[].agent_type`: `llm` または `human`。省略時は `interface/application` が runtime settings から補完する。`human` は 1 game につき 1 人まで
-- `rule_config`: game run ごとの入力値だけを受け取る。現在は `role_counts` のみ
-- `role_counts`: 合計が player count と一致し、人狼側 1 以上、村側 1 以上。省略時は `interface/application` が runtime で読み込んだ role 定義体の `default_role_counts` から補完する
+- `role_counts`: 必須。role id ごとの人数。合計が configured min / max の範囲内で、人狼側 1 以上、村側 1 以上
+- `human_player_id`: 任意。`role_counts` の合計から生成される `player-1` から `player-N` のいずれか。指定時だけ作成レスポンスに `control_tokens` を返す
+- `rules`: 任意。game run ごとの local rule override。省略時は `interface/application` が runtime で読み込んだ default local rules を使う
 
-ローカルルール、role の faction / ability、LLM agent の名前や性格は request body では受け取りません。これらは definition resource として読み込みます。
+role の faction / ability、LLM agent の名前や性格は request body では受け取りません。これらは definition resource として読み込みます。agent は現在 `interface/application` が `llm` と `human_player_id` から内部設定を生成します。
 
 | 定義体 | 既定 | override |
 | --- | --- | --- |
@@ -95,7 +111,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
 | LLM fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
 
-定義体 path と定義体値の読み込みは `interface/runtime` の共通 loader に集約します。定義体は `AppSettings` 構築時に読み込み・検証し、role 定義体の `default_role_counts` は configured player count 範囲をすべて持つ必要があります。`domain` と `usecase` は source path と省略時 default を知らず、`interface/application` から値として注入されたものだけを使います。`GET /ruleset` は client 起動用に `local_rules` を返しますが、create request では local rule override を受け付けません。
+定義体 path と定義体値の読み込みは `interface/runtime` の共通 loader に集約します。定義体は `AppSettings` 構築時に読み込み・検証し、role 定義体の `default_role_counts` は configured player count 範囲をすべて持つ必要があります。`domain` と `usecase` は source path と省略時 default を知らず、`interface/application` から値として注入されたものだけを使います。`GET /ruleset` は client 起動用に `roles`、`default_role_counts`、`default_rules` を返します。
 
 ## Public State
 
@@ -161,9 +177,36 @@ SSE:
 - vote result
 - night killed player id の有無
 
+## Reveal API
+
+観戦 UI 用に、通常の public API とは別の専用公開面を持ちます。
+
+- route: `GET /api/v1/games/{game_id}/reveal`
+- enable flag: `WEREWOLF_REVEAL_API_ENABLED`
+- default: `true`
+- disabled 時: `403 auth.forbidden` の Problem Details
+
+`reveal` は開発・デモ用の観戦画面だけが読む DTO です。public state、public timeline、private observation の契約は変えません。
+
+返すもの:
+
+- `role_counts`、local `rules`、`seed`
+- 全 player の role / faction / alive / status
+- pending vote / pending night action
+- 解決済み vote / night record
+- winner、day、phase、version
+
+返さないもの:
+
+- control token
+- prompt、API key、raw provider response
+- repository の `private_state` そのもの
+
+Streamlit の Play は従来通り private observation だけを読み、全役職や夜行動 target を表示しません。Streamlit の Observe は `human_player_id=None` で game を作成し、操作 UI を出さずに reveal DTO から全情報を表示します。
+
 ## Manual Player
 
-`players[].agent_type=human` を含む game 作成レスポンスは、作成時だけ `control_tokens` を返します。API は token hash だけを保存し、平文 token は保存しません。
+`human_player_id` を含む game 作成レスポンスは、作成時だけ `control_tokens` を返します。API は token hash だけを保存し、平文 token は保存しません。
 
 private observation と manual action は `Authorization: Bearer <token>` が必要です。
 

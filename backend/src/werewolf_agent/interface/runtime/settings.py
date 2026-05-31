@@ -112,6 +112,7 @@ DEFAULT_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION: Final = _bool_default(
 )
 DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE: Final = _string_default("streamlit_initial_sidebar_state")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
+DEFAULT_STREAMLIT_I18N_FILE: Final = _string_default("streamlit_i18n_file")
 DEFAULT_STREAMLIT_SAVE_FILE: Final = _path_default("streamlit_save_file")
 DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
 DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID: Final = _string_default(
@@ -123,6 +124,7 @@ DEFAULT_STREAMLIT_SERVICE_NAME: Final = _string_default("streamlit_service_name"
 DEFAULT_API_TITLE: Final = _string_default("api_title")
 DEFAULT_API_VERSION: Final = _string_default("api_version")
 DEFAULT_API_DEBUG: Final = _bool_default("api_debug")
+DEFAULT_REVEAL_API_ENABLED: Final = _bool_default("reveal_api_enabled")
 DEFAULT_API_CORS_ALLOWED_ORIGINS: Final = _string_default("api_cors_allowed_origins")
 DEFAULT_API_CORS_ALLOWED_METHODS: Final = _string_default("api_cors_allowed_methods")
 DEFAULT_API_CORS_ALLOWED_HEADERS: Final = _string_default("api_cors_allowed_headers")
@@ -330,6 +332,10 @@ class AppSettings(BaseSettings):
         default=cast(StreamlitLanguage, DEFAULT_STREAMLIT_LANGUAGE),
         validation_alias="WEREWOLF_STREAMLIT_LANGUAGE",
     )
+    streamlit_i18n_file: str = Field(
+        default=DEFAULT_STREAMLIT_I18N_FILE,
+        validation_alias="WEREWOLF_STREAMLIT_I18N_FILE",
+    )
     streamlit_save_file: Path = Field(
         default=DEFAULT_STREAMLIT_SAVE_FILE,
         validation_alias="WEREWOLF_STREAMLIT_SAVE_FILE",
@@ -420,6 +426,10 @@ class AppSettings(BaseSettings):
     )
     api_version: str = Field(default=DEFAULT_API_VERSION, validation_alias="WEREWOLF_API_VERSION")
     api_debug: bool = Field(default=DEFAULT_API_DEBUG, validation_alias="WEREWOLF_API_DEBUG")
+    reveal_api_enabled: bool = Field(
+        default=DEFAULT_REVEAL_API_ENABLED,
+        validation_alias="WEREWOLF_REVEAL_API_ENABLED",
+    )
     api_cors_allowed_origins: str = Field(
         default=DEFAULT_API_CORS_ALLOWED_ORIGINS,
         validation_alias="WEREWOLF_CORS_ALLOWED_ORIGINS",
@@ -486,6 +496,11 @@ class AppSettings(BaseSettings):
         if save_file.is_absolute():
             return save_file
         return repository_root() / save_file
+
+    @property
+    def streamlit_i18n_path(self) -> Path | None:
+        """Return the configured external Streamlit i18n file, if any."""
+        return _optional_repository_path(self.streamlit_i18n_file)
 
     @property
     def sqlite_database_path(self) -> Path:
@@ -637,6 +652,12 @@ class AppSettings(BaseSettings):
     def normalize_streamlit_text(cls, value: object, info: ValidationInfo) -> str:
         """Return non-empty Streamlit display/service settings."""
         return normalize_non_blank(value, field_name=str(info.field_name))
+
+    @field_validator("streamlit_i18n_file", mode="before")
+    @classmethod
+    def normalize_streamlit_i18n_file(cls, value: object) -> str:
+        """Return an optional Streamlit i18n file path."""
+        return "" if value is None else str(value).strip()
 
     @field_validator("streamlit_default_human_player_id", mode="before")
     @classmethod

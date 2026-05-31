@@ -22,7 +22,7 @@ from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameId
 from werewolf_agent.usecase.jobs import (
     AdvanceGameRunCommand,
     AdvanceUntilInputCommand,
-    CreateGameRunCommand,
+    CreateGameCommand,
     GameEventCreate,
     GameRepository,
     GameRunCreate,
@@ -31,6 +31,7 @@ from werewolf_agent.usecase.jobs import (
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GameUseCases,
+    GetGameRevealQuery,
     GetGameRunQuery,
     GetGameTimelineQuery,
     GetPlayerObservationQuery,
@@ -367,20 +368,10 @@ def llm_definitions() -> LlmDefinitions:
     )
 
 
-def create_command(**values: object) -> CreateGameRunCommand:
-    values.setdefault("agent", {"type": DEFAULT_AGENT_TYPE})
-    values.setdefault("rule_config", {"role_counts": DEFAULT_ROLE_COUNTS})
-    return CreateGameRunCommand.model_validate(values)
-
-
-def explicit_players() -> list[dict[str, str]]:
-    return [
-        {"id": " p1 ", "name": "Alice", "agent_type": DEFAULT_AGENT_TYPE},
-        {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
-        {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
-        {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
-        {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
-    ]
+def create_command(**values: object) -> CreateGameCommand:
+    values.setdefault("role_counts", DEFAULT_ROLE_COUNTS)
+    values.setdefault("rules", local_rules_definition())
+    return CreateGameCommand.model_validate(values)
 
 
 def _first_target(observation: dict[str, object], *, player_id: str) -> str:
@@ -415,20 +406,24 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
     )
     result = GameUseCases(deps).get_default_ruleset()
 
-    assert result.id == "custom"
     assert result.player_count == {"min": 4, "max": 10}
-    assert result.roles == ["villager", "werewolf", "seer", "knight"]
-    assert result.agent_types == [DEFAULT_AGENT_TYPE, "human"]
+    assert set(result.roles) == {"villager", "werewolf", "seer", "knight"}
+    assert result.default_role_counts == DEFAULT_ROLE_COUNTS
+    assert result.default_rules == local_rules_definition()
 
 
-def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None:
+def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
-    result = GameUseCases(deps).create_game_run(
-        create_command(players=explicit_players(), seed=42),
-    )
+    result = GameUseCases(deps).create_game_run(create_command(seed=42))
 
-    assert result.state["players"][0]["id"] == "p1"
+    assert [player["id"] for player in result.state["players"]] == [
+        "player-1",
+        "player-2",
+        "player-3",
+        "player-4",
+        "player-5",
+    ]
     assert "role" not in json.dumps(result.model_dump(mode="json"))
     event_stream = repository.events[UUID(result.game_id)]
     assert event_stream[0].event_type == "game_started"
@@ -439,9 +434,9 @@ def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
 
-    first = use_cases.create_game_run(create_command(player_count=5, seed=10))
-    second = use_cases.create_game_run(create_command(player_count=5, seed=10))
-    third = use_cases.create_game_run(create_command(player_count=5, seed=11))
+    first = use_cases.create_game_run(create_command(seed=10))
+    second = use_cases.create_game_run(create_command(seed=10))
+    third = use_cases.create_game_run(create_command(seed=11))
 
     first_names = [player["name"] for player in first.state["players"]]
     second_names = [player["name"] for player in second.state["players"]]
@@ -453,36 +448,39 @@ def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     assert not any(str(name).startswith("Player ") for name in first_names)
 
 
-def test_create_game_preserves_custom_player_names() -> None:
+def test_create_game_returns_control_token_for_requested_human_seat() -> None:
     deps, _repository = dependencies()
 
     result = GameUseCases(deps).create_game_run(
-        create_command(players=explicit_players(), seed=42),
+        create_command(human_player_id="player-1", seed=42),
     )
 
-    assert [player["name"] for player in result.state["players"]] == [
-        "Alice",
-        "Bob",
-        "Carol",
-        "Dave",
-        "Eve",
-    ]
+    assert set(result.control_tokens or {}) == {"player-1"}
 
 
-def test_create_game_rejects_duplicate_normalized_player_ids() -> None:
+def test_reveal_returns_roles_and_private_resolution_without_changing_public_state() -> None:
     deps, _repository = dependencies()
-    players = explicit_players()
-    players[1]["id"] = "p1"
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(create_command(seed=1))
+    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+
+    reveal = use_cases.get_game_reveal(GetGameRevealQuery(game_id=created.game_id))
+    public_state = use_cases.get_game_run(GetGameRunQuery(game_id=created.game_id))
+
+    assert reveal.role_counts == DEFAULT_ROLE_COUNTS
+    assert {player.role for player in reveal.players} >= {"werewolf", "villager"}
+    assert reveal.nights
+    assert "role" in json.dumps(reveal.model_dump(mode="json"))
+    assert "role" not in json.dumps(public_state.model_dump(mode="json"))
+
+
+def test_create_game_rejects_out_of_range_role_count_total() -> None:
+    deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        GameUseCases(deps).create_game_run(create_command(players=players))
-
-
-def test_create_game_rejects_unsupported_agent_type() -> None:
-    deps, _repository = dependencies()
-
-    with pytest.raises(GameError):
-        GameUseCases(deps).create_game_run(create_command(player_count=5, agent={"type": "dummy"}))
+        GameUseCases(deps).create_game_run(
+            create_command(role_counts={"werewolf": 1, "villager": 3})
+        )
 
 
 def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
@@ -499,7 +497,7 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     telemetry = CollectingTelemetrySink()
     deps, repository = dependencies(telemetry=telemetry)
     use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
+    created = use_cases.create_game_run(create_command(seed=1))
 
     advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
     timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id, after=0))
@@ -530,7 +528,7 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
 def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
+    created = use_cases.create_game_run(create_command(seed=1))
 
     use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
     advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
@@ -549,23 +547,14 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     deps, _repository = dependencies(telemetry=telemetry)
     use_cases = GameUseCases(deps)
     created = use_cases.create_game_run(
-        create_command(
-            players=[
-                {"id": "p1", "name": "Alice", "agent_type": "human"},
-                {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
-            ],
-            seed=2,
-        ),
+        create_command(human_player_id="player-1", seed=2),
     )
-    control_token = created.control_tokens["p1"] if created.control_tokens else ""
+    control_token = created.control_tokens["player-1"] if created.control_tokens else ""
     use_cases.advance_until_input(AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8))
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
-            player_id="p1",
+            player_id="player-1",
             control_token=control_token,
         )
     )
@@ -575,12 +564,12 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     if action_type == "speech":
         message = "hello"
     else:
-        target_id = _first_target(observation.observation, player_id="p1")
+        target_id = _first_target(observation.observation, player_id="player-1")
 
     use_cases.submit_player_action(
         PlayerActionCommand(
             game_id=created.game_id,
-            player_id="p1",
+            player_id="player-1",
             control_token=control_token,
             type=action_type,
             target_id=target_id,
@@ -602,18 +591,9 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
     created = use_cases.create_game_run(
-        create_command(
-            players=[
-                {"id": "p1", "name": "Alice", "agent_type": "human"},
-                {"id": "p2", "name": "Bob", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p3", "name": "Carol", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
-                {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
-            ],
-            seed=2,
-        ),
+        create_command(human_player_id="player-1", seed=2),
     )
-    control_token = created.control_tokens["p1"] if created.control_tokens else ""
+    control_token = created.control_tokens["player-1"] if created.control_tokens else ""
 
     stopped = use_cases.advance_until_input(
         AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8)
@@ -625,17 +605,17 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
-            player_id="p1",
+            player_id="player-1",
             control_token=control_token,
         )
     )
     action_type = str(observation.observation["available_actions"][0])
     target_id = None
     if action_type != "speech":
-        target_id = _first_target(observation.observation, player_id="p1")
+        target_id = _first_target(observation.observation, player_id="player-1")
     command = PlayerActionCommand(
         game_id=created.game_id,
-        player_id="p1",
+        player_id="player-1",
         control_token=control_token,
         type=action_type,
         target_id=target_id,
@@ -650,7 +630,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
     use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
+    created = use_cases.create_game_run(create_command(seed=1))
     use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
 
     runs = use_cases.list_game_runs(ListGameRunsQuery(limit=10))

@@ -26,13 +26,13 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 別ターミナルで 1 game を実行します。
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 手動 player を含む game を作る場合:
 
 ```bash
-uv run werewolf-agent new --api-url http://127.0.0.1:8000/api/v1 --human-player player-1 --players 6 --seed 1
+uv run werewolf-agent new --api-url http://127.0.0.1:8000/api/v1 --human-player player-1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 uv run werewolf-agent show <game_id> --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent advance <game_id> --api-url http://127.0.0.1:8000/api/v1
 ```
@@ -42,7 +42,7 @@ uv run werewolf-agent advance <game_id> --api-url http://127.0.0.1:8000/api/v1
 ```bash
 uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1 --log-jsonl .werewolf-agent/logs/game-001.jsonl
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --log-jsonl .werewolf-agent/logs/game-001.jsonl
 uv run werewolf-agent replay --timeline .werewolf-agent/logs/game-001.jsonl
 ```
 
@@ -98,7 +98,11 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 
 `interface/runtime` が `defaults.toml`、`.env`、環境変数、定義体 TOML を読み取り、設定構築時に検証します。API / CLI / Streamlit の浅い場所では、検証済みの設定値を usecase へ依存として注入します。DB は `WEREWOLF_DATABASE_URL` が空なら `WEREWOLF_SQLITE_PATH` の SQLite を使います。
 
-定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、LLM players は `WEREWOLF_LLM_PLAYERS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE` で外部ファイルに差し替えられます。game 用定義体は `domain.game` だけ、LLM 用定義体は `domain.llm` だけに渡します。`agent.type`、`players[].agent_type`、`role_counts` 省略時の default は `interface/application` が runtime settings / role 定義体から補完し、usecase / domain は具体 agent type、role id、local rule の default を生成しません。
+定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、LLM players は `WEREWOLF_LLM_PLAYERS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE`、Streamlit 翻訳は `WEREWOLF_STREAMLIT_I18N_FILE` で外部 TOML に差し替えられます。game 用定義体は `domain.game` だけ、LLM 用定義体は `domain.llm` だけ、UI 翻訳は Streamlit entrypoint だけに渡します。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。CLI の `--role-count` 省略時だけ `interface/entrypoint/cui` が runtime settings / role 定義体から既定構成を選びます。usecase / domain は具体 agent type、role id、local rule の default を生成しません。
+
+Streamlit は初期言語を `WEREWOLF_STREAMLIT_LANGUAGE` から読み、既定は `ja` です。画面上の `設定` で `ja / en` を切り替えると、その Streamlit session 内では選択値を優先します。
+
+観戦モードは `GET /api/v1/games/{game_id}/reveal` だけから秘匿情報を読みます。`WEREWOLF_REVEAL_API_ENABLED` は既定で `true` ですが、公開 API の state / timeline / private observation には role、night action target、private state を混ぜません。
 
 運用ログは ECS 風 field の JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。public response、public timeline、operational log には role、night action target、private state、token、API key を出しません。
 

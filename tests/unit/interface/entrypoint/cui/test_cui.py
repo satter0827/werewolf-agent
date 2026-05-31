@@ -12,7 +12,7 @@ from typer.testing import CliRunner
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
-    CreateGameRunRequest,
+    CreateGameRequest,
     GameRunResponse,
     GameRunsResponse,
     GameTimelineItem,
@@ -110,15 +110,10 @@ class FakeGameApiClient:
             _event(3, "game_finished", {"winner": "villagers"}),
         ]
 
-    def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
-        player_count = len(request.players) if request.players is not None else request.player_count
-        self.calls.append(("create", player_count))
+    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+        self.calls.append(("create", request.player_count))
         self.available_sequence = 1
-        control_tokens = (
-            {"player-1": "token"}
-            if request.players and request.players[0].agent_type == "human"
-            else None
-        )
+        control_tokens = {"player-1": "token"} if request.human_player_id == "player-1" else None
         return GameRunResponse(game_id="game-1", state=_state(), control_tokens=control_tokens)
 
     def get_game(self, game_id: str) -> GameRunResponse:
@@ -132,14 +127,13 @@ class FakeGameApiClient:
     def get_ruleset(self) -> RulesetResponse:
         self.calls.append(("ruleset", "default"))
         return RulesetResponse(
-            id="default",
-            name="MVP Default",
-            description="default rules",
             player_count={"min": 5, "max": 8},
-            roles=[{"id": "villager", "name": "Villager"}],
-            phases=[{"id": "night", "name": "Night"}],
-            agent_types=[{"id": "llm", "name": "LLM Agent"}],
-            local_rules={
+            roles=[
+                {"id": "villager", "name": "Villager", "faction": "village", "abilities": []},
+                {"id": "werewolf", "name": "Werewolf", "faction": "werewolf", "abilities": []},
+            ],
+            default_role_counts={"werewolf": 1, "villager": 4},
+            default_rules={
                 "allow_self_vote": False,
                 "allow_vote_revision": False,
                 "allow_night_action_revision": False,
@@ -395,8 +389,14 @@ def test_play_command_uses_public_api_client(
             "play",
             "--api-url",
             "http://api.test/api/v1",
-            "--players",
-            "6",
+            "--role-count",
+            "werewolf=1",
+            "--role-count",
+            "seer=1",
+            "--role-count",
+            "knight=1",
+            "--role-count",
+            "villager=3",
             "--seed",
             "1",
             "--max-steps",
@@ -437,8 +437,14 @@ def test_play_json_output_is_single_machine_readable_document(
                 "play",
                 "--api-url",
                 "http://api.test/api/v1",
-                "--players",
-                "6",
+                "--role-count",
+                "werewolf=1",
+                "--role-count",
+                "seer=1",
+                "--role-count",
+                "knight=1",
+                "--role-count",
+                "villager=3",
                 "--seed",
                 "1",
                 "--max-steps",
@@ -468,8 +474,6 @@ def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatc
             "new",
             "--api-url",
             "http://api.test/api/v1",
-            "--players",
-            "5",
             "--human-player",
             "player-1",
             "--role-count",
@@ -487,11 +491,19 @@ def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatc
 def test_new_command_rejects_unknown_human_player() -> None:
     result = CliRunner().invoke(
         app,
-        ["new", "--players", "5", "--human-player", "player-9"],
+        [
+            "new",
+            "--role-count",
+            "werewolf=1",
+            "--role-count",
+            "villager=4",
+            "--human-player",
+            "player-9",
+        ],
     )
 
     assert result.exit_code == 1
-    assert "human_player must match a generated player id" in result.output
+    assert "human_player_id must match a generated player id" in result.output
 
 
 def test_ruleset_show_and_advance_commands_use_public_api_client(
@@ -516,7 +528,7 @@ def test_ruleset_show_and_advance_commands_use_public_api_client(
 
 def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingGameApiClient(FakeGameApiClient):
-        def create_game(self, request: CreateGameRunRequest) -> GameRunResponse:
+        def create_game(self, request: CreateGameRequest) -> GameRunResponse:
             _ = request
             raise AppError(
                 "game.invalid_action: The selected action is not allowed.",

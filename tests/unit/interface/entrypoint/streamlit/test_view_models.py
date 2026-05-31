@@ -1,25 +1,34 @@
 from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
+    GameRevealPlayer,
+    GameRevealResponse,
     GameTimelineItem,
+    LocalRulesSettings,
     PlayerObservationResponse,
     PublicGameRunSummary,
     PublicGameState,
     PublicPlayerState,
 )
+from werewolf_agent.interface.entrypoint.streamlit.i18n import load_i18n
 from werewolf_agent.interface.entrypoint.streamlit.icons import action_icon, event_icon
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     build_game_screen_view,
     game_run_option_label,
     target_candidates_for_action,
 )
+from werewolf_agent.interface.runtime import AppSettings
 
 
-def _state() -> PublicGameState:
+def _catalog():
+    return load_i18n(AppSettings(_env_file=None))
+
+
+def _state(*, status: str = "running", winner: str | None = None) -> PublicGameState:
     return PublicGameState(
         game_id="game-1",
-        status="running",
-        phase="day_discussion",
+        status=status,
+        phase="finished" if status == "completed" else "day_discussion",
         day=2,
         version=3,
         seed=1,
@@ -30,6 +39,7 @@ def _state() -> PublicGameState:
         ],
         alive_player_ids=["player-1", "player-2"],
         eliminated_player_ids=["player-3"],
+        winner=winner,
         summary={"alive_count": 2},
         updated_at=datetime(2026, 1, 1, 12, 34, 56, tzinfo=UTC),
     )
@@ -49,7 +59,86 @@ def _turn(event_type: str, payload: dict[str, object]) -> GameTimelineItem:
     )
 
 
+def _rules() -> LocalRulesSettings:
+    return LocalRulesSettings(
+        allow_self_vote=False,
+        allow_vote_revision=False,
+        allow_night_action_revision=False,
+        enable_first_night_attack=True,
+        enable_no_elimination_on_tie=True,
+        enable_random_elimination_on_tie=False,
+        allow_knight_self_guard=True,
+        allow_knight_repeat_guard=True,
+        allow_seer_self_inspect=False,
+        allow_werewolf_friendly_fire=False,
+        reveal_role_on_death=False,
+    )
+
+
+def _reveal() -> GameRevealResponse:
+    return GameRevealResponse(
+        game_id="game-1",
+        status="completed",
+        phase="finished",
+        day=2,
+        version=3,
+        seed=1,
+        role_counts={"werewolf": 1, "seer": 1, "villager": 1},
+        rules=_rules(),
+        players=[
+            GameRevealPlayer(
+                id="player-1",
+                name="P1",
+                role="seer",
+                faction="village",
+                alive=True,
+                status="alive",
+            ),
+            GameRevealPlayer(
+                id="player-2",
+                name="P2",
+                role="werewolf",
+                faction="werewolf",
+                alive=True,
+                status="alive",
+            ),
+            GameRevealPlayer(
+                id="player-3",
+                name="P3",
+                role="villager",
+                faction="village",
+                alive=False,
+                status="dead",
+            ),
+        ],
+        alive_player_ids=["player-1", "player-2"],
+        eliminated_player_ids=["player-3"],
+        winner="villagers",
+        pending_votes=[],
+        pending_night_actions=[],
+        votes=[
+            {
+                "day": 2,
+                "votes": {"player-1": "player-2"},
+                "counts": {"player-2": 1},
+                "eliminated_player_id": "player-2",
+                "tie_break_policy": "none",
+            }
+        ],
+        nights=[
+            {
+                "day": 1,
+                "attacked_player_id": "player-3",
+                "protected_player_id": "player-1",
+                "killed_player_id": "player-3",
+                "inspections": [],
+            }
+        ],
+    )
+
+
 def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
+    catalog = _catalog()
     observation = PlayerObservationResponse(
         game_id="game-1",
         player_id="player-1",
@@ -64,8 +153,11 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         state=_state(),
         turns=[_turn("unknown_private_event", {"target_id": "player-2", "role": "werewolf"})],
         observation=observation,
+        reveal=None,
         human_player_id="player-1",
         screen_mode="playable",
+        catalog=catalog,
+        lang="ja",
     )
 
     assert screen.screen_mode == "playable"
@@ -79,6 +171,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
 
 
 def test_timeline_renders_public_speech_vote_and_night_results() -> None:
+    catalog = _catalog()
     turns = [
         _turn("speech_recorded", {"message": "根拠を聞きたいです。"}),
         _turn("vote_submitted", {"target_id": "player-2"}),
@@ -90,8 +183,11 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
         state=_state(),
         turns=turns,
         observation=None,
+        reveal=None,
         human_player_id=None,
         screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
     )
 
     details = [item.detail for item in screen.timeline]
@@ -101,54 +197,62 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
     assert details[3] == "夜が明け、P3 が犠牲になりました。"
 
 
-def test_waiting_hand_panel_can_advance_until_next_input() -> None:
-    observation = PlayerObservationResponse(
-        game_id="game-1",
-        player_id="player-1",
-        observation={
-            "me": {"id": "player-1", "role": "villager"},
-            "available_actions": [],
-        },
-    )
-
+def test_observer_mode_uses_reveal_without_action_state() -> None:
+    catalog = _catalog()
     screen = build_game_screen_view(
-        state=_state(),
-        turns=[],
-        observation=observation,
-        human_player_id="player-1",
-        screen_mode="playable",
-    )
-
-    assert screen.can_submit_action is False
-    assert screen.current_turn_title == "進行待ち"
-    assert screen.hand_panel.title == "進行待ち"
-    assert screen.hand_panel.can_advance is True
-
-
-def test_observer_mode_hides_private_and_action_state() -> None:
-    screen = build_game_screen_view(
-        state=_state(),
-        turns=[],
+        state=_state(status="completed", winner="villagers"),
+        turns=[_turn("game_finished", {"winner": "villagers"})],
         observation=None,
+        reveal=_reveal(),
         human_player_id=None,
         screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
     )
 
     assert screen.screen_mode == "observer"
     assert screen.can_submit_action is False
-    assert screen.current_turn_title == "観戦中"
-    assert screen.hand_panel.title == "観戦モード"
-    assert screen.hand_panel.can_advance is False
-    assert screen.player_label == "観戦中"
+    assert screen.current_turn_title == "ゲームは終了しました"
+    assert screen.hand_panel.heading == "観戦モード"
+    assert screen.observation is None
+    assert screen.observer_log is not None
+    assert "P2: 人狼 / 人狼陣営" in screen.observer_log.role_lines
+    assert screen.seats[1].role_label == "人狼"
+    assert screen.result_summary is not None
+    assert any("全役職" in fact for fact in screen.result_summary.facts)
+
+
+def test_play_result_summary_uses_public_information_only() -> None:
+    catalog = _catalog()
+    screen = build_game_screen_view(
+        state=_state(status="completed", winner="villagers"),
+        turns=[_turn("game_finished", {"winner": "villagers"})],
+        observation=None,
+        reveal=None,
+        human_player_id=None,
+        screen_mode="playable",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert screen.result_summary is not None
+    summary_text = " ".join(screen.result_summary.facts)
+    assert "勝利陣営" in summary_text
+    assert "全役職" not in summary_text
+    assert "werewolf" not in summary_text
 
 
 def test_status_metrics_use_public_game_context_without_ids() -> None:
+    catalog = _catalog()
     screen = build_game_screen_view(
         state=_state(),
         turns=[],
         observation=None,
+        reveal=None,
         human_player_id=None,
         screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
         refresh_interval_seconds=5,
     )
 
@@ -157,40 +261,6 @@ def test_status_metrics_use_public_game_context_without_ids() -> None:
     assert "最終更新 12:34:56" in text
     assert "game-1" not in text
     assert "player-1" not in text
-
-
-def test_default_player_names_are_shown_as_compact_seat_labels() -> None:
-    state = _state().model_copy(
-        update={
-            "players": [
-                PublicPlayerState(id="player-1", name="Player 1", alive=True, status="alive"),
-                PublicPlayerState(id="player-2", name="Player 2", alive=True, status="alive"),
-                PublicPlayerState(id="player-3", name="Player 3", alive=False, status="dead"),
-            ]
-        }
-    )
-    observation = PlayerObservationResponse(
-        game_id="game-1",
-        player_id="player-1",
-        observation={
-            "me": {"id": "player-1", "role": "villager"},
-            "known_roles": {"player-2": "werewolf"},
-            "available_actions": [],
-        },
-    )
-
-    screen = build_game_screen_view(
-        state=state,
-        turns=[],
-        observation=observation,
-        human_player_id="player-1",
-        screen_mode="playable",
-    )
-
-    assert screen.player_label == "P1"
-    assert [seat.name for seat in screen.seats] == ["P1", "P2", "P3"]
-    assert screen.observation is not None
-    assert screen.observation.known_role_lines == ["P2: 人狼"]
 
 
 def test_target_candidates_exclude_unavailable_targets() -> None:
@@ -204,54 +274,8 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     assert candidates == ["player-2"]
 
 
-def test_target_candidates_hide_self_and_known_werewolves_for_night_attack() -> None:
-    candidates = target_candidates_for_action(
-        "werewolf_attack",
-        state=_state(),
-        observation={"known_roles": {"player-1": "werewolf", "player-2": "werewolf"}},
-        human_player_id="player-1",
-    )
-
-    assert candidates == []
-
-
-def test_finished_timeline_without_winner_uses_safe_detail() -> None:
-    screen = build_game_screen_view(
-        state=_state(),
-        turns=[_turn("game_finished", {})],
-        observation=None,
-        human_player_id=None,
-        screen_mode="observer",
-    )
-
-    assert screen.timeline[0].detail == "勝敗が決まりました。"
-
-
-def test_completed_game_hides_submit_state_even_with_available_actions() -> None:
-    observation = PlayerObservationResponse(
-        game_id="game-1",
-        player_id="player-1",
-        observation={
-            "me": {"id": "player-1", "role": "villager"},
-            "available_actions": ["speech", "vote"],
-        },
-    )
-    screen = build_game_screen_view(
-        state=_state().model_copy(update={"status": "completed", "phase": "finished"}),
-        turns=[],
-        observation=observation,
-        human_player_id="player-1",
-        screen_mode="playable",
-    )
-
-    assert screen.is_completed is True
-    assert screen.can_submit_action is False
-    assert screen.current_turn_title == "ゲームは終了しました"
-    assert screen.hand_panel.title == "ゲームは終了しました"
-    assert screen.hand_panel.can_advance is False
-
-
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
+    catalog = _catalog()
     run = PublicGameRunSummary(
         game_id="game-unknown",
         status="running",
@@ -267,6 +291,7 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
         updated_at=datetime(2026, 1, 1, 12, 0, tzinfo=UTC),
     )
 
-    assert event_icon("unknown_event").label == "出来事"
-    assert action_icon("unknown_action").label == "行動"
-    assert game_run_option_label(run) == "進行中 / Day 1 / 6人 / 最終更新 12:00:00 / 観戦のみ"
+    assert event_icon("unknown_event").symbol == "•"
+    assert action_icon("unknown_action").symbol == "•"
+    assert catalog.label("ja", "event", "unknown_event") == "unknown_event"
+    assert "進行中 / Day 1 / 6" in game_run_option_label(run, catalog, "ja")

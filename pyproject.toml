@@ -84,6 +84,7 @@ packages = ["backend/src/werewolf_agent"]
 "backend/src/werewolf_agent/resources/llm/players.toml" = "werewolf_agent/resources/llm/players.toml"
 "backend/src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
 "backend/src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
+"backend/src/werewolf_agent/resources/streamlit/i18n.toml" = "werewolf_agent/resources/streamlit/i18n.toml"
 
 [tool.hatch.build.targets.sdist]
 only-include = [

@@ -13,30 +13,24 @@ from werewolf_agent.interface.shared.game_requests import build_create_game_requ
 
 def test_build_create_game_request_supports_human_player() -> None:
     request = build_create_game_request(
-        players=5,
         seed=1,
-        human_player="player-2",
-        role_count_entries=["werewolf=1", "villager=4"],
-        default_player_count=6,
+        human_player_id="player-2",
+        role_counts={"werewolf": 1, "villager": 4},
     )
 
     assert request.seed == 1
-    assert request.player_count is None
-    assert request.players is not None
-    assert len(request.players) == 5
-    assert request.players[0].agent_type is None
-    assert request.players[1].agent_type == "human"
-    assert request.rule_config.role_counts == {"werewolf": 1, "villager": 4}
+    assert request.player_count == 5
+    assert request.human_player_id == "player-2"
+    assert request.role_counts == {"werewolf": 1, "villager": 4}
+    assert request.rules is None
 
 
 def test_build_create_game_request_rejects_unknown_human_player() -> None:
     with pytest.raises(AppError):
         build_create_game_request(
-            players=5,
             seed=None,
-            human_player="player-9",
-            role_count_entries=[],
-            default_player_count=6,
+            human_player_id="player-9",
+            role_counts={"werewolf": 1, "villager": 4},
         )
 
 
@@ -55,6 +49,8 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
             return httpx.Response(200, json={"runs": [_run_payload()]})
         if request.url.path.endswith("/games/game-1"):
             return httpx.Response(200, json=_game_payload())
+        if request.url.path.endswith("/games/game-1/reveal"):
+            return httpx.Response(200, json=_reveal_payload())
         if request.url.path.endswith("/games/game-1/advance"):
             return httpx.Response(
                 200, json={**_game_payload(), "status": "running", "timeline": []}
@@ -89,18 +85,17 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         transport=httpx.MockTransport(handler),
     )
     request = build_create_game_request(
-        players=5,
         seed=1,
-        human_player=None,
-        role_count_entries=[],
-        default_player_count=6,
+        human_player_id=None,
+        role_counts={"werewolf": 1, "villager": 4},
     )
 
     assert client.health()["status"] == "ok"
-    assert client.get_ruleset().id == "default"
+    assert client.get_ruleset().default_role_counts == {"werewolf": 1, "villager": 4}
     assert client.create_game(request).game_id == "game-1"
     assert client.list_games().runs
     assert client.get_game("game-1").game_id == "game-1"
+    assert client.get_game_reveal("game-1").players[1].role == "werewolf"
     assert client.advance_game("game-1").game_id == "game-1"
     assert client.advance_until_input("game-1", max_steps=3).stop_reason == "manual_input_required"
     assert client.get_timeline("game-1").items
@@ -128,6 +123,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         ("POST", "/api/v1/games"),
         ("GET", "/api/v1/games"),
         ("GET", "/api/v1/games/game-1"),
+        ("GET", "/api/v1/games/game-1/reveal"),
         ("POST", "/api/v1/games/game-1/advance"),
         ("POST", "/api/v1/games/game-1/advance-until-input"),
         ("GET", "/api/v1/games/game-1/timeline"),
@@ -253,16 +249,48 @@ def _timeline_item() -> dict[str, object]:
     }
 
 
+def _reveal_payload() -> dict[str, object]:
+    return {
+        "game_id": "game-1",
+        "status": "running",
+        "phase": "day_discussion",
+        "day": 1,
+        "version": 1,
+        "seed": 1,
+        "role_counts": {"werewolf": 1, "villager": 1},
+        "rules": _ruleset_payload()["default_rules"],
+        "players": [
+            {
+                "id": "player-1",
+                "name": "Player 1",
+                "role": "villager",
+                "faction": "village",
+                "alive": True,
+                "status": "alive",
+            },
+            {
+                "id": "player-2",
+                "name": "Player 2",
+                "role": "werewolf",
+                "faction": "werewolf",
+                "alive": True,
+                "status": "alive",
+            },
+        ],
+        "alive_player_ids": ["player-1", "player-2"],
+        "eliminated_player_ids": [],
+    }
+
+
 def _ruleset_payload() -> dict[str, object]:
     return {
-        "id": "default",
-        "name": "MVP Default",
-        "description": "default rules",
         "player_count": {"min": 5, "max": 8},
-        "roles": [{"id": "villager", "name": "Villager"}],
-        "phases": [{"id": "night", "name": "Night"}],
-        "agent_types": [{"id": "llm", "name": "LLM Agent"}],
-        "local_rules": {
+        "roles": [
+            {"id": "villager", "name": "Villager", "faction": "village", "abilities": []},
+            {"id": "werewolf", "name": "Werewolf", "faction": "werewolf", "abilities": []},
+        ],
+        "default_role_counts": {"werewolf": 1, "villager": 4},
+        "default_rules": {
             "allow_self_vote": False,
             "allow_vote_revision": False,
             "allow_night_action_revision": False,

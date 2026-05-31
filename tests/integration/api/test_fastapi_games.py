@@ -12,6 +12,9 @@ TestClient = fastapi_testclient.TestClient
 from werewolf_agent.interface.api.app import create_app  # noqa: E402
 from werewolf_agent.interface.runtime import AppSettings  # noqa: E402
 
+DEFAULT_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
+SIX_PLAYER_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3}
+
 
 @pytest.fixture
 def client(tmp_path) -> Iterator[TestClient]:
@@ -27,17 +30,19 @@ def client(tmp_path) -> Iterator[TestClient]:
     app.state.engine.dispose()
 
 
-def _create_payload() -> dict[str, object]:
-    return {
-        "seed": 42,
-        "players": [
-            {"id": "p1", "name": "Alice", "agent_type": "llm"},
-            {"id": "p2", "name": "Bob", "agent_type": "llm"},
-            {"id": "p3", "name": "Carol", "agent_type": "llm"},
-            {"id": "p4", "name": "Dave", "agent_type": "llm"},
-            {"id": "p5", "name": "Eve", "agent_type": "llm"},
-        ],
+def _create_payload(
+    *,
+    human_player_id: str | None = None,
+    role_counts: dict[str, int] | None = None,
+    seed: int | None = 42,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "seed": seed,
+        "role_counts": role_counts or DEFAULT_ROLE_COUNTS,
     }
+    if human_player_id is not None:
+        payload["human_player_id"] = human_player_id
+    return payload
 
 
 def _manual_action_payload(observation: dict[str, object], *, player_id: str) -> dict[str, object]:
@@ -135,7 +140,7 @@ def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:
         with TestClient(app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
                 "/api/v1/games",
-                json={"player_count": 5, "seed": 1},
+                json=_create_payload(seed=1),
                 headers={"X-Trace-Id": "trace-create"},
             )
     finally:
@@ -174,7 +179,7 @@ def test_api_logs_expected_user_error_at_info(tmp_path: Path) -> None:
         with TestClient(app, raise_server_exceptions=False) as test_client:
             response = test_client.post(
                 "/api/v1/games",
-                json={"player_count": 5, "agent": {"type": "dummy"}},
+                json={"role_counts": {"werewolf": 1, "villager": 3}},
                 headers={"X-Trace-Id": "trace-invalid-action"},
             )
     finally:
@@ -205,7 +210,6 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload["id"] == "default"
     assert payload["player_count"] == {"min": 5, "max": 8}
     assert {role["id"] for role in payload["roles"]} == {
         "villager",
@@ -213,10 +217,13 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
         "seer",
         "knight",
     }
-    assert payload["agent_types"] == [
-        {"id": "llm", "name": "LLM Agent"},
-        {"id": "human", "name": "Human Player"},
-    ]
+    assert payload["default_role_counts"] == {
+        "werewolf": 1,
+        "seer": 1,
+        "knight": 1,
+        "villager": 3,
+    }
+    assert payload["default_rules"]["enable_no_elimination_on_tie"] is True
 
 
 def test_create_game_returns_public_state_without_private_fields(client: TestClient) -> None:
@@ -234,40 +241,83 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert state["day"] == 1
     assert state["version"] == 1
     assert state["seed"] == 42
-    assert [player["id"] for player in state["players"]] == ["p1", "p2", "p3", "p4", "p5"]
+    assert [player["id"] for player in state["players"]] == [
+        "player-1",
+        "player-2",
+        "player-3",
+        "player-4",
+        "player-5",
+    ]
     assert "private_state" not in serialized
     assert "role" not in serialized
     assert "werewolf" not in serialized
 
 
 def test_human_player_create_returns_control_token_once(client: TestClient) -> None:
-    payload = _create_payload()
-    payload["players"][0]["agent_type"] = "human"
+    payload = _create_payload(human_player_id="player-1")
 
     response = client.post("/api/v1/games", json=payload)
 
     assert response.status_code == 201
     created = response.json()
     game_id = created["game_id"]
-    assert set(created["control_tokens"]) == {"p1"}
-    assert created["control_tokens"]["p1"]
+    assert set(created["control_tokens"]) == {"player-1"}
+    assert created["control_tokens"]["player-1"]
 
     state_response = client.get(f"/api/v1/games/{game_id}")
     timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
 
     assert "control_tokens" not in state_response.json()
     serialized_public = json.dumps([state_response.json(), timeline_response.json()])
-    assert created["control_tokens"]["p1"] not in serialized_public
+    assert created["control_tokens"]["player-1"] not in serialized_public
     assert "control_token" not in serialized_public
 
 
+def test_reveal_endpoint_returns_dedicated_private_dto(client: TestClient) -> None:
+    created = client.post("/api/v1/games", json=_create_payload(seed=1)).json()
+    game_id = created["game_id"]
+    client.post(f"/api/v1/games/{game_id}/advance")
+
+    reveal_response = client.get(f"/api/v1/games/{game_id}/reveal")
+    public_response = client.get(f"/api/v1/games/{game_id}")
+    timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
+
+    assert reveal_response.status_code == 200
+    reveal = reveal_response.json()
+    assert reveal["role_counts"] == DEFAULT_ROLE_COUNTS
+    assert {player["role"] for player in reveal["players"]} >= {"werewolf", "villager"}
+    assert reveal["nights"]
+    assert "role" not in json.dumps(public_response.json())
+    assert "attacked_player_id" not in json.dumps(timeline_response.json())
+
+
+def test_reveal_endpoint_can_be_disabled() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="none",
+        reveal_api_enabled=False,
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            created = test_client.post("/api/v1/games", json=_create_payload()).json()
+            response = test_client.get(f"/api/v1/games/{created['game_id']}/reveal")
+    finally:
+        app.state.engine.dispose()
+
+    assert response.status_code == 403
+    assert response.headers["content-type"].startswith("application/problem+json")
+    assert response.json()["code"] == "auth.forbidden"
+
+
 def test_private_observation_requires_valid_control_token(client: TestClient) -> None:
-    payload = _create_payload()
-    payload["players"][0]["agent_type"] = "human"
+    payload = _create_payload(human_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["p1"]
-    url = f"/api/v1/games/{game_id}/players/p1/observation"
+    token = created["control_tokens"]["player-1"]
+    url = f"/api/v1/games/{game_id}/players/player-1/observation"
 
     missing = client.get(url)
     invalid = client.get(url, headers={"Authorization": "Bearer wrong"})
@@ -278,24 +328,23 @@ def test_private_observation_requires_valid_control_token(client: TestClient) ->
     assert invalid.status_code == 403
     assert invalid.json()["code"] == "auth.forbidden"
     assert valid.status_code == 200
-    assert valid.json()["player_id"] == "p1"
+    assert valid.json()["player_id"] == "player-1"
     assert valid.json()["observation"]["me"]["role"]
 
 
 def test_private_player_endpoints_reject_non_human_player(client: TestClient) -> None:
-    payload = _create_payload()
-    payload["players"][0]["agent_type"] = "human"
+    payload = _create_payload(human_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["p1"]
+    token = created["control_tokens"]["player-1"]
     headers = {"Authorization": f"Bearer {token}"}
 
     observation = client.get(
-        f"/api/v1/games/{game_id}/players/p2/observation",
+        f"/api/v1/games/{game_id}/players/player-2/observation",
         headers=headers,
     )
     action = client.post(
-        f"/api/v1/games/{game_id}/players/p2/actions",
+        f"/api/v1/games/{game_id}/players/player-2/actions",
         json={"type": "pass"},
         headers=headers,
     )
@@ -307,31 +356,30 @@ def test_private_player_endpoints_reject_non_human_player(client: TestClient) ->
 
 
 def test_human_player_can_submit_manual_action(client: TestClient) -> None:
-    payload = _create_payload()
-    payload["players"][0]["agent_type"] = "human"
+    payload = _create_payload(human_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["p1"]
+    token = created["control_tokens"]["player-1"]
     headers = {"Authorization": f"Bearer {token}"}
 
     stopped = client.post(f"/api/v1/games/{game_id}/advance-until-input?max_steps=8")
     observation = client.get(
-        f"/api/v1/games/{game_id}/players/p1/observation",
+        f"/api/v1/games/{game_id}/players/player-1/observation",
         headers=headers,
     ).json()["observation"]
 
     assert stopped.status_code == 200
     assert stopped.json()["stop_reason"] == "manual_input_required"
     assert observation["available_actions"]
-    action_payload = _manual_action_payload(observation, player_id="p1")
+    action_payload = _manual_action_payload(observation, player_id="player-1")
 
     response = client.post(
-        f"/api/v1/games/{game_id}/players/p1/actions",
+        f"/api/v1/games/{game_id}/players/player-1/actions",
         json=action_payload,
         headers=headers,
     )
     duplicate = client.post(
-        f"/api/v1/games/{game_id}/players/p1/actions",
+        f"/api/v1/games/{game_id}/players/player-1/actions",
         json=action_payload,
         headers=headers,
     )
@@ -345,7 +393,10 @@ def test_human_player_can_submit_manual_action(client: TestClient) -> None:
 
 
 def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) -> None:
-    create_response = client.post("/api/v1/games", json={"player_count": 6, "seed": 1})
+    create_response = client.post(
+        "/api/v1/games",
+        json=_create_payload(role_counts=SIX_PLAYER_ROLE_COUNTS, seed=1),
+    )
     game_id = create_response.json()["game_id"]
 
     state = create_response.json()["state"]
@@ -367,7 +418,7 @@ def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) 
 
 
 def test_game_list_and_timeline_return_public_read_models(client: TestClient) -> None:
-    created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
+    created = client.post("/api/v1/games", json=_create_payload(seed=2)).json()
     game_id = created["game_id"]
     client.post(f"/api/v1/games/{game_id}/advance")
 
@@ -385,7 +436,7 @@ def test_game_list_and_timeline_return_public_read_models(client: TestClient) ->
 
 
 def test_public_timeline_stream_returns_sse_batch(client: TestClient) -> None:
-    created = client.post("/api/v1/games", json={"player_count": 5, "seed": 2}).json()
+    created = client.post("/api/v1/games", json=_create_payload(seed=2)).json()
 
     response = client.get(f"/api/v1/games/{created['game_id']}/timeline/stream?after=0")
 
@@ -396,7 +447,10 @@ def test_public_timeline_stream_returns_sse_batch(client: TestClient) -> None:
 
 
 def test_finished_game_advance_returns_problem_details(client: TestClient) -> None:
-    created = client.post("/api/v1/games", json={"player_count": 6, "seed": 1}).json()
+    created = client.post(
+        "/api/v1/games",
+        json=_create_payload(role_counts=SIX_PLAYER_ROLE_COUNTS, seed=1),
+    ).json()
     advance_url = f"/api/v1/games/{created['game_id']}/advance"
     state = created["state"]
     for _ in range(32):
@@ -413,40 +467,50 @@ def test_finished_game_advance_returns_problem_details(client: TestClient) -> No
     assert response.json()["code"] == "game.invalid_phase"
 
 
-def test_create_game_rejects_unsupported_agent_type_as_game_action_error(
-    client: TestClient,
-) -> None:
-    payload = _create_payload()
-    payload["players"][0]["agent_type"] = "dummy"
-
-    response = client.post("/api/v1/games", json=payload)
-
-    assert response.status_code == 422
-    assert response.json()["code"] == "game.invalid_action"
-
-
-def test_create_game_rejects_unsupported_top_level_agent_type(client: TestClient) -> None:
-    response = client.post("/api/v1/games", json={"player_count": 5, "agent": {"type": "dummy"}})
-
-    assert response.status_code == 422
-    assert response.json()["code"] == "game.invalid_action"
-
-
-def test_create_game_rejects_invalid_rule_config_as_validation_error(
+def test_create_game_rejects_legacy_players_as_validation_error(
     client: TestClient,
 ) -> None:
     response = client.post(
         "/api/v1/games",
         json={
-            "player_count": 5,
-            "rule_config": {"role_counts": {"werewolf": -1}},
+            "seed": 42,
+            "role_counts": DEFAULT_ROLE_COUNTS,
+            "players": [{"id": "p1", "name": "Alice", "agent_type": "llm"}],
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "request.validation_failed"
+    assert response.json()["errors"][0]["pointer"] == "/players"
+
+
+def test_create_game_rejects_legacy_top_level_agent_as_validation_error(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/games",
+        json={"role_counts": DEFAULT_ROLE_COUNTS, "agent": {"type": "dummy"}},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "request.validation_failed"
+    assert response.json()["errors"][0]["pointer"] == "/agent"
+
+
+def test_create_game_rejects_invalid_role_counts_as_validation_error(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/games",
+        json={
+            "role_counts": {"werewolf": -1},
         },
     )
 
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["code"] == "request.validation_failed"
-    assert response.json()["errors"][0]["pointer"] == "/rule_config/role_counts/werewolf"
+    assert response.json()["errors"][0]["pointer"] == "/role_counts/werewolf"
 
 
 def test_api_discussion_records_one_speech_per_alive_player_from_definition(
@@ -454,10 +518,7 @@ def test_api_discussion_records_one_speech_per_alive_player_from_definition(
 ) -> None:
     created = client.post(
         "/api/v1/games",
-        json={
-            "player_count": 5,
-            "seed": 3,
-        },
+        json=_create_payload(seed=3),
     ).json()
     game_id = created["game_id"]
 
@@ -475,13 +536,13 @@ def test_api_discussion_records_one_speech_per_alive_player_from_definition(
 def test_create_game_validation_errors_use_problem_details(client: TestClient) -> None:
     response = client.post(
         "/api/v1/games",
-        json={"players": [{"id": "p1", "agent_type": "llm"}]},
+        json={"seed": 1},
     )
 
     assert response.status_code == 400
     assert response.headers["content-type"].startswith("application/problem+json")
     assert response.json()["code"] == "request.validation_failed"
-    assert response.json()["errors"][0]["pointer"] == "/players/0/name"
+    assert response.json()["errors"][0]["pointer"] == "/role_counts"
 
 
 def test_missing_game_returns_problem_details(client: TestClient) -> None:
