@@ -149,6 +149,15 @@ class ResultSummaryView:
 
 
 @dataclass(frozen=True)
+class ObservationMemoView:
+    """Public observation memo shown at the bottom of the right panel."""
+
+    title: str
+    updated_label: str
+    lines: list[str]
+
+
+@dataclass(frozen=True)
 class GameScreenView:
     """Single display model for the Streamlit game screen."""
 
@@ -177,6 +186,7 @@ class GameScreenView:
     observation: ObservationView | None
     observer_log: ObserverLogView | None
     result_summary: ResultSummaryView | None
+    observation_memo: ObservationMemoView
     current_turn_title: str
     current_turn_detail: str
     is_completed: bool
@@ -221,6 +231,7 @@ def build_game_screen_view(
     human_label = _human_player_label(state.players, human_player_id, effective_mode, catalog, lang)
     updated_label = _optional_time_text(state.updated_at, catalog, lang)
     role_counts = dict(reveal.role_counts) if reveal is not None else {}
+    public_timeline = timeline_items(turns, players=state.players, catalog=catalog, lang=lang)
     return GameScreenView(
         game_id=state.game_id,
         screen_mode=effective_mode,
@@ -261,7 +272,7 @@ def build_game_screen_view(
             catalog=catalog,
             lang=lang,
         ),
-        timeline=timeline_items(turns, players=state.players, catalog=catalog, lang=lang),
+        timeline=public_timeline,
         hand_panel=hand_panel_view(state, observation_view, effective_mode, catalog, lang),
         observation=observation_view,
         observer_log=(
@@ -271,6 +282,14 @@ def build_game_screen_view(
             state,
             turns=turns,
             reveal=reveal if effective_mode == "observer" else None,
+            catalog=catalog,
+            lang=lang,
+        ),
+        observation_memo=observation_memo_view(
+            state,
+            timeline=public_timeline,
+            observation=observation_view,
+            screen_mode=effective_mode,
             catalog=catalog,
             lang=lang,
         ),
@@ -701,6 +720,68 @@ def result_summary_view(
             )
         detail = catalog.t(lang, "result.detail_observer")
     return ResultSummaryView(title=catalog.t(lang, "result.title"), detail=detail, facts=facts)
+
+
+def observation_memo_view(
+    state: PublicGameState,
+    *,
+    timeline: list[TimelineItemView],
+    observation: ObservationView | None,
+    screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> ObservationMemoView:
+    """Return a public-only table summary for the right panel."""
+    lines = [
+        catalog.t(
+            lang,
+            "observation_memo.alive",
+            alive=len(state.alive_player_ids),
+            total=len(state.players),
+        ),
+        catalog.t(
+            lang,
+            "observation_memo.phase",
+            phase=catalog.label(lang, "phase", state.phase),
+            day=_day_label(state.day, catalog, lang),
+        ),
+    ]
+    if state.status == "completed":
+        lines.append(
+            catalog.t(
+                lang,
+                "observation_memo.completed",
+                winner=catalog.label(lang, "winner", state.winner),
+            )
+        )
+    elif screen_mode == "observer":
+        lines.append(catalog.t(lang, "observation_memo.observer"))
+    elif _has_available_actions(observation):
+        lines.append(catalog.t(lang, "observation_memo.input_required"))
+    else:
+        lines.append(catalog.t(lang, "observation_memo.waiting"))
+
+    if timeline:
+        latest = timeline[-1]
+        lines.append(
+            catalog.t(
+                lang,
+                "observation_memo.latest",
+                event=f"{latest.title}: {latest.detail}",
+            )
+        )
+    else:
+        lines.append(catalog.t(lang, "observation_memo.latest_empty"))
+
+    return ObservationMemoView(
+        title=catalog.t(lang, "observation_memo.title"),
+        updated_label=catalog.t(
+            lang,
+            "observation_memo.updated",
+            time=_optional_time_text(state.updated_at, catalog, lang),
+        ),
+        lines=lines,
+    )
 
 
 def current_turn_title(

@@ -2,7 +2,6 @@ import logging
 
 from werewolf_agent.contracts.schemas import (
     AdvanceGameRunResponse,
-    AdvanceUntilInputResponse,
     CreateGameRequest,
     GameRevealResponse,
     GameRunResponse,
@@ -130,44 +129,32 @@ class FakeStreamlitClient:
             timeline=[],
         )
 
-    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
-        _ = max_steps
-        self.stepped = True
-        return AdvanceUntilInputResponse(
-            game_id=game_id,
-            status="completed",
-            state=_state(status="completed", phase="finished"),
-            timeline=[],
-            stop_reason="completed",
-            steps=1,
-        )
 
-
-def test_advance_until_input_logs_iteration_and_stop_reason(
+def test_advance_one_step_logs_public_step_without_private_context(
     monkeypatch,
     caplog,
 ) -> None:
     client = FakeStreamlitClient()
     monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
-    settings = AppSettings(_env_file=None, streamlit_max_auto_steps=3)
+    settings = AppSettings(_env_file=None)
 
     with caplog.at_level(logging.DEBUG, logger=operations.__name__):
-        result = operations.advance_until_input(
+        operations.advance_one_step(
             api_url="http://api.test/api/v1",
             settings=settings,
             game_id="game-1",
         )
 
-    assert result.completed is True
+    assert client.stepped is True
     actions = [record.event_action for record in caplog.records]
-    assert "streamlit.advance_until_input.iteration" in actions
-    stopped = next(
+    assert "streamlit.advance_step.started" in actions
+    completed = next(
         record
         for record in caplog.records
-        if record.event_action == "streamlit.advance_until_input.stopped"
+        if record.event_action == "streamlit.advance_step.completed"
     )
-    assert stopped.ui_stop_reason == "completed"
-    assert not hasattr(stopped, "control_token")
+    assert completed.game_phase == "finished"
+    assert not hasattr(completed, "control_token")
 
 
 def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -> None:

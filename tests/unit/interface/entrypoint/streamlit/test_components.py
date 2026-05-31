@@ -1,8 +1,11 @@
 from werewolf_agent.interface.entrypoint.streamlit.components import (
+    action_header_html,
+    observation_memo_html,
     observation_panel_html,
     timeline_section_html,
 )
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
+    ObservationMemoView,
     ObservationView,
     TimelineItemView,
 )
@@ -63,3 +66,29 @@ def test_observation_panel_escapes_private_lines() -> None:
     assert "村人。あなただけに見えている情報です。" in html
     assert "P1: &lt;secret&gt;" in html
     assert "<secret>" not in html
+    assert "wa-command-section" in html
+
+
+def test_observation_memo_escapes_public_lines() -> None:
+    title = "観測メモ\uff08公開情報\uff09"
+    html = observation_memo_html(
+        ObservationMemoView(
+            title=title,
+            updated_label="12:00:00 更新",
+            lines=["直近: <script>", "生存プレイヤー: 6 / 6"],
+        )
+    )
+
+    assert title in html
+    assert "12:00:00 更新" in html
+    assert "直近: &lt;script&gt;" in html
+    assert "<script>" not in html
+    assert "wa-command-section" in html
+
+
+def test_action_header_escapes_label_and_uses_command_class() -> None:
+    html = action_header_html("あなたの<input>")
+
+    assert "wa-action-block wa-command-section" in html
+    assert "あなたの&lt;input&gt;" in html
+    assert "<input>" not in html

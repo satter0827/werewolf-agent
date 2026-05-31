@@ -3,14 +3,12 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import Any, cast
 
 from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
-    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
-    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
-    LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
+    LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
+    LOG_STREAMLIT_ADVANCE_STEP_STARTED,
     LOG_STREAMLIT_CONNECTION_CHECKED,
     LOG_STREAMLIT_GAME_CREATED,
     LOG_STREAMLIT_REFRESHED,
@@ -36,15 +34,6 @@ from werewolf_agent.interface.shared.api_client import GameApiClient, build_game
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass(frozen=True)
-class AdvanceResult:
-    """Result of advancing a game until the player needs to act."""
-
-    reached_input: bool = False
-    completed: bool = False
-    hit_limit: bool = False
 
 
 def build_streamlit_client(api_url: str, settings: AppSettings) -> GameApiClient:
@@ -245,70 +234,33 @@ def submit_screen_action(
     )
 
 
-def advance_until_input(
+def advance_one_step(
     *,
     api_url: str,
     settings: AppSettings,
     game_id: str,
-) -> AdvanceResult:
-    """Advance the game until completion, player input, or the configured limit."""
+) -> None:
+    """Advance the game by one public API step for Streamlit controls."""
     client = build_streamlit_client(api_url, settings)
     logger.info(
-        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
+        LOG_STREAMLIT_ADVANCE_STEP_STARTED,
         extra={
-            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STARTED,
+            "event_action": LOG_STREAMLIT_ADVANCE_STEP_STARTED,
             "event_outcome": "success",
             "game_id": game_id,
-            "max_steps": settings.streamlit_max_auto_steps,
         },
     )
-    response = client.advance_until_input(game_id, max_steps=settings.streamlit_max_auto_steps)
+    response = client.advance_game(game_id)
     logger.debug(
-        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+        LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
         extra={
-            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_ITERATION,
+            "event_action": LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
             "event_outcome": "success",
             "game_id": game_id,
-            "iteration": response.steps,
             "game_status": response.status,
             "game_phase": response.state.phase,
             "game_day": response.state.day,
             "game_version": response.state.version,
-        },
-    )
-    if response.stop_reason == "completed":
-        _log_advance_stop(game_id=game_id, stop_reason="completed", iteration=response.steps)
-        return AdvanceResult(completed=True)
-    if response.stop_reason == "manual_input_required":
-        _log_advance_stop(
-            game_id=game_id,
-            stop_reason="reached_input",
-            iteration=response.steps,
-        )
-        return AdvanceResult(reached_input=True)
-    _log_advance_stop(
-        game_id=game_id,
-        stop_reason="hit_limit",
-        iteration=response.steps,
-    )
-    return AdvanceResult(hit_limit=True)
-
-
-def _log_advance_stop(
-    *,
-    game_id: str,
-    stop_reason: str,
-    iteration: int,
-    available_action_count: int = 0,
-) -> None:
-    logger.info(
-        LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
-        extra={
-            "event_action": LOG_STREAMLIT_ADVANCE_UNTIL_INPUT_STOPPED,
-            "event_outcome": "success",
-            "game_id": game_id,
-            "ui_stop_reason": stop_reason,
-            "iteration": iteration,
-            "available_action_count": available_action_count,
+            "event_count": len(response.timeline),
         },
     )

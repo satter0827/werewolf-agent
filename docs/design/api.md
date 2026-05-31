@@ -225,7 +225,7 @@ manual action body:
 
 `available_actions` は「今その player が送信できる action」だけを返します。発言済み、投票済み、夜行動済みの場合は既定で空になります。再送された action は保存せず、`422 game.invalid_action` を返します。
 
-`POST /games/{game_id}/advance` は manual player の入力待ちが残っている場合、phase を進めず `409 game.invalid_phase` を返します。UI は `advance-until-input` を使い、LLM action と phase 進行をまとめて進め、`stop_reason` が `manual_input_required`、`completed`、`hit_limit` のいずれかになるまで待ちます。
+`POST /games/{game_id}/advance` は manual player の入力待ちが残っている場合、phase を進めず `409 game.invalid_phase` を返します。Streamlit UI は `/advance` を 1 step ずつ呼び、人間の入力待ち、完了、上限到達、停止操作のいずれかで止めます。`advance-until-input` は API 契約として残しますが、画面操作盤の自動進行には使いません。
 
 ## Run Summary
 

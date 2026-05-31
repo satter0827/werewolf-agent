@@ -113,7 +113,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_turn_limit == 100
     assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
-    assert settings.streamlit_auto_advance_after_action is True
+    assert settings.streamlit_auto_advance_interval_seconds == 1.0
     assert settings.streamlit_initial_sidebar_state == "expanded"
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_i18n_file == ""
@@ -236,7 +236,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_I18N_FILE", "tmp/streamlit/i18n.toml")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SAVE_FILE", "tmp/streamlit/saves.json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION", "false")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS", "0.5")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE", "collapsed")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
@@ -289,7 +289,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_turn_limit == 40
     assert settings.streamlit_run_limit == 9
     assert settings.streamlit_max_auto_steps == 12
-    assert settings.streamlit_auto_advance_after_action is False
+    assert settings.streamlit_auto_advance_interval_seconds == 0.5
     assert settings.streamlit_initial_sidebar_state == "collapsed"
     assert settings.streamlit_language == "en"
     assert settings.streamlit_i18n_path == repository_root() / "tmp/streamlit/i18n.toml"

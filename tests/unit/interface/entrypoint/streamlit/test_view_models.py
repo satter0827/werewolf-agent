@@ -168,6 +168,10 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     assert "player-2" not in timeline_text
     assert screen.can_submit_action is True
     assert screen.seats[0].activity == "入力待ち"
+    memo_text = " ".join(screen.observation_memo.lines)
+    assert "あなたの入力待ちです。" in memo_text
+    assert "werewolf" not in memo_text
+    assert "player-2" not in memo_text
 
 
 def test_timeline_renders_public_speech_vote_and_night_results() -> None:
@@ -261,6 +265,8 @@ def test_status_metrics_use_public_game_context_without_ids() -> None:
     assert "最終更新 12:34:56" in text
     assert "game-1" not in text
     assert "player-1" not in text
+    assert screen.observation_memo.title == "観測メモ\uff08公開情報\uff09"
+    assert screen.observation_memo.updated_label == "12:34:56 更新"
 
 
 def test_target_candidates_exclude_unavailable_targets() -> None:
@@ -295,3 +301,34 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
     assert action_icon("unknown_action").symbol == "•"
     assert catalog.label("ja", "event", "unknown_event") == "unknown_event"
     assert "進行中 / Day 1 / 6" in game_run_option_label(run, catalog, "ja")
+
+
+def test_observation_memo_uses_public_timeline_sanitization() -> None:
+    catalog = _catalog()
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[
+            _turn(
+                "night_resolved",
+                {
+                    "attacked_player_id": "player-1",
+                    "protected_player_id": "player-2",
+                    "killed_player_id": "player-3",
+                    "target_role": "werewolf",
+                },
+            )
+        ],
+        observation=None,
+        reveal=None,
+        human_player_id=None,
+        screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    memo_text = " ".join(screen.observation_memo.lines)
+    assert "直近:" in memo_text
+    assert "P3" in memo_text
+    assert "attacked_player_id" not in memo_text
+    assert "protected_player_id" not in memo_text
+    assert "werewolf" not in memo_text

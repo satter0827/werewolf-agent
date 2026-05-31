@@ -16,6 +16,11 @@ STREAMLIT_CSS = """
         --wa-amber: #f97316;
         --wa-amber-soft: #fff7ed;
         --wa-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+        --wa-command-shadow: 0 18px 42px rgba(15, 23, 42, 0.07);
+        --wa-space-3: 12px;
+        --wa-space-4: 16px;
+        --wa-space-5: 20px;
+        --wa-space-6: 24px;
     }
     .stApp {
         background: var(--wa-bg);
@@ -150,24 +155,25 @@ STREAMLIT_CSS = """
     }
     .wa-status {
         display: flex;
-        gap: 10px;
+        gap: 8px;
         min-height: 68px;
         border: 1px solid var(--wa-line);
         border-radius: 8px;
-        padding: 10px;
+        padding: 9px;
         background: var(--wa-surface);
         box-shadow: var(--wa-shadow);
     }
     .wa-status-icon {
         flex: 0 0 auto;
-        width: 30px;
-        height: 30px;
+        width: 26px;
+        height: 26px;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         border-radius: 999px;
         background: #f3f4f6;
         color: #1f2937;
+        font-size: 13px;
         font-weight: 800;
     }
     .wa-status b {
@@ -176,6 +182,12 @@ STREAMLIT_CSS = """
         font-size: 17px;
         line-height: 1.22;
         overflow-wrap: anywhere;
+    }
+    .wa-status .wa-muted {
+        font-size: 11px !important;
+        font-weight: 700;
+        line-height: 1.25 !important;
+        white-space: nowrap !important;
     }
     .wa-status-detail {
         margin-top: 2px;
@@ -196,7 +208,6 @@ STREAMLIT_CSS = """
         background: var(--wa-amber-soft);
     }
     .wa-table-surface,
-    .wa-hand-panel,
     .wa-timeline-card {
         border: 1px solid var(--wa-line);
         border-radius: 8px;
@@ -408,9 +419,63 @@ STREAMLIT_CSS = """
         border-color: #a7f3d0;
         background: var(--wa-teal-soft);
     }
+    .st-key-right_command_panel {
+        border: 1px solid var(--wa-line);
+        border-radius: 8px;
+        padding: var(--wa-space-4) !important;
+        background: var(--wa-surface);
+        box-shadow: var(--wa-command-shadow);
+    }
+    .st-key-right_command_panel [data-testid="stVerticalBlock"] {
+        gap: 0.55rem;
+    }
+    .st-key-right_command_panel [data-testid="stWidgetLabel"] {
+        min-height: auto;
+        color: var(--wa-muted);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1.35;
+    }
+    .st-key-right_command_panel [data-testid="stTextArea"] textarea,
+    .st-key-right_command_panel [data-testid="stSelectbox"] {
+        font-size: 13px;
+    }
+    .st-key-right_command_panel [data-testid="stButton"] > button {
+        min-height: 42px;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+    .st-key-right_command_panel [data-testid="stBaseButton-primary"],
+    .st-key-right_command_panel button[kind="primary"] {
+        border-color: #ef4444;
+        background: #ef4444;
+        color: #ffffff;
+    }
+    .st-key-right_command_panel [data-testid="stBaseButton-primary"]:hover,
+    .st-key-right_command_panel button[kind="primary"]:hover {
+        border-color: #dc2626;
+        background: #dc2626;
+    }
+    .st-key-right_command_panel [data-testid="stBaseButton-secondary"],
+    .st-key-right_command_panel button[kind="secondary"] {
+        border-color: #fed7aa;
+        background: #fff7ed;
+        color: #9a3412;
+    }
+    .wa-command-section + .wa-command-section {
+        margin-top: var(--wa-space-5);
+    }
+    .wa-command-divider {
+        height: 1px;
+        margin: var(--wa-space-6) 0 var(--wa-space-4);
+        background: var(--wa-line);
+    }
     .wa-hand-panel {
-        padding: 14px;
-        border-color: #fecaca;
+        border: 1px solid #fecaca;
+        border-radius: 8px;
+        padding: var(--wa-space-4);
         background: #fff7f7;
     }
     .wa-hand-panel-neutral {
@@ -425,24 +490,66 @@ STREAMLIT_CSS = """
         border-color: #a7f3d0;
         background: var(--wa-teal-soft);
     }
+    .wa-hand-head h3 {
+        margin: 0 0 var(--wa-space-3);
+        color: var(--wa-text);
+        font-size: 21px;
+        line-height: 1.25;
+    }
+    .wa-action-heading {
+        margin: var(--wa-space-3) 0 6px;
+        color: var(--wa-text);
+        font-size: 16px;
+        font-weight: 800;
+        line-height: 1.3;
+    }
+    .wa-action-caption {
+        margin: 4px 0 10px;
+        color: var(--wa-muted);
+        font-size: 12px;
+        line-height: 1.45;
+    }
+    .wa-auto-progress {
+        border: 1px solid #fed7aa;
+        border-radius: 8px;
+        padding: 10px var(--wa-space-3);
+        background: var(--wa-amber-soft);
+        color: #9a3412;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+    .wa-auto-progress b,
+    .wa-auto-progress span {
+        display: block;
+    }
+    .wa-auto-progress span {
+        margin-top: 2px;
+        font-size: 12px;
+        font-weight: 800;
+    }
     .wa-primary-note {
         color: var(--wa-text);
+    }
+    .wa-primary-note b {
+        display: block;
+        font-size: 15px;
+        line-height: 1.35;
     }
     .wa-private-panel {
         display: flex;
         flex-direction: column;
-        gap: 14px;
-        margin-top: 14px;
+        gap: var(--wa-space-4);
+        padding-top: 0;
     }
     .wa-private-block h3 {
         margin: 0 0 8px;
         color: var(--wa-text);
-        font-size: 19px;
+        font-size: 17px;
         line-height: 1.3;
     }
     .wa-role-note {
         border-radius: 8px;
-        padding: 11px 12px;
+        padding: 10px var(--wa-space-3);
         background: #dbeafe;
         color: #1d4ed8;
         font-size: 13px;
@@ -454,7 +561,7 @@ STREAMLIT_CSS = """
         padding-left: 1.1rem;
         color: #344054;
         font-size: 13px;
-        line-height: 1.55;
+        line-height: 1.5;
     }
     .wa-private-empty {
         color: var(--wa-muted);
@@ -488,10 +595,51 @@ STREAMLIT_CSS = """
         font-size: 13px;
         line-height: 1.55;
     }
+    .wa-observation-memo {
+        border: 1px solid var(--wa-line);
+        border-radius: 8px;
+        padding: var(--wa-space-3);
+        background: #fbfbfc;
+    }
+    .wa-observation-memo-head {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+    .wa-observation-memo h3 {
+        margin: 0;
+        color: var(--wa-text);
+        font-size: 15px;
+        line-height: 1.3;
+    }
+    .wa-observation-memo span {
+        flex: 0 0 auto;
+        color: var(--wa-muted);
+        font-size: 11px;
+    }
+    .wa-observation-memo ul {
+        margin: 0;
+        padding-left: 1.1rem;
+        color: #344054;
+        font-size: 12px;
+        line-height: 1.5;
+    }
     .wa-advance-note {
         border-left: 3px solid var(--wa-amber);
-        padding: 2px 0 2px 10px;
+        padding: 3px 0 3px var(--wa-space-3);
         color: var(--wa-text);
+    }
+    .wa-action-block {
+        margin-bottom: var(--wa-space-3);
+    }
+    .wa-action-block h4 {
+        margin: 0;
+        color: var(--wa-text);
+        font-size: 17px;
+        font-weight: 800;
+        line-height: 1.3;
     }
     .wa-primary-note div,
     .wa-advance-note div {
@@ -548,6 +696,21 @@ STREAMLIT_CSS = """
             display: flex;
             justify-content: space-between;
             gap: 8px;
+        }
+        .st-key-right_command_panel {
+            margin-top: var(--wa-space-4);
+            padding: 14px !important;
+        }
+        .wa-hand-head h3 {
+            font-size: 20px;
+        }
+        .wa-observation-memo-head {
+            align-items: flex-start;
+            flex-direction: column;
+            gap: 3px;
+        }
+        .wa-observation-memo span {
+            flex: 0 1 auto;
         }
     }
     @media (max-width: 460px) {

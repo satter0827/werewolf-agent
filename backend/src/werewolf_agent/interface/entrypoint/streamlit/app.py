@@ -4,15 +4,20 @@ from __future__ import annotations
 
 import importlib
 import secrets
+import time
 from typing import Any, cast
 from uuid import uuid4
 
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.schemas import LocalRulesSettings, RulesetResponse
 from werewolf_agent.interface.entrypoint.streamlit.components import (
+    action_header_html,
     advance_note_html,
+    auto_progress_html,
+    command_divider_html,
     game_table_html,
     hand_panel_html,
+    observation_memo_html,
     observation_panel_html,
     observer_log_html,
     status_grid_html,
@@ -26,7 +31,7 @@ from werewolf_agent.interface.entrypoint.streamlit.i18n import (
     remember_language,
 )
 from werewolf_agent.interface.entrypoint.streamlit.operations import (
-    advance_until_input,
+    advance_one_step,
     check_connection,
     create_game_from_setup,
     list_recent_games,
@@ -68,10 +73,16 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_API_URL,
     KEY_MESSAGE,
     KEY_SELECTED_SAVE_ID,
+    auto_advance_state,
     clear_message,
+    consume_auto_advance_notice,
     control_tokens_by_slot,
+    pause_auto_advance,
+    record_auto_advance_step,
     remember_control_token,
     remember_selected_save,
+    start_auto_advance,
+    sync_auto_advance_game,
     text_value,
 )
 from werewolf_agent.interface.entrypoint.streamlit.styles import STREAMLIT_CSS
@@ -125,6 +136,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         )
         return
 
+    sync_auto_advance_game(st.session_state, selected_option.game_id)
     try:
         screen = load_game_screen(
             api_url=api_url,
@@ -139,9 +151,11 @@ def _render_app(st: Any, settings: AppSettings) -> None:
     except AppError as exc:
         st.error(exc.detail)
         return
+    if selected_option.mode != "playable" or screen.can_submit_action or screen.is_completed:
+        pause_auto_advance(st.session_state)
 
     _render_status_bar(st, screen)
-    table_column, hand_column = st.columns([2.15, 1], gap="medium")
+    table_column, hand_column = st.columns([1.55, 1], gap="medium")
     with table_column:
         _render_game_table(st, screen, catalog=catalog, lang=lang)
         _render_timeline(st, screen, variant="desktop", catalog=catalog, lang=lang)
@@ -732,29 +746,44 @@ def _render_action_panel(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
-    if screen.screen_mode == "observer":
-        if screen.observer_log is not None:
-            st.markdown(observer_log_html(screen.observer_log), unsafe_allow_html=True)
-        return
+    with st.container(border=False, key="right_command_panel"):
+        st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
+        if screen.screen_mode == "observer":
+            if screen.observer_log is not None:
+                st.markdown(observer_log_html(screen.observer_log), unsafe_allow_html=True)
+            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
+            return
 
-    if screen.observation is not None:
-        st.markdown(
-            observation_panel_html(
-                screen.observation,
-                role_title=catalog.t(lang, "observation.role_title"),
-                info_title=catalog.t(lang, "observation.info_title"),
-                role_note_template=catalog.t(lang, "game.role_note"),
-                empty_text=catalog.t(lang, "observation.empty"),
-            ),
-            unsafe_allow_html=True,
-        )
+        if screen.observation is not None:
+            st.markdown(
+                observation_panel_html(
+                    screen.observation,
+                    role_title=catalog.t(lang, "observation.role_title"),
+                    info_title=catalog.t(lang, "observation.info_title"),
+                    role_note_template=catalog.t(lang, "game.role_note"),
+                    empty_text=catalog.t(lang, "observation.empty"),
+                ),
+                unsafe_allow_html=True,
+            )
 
-    if screen.is_completed:
-        return
+        if screen.is_completed:
+            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
+            return
 
-    if screen.can_submit_action:
-        _render_action_form(
+        if screen.can_submit_action:
+            _render_action_form(
+                st,
+                settings=settings,
+                api_url=api_url,
+                screen=screen,
+                selected_option=selected_option,
+                catalog=catalog,
+                lang=lang,
+            )
+            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
+            return
+
+        _render_auto_advance_controls(
             st,
             settings=settings,
             api_url=api_url,
@@ -763,23 +792,7 @@ def _render_action_panel(
             catalog=catalog,
             lang=lang,
         )
-        return
-
-    st.divider()
-    st.markdown(advance_note_html(screen.hand_panel), unsafe_allow_html=True)
-    if screen.hand_panel.can_advance and st.button(
-        catalog.t(lang, "action.advance_until_input"),
-        type="primary",
-        use_container_width=True,
-    ):
-        _run_until_input(
-            st,
-            settings=settings,
-            api_url=api_url,
-            selected_option=selected_option,
-            catalog=catalog,
-            lang=lang,
-        )
+        st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
 
 
 def _render_action_form(
@@ -796,8 +809,11 @@ def _render_action_form(
     if screen.observation is None or human_player_id is None:
         return
 
-    st.divider()
-    st.markdown(f"#### {catalog.t(lang, 'game.current.playable')}")
+    st.markdown(command_divider_html(), unsafe_allow_html=True)
+    st.markdown(
+        action_header_html(catalog.t(lang, "game.current.playable")),
+        unsafe_allow_html=True,
+    )
     action_choices = screen.observation.action_choices
     selected_action_type = st.radio(
         catalog.t(lang, "game.current.playable"),
@@ -856,21 +872,71 @@ def _render_action_form(
             st.error(exc.detail)
             return
         clear_message(st.session_state)
-        st.success(catalog.t(lang, "action.send"))
-        if settings.streamlit_auto_advance_after_action:
-            _run_until_input(
-                st,
-                settings=settings,
+        try:
+            advance_one_step(
                 api_url=api_url,
-                selected_option=selected_option,
-                catalog=catalog,
-                lang=lang,
+                settings=settings,
+                game_id=selected_option.game_id,
             )
+        except AppError as exc:
+            st.error(exc.detail)
             return
         st.rerun()
 
 
-def _run_until_input(
+def _render_auto_advance_controls(
+    st: Any,
+    *,
+    settings: AppSettings,
+    api_url: str,
+    screen: GameScreenView,
+    selected_option: SavedGameOptionView,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    if selected_option.human_player_id is None:
+        return
+
+    st.markdown(command_divider_html(), unsafe_allow_html=True)
+    st.markdown(advance_note_html(screen.hand_panel), unsafe_allow_html=True)
+    notice = consume_auto_advance_notice(st.session_state)
+    if notice:
+        st.warning(notice)
+    state = auto_advance_state(st.session_state, selected_option.game_id)
+    if state.running:
+        st.markdown(
+            auto_progress_html(
+                detail=catalog.t(lang, "action.auto_advance_running"),
+                steps=state.steps,
+                max_steps=settings.streamlit_max_auto_steps,
+            ),
+            unsafe_allow_html=True,
+        )
+        if st.button(
+            catalog.t(lang, "action.auto_advance_pause"),
+            use_container_width=True,
+        ):
+            pause_auto_advance(st.session_state)
+            st.rerun()
+    elif screen.hand_panel.can_advance and st.button(
+        catalog.t(lang, "action.advance_until_input"),
+        type="primary",
+        use_container_width=True,
+    ):
+        start_auto_advance(st.session_state, selected_option.game_id)
+        st.rerun()
+
+    _render_auto_advance_fragment(
+        st,
+        settings=settings,
+        api_url=api_url,
+        selected_option=selected_option,
+        catalog=catalog,
+        lang=lang,
+    )
+
+
+def _render_auto_advance_fragment(
     st: Any,
     *,
     settings: AppSettings,
@@ -879,23 +945,40 @@ def _run_until_input(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    human_player_id = selected_option.human_player_id
-    if human_player_id is None:
+    if not auto_advance_state(st.session_state, selected_option.game_id).running:
         return
-    try:
-        result = advance_until_input(
-            api_url=api_url,
-            settings=settings,
+
+    def auto_advance_once() -> None:
+        state = auto_advance_state(st.session_state, selected_option.game_id)
+        if not state.running:
+            return
+        now = time.monotonic()
+        interval = settings.streamlit_auto_advance_interval_seconds
+        if state.last_step_at and now - state.last_step_at < interval:
+            return
+        if state.steps >= settings.streamlit_max_auto_steps:
+            pause_auto_advance(
+                st.session_state,
+                notice=catalog.t(lang, "game.advance.limit"),
+            )
+            st.rerun(scope="app")
+        try:
+            advance_one_step(
+                api_url=api_url,
+                settings=settings,
+                game_id=selected_option.game_id,
+            )
+        except AppError as exc:
+            pause_auto_advance(st.session_state, notice=exc.detail)
+            st.rerun(scope="app")
+        record_auto_advance_step(
+            st.session_state,
             game_id=selected_option.game_id,
+            now=now,
         )
-    except AppError as exc:
-        st.error(exc.detail)
-        return
-    if result.completed or result.reached_input:
-        st.rerun()
-        return
-    if result.hit_limit:
-        st.warning(catalog.t(lang, "game.advance.limit"))
+        st.rerun(scope="app")
+
+    st.fragment(run_every=settings.streamlit_auto_advance_interval_seconds)(auto_advance_once)()
 
 
 def _selected_option_index(options: list[SavedGameOptionView], selected_id: str) -> int:

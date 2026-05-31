@@ -8,6 +8,7 @@ from textwrap import dedent
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     GameScreenView,
     HandPanelView,
+    ObservationMemoView,
     ObservationView,
     ObserverLogView,
     PlayerSeatView,
@@ -115,7 +116,7 @@ def observation_panel_html(
     )
     return html(
         f"""
-        <section class="wa-private-panel">
+        <section class="wa-private-panel wa-command-section">
             <div class="wa-private-block">
                 <h3>{escape(role_title)}</h3>
                 <div class="wa-role-note">{role_note}</div>
@@ -134,11 +135,9 @@ def hand_panel_html(hand: HandPanelView) -> str:
     tone = css_token(hand.tone)
     return html(
         f"""
-        <aside class="wa-hand-panel wa-hand-panel-{tone}">
-            <div class="wa-section-head">
-                <div>
-                    <h3>{escape(hand.heading)}</h3>
-                </div>
+        <aside class="wa-hand-panel wa-command-section wa-hand-panel-{tone}">
+            <div class="wa-hand-head">
+                <h3>{escape(hand.heading)}</h3>
             </div>
             <div class="wa-primary-note">
                 <b>{escape(hand.title)}</b>
@@ -160,7 +159,7 @@ def observer_log_html(log: ObserverLogView) -> str:
     )
     return html(
         f"""
-        <section class="wa-private-panel wa-observer-log">
+        <section class="wa-private-panel wa-observer-log wa-command-section">
             <div class="wa-private-block">
                 <h3>{escape(log.title)}</h3>
             </div>
@@ -172,6 +171,50 @@ def observer_log_html(log: ObserverLogView) -> str:
                 {action_body}
             </div>
         </section>
+        """
+    )
+
+
+def observation_memo_html(memo: ObservationMemoView) -> str:
+    """Return a public-only observation memo for the right panel."""
+    lines = "".join(f"<li>{escape(line)}</li>" for line in memo.lines)
+    return html(
+        f"""
+        <section class="wa-observation-memo wa-command-section">
+            <div class="wa-observation-memo-head">
+                <h3>{escape(memo.title)}</h3>
+                <span>{escape(memo.updated_label)}</span>
+            </div>
+            <ul>{lines}</ul>
+        </section>
+        """
+    )
+
+
+def command_divider_html() -> str:
+    """Return a visual divider inside the right command panel."""
+    return '<div class="wa-command-divider" aria-hidden="true"></div>'
+
+
+def action_header_html(title: str) -> str:
+    """Return the action block heading for the right command panel."""
+    return html(
+        f"""
+        <section class="wa-action-block wa-command-section">
+            <h4>{escape(title)}</h4>
+        </section>
+        """
+    )
+
+
+def auto_progress_html(*, detail: str, steps: int, max_steps: int) -> str:
+    """Return auto-advance running state markup."""
+    return html(
+        f"""
+        <div class="wa-auto-progress" aria-live="polite">
+            <b>{escape(detail)}</b>
+            <span>{steps} / {max_steps}</span>
+        </div>
         """
     )
 
@@ -196,10 +239,10 @@ def advance_note_html(hand: HandPanelView) -> str:
     """Return the waiting-state advance guidance markup."""
     return html(
         f"""
-        <div class="wa-advance-note">
+        <section class="wa-advance-note wa-command-section">
             <b>{escape(hand.advance_title)}</b>
             <div>{escape(hand.advance_detail)}</div>
-        </div>
+        </section>
         """
     )
 

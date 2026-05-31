@@ -107,8 +107,8 @@ DEFAULT_STREAMLIT_EVENT_LIMIT: Final = _integer_default("streamlit_event_limit")
 DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
 DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
 DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
-DEFAULT_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION: Final = _bool_default(
-    "streamlit_auto_advance_after_action"
+DEFAULT_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS: Final = _float_default(
+    "streamlit_auto_advance_interval_seconds"
 )
 DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE: Final = _string_default("streamlit_initial_sidebar_state")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
@@ -320,9 +320,10 @@ class AppSettings(BaseSettings):
         ge=1,
         validation_alias="WEREWOLF_STREAMLIT_MAX_AUTO_STEPS",
     )
-    streamlit_auto_advance_after_action: bool = Field(
-        default=DEFAULT_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION,
-        validation_alias="WEREWOLF_STREAMLIT_AUTO_ADVANCE_AFTER_ACTION",
+    streamlit_auto_advance_interval_seconds: float = Field(
+        default=DEFAULT_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS",
     )
     streamlit_initial_sidebar_state: StreamlitSidebarState = Field(
         default=cast(StreamlitSidebarState, DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE),
