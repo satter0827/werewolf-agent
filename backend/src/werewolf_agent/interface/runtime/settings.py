@@ -85,7 +85,7 @@ DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
 DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
 DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
-DEFAULT_LLM_AGENTS_FILE: Final = _string_default("llm_agents_file")
+DEFAULT_LLM_PLAYERS_FILE: Final = _string_default("llm_players_file")
 DEFAULT_LOG_LEVEL: Final = _string_default("log_level")
 DEFAULT_LOG_OUTPUT: Final = _string_default("log_output")
 DEFAULT_LOG_DIR: Final = _path_default("log_dir")
@@ -229,9 +229,9 @@ class AppSettings(BaseSettings):
         default=DEFAULT_LLM_FAKE_RESPONSES_FILE,
         validation_alias="WEREWOLF_LLM_FAKE_RESPONSES_FILE",
     )
-    llm_agents_file: str = Field(
-        default=DEFAULT_LLM_AGENTS_FILE,
-        validation_alias="WEREWOLF_LLM_AGENTS_FILE",
+    llm_players_file: str = Field(
+        default=DEFAULT_LLM_PLAYERS_FILE,
+        validation_alias="WEREWOLF_LLM_PLAYERS_FILE",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_output: LogOutput = Field(
@@ -506,9 +506,9 @@ class AppSettings(BaseSettings):
         return _optional_repository_path(self.llm_fake_responses_file)
 
     @property
-    def llm_agents_path(self) -> Path | None:
-        """Return the configured external LLM agent definition file, if any."""
-        return _optional_repository_path(self.llm_agents_file)
+    def llm_players_path(self) -> Path | None:
+        """Return the configured external LLM player definition file, if any."""
+        return _optional_repository_path(self.llm_players_file)
 
     @property
     def game_rules_path(self) -> Path | None:
@@ -532,7 +532,7 @@ class AppSettings(BaseSettings):
     def llm_definitions(self) -> LlmDefinitions:
         """Return LLM definitions loaded by runtime settings."""
         return load_llm_definitions(
-            agents_path=self.llm_agents_path,
+            players_path=self.llm_players_path,
             prompt_path=self.llm_prompt_path,
             fake_responses_path=self.llm_fake_responses_path,
         )

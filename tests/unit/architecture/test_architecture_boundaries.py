@@ -135,11 +135,11 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentDecision",
             "AgentObservation",
             "AgentPhase",
-            "AgentProfile",
-            "AgentProfileCatalog",
             "AgentPlayerStatus",
             "LangChainDecisionProvider",
             "LlmDecisionProvider",
+            "PlayerProfile",
+            "PlayerProfileCatalog",
             "VisiblePlayer",
         },
     )

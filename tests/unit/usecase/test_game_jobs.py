@@ -6,14 +6,14 @@ from uuid import UUID, uuid4
 import pytest
 
 from werewolf_agent.commons.shared.definitions import (
-    AgentDefinition,
-    FakeResponsesDefinition,
+    FakeDecisionCatalog,
     GameDefinitions,
     GameRoleDefinitions,
     GameRuleDefinitions,
-    LlmAgentDefinitions,
     LlmDefinitions,
     LocalRulesDefinition,
+    PlayerProfile,
+    PlayerRoster,
     PromptDefinition,
     PromptMessageDefinition,
     RoleDefinition,
@@ -280,15 +280,43 @@ def game_definitions() -> GameDefinitions:
 
 def llm_definitions() -> LlmDefinitions:
     return LlmDefinitions(
-        agents=LlmAgentDefinitions(
-            agents={
-                "default": AgentDefinition(
-                    name="Default",
+        players=PlayerRoster(
+            players={
+                "default": PlayerProfile(
+                    name="葵",
                     personality="Careful",
                     speaking_style="Short",
                     reasoning_style="Logical",
                     risk_tolerance="medium",
-                )
+                ),
+                "sharp": PlayerProfile(
+                    name="蓮",
+                    personality="Sharp",
+                    speaking_style="Direct",
+                    reasoning_style="Contradiction first",
+                    risk_tolerance="high",
+                ),
+                "quiet": PlayerProfile(
+                    name="遥",
+                    personality="Quiet",
+                    speaking_style="Calm",
+                    reasoning_style="Evidence first",
+                    risk_tolerance="low",
+                ),
+                "steady": PlayerProfile(
+                    name="湊",
+                    personality="Steady",
+                    speaking_style="Brief",
+                    reasoning_style="Vote first",
+                    risk_tolerance="medium",
+                ),
+                "curious": PlayerProfile(
+                    name="芽衣",
+                    personality="Curious",
+                    speaking_style="Questioning",
+                    reasoning_style="Ask for reasons",
+                    risk_tolerance="medium",
+                ),
             }
         ),
         prompt=PromptDefinition(
@@ -315,26 +343,25 @@ def llm_definitions() -> LlmDefinitions:
                 )
             ],
         ),
-        fake_responses=FakeResponsesDefinition(
+        fake_responses=FakeDecisionCatalog(
             name="test",
             version=1,
             alias="local",
-            responses={
-                "speech": '{"type":"speech","player_id":"{{player_id}}","message":"hello"}',
-                "vote": ('{"type":"vote","player_id":"{{player_id}}","target_id":"{{target_id}}"}'),
+            templates={
+                "speech": (
+                    '{"type":"speech","player_id":"$player_id","message":"hello from $player_name"}'
+                ),
+                "vote": ('{"type":"vote","player_id":"$player_id","target_id":"$target_id"}'),
                 "werewolf_attack": (
-                    '{"type":"werewolf_attack","player_id":"{{player_id}}",'
-                    '"target_id":"{{target_id}}"}'
+                    '{"type":"werewolf_attack","player_id":"$player_id","target_id":"$target_id"}'
                 ),
                 "seer_inspect": (
-                    '{"type":"seer_inspect","player_id":"{{player_id}}",'
-                    '"target_id":"{{target_id}}"}'
+                    '{"type":"seer_inspect","player_id":"$player_id","target_id":"$target_id"}'
                 ),
                 "knight_guard": (
-                    '{"type":"knight_guard","player_id":"{{player_id}}",'
-                    '"target_id":"{{target_id}}"}'
+                    '{"type":"knight_guard","player_id":"$player_id","target_id":"$target_id"}'
                 ),
-                "pass": '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}',
+                "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
             },
         ),
     )
@@ -408,6 +435,40 @@ def test_create_game_normalizes_player_ids_and_sanitizes_public_events() -> None
     assert "role_counts" not in event_stream[0].payload
 
 
+def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
+    deps, _repository = dependencies()
+    use_cases = GameUseCases(deps)
+
+    first = use_cases.create_game_run(create_command(player_count=5, seed=10))
+    second = use_cases.create_game_run(create_command(player_count=5, seed=10))
+    third = use_cases.create_game_run(create_command(player_count=5, seed=11))
+
+    first_names = [player["name"] for player in first.state["players"]]
+    second_names = [player["name"] for player in second.state["players"]]
+    third_names = [player["name"] for player in third.state["players"]]
+
+    assert first_names == second_names
+    assert first_names != third_names
+    assert len(set(first_names)) == 5
+    assert not any(str(name).startswith("Player ") for name in first_names)
+
+
+def test_create_game_preserves_custom_player_names() -> None:
+    deps, _repository = dependencies()
+
+    result = GameUseCases(deps).create_game_run(
+        create_command(players=explicit_players(), seed=42),
+    )
+
+    assert [player["name"] for player in result.state["players"]] == [
+        "Alice",
+        "Bob",
+        "Carol",
+        "Dave",
+        "Eve",
+    ]
+
+
 def test_create_game_rejects_duplicate_normalized_player_ids() -> None:
     deps, _repository = dependencies()
     players = explicit_players()
@@ -446,7 +507,13 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert advanced.state["version"] == 2
     assert advanced.timeline
     assert "role_counts" not in json.dumps(timeline.model_dump(mode="json"))
+    assert "attacked_player_id" not in json.dumps(timeline.model_dump(mode="json"))
+    assert "protected_player_id" not in json.dumps(timeline.model_dump(mode="json"))
     assert timeline.items
+    assert any(
+        item["event_type"] == "night_resolved" and set(item["payload"]) <= {"killed_player_id"}
+        for item in timeline.model_dump(mode="json")["items"]
+    )
     assert timeline.next_after <= repository.latest_public_turn_sequence(UUID(created.game_id))
     assert "game.phase.drive_started" in [event.action for event in telemetry.events]
     assert "game.phase.advance_completed" in [event.action for event in telemetry.events]
@@ -458,6 +525,23 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert all("player_id" not in event.fields for event in agent_events)
     assert all("game_action_type" not in event.fields for event in agent_events)
     assert all("agent_type" in event.fields for event in agent_events)
+
+
+def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> None:
+    deps, _repository = dependencies()
+    use_cases = GameUseCases(deps)
+    created = use_cases.create_game_run(create_command(player_count=5, seed=1))
+
+    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    serialized = json.dumps(advanced.timeline)
+    speech_events = [item for item in advanced.timeline if item["event_type"] == "speech_recorded"]
+
+    assert speech_events
+    assert all("hello from" in item["payload"]["message"] for item in speech_events)
+    assert "role_counts" not in serialized
+    assert "target_role" not in serialized
+    assert "target_faction" not in serialized
 
 
 def test_submit_manual_action_emits_sanitized_telemetry() -> None:
@@ -473,7 +557,7 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
                 {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
                 {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
             ],
-            seed=1,
+            seed=2,
         ),
     )
     control_token = created.control_tokens["p1"] if created.control_tokens else ""
@@ -526,7 +610,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
                 {"id": "p4", "name": "Dave", "agent_type": DEFAULT_AGENT_TYPE},
                 {"id": "p5", "name": "Eve", "agent_type": DEFAULT_AGENT_TYPE},
             ],
-            seed=1,
+            seed=2,
         ),
     )
     control_token = created.control_tokens["p1"] if created.control_tokens else ""

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from werewolf_agent.domain.game.models import (
     FACTION_VILLAGE,
+    FACTION_WEREWOLF,
     DomainEvent,
     GameSnapshot,
     Phase,
@@ -25,6 +26,16 @@ from werewolf_agent.usecase.jobs.games import (
     StoredGameTurn,
     Winner,
 )
+
+PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
+    "game_started": frozenset({"player_count"}),
+    "phase_started": frozenset({"phase"}),
+    "speech_recorded": frozenset({"message"}),
+    "vote_submitted": frozenset({"target_id"}),
+    "vote_resolved": frozenset({"eliminated_player_id", "counts", "tied_player_ids"}),
+    "night_resolved": frozenset({"killed_player_id"}),
+    "game_finished": frozenset({"winner", "reason"}),
+}
 
 
 def public_state_payload_from_run(run: StoredGameRun) -> dict[str, Any]:
@@ -140,9 +151,18 @@ def event_to_create(event: DomainEvent) -> GameEventCreate:
 
 def public_safe_payload(event: DomainEvent) -> dict[str, Any]:
     """Remove fields that must never appear in public event payloads."""
-    payload = dict(event.payload)
-    if event.event_type == "game_started":
-        payload.pop("role_counts", None)
+    allowed_keys = PUBLIC_EVENT_PAYLOAD_KEYS.get(event.event_type)
+    payload = (
+        {key: event.payload[key] for key in allowed_keys if key in event.payload}
+        if allowed_keys is not None
+        else {}
+    )
+    if event.event_type == "game_finished":
+        winner = payload.get("winner")
+        if winner == FACTION_VILLAGE:
+            payload["winner"] = "villagers"
+        elif winner == FACTION_WEREWOLF:
+            payload["winner"] = "werewolves"
     return payload
 
 

@@ -1,7 +1,7 @@
 import pytest
 
 from werewolf_agent.commons.shared.definitions import (
-    FakeResponsesDefinition,
+    FakeDecisionCatalog,
     PromptDefinition,
     PromptMessageDefinition,
 )
@@ -70,7 +70,7 @@ def _available_actions(role: str, phase: AgentPhase) -> list[AgentActionType]:
 
 def provider() -> LangChainDecisionProvider:
     definitions = load_llm_definitions(
-        agents_path=None,
+        players_path=None,
         prompt_path=None,
         fake_responses_path=None,
     )
@@ -82,7 +82,7 @@ def provider() -> LangChainDecisionProvider:
 
 def test_prompt_resource_uses_mlflow_style_metadata_and_langchain_variables() -> None:
     prompt = load_llm_definitions(
-        agents_path=None,
+        players_path=None,
         prompt_path=None,
         fake_responses_path=None,
     ).prompt
@@ -98,18 +98,21 @@ def test_prompt_resource_uses_mlflow_style_metadata_and_langchain_variables() ->
 
 def test_fake_response_resource_uses_action_response_pools() -> None:
     fake_responses = load_llm_definitions(
-        agents_path=None,
+        players_path=None,
         prompt_path=None,
         fake_responses_path=None,
     ).fake_responses
 
     assert fake_responses.name == "werewolf-agent-fake-decisions"
     assert fake_responses.tags["provider"] == "fake-list-llm"
-    assert len(fake_responses.responses[AgentActionType.SPEECH.value]) > 1
-    assert fake_responses.response_for(
+    assert len(fake_responses.templates[AgentActionType.SPEECH.value]) > 1
+    assert fake_responses.render(
         AgentActionType.VOTE.value,
-        player_id="p1",
-        target_id="p2",
+        context={
+            "player_id": "p1",
+            "target_id": "p2",
+            "target_name": "Bob",
+        },
     ).startswith('{"type":"vote"')
 
 
@@ -187,19 +190,19 @@ def test_langchain_fake_provider_passes_when_observation_is_not_for_player() -> 
 
 
 def test_langchain_fake_provider_falls_back_for_invalid_json() -> None:
-    fake_responses = FakeResponsesDefinition.model_validate(
+    fake_responses = FakeDecisionCatalog.model_validate(
         {
             "name": "bad",
             "version": 1,
             "alias": "local",
-            "responses": {
+            "templates": {
                 "vote": "not json",
-                "pass": '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}',
+                "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
             },
         }
     )
     definitions = load_llm_definitions(
-        agents_path=None,
+        players_path=None,
         prompt_path=None,
         fake_responses_path=None,
     )
@@ -216,22 +219,22 @@ def test_langchain_fake_provider_falls_back_for_invalid_json() -> None:
 
 
 def test_langchain_fake_provider_falls_back_for_invalid_target() -> None:
-    fake_responses = FakeResponsesDefinition.model_validate(
+    fake_responses = FakeDecisionCatalog.model_validate(
         {
             "name": "bad",
             "version": 1,
             "alias": "local",
-            "responses": {
+            "templates": {
                 "vote": (
-                    '{"type":"vote","player_id":"{{player_id}}",'
+                    '{"type":"vote","player_id":"$player_id",'
                     '"target_id":"missing","reason":"bad target"}'
                 ),
-                "pass": '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}',
+                "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
             },
         }
     )
     definitions = load_llm_definitions(
-        agents_path=None,
+        players_path=None,
         prompt_path=None,
         fake_responses_path=None,
     )

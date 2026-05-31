@@ -11,7 +11,7 @@ from langchain_core.language_models.fake import FakeListLLM
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
-from werewolf_agent.commons.shared.definitions import FakeResponsesDefinition, PromptDefinition
+from werewolf_agent.commons.shared.definitions import FakeDecisionCatalog, PromptDefinition
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_NO_ATTACK_TARGETS,
     MESSAGE_NO_GUARD_TARGETS,
@@ -27,6 +27,7 @@ from werewolf_agent.domain.llm.models import (
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
+    VisiblePlayer,
 )
 
 
@@ -36,7 +37,7 @@ class LangChainDecisionProvider:
 
     prompt: PromptDefinition
     model: Any | None = None
-    fake_responses: FakeResponsesDefinition | None = None
+    fake_responses: FakeDecisionCatalog | None = None
     parser: PydanticOutputParser[AgentDecision] = field(
         default_factory=lambda: PydanticOutputParser(pydantic_object=AgentDecision)
     )
@@ -63,7 +64,13 @@ class LangChainDecisionProvider:
             )
         )
         try:
-            raw_output = self._invoke_model(prompt_value, action_type, player_id, target_id)
+            raw_output = self._invoke_model(
+                prompt_value,
+                action_type,
+                player_id,
+                target_id,
+                observation,
+            )
             decision = self.parser.parse(_output_text(raw_output))
         except Exception as exc:
             return AgentDecision.pass_(
@@ -78,13 +85,13 @@ class LangChainDecisionProvider:
         action_type: AgentActionType,
         player_id: str,
         target_id: str | None,
+        observation: AgentObservation,
     ) -> object:
         if self.fake_responses is not None:
-            response = self.fake_responses.response_for(
+            response = self.fake_responses.render(
                 action_type.value,
-                player_id=player_id,
-                target_id=target_id,
-                selector=_fake_response_selector(player_id, action_type, target_id),
+                context=_fake_template_context(player_id, target_id, observation),
+                selector=_fake_response_selector(player_id, action_type, target_id, observation),
             )
             return FakeListLLM(responses=[response]).invoke(prompt_value)
         if self.model is None:
@@ -145,7 +152,10 @@ def _target_for_action(
     action_type: AgentActionType,
 ) -> str | None:
     candidates = _target_candidates(observation, action_type)
-    return candidates[0] if candidates else None
+    if not candidates:
+        return None
+    selector = _fake_target_selector(observation.me.id, observation, action_type)
+    return candidates[selector % len(candidates)]
 
 
 def _target_candidates(
@@ -186,9 +196,77 @@ def _fake_response_selector(
     player_id: str,
     action_type: AgentActionType,
     target_id: str | None,
+    observation: AgentObservation,
 ) -> int:
-    digest = sha256(f"{player_id}:{action_type.value}:{target_id or ''}".encode()).digest()
+    digest = sha256(
+        (
+            f"{player_id}:{action_type.value}:{target_id or ''}:"
+            f"{observation.day}:{len(observation.speeches)}:{len(observation.vote_rounds)}"
+        ).encode()
+    ).digest()
     return int.from_bytes(digest[:8], "big")
+
+
+def _fake_target_selector(
+    player_id: str,
+    observation: AgentObservation,
+    action_type: AgentActionType,
+) -> int:
+    digest = sha256(f"{player_id}:{action_type.value}:{observation.day}:target".encode()).digest()
+    return int.from_bytes(digest[:8], "big")
+
+
+def _fake_template_context(
+    player_id: str,
+    target_id: str | None,
+    observation: AgentObservation,
+) -> dict[str, str]:
+    target = next((player for player in observation.players if player.id == target_id), None)
+    focus = _focus_player(observation)
+    profile = observation.profile
+    return {
+        "player_id": player_id,
+        "player_name": observation.me.name,
+        "target_id": target_id or "",
+        "target_name": target.name if target is not None else "",
+        "focus_id": focus.id if focus is not None else "",
+        "focus_name": focus.name if focus is not None else "",
+        "day": str(observation.day),
+        "phase": observation.phase.value,
+        "role": observation.role or "",
+        "persona": _persona_text(profile),
+        "profile_name": profile.name if profile is not None else observation.me.name,
+    }
+
+
+def _persona_text(profile: object | None) -> str:
+    if profile is None:
+        return ""
+    personality = getattr(profile, "personality", "")
+    speaking_style = getattr(profile, "speaking_style", "")
+    reasoning_style = getattr(profile, "reasoning_style", "")
+    risk_tolerance = getattr(profile, "risk_tolerance", "")
+    return " / ".join(
+        item
+        for item in [personality, speaking_style, reasoning_style, f"risk={risk_tolerance}"]
+        if item
+    )
+
+
+def _focus_player(observation: AgentObservation) -> VisiblePlayer | None:
+    candidates = [
+        player
+        for player in observation.players
+        if player.status is AgentPlayerStatus.ALIVE and player.id != observation.me.id
+    ]
+    if not candidates:
+        return None
+    selector = _fake_target_selector(
+        observation.me.id,
+        observation,
+        AgentActionType.SPEECH,
+    )
+    return candidates[selector % len(candidates)]
 
 
 def _prompt_inputs(

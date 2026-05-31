@@ -50,7 +50,7 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
     assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
-    assert PACKAGED_DEFAULTS["llm_agents_file"] == ""
+    assert PACKAGED_DEFAULTS["llm_players_file"] == ""
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
     assert PACKAGED_DEFAULTS["game_roles_file"] == ""
 
@@ -133,7 +133,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.model == "fake-list-llm"
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
-    assert settings.llm_agents_path is None
+    assert settings.llm_players_path is None
     assert settings.cors_allowed_methods_list == ["GET", "POST"]
     assert settings.cors_allowed_headers_list == ["*"]
     assert settings.game_role_name_map["werewolf"] == "人狼"
@@ -182,7 +182,10 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     }
 
     llm_definitions = build_llm_definitions(settings)
-    assert sorted(llm_definitions.agents.agents) == ["aggressive_debater", "calm_analyst"]
+    names = [profile.name for profile in llm_definitions.players.players.values()]
+    assert len(names) >= 8
+    assert len(set(names)) == len(names)
+    assert all(" " not in name for name in names)
     assert llm_definitions.prompt.response_format["schema"] == "AgentDecision"
 
 
@@ -201,8 +204,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "backend/src/werewolf_agent/resources/llm/fake_responses.toml",
     )
     monkeypatch.setenv(
-        "WEREWOLF_LLM_AGENTS_FILE",
-        "backend/src/werewolf_agent/resources/llm/agents.toml",
+        "WEREWOLF_LLM_PLAYERS_FILE",
+        "backend/src/werewolf_agent/resources/llm/players.toml",
     )
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
@@ -254,8 +257,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         == repository_root() / "backend/src/werewolf_agent/resources/llm/fake_responses.toml"
     )
     assert (
-        settings.llm_agents_path
-        == repository_root() / "backend/src/werewolf_agent/resources/llm/agents.toml"
+        settings.llm_players_path
+        == repository_root() / "backend/src/werewolf_agent/resources/llm/players.toml"
     )
     assert settings.game_default_ruleset_id == "custom"
     assert settings.game_default_ruleset_name == "Custom Rules"
@@ -296,7 +299,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
 def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:
     rules_file = tmp_path / "rules.toml"
     roles_file = tmp_path / "roles.toml"
-    agents_file = tmp_path / "agents.toml"
+    players_file = tmp_path / "players.toml"
     prompt_file = tmp_path / "prompt.toml"
     fake_responses_file = tmp_path / "fake_responses.toml"
 
@@ -333,9 +336,9 @@ plain = 4
 """.strip(),
         encoding="utf-8",
     )
-    agents_file.write_text(
+    players_file.write_text(
         """
-[agents.quiet]
+[players.quiet]
 enabled = true
 name = "Quiet"
 personality = "Careful"
@@ -363,8 +366,8 @@ content = "{{player_id}}"
 name = "test"
 version = 1
 alias = "local"
-[responses]
-pass = '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}'
+[templates]
+pass = '{"type":"pass","player_id":"$player_id","reason":"fallback"}'
 """.strip(),
         encoding="utf-8",
     )
@@ -376,7 +379,7 @@ pass = '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}'
         game_default_player_count=5,
         game_rules_file=str(rules_file),
         game_roles_file=str(roles_file),
-        llm_agents_file=str(agents_file),
+        llm_players_file=str(players_file),
         llm_prompt_file=str(prompt_file),
         llm_fake_responses_file=str(fake_responses_file),
     )
@@ -385,7 +388,7 @@ pass = '{"type":"pass","player_id":"{{player_id}}","reason":"fallback"}'
         "beast": 1,
         "plain": 4,
     }
-    assert sorted(settings.llm_definitions.agents.agents) == ["quiet"]
+    assert sorted(settings.llm_definitions.players.players) == ["quiet"]
     assert settings.llm_definitions.prompt.name == "test"
 
 

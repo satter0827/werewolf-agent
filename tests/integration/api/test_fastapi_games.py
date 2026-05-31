@@ -379,6 +379,7 @@ def test_game_list_and_timeline_return_public_read_models(client: TestClient) ->
     runs_payload = runs_response.json()
     timeline_payload = timeline_response.json()
     assert any(run["game_id"] == game_id for run in runs_payload["runs"])
+    assert not any(player["name"].startswith("Player ") for player in created["state"]["players"])
     assert timeline_payload["items"]
     assert "role_counts" not in json.dumps(timeline_payload)
 
@@ -468,6 +469,7 @@ def test_api_discussion_records_one_speech_per_alive_player_from_definition(
         item for item in response.json()["timeline"] if item["event_type"] == "speech_recorded"
     ]
     assert len(speech_events) == len(after_night["alive_player_ids"])
+    assert all(item["payload"].get("message") for item in speech_events)
 
 
 def test_create_game_validation_errors_use_problem_details(client: TestClient) -> None:

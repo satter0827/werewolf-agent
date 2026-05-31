@@ -208,7 +208,7 @@ def build_game_screen_view(
             observation=observation_view,
             human_player_id=human_player_id if effective_mode == "playable" else None,
         ),
-        timeline=timeline_items(turns),
+        timeline=timeline_items(turns, players=state.players),
         hand_panel=hand_panel_view(state, observation_view, effective_mode),
         observation=observation_view,
         current_turn_title=current_title,
@@ -312,15 +312,20 @@ def player_seats(
     return seats
 
 
-def timeline_items(turns: list[GameTimelineItem]) -> list[TimelineItemView]:
+def timeline_items(
+    turns: list[GameTimelineItem],
+    *,
+    players: list[PublicPlayerState],
+) -> list[TimelineItemView]:
     """Return public timeline rows without exposing raw payloads."""
+    player_names = _player_name_map(players)
     return [
         TimelineItemView(
             sequence=turn.sequence,
             icon=event_icon(turn.event_type).symbol,
             tone=event_icon(turn.event_type).tone,
             title=_event_title(turn),
-            detail=_event_detail(turn),
+            detail=_event_detail(turn, player_names=player_names),
             time_text=_time_text(turn.occurred_at),
             day_label=f"Day {turn.day}" if turn.day is not None else "-",
         )
@@ -495,26 +500,39 @@ def _event_title(turn: GameTimelineItem) -> str:
     return icon.label
 
 
-def _event_detail(turn: GameTimelineItem) -> str:
+def _event_detail(turn: GameTimelineItem, *, player_names: dict[str, str]) -> str:
     actor = turn.actor_id or str(turn.payload.get("player_id", ""))
-    actor_label = _public_actor_label(actor)
+    actor_label = _player_label(actor, player_names)
     if turn.event_type == "game_started":
         player_count = turn.payload.get("player_count")
         if player_count:
             return f"{player_count}人でゲームが始まりました。"
         return "ゲームが始まりました。"
     if turn.event_type == "speech_recorded":
+        message = str(turn.payload.get("message", "")).strip()
+        if message and actor_label:
+            return f"{actor_label}: 「{message}」"
+        if message:
+            return f"「{message}」"
         return f"{actor_label} が発言しました。" if actor_label else "プレイヤーが発言しました。"
-    if turn.event_type == "vote_recorded":
-        return f"{actor_label} が投票しました。" if actor_label else "投票が行われました。"
-    if turn.event_type == "night_action_recorded":
-        return "夜の行動が実行されました。(詳細は非公開です)"
-    if turn.event_type == "night_started":
-        return "夜のフェーズに移りました。"
+    if turn.event_type == "vote_submitted":
+        target_label = _player_label(turn.payload.get("target_id"), player_names)
+        if actor_label and target_label:
+            return f"{actor_label} が {target_label} に投票しました。"
+        return "投票が行われました。"
+    if turn.event_type == "vote_resolved":
+        eliminated = _player_label(turn.payload.get("eliminated_player_id"), player_names)
+        if eliminated:
+            return f"投票の結果、{eliminated} が退場しました。"
+        tied = _player_list_label(turn.payload.get("tied_player_ids"), player_names)
+        if tied:
+            return f"投票は同数でした: {tied}。退場者はいません。"
+        return "投票の結果、退場者はいません。"
     if turn.event_type == "night_resolved":
-        return "夜が明けました。生存者たちは集まって話し合います。"
-    if turn.event_type == "voting_resolved":
-        return "投票の結果が公開されました。"
+        killed = _player_label(turn.payload.get("killed_player_id"), player_names)
+        if killed:
+            return f"夜が明け、{killed} が犠牲になりました。"
+        return "夜が明けました。昨夜の犠牲者はいません。"
     if turn.event_type == "game_finished":
         winner = turn.payload.get("winner")
         if isinstance(winner, str):
@@ -535,6 +553,23 @@ def _last_actor(turns: list[GameTimelineItem], *, event_type: str) -> str | None
 def _payload_text(payload: dict[str, Any], key: str) -> str | None:
     value = payload.get(key)
     return str(value) if value is not None else None
+
+
+def _player_name_map(players: list[PublicPlayerState]) -> dict[str, str]:
+    return {player.id: _display_player_name(player.name, fallback=player.id) for player in players}
+
+
+def _player_label(value: object, player_names: dict[str, str]) -> str:
+    if value is None:
+        return ""
+    player_id = str(value)
+    return player_names.get(player_id) or _public_actor_label(player_id) or player_id
+
+
+def _player_list_label(value: object, player_names: dict[str, str]) -> str:
+    if not isinstance(value, list):
+        return ""
+    return "、".join(_player_label(item, player_names) for item in value if item is not None)
 
 
 def _nested_text(payload: dict[str, Any], parent: str, child: str) -> str:

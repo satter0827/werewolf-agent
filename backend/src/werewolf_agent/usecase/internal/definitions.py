@@ -5,11 +5,11 @@ from __future__ import annotations
 from werewolf_agent.commons.shared.definitions import (
     GameRoleDefinitions,
     GameRuleDefinitions,
-    LlmAgentDefinitions,
+    PlayerRoster,
 )
 from werewolf_agent.domain.game.models import LocalRules, RoleCatalog
 from werewolf_agent.domain.game.models import RoleDefinition as DomainRoleDefinition
-from werewolf_agent.domain.llm.models import AgentProfile, AgentProfileCatalog
+from werewolf_agent.domain.llm.models import PlayerProfile, PlayerProfileCatalog
 
 
 def to_local_rules(definitions: GameRuleDefinitions) -> LocalRules:
@@ -27,11 +27,11 @@ def to_role_catalog(definitions: GameRoleDefinitions) -> RoleCatalog:
     )
 
 
-def to_agent_profiles(definitions: LlmAgentDefinitions) -> AgentProfileCatalog:
-    """Convert LLM agent definitions to a domain agent profile catalog."""
-    return AgentProfileCatalog(
-        agents={
-            agent_id: AgentProfile.model_validate(definition.model_dump(mode="json"))
-            for agent_id, definition in definitions.agents.items()
+def to_player_profiles(definitions: PlayerRoster) -> PlayerProfileCatalog:
+    """Convert LLM player definitions to a domain player profile catalog."""
+    return PlayerProfileCatalog(
+        profiles={
+            profile_id: PlayerProfile.model_validate(definition.model_dump(mode="json"))
+            for profile_id, definition in definitions.players.items()
         }
     )

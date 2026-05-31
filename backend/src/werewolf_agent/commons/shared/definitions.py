@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Mapping
+from string import Template
 from typing import Annotated, Any, Self
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -131,8 +132,8 @@ class GameDefinitions(StrictModel):
     roles: GameRoleDefinitions
 
 
-class AgentDefinition(StrictModel):
-    """LLM-only agent behavior profile."""
+class PlayerProfile(StrictModel):
+    """LLM-only player persona used for names and fake decisions."""
 
     enabled: bool = True
     name: str
@@ -154,23 +155,26 @@ class AgentDefinition(StrictModel):
         return non_blank(value, str(info.field_name))
 
 
-class LlmAgentDefinitions(StrictModel):
-    """LLM agent profile definition resource."""
+class PlayerRoster(StrictModel):
+    """LLM player roster definition resource."""
 
-    agents: dict[str, AgentDefinition] = Field(default_factory=dict)
+    players: dict[str, PlayerProfile] = Field(default_factory=dict)
 
-    @field_validator("agents")
+    @field_validator("players")
     @classmethod
-    def validate_agents(cls, value: dict[str, AgentDefinition]) -> dict[str, AgentDefinition]:
-        """Return enabled agent profiles keyed by normalized id."""
-        agents = {
-            non_blank(str(agent_id), "agent id"): profile
-            for agent_id, profile in value.items()
+    def validate_players(cls, value: dict[str, PlayerProfile]) -> dict[str, PlayerProfile]:
+        """Return enabled player profiles keyed by normalized id."""
+        players = {
+            non_blank(str(player_id), "player profile id"): profile
+            for player_id, profile in value.items()
             if profile.enabled
         }
-        if not agents:
-            raise ValueError("agents must include at least one enabled profile")
-        return agents
+        if not players:
+            raise ValueError("players must include at least one enabled profile")
+        names = [profile.name for profile in players.values()]
+        if len(set(names)) != len(names):
+            raise ValueError("player profile names must be unique")
+        return players
 
 
 class PromptMessageDefinition(StrictModel):
@@ -275,84 +279,102 @@ class PromptDefinition(StrictModel):
         return self
 
 
-class FakeResponsesDefinition(StrictModel):
-    """Local fake response fixtures."""
+class FakeDecisionTemplate(StrictModel):
+    """One local FakeListLLM response template."""
+
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        """Return a non-empty fake decision template."""
+        return non_blank(value, "fake decision template")
+
+    def render(self, context: Mapping[str, object]) -> str:
+        """Render this template with a simple standard-library placeholder engine."""
+        values = {key: str(value) for key, value in context.items()}
+        return Template(self.content).safe_substitute(values).strip()
+
+
+class FakeDecisionCatalog(StrictModel):
+    """Local FakeListLLM response catalog."""
 
     name: str
     version: int = Field(ge=1)
     alias: str
     tags: dict[str, str] = Field(default_factory=dict)
-    responses: dict[str, tuple[str, ...]]
+    templates: dict[str, tuple[FakeDecisionTemplate, ...]]
 
     @field_validator("name", "alias")
     @classmethod
     def validate_non_blank_text(cls, value: str) -> str:
         """Return normalized fake response metadata text."""
-        return non_blank(value, "fake response metadata")
+        return non_blank(value, "fake decision metadata")
 
-    @field_validator("responses", mode="before")
+    @field_validator("templates", mode="before")
     @classmethod
-    def normalize_response_keys(cls, value: object) -> object:
-        """Return responses keyed by action type id."""
+    def normalize_template_keys(cls, value: object) -> object:
+        """Return templates keyed by action type id."""
         if not isinstance(value, Mapping):
             return value
         normalized: dict[str, object] = {}
         for key, item in value.items():
-            action_type = non_blank(str(key), "fake response action type")
-            normalized[action_type] = item if isinstance(item, list) else [item]
+            action_type = non_blank(str(key), "fake decision action type")
+            raw_items = item if isinstance(item, list) else [item]
+            normalized[action_type] = [
+                {"content": raw_item} if isinstance(raw_item, str) else raw_item
+                for raw_item in raw_items
+            ]
         return normalized
 
-    @field_validator("responses")
+    @field_validator("templates")
     @classmethod
-    def validate_responses(
+    def validate_templates(
         cls,
-        value: dict[str, tuple[str, ...]],
-    ) -> dict[str, tuple[str, ...]]:
-        """Return non-empty fake response templates."""
+        value: dict[str, tuple[FakeDecisionTemplate, ...]],
+    ) -> dict[str, tuple[FakeDecisionTemplate, ...]]:
+        """Return non-empty fake decision templates."""
         if "pass" not in value:
-            raise ValueError("responses.pass is required")
-        return {
-            non_blank(key, "fake response action type"): tuple(
-                non_blank(item, f"fake response {key}") for item in items
-            )
-            for key, items in value.items()
-        }
+            raise ValueError("templates.pass is required")
+        templates = {}
+        for key, items in value.items():
+            action_type = non_blank(key, "fake decision action type")
+            if not items:
+                raise ValueError(f"templates.{action_type} must include at least one item")
+            templates[action_type] = tuple(items)
+        return templates
 
-    def response_for(
+    def render(
         self,
         action_type: str,
         *,
-        player_id: str,
-        target_id: str | None,
+        context: Mapping[str, object],
         selector: int = 0,
     ) -> str:
-        """Return one JSON response with placeholders filled."""
-        response_pool = self.responses.get(action_type) or self.responses["pass"]
-        template = response_pool[selector % len(response_pool)]
-        return (
-            template.replace("{{player_id}}", player_id)
-            .replace("{{target_id}}", target_id or "")
-            .strip()
-        )
+        """Return one rendered JSON response."""
+        template_pool = self.templates.get(action_type) or self.templates["pass"]
+        template = template_pool[selector % len(template_pool)]
+        return template.render(context)
 
 
 class LlmDefinitions(StrictModel):
     """LLM-only definitions."""
 
-    agents: LlmAgentDefinitions
+    players: PlayerRoster
     prompt: PromptDefinition
-    fake_responses: FakeResponsesDefinition
+    fake_responses: FakeDecisionCatalog
 
 
 __all__ = [
-    "AgentDefinition",
-    "FakeResponsesDefinition",
+    "FakeDecisionCatalog",
+    "FakeDecisionTemplate",
     "GameDefinitions",
     "GameRoleDefinitions",
     "GameRuleDefinitions",
-    "LlmAgentDefinitions",
     "LlmDefinitions",
     "LocalRulesDefinition",
+    "PlayerProfile",
+    "PlayerRoster",
     "PromptDefinition",
     "PromptMessageDefinition",
     "RoleDefinition",

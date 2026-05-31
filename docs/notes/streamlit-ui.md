@@ -61,6 +61,7 @@ mobile では `ゲーム卓`、`あなたの手番`、`公開タイムライン`
 - HTML 断片と escape は `streamlit/components.py` に閉じ、`app.py` に重複させない
 - `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`interface/shared` に依存させない
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
+- 発言内容、投票、投票結果、夜明けの犠牲者有無は表示し、夜行動の対象、護衛先、占い結果、role は表示しない
 - 操作用キーは `.werewolf-agent/streamlit/saves.json` の新形式保存スロットに閉じ、画面やログには出さない
 - seed、発言文字数、作成時ルールは `AppSettings` から読む
 

@@ -6,7 +6,7 @@
 ## 現在地
 
 - deterministic domain core 実装済み
-- game rules / game roles / LLM agents / prompt / fake responses は `interface/runtime` の共通 loader で読み込む
+- game rules / game roles / LLM players / prompt / fake responses は `interface/runtime` の共通 loader で読み込む
 - `GameUseCases` facade 経由で game 作成、一覧、状態取得、進行、次入力待ちまでの進行、timeline、private observation、manual action を扱う
 - FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/advance-until-input`、`/timeline`、manual player endpoint に絞った
 - CLI `doctor` / `ruleset` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `runs` は HTTP API だけを使う
@@ -121,7 +121,7 @@ uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/s
 | --- | --- | --- | --- |
 | ルール定義体 | `backend/src/werewolf_agent/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` | `domain.game` |
 | ロール定義体 | `backend/src/werewolf_agent/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` | `domain.game` |
-| エージェント定義体 | `backend/src/werewolf_agent/resources/llm/agents.toml` | `WEREWOLF_LLM_AGENTS_FILE` | `domain.llm` |
+| Player 定義体 | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` | `domain.llm` |
 | Prompt 定義体 | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` | `domain.llm` |
 | Fake response 定義体 | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` | `domain.llm` |
 

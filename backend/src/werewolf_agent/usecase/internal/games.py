@@ -45,6 +45,11 @@ from werewolf_agent.domain.game.models import (
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
 from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
 from werewolf_agent.usecase.internal.definitions import to_local_rules, to_role_catalog
+from werewolf_agent.usecase.internal.players import (
+    display_name_for,
+    profile_ids_by_player,
+    select_players,
+)
 from werewolf_agent.usecase.internal.projections import (
     events_to_create,
     public_run_summary_payload_from_record,
@@ -88,7 +93,19 @@ def create_game_run(
     """Create and persist one deterministic game."""
     game_id = uuid4()
     _validate_agent_config(command, dependencies.config)
-    players = _player_configs(command, dependencies.config)
+    requested_players = _requested_player_configs(command, dependencies.config)
+    selected_profiles = select_players(
+        dependencies.llm_definitions.players,
+        player_count=len(requested_players),
+        seed=command.seed,
+    )
+    players = [
+        Player(
+            id=player.id,
+            name=display_name_for(player.name, selected_profile),
+        )
+        for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
+    ]
     control_tokens = _control_tokens_for(command)
     config = _domain_config(
         command,
@@ -98,13 +115,13 @@ def create_game_run(
     )
     run_config = {
         "player_agent_types": {
-            player.id: command_player.agent_type
-            for player, command_player in zip(
-                players,
-                _requested_player_configs(command, players, dependencies.config),
-                strict=True,
-            )
-        }
+            player.id: requested_player.agent_type
+            for player, requested_player in zip(players, requested_players, strict=True)
+        },
+        "player_profile_ids": profile_ids_by_player(
+            [player.id for player in players],
+            selected_profiles,
+        ),
     }
     snapshot, events = start_game(config, players, random.Random(command.seed))
     public_state = public_state_payload_from_snapshot(
@@ -208,6 +225,7 @@ def advance_game_run(
         agent_factory=langchain_agent_factory(
             dependencies.llm_provider_config,
             definitions=dependencies.llm_definitions,
+            profile_ids_by_player=_player_profile_ids(run.config),
         ),
         agent_type=dependencies.config.supported_agent_type,
         human_player_ids=human_player_ids,
@@ -469,22 +487,6 @@ def _action_type(value: str) -> ActionType:
         ) from exc
 
 
-def _player_configs(
-    command: CreateGameRunCommand,
-    config: GameUseCaseConfig,
-) -> list[Player]:
-    if command.players is not None:
-        _validate_players(command.players, config)
-        return [Player(id=player.id, name=player.name) for player in command.players]
-
-    player_count = _resolved_player_count(command, config)
-    if player_count < config.min_players or player_count > config.max_players:
-        raise GameError(message_player_count_between(config.min_players, config.max_players))
-    return [
-        Player(id=f"player-{index}", name=f"Player {index}") for index in range(1, player_count + 1)
-    ]
-
-
 def _resolved_player_count(
     command: CreateGameRunCommand,
     config: GameUseCaseConfig,
@@ -545,15 +547,23 @@ def _domain_config(
 
 def _requested_player_configs(
     command: CreateGameRunCommand,
-    players: Sequence[Player],
     config: GameUseCaseConfig,
 ) -> list[CreateGamePlayer]:
     if command.players is not None:
+        _validate_players(command.players, config)
         return list(command.players)
-    return [
+    player_count = _resolved_player_count(command, config)
+    if player_count < config.min_players or player_count > config.max_players:
+        raise GameError(message_player_count_between(config.min_players, config.max_players))
+    players = [
         CreateGamePlayer(id=player.id, name=player.name, agent_type=config.supported_agent_type)
-        for player in players
+        for player in (
+            Player(id=f"player-{index}", name=f"Player {index}")
+            for index in range(1, player_count + 1)
+        )
     ]
+    _validate_players(players, config)
+    return players
 
 
 def _control_tokens_for(command: CreateGameRunCommand) -> dict[str, str]:
@@ -596,6 +606,13 @@ def _human_player_ids(config: Mapping[str, object]) -> set[str]:
     return {
         str(player_id) for player_id, agent_type in agent_types.items() if agent_type == "human"
     }
+
+
+def _player_profile_ids(config: Mapping[str, object]) -> dict[str, str]:
+    profile_ids = config.get("player_profile_ids")
+    if not isinstance(profile_ids, dict):
+        return {}
+    return {str(player_id): str(profile_id) for player_id, profile_id in profile_ids.items()}
 
 
 def _manual_input_required(

@@ -195,6 +195,8 @@ def test_night_actions_resolve_guard_and_private_seer_knowledge() -> None:
     assert snapshot.players["p4"].status is PlayerStatus.ALIVE
     assert snapshot.history.nights[-1].protected_player_id == "p4"
     assert snapshot.history.nights[-1].killed_player_id is None
+    assert run.events[-2].event_type == "night_resolved"
+    assert run.events[-2].payload == {"killed_player_id": None}
     assert run.observe("p2").known_roles["p1"] == ROLE_SHADOW
     assert "p1" not in run.observe("p4").known_roles
 

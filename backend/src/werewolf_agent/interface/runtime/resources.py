@@ -10,12 +10,12 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from werewolf_agent.commons.shared.definitions import (
-    FakeResponsesDefinition,
+    FakeDecisionCatalog,
     GameDefinitions,
     GameRoleDefinitions,
     GameRuleDefinitions,
-    LlmAgentDefinitions,
     LlmDefinitions,
+    PlayerRoster,
     PromptDefinition,
 )
 
@@ -28,7 +28,7 @@ LLM_DEFINITIONS_PACKAGE = "werewolf_agent.resources.llm"
 PROMPTS_PACKAGE = "werewolf_agent.resources.prompts"
 RULES_FILE = "rules.toml"
 ROLES_FILE = "roles.toml"
-AGENTS_FILE = "agents.toml"
+PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
 
@@ -94,17 +94,17 @@ def load_game_definitions(
 
 def load_llm_definitions(
     *,
-    agents_path: Path | None,
+    players_path: Path | None,
     prompt_path: Path | None,
     fake_responses_path: Path | None,
 ) -> LlmDefinitions:
     """Load LLM-only runtime definitions."""
     return LlmDefinitions(
-        agents=load_toml_model(
-            LlmAgentDefinitions,
+        players=load_toml_model(
+            PlayerRoster,
             package=LLM_DEFINITIONS_PACKAGE,
-            file_name=AGENTS_FILE,
-            override_path=agents_path,
+            file_name=PLAYERS_FILE,
+            override_path=players_path,
         ),
         prompt=load_toml_model(
             PromptDefinition,
@@ -113,7 +113,7 @@ def load_llm_definitions(
             override_path=prompt_path,
         ),
         fake_responses=load_toml_model(
-            FakeResponsesDefinition,
+            FakeDecisionCatalog,
             package=LLM_DEFINITIONS_PACKAGE,
             file_name=FAKE_RESPONSES_FILE,
             override_path=fake_responses_path,

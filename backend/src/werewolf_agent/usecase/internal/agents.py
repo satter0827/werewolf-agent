@@ -20,12 +20,12 @@ from werewolf_agent.domain.llm.models import (
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
-    AgentProfile,
+    PlayerProfile,
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
 from werewolf_agent.domain.llm.service import LangChainDecisionProvider
-from werewolf_agent.usecase.internal.definitions import to_agent_profiles
+from werewolf_agent.usecase.internal.definitions import to_player_profiles
 from werewolf_agent.usecase.jobs.games import LlmProviderConfig
 
 
@@ -49,7 +49,7 @@ class LlmAgent:
 
     player_id: str
     provider: LlmDecisionProvider
-    profile: AgentProfile
+    profile: PlayerProfile
 
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
@@ -63,12 +63,16 @@ class LlmAgentFactory:
     """Create LLM agents for automated game runs."""
 
     provider: LlmDecisionProvider
-    profiles: dict[str, AgentProfile]
+    profiles: dict[str, PlayerProfile]
+    profile_ids_by_player: dict[str, str]
 
     def create(self, player_id: str, *, seed: int) -> LlmAgent:
         """Create one LLM agent for a deterministic run step."""
-        profile_ids = sorted(self.profiles)
-        profile = self.profiles[profile_ids[seed % len(profile_ids)]]
+        profile_id = self.profile_ids_by_player.get(player_id)
+        if profile_id is None or profile_id not in self.profiles:
+            profile_ids = sorted(self.profiles)
+            profile_id = profile_ids[seed % len(profile_ids)]
+        profile = self.profiles[profile_id]
         return LlmAgent(player_id=player_id, provider=self.provider, profile=profile)
 
 
@@ -76,24 +80,26 @@ def langchain_agent_factory(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
+    profile_ids_by_player: dict[str, str] | None = None,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from use case settings."""
     if config.provider != "fake":
         raise ValueError(f"Unsupported LLM provider: {config.provider}.")
-    profiles = to_agent_profiles(definitions.agents)
+    profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
         provider=LangChainDecisionProvider(
             prompt=definitions.prompt,
             fake_responses=definitions.fake_responses,
         ),
-        profiles=profiles.agents,
+        profiles=profiles.profiles,
+        profile_ids_by_player=profile_ids_by_player or {},
     )
 
 
 def _agent_observation_from_game(
     observation: Observation,
     *,
-    profile: AgentProfile | None = None,
+    profile: PlayerProfile | None = None,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
         {

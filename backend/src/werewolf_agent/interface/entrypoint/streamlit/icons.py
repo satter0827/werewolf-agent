@@ -22,10 +22,8 @@ EVENT_ICONS: dict[str, UiIcon] = {
     "game_started": UiIcon("▶", "ゲーム開始", "day"),
     "phase_started": UiIcon("↪", "フェーズ開始", "day"),
     "speech_recorded": UiIcon("💬", "発言", "safe"),
-    "vote_recorded": UiIcon("☑", "投票", "safe"),
-    "voting_resolved": UiIcon("⚖", "投票結果", "day"),
-    "night_started": UiIcon("◐", "夜の始まり", "danger"),
-    "night_action_recorded": UiIcon("◌", "夜の行動", "danger"),
+    "vote_submitted": UiIcon("☑", "投票", "safe"),
+    "vote_resolved": UiIcon("⚖", "投票結果", "day"),
     "night_resolved": UiIcon("◑", "夜明け", "danger"),
     "game_finished": UiIcon("🏁", "決着", "danger"),
 }

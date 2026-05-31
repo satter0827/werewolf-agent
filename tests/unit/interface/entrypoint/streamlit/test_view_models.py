@@ -62,7 +62,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
 
     screen = build_game_screen_view(
         state=_state(),
-        turns=[_turn("night_action_recorded", {"target_id": "player-2", "role": "werewolf"})],
+        turns=[_turn("unknown_private_event", {"target_id": "player-2", "role": "werewolf"})],
         observation=observation,
         human_player_id="player-1",
         screen_mode="playable",
@@ -76,6 +76,29 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     assert "player-2" not in timeline_text
     assert screen.can_submit_action is True
     assert screen.seats[0].activity == "入力待ち"
+
+
+def test_timeline_renders_public_speech_vote_and_night_results() -> None:
+    turns = [
+        _turn("speech_recorded", {"message": "根拠を聞きたいです。"}),
+        _turn("vote_submitted", {"target_id": "player-2"}),
+        _turn("vote_resolved", {"eliminated_player_id": "player-2", "counts": {"player-2": 2}}),
+        _turn("night_resolved", {"killed_player_id": "player-3"}),
+    ]
+
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=turns,
+        observation=None,
+        human_player_id=None,
+        screen_mode="observer",
+    )
+
+    details = [item.detail for item in screen.timeline]
+    assert details[0] == "P1: 「根拠を聞きたいです。」"
+    assert details[1] == "P1 が P2 に投票しました。"
+    assert details[2] == "投票の結果、P2 が退場しました。"
+    assert details[3] == "夜が明け、P3 が犠牲になりました。"
 
 
 def test_waiting_hand_panel_can_advance_until_next_input() -> None:

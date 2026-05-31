@@ -6,8 +6,8 @@ from werewolf_agent.domain.llm.models import (
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
-    AgentProfile,
-    AgentProfileCatalog,
+    PlayerProfile,
+    PlayerProfileCatalog,
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
@@ -19,9 +19,9 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
-    "AgentProfile",
-    "AgentProfileCatalog",
     "LangChainDecisionProvider",
     "LlmDecisionProvider",
+    "PlayerProfile",
+    "PlayerProfileCatalog",
     "VisiblePlayer",
 ]

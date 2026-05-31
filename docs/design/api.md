@@ -91,7 +91,7 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | --- | --- | --- |
 | game rules | `backend/src/werewolf_agent/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` |
 | game roles | `backend/src/werewolf_agent/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` |
-| LLM agents | `backend/src/werewolf_agent/resources/llm/agents.toml` | `WEREWOLF_LLM_AGENTS_FILE` |
+| LLM players | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` |
 | LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
 | LLM fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
 
@@ -146,10 +146,20 @@ SSE:
 
 - role assignment
 - night action target
+- night action actor / action type
+- guard target
+- inspection result
 - private observation
 - `private_state`
 - token、API key、authorization
 - raw prompt / raw provider response
+
+公開 timeline に出すもの:
+
+- public speech message
+- vote actor / target
+- vote result
+- night killed player id の有無
 
 ## Manual Player
 

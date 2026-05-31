@@ -11,7 +11,6 @@ from werewolf_agent.contracts import GamePhaseError
 from werewolf_agent.domain.game.models import (
     Action,
     DomainEvent,
-    EventVisibility,
     GameConfig,
     GameSnapshot,
     Phase,
@@ -62,10 +61,7 @@ def _advance_from_night(
             event_type="night_resolved",
             phase=snapshot.phase,
             day=snapshot.day,
-            visibility=EventVisibility.DEBUG,
             payload={
-                "attacked_player_id": result.attacked_player_id,
-                "protected_player_id": result.protected_player_id,
                 "killed_player_id": result.killed_player_id,
             },
         )

@@ -7,7 +7,7 @@ from typing import Any, ClassVar, Self
 
 from pydantic import Field, field_validator, model_validator
 
-from werewolf_agent.commons.shared.definitions import AgentDefinition
+from werewolf_agent.commons.shared.definitions import PlayerProfile as PlayerProfileDefinition
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
     MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
@@ -109,8 +109,8 @@ class _AgentVoteRound(_LlmModel):
         return optional_non_blank(value, "eliminated_player_id")
 
 
-class AgentProfile(AgentDefinition):
-    """LLM-only agent behavior profile."""
+class PlayerProfile(PlayerProfileDefinition):
+    """LLM-only player behavior profile."""
 
 
 class AgentObservation(_LlmModel):
@@ -120,7 +120,7 @@ class AgentObservation(_LlmModel):
     day: int
     me: VisiblePlayer
     role: str | None = None
-    profile: AgentProfile | None = None
+    profile: PlayerProfile | None = None
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
@@ -143,30 +143,30 @@ class AgentObservation(_LlmModel):
         }
 
 
-class AgentProfileCatalog(_LlmModel):
-    """LLM-only catalog of available agent behavior profiles."""
+class PlayerProfileCatalog(_LlmModel):
+    """LLM-only catalog of available player behavior profiles."""
 
-    agents: dict[str, AgentProfile]
+    profiles: dict[str, PlayerProfile]
 
-    @field_validator("agents")
+    @field_validator("profiles")
     @classmethod
-    def validate_agents(cls, value: dict[str, AgentProfile]) -> dict[str, AgentProfile]:
+    def validate_profiles(cls, value: dict[str, PlayerProfile]) -> dict[str, PlayerProfile]:
         """Return enabled agent profiles keyed by normalized profile id."""
-        agents = {
+        profiles = {
             non_blank(str(agent_id), "agent id"): profile
             for agent_id, profile in value.items()
             if profile.enabled
         }
-        if not agents:
-            raise ValueError("agents must include at least one enabled profile")
-        return agents
+        if not profiles:
+            raise ValueError("profiles must include at least one enabled profile")
+        return profiles
 
-    def profile_for(self, agent_id: str | None) -> AgentProfile:
+    def profile_for(self, profile_id: str | None) -> PlayerProfile:
         """Return a selected profile or the first enabled profile."""
-        if agent_id is not None:
-            return self.agents[agent_id]
-        first_id = sorted(self.agents)[0]
-        return self.agents[first_id]
+        if profile_id is not None:
+            return self.profiles[profile_id]
+        first_id = sorted(self.profiles)[0]
+        return self.profiles[first_id]
 
 
 class AgentDecision(_LlmModel):
@@ -280,7 +280,7 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
-    "AgentProfile",
-    "AgentProfileCatalog",
+    "PlayerProfile",
+    "PlayerProfileCatalog",
     "VisiblePlayer",
 ]
