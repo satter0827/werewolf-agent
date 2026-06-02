@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
+from werewolf_agent.commons.shared.definitions import NarrationProfileDefinition
 from werewolf_agent.domain.game.models import (
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
@@ -53,6 +54,9 @@ def public_state_payload_from_snapshot(
     version: int,
     seed: int | None,
     created_at: datetime | None = None,
+    scenario_id: str | None = None,
+    scenario_name: str | None = None,
+    narration_mode: str = "standard",
 ) -> dict[str, Any]:
     """Project a full domain snapshot into a public state payload."""
     players = [
@@ -79,6 +83,9 @@ def public_state_payload_from_snapshot(
         day=snapshot.day,
         version=version,
         seed=seed,
+        scenario_id=scenario_id,
+        scenario_name=scenario_name,
+        narration_mode=cast(Any, narration_mode),
         players=players,
         alive_player_ids=alive_player_ids,
         eliminated_player_ids=eliminated_player_ids,
@@ -118,6 +125,8 @@ def public_run_summary_payload_from_record(record: StoredGameRunSummary) -> dict
 
 def public_turn_payload_from_record(record: StoredGameTurn) -> dict[str, Any]:
     """Project a stored turn record into a public timeline payload."""
+    payload = dict(record.payload)
+    narration = payload.pop("narration", None)
     turn = GameTimelineItem(
         sequence=record.sequence,
         event_sequence=record.event_sequence,
@@ -126,26 +135,48 @@ def public_turn_payload_from_record(record: StoredGameTurn) -> dict[str, Any]:
         day=record.day,
         actor_id=record.actor_id,
         event_type=record.event_type,
-        payload=dict(record.payload),
+        narration=str(narration) if narration is not None else None,
+        payload=payload,
         occurred_at=record.occurred_at,
     )
     return turn.model_dump(mode="json")
 
 
-def events_to_create(events: list[DomainEvent]) -> list[GameEventCreate]:
+def events_to_create(
+    events: list[DomainEvent],
+    *,
+    narration_profile: NarrationProfileDefinition | None = None,
+    narration_mode: str = "standard",
+) -> list[GameEventCreate]:
     """Return sanitized event data ready for an outer persistence adapter."""
-    return [event_to_create(event) for event in events]
+    return [
+        event_to_create(
+            event,
+            narration_profile=narration_profile,
+            narration_mode=narration_mode,
+        )
+        for event in events
+    ]
 
 
-def event_to_create(event: DomainEvent) -> GameEventCreate:
+def event_to_create(
+    event: DomainEvent,
+    *,
+    narration_profile: NarrationProfileDefinition | None = None,
+    narration_mode: str = "standard",
+) -> GameEventCreate:
     """Return sanitized persistable event data for one domain event."""
+    payload = public_safe_payload(event)
+    narration = public_narration(event, payload, narration_profile, narration_mode=narration_mode)
+    if narration:
+        payload["narration"] = narration
     return GameEventCreate(
         visibility=event.visibility.value,
         phase=cast(GamePhase, event.phase.value) if event.phase is not None else None,
         day=event.day,
         actor_id=event.actor_id,
         event_type=event.event_type,
-        payload=public_safe_payload(event),
+        payload=payload,
     )
 
 
@@ -164,6 +195,64 @@ def public_safe_payload(event: DomainEvent) -> dict[str, Any]:
         elif winner == FACTION_WEREWOLF:
             payload["winner"] = "werewolves"
     return payload
+
+
+def public_narration(
+    event: DomainEvent,
+    payload: dict[str, Any],
+    narration_profile: NarrationProfileDefinition | None,
+    *,
+    narration_mode: str,
+) -> str:
+    """Return one public-safe narration line for a public event."""
+    if narration_mode == "none" or narration_profile is None:
+        return ""
+    event_definition = narration_profile.events.get(event.event_type)
+    if event_definition is None:
+        return ""
+    template = event_definition.templates[0]
+    values = {
+        "day": event.day if event.day is not None else "",
+        "phase": event.phase.value if event.phase is not None else "",
+        "phase_label": _phase_label(event.phase.value if event.phase is not None else ""),
+        "actor": _public_player_label(event.actor_id),
+        "player_count": payload.get("player_count", ""),
+        "eliminated_player": _public_player_label(payload.get("eliminated_player_id")),
+        "killed_player": _public_player_label(payload.get("killed_player_id")),
+        "winner": payload.get("winner", ""),
+        "winner_label": _winner_label(payload.get("winner")),
+    }
+    try:
+        return template.format(**values)
+    except (KeyError, ValueError):
+        return ""
+
+
+def _public_player_label(value: object) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    if text.startswith("player-"):
+        suffix = text.removeprefix("player-")
+        if suffix.isdigit():
+            return f"P{suffix}"
+    return text
+
+
+def _phase_label(value: str) -> str:
+    return {
+        "night": "夜",
+        "day_discussion": "話し合い",
+        "voting": "投票",
+        "finished": "終了",
+    }.get(value, value)
+
+
+def _winner_label(value: object) -> str:
+    return {
+        "villagers": "村人陣営",
+        "werewolves": "人狼陣営",
+    }.get(str(value), str(value) if value is not None else "")
 
 
 def status_from_snapshot(snapshot: GameSnapshot) -> GameStatus:

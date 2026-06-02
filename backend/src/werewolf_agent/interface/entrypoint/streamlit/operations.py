@@ -9,15 +9,17 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
     LOG_STREAMLIT_ADVANCE_STEP_STARTED,
-    LOG_STREAMLIT_CONNECTION_CHECKED,
     LOG_STREAMLIT_GAME_CREATED,
     LOG_STREAMLIT_REFRESHED,
     LOG_STREAMLIT_RERUN_STARTED,
 )
 from werewolf_agent.contracts.schemas import (
+    CustomCharacterDefinitionRequest,
+    CustomRoleDefinitionRequest,
     GameRevealResponse,
     GameRunResponse,
     LocalRulesSettings,
+    NarrationMode,
     PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameRunSummary,
@@ -58,20 +60,6 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
     )
 
 
-def check_connection(*, api_url: str, settings: AppSettings) -> dict[str, str]:
-    """Check API health from the Streamlit screen."""
-    health = build_streamlit_client(api_url, settings).health()
-    logger.info(
-        LOG_STREAMLIT_CONNECTION_CHECKED,
-        extra={
-            "event_action": LOG_STREAMLIT_CONNECTION_CHECKED,
-            "event_outcome": "success",
-            "api_url": api_url,
-        },
-    )
-    return health
-
-
 def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameRunSummary]:
     """Return recent public game runs for the sidebar selector."""
     client = build_streamlit_client(api_url, settings)
@@ -91,6 +79,12 @@ def create_game_from_setup(
     rules: LocalRulesSettings,
     seed_text: str,
     human_player_id: str | None,
+    scenario_id: str | None,
+    setup_preset_id: str | None,
+    narration_mode: NarrationMode,
+    character_assignments: dict[str, str],
+    custom_roles: list[CustomRoleDefinitionRequest],
+    custom_characters: list[CustomCharacterDefinitionRequest],
 ) -> GameRunResponse:
     """Create a game from the shared Play/Observe setup."""
     seed = int(seed_text) if seed_text.strip() else None
@@ -99,6 +93,12 @@ def create_game_from_setup(
         role_counts=role_counts,
         human_player_id=human_player_id,
         rules=rules,
+        scenario_id=scenario_id,
+        setup_preset_id=setup_preset_id,
+        narration_mode=narration_mode,
+        character_assignments=character_assignments,
+        custom_roles=custom_roles,
+        custom_characters=custom_characters,
     )
     response = build_streamlit_client(api_url, settings).create_game(request)
     logger.info(

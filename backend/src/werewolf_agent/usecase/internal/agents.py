@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol
+from importlib import import_module
+from typing import Any, Protocol
 
 from werewolf_agent.commons.shared.definitions import LlmDefinitions
 from werewolf_agent.commons.shared.messages import (
@@ -20,6 +21,7 @@ from werewolf_agent.domain.llm.models import (
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
+    AgentScenario,
     PlayerProfile,
     VisiblePlayer,
 )
@@ -50,10 +52,15 @@ class LlmAgent:
     player_id: str
     provider: LlmDecisionProvider
     profile: PlayerProfile
+    scenario: AgentScenario | None = None
 
     def act(self, observation: Observation) -> Action:
         """Return one structured action for the current observation."""
-        agent_observation = _agent_observation_from_game(observation, profile=self.profile)
+        agent_observation = _agent_observation_from_game(
+            observation,
+            profile=self.profile,
+            scenario=self.scenario,
+        )
         decision = self.provider.choose_decision(self.player_id, agent_observation)
         return _game_action_from_decision(decision)
 
@@ -65,6 +72,7 @@ class LlmAgentFactory:
     provider: LlmDecisionProvider
     profiles: dict[str, PlayerProfile]
     profile_ids_by_player: dict[str, str]
+    scenario: AgentScenario | None = None
 
     def create(self, player_id: str, *, seed: int) -> LlmAgent:
         """Create one LLM agent for a deterministic run step."""
@@ -73,7 +81,12 @@ class LlmAgentFactory:
             profile_ids = sorted(self.profiles)
             profile_id = profile_ids[seed % len(profile_ids)]
         profile = self.profiles[profile_id]
-        return LlmAgent(player_id=player_id, provider=self.provider, profile=profile)
+        return LlmAgent(
+            player_id=player_id,
+            provider=self.provider,
+            profile=profile,
+            scenario=self.scenario,
+        )
 
 
 def langchain_agent_factory(
@@ -81,25 +94,62 @@ def langchain_agent_factory(
     *,
     definitions: LlmDefinitions,
     profile_ids_by_player: dict[str, str] | None = None,
+    scenario: AgentScenario | None = None,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from use case settings."""
-    if config.provider != "fake":
-        raise ValueError(f"Unsupported LLM provider: {config.provider}.")
     profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
-        provider=LangChainDecisionProvider(
-            prompt=definitions.prompt,
-            fake_responses=definitions.fake_responses,
-        ),
+        provider=_decision_provider(config, definitions=definitions),
         profiles=profiles.profiles,
         profile_ids_by_player=profile_ids_by_player or {},
+        scenario=scenario,
     )
+
+
+def _decision_provider(
+    config: LlmProviderConfig,
+    *,
+    definitions: LlmDefinitions,
+) -> LangChainDecisionProvider:
+    if config.provider == "fake":
+        return LangChainDecisionProvider(
+            prompt=definitions.prompt,
+            fake_responses=definitions.fake_responses,
+        )
+    if config.provider in {"lmstudio", "openai"}:
+        return LangChainDecisionProvider(
+            prompt=definitions.prompt,
+            model=_openai_compatible_model(config),
+        )
+    raise ValueError(f"Unsupported LLM provider: {config.provider}.")
+
+
+def _openai_compatible_model(config: LlmProviderConfig) -> Any:
+    try:
+        module = import_module("langchain_openai")
+    except ImportError as exc:
+        raise RuntimeError(
+            "langchain-openai is required for lmstudio and openai LLM providers"
+        ) from exc
+    chat_openai = module.__dict__["ChatOpenAI"]
+
+    kwargs: dict[str, object] = {
+        "model": config.model,
+        "api_key": config.api_key or "lm-studio",
+        "temperature": config.temperature,
+        "timeout": config.timeout_seconds,
+        "max_retries": config.max_retries,
+    }
+    if config.base_url:
+        kwargs["base_url"] = config.base_url
+    return chat_openai(**kwargs)
 
 
 def _agent_observation_from_game(
     observation: Observation,
     *,
     profile: PlayerProfile | None = None,
+    scenario: AgentScenario | None = None,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
         {
@@ -108,6 +158,7 @@ def _agent_observation_from_game(
             "me": _visible_player_from_game(observation.me),
             "role": observation.me.role if observation.me.role is not None else None,
             "profile": profile,
+            "scenario": scenario,
             "players": [_visible_player_from_game(player) for player in observation.players],
             "known_roles": dict(observation.known_roles),
             "available_actions": [

@@ -77,6 +77,12 @@ def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
+        scenario_id="classic_village",
+        setup_preset_id="standard_6",
+        narration_mode="standard",
+        character_assignments={},
+        custom_roles=[],
+        custom_characters=[],
     )
 
     upsert_save_slot(save_file, slot)
@@ -112,6 +118,12 @@ def test_saved_slot_without_session_token_becomes_observer_option(tmp_path) -> N
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
+        scenario_id="classic_village",
+        setup_preset_id="standard_6",
+        narration_mode="standard",
+        character_assignments={},
+        custom_roles=[],
+        custom_characters=[],
     )
     upsert_save_slot(save_file, slot)
 
@@ -153,7 +165,7 @@ def test_token_bearing_save_slot_loads_without_exposing_token(tmp_path) -> None:
     save_file.write_text(
         """
         {
-          "version": 3,
+          "version": 4,
           "slots": [
             {
               "slot_id": "slot-1",
@@ -175,6 +187,12 @@ def test_token_bearing_save_slot_loads_without_exposing_token(tmp_path) -> None:
                 "reveal_role_on_death": false
               },
               "seed": 1,
+              "scenario_id": "classic_village",
+              "setup_preset_id": "standard_6",
+              "narration_mode": "standard",
+              "character_assignments": {},
+              "custom_roles": [],
+              "custom_characters": [],
               "status": "running",
               "phase": "day_discussion",
               "day": 1,
@@ -207,6 +225,12 @@ def test_save_slot_refreshes_from_public_state() -> None:
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
+        scenario_id="classic_village",
+        setup_preset_id="standard_6",
+        narration_mode="standard",
+        character_assignments={},
+        custom_roles=[],
+        custom_characters=[],
         status="running",
         phase="night",
         day=1,

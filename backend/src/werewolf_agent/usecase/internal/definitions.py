@@ -21,7 +21,10 @@ def to_role_catalog(definitions: GameRoleDefinitions) -> RoleCatalog:
     """Convert role definitions to a domain role catalog."""
     return RoleCatalog(
         roles={
-            role_id: DomainRoleDefinition.model_validate(definition.model_dump(mode="json"))
+            role_id: DomainRoleDefinition(
+                faction=definition.faction,
+                abilities=definition.abilities,
+            )
             for role_id, definition in definitions.roles.items()
         }
     )

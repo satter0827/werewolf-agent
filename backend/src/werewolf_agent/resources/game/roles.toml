@@ -1,18 +1,30 @@
 [roles.villager]
 faction = "village"
 abilities = []
+label = "村人"
+description = "特別な能力は持たず、発言と投票で人狼を探します。"
+difficulty = 1
 
 [roles.werewolf]
 faction = "werewolf"
 abilities = ["night_attack", "pack_knowledge"]
+label = "人狼"
+description = "夜に襲撃し、昼は正体を隠して議論に参加します。"
+difficulty = 2
 
 [roles.seer]
 faction = "village"
 abilities = ["inspect"]
+label = "占い師"
+description = "夜にひとりを調べ、推理の手がかりを得ます。"
+difficulty = 2
 
 [roles.knight]
 faction = "village"
 abilities = ["guard"]
+label = "騎士"
+description = "夜にひとりを守り、襲撃から救えることがあります。"
+difficulty = 2
 
 [default_role_counts.5]
 werewolf = 1

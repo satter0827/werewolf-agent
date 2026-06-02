@@ -6,19 +6,19 @@
 ## 現在地
 
 - deterministic domain core 実装済み
-- game rules / game roles / LLM players / prompt / fake responses は `interface/runtime` の共通 loader で読み込む
+- game rules / game roles / game catalog / LLM players / prompt / fake responses は `interface/runtime` の共通 loader で読み込む
 - `GameUseCases` facade 経由で game 作成、一覧、状態取得、進行、次入力待ちまでの進行、timeline、private observation、manual action を扱う
 - FastAPI の公開面は `/health`、`/ruleset`、`/games`、`/advance`、`/advance-until-input`、`/timeline`、manual player endpoint に絞った
 - CLI `doctor` / `ruleset` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `runs` は HTTP API だけを使う
 - Streamlit は public API 経由で 1 人の human player が遊べる画面として実装済み
 - Streamlit は `resources/streamlit/i18n.toml` を既定の UI 文言定義体として使い、`WEREWOLF_STREAMLIT_I18N_FILE` で差し替えられる
-- 現在の LLM provider は LangChain `fake`
-- 実 LLM provider、複数 human player、React UI は未実装
+- LLM provider は LangChain `fake`、LM Studio、OpenAI を設定値で切り替える
+- 複数 human player、React UI は未実装
 
 ## 最初に実行
 
 ```bash
-uv sync --group dev --extra api --extra streamlit
+uv sync --group dev --extra api --extra llm --extra streamlit
 uv run werewolf-agent doctor
 uv run pytest
 uv run --extra api alembic upgrade head
@@ -70,7 +70,7 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 | Path | 責務 |
 | --- | --- |
 | `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存 DTO、LangChain fake provider |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存 DTO、LangChain decision provider |
 | `backend/src/werewolf_agent/resources/` | packaged defaults、game / LLM definition、prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/usecase/jobs/` | `GameUseCases` facade、command、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
@@ -122,12 +122,13 @@ uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/s
 | --- | --- | --- | --- |
 | ルール定義体 | `backend/src/werewolf_agent/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` | `domain.game` |
 | ロール定義体 | `backend/src/werewolf_agent/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` | `domain.game` |
+| Scenario catalog 定義体 | `backend/src/werewolf_agent/resources/game/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` | `usecase.internal` / `domain.llm` |
 | Player 定義体 | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` | `domain.llm` |
 | Prompt 定義体 | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` | `domain.llm` |
 | Fake response 定義体 | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` | `domain.llm` |
 | Streamlit i18n 定義体 | `backend/src/werewolf_agent/resources/streamlit/i18n.toml` | `WEREWOLF_STREAMLIT_I18N_FILE` | `interface/entrypoint/streamlit` |
 
-game 用定義体、LLM 用定義体、UI 文言定義体は混在させません。`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行い、`AppSettings` 構築時に定義体も検証します。`interface/application` は読み込まれた値だけを usecase へ注入します。`usecase/internal/definitions.py` は converter だけを持ち、domain / usecase には source path や definition id を持ち込みません。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。CLI の `--role-count` 省略時だけ `interface/entrypoint/cui` が runtime settings / role 定義体から既定構成を選びます。
+game 用定義体、LLM 用定義体、UI 文言定義体は混在させません。`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行い、`AppSettings` 構築時に定義体も検証します。`interface/application` は読み込まれた値だけを usecase へ注入します。`usecase/internal/definitions.py` は converter だけを持ち、domain / usecase には source path や definition id を持ち込みません。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。Streamlit のカスタム役職・キャラクターは session 内に保持し、game 作成 request でその game run にだけ渡します。
 
 ## DB
 
@@ -191,7 +192,7 @@ uv sync --group dev --extra streamlit
 ```
 
 - `api`: FastAPI / SQLAlchemy / Alembic / Uvicorn / SSE / Postgres driver
-- `llm`: LangChain / OpenAI compatible provider 用。adapter は未実装
+- `llm`: LangChain / OpenAI-compatible provider 用。LM Studio と OpenAI の切替に使う
 - `streamlit`: Streamlit のプレイ画面用。API は別 process で起動する
 
 ## Docker
@@ -201,6 +202,23 @@ docker compose build
 docker compose run --rm migrate
 docker compose up api
 docker compose run --rm test
+```
+
+LM Studio を Docker Compose から使う場合は、LM Studio server をホストで起動し、`.env` に次を置きます。
+
+```text
+WEREWOLF_LLM_PROVIDER=lmstudio
+WEREWOLF_MODEL=<LM Studio model identifier>
+WEREWOLF_LLM_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+OpenAI へ切り替える場合:
+
+```text
+WEREWOLF_LLM_PROVIDER=openai
+WEREWOLF_MODEL=gpt-4.1-mini
+WEREWOLF_LLM_BASE_URL=
+OPENAI_API_KEY=<secret>
 ```
 
 Postgres:
@@ -213,12 +231,10 @@ docker compose -f compose.yaml -f compose.postgres.yaml run --rm test
 
 ## 未実装
 
-- real LLM provider adapter
-- structured output parser / validator
+- LM Studio / OpenAI provider の接続 QA と evaluation workflow
 - 複数 human player
 - external agent action API
 - React UI
-- evaluation workflow
 
 ## Handoff
 

@@ -235,6 +235,11 @@ def _fake_template_context(
         "phase": observation.phase.value,
         "role": observation.role or "",
         "persona": _persona_text(profile),
+        "character_profile": _character_profile_text(profile),
+        "scenario_name": observation.scenario.name if observation.scenario is not None else "",
+        "scenario_premise": (
+            observation.scenario.premise if observation.scenario is not None else ""
+        ),
         "profile_name": profile.name if profile is not None else observation.me.name,
     }
 
@@ -249,6 +254,31 @@ def _persona_text(profile: object | None) -> str:
     return " / ".join(
         item
         for item in [personality, speaking_style, reasoning_style, f"risk={risk_tolerance}"]
+        if item
+    )
+
+
+def _character_profile_text(profile: object | None) -> str:
+    if profile is None:
+        return ""
+    name = getattr(profile, "name", "")
+    age = getattr(profile, "age", "")
+    gender = getattr(profile, "gender", "")
+    personality = getattr(profile, "personality", "")
+    speaking_style = getattr(profile, "speaking_style", "")
+    reasoning_style = getattr(profile, "reasoning_style", "")
+    risk_tolerance = getattr(profile, "risk_tolerance", "")
+    return " / ".join(
+        str(item)
+        for item in [
+            f"name={name}" if name else "",
+            f"age={age}" if age else "",
+            f"gender={gender}" if gender else "",
+            f"personality={personality}" if personality else "",
+            f"speaking_style={speaking_style}" if speaking_style else "",
+            f"reasoning_style={reasoning_style}" if reasoning_style else "",
+            f"risk={risk_tolerance}" if risk_tolerance else "",
+        ]
         if item
     )
 
@@ -280,6 +310,11 @@ def _prompt_inputs(
         "phase": observation.phase.value,
         "day": str(observation.day),
         "role": observation.role if observation.role is not None else "",
+        "scenario_name": observation.scenario.name if observation.scenario is not None else "",
+        "scenario_premise": (
+            observation.scenario.premise if observation.scenario is not None else ""
+        ),
+        "character_profile": _character_profile_text(observation.profile),
         "available_actions": json.dumps(
             [action.value for action in observation.available_actions],
             ensure_ascii=False,

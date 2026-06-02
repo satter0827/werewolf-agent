@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
-from werewolf_agent.commons.shared.definitions import GameDefinitions
+from collections.abc import Mapping
+
+from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.usecase.jobs.games import GameUseCaseConfig, RulesetResult
 
 
-def default_ruleset(config: GameUseCaseConfig, definitions: GameDefinitions) -> RulesetResult:
+def default_ruleset(
+    config: GameUseCaseConfig,
+    definitions: GameDefinitions,
+    llm_definitions: LlmDefinitions,
+) -> RulesetResult:
     """Return ruleset business metadata."""
+    default_setup_preset_id = _first_key(definitions.catalog.setup_presets)
+    default_scenario_id = (
+        definitions.catalog.setup_presets[default_setup_preset_id].scenario_id
+        if default_setup_preset_id is not None
+        else _first_key(definitions.catalog.scenarios)
+    )
     return RulesetResult(
         player_count={"min": config.min_players, "max": config.max_players},
         roles={
@@ -16,4 +28,27 @@ def default_ruleset(config: GameUseCaseConfig, definitions: GameDefinitions) -> 
         },
         default_role_counts=definitions.roles.default_counts_for(config.default_player_count),
         default_rules=definitions.rules.local_rules,
+        default_scenario_id=default_scenario_id,
+        default_setup_preset_id=default_setup_preset_id,
+        abilities={
+            ability_id: definition.model_dump(mode="json")
+            for ability_id, definition in definitions.catalog.abilities.items()
+        },
+        scenarios={
+            scenario_id: definition.model_dump(mode="json")
+            for scenario_id, definition in definitions.catalog.scenarios.items()
+        },
+        setup_presets={
+            preset_id: definition.model_dump(mode="json")
+            for preset_id, definition in definitions.catalog.setup_presets.items()
+        },
+        characters={
+            character_id: definition.model_dump(mode="json")
+            for character_id, definition in llm_definitions.players.players.items()
+        },
     )
+
+
+def _first_key(mapping: Mapping[str, object]) -> str | None:
+    """Return the first stable key from a definition mapping."""
+    return next(iter(mapping), None)

@@ -113,6 +113,19 @@ class PlayerProfile(PlayerProfileDefinition):
     """LLM-only player behavior profile."""
 
 
+class AgentScenario(_LlmModel):
+    """Public scenario premise visible to an agent decision provider."""
+
+    name: str
+    premise: str
+
+    @field_validator("name", "premise")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: Any) -> str:
+        """Return normalized scenario text."""
+        return non_blank(value, str(info.field_name))
+
+
 class AgentObservation(_LlmModel):
     """Provider-independent observation for one player decision."""
 
@@ -121,6 +134,7 @@ class AgentObservation(_LlmModel):
     me: VisiblePlayer
     role: str | None = None
     profile: PlayerProfile | None = None
+    scenario: AgentScenario | None = None
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
@@ -280,6 +294,7 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
+    "AgentScenario",
     "PlayerProfile",
     "PlayerProfileCatalog",
     "VisiblePlayer",

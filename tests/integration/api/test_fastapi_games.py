@@ -224,6 +224,13 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
         "villager": 3,
     }
     assert payload["default_rules"]["enable_no_elimination_on_tie"] is True
+    assert payload["default_scenario_id"] == "classic_village"
+    assert payload["default_setup_preset_id"] == "standard_6"
+    assert {scenario["id"] for scenario in payload["scenarios"]} >= {
+        "classic_village",
+        "sealed_lab",
+    }
+    assert {character["name"] for character in payload["characters"]} >= {"葵", "蓮"}
 
 
 def test_create_game_returns_public_state_without_private_fields(client: TestClient) -> None:
@@ -241,6 +248,8 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert state["day"] == 1
     assert state["version"] == 1
     assert state["seed"] == 42
+    assert state["scenario_id"] == "classic_village"
+    assert state["scenario_name"] == "古い村"
     assert [player["id"] for player in state["players"]] == [
         "player-1",
         "player-2",

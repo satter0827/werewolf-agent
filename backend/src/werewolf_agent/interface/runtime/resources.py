@@ -11,6 +11,7 @@ from pydantic import BaseModel
 
 from werewolf_agent.commons.shared.definitions import (
     FakeDecisionCatalog,
+    GameCatalogDefinitions,
     GameDefinitions,
     GameRoleDefinitions,
     GameRuleDefinitions,
@@ -29,6 +30,7 @@ PROMPTS_PACKAGE = "werewolf_agent.resources.prompts"
 STREAMLIT_PACKAGE = "werewolf_agent.resources.streamlit"
 RULES_FILE = "rules.toml"
 ROLES_FILE = "roles.toml"
+CATALOG_FILE = "catalog.toml"
 PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
@@ -85,6 +87,7 @@ def load_game_definitions(
     *,
     rules_path: Path | None,
     roles_path: Path | None,
+    catalog_path: Path | None = None,
 ) -> GameDefinitions:
     """Load game-only runtime definitions."""
     return GameDefinitions(
@@ -99,6 +102,12 @@ def load_game_definitions(
             package=GAME_DEFINITIONS_PACKAGE,
             file_name=ROLES_FILE,
             override_path=roles_path,
+        ),
+        catalog=load_toml_model(
+            GameCatalogDefinitions,
+            package=GAME_DEFINITIONS_PACKAGE,
+            file_name=CATALOG_FILE,
+            override_path=catalog_path,
         ),
     )
 

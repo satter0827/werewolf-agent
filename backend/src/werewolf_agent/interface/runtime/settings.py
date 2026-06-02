@@ -80,6 +80,7 @@ DEFAULT_GENERATED_DIR: Final = _path_default("generated_dir")
 DEFAULT_SQLITE_PATH: Final = _path_default("sqlite_path")
 DEFAULT_LLM_PROVIDER: Final = _string_default("llm_provider")
 DEFAULT_LLM_MODEL: Final = _string_default("model")
+DEFAULT_LLM_BASE_URL: Final = _string_default("llm_base_url")
 DEFAULT_LLM_TIMEOUT_SECONDS: Final = _float_default("llm_timeout_seconds")
 DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
@@ -137,6 +138,7 @@ DEFAULT_GAME_DEFAULT_RULESET_ID: Final = _string_default("game_default_ruleset_i
 DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset_name")
 DEFAULT_GAME_RULES_FILE: Final = _string_default("game_rules_file")
 DEFAULT_GAME_ROLES_FILE: Final = _string_default("game_roles_file")
+DEFAULT_GAME_CATALOG_FILE: Final = _string_default("game_catalog_file")
 DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS: Final = _integer_default(
     "game_advance_until_input_max_steps"
 )
@@ -151,7 +153,7 @@ LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"}
 CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
-LLM_PROVIDER_NAMES: Final = frozenset({DEFAULT_LLM_PROVIDER})
+LLM_PROVIDER_NAMES: Final = frozenset({"fake", "lmstudio", "openai"})
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
@@ -207,6 +209,10 @@ class AppSettings(BaseSettings):
         validation_alias="WEREWOLF_LLM_PROVIDER",
     )
     model: str = Field(default=DEFAULT_LLM_MODEL, validation_alias="WEREWOLF_MODEL")
+    llm_base_url: str = Field(
+        default=DEFAULT_LLM_BASE_URL,
+        validation_alias="WEREWOLF_LLM_BASE_URL",
+    )
     llm_timeout_seconds: float = Field(
         default=DEFAULT_LLM_TIMEOUT_SECONDS,
         gt=0,
@@ -402,6 +408,10 @@ class AppSettings(BaseSettings):
         default=DEFAULT_GAME_ROLES_FILE,
         validation_alias="WEREWOLF_GAME_ROLES_FILE",
     )
+    game_catalog_file: str = Field(
+        default=DEFAULT_GAME_CATALOG_FILE,
+        validation_alias="WEREWOLF_GAME_CATALOG_FILE",
+    )
     game_advance_until_input_max_steps: int = Field(
         default=DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS,
         ge=1,
@@ -450,6 +460,10 @@ class AppSettings(BaseSettings):
     database_url: SecretStr = Field(
         default=SecretStr(""),
         validation_alias=AliasChoices("WEREWOLF_DATABASE_URL", "DATABASE_URL"),
+    )
+    openai_api_key: SecretStr = Field(
+        default=SecretStr(""),
+        validation_alias="OPENAI_API_KEY",
     )
 
     model_config = SettingsConfigDict(
@@ -536,12 +550,18 @@ class AppSettings(BaseSettings):
         """Return the configured external game role definition file, if any."""
         return _optional_repository_path(self.game_roles_file)
 
+    @property
+    def game_catalog_path(self) -> Path | None:
+        """Return the configured external game catalog definition file, if any."""
+        return _optional_repository_path(self.game_catalog_file)
+
     @cached_property
     def game_definitions(self) -> GameDefinitions:
         """Return game definitions loaded by runtime settings."""
         return load_game_definitions(
             rules_path=self.game_rules_path,
             roles_path=self.game_roles_path,
+            catalog_path=self.game_catalog_path,
         )
 
     @cached_property
@@ -571,6 +591,11 @@ class AppSettings(BaseSettings):
     def configured_database_url(self) -> str:
         """Return the configured database URL without exposing it in repr output."""
         return self.database_url.get_secret_value().strip()
+
+    @property
+    def configured_openai_api_key(self) -> str:
+        """Return the configured OpenAI-compatible API key without exposing it in repr output."""
+        return self.openai_api_key.get_secret_value().strip()
 
     @property
     def sqlalchemy_database_url(self) -> str:
@@ -696,6 +721,18 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
+    @field_validator("model", mode="before")
+    @classmethod
+    def normalize_llm_model(cls, value: object) -> str:
+        """Return the configured LLM model name."""
+        return normalize_non_blank(value, field_name="model")
+
+    @field_validator("llm_base_url", mode="before")
+    @classmethod
+    def normalize_llm_base_url(cls, value: object) -> str:
+        """Return the optional OpenAI-compatible provider base URL."""
+        return "" if value is None else str(value).strip()
+
     @field_validator("game_supported_agent_type", mode="before")
     @classmethod
     def normalize_supported_agent_type(cls, value: object) -> str:
@@ -742,8 +779,18 @@ class AppSettings(BaseSettings):
             )
         except (KeyError, ValueError) as exc:
             raise ValueError(message_ruleset_description_template_invalid()) from exc
+        self._validate_llm_settings()
         self._validate_definition_settings()
         return self
+
+    def _validate_llm_settings(self) -> None:
+        """Ensure provider-specific LLM settings are complete."""
+        if self.llm_provider == "lmstudio" and not self.llm_base_url:
+            raise ValueError(
+                "WEREWOLF_LLM_BASE_URL is required when WEREWOLF_LLM_PROVIDER=lmstudio"
+            )
+        if self.llm_provider == "openai" and not self.configured_openai_api_key:
+            raise ValueError("OPENAI_API_KEY is required when WEREWOLF_LLM_PROVIDER=openai")
 
     def _validate_definition_settings(self) -> None:
         """Ensure runtime definitions are loadable and match configured settings."""

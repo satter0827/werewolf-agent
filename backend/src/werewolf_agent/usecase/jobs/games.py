@@ -10,6 +10,8 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from werewolf_agent.commons.shared.definitions import (
+    CustomCharacterDefinition,
+    CustomRoleDefinition,
     GameDefinitions,
     LlmDefinitions,
     LocalRulesDefinition,
@@ -30,6 +32,7 @@ RoleId = str
 Winner = Literal["villagers", "werewolves"]
 AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
+NarrationMode = Literal["none", "standard", "rich"]
 
 
 @dataclass(frozen=True)
@@ -38,11 +41,33 @@ class LlmProviderConfig:
 
     provider: str
     model: str
+    base_url: str
+    api_key: str = field(repr=False)
+    timeout_seconds: float
+    max_retries: int
+    temperature: float
 
     def __post_init__(self) -> None:
         """Validate provider settings without importing interface settings."""
-        non_blank(self.provider, "llm provider")
-        non_blank(self.model, "llm model")
+        provider = non_blank(self.provider, "llm provider").lower()
+        model = non_blank(self.model, "llm model")
+        base_url = self.base_url.strip()
+        api_key = self.api_key.strip()
+        if self.timeout_seconds <= 0:
+            raise ValueError("llm timeout_seconds must be greater than 0")
+        if self.max_retries < 0:
+            raise ValueError("llm max_retries must be at least 0")
+        if not 0 <= self.temperature <= 2:
+            raise ValueError("llm temperature must be between 0 and 2")
+        if provider == "lmstudio" and not base_url:
+            raise ValueError("llm base_url is required for lmstudio provider")
+        if provider == "openai" and not api_key:
+            raise ValueError("OPENAI_API_KEY is required for openai provider")
+
+        object.__setattr__(self, "provider", provider)
+        object.__setattr__(self, "model", model)
+        object.__setattr__(self, "base_url", base_url)
+        object.__setattr__(self, "api_key", api_key)
 
 
 @dataclass(frozen=True)
@@ -77,9 +102,15 @@ class CreateGameCommand(_UseCaseModel):
     """Command for creating one game."""
 
     seed: int | None = None
+    scenario_id: str | None = None
+    setup_preset_id: str | None = None
+    narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     human_player_id: str | None = None
+    character_assignments: dict[str, str] = Field(default_factory=dict)
+    custom_roles: list[CustomRoleDefinition] = Field(default_factory=list)
+    custom_characters: list[CustomCharacterDefinition] = Field(default_factory=list)
 
     @field_validator("role_counts")
     @classmethod
@@ -100,14 +131,44 @@ class CreateGameCommand(_UseCaseModel):
             return None
         return non_blank(value, "human_player_id")
 
+    @field_validator("scenario_id", "setup_preset_id")
+    @classmethod
+    def validate_optional_ids(cls, value: str | None) -> str | None:
+        """Return stripped optional setup ids."""
+        if value is None:
+            return None
+        return non_blank(value, "setup id")
+
+    @field_validator("character_assignments")
+    @classmethod
+    def validate_character_assignments(cls, value: dict[str, str]) -> dict[str, str]:
+        """Return character assignments keyed by generated player id."""
+        return {
+            non_blank(str(player_id), "character assignment player id"): non_blank(
+                character_id,
+                "character assignment id",
+            )
+            for player_id, character_id in value.items()
+        }
+
     @model_validator(mode="after")
     def validate_human_player_within_generated_seats(self) -> Self:
         """Ensure the requested human seat exists in the generated table."""
-        if self.human_player_id is None:
-            return self
         valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
-        if self.human_player_id not in valid_player_ids:
+        if self.human_player_id is not None and self.human_player_id not in valid_player_ids:
             raise ValueError("human_player_id must match a generated player id")
+        unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
+        if unknown_assignments:
+            raise ValueError("character_assignments keys must match generated player ids")
+        assigned_character_ids = list(self.character_assignments.values())
+        if len(set(assigned_character_ids)) != len(assigned_character_ids):
+            raise ValueError("character_assignments values must be unique")
+        custom_role_ids = [definition.id for definition in self.custom_roles]
+        if len(set(custom_role_ids)) != len(custom_role_ids):
+            raise ValueError("custom role ids must be unique")
+        custom_character_ids = [definition.id for definition in self.custom_characters]
+        if len(set(custom_character_ids)) != len(custom_character_ids):
+            raise ValueError("custom character ids must be unique")
         return self
 
     @property
@@ -200,6 +261,13 @@ class RulesetResult(_UseCaseModel):
     roles: dict[RoleId, dict[str, Any]]
     default_role_counts: dict[RoleId, RoleCount]
     default_rules: LocalRulesDefinition
+    default_scenario_id: str | None = None
+    default_setup_preset_id: str | None = None
+    default_narration_mode: NarrationMode = "standard"
+    abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -286,6 +354,9 @@ class GameRevealResult(_UseCaseModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     players: list[GameRevealPlayer]
@@ -386,6 +457,9 @@ class PublicGameState(_UseCaseModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    narration_mode: NarrationMode = "standard"
     players: list[PublicPlayerState]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
@@ -428,6 +502,7 @@ class GameTimelineItem(_UseCaseModel):
     day: int | None = None
     actor_id: str | None = None
     event_type: str
+    narration: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     occurred_at: datetime
 
@@ -560,11 +635,20 @@ class GameUseCases:
         """Store dependencies used by all game use case calls."""
         self._dependencies = dependencies
 
-    def get_default_ruleset(self) -> RulesetResult:
+    @staticmethod
+    def get_default_ruleset(
+        config: GameUseCaseConfig,
+        game_definitions: GameDefinitions,
+        llm_definitions: LlmDefinitions,
+    ) -> RulesetResult:
         """Return business metadata for the default ruleset."""
         from werewolf_agent.usecase.internal.rulesets import default_ruleset
 
-        return default_ruleset(self._dependencies.config, self._dependencies.game_definitions)
+        return default_ruleset(
+            config,
+            game_definitions,
+            llm_definitions,
+        )
 
     def create_game_run(self, command: CreateGameCommand) -> GameRunResult:
         """Create and persist one deterministic game."""

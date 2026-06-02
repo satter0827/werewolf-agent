@@ -41,9 +41,17 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
 
     """
     app_settings = settings or get_settings()
+    api_key = app_settings.configured_openai_api_key
+    if app_settings.llm_provider == "lmstudio" and not api_key:
+        api_key = "lm-studio"
     return LlmProviderConfig(
         provider=app_settings.llm_provider,
         model=app_settings.model,
+        base_url=app_settings.llm_base_url,
+        api_key=api_key,
+        timeout_seconds=app_settings.llm_timeout_seconds,
+        max_retries=app_settings.llm_max_retries,
+        temperature=app_settings.llm_temperature,
     )
 
 

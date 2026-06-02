@@ -7,11 +7,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from typing import cast
 from uuid import uuid4
 
 from werewolf_agent.contracts.schemas import (
+    CustomCharacterDefinitionRequest,
+    CustomRoleDefinitionRequest,
     GameRunResponse,
     LocalRulesSettings,
+    NarrationMode,
     PublicGameRunSummary,
     PublicGameState,
 )
@@ -21,7 +25,7 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ScreenMode,
 )
 
-SAVE_FILE_VERSION = 3
+SAVE_FILE_VERSION = 4
 
 
 @dataclass(frozen=True)
@@ -34,6 +38,12 @@ class SaveSlot:
     role_counts: dict[str, int]
     rules: LocalRulesSettings
     seed: int | None
+    scenario_id: str | None
+    setup_preset_id: str | None
+    narration_mode: NarrationMode
+    character_assignments: dict[str, str]
+    custom_roles: list[CustomRoleDefinitionRequest]
+    custom_characters: list[CustomCharacterDefinitionRequest]
     status: str
     phase: str
     day: int
@@ -51,6 +61,12 @@ class SaveSlot:
             role_counts=dict(self.role_counts),
             rules=self.rules,
             seed=self.seed,
+            scenario_id=self.scenario_id,
+            setup_preset_id=self.setup_preset_id,
+            narration_mode=self.narration_mode,
+            character_assignments=dict(self.character_assignments),
+            custom_roles=list(self.custom_roles),
+            custom_characters=list(self.custom_characters),
             status=state.status,
             phase=state.phase,
             day=state.day,
@@ -113,6 +129,12 @@ def create_save_slot(
     role_counts: Mapping[str, int],
     rules: LocalRulesSettings,
     seed: int | None,
+    scenario_id: str | None,
+    setup_preset_id: str | None,
+    narration_mode: NarrationMode,
+    character_assignments: Mapping[str, str],
+    custom_roles: list[CustomRoleDefinitionRequest],
+    custom_characters: list[CustomCharacterDefinitionRequest],
 ) -> SaveSlot:
     """Create a playable save slot from a newly created game response."""
     state = response.state
@@ -123,6 +145,15 @@ def create_save_slot(
         role_counts={str(role_id): int(count) for role_id, count in role_counts.items()},
         rules=rules,
         seed=seed,
+        scenario_id=scenario_id,
+        setup_preset_id=setup_preset_id,
+        narration_mode=narration_mode,
+        character_assignments={
+            str(player_id): str(character_id)
+            for player_id, character_id in character_assignments.items()
+        },
+        custom_roles=list(custom_roles),
+        custom_characters=list(custom_characters),
         status=state.status,
         phase=state.phase,
         day=state.day,
@@ -176,6 +207,12 @@ def build_saved_game_options(
                 role_counts=dict(slot.role_counts),
                 rules=slot.rules,
                 seed=slot.seed,
+                scenario_id=slot.scenario_id,
+                setup_preset_id=slot.setup_preset_id,
+                narration_mode=slot.narration_mode,
+                character_assignments=dict(slot.character_assignments),
+                custom_roles=list(slot.custom_roles),
+                custom_characters=list(slot.custom_characters),
             )
         )
     observer_runs = [run for run in runs if run.game_id not in saved_game_ids]
@@ -196,6 +233,7 @@ def build_saved_game_options(
                 game_id=run.game_id,
                 mode="observer",
                 seed=run.seed,
+                narration_mode="standard",
             )
         )
     return options
@@ -210,6 +248,12 @@ def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
             role_counts=_role_counts(payload.get("role_counts")),
             rules=LocalRulesSettings.model_validate(payload["rules"]),
             seed=_optional_int(payload.get("seed")),
+            scenario_id=_optional_text(payload.get("scenario_id")),
+            setup_preset_id=_optional_text(payload.get("setup_preset_id")),
+            narration_mode=_narration_mode(payload.get("narration_mode")),
+            character_assignments=_text_map(payload.get("character_assignments")),
+            custom_roles=_custom_roles(payload.get("custom_roles")),
+            custom_characters=_custom_characters(payload.get("custom_characters")),
             status=_required_text(payload, "status"),
             phase=_required_text(payload, "phase"),
             day=_required_int(payload, "day"),
@@ -230,6 +274,12 @@ def _slot_to_dict(slot: SaveSlot) -> dict[str, object]:
         "role_counts": dict(slot.role_counts),
         "rules": slot.rules.model_dump(mode="json"),
         "seed": slot.seed,
+        "scenario_id": slot.scenario_id,
+        "setup_preset_id": slot.setup_preset_id,
+        "narration_mode": slot.narration_mode,
+        "character_assignments": dict(slot.character_assignments),
+        "custom_roles": [item.model_dump(mode="json") for item in slot.custom_roles],
+        "custom_characters": [item.model_dump(mode="json") for item in slot.custom_characters],
         "status": slot.status,
         "phase": slot.phase,
         "day": slot.day,
@@ -276,6 +326,41 @@ def _role_counts(value: object) -> dict[str, int]:
     if not isinstance(value, dict):
         raise ValueError("role_counts must be an object")
     return {str(role_id): int(count) for role_id, count in value.items()}
+
+
+def _text_map(value: object) -> dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    return {
+        str(key): str(item) for key, item in value.items() if str(key).strip() and str(item).strip()
+    }
+
+
+def _narration_mode(value: object) -> NarrationMode:
+    text = str(value or "standard").strip()
+    if text in {"none", "standard", "rich"}:
+        return cast(NarrationMode, text)
+    return "standard"
+
+
+def _custom_roles(value: object) -> list[CustomRoleDefinitionRequest]:
+    if not isinstance(value, list):
+        return []
+    roles: list[CustomRoleDefinitionRequest] = []
+    for item in value:
+        if isinstance(item, dict):
+            roles.append(CustomRoleDefinitionRequest.model_validate(item))
+    return roles
+
+
+def _custom_characters(value: object) -> list[CustomCharacterDefinitionRequest]:
+    if not isinstance(value, list):
+        return []
+    characters: list[CustomCharacterDefinitionRequest] = []
+    for item in value:
+        if isinstance(item, dict):
+            characters.append(CustomCharacterDefinitionRequest.model_validate(item))
+    return characters
 
 
 def _optional_datetime(value: object) -> datetime | None:

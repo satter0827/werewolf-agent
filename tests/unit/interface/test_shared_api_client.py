@@ -180,6 +180,7 @@ def test_diagnostics_redacts_database_password() -> None:
     settings = AppSettings(
         _env_file=None,
         database_url="postgres://user:secret@example.test:5432/werewolf_agent",
+        openai_api_key="sk-secret",
     )
 
     diagnostics = build_interface_diagnostics(
@@ -191,6 +192,8 @@ def test_diagnostics_redacts_database_password() -> None:
     assert diagnostics["api url"] == "http://api.test/api/v1"
     assert "secret" not in diagnostics["database"]
     assert "[REDACTED]" in diagnostics["database"]
+    assert diagnostics["llm api key"] == "[REDACTED]"
+    assert "sk-secret" not in str(diagnostics)
 
 
 def _game_payload() -> dict[str, object]:

@@ -11,6 +11,15 @@ from dataclasses import dataclass
 from typing import Any, cast
 from uuid import UUID, uuid4
 
+from werewolf_agent.commons.shared.definitions import (
+    GameDefinitions,
+    GameRoleDefinitions,
+    LlmDefinitions,
+    NarrationProfileDefinition,
+    PlayerProfile,
+    PlayerRoster,
+    RoleDefinition,
+)
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
@@ -19,6 +28,7 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_PLAYER_IS_NOT_MANUAL,
     message_player_count_between,
 )
+from werewolf_agent.commons.shared.validation import non_blank
 from werewolf_agent.contracts import (
     GameError,
     GameNotFoundError,
@@ -39,9 +49,11 @@ from werewolf_agent.domain.game.models import (
     RoleCatalog,
 )
 from werewolf_agent.domain.game.service import advance_phase, observe, start_game, submit_action
+from werewolf_agent.domain.llm.models import AgentScenario
 from werewolf_agent.usecase.internal.agents import AgentFactory, langchain_agent_factory
 from werewolf_agent.usecase.internal.definitions import local_rules_to_domain, to_role_catalog
 from werewolf_agent.usecase.internal.players import (
+    SelectedPlayerProfile,
     display_name_for,
     profile_ids_by_player,
     select_players,
@@ -80,6 +92,7 @@ from werewolf_agent.usecase.jobs.games import (
     GetPlayerObservationQuery,
     ListGameRunsQuery,
     ListGameRunsResult,
+    NarrationMode,
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
@@ -105,10 +118,13 @@ def create_game_run(
     """Create and persist one deterministic game."""
     game_id = uuid4()
     requested_players = _requested_player_configs(command, dependencies.config)
-    selected_profiles = select_players(
-        dependencies.llm_definitions.players,
+    game_definitions = _game_definitions_for(command, dependencies.game_definitions)
+    llm_definitions = _llm_definitions_for(command, dependencies.llm_definitions)
+    selected_profiles = _select_player_profiles(
+        llm_definitions.players,
         player_count=len(requested_players),
         seed=command.seed,
+        character_assignments=command.character_assignments,
     )
     players = [
         Player(
@@ -122,9 +138,16 @@ def create_game_run(
         command,
         player_count=len(players),
         rules=local_rules_to_domain(command.rules),
-        roles=to_role_catalog(dependencies.game_definitions.roles),
+        roles=to_role_catalog(game_definitions.roles),
     )
+    scenario_config = _scenario_config(command, game_definitions)
     run_config = {
+        **scenario_config,
+        "narration_mode": command.narration_mode,
+        "custom_roles": [definition.model_dump(mode="json") for definition in command.custom_roles],
+        "custom_characters": [
+            definition.model_dump(mode="json") for definition in command.custom_characters
+        ],
         "player_agent_types": {
             player.id: requested_player.agent_type
             for player, requested_player in zip(players, requested_players, strict=True)
@@ -140,6 +163,9 @@ def create_game_run(
         game_id=str(game_id),
         version=1,
         seed=command.seed,
+        scenario_id=_config_text(scenario_config, "scenario_id"),
+        scenario_name=_config_text(scenario_config, "scenario_name"),
+        narration_mode=command.narration_mode,
     )
     run = dependencies.repository.create(
         GameRunCreate(
@@ -156,7 +182,14 @@ def create_game_run(
             version=1,
         )
     )
-    dependencies.repository.append_events(run.id, events_to_create(events))
+    dependencies.repository.append_events(
+        run.id,
+        events_to_create(
+            events,
+            narration_profile=_narration_profile(run_config, game_definitions),
+            narration_mode=command.narration_mode,
+        ),
+    )
     return GameRunResult(
         game_id=str(run.id),
         state=public_state_payload_from_run(run),
@@ -203,6 +236,9 @@ def get_game_reveal(
         day=snapshot.day,
         version=run.version,
         seed=run.seed,
+        scenario_id=_config_text(run.config, "scenario_id"),
+        scenario_name=_config_text(run.config, "scenario_name"),
+        narration_mode=_narration_mode(run.config),
         role_counts=dict(snapshot.config.role_counts),
         rules=snapshot.config.rules,
         players=[
@@ -316,8 +352,9 @@ def advance_game_run(
         pending_actions=pending_actions,
         agent_factory=langchain_agent_factory(
             dependencies.llm_provider_config,
-            definitions=dependencies.llm_definitions,
+            definitions=_llm_definitions_for_run(run.config, dependencies.llm_definitions),
             profile_ids_by_player=_player_profile_ids(run.config),
+            scenario=_agent_scenario(run.config),
         ),
         agent_type=dependencies.config.supported_agent_type,
         human_player_ids=human_player_ids,
@@ -361,6 +398,9 @@ def advance_game_run(
         version=run.version + 1,
         seed=run.seed,
         created_at=run.created_at,
+        scenario_id=_config_text(run.config, "scenario_id"),
+        scenario_name=_config_text(run.config, "scenario_name"),
+        narration_mode=_narration_mode(run.config),
     )
 
     updated_run = dependencies.repository.save(
@@ -378,7 +418,11 @@ def advance_game_run(
     latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)
     records = dependencies.repository.append_events(
         updated_run.id,
-        events_to_create([*action_events, *phase_events]),
+        events_to_create(
+            [*action_events, *phase_events],
+            narration_profile=_narration_profile(run.config, dependencies.game_definitions),
+            narration_mode=_narration_mode(run.config),
+        ),
     )
     turns = dependencies.repository.list_public_turns(
         updated_run.id,
@@ -508,6 +552,9 @@ def submit_player_action(
         version=run.version,
         seed=run.seed,
         created_at=run.created_at,
+        scenario_id=_config_text(run.config, "scenario_id"),
+        scenario_name=_config_text(run.config, "scenario_name"),
+        narration_mode=_narration_mode(run.config),
     )
     updated_run = dependencies.repository.save(
         GameRunUpdate(
@@ -522,7 +569,14 @@ def submit_player_action(
         )
     )
     latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)
-    records = dependencies.repository.append_events(updated_run.id, events_to_create(events))
+    records = dependencies.repository.append_events(
+        updated_run.id,
+        events_to_create(
+            events,
+            narration_profile=_narration_profile(run.config, dependencies.game_definitions),
+            narration_mode=_narration_mode(run.config),
+        ),
+    )
     turns = dependencies.repository.list_public_turns(
         updated_run.id,
         after=latest_turn_sequence,
@@ -558,6 +612,242 @@ def get_game_timeline(
         items=[public_turn_payload_from_record(record) for record in records],
         next_after=next_after,
     )
+
+
+def _game_definitions_for(
+    command: CreateGameCommand,
+    definitions: GameDefinitions,
+) -> GameDefinitions:
+    if not command.custom_roles:
+        return definitions
+
+    custom_role_ids = {definition.id for definition in command.custom_roles}
+    conflicts = sorted(custom_role_ids & set(definitions.roles.roles))
+    if conflicts:
+        raise GameError(
+            "custom roles conflict with default role ids",
+            context={"role_ids": conflicts},
+        )
+
+    known_abilities = set(definitions.catalog.abilities)
+    unknown_abilities = sorted(
+        {
+            ability
+            for definition in command.custom_roles
+            for ability in definition.abilities
+            if ability not in known_abilities
+        }
+    )
+    if unknown_abilities:
+        raise GameError(
+            "custom roles contain unknown abilities",
+            context={"abilities": unknown_abilities},
+        )
+
+    roles = dict(definitions.roles.roles)
+    roles.update(
+        {
+            definition.id: RoleDefinition(
+                faction=definition.faction,
+                abilities=tuple(definition.abilities),
+                label=definition.name,
+                description=definition.description or None,
+                difficulty=definition.difficulty,
+            )
+            for definition in command.custom_roles
+        }
+    )
+    return definitions.model_copy(
+        update={
+            "roles": GameRoleDefinitions(
+                roles=roles,
+                default_role_counts=definitions.roles.default_role_counts,
+            )
+        }
+    )
+
+
+def _llm_definitions_for(
+    command: CreateGameCommand,
+    definitions: LlmDefinitions,
+) -> LlmDefinitions:
+    if not command.custom_characters:
+        return definitions
+
+    custom_character_ids = {definition.id for definition in command.custom_characters}
+    conflicts = sorted(custom_character_ids & set(definitions.players.players))
+    if conflicts:
+        raise GameError(
+            "custom characters conflict with default character ids",
+            context={"character_ids": conflicts},
+        )
+
+    players = dict(definitions.players.players)
+    players.update(
+        {
+            definition.id: PlayerProfile(
+                name=definition.name,
+                age=definition.age,
+                gender=definition.gender,
+                personality=definition.personality,
+                speaking_style=definition.speaking_style,
+                reasoning_style=definition.reasoning_style,
+                risk_tolerance=definition.risk_tolerance,
+            )
+            for definition in command.custom_characters
+        }
+    )
+    return _llm_definitions_with_players(definitions, players)
+
+
+def _llm_definitions_for_run(
+    config: Mapping[str, object],
+    definitions: LlmDefinitions,
+) -> LlmDefinitions:
+    raw_items = config.get("custom_characters")
+    if not isinstance(raw_items, list):
+        return definitions
+
+    players = dict(definitions.players.players)
+    for raw_item in raw_items:
+        if not isinstance(raw_item, Mapping):
+            continue
+        profile_id = non_blank(str(raw_item.get("id", "")), "custom character id")
+        profile_payload = {str(key): value for key, value in raw_item.items() if key != "id"}
+        players[profile_id] = PlayerProfile.model_validate(profile_payload)
+    return _llm_definitions_with_players(definitions, players)
+
+
+def _llm_definitions_with_players(
+    definitions: LlmDefinitions,
+    players: dict[str, PlayerProfile],
+) -> LlmDefinitions:
+    try:
+        roster = PlayerRoster(players=players)
+    except ValueError as exc:
+        raise GameError("custom characters conflict with player roster") from exc
+    return definitions.model_copy(update={"players": roster})
+
+
+def _select_player_profiles(
+    roster: PlayerRoster,
+    *,
+    player_count: int,
+    seed: int | None,
+    character_assignments: Mapping[str, str],
+) -> list[SelectedPlayerProfile]:
+    if not character_assignments:
+        return select_players(roster, player_count=player_count, seed=seed)
+
+    valid_player_ids = {f"player-{index}" for index in range(1, player_count + 1)}
+    unknown_players = sorted(set(character_assignments) - valid_player_ids)
+    if unknown_players:
+        raise GameError(
+            "character assignments contain unknown generated player ids",
+            context={"player_ids": unknown_players},
+        )
+
+    unknown_profiles = sorted(set(character_assignments.values()) - set(roster.players))
+    if unknown_profiles:
+        raise GameError(
+            "character assignments contain unknown character ids",
+            context={"character_ids": unknown_profiles},
+        )
+
+    assigned_profile_ids = set(character_assignments.values())
+    remaining = [
+        (profile_id, profile)
+        for profile_id, profile in sorted(roster.players.items())
+        if profile_id not in assigned_profile_ids
+    ]
+    missing_count = player_count - len(character_assignments)
+    if missing_count > len(remaining):
+        raise GameError(
+            "player roster does not have enough enabled players",
+            context={"player_count": player_count, "roster_count": len(roster.players)},
+        )
+    rng = random.Random(seed)
+    sampled = {
+        f"player-{index}": SelectedPlayerProfile(profile_id=profile_id, profile=profile)
+        for index, (profile_id, profile) in enumerate(
+            rng.sample(remaining, missing_count),
+            start=1,
+        )
+    }
+    selected: list[SelectedPlayerProfile] = []
+    fallback_index = 1
+    for index in range(1, player_count + 1):
+        player_id = f"player-{index}"
+        assigned_id = character_assignments.get(player_id)
+        if assigned_id is not None:
+            selected.append(
+                SelectedPlayerProfile(
+                    profile_id=assigned_id,
+                    profile=roster.players[assigned_id],
+                )
+            )
+            continue
+        while f"player-{fallback_index}" not in sampled:
+            fallback_index += 1
+        selected.append(sampled[f"player-{fallback_index}"])
+        fallback_index += 1
+    return selected
+
+
+def _scenario_config(command: CreateGameCommand, definitions: GameDefinitions) -> dict[str, str]:
+    preset_id = command.setup_preset_id
+    if preset_id is not None and preset_id not in definitions.catalog.setup_presets:
+        raise GameError(
+            f"Unknown setup preset: {preset_id}",
+            context={"setup_preset_id": preset_id},
+        )
+    preset = definitions.catalog.setup_presets.get(preset_id or "")
+    scenario_id = command.scenario_id or (preset.scenario_id if preset is not None else None)
+    if scenario_id is None:
+        scenario_id = next(iter(definitions.catalog.scenarios), "")
+    if not scenario_id:
+        return {}
+    scenario = definitions.catalog.scenarios.get(scenario_id)
+    if scenario is None:
+        raise GameError(f"Unknown scenario: {scenario_id}", context={"scenario_id": scenario_id})
+    return {
+        "scenario_id": scenario_id,
+        "scenario_name": scenario.label,
+        "scenario_prompt_premise": scenario.prompt_premise,
+        "narration_profile": scenario.narration_profile,
+        "setup_preset_id": preset_id or scenario.recommended_setup_preset or "",
+    }
+
+
+def _narration_profile(
+    config: Mapping[str, object],
+    definitions: GameDefinitions,
+) -> NarrationProfileDefinition | None:
+    profile_id = _config_text(config, "narration_profile")
+    if profile_id is None:
+        return None
+    return definitions.catalog.narration_profiles.get(profile_id)
+
+
+def _agent_scenario(config: Mapping[str, object]) -> AgentScenario | None:
+    name = _config_text(config, "scenario_name")
+    premise = _config_text(config, "scenario_prompt_premise")
+    if name is None or premise is None:
+        return None
+    return AgentScenario(name=name, premise=premise)
+
+
+def _config_text(config: Mapping[str, object], key: str) -> str | None:
+    value = config.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _narration_mode(config: Mapping[str, object]) -> NarrationMode:
+    value = _config_text(config, "narration_mode")
+    return cast(NarrationMode, value) if value in {"none", "standard", "rich"} else "standard"
 
 
 def _player_faction(snapshot: GameSnapshot, player: Player) -> str:

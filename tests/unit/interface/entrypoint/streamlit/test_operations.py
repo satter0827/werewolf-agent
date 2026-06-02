@@ -171,6 +171,12 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
             rules=rules,
             seed_text="7",
             human_player_id="player-1",
+            scenario_id="classic_village",
+            setup_preset_id="standard_6",
+            narration_mode="standard",
+            character_assignments={},
+            custom_roles=[],
+            custom_characters=[],
         )
 
     assert created.game_id == "game-1"
@@ -179,6 +185,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
     assert client.created_request.human_player_id == "player-1"
     assert client.created_request.seed == 7
     assert client.created_request.rules == rules
+    assert client.created_request.scenario_id == "classic_village"
     record = next(
         record for record in caplog.records if record.event_action == "streamlit.game.created"
     )

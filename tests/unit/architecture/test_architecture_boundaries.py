@@ -99,6 +99,8 @@ def test_old_usecase_jobs_names_are_not_public() -> None:
         "AdvanceGameRunResult",
         "AdvanceUntilInputResult",
         "CreateGameRunCommand",
+        "CustomCharacterDefinitionCommand",
+        "CustomRoleDefinitionCommand",
         "GamePhase",
         "GameResult",
         "GameRunResult",
@@ -142,6 +144,7 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentDecision",
             "AgentObservation",
             "AgentPhase",
+            "AgentScenario",
             "AgentPlayerStatus",
             "LangChainDecisionProvider",
             "LlmDecisionProvider",
@@ -157,7 +160,6 @@ def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
         "advance_game_run",
         "advance_until_input",
         "create_game_run",
-        "get_default_ruleset",
         "get_game_run",
         "get_player_observation",
         "get_game_timeline",
@@ -173,6 +175,15 @@ def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
 
         assert parameters[0].name == "self"
         assert all(parameter.name != "dependencies" for parameter in parameters)
+
+
+def test_ruleset_metadata_does_not_require_repository_dependency() -> None:
+    signature = inspect.signature(game_jobs.GameUseCases.get_default_ruleset)
+    assert list(signature.parameters) == [
+        "config",
+        "game_definitions",
+        "llm_definitions",
+    ]
 
 
 def test_usecase_runtime_values_must_be_supplied_by_outer_layer() -> None:

@@ -7,17 +7,17 @@ LLM agent を人狼ゲームのプレイヤーとして動かす Python backend 
 
 - 5〜8 人の同期ゲームを FastAPI 経由で作成、進行、一覧、再生できる
 - packaged default の役職は `villager`、`werewolf`、`seer`、`knight`
-- ルール、役職、LLM player profile、prompt、fake response は runtime definition として読み込む
+- ルール、役職、シナリオ、LLM player profile、prompt、fake response は runtime definition として読み込む
 - フェーズは `night`、`day_discussion`、`voting`、`finished`
-- LangChain `FakeListLLM` provider で 1 game を CLI から完走できる
+- LangChain `FakeListLLM`、LM Studio、OpenAI provider を設定値で切り替えられる
 - CLI は `doctor`、`ruleset`、`new`、`show`、`advance`、`play`、`timeline`、`replay`、`runs` を持つ
 - 1 game につき 1 人の `human` player を CLI / Streamlit から操作できる
-- 実 LLM provider、複数 human player、React UI は未実装
+- 複数 human player、React UI は未実装
 
 ## 起動
 
 ```bash
-uv sync --group dev --extra api --extra streamlit
+uv sync --group dev --extra api --extra llm --extra streamlit
 uv run werewolf-agent doctor
 uv run --extra api alembic upgrade head
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
@@ -65,6 +65,7 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 | `POST` | `/api/v1/games` | game run 作成 |
 | `GET` | `/api/v1/games` | game run 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | 公開状態取得 |
+| `GET` | `/api/v1/games/{game_id}/reveal` | 観戦 UI 用 reveal 取得 |
 | `POST` | `/api/v1/games/{game_id}/advance` | 1 usecase step 進行 |
 | `POST` | `/api/v1/games/{game_id}/advance-until-input` | 次の manual 入力待ちまで進行 |
 | `GET` | `/api/v1/games/{game_id}/timeline` | 公開 timeline 取得 |
@@ -98,9 +99,26 @@ VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox �
 
 `interface/runtime` が `defaults.toml`、`.env`、環境変数、定義体 TOML を読み取り、設定構築時に検証します。API / CLI / Streamlit の浅い場所では、検証済みの設定値を usecase へ依存として注入します。DB は `WEREWOLF_DATABASE_URL` が空なら `WEREWOLF_SQLITE_PATH` の SQLite を使います。
 
-定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、LLM players は `WEREWOLF_LLM_PLAYERS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE`、Streamlit 翻訳は `WEREWOLF_STREAMLIT_I18N_FILE` で外部 TOML に差し替えられます。game 用定義体は `domain.game` だけ、LLM 用定義体は `domain.llm` だけ、UI 翻訳は Streamlit entrypoint だけに渡します。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。CLI の `--role-count` 省略時だけ `interface/entrypoint/cui` が runtime settings / role 定義体から既定構成を選びます。usecase / domain は具体 agent type、role id、local rule の default を生成しません。
+定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、game catalog は `WEREWOLF_GAME_CATALOG_FILE`、LLM players は `WEREWOLF_LLM_PLAYERS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE`、Streamlit 翻訳は `WEREWOLF_STREAMLIT_I18N_FILE` で外部 TOML に差し替えられます。game catalog はシナリオ、ナレーション、設定プリセット、能力表示を持ちます。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。Streamlit のカスタム役職・キャラクターは現在の session 内で追加し、game 作成 request に同梱します。usecase / domain は具体 agent type、role id、local rule の default を生成しません。
 
-Streamlit は初期言語を `WEREWOLF_STREAMLIT_LANGUAGE` から読み、既定は `ja` です。画面上の `設定` で `ja / en` を切り替えると、その Streamlit session 内では選択値を優先します。
+LLM provider は `WEREWOLF_LLM_PROVIDER` で `fake`、`lmstudio`、`openai` を選びます。既定は `fake` です。LM Studio は OpenAI-compatible API の `/v1/chat/completions` を使い、Docker Compose からホストの LM Studio server へ接続する場合は次を `.env` に置きます。
+
+```text
+WEREWOLF_LLM_PROVIDER=lmstudio
+WEREWOLF_MODEL=<LM Studio model identifier>
+WEREWOLF_LLM_BASE_URL=http://host.docker.internal:1234/v1
+```
+
+OpenAI へ切り替える場合は provider、model、API key だけを変更します。
+
+```text
+WEREWOLF_LLM_PROVIDER=openai
+WEREWOLF_MODEL=gpt-4.1-mini
+WEREWOLF_LLM_BASE_URL=
+OPENAI_API_KEY=<secret>
+```
+
+Streamlit は初期言語を `WEREWOLF_STREAMLIT_LANGUAGE` から読み、既定は `ja` です。画面上の `設定` でシナリオ、配役、登場キャラクター、ナレーション、詳細ルールを変更できます。選択値とカスタム定義は現在の Streamlit session 内では優先します。
 
 観戦モードは `GET /api/v1/games/{game_id}/reveal` だけから秘匿情報を読みます。`WEREWOLF_REVEAL_API_ENABLED` は既定で `true` ですが、公開 API の state / timeline / private observation には role、night action target、private state を混ぜません。
 
@@ -134,11 +152,10 @@ uv run --extra api pytest tests/integration/api
 
 ## 次の一手
 
-- 実 LLM provider adapter と structured output validation
+- LM Studio / OpenAI provider の接続 QA と evaluation workflow
 - 複数 human player / external agent action API
 - 永続 login/session による private observation 認証
 - React UI
-- evaluation workflow
 
 ## License
 

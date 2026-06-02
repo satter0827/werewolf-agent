@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Any, Literal
 
 from werewolf_agent.contracts.schemas import (
+    CustomCharacterDefinitionRequest,
+    CustomRoleDefinitionRequest,
     GameRevealAction,
     GameRevealPlayer,
     GameRevealResponse,
@@ -41,6 +43,12 @@ class SavedGameOptionView:
     role_counts: dict[str, int] | None = None
     rules: LocalRulesSettings | None = None
     seed: int | None = None
+    scenario_id: str | None = None
+    setup_preset_id: str | None = None
+    narration_mode: str = "standard"
+    character_assignments: dict[str, str] | None = None
+    custom_roles: list[CustomRoleDefinitionRequest] | None = None
+    custom_characters: list[CustomCharacterDefinitionRequest] | None = None
 
 
 @dataclass(frozen=True)
@@ -437,7 +445,8 @@ def timeline_items(
             icon=event_icon(turn.event_type).symbol,
             tone=event_icon(turn.event_type).tone,
             title=_event_title(turn, catalog, lang),
-            detail=_event_detail(turn, player_names=player_names, catalog=catalog, lang=lang),
+            detail=turn.narration
+            or _event_detail(turn, player_names=player_names, catalog=catalog, lang=lang),
             time_text=_time_text(turn.occurred_at),
             day_label=_day_label(turn.day, catalog, lang) if turn.day is not None else "-",
         )

@@ -23,8 +23,12 @@ from werewolf_agent.contracts.exceptions import (
     ResourceNotFoundError,
 )
 from werewolf_agent.contracts.schemas import (
+    AbilityDefinitionView,
     AdvanceGameRunResponse,
+    CharacterDefinitionView,
     CreateGameRequest,
+    CustomCharacterDefinitionRequest,
+    CustomRoleDefinitionRequest,
     ErrorEventPayload,
     GameRevealAction,
     GameRevealInspection,
@@ -49,15 +53,21 @@ from werewolf_agent.contracts.schemas import (
     PublicPlayerState,
     RoleDefinitionView,
     RulesetResponse,
+    ScenarioDefinitionView,
+    SetupPresetDefinitionView,
 )
 
 __all__ = [
     "ERROR_SPECS",
+    "AbilityDefinitionView",
     "AdvanceGameRunResponse",
     "AgentError",
     "AppError",
+    "CharacterDefinitionView",
     "ConfigError",
     "CreateGameRequest",
+    "CustomCharacterDefinitionRequest",
+    "CustomRoleDefinitionRequest",
     "ErrorCode",
     "ErrorEventPayload",
     "ErrorSpec",
@@ -94,6 +104,8 @@ __all__ = [
     "ResourceNotFoundError",
     "RoleDefinitionView",
     "RulesetResponse",
+    "ScenarioDefinitionView",
+    "SetupPresetDefinitionView",
     "get_error_spec",
     "problem_type_uri",
 ]

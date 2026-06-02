@@ -9,6 +9,10 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import werewolf_agent.usecase.jobs as game_jobs
+from werewolf_agent.commons.shared.definitions import (
+    CustomCharacterDefinition,
+    CustomRoleDefinition,
+)
 from werewolf_agent.commons.shared.messages import (
     LOG_GAME_RUN_CREATED,
     LOG_GAME_RUN_STEPPED,
@@ -26,8 +30,10 @@ from werewolf_agent.contracts import (
 )
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
+    AbilityDefinitionView,
     AdvanceGameRunResponse,
     AdvanceUntilInputResponse,
+    CharacterDefinitionView,
     CreateGameRequest,
     GameRevealResponse,
     GameRunResponse,
@@ -39,6 +45,8 @@ from werewolf_agent.contracts.schemas import (
     PlayerObservationResponse,
     RoleDefinitionView,
     RulesetResponse,
+    ScenarioDefinitionView,
+    SetupPresetDefinitionView,
 )
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
 from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
@@ -65,7 +73,11 @@ def get_default_ruleset(*, settings: AppSettings) -> RulesetResponse:
         Wire schema containing ruleset metadata and display names.
 
     """
-    ruleset = _ruleset_use_cases(settings).get_default_ruleset()
+    ruleset = game_jobs.GameUseCases.get_default_ruleset(
+        build_game_usecase_config(settings),
+        build_game_definitions(settings),
+        build_llm_definitions(settings),
+    )
     return _ruleset_response(ruleset, settings)
 
 
@@ -415,19 +427,6 @@ def _use_cases(session: Session, settings: AppSettings) -> game_jobs.GameUseCase
     return game_jobs.GameUseCases(_dependencies(session, settings))
 
 
-def _ruleset_use_cases(settings: AppSettings) -> game_jobs.GameUseCases:
-    return game_jobs.GameUseCases(
-        game_jobs.GameUseCaseDependencies(
-            repository=cast(game_jobs.GameRepository, object()),
-            config=build_game_usecase_config(settings),
-            game_definitions=build_game_definitions(settings),
-            llm_definitions=build_llm_definitions(settings),
-            llm_provider_config=build_llm_provider_config(settings),
-            telemetry=LoggingTelemetrySink(),
-        )
-    )
-
-
 def _dependencies(
     session: Session,
     settings: AppSettings,
@@ -455,6 +454,18 @@ def _create_command(
         role_counts=request.role_counts,
         human_player_id=request.human_player_id,
         rules=request.rules or settings.game_definitions.rules.local_rules,
+        scenario_id=request.scenario_id,
+        setup_preset_id=request.setup_preset_id,
+        narration_mode=request.narration_mode,
+        character_assignments=request.character_assignments,
+        custom_roles=[
+            CustomRoleDefinition.model_validate(item.model_dump(mode="json"))
+            for item in request.custom_roles
+        ],
+        custom_characters=[
+            CustomCharacterDefinition.model_validate(item.model_dump(mode="json"))
+            for item in request.custom_characters
+        ],
     )
 
 
@@ -465,9 +476,11 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
         roles=[
             RoleDefinitionView(
                 id=role_id,
-                name=role_names.get(role_id, role_id),
+                name=str(definition.get("label") or role_names.get(role_id, role_id)),
                 faction=str(definition["faction"]),
                 abilities=[str(ability) for ability in definition.get("abilities") or []],
+                description=str(definition.get("description") or ""),
+                difficulty=int(definition.get("difficulty") or 1),
             )
             for role_id, definition in ruleset.roles.items()
         ],
@@ -475,4 +488,54 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
         default_rules=LocalRulesSettings.model_validate(
             ruleset.default_rules.model_dump(mode="json")
         ),
+        default_scenario_id=ruleset.default_scenario_id,
+        default_setup_preset_id=ruleset.default_setup_preset_id,
+        default_narration_mode=ruleset.default_narration_mode,
+        abilities=[
+            AbilityDefinitionView(
+                id=ability_id,
+                name=str(definition["label"]),
+                description=str(definition["description"]),
+                target_policy=str(definition["target_policy"]),
+                difficulty=int(definition["difficulty"]),
+            )
+            for ability_id, definition in ruleset.abilities.items()
+        ],
+        scenarios=[
+            ScenarioDefinitionView(
+                id=scenario_id,
+                name=str(definition["label"]),
+                summary=str(definition["summary"]),
+                recommended_setup_preset=cast(
+                    str | None,
+                    definition.get("recommended_setup_preset"),
+                ),
+            )
+            for scenario_id, definition in ruleset.scenarios.items()
+        ],
+        setup_presets=[
+            SetupPresetDefinitionView(
+                id=preset_id,
+                name=str(definition["label"]),
+                scenario_id=str(definition["scenario_id"]),
+                role_counts={
+                    str(role_id): int(count)
+                    for role_id, count in dict(definition["role_counts"]).items()
+                },
+            )
+            for preset_id, definition in ruleset.setup_presets.items()
+        ],
+        characters=[
+            CharacterDefinitionView(
+                id=character_id,
+                name=str(definition["name"]),
+                age=int(definition["age"]),
+                gender=str(definition["gender"]),
+                personality=str(definition["personality"]),
+                speaking_style=str(definition["speaking_style"]),
+                reasoning_style=str(definition["reasoning_style"]),
+                risk_tolerance=str(definition["risk_tolerance"]),
+            )
+            for character_id, definition in ruleset.characters.items()
+        ],
     )

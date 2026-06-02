@@ -39,7 +39,8 @@
 | --- | --- | --- | --- |
 | ルール定義体 | `resources/game/rules.toml` | `domain.game` | ローカルルールの有効 / 無効 |
 | ロール定義体 | `resources/game/roles.toml` | `domain.game` | role ごとの faction / ability と player count 別の既定 role count |
-| Player 定義体 | `resources/llm/players.toml` | `domain.llm` | LLM に渡す下の名前、性格、話し方、推論傾向 |
+| Scenario catalog 定義体 | `resources/game/catalog.toml` | `usecase.internal` / `domain.llm` | シナリオ、公開ナレーション、設定プリセット、能力表示 |
+| Player 定義体 | `resources/llm/players.toml` | `domain.llm` | LLM に渡す名前、年齢、性別、性格、話し方、推論傾向 |
 | Prompt 定義体 | `resources/prompts/agent_decision.toml` | `domain.llm` | LLM decision provider の prompt metadata / messages |
 | Fake response 定義体 | `resources/llm/fake_responses.toml` | `domain.llm` | LangChain `FakeListLLM` 用 response fixture |
 
@@ -96,7 +97,7 @@ domain へ入る usecase code は `usecase.internal` 配下に限定します。
 | 型 / 関数 | 意味 |
 | --- | --- |
 | `AgentObservation` | LLM provider に渡せる provider 非依存の可視情報 |
-| `PlayerProfile` / `PlayerProfileCatalog` | LLM provider だけに渡す名前、性格、話し方、推論傾向 |
+| `PlayerProfile` / `PlayerProfileCatalog` | LLM provider だけに渡す名前、年齢、性別、性格、話し方、推論傾向 |
 | `AgentDecision` | LLM provider が返す構造化 decision |
 | `AgentObservation.speeches` / `vote_rounds` | LLM に渡してよい公開履歴 |
 | `LangChainDecisionProvider` | prompt、LangChain model、Pydantic parser をつなぐ provider |

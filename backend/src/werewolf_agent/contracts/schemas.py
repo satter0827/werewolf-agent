@@ -7,7 +7,11 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from werewolf_agent.commons.shared.definitions import LocalRulesDefinition
+from werewolf_agent.commons.shared.definitions import (
+    CustomCharacterDefinition,
+    CustomRoleDefinition,
+    LocalRulesDefinition,
+)
 from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_AT_LEAST_ONE
 from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
 
@@ -19,19 +23,38 @@ RoleId = str
 Winner = Literal["villagers", "werewolves"]
 AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
+NarrationMode = Literal["none", "standard", "rich"]
 
 
 class LocalRulesSettings(LocalRulesDefinition):
     """Local rule settings accepted when creating a game."""
 
 
+class CustomRoleDefinitionRequest(CustomRoleDefinition):
+    """Session-scoped role definition supplied by a UI client."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class CustomCharacterDefinitionRequest(CustomCharacterDefinition):
+    """Session-scoped character definition supplied by a UI client."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class CreateGameRequest(BaseModel):
     """Payload for creating one game."""
 
     seed: int | None = None
+    scenario_id: str | None = None
+    setup_preset_id: str | None = None
+    narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
     human_player_id: str | None = None
     rules: LocalRulesSettings | None = None
+    character_assignments: dict[str, str] = Field(default_factory=dict)
+    custom_roles: list[CustomRoleDefinitionRequest] = Field(default_factory=list)
+    custom_characters: list[CustomCharacterDefinitionRequest] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -52,14 +75,42 @@ class CreateGameRequest(BaseModel):
         """Return a stripped optional human player id."""
         return optional_non_blank(value, str(info.field_name))
 
+    @field_validator("scenario_id", "setup_preset_id")
+    @classmethod
+    def validate_optional_ids(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Return stripped optional setup ids."""
+        return optional_non_blank(value, str(info.field_name))
+
+    @field_validator("character_assignments")
+    @classmethod
+    def validate_character_assignments(cls, value: dict[str, str]) -> dict[str, str]:
+        """Return character assignments keyed by generated player id."""
+        return {
+            non_blank(str(player_id), "character assignment player id"): non_blank(
+                character_id,
+                "character assignment id",
+            )
+            for player_id, character_id in value.items()
+        }
+
     @model_validator(mode="after")
     def validate_human_player_within_generated_seats(self) -> Self:
         """Ensure the requested human seat exists in the generated table."""
-        if self.human_player_id is None:
-            return self
         valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
-        if self.human_player_id not in valid_player_ids:
+        if self.human_player_id is not None and self.human_player_id not in valid_player_ids:
             raise ValueError("human_player_id must match a generated player id")
+        unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
+        if unknown_assignments:
+            raise ValueError("character_assignments keys must match generated player ids")
+        assigned_character_ids = list(self.character_assignments.values())
+        if len(set(assigned_character_ids)) != len(assigned_character_ids):
+            raise ValueError("character_assignments values must be unique")
+        custom_role_ids = [definition.id for definition in self.custom_roles]
+        if len(set(custom_role_ids)) != len(custom_role_ids):
+            raise ValueError("custom role ids must be unique")
+        custom_character_ids = [definition.id for definition in self.custom_characters]
+        if len(set(custom_character_ids)) != len(custom_character_ids):
+            raise ValueError("custom character ids must be unique")
         return self
 
     @property
@@ -90,6 +141,9 @@ class PublicGameState(BaseModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    narration_mode: NarrationMode = "standard"
     players: list[PublicPlayerState]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
@@ -175,6 +229,7 @@ class GameTimelineItem(BaseModel):
     day: int | None = None
     actor_id: str | None = None
     event_type: str
+    narration: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     occurred_at: datetime
 
@@ -263,6 +318,9 @@ class GameRevealResponse(BaseModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesSettings
     players: list[GameRevealPlayer]
@@ -303,6 +361,8 @@ class RoleDefinitionView(BaseModel):
     name: str
     faction: str
     abilities: list[str]
+    description: str = ""
+    difficulty: int = Field(default=1, ge=1, le=5)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -320,8 +380,96 @@ class RulesetResponse(BaseModel):
     roles: list[RoleDefinitionView]
     default_role_counts: dict[RoleId, RoleCount]
     default_rules: LocalRulesSettings
+    default_scenario_id: str | None = None
+    default_setup_preset_id: str | None = None
+    default_narration_mode: NarrationMode = "standard"
+    abilities: list[AbilityDefinitionView] = Field(default_factory=list)
+    scenarios: list[ScenarioDefinitionView] = Field(default_factory=list)
+    setup_presets: list[SetupPresetDefinitionView] = Field(default_factory=list)
+    characters: list[CharacterDefinitionView] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AbilityDefinitionView(BaseModel):
+    """Public ability metadata for setup screens."""
+
+    id: str
+    name: str
+    description: str
+    target_policy: str
+    difficulty: int = Field(ge=1, le=5)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("id", "name", "description", "target_policy")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+
+class ScenarioDefinitionView(BaseModel):
+    """Public scenario metadata for setup screens."""
+
+    id: str
+    name: str
+    summary: str
+    recommended_setup_preset: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("id", "name", "summary")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+
+class SetupPresetDefinitionView(BaseModel):
+    """Public setup preset metadata for setup screens."""
+
+    id: str
+    name: str
+    scenario_id: str
+    role_counts: dict[RoleId, RoleCount]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("id", "name", "scenario_id")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+
+class CharacterDefinitionView(BaseModel):
+    """Public character metadata for setup screens."""
+
+    id: str
+    name: str
+    age: int = Field(ge=18, le=99)
+    gender: str
+    personality: str
+    speaking_style: str
+    reasoning_style: str
+    risk_tolerance: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator(
+        "id",
+        "name",
+        "gender",
+        "personality",
+        "speaking_style",
+        "reasoning_style",
+        "risk_tolerance",
+    )
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, str(info.field_name))
 
 
 class PlayerObservationResponse(BaseModel):
@@ -423,10 +571,14 @@ class ErrorEventPayload(BaseModel):
 
 
 __all__ = [
+    "AbilityDefinitionView",
     "ActionType",
     "AdvanceGameRunResponse",
     "AdvanceUntilInputResponse",
+    "CharacterDefinitionView",
     "CreateGameRequest",
+    "CustomCharacterDefinitionRequest",
+    "CustomRoleDefinitionRequest",
     "ErrorEventPayload",
     "GamePhase",
     "GameRevealAction",
@@ -443,6 +595,7 @@ __all__ = [
     "GameTimelineQuery",
     "GameTimelineResponse",
     "LocalRulesSettings",
+    "NarrationMode",
     "PlayerActionRequest",
     "PlayerActionResponse",
     "PlayerObservationResponse",
@@ -456,5 +609,7 @@ __all__ = [
     "RoleDefinitionView",
     "RoleId",
     "RulesetResponse",
+    "ScenarioDefinitionView",
+    "SetupPresetDefinitionView",
     "Winner",
 ]

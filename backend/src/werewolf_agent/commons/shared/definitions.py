@@ -46,17 +46,43 @@ class LocalRulesDefinition(StrictModel):
         return self
 
 
+class AbilityDefinition(StrictModel):
+    """Display and selection metadata for a supported game ability."""
+
+    label: str
+    description: str
+    target_policy: str
+    difficulty: int = Field(default=1, ge=1, le=5)
+
+    @field_validator("label", "description", "target_policy")
+    @classmethod
+    def validate_non_blank_text(cls, value: str, info: Any) -> str:
+        """Return normalized ability metadata text."""
+        return non_blank(value, str(info.field_name))
+
+
 class RoleDefinition(StrictModel):
     """Role faction and abilities."""
 
     faction: str
     abilities: tuple[str, ...] = ()
+    label: str | None = None
+    description: str | None = None
+    difficulty: int = Field(default=1, ge=1, le=5)
 
     @field_validator("faction")
     @classmethod
     def validate_faction(cls, value: str) -> str:
         """Return a normalized faction id."""
         return non_blank(value, "faction")
+
+    @field_validator("label", "description")
+    @classmethod
+    def validate_optional_text(cls, value: str | None) -> str | None:
+        """Return normalized optional display text."""
+        if value is None:
+            return None
+        return non_blank(value, "role display text")
 
     @field_validator("abilities")
     @classmethod
@@ -66,6 +92,128 @@ class RoleDefinition(StrictModel):
         if len(set(abilities)) != len(abilities):
             raise ValueError("role abilities must be unique")
         return abilities
+
+
+class CustomRoleDefinition(StrictModel):
+    """Session-scoped role definition supplied by an interface client."""
+
+    id: str
+    name: str
+    faction: str
+    abilities: list[str] = Field(default_factory=list)
+    description: str = ""
+    difficulty: int = Field(default=1, ge=1, le=5)
+
+    @field_validator("id", "name", "faction")
+    @classmethod
+    def validate_non_blank_text(cls, value: str, info: Any) -> str:
+        """Return normalized custom role text."""
+        return non_blank(value, str(info.field_name))
+
+    @field_validator("description")
+    @classmethod
+    def validate_description(cls, value: str) -> str:
+        """Return normalized optional role description."""
+        return value.strip()
+
+    @field_validator("abilities")
+    @classmethod
+    def validate_abilities(cls, value: list[str]) -> list[str]:
+        """Return normalized unique ability ids."""
+        abilities = [non_blank(item, "ability") for item in value]
+        if len(set(abilities)) != len(abilities):
+            raise ValueError("custom role abilities must be unique")
+        return abilities
+
+
+class NarrationEventDefinition(StrictModel):
+    """Public-safe narration templates for one event type."""
+
+    templates: tuple[str, ...]
+
+    @field_validator("templates")
+    @classmethod
+    def validate_templates(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Return non-empty public narration templates."""
+        templates = tuple(non_blank(item, "narration template") for item in value)
+        if not templates:
+            raise ValueError("narration templates must include at least one value")
+        return templates
+
+
+class NarrationProfileDefinition(StrictModel):
+    """Narration templates keyed by public event type."""
+
+    events: dict[str, NarrationEventDefinition] = Field(default_factory=dict)
+
+    @field_validator("events")
+    @classmethod
+    def validate_events(
+        cls,
+        value: dict[str, NarrationEventDefinition],
+    ) -> dict[str, NarrationEventDefinition]:
+        """Return narration events keyed by normalized event type."""
+        return {non_blank(str(key), "narration event type"): item for key, item in value.items()}
+
+
+class ScenarioDefinition(StrictModel):
+    """Scenario background used for setup display, narration, and LLM premise."""
+
+    label: str
+    summary: str
+    prompt_premise: str
+    narration_profile: str
+    recommended_setup_preset: str | None = None
+    allowed_roles: tuple[str, ...] = ()
+
+    @field_validator("label", "summary", "prompt_premise", "narration_profile")
+    @classmethod
+    def validate_non_blank_text(cls, value: str, info: Any) -> str:
+        """Return normalized scenario text."""
+        return non_blank(value, str(info.field_name))
+
+    @field_validator("recommended_setup_preset")
+    @classmethod
+    def validate_optional_preset(cls, value: str | None) -> str | None:
+        """Return normalized optional preset id."""
+        if value is None:
+            return None
+        return non_blank(value, "recommended_setup_preset")
+
+    @field_validator("allowed_roles")
+    @classmethod
+    def validate_allowed_roles(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Return normalized unique allowed role ids."""
+        roles = tuple(non_blank(item, "allowed role") for item in value)
+        if len(set(roles)) != len(roles):
+            raise ValueError("allowed_roles must be unique")
+        return roles
+
+
+class SetupPresetDefinition(StrictModel):
+    """Named setup preset composed from scenario, role counts, and rules."""
+
+    label: str
+    scenario_id: str
+    role_counts: dict[str, RoleCount]
+    rule_profile: str = "default"
+
+    @field_validator("label", "scenario_id", "rule_profile")
+    @classmethod
+    def validate_non_blank_text(cls, value: str, info: Any) -> str:
+        """Return normalized setup preset text."""
+        return non_blank(value, str(info.field_name))
+
+    @field_validator("role_counts")
+    @classmethod
+    def validate_role_counts(cls, value: dict[str, RoleCount]) -> dict[str, RoleCount]:
+        """Return role counts keyed by normalized role id."""
+        counts = {
+            non_blank(str(role_id), "role count role id"): count for role_id, count in value.items()
+        }
+        if sum(counts.values()) < 1:
+            raise ValueError("setup preset role_counts must include at least one player")
+        return counts
 
 
 class GameRuleDefinitions(StrictModel):
@@ -125,18 +273,66 @@ class GameRoleDefinitions(StrictModel):
             ) from exc
 
 
+class GameCatalogDefinitions(StrictModel):
+    """Game setup catalog values that do not belong to the deterministic core."""
+
+    abilities: dict[str, AbilityDefinition] = Field(default_factory=dict)
+    scenarios: dict[str, ScenarioDefinition] = Field(default_factory=dict)
+    narration_profiles: dict[str, NarrationProfileDefinition] = Field(default_factory=dict)
+    setup_presets: dict[str, SetupPresetDefinition] = Field(default_factory=dict)
+
+    @field_validator("abilities")
+    @classmethod
+    def validate_abilities(
+        cls,
+        value: dict[str, AbilityDefinition],
+    ) -> dict[str, AbilityDefinition]:
+        """Return ability metadata keyed by normalized ability id."""
+        return {non_blank(str(key), "ability id"): item for key, item in value.items()}
+
+    @field_validator("scenarios")
+    @classmethod
+    def validate_scenarios(
+        cls,
+        value: dict[str, ScenarioDefinition],
+    ) -> dict[str, ScenarioDefinition]:
+        """Return scenarios keyed by normalized scenario id."""
+        return {non_blank(str(key), "scenario id"): item for key, item in value.items()}
+
+    @field_validator("narration_profiles")
+    @classmethod
+    def validate_narration_profiles(
+        cls,
+        value: dict[str, NarrationProfileDefinition],
+    ) -> dict[str, NarrationProfileDefinition]:
+        """Return narration profiles keyed by normalized profile id."""
+        return {non_blank(str(key), "narration profile id"): item for key, item in value.items()}
+
+    @field_validator("setup_presets")
+    @classmethod
+    def validate_setup_presets(
+        cls,
+        value: dict[str, SetupPresetDefinition],
+    ) -> dict[str, SetupPresetDefinition]:
+        """Return setup presets keyed by normalized preset id."""
+        return {non_blank(str(key), "setup preset id"): item for key, item in value.items()}
+
+
 class GameDefinitions(StrictModel):
     """Game-only definitions."""
 
     rules: GameRuleDefinitions
     roles: GameRoleDefinitions
+    catalog: GameCatalogDefinitions = Field(default_factory=GameCatalogDefinitions)
 
 
 class PlayerProfile(StrictModel):
-    """LLM-only player persona used for names and fake decisions."""
+    """LLM-only character persona used for names and fake decisions."""
 
     enabled: bool = True
     name: str
+    age: int = Field(ge=18, le=99)
+    gender: str
     personality: str
     speaking_style: str
     reasoning_style: str
@@ -144,6 +340,7 @@ class PlayerProfile(StrictModel):
 
     @field_validator(
         "name",
+        "gender",
         "personality",
         "speaking_style",
         "reasoning_style",
@@ -152,6 +349,33 @@ class PlayerProfile(StrictModel):
     @classmethod
     def validate_non_blank_text(cls, value: str, info: Any) -> str:
         """Return normalized profile text."""
+        return non_blank(value, str(info.field_name))
+
+
+class CustomCharacterDefinition(StrictModel):
+    """Session-scoped character definition supplied by an interface client."""
+
+    id: str
+    name: str
+    age: int = Field(ge=18, le=99)
+    gender: str
+    personality: str
+    speaking_style: str
+    reasoning_style: str
+    risk_tolerance: str
+
+    @field_validator(
+        "id",
+        "name",
+        "gender",
+        "personality",
+        "speaking_style",
+        "reasoning_style",
+        "risk_tolerance",
+    )
+    @classmethod
+    def validate_non_blank_text(cls, value: str, info: Any) -> str:
+        """Return normalized custom character text."""
         return non_blank(value, str(info.field_name))
 
 
@@ -366,16 +590,24 @@ class LlmDefinitions(StrictModel):
 
 
 __all__ = [
+    "AbilityDefinition",
+    "CustomCharacterDefinition",
+    "CustomRoleDefinition",
     "FakeDecisionCatalog",
     "FakeDecisionTemplate",
+    "GameCatalogDefinitions",
     "GameDefinitions",
     "GameRoleDefinitions",
     "GameRuleDefinitions",
     "LlmDefinitions",
     "LocalRulesDefinition",
+    "NarrationEventDefinition",
+    "NarrationProfileDefinition",
     "PlayerProfile",
     "PlayerRoster",
     "PromptDefinition",
     "PromptMessageDefinition",
     "RoleDefinition",
+    "ScenarioDefinition",
+    "SetupPresetDefinition",
 ]

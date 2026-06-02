@@ -20,10 +20,11 @@ FastAPI は CLI / Streamlit / 将来 UI が使う最小の公開面です。DB �
 | Method | Path | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | `{"status":"ok","service":"werewolf-agent-api"}` |
-| `GET` | `/api/v1/ruleset` | player count、roles、default role counts、default local rules |
+| `GET` | `/api/v1/ruleset` | player count、roles、scenario、preset、character、default local rules |
 | `POST` | `/api/v1/games` | game run 作成 |
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public run summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state 取得 |
+| `GET` | `/api/v1/games/{game_id}/reveal` | 観戦 UI 用 reveal DTO 取得 |
 | `POST` | `/api/v1/games/{game_id}/advance` | 現在の usecase step を 1 回進める |
 | `POST` | `/api/v1/games/{game_id}/advance-until-input?max_steps=<n>` | manual input、完了、上限まで自動進行 |
 | `GET` | `/api/v1/games/{game_id}/timeline?after=<seq>&limit=<n>` | public timeline を sequence 昇順で取得 |
@@ -101,17 +102,18 @@ local rule override 付き:
 - `human_player_id`: 任意。`role_counts` の合計から生成される `player-1` から `player-N` のいずれか。指定時だけ作成レスポンスに `control_tokens` を返す
 - `rules`: 任意。game run ごとの local rule override。省略時は `interface/application` が runtime で読み込んだ default local rules を使う
 
-role の faction / ability、LLM agent の名前や性格は request body では受け取りません。これらは definition resource として読み込みます。agent は現在 `interface/application` が `llm` と `human_player_id` から内部設定を生成します。
+既定の role、scenario、character は definition resource として読み込みます。Streamlit の session 内で追加した役職とキャラクターだけは `POST /games` の request body に同梱し、その game run の作成と自動進行にだけ使います。agent は現在 `interface/application` が `llm` と `human_player_id` から内部設定を生成します。
 
 | 定義体 | 既定 | override |
 | --- | --- | --- |
 | game rules | `backend/src/werewolf_agent/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` |
 | game roles | `backend/src/werewolf_agent/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` |
+| game catalog | `backend/src/werewolf_agent/resources/game/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` |
 | LLM players | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` |
 | LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
 | LLM fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
 
-定義体 path と定義体値の読み込みは `interface/runtime` の共通 loader に集約します。定義体は `AppSettings` 構築時に読み込み・検証し、role 定義体の `default_role_counts` は configured player count 範囲をすべて持つ必要があります。`domain` と `usecase` は source path と省略時 default を知らず、`interface/application` から値として注入されたものだけを使います。`GET /ruleset` は client 起動用に `roles`、`default_role_counts`、`default_rules` を返します。
+定義体 path と定義体値の読み込みは `interface/runtime` の共通 loader に集約します。定義体は `AppSettings` 構築時に読み込み・検証し、role 定義体の `default_role_counts` は configured player count 範囲をすべて持つ必要があります。`domain` と `usecase` は source path と省略時 default を知らず、`interface/application` から値として注入されたものだけを使います。`GET /ruleset` は client 起動用に `roles`、`scenarios`、`setup_presets`、`characters`、`default_role_counts`、`default_rules` を返します。
 
 ## Public State
 

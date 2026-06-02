@@ -27,7 +27,7 @@ from werewolf_agent.interface.runtime import (
 def clear_settings_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Keep default-setting assertions independent from caller environment."""
     for key in list(os.environ):
-        if key.startswith("WEREWOLF_") or key == "DATABASE_URL":
+        if key.startswith("WEREWOLF_") or key in {"DATABASE_URL", "OPENAI_API_KEY"}:
             monkeypatch.delenv(key, raising=False)
 
 
@@ -49,6 +49,7 @@ def test_split_mapping_parses_key_value_items() -> None:
 def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
     assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
+    assert PACKAGED_DEFAULTS["llm_base_url"] == ""
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
     assert PACKAGED_DEFAULTS["llm_players_file"] == ""
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
@@ -134,6 +135,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.reveal_api_enabled is True
     assert settings.llm_provider == "fake"
     assert settings.model == "fake-list-llm"
+    assert settings.llm_base_url == ""
+    assert settings.configured_openai_api_key == ""
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
     assert settings.llm_players_path is None
@@ -174,6 +177,11 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
     assert llm_config.model == "fake-list-llm"
+    assert llm_config.base_url == ""
+    assert llm_config.api_key == ""
+    assert llm_config.timeout_seconds == 30.0
+    assert llm_config.max_retries == 2
+    assert llm_config.temperature == 0.7
 
     game_definitions = build_game_definitions(settings)
     assert sorted(game_definitions.roles.roles) == ["knight", "seer", "villager", "werewolf"]
@@ -192,12 +200,68 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert llm_definitions.prompt.response_format["schema"] == "AgentDecision"
 
 
+def test_lmstudio_llm_provider_config_is_built_from_settings() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        llm_provider="lmstudio",
+        model="local-model",
+        llm_base_url="http://127.0.0.1:1234/v1",
+        llm_timeout_seconds=45,
+        llm_max_retries=3,
+        llm_temperature=0.2,
+    )
+
+    llm_config = build_llm_provider_config(settings)
+
+    assert llm_config.provider == "lmstudio"
+    assert llm_config.model == "local-model"
+    assert llm_config.base_url == "http://127.0.0.1:1234/v1"
+    assert llm_config.api_key == "lm-studio"
+    assert llm_config.timeout_seconds == 45.0
+    assert llm_config.max_retries == 3
+    assert llm_config.temperature == 0.2
+    assert "lm-studio" not in repr(llm_config)
+
+
+def test_openai_llm_provider_config_uses_secret_api_key() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        llm_provider="openai",
+        model="gpt-4.1-mini",
+        openai_api_key="sk-test",
+    )
+
+    llm_config = build_llm_provider_config(settings)
+
+    assert llm_config.provider == "openai"
+    assert llm_config.model == "gpt-4.1-mini"
+    assert llm_config.base_url == ""
+    assert llm_config.api_key == "sk-test"
+    assert "sk-test" not in repr(llm_config)
+
+
+def test_llm_provider_settings_validate_required_values() -> None:
+    AppSettings(_env_file=None, llm_provider="fake")
+
+    with pytest.raises(ValidationError, match="WEREWOLF_LLM_BASE_URL"):
+        AppSettings(_env_file=None, llm_provider="lmstudio")
+
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
+        AppSettings(_env_file=None, llm_provider="openai")
+
+
 def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("WEREWOLF_GAME_MIN_PLAYERS", "5")
     monkeypatch.setenv("WEREWOLF_GAME_MAX_PLAYERS", "8")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_PLAYER_COUNT", "7")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_TYPE", "llm")
     monkeypatch.setenv("WEREWOLF_GAME_SUPPORTED_AGENT_NAME", "Configurable LLM Agent")
+    monkeypatch.setenv("WEREWOLF_LLM_PROVIDER", "lmstudio")
+    monkeypatch.setenv("WEREWOLF_MODEL", "local-model")
+    monkeypatch.setenv("WEREWOLF_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
+    monkeypatch.setenv("WEREWOLF_LLM_TIMEOUT_SECONDS", "45")
+    monkeypatch.setenv("WEREWOLF_LLM_MAX_RETRIES", "3")
+    monkeypatch.setenv("WEREWOLF_LLM_TEMPERATURE", "0.2")
     monkeypatch.setenv(
         "WEREWOLF_LLM_PROMPT_FILE",
         "backend/src/werewolf_agent/resources/prompts/agent_decision.toml",
@@ -253,6 +317,12 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_default_player_count == 7
     assert settings.game_supported_agent_type == "llm"
     assert settings.game_supported_agent_name == "Configurable LLM Agent"
+    assert settings.llm_provider == "lmstudio"
+    assert settings.model == "local-model"
+    assert settings.llm_base_url == "http://127.0.0.1:1234/v1"
+    assert settings.llm_timeout_seconds == 45.0
+    assert settings.llm_max_retries == 3
+    assert settings.llm_temperature == 0.2
     assert (
         settings.llm_prompt_path
         == repository_root() / "backend/src/werewolf_agent/resources/prompts/agent_decision.toml"
@@ -348,6 +418,8 @@ plain = 4
 [players.quiet]
 enabled = true
 name = "Quiet"
+age = 30
+gender = "Unspecified"
 personality = "Careful"
 speaking_style = "Short"
 reasoning_style = "Evidence first"
@@ -537,7 +609,7 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("streamlit_language", "fr"),
         ("streamlit_initial_sidebar_state", "hidden"),
         ("game_supported_agent_type", "bot"),
-        ("llm_provider", "openai"),
+        ("llm_provider", "anthropic"),
     ],
 )
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:

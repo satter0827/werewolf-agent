@@ -6,6 +6,9 @@ input_variables = [
     "phase",
     "day",
     "role",
+    "scenario_name",
+    "scenario_premise",
+    "character_profile",
     "available_actions",
     "observation_json",
     "format_instructions",
@@ -29,6 +32,9 @@ role = "system"
 content = """
 You choose one visible Werewolf game action for a single player.
 Use only the observation JSON and available actions.
+Use the scenario and character profile only to make speech natural.
+Do not infer role, faction, trustworthiness, or ability from age or gender.
+Do not use age or gender for insulting, discriminatory, or sexualized wording.
 Return only JSON that matches the requested schema.
 """
 
@@ -39,6 +45,9 @@ player_id: {{player_id}}
 phase: {{phase}}
 day: {{day}}
 role: {{role}}
+scenario_name: {{scenario_name}}
+scenario_premise: {{scenario_premise}}
+character_profile: {{character_profile}}
 available_actions: {{available_actions}}
 observation_json: {{observation_json}}
 

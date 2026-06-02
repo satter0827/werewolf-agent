@@ -221,7 +221,15 @@ def dependencies(
         game_definitions=game_definitions(),
         llm_definitions=llm_definitions(),
         config=config or usecase_config(),
-        llm_provider_config=LlmProviderConfig(provider="fake", model="fake-list-llm"),
+        llm_provider_config=LlmProviderConfig(
+            provider="fake",
+            model="fake-list-llm",
+            base_url="",
+            api_key="",
+            timeout_seconds=30.0,
+            max_retries=2,
+            temperature=0.7,
+        ),
         telemetry=telemetry or CollectingTelemetrySink(),
     ), repository
 
@@ -285,6 +293,8 @@ def llm_definitions() -> LlmDefinitions:
             players={
                 "default": PlayerProfile(
                     name="葵",
+                    age=26,
+                    gender="指定なし",
                     personality="Careful",
                     speaking_style="Short",
                     reasoning_style="Logical",
@@ -292,6 +302,8 @@ def llm_definitions() -> LlmDefinitions:
                 ),
                 "sharp": PlayerProfile(
                     name="蓮",
+                    age=31,
+                    gender="男性",
                     personality="Sharp",
                     speaking_style="Direct",
                     reasoning_style="Contradiction first",
@@ -299,6 +311,8 @@ def llm_definitions() -> LlmDefinitions:
                 ),
                 "quiet": PlayerProfile(
                     name="遥",
+                    age=28,
+                    gender="女性",
                     personality="Quiet",
                     speaking_style="Calm",
                     reasoning_style="Evidence first",
@@ -306,6 +320,8 @@ def llm_definitions() -> LlmDefinitions:
                 ),
                 "steady": PlayerProfile(
                     name="湊",
+                    age=34,
+                    gender="男性",
                     personality="Steady",
                     speaking_style="Brief",
                     reasoning_style="Vote first",
@@ -313,6 +329,8 @@ def llm_definitions() -> LlmDefinitions:
                 ),
                 "curious": PlayerProfile(
                     name="芽衣",
+                    age=27,
+                    gender="女性",
                     personality="Curious",
                     speaking_style="Questioning",
                     reasoning_style="Ask for reasons",
@@ -329,6 +347,9 @@ def llm_definitions() -> LlmDefinitions:
                 "phase",
                 "day",
                 "role",
+                "scenario_name",
+                "scenario_premise",
+                "character_profile",
                 "available_actions",
                 "observation_json",
                 "format_instructions",
@@ -339,6 +360,7 @@ def llm_definitions() -> LlmDefinitions:
                     role="human",
                     content=(
                         "{{player_id}} {{phase}} {{day}} {{role}} "
+                        "{{scenario_name}} {{scenario_premise}} {{character_profile}} "
                         "{{available_actions}} {{observation_json}} {{format_instructions}}"
                     ),
                 )
@@ -404,7 +426,11 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
             default_ruleset_id="custom",
         )
     )
-    result = GameUseCases(deps).get_default_ruleset()
+    result = GameUseCases.get_default_ruleset(
+        deps.config,
+        deps.game_definitions,
+        deps.llm_definitions,
+    )
 
     assert result.player_count == {"min": 4, "max": 10}
     assert set(result.roles) == {"villager", "werewolf", "seer", "knight"}

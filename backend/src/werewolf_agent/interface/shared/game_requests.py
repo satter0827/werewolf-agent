@@ -12,7 +12,10 @@ from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
+    CustomCharacterDefinitionRequest,
+    CustomRoleDefinitionRequest,
     LocalRulesSettings,
+    NarrationMode,
     RoleId,
 )
 
@@ -23,6 +26,12 @@ def build_create_game_request(
     role_counts: dict[RoleId, int],
     human_player_id: str | None,
     rules: LocalRulesSettings | None = None,
+    scenario_id: str | None = None,
+    setup_preset_id: str | None = None,
+    narration_mode: NarrationMode = "standard",
+    character_assignments: dict[str, str] | None = None,
+    custom_roles: list[CustomRoleDefinitionRequest] | None = None,
+    custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
 ) -> CreateGameRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
     try:
@@ -31,6 +40,12 @@ def build_create_game_request(
             role_counts=role_counts,
             human_player_id=human_player_id,
             rules=rules,
+            scenario_id=scenario_id,
+            setup_preset_id=setup_preset_id,
+            narration_mode=narration_mode,
+            character_assignments=character_assignments or {},
+            custom_roles=custom_roles or [],
+            custom_characters=custom_characters or [],
         )
     except ValidationError as exc:
         detail = "; ".join(

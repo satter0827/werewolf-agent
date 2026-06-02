@@ -16,7 +16,7 @@ COPY backend ./backend
 
 FROM base AS dev
 
-RUN uv sync --frozen --group dev --extra api
+RUN uv sync --frozen --group dev --extra api --extra llm
 
 EXPOSE 8000
 
@@ -33,7 +33,7 @@ ENV WEREWOLF_API_DEBUG=false \
     WEREWOLF_SQLITE_PATH=/data/db.sqlite3 \
     PORT=8000
 
-RUN uv sync --frozen --no-dev --extra api
+RUN uv sync --frozen --no-dev --extra api --extra llm
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && mkdir -p /data \
