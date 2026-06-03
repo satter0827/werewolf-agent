@@ -76,6 +76,16 @@ manual player 付き:
 }
 ```
 
+AI strategy 指定付き:
+
+```json
+{
+  "seed": 42,
+  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3},
+  "agent_strategy_id": "stable_fast"
+}
+```
+
 local rule override 付き:
 
 ```json
@@ -106,6 +116,7 @@ local rule override 付き:
 - `manual_player`: `GameClient.create_game` の response でだけ返す。`GameClient.get_game` と list には含めない
 - `rules`: 任意。省略時は `interface/application` が runtime default を注入する
 - `narration_mode`: 任意。省略時は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` の値を注入する
+- `agent_strategy_id`: 任意。省略時は `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` の値を注入し、game config に保存する
 - `character_assignments`、`custom_roles`、`custom_characters`: Streamlit session 内の追加定義を game 作成 request に同梱するための field
 
 ## Setup Options
@@ -124,6 +135,8 @@ Supabase table を読まず、`interface/runtime` で解決した definition か
 - `default_scenario_id`
 - `default_setup_preset_id`
 - `default_narration_mode`
+- `agent_strategies`
+- `default_agent_strategy_id`
 
 definition path と TOML 読み込みは `interface/runtime` に集約します。domain と usecase は source path、packaged default、`.env` を知りません。
 
@@ -245,7 +258,9 @@ LLM provider には `AgentObservation` だけを渡します。
 - `speeches` / `vote_rounds`: public history
 - `known_roles`: その player が観測できる role だけ
 
-provider は Pydantic で `AgentDecision` を検証します。不正 JSON、不正 action、不正 target は保存せず `pass` fallback にします。raw prompt、raw response、API key は保存・公開・ログ出力しません。
+provider は選択済み `agent_strategy_id` の LangGraph `StateGraph` を実行し、Pydantic で `AgentDecision` を検証します。不正 JSON、不正 action、不正 target、長すぎる speech、repair 失敗、provider 呼び出し失敗は game を止めず deterministic fallback に落とします。raw prompt、raw response、API key は public response、public timeline、operational log へ出しません。
+
+strategy 詳細は [Agent Strategies](agent-strategies.md) を参照してください。
 
 ## Errors
 

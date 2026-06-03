@@ -11,8 +11,10 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from werewolf_agent.commons.shared.constants import (
     DEFAULT_NARRATION_MODE,
+    LLM_FALLBACK_POLICY_CHOICE_SET,
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
+    LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET,
     MAX_LLM_TEMPERATURE,
     MIN_LLM_MAX_TOKENS,
     MIN_LLM_TEMPERATURE,
@@ -20,6 +22,7 @@ from werewolf_agent.commons.shared.constants import (
     MIN_PAGE_OFFSET,
     MIN_RETRY_COUNT,
     MIN_SEQUENCE,
+    MIN_STEP_LIMIT,
     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
     MIN_VERSION,
     NARRATION_MODE_CHOICES,
@@ -53,6 +56,7 @@ from werewolf_agent.commons.shared.messages import (
     message_field_must_be_at_least,
     message_field_must_be_between,
     message_field_must_be_greater_than,
+    message_field_must_be_one_of,
     message_llm_base_url_required,
     message_openai_api_key_required,
 )
@@ -80,6 +84,11 @@ class LlmProviderConfig:
     max_retries: int
     max_tokens: int
     temperature: float
+    default_agent_strategy_id: str
+    structured_output_mode: str
+    validation_retry_count: int
+    graph_max_steps: int
+    fallback_policy: str
 
     def __post_init__(self) -> None:
         """Validate provider settings without importing interface settings."""
@@ -87,6 +96,15 @@ class LlmProviderConfig:
         model = non_blank(self.model, "llm model")
         base_url = self.base_url.strip()
         api_key = self.api_key.strip()
+        default_agent_strategy_id = non_blank(
+            self.default_agent_strategy_id,
+            "llm default_agent_strategy_id",
+        )
+        structured_output_mode = non_blank(
+            self.structured_output_mode,
+            "llm structured_output_mode",
+        ).lower()
+        fallback_policy = non_blank(self.fallback_policy, "llm fallback_policy").lower()
         if self.timeout_seconds <= MIN_TIMEOUT_SECONDS_EXCLUSIVE:
             raise ValueError(
                 message_field_must_be_greater_than(
@@ -96,6 +114,15 @@ class LlmProviderConfig:
             )
         if self.max_retries < MIN_RETRY_COUNT:
             raise ValueError(message_field_must_be_at_least("llm max_retries", MIN_RETRY_COUNT))
+        if self.validation_retry_count < MIN_RETRY_COUNT:
+            raise ValueError(
+                message_field_must_be_at_least(
+                    "llm validation_retry_count",
+                    MIN_RETRY_COUNT,
+                )
+            )
+        if self.graph_max_steps < MIN_STEP_LIMIT:
+            raise ValueError(message_field_must_be_at_least("llm graph_max_steps", MIN_STEP_LIMIT))
         if self.max_tokens < MIN_LLM_MAX_TOKENS:
             raise ValueError(message_field_must_be_at_least("llm max_tokens", MIN_LLM_MAX_TOKENS))
         if not MIN_LLM_TEMPERATURE <= self.temperature <= MAX_LLM_TEMPERATURE:
@@ -110,11 +137,28 @@ class LlmProviderConfig:
             raise ValueError(message_llm_base_url_required(LLM_PROVIDER_LMSTUDIO))
         if provider == LLM_PROVIDER_OPENAI and not api_key:
             raise ValueError(message_openai_api_key_required(LLM_PROVIDER_OPENAI))
+        if structured_output_mode not in LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET:
+            raise ValueError(
+                message_field_must_be_one_of(
+                    "llm structured_output_mode",
+                    LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET,
+                )
+            )
+        if fallback_policy not in LLM_FALLBACK_POLICY_CHOICE_SET:
+            raise ValueError(
+                message_field_must_be_one_of(
+                    "llm fallback_policy",
+                    LLM_FALLBACK_POLICY_CHOICE_SET,
+                )
+            )
 
         object.__setattr__(self, "provider", provider)
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "base_url", base_url)
         object.__setattr__(self, "api_key", api_key)
+        object.__setattr__(self, "default_agent_strategy_id", default_agent_strategy_id)
+        object.__setattr__(self, "structured_output_mode", structured_output_mode)
+        object.__setattr__(self, "fallback_policy", fallback_policy)
 
 
 @dataclass(frozen=True)
@@ -180,6 +224,7 @@ class CreateGameCommand(_UseCaseModel):
     scenario_id: str | None = None
     setup_preset_id: str | None = None
     narration_mode: NarrationMode
+    agent_strategy_id: str | None = None
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     manual_player_id: str | None = None
@@ -206,7 +251,7 @@ class CreateGameCommand(_UseCaseModel):
             return None
         return non_blank(value, "manual_player_id")
 
-    @field_validator("scenario_id", "setup_preset_id")
+    @field_validator("scenario_id", "setup_preset_id", "agent_strategy_id")
     @classmethod
     def validate_optional_ids(cls, value: str | None) -> str | None:
         """Return stripped optional setup ids."""
@@ -362,10 +407,12 @@ class GameSetupOptionsResult(_UseCaseModel):
     default_scenario_id: str | None = None
     default_setup_preset_id: str | None = None
     default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    default_agent_strategy_id: str
     abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
     scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
     setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    agent_strategies: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

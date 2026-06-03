@@ -15,7 +15,7 @@ order = 30
 enabled = true
 
 [setup.layout]
-summary_columns = 3
+summary_columns = 4
 seed_columns = 2
 
 [setup.regions.main]
@@ -40,23 +40,28 @@ order = 40
 enabled = true
 
 [[setup.regions.main.elements]]
-id = "seed"
+id = "agent_strategy"
 order = 50
 enabled = true
 
 [[setup.regions.main.elements]]
-id = "role_counts"
+id = "seed"
 order = 60
 enabled = true
 
 [[setup.regions.main.elements]]
-id = "character_assignments"
+id = "role_counts"
 order = 70
 enabled = true
 
 [[setup.regions.main.elements]]
-id = "local_rules"
+id = "character_assignments"
 order = 80
+enabled = true
+
+[[setup.regions.main.elements]]
+id = "local_rules"
+order = 90
 enabled = true
 
 [setup.regions.summary]

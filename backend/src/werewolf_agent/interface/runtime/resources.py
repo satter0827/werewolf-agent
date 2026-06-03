@@ -10,6 +10,7 @@ from typing import TypeVar
 from pydantic import BaseModel
 
 from werewolf_agent.commons.shared.definitions import (
+    AgentStrategyCatalog,
     FakeDecisionCatalog,
     GameCatalogDefinitions,
     GameDefinitions,
@@ -34,6 +35,7 @@ CATALOG_FILE = "catalog.toml"
 PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
+DECISION_GRAPHS_FILE = "decision_graphs.toml"
 STREAMLIT_I18N_FILE = "i18n.toml"
 STREAMLIT_CSS_FILE = "default.css"
 STREAMLIT_SCREENS_FILE = "screens.toml"
@@ -148,6 +150,7 @@ def load_llm_definitions(
     players_path: Path | None,
     prompt_path: Path | None,
     fake_responses_path: Path | None,
+    decision_graphs_path: Path | None = None,
 ) -> LlmDefinitions:
     """Load LLM-only runtime definitions."""
     return LlmDefinitions(
@@ -168,6 +171,12 @@ def load_llm_definitions(
             package=LLM_DEFINITIONS_PACKAGE,
             file_name=FAKE_RESPONSES_FILE,
             override_path=fake_responses_path,
+        ),
+        agent_strategies=load_toml_model(
+            AgentStrategyCatalog,
+            package=LLM_DEFINITIONS_PACKAGE,
+            file_name=DECISION_GRAPHS_FILE,
+            override_path=decision_graphs_path,
         ),
     )
 

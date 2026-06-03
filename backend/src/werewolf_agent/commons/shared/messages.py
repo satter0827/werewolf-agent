@@ -174,6 +174,15 @@ MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION = (
     "response_format.schema must be AgentDecision"
 )
 MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED = "templates.pass is required"
+MESSAGE_AGENT_STRATEGIES_REQUIRED = "agent strategies must include at least one strategy"
+MESSAGE_AGENT_STRATEGY_IDS_MUST_BE_UNIQUE = "agent strategy ids must be unique"
+MESSAGE_AGENT_STRATEGY_DEFAULT_EXACTLY_ONE = (
+    "agent strategies must mark exactly one default strategy"
+)
+MESSAGE_AGENT_STRATEGY_NODES_REQUIRED = "agent strategy nodes must include at least one node"
+MESSAGE_AGENT_STRATEGY_NODES_MUST_BE_UNIQUE = "agent strategy nodes must be unique"
+MESSAGE_DECISION_GRAPH_EDGES_REQUIRED = "decision graph edges must include at least one edge"
+MESSAGE_DECISION_GRAPH_ROUTES_MUST_BE_UNIQUE = "decision graph routes must be unique"
 MESSAGE_LLM_MODEL_NOT_CONFIGURED = "llm model is not configured"
 MESSAGE_AGENT_PROFILES_REQUIRED = "profiles must include at least one enabled profile"
 MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME = "log_file_name must be a file name"
@@ -573,6 +582,21 @@ def message_message_variables_missing(names: str) -> str:
 def message_fake_decision_templates_required(action_type: str) -> str:
     """Return a FakeListLLM template coverage message."""
     return f"templates.{action_type} must include at least one item"
+
+
+def message_decision_graph_node_unknown(node_id: str) -> str:
+    """Return an unknown registered decision-graph node message."""
+    return f"unknown decision graph node: {node_id}"
+
+
+def message_decision_graph_endpoint_unknown(node_id: str) -> str:
+    """Return an unknown decision-graph edge endpoint message."""
+    return f"unknown decision graph endpoint: {node_id}"
+
+
+def message_unknown_agent_strategy(strategy_id: str) -> str:
+    """Return an unknown agent strategy message."""
+    return f"Unknown agent strategy: {strategy_id}"
 
 
 def message_game_did_not_complete(max_steps: int) -> str:

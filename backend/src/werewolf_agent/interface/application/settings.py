@@ -61,6 +61,11 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         max_retries=app_settings.llm_max_retries,
         max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
+        default_agent_strategy_id=app_settings.llm_default_agent_strategy_id,
+        structured_output_mode=app_settings.llm_structured_output_mode,
+        validation_retry_count=app_settings.llm_validation_retry_count,
+        graph_max_steps=app_settings.llm_graph_max_steps,
+        fallback_policy=app_settings.llm_fallback_policy,
     )
 
 

@@ -20,9 +20,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from werewolf_agent.commons.shared.constants import (
     CLI_OUTPUT_FORMAT_CHOICE_SET,
+    LLM_FALLBACK_POLICY_CHOICE_SET,
     LLM_PROVIDER_CHOICE_SET,
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
+    LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET,
     LOG_OUTPUT_CHOICE_SET,
     MAX_GAME_LIST_LIMIT,
     MAX_LLM_TEMPERATURE,
@@ -123,6 +125,12 @@ DEFAULT_LLM_TIMEOUT_SECONDS: Final = _float_default("llm_timeout_seconds")
 DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
 DEFAULT_LLM_MAX_TOKENS: Final = _integer_default("llm_max_tokens")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
+DEFAULT_LLM_DEFAULT_AGENT_STRATEGY_ID: Final = _string_default("llm_default_agent_strategy_id")
+DEFAULT_LLM_DECISION_GRAPHS_FILE: Final = _string_default("llm_decision_graphs_file")
+DEFAULT_LLM_STRUCTURED_OUTPUT_MODE: Final = _string_default("llm_structured_output_mode")
+DEFAULT_LLM_VALIDATION_RETRY_COUNT: Final = _integer_default("llm_validation_retry_count")
+DEFAULT_LLM_GRAPH_MAX_STEPS: Final = _integer_default("llm_graph_max_steps")
+DEFAULT_LLM_FALLBACK_POLICY: Final = _string_default("llm_fallback_policy")
 DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
 DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
 DEFAULT_LLM_PLAYERS_FILE: Final = _string_default("llm_players_file")
@@ -206,6 +214,8 @@ CLI_OUTPUT_FORMAT_NAMES: Final = CLI_OUTPUT_FORMAT_CHOICE_SET
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
 LLM_PROVIDER_NAMES: Final = LLM_PROVIDER_CHOICE_SET
+LLM_STRUCTURED_OUTPUT_MODE_NAMES: Final = LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET
+LLM_FALLBACK_POLICY_NAMES: Final = LLM_FALLBACK_POLICY_CHOICE_SET
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
 StreamlitLanguage = Literal["ja", "en"]
@@ -283,6 +293,32 @@ class AppSettings(BaseSettings):
         ge=MIN_LLM_TEMPERATURE,
         le=MAX_LLM_TEMPERATURE,
         validation_alias="WEREWOLF_LLM_TEMPERATURE",
+    )
+    llm_default_agent_strategy_id: str = Field(
+        default=DEFAULT_LLM_DEFAULT_AGENT_STRATEGY_ID,
+        validation_alias="WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID",
+    )
+    llm_decision_graphs_file: str = Field(
+        default=DEFAULT_LLM_DECISION_GRAPHS_FILE,
+        validation_alias="WEREWOLF_LLM_DECISION_GRAPHS_FILE",
+    )
+    llm_structured_output_mode: str = Field(
+        default=DEFAULT_LLM_STRUCTURED_OUTPUT_MODE,
+        validation_alias="WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE",
+    )
+    llm_validation_retry_count: int = Field(
+        default=DEFAULT_LLM_VALIDATION_RETRY_COUNT,
+        ge=MIN_RETRY_COUNT,
+        validation_alias="WEREWOLF_LLM_VALIDATION_RETRY_COUNT",
+    )
+    llm_graph_max_steps: int = Field(
+        default=DEFAULT_LLM_GRAPH_MAX_STEPS,
+        ge=MIN_STEP_LIMIT,
+        validation_alias="WEREWOLF_LLM_GRAPH_MAX_STEPS",
+    )
+    llm_fallback_policy: str = Field(
+        default=DEFAULT_LLM_FALLBACK_POLICY,
+        validation_alias="WEREWOLF_LLM_FALLBACK_POLICY",
     )
     llm_prompt_file: str = Field(
         default=DEFAULT_LLM_PROMPT_FILE,
@@ -656,6 +692,11 @@ class AppSettings(BaseSettings):
         return _optional_repository_path(self.llm_players_file)
 
     @property
+    def llm_decision_graphs_path(self) -> Path | None:
+        """Return the configured external LLM decision graph file, if any."""
+        return _optional_repository_path(self.llm_decision_graphs_file)
+
+    @property
     def game_rules_path(self) -> Path | None:
         """Return the configured external game rule definition file, if any."""
         return _optional_repository_path(self.game_rules_file)
@@ -686,6 +727,7 @@ class AppSettings(BaseSettings):
             players_path=self.llm_players_path,
             prompt_path=self.llm_prompt_path,
             fake_responses_path=self.llm_fake_responses_path,
+            decision_graphs_path=self.llm_decision_graphs_path,
         )
 
     @property
@@ -847,6 +889,46 @@ class AppSettings(BaseSettings):
         """Return the optional OpenAI-compatible provider base URL."""
         return "" if value is None else str(value).strip()
 
+    @field_validator("llm_default_agent_strategy_id", mode="before")
+    @classmethod
+    def normalize_llm_default_agent_strategy_id(cls, value: object) -> str:
+        """Return the default LLM agent strategy id."""
+        return normalize_non_blank(value, field_name="llm_default_agent_strategy_id")
+
+    @field_validator(
+        "llm_prompt_file",
+        "llm_fake_responses_file",
+        "llm_players_file",
+        "llm_decision_graphs_file",
+        mode="before",
+    )
+    @classmethod
+    def normalize_llm_optional_file(cls, value: object) -> str:
+        """Return an optional LLM resource override file path."""
+        return "" if value is None else str(value).strip()
+
+    @field_validator("llm_structured_output_mode", mode="before")
+    @classmethod
+    def normalize_llm_structured_output_mode(cls, value: object) -> str:
+        """Return a validated structured-output mode."""
+        return normalize_choice(
+            value,
+            field_name="llm_structured_output_mode",
+            choices=LLM_STRUCTURED_OUTPUT_MODE_NAMES,
+            case="lower",
+        )
+
+    @field_validator("llm_fallback_policy", mode="before")
+    @classmethod
+    def normalize_llm_fallback_policy(cls, value: object) -> str:
+        """Return a validated fallback policy."""
+        return normalize_choice(
+            value,
+            field_name="llm_fallback_policy",
+            choices=LLM_FALLBACK_POLICY_NAMES,
+            case="lower",
+        )
+
     @field_validator("game_supported_agent_type", mode="before")
     @classmethod
     def normalize_supported_agent_type(cls, value: object) -> str:
@@ -942,7 +1024,8 @@ class AppSettings(BaseSettings):
         """Ensure runtime definitions are loadable and match configured settings."""
         try:
             game_definitions = self.game_definitions
-            _ = self.llm_definitions
+            llm_definitions = self.llm_definitions
+            llm_definitions.agent_strategies.strategy_for(self.llm_default_agent_strategy_id)
             missing_counts = [
                 player_count
                 for player_count in range(self.game_min_players, self.game_max_players + 1)

@@ -5,6 +5,7 @@ from werewolf_agent.commons.shared.definitions import (
     PromptDefinition,
     PromptMessageDefinition,
 )
+from werewolf_agent.commons.shared.llm_tracing import LlmInvocationTrace
 from werewolf_agent.domain.llm.models import (
     AgentActionType,
     AgentObservation,
@@ -82,7 +83,16 @@ def provider() -> LangChainDecisionProvider:
     return LangChainDecisionProvider(
         prompt=definitions.prompt,
         fake_responses=definitions.fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("stable_fast"),
     )
+
+
+class RecordingTraceSink:
+    def __init__(self) -> None:
+        self.records: list[LlmInvocationTrace] = []
+
+    def record_invocation(self, trace: LlmInvocationTrace) -> None:
+        self.records.append(trace)
 
 
 def test_prompt_resource_uses_mlflow_style_metadata_and_langchain_variables() -> None:
@@ -233,7 +243,7 @@ def test_langchain_fake_provider_passes_when_observation_is_not_for_player() -> 
     assert decision.reason == "observation belongs to another player"
 
 
-def test_langchain_fake_provider_falls_back_for_invalid_json() -> None:
+def test_langchain_fake_provider_uses_deterministic_fallback_for_invalid_json() -> None:
     fake_responses = FakeDecisionCatalog.model_validate(
         {
             "name": "bad",
@@ -250,16 +260,38 @@ def test_langchain_fake_provider_falls_back_for_invalid_json() -> None:
         prompt_path=None,
         fake_responses_path=None,
     )
+    trace_sink = RecordingTraceSink()
     decision = LangChainDecisionProvider(
         prompt=definitions.prompt,
         fake_responses=fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("stable_fast"),
+        trace_sink=trace_sink,
     ).choose_decision(
         "p2",
         observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
     )
 
-    assert decision.type is AgentActionType.PASS
-    assert decision.reason.startswith("invalid llm decision")
+    assert decision.type is AgentActionType.VOTE
+    assert decision.target_id in {"p1", "p3", "p4", "p5"}
+    trace = trace_sink.records[-1]
+    assert trace.request_payload["agent_strategy_id"] == "stable_fast"
+    assert trace.request_payload["decision_graph_id"] == "stable_fast"
+    assert trace.request_payload["graph_node"] == "deterministic_fallback"
+    assert trace.request_payload["route"] == "fallback"
+    assert trace.request_payload["validation_status"] == "fallback"
+    assert trace.request_payload["fallback_reason"]
+    assert trace.latency_ms is not None
+
+    repeated = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        fake_responses=fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("stable_fast"),
+    ).choose_decision(
+        "p2",
+        observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
+    )
+
+    assert repeated.target_id == decision.target_id
 
 
 def test_langchain_provider_parses_markdown_fenced_json_output() -> None:
@@ -280,6 +312,7 @@ def test_langchain_provider_parses_markdown_fenced_json_output() -> None:
     decision = LangChainDecisionProvider(
         prompt=definitions.prompt,
         model=FencedJsonModel(),
+        agent_strategy=definitions.agent_strategies.strategy_for("stable_fast"),
     ).choose_decision(
         "p2",
         observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
@@ -313,6 +346,7 @@ def test_langchain_provider_replaces_invalid_target_with_deterministic_target() 
     decision = LangChainDecisionProvider(
         prompt=definitions.prompt,
         fake_responses=fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("stable_fast"),
     ).choose_decision(
         "p2",
         observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
@@ -321,3 +355,53 @@ def test_langchain_provider_replaces_invalid_target_with_deterministic_target() 
     assert decision.type is AgentActionType.VOTE
     assert decision.target_id in {"p1", "p3", "p4", "p5"}
     assert decision.reason == "bad target"
+
+
+def test_role_basic_strategy_adds_role_hint_to_prompt_context() -> None:
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+    trace_sink = RecordingTraceSink()
+
+    decision = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        fake_responses=definitions.fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("role_basic"),
+        trace_sink=trace_sink,
+    ).choose_decision(
+        "p1",
+        observation(player_id="p1", role="werewolf", known_roles={"p1": "werewolf"}),
+    )
+
+    assert decision.type is AgentActionType.WEREWOLF_ATTACK
+    prompt_text = " ".join(
+        str(message["content"]) for message in trace_sink.records[-1].prompt_messages
+    )
+    assert "strategy_hint" in prompt_text
+    assert "Avoid attacking known werewolves" in prompt_text
+
+
+def test_target_ranker_strategy_ranks_only_legal_targets() -> None:
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+    trace_sink = RecordingTraceSink()
+
+    decision = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        fake_responses=definitions.fake_responses,
+        agent_strategy=definitions.agent_strategies.strategy_for("target_ranker"),
+        trace_sink=trace_sink,
+    ).choose_decision(
+        "p2",
+        observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
+    )
+
+    ranked = trace_sink.records[-1].request_payload["target_rankings"]
+    assert decision.type is AgentActionType.VOTE
+    assert set(ranked["vote"]) <= {"p1", "p3", "p4", "p5"}
+    assert "p2" not in ranked["vote"]

@@ -56,6 +56,7 @@ API 詳細、UI 手順、handoff は別文書に置きます。
 | Game catalog | `resources/game/catalog.toml` | `usecase.internal` / `domain.llm` | scenario、narration、setup preset、ability label |
 | LLM players | `resources/llm/players.toml` | `domain.llm` | LLM profile |
 | LLM prompt | `resources/prompts/agent_decision.toml` | `domain.llm` | prompt metadata / messages |
+| LLM decision graphs | `resources/llm/decision_graphs.toml` | `domain.llm` | agent strategy metadata / graph node |
 | Fake responses | `resources/llm/fake_responses.toml` | `domain.llm` | `FakeListLLM` fixture |
 
 definition path 解決と TOML 読み込みは `interface/runtime` に集約します。`AppSettings` 構築時に definition を検証し、`interface/application` が `GameDefinitions` / `LlmDefinitions` を usecase へ注入します。domain と usecase は source path、packaged default、`.env` を知りません。
@@ -114,9 +115,9 @@ local rules は game ごとの deterministic rule だけを持ちます。`day_s
 - public `speeches`
 - public `vote_rounds`
 
-`LangChainDecisionProvider` は prompt、LangChain model、Pydantic parser を接続します。LLM 出力は `AgentDecision` として検証し、不正 JSON、不正 action、不正 target は保存せず `pass` fallback にします。
+`LangChainDecisionProvider` は `agent_strategy_id` に対応する LangGraph `StateGraph` を使い、prompt、LangChain model、Pydantic parser、validation、repair、deterministic fallback を接続します。LLM 出力は `AgentDecision` として検証し、不正 JSON、不正 action、不正 target、provider 呼び出し失敗は保存済み seed と合法 action から deterministic fallback にします。
 
-prompt resource は `AgentObservation` の契約だけを参照します。raw prompt、raw response、API key は保存・公開・ログ出力しません。
+prompt resource と graph definition は `AgentObservation` の契約だけを参照します。raw prompt、raw response、API key は public response、public timeline、operational log へ出しません。admin-only LLM trace には改善用に prompt message、prompt hash、raw response、parsed decision、graph route metadata を保存します。
 
 ## Usecase 接続
 

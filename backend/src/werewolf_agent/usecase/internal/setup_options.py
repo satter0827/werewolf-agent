@@ -31,6 +31,7 @@ def default_setup_options(
         default_scenario_id=default_scenario_id,
         default_setup_preset_id=default_setup_preset_id,
         default_narration_mode=config.default_narration_mode,
+        default_agent_strategy_id=llm_definitions.agent_strategies.default_strategy_id,
         abilities={
             ability_id: definition.model_dump(mode="json")
             for ability_id, definition in definitions.catalog.abilities.items()
@@ -46,6 +47,13 @@ def default_setup_options(
         characters={
             character_id: definition.model_dump(mode="json")
             for character_id, definition in llm_definitions.players.players.items()
+        },
+        agent_strategies={
+            strategy.id: {
+                "name": strategy.name,
+                "description": strategy.description,
+            }
+            for strategy in llm_definitions.agent_strategies.strategies
         },
     )
 

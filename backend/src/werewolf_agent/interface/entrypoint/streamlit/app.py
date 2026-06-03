@@ -77,6 +77,7 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
     narration_mode,
     preferred_language,
     preset_counts,
+    remember_agent_strategy_id,
     remember_character_assignment,
     remember_manual_player_id,
     remember_narration_mode,
@@ -91,6 +92,7 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
     seat_options,
     seed_from_text,
     seed_text,
+    selected_agent_strategy_id,
     selected_manual_player_id,
     selected_scenario_id,
     selected_setup_preset_id,
@@ -485,6 +487,13 @@ def _render_setup_screen(
             _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
         elif element.id == "narration":
             _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        elif element.id == "agent_strategy":
+            _render_agent_strategy_setup(
+                st,
+                setup_options=setup_options,
+                catalog=catalog,
+                lang=lang,
+            )
         elif element.id == "seed":
             seed_value = _render_seed_controls(
                 st,
@@ -512,6 +521,7 @@ def _render_setup_screen(
     scenario_id = selected_scenario_id(st.session_state, setup_options)
     preset_id = selected_setup_preset_id(st.session_state, setup_options)
     active_narration_mode = narration_mode(st.session_state, setup_options)
+    agent_strategy_id = selected_agent_strategy_id(st.session_state, setup_options)
     validation = validate_setup(counts, setup_options, catalog=catalog, lang=lang)
     total_players = sum(counts.values())
     manual_player_id = (
@@ -538,6 +548,7 @@ def _render_setup_screen(
                 scenario_id=scenario_id,
                 preset_id=preset_id,
                 narration_mode_value=active_narration_mode,
+                agent_strategy_id=agent_strategy_id,
                 total_players=total_players,
                 column_count=cast(int, screens.layout("setup").summary_columns),
                 catalog=catalog,
@@ -584,6 +595,7 @@ def _render_setup_screen(
                 scenario_id=scenario_id,
                 setup_preset_id=preset_id,
                 narration_mode_value=active_narration_mode,
+                agent_strategy_id=agent_strategy_id,
                 character_assignments_value=active_assignments,
                 catalog=catalog,
                 lang=lang,
@@ -597,6 +609,7 @@ def _render_setup_summary_metrics(
     scenario_id: str | None,
     preset_id: str | None,
     narration_mode_value: NarrationMode,
+    agent_strategy_id: str | None,
     total_players: int,
     column_count: int,
     catalog: I18nCatalog,
@@ -612,6 +625,12 @@ def _render_setup_summary_metrics(
         (
             catalog.t(lang, "settings.narration"),
             _narration_label(narration_mode_value, catalog, lang),
+        ),
+        (
+            catalog.t(lang, "settings.agent_strategy"),
+            _agent_strategy_name(setup_options, agent_strategy_id, catalog, lang)
+            if agent_strategy_id
+            else "-",
         ),
     )
     columns = st.columns(column_count)
@@ -651,6 +670,7 @@ def _render_setup_submit(
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode_value: NarrationMode,
+    agent_strategy_id: str | None,
     character_assignments_value: dict[str, str],
     catalog: I18nCatalog,
     lang: Language,
@@ -660,6 +680,7 @@ def _render_setup_submit(
         not validation.is_valid
         or (manual_player_id is None and not observer)
         or scenario_id is None
+        or agent_strategy_id is None
         or _has_duplicate_values(character_assignments_value)
     )
     if not st.button(
@@ -680,6 +701,7 @@ def _render_setup_submit(
         screen_mode="observer" if observer else "playable",
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
+        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode_value,
         character_assignments=character_assignments_value,
         custom_roles=custom_roles(st.session_state),
@@ -907,6 +929,27 @@ def _render_narration_setup(
         format_func=lambda value: _narration_label(value, catalog, lang),
     )
     remember_narration_mode(st.session_state, cast(NarrationMode, selected_mode))
+
+
+def _render_agent_strategy_setup(
+    st: Any,
+    *,
+    setup_options: GameSetupOptionsResponse,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render the AI strategy selector for the next game."""
+    if not setup_options.agent_strategies:
+        st.caption(catalog.t(lang, "common.none"))
+        return
+    current_strategy_id = selected_agent_strategy_id(st.session_state, setup_options)
+    selected_strategy = st.selectbox(
+        catalog.t(lang, "settings.agent_strategy"),
+        setup_options.agent_strategies,
+        index=_agent_strategy_index(setup_options, current_strategy_id),
+        format_func=lambda value: value.name,
+    )
+    remember_agent_strategy_id(st.session_state, selected_strategy.id)
 
 
 def _render_setup_preset_selector(
@@ -1252,6 +1295,16 @@ def _setup_preset_index(setup_options: GameSetupOptionsResponse, preset_id: str 
     return 0
 
 
+def _agent_strategy_index(
+    setup_options: GameSetupOptionsResponse,
+    agent_strategy_id: str | None,
+) -> int:
+    for index, strategy in enumerate(setup_options.agent_strategies):
+        if strategy.id == agent_strategy_id:
+            return index
+    return 0
+
+
 def _character_option_index(
     options: list[CharacterDefinitionView | None],
     character_id: str | None,
@@ -1291,6 +1344,18 @@ def _setup_preset_name(
     for preset in setup_options.setup_presets:
         if preset.id == preset_id:
             return preset.name
+    return catalog.t(lang, "common.none")
+
+
+def _agent_strategy_name(
+    setup_options: GameSetupOptionsResponse,
+    agent_strategy_id: str | None,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    for strategy in setup_options.agent_strategies:
+        if strategy.id == agent_strategy_id:
+            return strategy.name
     return catalog.t(lang, "common.none")
 
 
@@ -1339,6 +1404,7 @@ def _create_game(
     screen_mode: str,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
+    agent_strategy_id: str | None = None,
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE,
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
@@ -1355,6 +1421,7 @@ def _create_game(
             manual_player_id=manual_player_id,
             scenario_id=scenario_id,
             setup_preset_id=setup_preset_id,
+            agent_strategy_id=agent_strategy_id,
             narration_mode=narration_mode,
             character_assignments=character_assignments or {},
             custom_roles=custom_roles or [],
@@ -1377,6 +1444,7 @@ def _create_game(
         seed=seed_from_text(seed_text),
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
+        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode,
         character_assignments=character_assignments or {},
         custom_roles=custom_roles or [],
@@ -1475,6 +1543,7 @@ def _render_next_actions(
             screen_mode=selected_option.mode,
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
+            agent_strategy_id=selected_option.agent_strategy_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
@@ -1498,6 +1567,7 @@ def _render_next_actions(
             screen_mode=selected_option.mode,
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
+            agent_strategy_id=selected_option.agent_strategy_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
@@ -1511,6 +1581,7 @@ def _render_next_actions(
         remember_seed_text(st.session_state, same_seed_text)
         remember_scenario_id(st.session_state, selected_option.scenario_id)
         remember_setup_preset_id(st.session_state, selected_option.setup_preset_id)
+        remember_agent_strategy_id(st.session_state, selected_option.agent_strategy_id)
         remember_narration_mode(
             st.session_state,
             cast(NarrationMode, selected_option.narration_mode),

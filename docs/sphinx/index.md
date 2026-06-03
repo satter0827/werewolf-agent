@@ -9,6 +9,7 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 /design/domain
 /design/api
+/design/agent-strategies
 ```
 
 ```{toctree}
@@ -32,4 +33,5 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 1. [Domain](../design/domain.md): domain core と境界
 2. [API](../design/api.md): 公開 API 契約
-3. [Development](../notes/development.md): 再開メモと実行コマンド
+3. [Agent Strategies](../design/agent-strategies.md): LLM agent の strategy graph
+4. [Development](../notes/development.md): 再開メモと実行コマンド

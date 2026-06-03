@@ -26,6 +26,9 @@ from werewolf_agent.commons.shared.definitions import (
     RoleDefinition,
 )
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
+from werewolf_agent.interface.runtime.resources import (
+    load_llm_definitions as load_runtime_llm_definitions,
+)
 from werewolf_agent.usecase.jobs import (
     AdvanceGameCommand,
     CreateGameCommand,
@@ -236,6 +239,11 @@ def dependencies(
             max_retries=2,
             max_tokens=96,
             temperature=0.7,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         telemetry=telemetry or CollectingTelemetrySink(),
     ), repository
@@ -400,6 +408,11 @@ def llm_definitions() -> LlmDefinitions:
                 "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
             },
         ),
+        agent_strategies=load_runtime_llm_definitions(
+            players_path=None,
+            prompt_path=None,
+            fake_responses_path=None,
+        ).agent_strategies,
     )
 
 
@@ -464,6 +477,8 @@ def test_default_setup_options_returns_business_identifiers_only() -> None:
     assert set(result.roles) == {"villager", "werewolf", "seer", "knight"}
     assert result.default_role_counts == DEFAULT_ROLE_COUNTS
     assert result.default_rules == local_rules_definition()
+    assert result.default_agent_strategy_id == "stable_fast"
+    assert set(result.agent_strategies) == {"stable_fast", "role_basic", "target_ranker"}
 
 
 def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
@@ -482,6 +497,14 @@ def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
     event_stream = repository.events[UUID(result.game_id)]
     assert event_stream[0].event_type == "game_started"
     assert "role_counts" not in event_stream[0].payload
+    assert repository.games[UUID(result.game_id)].config["agent_strategy_id"] == "stable_fast"
+
+
+def test_create_game_rejects_unknown_agent_strategy() -> None:
+    deps, _repository = dependencies()
+
+    with pytest.raises(GameError, match="Unknown agent strategy"):
+        GameService(deps).create_game(create_command(agent_strategy_id="unknown"))
 
 
 def test_create_game_selects_seeded_roster_names_for_default_players() -> None:

@@ -13,7 +13,8 @@
 - Streamlit は Play / Observe / History を提供し、ログイン有無と admin 権限で表示を分ける
 - LLM provider の既定は LM Studio。`WEREWOLF_MODEL=auto` で `/v1/models` の先頭 model を使う
 - Supabase queue worker が game 作成、advance、manual action を処理し、LLM 呼び出しを UI / CLI process から分離する
-- LLM trace は prompt hash、prompt messages、request payload、raw response、parsed decision、error payload、latency を永続化する
+- LLM agent strategy は `stable_fast`、`role_basic`、`target_ranker` を選べる。既定は `stable_fast`
+- LLM trace は prompt hash、prompt messages、request payload、raw response、parsed decision、error payload、latency、graph route metadata を永続化する
 - LangChain `fake` と OpenAI provider は設定値で明示的に切り替える
 - 複数 manual player、React UI は未実装
 
@@ -121,6 +122,7 @@ VS Code の Run and Debug では demo 起動用に `App: API + Streamlit` を使
 | Game catalog | `backend/src/werewolf_agent/resources/game/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` | `usecase.internal` / `domain.llm` |
 | LLM players | `backend/src/werewolf_agent/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` | `domain.llm` |
 | LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` | `domain.llm` |
+| LLM decision graphs | `backend/src/werewolf_agent/resources/llm/decision_graphs.toml` | `WEREWOLF_LLM_DECISION_GRAPHS_FILE` | `domain.llm` |
 | Fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` | `domain.llm` |
 | Streamlit i18n | `backend/src/werewolf_agent/resources/streamlit/i18n.toml` | `WEREWOLF_STREAMLIT_I18N_FILE` | `interface/entrypoint/streamlit` |
 | Streamlit CSS | `backend/src/werewolf_agent/resources/streamlit/default.css` | `WEREWOLF_STREAMLIT_CSS_FILE` | `interface/entrypoint/streamlit` |
@@ -130,7 +132,7 @@ VS Code の Run and Debug では demo 起動用に `App: API + Streamlit` を使
 
 Streamlit CSS は追記ではなく置換方式です。画面定義体は表示要素、表示順、配置、列数だけを制御し、public / private 判定、action availability、API payload、game state 計算は `streamlit/app.py` と表示 model 側に残します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS` / `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` / `WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE` / `WEREWOLF_LLM_VALIDATION_RETRY_COUNT` / `WEREWOLF_LLM_GRAPH_MAX_STEPS` / `WEREWOLF_LLM_FALLBACK_POLICY`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
 
 ## DB
 

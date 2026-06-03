@@ -38,6 +38,7 @@ class SessionGameSelection:
     seed: int | None
     scenario_id: str | None
     setup_preset_id: str | None
+    agent_strategy_id: str | None
     narration_mode: NarrationMode
     character_assignments: dict[str, str]
     custom_roles: list[CustomRoleDefinitionRequest]
@@ -53,6 +54,7 @@ def create_session_game_selection(
     seed: int | None,
     scenario_id: str | None,
     setup_preset_id: str | None,
+    agent_strategy_id: str | None,
     narration_mode: NarrationMode,
     character_assignments: Mapping[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
@@ -68,6 +70,7 @@ def create_session_game_selection(
         seed=seed,
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
+        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode,
         character_assignments={
             str(player_id): str(character_id)
@@ -125,6 +128,7 @@ def build_history_options(
                 seed=session_selection.seed,
                 scenario_id=session_selection.scenario_id,
                 setup_preset_id=session_selection.setup_preset_id,
+                agent_strategy_id=session_selection.agent_strategy_id,
                 narration_mode=session_selection.narration_mode,
                 character_assignments=dict(session_selection.character_assignments),
                 custom_roles=list(session_selection.custom_roles),

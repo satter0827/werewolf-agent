@@ -137,6 +137,24 @@ class FakeGameClient:
                 {"id": "werewolf", "name": "Werewolf", "faction": "werewolf", "abilities": []},
             ],
             default_role_counts={"werewolf": 1, "villager": 4},
+            default_agent_strategy_id="stable_fast",
+            agent_strategies=[
+                {
+                    "id": "stable_fast",
+                    "name": "Stable Fast",
+                    "description": "Fast fallback strategy.",
+                },
+                {
+                    "id": "role_basic",
+                    "name": "Role Basic",
+                    "description": "Role hints.",
+                },
+                {
+                    "id": "target_ranker",
+                    "name": "Target Ranker",
+                    "description": "Target ranking.",
+                },
+            ],
             default_rules={
                 "day_speech_limit_per_player": 1,
                 "allow_self_vote": False,

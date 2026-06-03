@@ -1,0 +1,84 @@
+[[strategies]]
+id = "stable_fast"
+name = "Stable Fast"
+description = "Fast and stable decisions with one model call, validation, one repair attempt, and deterministic fallback."
+decision_graph_id = "stable_fast"
+default = true
+nodes = [
+  "normalize_observation",
+  "choose_required_action",
+  "build_prompt_context",
+  "invoke_model",
+  "validate_action",
+  "repair_once",
+  "deterministic_fallback",
+]
+edges = [
+  { from = "START", to = "normalize_observation" },
+  { from = "normalize_observation", to = "choose_required_action" },
+  { from = "choose_required_action", to = "build_prompt_context" },
+  { from = "build_prompt_context", to = "invoke_model" },
+  { from = "invoke_model", to = "validate_action" },
+  { from = "repair_once", to = "validate_action" },
+]
+routes = [
+  { from = "validate_action", valid = "END", invalid = "repair_once", failed = "deterministic_fallback" },
+]
+
+[[strategies]]
+id = "role_basic"
+name = "Role Basic"
+description = "Adds short role-specific tactical hints while keeping the same validation and fallback behavior."
+decision_graph_id = "role_basic"
+default = false
+nodes = [
+  "normalize_observation",
+  "choose_required_action",
+  "role_hint",
+  "build_prompt_context",
+  "invoke_model",
+  "validate_action",
+  "repair_once",
+  "deterministic_fallback",
+]
+edges = [
+  { from = "START", to = "normalize_observation" },
+  { from = "normalize_observation", to = "choose_required_action" },
+  { from = "choose_required_action", to = "role_hint" },
+  { from = "role_hint", to = "build_prompt_context" },
+  { from = "build_prompt_context", to = "invoke_model" },
+  { from = "invoke_model", to = "validate_action" },
+  { from = "repair_once", to = "validate_action" },
+]
+routes = [
+  { from = "validate_action", valid = "END", invalid = "repair_once", failed = "deterministic_fallback" },
+]
+
+[[strategies]]
+id = "target_ranker"
+name = "Target Ranker"
+description = "Ranks only legal targets before prompting so target-taking actions choose from safer candidates."
+decision_graph_id = "target_ranker"
+default = false
+nodes = [
+  "normalize_observation",
+  "choose_required_action",
+  "rank_targets",
+  "build_prompt_context",
+  "invoke_model",
+  "validate_action",
+  "repair_once",
+  "deterministic_fallback",
+]
+edges = [
+  { from = "START", to = "normalize_observation" },
+  { from = "normalize_observation", to = "choose_required_action" },
+  { from = "choose_required_action", to = "rank_targets" },
+  { from = "rank_targets", to = "build_prompt_context" },
+  { from = "build_prompt_context", to = "invoke_model" },
+  { from = "invoke_model", to = "validate_action" },
+  { from = "repair_once", to = "validate_action" },
+]
+routes = [
+  { from = "validate_action", valid = "END", invalid = "repair_once", failed = "deterministic_fallback" },
+]

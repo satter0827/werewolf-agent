@@ -87,6 +87,7 @@ class CreateGameRequest(BaseModel):
     seed: int | None = None
     scenario_id: str | None = None
     setup_preset_id: str | None = None
+    agent_strategy_id: str | None = None
     narration_mode: NarrationMode | None = None
     role_counts: dict[RoleId, RoleCount]
     manual_player_id: str | None = None
@@ -114,7 +115,7 @@ class CreateGameRequest(BaseModel):
         """Return a stripped optional manual player id."""
         return optional_non_blank(value, str(info.field_name))
 
-    @field_validator("scenario_id", "setup_preset_id")
+    @field_validator("scenario_id", "setup_preset_id", "agent_strategy_id")
     @classmethod
     def validate_optional_ids(cls, value: str | None, info: ValidationInfo) -> str | None:
         """Return stripped optional setup ids."""
@@ -408,6 +409,22 @@ class RoleDefinitionView(BaseModel):
         return non_blank(value, str(info.field_name))
 
 
+class AgentStrategyDefinitionView(BaseModel):
+    """Public display metadata for an LLM agent strategy."""
+
+    id: str
+    name: str
+    description: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("id", "name", "description")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
+        """Return a stripped non-empty string."""
+        return non_blank(value, str(info.field_name))
+
+
 class GameSetupOptionsResponse(BaseModel):
     """Public setup metadata for client bootstrapping."""
 
@@ -418,10 +435,12 @@ class GameSetupOptionsResponse(BaseModel):
     default_scenario_id: str | None = None
     default_setup_preset_id: str | None = None
     default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    default_agent_strategy_id: str
     abilities: list[AbilityDefinitionView] = Field(default_factory=list)
     scenarios: list[ScenarioDefinitionView] = Field(default_factory=list)
     setup_presets: list[SetupPresetDefinitionView] = Field(default_factory=list)
     characters: list[CharacterDefinitionView] = Field(default_factory=list)
+    agent_strategies: list[AgentStrategyDefinitionView] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -640,6 +659,7 @@ __all__ = [
     "AdvanceGameJobResponse",
     "AdvanceGameResponse",
     "AdvanceJobStatus",
+    "AgentStrategyDefinitionView",
     "CharacterDefinitionView",
     "CreateGameRequest",
     "CustomCharacterDefinitionRequest",

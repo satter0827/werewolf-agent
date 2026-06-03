@@ -52,6 +52,7 @@ class SavedGameOptionView:
     seed: int | None = None
     scenario_id: str | None = None
     setup_preset_id: str | None = None
+    agent_strategy_id: str | None = None
     narration_mode: str = DEFAULT_NARRATION_MODE
     character_assignments: dict[str, str] | None = None
     custom_roles: list[CustomRoleDefinitionRequest] | None = None

@@ -51,10 +51,12 @@ def test_setup_remembers_settings_and_parses_optional_seed() -> None:
 
     setup.remember_role_counts(session, {"werewolf": 1, "villager": 5})
     setup.remember_rules(session, rules)
+    setup.remember_agent_strategy_id(session, "target_ranker")
     setup.remember_seed_text(session, "  ")
 
     assert setup.role_counts(session, _setup_options()) == {"werewolf": 1, "villager": 5}
     assert setup.rules(session, _setup_options()) == rules
+    assert setup.selected_agent_strategy_id(session, _setup_options()) == "target_ranker"
     assert setup.seed_from_text(setup.seed_text(session, default_seed=1)) is None
 
 
@@ -83,6 +85,19 @@ def _setup_options() -> GameSetupOptionsResponse:
         ],
         default_role_counts={"werewolf": 1, "villager": 4},
         default_rules=_rules(),
+        default_agent_strategy_id="stable_fast",
+        agent_strategies=[
+            {
+                "id": "stable_fast",
+                "name": "Stable Fast",
+                "description": "Fast fallback strategy.",
+            },
+            {
+                "id": "target_ranker",
+                "name": "Target Ranker",
+                "description": "Ranks legal targets.",
+            },
+        ],
     )
 
 

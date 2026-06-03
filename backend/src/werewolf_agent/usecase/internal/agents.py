@@ -117,6 +117,7 @@ def langchain_agent_factory(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
+    agent_strategy_id: str,
     profile_ids_by_player: dict[str, str] | None = None,
     scenario: AgentScenario | None = None,
     trace_sink: LlmTraceSink | None = None,
@@ -124,7 +125,12 @@ def langchain_agent_factory(
     """Return a LangChain-backed agent factory from use case settings."""
     profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
-        provider=_decision_provider(config, definitions=definitions, trace_sink=trace_sink),
+        provider=_decision_provider(
+            config,
+            definitions=definitions,
+            agent_strategy_id=agent_strategy_id,
+            trace_sink=trace_sink,
+        ),
         profiles=profiles.profiles,
         profile_ids_by_player=profile_ids_by_player or {},
         scenario=scenario,
@@ -135,27 +141,39 @@ def _decision_provider(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
+    agent_strategy_id: str,
     trace_sink: LlmTraceSink | None,
 ) -> LangChainDecisionProvider:
+    agent_strategy = definitions.agent_strategies.strategy_for(agent_strategy_id)
     if config.provider == LLM_PROVIDER_FAKE:
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             fake_responses=definitions.fake_responses,
+            agent_strategy=agent_strategy,
             provider_name=config.provider,
             model_name=config.model,
             trace_sink=trace_sink,
+            structured_output_mode=config.structured_output_mode,
+            validation_retry_count=config.validation_retry_count,
+            graph_max_steps=config.graph_max_steps,
+            fallback_policy=config.fallback_policy,
         )
     if config.provider in {LLM_PROVIDER_LMSTUDIO, LLM_PROVIDER_OPENAI}:
         model_id = _openai_compatible_model_id(config)
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             model=_openai_compatible_model(config, model_id=model_id),
+            agent_strategy=agent_strategy,
             provider_name=config.provider,
             model_name=model_id,
             base_url=config.base_url,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
             trace_sink=trace_sink,
+            structured_output_mode=config.structured_output_mode,
+            validation_retry_count=config.validation_retry_count,
+            graph_max_steps=config.graph_max_steps,
+            fallback_policy=config.fallback_policy,
         )
     raise ValueError(message_unsupported_llm_provider(config.provider))
 
@@ -187,7 +205,12 @@ def _openai_compatible_model(config: LlmProviderConfig, *, model_id: str) -> Any
 
 def _openai_compatible_model_id(config: LlmProviderConfig) -> str:
     if config.provider == LLM_PROVIDER_LMSTUDIO and config.model == LLM_MODEL_AUTO:
-        return _lmstudio_model_id(config)
+        try:
+            return _lmstudio_model_id(config)
+        except LlmProviderError as exc:
+            if _is_lmstudio_auto_connection_error(exc):
+                return config.model
+            raise
     return config.model
 
 
@@ -227,6 +250,14 @@ def _lmstudio_model_id(config: LlmProviderConfig) -> str:
             ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
         }
     )
+
+
+def _is_lmstudio_auto_connection_error(exc: LlmProviderError) -> bool:
+    error_type = exc.context.get(ERROR_CONTEXT_LLM_ERROR_TYPE)
+    return error_type not in {
+        LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE,
+        LLM_PROVIDER_ERROR_NO_LOADED_MODEL,
+    }
 
 
 def _agent_observation_from_game(

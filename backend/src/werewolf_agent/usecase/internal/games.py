@@ -42,6 +42,7 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
     message_field_must_be_between,
     message_player_count_between,
+    message_unknown_agent_strategy,
     message_unknown_scenario,
     message_unknown_setup_preset,
     message_unsupported_action_type,
@@ -165,9 +166,15 @@ def create_game(
         roles=to_role_catalog(game_definitions.roles),
     )
     scenario_config = _scenario_config(command, game_definitions)
+    agent_strategy_id = _agent_strategy_id(
+        command.agent_strategy_id,
+        definitions=llm_definitions,
+        default_strategy_id=dependencies.llm_provider_config.default_agent_strategy_id,
+    )
     run_config = {
         **scenario_config,
         "narration_mode": command.narration_mode,
+        "agent_strategy_id": agent_strategy_id,
         "custom_roles": [definition.model_dump(mode="json") for definition in command.custom_roles],
         "custom_characters": [
             definition.model_dump(mode="json") for definition in command.custom_characters
@@ -399,6 +406,10 @@ def run_prepared_advance(
     runtime_rng = random.Random(_runtime_seed(prepared.seed, prepared.version))
     pending_actions = PendingActions.model_validate(prepared.pending_actions)
     manual_player_ids = _manual_player_ids(prepared.config)
+    agent_strategy_id = _agent_strategy_id_from_config(
+        prepared.config,
+        dependencies=dependencies,
+    )
     dependencies.telemetry.record(
         TelemetryEvent(
             "game.phase.drive_started",
@@ -417,6 +428,7 @@ def run_prepared_advance(
         agent_factory=langchain_agent_factory(
             dependencies.llm_provider_config,
             definitions=_llm_definitions_for_game(prepared.config, dependencies.llm_definitions),
+            agent_strategy_id=agent_strategy_id,
             profile_ids_by_player=_player_profile_ids(prepared.config),
             scenario=_agent_scenario(prepared.config),
             trace_sink=dependencies.llm_trace_sink,
@@ -904,6 +916,34 @@ def _agent_scenario(config: Mapping[str, object]) -> AgentScenario | None:
     if name is None or premise is None:
         return None
     return AgentScenario(name=name, premise=premise)
+
+
+def _agent_strategy_id(
+    value: str | None,
+    *,
+    definitions: LlmDefinitions,
+    default_strategy_id: str,
+) -> str:
+    strategy_id = non_blank(value or default_strategy_id, "agent_strategy_id")
+    if not definitions.agent_strategies.contains(strategy_id):
+        raise GameError(
+            message_unknown_agent_strategy(strategy_id),
+            context={"agent_strategy_id": strategy_id},
+        )
+    return strategy_id
+
+
+def _agent_strategy_id_from_config(
+    config: Mapping[str, object],
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> str:
+    value = _config_text(config, "agent_strategy_id")
+    return _agent_strategy_id(
+        value,
+        definitions=dependencies.llm_definitions,
+        default_strategy_id=dependencies.llm_provider_config.default_agent_strategy_id,
+    )
 
 
 def _config_text(config: Mapping[str, object], key: str) -> str | None:

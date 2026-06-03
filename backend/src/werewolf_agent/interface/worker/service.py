@@ -305,6 +305,7 @@ def _create_command(
         rules=request.rules or settings.game_definitions.rules.local_rules,
         scenario_id=request.scenario_id,
         setup_preset_id=request.setup_preset_id,
+        agent_strategy_id=request.agent_strategy_id or settings.llm_default_agent_strategy_id,
         narration_mode=request.narration_mode or settings.game_default_narration_mode,
         character_assignments=request.character_assignments,
         custom_roles=[item for item in request.custom_roles],

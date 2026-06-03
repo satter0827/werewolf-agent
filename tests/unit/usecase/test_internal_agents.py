@@ -6,10 +6,7 @@ import pytest
 from werewolf_agent.contracts import (
     ERROR_CONTEXT_LLM_BASE_URL,
     ERROR_CONTEXT_LLM_ERROR_TYPE,
-    ERROR_CONTEXT_LLM_MAX_TOKENS,
-    ERROR_CONTEXT_LLM_MODEL,
     ERROR_CONTEXT_LLM_PROVIDER,
-    ERROR_CONTEXT_LLM_TIMEOUT_SECONDS,
     LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE,
     LLM_PROVIDER_ERROR_NO_LOADED_MODEL,
     LlmProviderError,
@@ -44,6 +41,11 @@ def _lmstudio_auto_config() -> LlmProviderConfig:
         max_retries=3,
         max_tokens=128,
         temperature=0.2,
+        default_agent_strategy_id="stable_fast",
+        structured_output_mode="auto",
+        validation_retry_count=1,
+        graph_max_steps=8,
+        fallback_policy="deterministic_legal_action",
     )
 
 
@@ -97,8 +99,14 @@ def test_langchain_agent_factory_uses_fake_decision_fixture() -> None:
             max_retries=2,
             max_tokens=96,
             temperature=0.7,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
+        agent_strategy_id="stable_fast",
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
@@ -136,8 +144,14 @@ def test_langchain_agent_factory_builds_lmstudio_chat_model(monkeypatch) -> None
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
+        agent_strategy_id="stable_fast",
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
@@ -190,13 +204,64 @@ def test_langchain_agent_factory_auto_discovers_lmstudio_model(monkeypatch) -> N
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
+        agent_strategy_id="stable_fast",
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
     assert captured_kwargs[0]["model"] == "loaded-local-model"
     assert factory.provider.model_name == "loaded-local-model"
+
+
+def test_lmstudio_auto_discovery_connection_error_falls_back_at_runtime(monkeypatch) -> None:
+    captured_kwargs: list[dict[str, object]] = []
+
+    class FailingChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured_kwargs.append(kwargs)
+
+        def invoke(self, _prompt_value: object) -> object:
+            raise RuntimeError("provider unavailable")
+
+    def fail_models_request(*_args: object, **_kwargs: object) -> object:
+        raise agents.httpx.ConnectError("server unavailable")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "langchain_openai",
+        SimpleNamespace(ChatOpenAI=FailingChatOpenAI),
+    )
+    monkeypatch.setattr(agents.httpx, "get", fail_models_request)
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+
+    factory = langchain_agent_factory(
+        _lmstudio_auto_config(),
+        definitions=definitions,
+        agent_strategy_id="stable_fast",
+    )
+    observation = Observation(
+        phase=Phase.DAY_DISCUSSION,
+        day=1,
+        me=Player(id="p1", name="Alice"),
+        players=[Player(id="p1", name="Alice"), Player(id="p2", name="Bob")],
+        available_actions=[ActionType.SPEECH],
+    )
+
+    action = factory.create("p1", seed=1).act(observation)
+
+    assert captured_kwargs[0]["model"] == "auto"
+    assert action.type is ActionType.SPEECH
+    assert action.player_id == "p1"
 
 
 def test_lmstudio_model_discovery_rejects_invalid_models_payload(monkeypatch) -> None:
@@ -239,7 +304,7 @@ def test_lmstudio_model_discovery_rejects_missing_loaded_model(monkeypatch) -> N
     }
 
 
-def test_real_provider_invoke_error_is_not_converted_to_pass(monkeypatch) -> None:
+def test_real_provider_invoke_error_uses_deterministic_fallback(monkeypatch) -> None:
     class FailingChatOpenAI:
         def __init__(self, **_kwargs: object) -> None:
             pass
@@ -267,8 +332,14 @@ def test_real_provider_invoke_error_is_not_converted_to_pass(monkeypatch) -> Non
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
+        agent_strategy_id="stable_fast",
     )
     observation = Observation(
         phase=Phase.DAY_DISCUSSION,
@@ -278,17 +349,10 @@ def test_real_provider_invoke_error_is_not_converted_to_pass(monkeypatch) -> Non
         available_actions=[ActionType.SPEECH],
     )
 
-    with pytest.raises(LlmProviderError) as exc_info:
-        factory.create("p1", seed=1).act(observation)
+    action = factory.create("p1", seed=1).act(observation)
 
-    assert exc_info.value.context == {
-        ERROR_CONTEXT_LLM_ERROR_TYPE: "RuntimeError",
-        ERROR_CONTEXT_LLM_PROVIDER: "lmstudio",
-        ERROR_CONTEXT_LLM_MODEL: "local-model",
-        ERROR_CONTEXT_LLM_BASE_URL: "http://127.0.0.1:1234/v1",
-        ERROR_CONTEXT_LLM_TIMEOUT_SECONDS: 45.0,
-        ERROR_CONTEXT_LLM_MAX_TOKENS: 128,
-    }
+    assert action.type is ActionType.SPEECH
+    assert action.player_id == "p1"
 
 
 def test_langchain_agent_factory_builds_openai_chat_model(monkeypatch) -> None:
@@ -319,8 +383,14 @@ def test_langchain_agent_factory_builds_openai_chat_model(monkeypatch) -> None:
             max_retries=2,
             max_tokens=96,
             temperature=0.7,
+            default_agent_strategy_id="stable_fast",
+            structured_output_mode="auto",
+            validation_retry_count=1,
+            graph_max_steps=8,
+            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
+        agent_strategy_id="stable_fast",
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)

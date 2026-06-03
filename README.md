@@ -6,7 +6,7 @@ deterministic domain core がゲームの真実を管理し、外側には publi
 ## 現在地
 
 - CLI / Streamlit は Supabase に直接接続し、ログインなしでは process-local demo client で game を進められる
-- LangChain `fake` provider、LM Studio、OpenAI provider を設定値で切り替えられる
+- LangChain `fake` provider、LM Studio、OpenAI provider、AI strategy を設定値と UI で切り替えられる
 - Supabase queue worker が game 作成、advance、manual action を処理し、LLM 呼び出しを UI / CLI process から分離している
 - role、rule、scenario、LLM player、prompt、fake response、Streamlit i18n / CSS / screen は runtime definition として読み込む
 - FastAPI の公開面は health check だけに絞り、画面から変更される game / 履歴 / trace は Supabase に保存する
@@ -74,8 +74,8 @@ WEREWOLF_MODEL=auto
 WEREWOLF_LLM_BASE_URL=http://127.0.0.1:1234/v1
 ```
 
-`WEREWOLF_MODEL=auto` は LM Studio の `/v1/models` から最初の loaded model id を取得します。LM Studio server が起動していない場合は `fake` へ戻さず、`llm.provider_unavailable` として失敗させます。
-LM Studio 本体設定は変更せず、timeout、retry、出力 token、job polling はこの repository の設定値で制御します。
+`WEREWOLF_MODEL=auto` は LM Studio の `/v1/models` から最初の loaded model id を取得します。LM Studio server が起動していない場合でも、game 進行中の provider 呼び出し失敗は deterministic fallback で進めます。unsupported provider、依存不足、設定不備は起動または構築時の設定エラーとして扱います。
+LM Studio 本体設定は変更せず、timeout、retry、出力 token、job polling、AI strategy はこの repository の設定値で制御します。
 
 OpenAI:
 
@@ -86,7 +86,7 @@ WEREWOLF_LLM_BASE_URL=
 OPENAI_API_KEY=<secret>
 ```
 
-LLM には `AgentObservation` だけを渡します。観測には `available_actions`、action ごとの `legal_targets`、公開 speech / vote history を含めます。分析・改善のため、LLM trace には prompt messages、prompt hash、request payload、raw response、parsed decision、error payload、latency を保存しますが、API key と provider secret は保存しません。
+LLM には `AgentObservation` だけを渡します。観測には `available_actions`、action ごとの `legal_targets`、公開 speech / vote history を含めます。Streamlit では `AI strategy` として `Stable Fast`、`Role Basic`、`Target Ranker` を選べます。選択した `agent_strategy_id` は game config に保存され、demo と worker の advance で同じ strategy を使います。分析・改善のため、admin-only LLM trace には prompt messages、prompt hash、request payload、raw response、parsed decision、error payload、latency を保存しますが、public response、public timeline、operational log には raw prompt、raw response、API key、provider secret を出しません。
 
 ## API / Data Source
 
@@ -125,7 +125,7 @@ CLI / Streamlit は backend game API を呼ばず、Supabase Data API と Auth �
 
 `interface/runtime` が設定、definition TOML、logging bootstrap を浅い入口で解決し、adapter から usecase へ値として注入します。domain と usecase は source path、packaged fallback、`.env`、Supabase、logging 設定を知りません。
 
-運用時に変える値は `.env` または環境変数で override します。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、LLM trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で変更できます。
+運用時に変える値は `.env` または環境変数で override します。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、AI strategy は `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID`、decision graph 定義は `WEREWOLF_LLM_DECISION_GRAPHS_FILE`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、LLM trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で変更できます。
 
 Streamlit の文言、CSS、画面配置は `resources/streamlit/` の packaged default を使います。`WEREWOLF_STREAMLIT_I18N_FILE`、`WEREWOLF_STREAMLIT_CSS_FILE`、`WEREWOLF_STREAMLIT_SCREENS_FILE` を指定すると外部ファイルで丸ごと差し替えます。
 

@@ -67,6 +67,69 @@ MIN_LLM_TEMPERATURE: Final = 0
 MAX_LLM_TEMPERATURE: Final = 2
 LlmProvider: TypeAlias = Literal["fake", "lmstudio", "openai"]
 
+AGENT_STRATEGY_STABLE_FAST: Final = "stable_fast"
+AGENT_STRATEGY_ROLE_BASIC: Final = "role_basic"
+AGENT_STRATEGY_TARGET_RANKER: Final = "target_ranker"
+AGENT_STRATEGY_CHOICES: Final = (
+    AGENT_STRATEGY_STABLE_FAST,
+    AGENT_STRATEGY_ROLE_BASIC,
+    AGENT_STRATEGY_TARGET_RANKER,
+)
+AGENT_STRATEGY_CHOICE_SET: Final = frozenset(AGENT_STRATEGY_CHOICES)
+DEFAULT_AGENT_STRATEGY_ID: Final = AGENT_STRATEGY_STABLE_FAST
+AgentStrategyId: TypeAlias = Literal["stable_fast", "role_basic", "target_ranker"]
+
+LLM_STRUCTURED_OUTPUT_MODE_AUTO: Final = "auto"
+LLM_STRUCTURED_OUTPUT_MODE_DISABLED: Final = "disabled"
+LLM_STRUCTURED_OUTPUT_MODE_REQUIRED: Final = "required"
+LLM_STRUCTURED_OUTPUT_MODE_CHOICES: Final = (
+    LLM_STRUCTURED_OUTPUT_MODE_AUTO,
+    LLM_STRUCTURED_OUTPUT_MODE_DISABLED,
+    LLM_STRUCTURED_OUTPUT_MODE_REQUIRED,
+)
+LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET: Final = frozenset(LLM_STRUCTURED_OUTPUT_MODE_CHOICES)
+LlmStructuredOutputMode: TypeAlias = Literal["auto", "disabled", "required"]
+
+LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION: Final = "deterministic_legal_action"
+LLM_FALLBACK_POLICY_CHOICES: Final = (LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION,)
+LLM_FALLBACK_POLICY_CHOICE_SET: Final = frozenset(LLM_FALLBACK_POLICY_CHOICES)
+LlmFallbackPolicy: TypeAlias = Literal["deterministic_legal_action"]
+
+DECISION_GRAPH_START: Final = "START"
+DECISION_GRAPH_END: Final = "END"
+DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION: Final = "normalize_observation"
+DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION: Final = "choose_required_action"
+DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT: Final = "build_prompt_context"
+DECISION_GRAPH_NODE_ROLE_HINT: Final = "role_hint"
+DECISION_GRAPH_NODE_RANK_TARGETS: Final = "rank_targets"
+DECISION_GRAPH_NODE_INVOKE_MODEL: Final = "invoke_model"
+DECISION_GRAPH_NODE_VALIDATE_ACTION: Final = "validate_action"
+DECISION_GRAPH_NODE_REPAIR_ONCE: Final = "repair_once"
+DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK: Final = "deterministic_fallback"
+DECISION_GRAPH_NODE_IDS: Final = (
+    DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION,
+    DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION,
+    DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT,
+    DECISION_GRAPH_NODE_ROLE_HINT,
+    DECISION_GRAPH_NODE_RANK_TARGETS,
+    DECISION_GRAPH_NODE_INVOKE_MODEL,
+    DECISION_GRAPH_NODE_VALIDATE_ACTION,
+    DECISION_GRAPH_NODE_REPAIR_ONCE,
+    DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
+)
+DECISION_GRAPH_NODE_ID_SET: Final = frozenset(DECISION_GRAPH_NODE_IDS)
+DecisionGraphNodeId: TypeAlias = Literal[
+    "normalize_observation",
+    "choose_required_action",
+    "build_prompt_context",
+    "role_hint",
+    "rank_targets",
+    "invoke_model",
+    "validate_action",
+    "repair_once",
+    "deterministic_fallback",
+]
+
 LOG_OUTPUT_FILE: Final = "file"
 LOG_OUTPUT_STDERR: Final = "stderr"
 LOG_OUTPUT_STDOUT: Final = "stdout"
