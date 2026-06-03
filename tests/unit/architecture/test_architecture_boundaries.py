@@ -185,6 +185,7 @@ def test_usecase_runtime_values_must_be_supplied_by_outer_layer() -> None:
 
     assert game_job_models.CreateGameCommand.model_fields["role_counts"].is_required()
     assert game_job_models.CreateGameCommand.model_fields["rules"].is_required()
+    assert game_job_models.CreateGameCommand.model_fields["narration_mode"].is_required()
     assert (
         game_job_models.GameUseCaseConfig.__dataclass_fields__["default_setup_id"].default
         is MISSING
@@ -395,14 +396,14 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
         streamlit_env["WEREWOLF_STREAMLIT_SAVE_FILE"]
         == "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
     )
-    _assert_workspace_logging_env(api_env, "api.jsonl")
-    _assert_workspace_logging_env(migrate_env, "migrate.jsonl")
-    _assert_workspace_logging_env(streamlit_env, "streamlit.jsonl")
+    _assert_process_log_file_env(api_env, "api.jsonl")
+    _assert_process_log_file_env(migrate_env, "migrate.jsonl")
+    _assert_process_log_file_env(streamlit_env, "streamlit.jsonl")
 
     for name, configuration in configurations.items():
         env = configuration["env"]
         if name.startswith("CLI: "):
-            _assert_workspace_logging_env(env, "cli.jsonl")
+            _assert_process_log_file_env(env, "cli.jsonl")
         elif name.startswith("Pytest: "):
             assert "WEREWOLF_LOG_OUTPUT" not in env
 
@@ -432,7 +433,51 @@ def test_vscode_migration_task_matches_launch_runtime_state() -> None:
         migrate_task["options"]["env"]["WEREWOLF_SQLITE_PATH"]
         == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
     )
-    _assert_workspace_logging_env(migrate_task["options"]["env"], "migrate.jsonl")
+    _assert_process_log_file_env(migrate_task["options"]["env"], "migrate.jsonl")
+
+
+def test_runtime_default_env_values_are_not_mirrored_by_tooling() -> None:
+    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
+    env_blocks: list[dict[str, str]] = [
+        configuration["env"] for configuration in launch["configurations"] if "env" in configuration
+    ]
+    env_blocks.extend(
+        task["options"]["env"]
+        for task in tasks["tasks"]
+        if "options" in task and "env" in task["options"]
+    )
+    for env in env_blocks:
+        _assert_no_runtime_default_log_mirror(env)
+
+    text_sources = [
+        (ROOT / "scripts" / "check-all.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "run-api.cmd").read_text(encoding="utf-8"),
+        (ROOT / "compose.yaml").read_text(encoding="utf-8"),
+    ]
+    combined = "\n".join(text_sources)
+    for key in RUNTIME_DEFAULT_LOG_ENV_KEYS:
+        assert key not in combined
+    assert "WEREWOLF_GAME_DEFAULT_" + "RULESET" not in combined
+    assert "WEREWOLF_GAME_" + "RULESET" not in combined
+
+
+def test_db_schema_constants_are_used_by_models_and_migrations() -> None:
+    schema_path = PACKAGE / "interface" / "application" / "schema.py"
+    models_source = (PACKAGE / "interface" / "application" / "models.py").read_text(
+        encoding="utf-8"
+    )
+    migration_sources = [
+        path.read_text(encoding="utf-8")
+        for path in (PACKAGE / "interface" / "application" / "migrations" / "versions").glob("*.py")
+    ]
+
+    assert schema_path.exists()
+    assert "from werewolf_agent.interface.application import schema" in models_source
+    assert all(
+        "from werewolf_agent.interface.application import schema" in source
+        for source in migration_sources
+    )
 
 
 def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None:
@@ -446,8 +491,6 @@ def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None
 
     for path in paths:
         source = path.read_text(encoding="utf-8")
-        assert ".werewolf-agent" in source
-        assert "logs" in source
         assert "{temp}/werewolf-agent/logs" not in source
         assert "%TEMP%\\werewolf-agent\\logs" not in source
         assert "${env:TEMP}\\werewolf-agent\\logs" not in source
@@ -498,6 +541,70 @@ def test_log_defaults_are_documented_as_workspace_log_defaults() -> None:
         assert ".werewolf-agent/logs/werewolf-agent.jsonl" in source
         assert "%TEMP%\\werewolf-agent\\logs" not in source
         assert "{temp}/werewolf-agent/logs" not in source
+
+
+def test_user_facing_messages_are_catalogued() -> None:
+    allowed_message_paths = {
+        PACKAGE / "commons" / "shared" / "messages.py",
+        PACKAGE / "interface" / "shared" / "messages.py",
+        PACKAGE / "interface" / "entrypoint" / "cui" / "messages.py",
+    }
+    exception_message_calls = {
+        "AppError",
+        "ConfigError",
+        "GameError",
+        "ResourceNotFoundError",
+        "RuntimeError",
+        "ValueError",
+    }
+    cui_path = PACKAGE / "interface" / "entrypoint" / "cui"
+    offenders: list[tuple[str, int, str]] = []
+
+    for source_path in PACKAGE.rglob("*.py"):
+        if source_path in allowed_message_paths:
+            continue
+        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            call_name = _call_name(node.func)
+            if (
+                call_name in exception_message_calls
+                and node.args
+                and _is_string_message_literal(node.args[0])
+            ):
+                offenders.append(_message_offender(source_path, node, call_name))
+            if call_name in {"Argument", "Option"}:
+                for keyword in node.keywords:
+                    if keyword.arg == "help" and _is_string_message_literal(keyword.value):
+                        offenders.append(_message_offender(source_path, node, f"{call_name}.help"))
+            if not source_path.is_relative_to(cui_path):
+                continue
+            if call_name == "Table":
+                for keyword in node.keywords:
+                    if keyword.arg == "title" and _is_string_message_literal(keyword.value):
+                        offenders.append(_message_offender(source_path, node, "Table.title"))
+            elif (
+                call_name in {"add_column", "add_row", "fit", "print", "prompt"}
+                and node.args
+                and _is_string_message_literal(node.args[0])
+            ):
+                offenders.append(_message_offender(source_path, node, call_name))
+
+    assert not offenders
+
+
+def test_structured_log_outcomes_use_shared_constants() -> None:
+    offenders: list[tuple[str, str]] = []
+    for source_path in PACKAGE.rglob("*.py"):
+        if source_path == PACKAGE / "commons" / "shared" / "constants.py":
+            continue
+        source = source_path.read_text(encoding="utf-8")
+        for token in ('"event_outcome": "success"', '"event_outcome": "failure"'):
+            if token in source:
+                offenders.append((source_path.relative_to(ROOT).as_posix(), token))
+
+    assert not offenders
 
 
 def test_contracts_do_not_import_api_frameworks() -> None:
@@ -612,13 +719,23 @@ def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None
     assert "ignore_errors = true" not in pyproject
 
 
-def _assert_workspace_logging_env(env: dict[str, str], file_name: str) -> None:
-    assert env["WEREWOLF_LOG_LEVEL"] == "INFO"
-    assert env["WEREWOLF_LOG_OUTPUT"] == "file"
-    assert env["WEREWOLF_LOG_DIR"] == "${workspaceFolder}\\.werewolf-agent\\logs"
+RUNTIME_DEFAULT_LOG_ENV_KEYS = (
+    "WEREWOLF_LOG_LEVEL",
+    "WEREWOLF_LOG_OUTPUT",
+    "WEREWOLF_LOG_DIR",
+    "WEREWOLF_LOG_RETENTION_DAYS",
+    "WEREWOLF_LOG_THIRD_PARTY_LEVEL",
+)
+
+
+def _assert_process_log_file_env(env: dict[str, str], file_name: str) -> None:
+    _assert_no_runtime_default_log_mirror(env)
     assert env["WEREWOLF_LOG_FILE_NAME"] == file_name
-    assert env["WEREWOLF_LOG_RETENTION_DAYS"] == "14"
-    assert env["WEREWOLF_LOG_THIRD_PARTY_LEVEL"] == "WARNING"
+
+
+def _assert_no_runtime_default_log_mirror(env: dict[str, str]) -> None:
+    for key in RUNTIME_DEFAULT_LOG_ENV_KEYS:
+        assert key not in env
 
 
 def _assert_public_surface(module: ModuleType, expected: set[str]) -> None:
@@ -639,3 +756,21 @@ def _imports_under(path: Path) -> list[tuple[Path, str]]:
             elif isinstance(node, ast.ImportFrom) and node.module is not None:
                 imported.append((source_path, node.module))
     return imported
+
+
+def _call_name(node: ast.expr) -> str:
+    if isinstance(node, ast.Name):
+        return node.id
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return ""
+
+
+def _is_string_message_literal(node: ast.expr) -> bool:
+    return isinstance(node, ast.JoinedStr) or (
+        isinstance(node, ast.Constant) and isinstance(node.value, str) and bool(node.value.strip())
+    )
+
+
+def _message_offender(source_path: Path, node: ast.AST, call_name: str) -> tuple[str, int, str]:
+    return (source_path.relative_to(ROOT).as_posix(), getattr(node, "lineno", 0), call_name)

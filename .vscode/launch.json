@@ -14,12 +14,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -29,21 +24,14 @@
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "setup-options",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
+        "setup-options"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -62,12 +50,7 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
         "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
       },
       "justMyCode": true
     },
@@ -90,12 +73,7 @@
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
         "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "api.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "api.jsonl"
       },
       "justMyCode": true
     },
@@ -119,12 +97,7 @@
         "PYTHONPATH": "${workspaceFolder}/backend/src",
         "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
         "WEREWOLF_STREAMLIT_SAVE_FILE": "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl"
       },
       "justMyCode": true
     },
@@ -135,8 +108,6 @@
       "module": "werewolf_agent",
       "args": [
         "new",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
         "--role-count",
         "werewolf=1",
         "--role-count",
@@ -153,12 +124,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -169,21 +135,14 @@
       "module": "werewolf_agent",
       "args": [
         "show",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
+        "${input:gameId}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -194,21 +153,14 @@
       "module": "werewolf_agent",
       "args": [
         "advance",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
+        "${input:gameId}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -219,8 +171,6 @@
       "module": "werewolf_agent",
       "args": [
         "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
         "--role-count",
         "werewolf=1",
         "--role-count",
@@ -237,12 +187,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -253,8 +198,6 @@
       "module": "werewolf_agent",
       "args": [
         "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
         "--role-count",
         "werewolf=1",
         "--role-count",
@@ -273,12 +216,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -289,8 +227,6 @@
       "module": "werewolf_agent",
       "args": [
         "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
         "--role-count",
         "werewolf=1",
         "--role-count",
@@ -309,12 +245,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -324,21 +255,14 @@
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "runs",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
+        "runs"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -349,21 +273,14 @@
       "module": "werewolf_agent",
       "args": [
         "timeline",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
+        "${input:gameId}"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },
@@ -382,12 +299,7 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_LEVEL": "INFO",
-        "WEREWOLF_LOG_OUTPUT": "file",
-        "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl",
-        "WEREWOLF_LOG_RETENTION_DAYS": "14",
-        "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+        "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
     },

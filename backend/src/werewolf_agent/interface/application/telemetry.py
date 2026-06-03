@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Final
 
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_SUCCESS
 from werewolf_agent.usecase.jobs import TelemetryEvent
 
 DEFAULT_TELEMETRY_LOGGER: Final = "werewolf_agent.usecase.telemetry"
@@ -24,6 +25,6 @@ class LoggingTelemetrySink:
         extra = {
             **dict(event.fields),
             "event_action": event.action,
-            "event_outcome": event.outcome or "success",
+            "event_outcome": event.outcome or EVENT_OUTCOME_SUCCESS,
         }
         self._logger.log(level_number, event.action, extra=extra)

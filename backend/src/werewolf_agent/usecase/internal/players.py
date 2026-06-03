@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass
 
 from werewolf_agent.commons.shared.definitions import PlayerProfile, PlayerRoster
+from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS
 from werewolf_agent.contracts import GameError
 
 DEFAULT_PLAYER_NAME_PATTERN = re.compile(r"^Player\s+\d+$")
@@ -30,7 +31,7 @@ def select_players(
     candidates = sorted(roster.players.items())
     if player_count > len(candidates):
         raise GameError(
-            "player roster does not have enough enabled players",
+            MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
             context={"player_count": player_count, "roster_count": len(candidates)},
         )
     rng = random.Random(seed)

@@ -15,6 +15,13 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 
+from werewolf_agent.commons.shared.constants import (
+    DURATION_MILLISECONDS_DECIMAL_PLACES,
+    EVENT_OUTCOME_FAILURE,
+    EVENT_OUTCOME_SUCCESS,
+    HTTP_FAILURE_STATUS_MIN,
+    SECONDS_TO_MILLISECONDS,
+)
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.routers import router
 from werewolf_agent.interface.application.database import (
@@ -28,6 +35,7 @@ from werewolf_agent.interface.runtime import (
     configure_interface_logging,
     get_settings,
 )
+from werewolf_agent.interface.shared.constants import REQUEST_ID_HEADER, TRACE_ID_HEADER
 from werewolf_agent.interface.shared.http import (
     app_error_handler,
     http_exception_handler,
@@ -40,9 +48,6 @@ from werewolf_agent.interface.shared.messages import (
     LOG_API_APPLICATION_STARTED,
     LOG_API_REQUEST_COMPLETED,
 )
-
-TRACE_ID_HEADER = "X-Trace-Id"
-REQUEST_ID_HEADER = "X-Request-Id"
 
 logger = logging.getLogger(__name__)
 ApiExceptionHandler = Callable[[Request, Exception], Response | Awaitable[Response]]
@@ -104,7 +109,7 @@ def create_app(
 def _log_api_startup(settings: AppSettings) -> None:
     startup_fields: dict[str, object] = {
         "event_action": LOG_API_APPLICATION_STARTED,
-        "event_outcome": "success",
+        "event_outcome": EVENT_OUTCOME_SUCCESS,
         "api_title": settings.api_title,
         "api_version": settings.api_version,
         "api_debug": settings.api_debug,
@@ -157,11 +162,18 @@ async def _trace_request(
             LOG_API_REQUEST_COMPLETED,
             extra={
                 "event_action": LOG_API_REQUEST_COMPLETED,
-                "event_outcome": "success" if response.status_code < 400 else "failure",
+                "event_outcome": (
+                    EVENT_OUTCOME_SUCCESS
+                    if response.status_code < HTTP_FAILURE_STATUS_MIN
+                    else EVENT_OUTCOME_FAILURE
+                ),
                 "http_method": request.method,
                 "http_path": log_path,
                 "http_status": response.status_code,
-                "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                "duration_ms": round(
+                    (time.perf_counter() - started) * SECONDS_TO_MILLISECONDS,
+                    DURATION_MILLISECONDS_DECIMAL_PLACES,
+                ),
             },
         )
         return response

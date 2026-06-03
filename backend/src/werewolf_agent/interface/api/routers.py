@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Header
 
+from werewolf_agent.commons.shared.constants import HEALTH_STATUS_OK
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
@@ -24,9 +25,15 @@ from werewolf_agent.interface.api.dependencies import app_settings, game_session
 from werewolf_agent.interface.application import games as game_application
 from werewolf_agent.interface.application.database import SessionFactory
 from werewolf_agent.interface.runtime import AppSettings
+from werewolf_agent.interface.shared.constants import (
+    API_PREFIX,
+    AUTHORIZATION_HEADER,
+    BEARER_AUTH_SCHEME,
+    HTTP_CREATED,
+)
 from werewolf_agent.interface.shared.messages import MESSAGE_AUTHORIZATION_HEADER_REQUIRED
 
-router = APIRouter(prefix="/api/v1")
+router = APIRouter(prefix=API_PREFIX)
 SESSION_FACTORY = Depends(game_session_factory)
 APP_SETTINGS = Depends(app_settings)
 
@@ -34,7 +41,7 @@ APP_SETTINGS = Depends(app_settings)
 @router.get("/health")
 def health(settings: AppSettings = APP_SETTINGS) -> dict[str, str]:
     """Return API health."""
-    return {"status": "ok", "service": settings.api_service_name}
+    return {"status": HEALTH_STATUS_OK, "service": settings.api_service_name}
 
 
 @router.get("/setup-options", response_model=GameSetupOptionsResponse)
@@ -49,7 +56,7 @@ def setup_options(
     "/games",
     response_model=GameResponse,
     response_model_exclude_none=True,
-    status_code=201,
+    status_code=HTTP_CREATED,
 )
 def create_game(
     request: CreateGameRequest,
@@ -67,7 +74,7 @@ def create_game(
 @router.get("/games", response_model=GameListResponse)
 def list_games(
     status: str | None = None,
-    limit: int = 20,
+    limit: int | None = None,
     offset: int = 0,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
@@ -129,7 +136,7 @@ def advance_game(
 def game_timeline(
     game_id: str,
     after: int = 0,
-    limit: int = 100,
+    limit: int | None = None,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
 ) -> GameTimelineResponse:
@@ -151,7 +158,7 @@ def game_timeline(
 def player_observation(
     game_id: str,
     player_id: str,
-    authorization: str | None = Header(default=None),
+    authorization: str | None = Header(default=None, alias=AUTHORIZATION_HEADER),
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
 ) -> PlayerObservationResponse:
@@ -173,7 +180,7 @@ def submit_player_action(
     game_id: str,
     player_id: str,
     request: PlayerActionRequest,
-    authorization: str | None = Header(default=None),
+    authorization: str | None = Header(default=None, alias=AUTHORIZATION_HEADER),
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
 ) -> PlayerActionResponse:
@@ -195,7 +202,7 @@ def _bearer_token(authorization: str | None) -> str:
             code=ErrorCode.AUTHENTICATION_REQUIRED,
         )
     scheme, separator, token = authorization.strip().partition(" ")
-    if separator == "" or scheme.lower() != "bearer" or not token.strip():
+    if separator == "" or scheme.lower() != BEARER_AUTH_SCHEME.lower() or not token.strip():
         raise AppError(
             MESSAGE_AUTHORIZATION_HEADER_REQUIRED,
             code=ErrorCode.AUTHENTICATION_REQUIRED,

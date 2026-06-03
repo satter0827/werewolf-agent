@@ -18,12 +18,49 @@ from pydantic import (
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from werewolf_agent.commons.shared.constants import (
+    CLI_OUTPUT_FORMAT_CHOICE_SET,
+    LLM_PROVIDER_CHOICE_SET,
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_PROVIDER_OPENAI,
+    LOG_OUTPUT_CHOICE_SET,
+    MAX_GAME_LIST_LIMIT,
+    MAX_LLM_TEMPERATURE,
+    MAX_TIMELINE_LIMIT,
+    MIN_INTERVAL_SECONDS,
+    MIN_INTERVAL_SECONDS_EXCLUSIVE,
+    MIN_LLM_TEMPERATURE,
+    MIN_PAGE_LIMIT,
+    MIN_PLAYER_COUNT,
+    MIN_RETENTION_DAYS,
+    MIN_RETRY_COUNT,
+    MIN_STEP_LIMIT,
+    MIN_TEXT_MAX_CHARS,
+    MIN_TIMEOUT_SECONDS_EXCLUSIVE,
+    NARRATION_MODE_CHOICES,
+)
+from werewolf_agent.commons.shared.constants import (
+    CliOutputFormat as SharedCliOutputFormat,
+)
+from werewolf_agent.commons.shared.constants import (
+    LogOutput as SharedLogOutput,
+)
+from werewolf_agent.commons.shared.constants import (
+    NarrationMode as SharedNarrationMode,
+)
 from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME,
+    message_definition_settings_invalid,
+    message_field_must_be_le_field,
     message_game_default_player_count_between,
     message_game_min_players_le_max_players,
     message_game_setup_description_template_invalid,
     message_mapping_item_must_use_separator,
+    message_missing_default_setting,
+    message_role_definition_missing_player_counts,
+    message_settings_llm_base_url_required,
+    message_settings_openai_api_key_required,
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
 from werewolf_agent.interface.runtime.resources import (
@@ -39,7 +76,7 @@ def _default_value(key: str) -> object:
     try:
         return PACKAGED_DEFAULTS[key]
     except KeyError as exc:
-        raise RuntimeError(f"Missing default setting: {key}") from exc
+        raise RuntimeError(message_missing_default_setting(key)) from exc
 
 
 def _string_default(key: str) -> str:
@@ -126,6 +163,10 @@ DEFAULT_API_TITLE: Final = _string_default("api_title")
 DEFAULT_API_VERSION: Final = _string_default("api_version")
 DEFAULT_API_DEBUG: Final = _bool_default("api_debug")
 DEFAULT_REVEAL_API_ENABLED: Final = _bool_default("reveal_api_enabled")
+DEFAULT_API_GAME_LIST_DEFAULT_LIMIT: Final = _integer_default("api_game_list_default_limit")
+DEFAULT_API_GAME_LIST_MAX_LIMIT: Final = _integer_default("api_game_list_max_limit")
+DEFAULT_API_TIMELINE_DEFAULT_LIMIT: Final = _integer_default("api_timeline_default_limit")
+DEFAULT_API_TIMELINE_MAX_LIMIT: Final = _integer_default("api_timeline_max_limit")
 DEFAULT_API_CORS_ALLOWED_ORIGINS: Final = _string_default("api_cors_allowed_origins")
 DEFAULT_API_CORS_ALLOWED_METHODS: Final = _string_default("api_cors_allowed_methods")
 DEFAULT_API_CORS_ALLOWED_HEADERS: Final = _string_default("api_cors_allowed_headers")
@@ -134,6 +175,7 @@ DEFAULT_GAME_MAX_PLAYERS: Final = _integer_default("game_max_players")
 DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = _integer_default("game_default_player_count")
 DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = _string_default("game_supported_agent_type")
 DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = _string_default("game_supported_agent_name")
+DEFAULT_GAME_DEFAULT_NARRATION_MODE: Final = _string_default("game_default_narration_mode")
 DEFAULT_GAME_DEFAULT_SETUP_ID: Final = _string_default("game_default_setup_id")
 DEFAULT_GAME_DEFAULT_SETUP_NAME: Final = _string_default("game_default_setup_name")
 DEFAULT_GAME_RULES_FILE: Final = _string_default("game_rules_file")
@@ -144,15 +186,13 @@ DEFAULT_GAME_ROLE_NAMES: Final = _string_default("game_role_names")
 DEFAULT_GAME_PHASE_NAMES: Final = _string_default("game_phase_names")
 
 LOG_LEVEL_NAMES: Final = frozenset({"DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"})
-LOG_OUTPUT_NAMES: Final = frozenset({"file", "stderr", "stdout", "both", "none"})
-CLI_OUTPUT_FORMAT_NAMES: Final = frozenset({"table", "json", "jsonl"})
+LOG_OUTPUT_NAMES: Final = LOG_OUTPUT_CHOICE_SET
+CLI_OUTPUT_FORMAT_NAMES: Final = CLI_OUTPUT_FORMAT_CHOICE_SET
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
-LLM_PROVIDER_NAMES: Final = frozenset({"fake", "lmstudio", "openai"})
+LLM_PROVIDER_NAMES: Final = LLM_PROVIDER_CHOICE_SET
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE})
 
-LogOutput = Literal["file", "stderr", "stdout", "both", "none"]
-CliOutputFormat = Literal["table", "json", "jsonl"]
 StreamlitLanguage = Literal["ja", "en"]
 StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]
 
@@ -210,18 +250,18 @@ class AppSettings(BaseSettings):
     )
     llm_timeout_seconds: float = Field(
         default=DEFAULT_LLM_TIMEOUT_SECONDS,
-        gt=0,
+        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_LLM_TIMEOUT_SECONDS",
     )
     llm_max_retries: int = Field(
         default=DEFAULT_LLM_MAX_RETRIES,
-        ge=0,
+        ge=MIN_RETRY_COUNT,
         validation_alias="WEREWOLF_LLM_MAX_RETRIES",
     )
     llm_temperature: float = Field(
         default=DEFAULT_LLM_TEMPERATURE,
-        ge=0,
-        le=2,
+        ge=MIN_LLM_TEMPERATURE,
+        le=MAX_LLM_TEMPERATURE,
         validation_alias="WEREWOLF_LLM_TEMPERATURE",
     )
     llm_prompt_file: str = Field(
@@ -237,8 +277,8 @@ class AppSettings(BaseSettings):
         validation_alias="WEREWOLF_LLM_PLAYERS_FILE",
     )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
-    log_output: LogOutput = Field(
-        default=cast(LogOutput, DEFAULT_LOG_OUTPUT),
+    log_output: SharedLogOutput = Field(
+        default=cast(SharedLogOutput, DEFAULT_LOG_OUTPUT),
         validation_alias="WEREWOLF_LOG_OUTPUT",
     )
     log_dir: Path = Field(default=DEFAULT_LOG_DIR, validation_alias="WEREWOLF_LOG_DIR")
@@ -248,7 +288,7 @@ class AppSettings(BaseSettings):
     )
     log_retention_days: int = Field(
         default=DEFAULT_LOG_RETENTION_DAYS,
-        ge=0,
+        ge=MIN_RETENTION_DAYS,
         validation_alias="WEREWOLF_LOG_RETENTION_DAYS",
     )
     log_third_party_level: str = Field(
@@ -261,27 +301,27 @@ class AppSettings(BaseSettings):
     )
     cli_http_timeout_seconds: float = Field(
         default=DEFAULT_CLI_HTTP_TIMEOUT_SECONDS,
-        gt=0,
+        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS",
     )
     cli_max_steps: int = Field(
         default=DEFAULT_CLI_MAX_STEPS,
-        ge=1,
+        ge=MIN_STEP_LIMIT,
         validation_alias="WEREWOLF_CLI_MAX_STEPS",
     )
     cli_poll_interval_seconds: float = Field(
         default=DEFAULT_CLI_POLL_INTERVAL_SECONDS,
-        ge=0,
+        ge=MIN_INTERVAL_SECONDS,
         validation_alias="WEREWOLF_CLI_POLL_INTERVAL_SECONDS",
     )
     cli_event_limit: int = Field(
         default=DEFAULT_CLI_EVENT_LIMIT,
-        ge=1,
-        le=500,
+        ge=MIN_PAGE_LIMIT,
+        le=MAX_TIMELINE_LIMIT,
         validation_alias="WEREWOLF_CLI_EVENT_LIMIT",
     )
-    cli_output_format: CliOutputFormat = Field(
-        default=cast(CliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
+    cli_output_format: SharedCliOutputFormat = Field(
+        default=cast(SharedCliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
         validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
     )
     streamlit_api_url: str = Field(
@@ -290,40 +330,40 @@ class AppSettings(BaseSettings):
     )
     streamlit_http_timeout_seconds: float = Field(
         default=DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS,
-        gt=0,
+        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS",
     )
     streamlit_refresh_interval_seconds: float = Field(
         default=DEFAULT_STREAMLIT_REFRESH_INTERVAL_SECONDS,
-        ge=0,
+        ge=MIN_INTERVAL_SECONDS,
         validation_alias="WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS",
     )
     streamlit_event_limit: int = Field(
         default=DEFAULT_STREAMLIT_EVENT_LIMIT,
-        ge=1,
-        le=500,
+        ge=MIN_PAGE_LIMIT,
+        le=MAX_TIMELINE_LIMIT,
         validation_alias="WEREWOLF_STREAMLIT_EVENT_LIMIT",
     )
     streamlit_turn_limit: int = Field(
         default=DEFAULT_STREAMLIT_TURN_LIMIT,
-        ge=1,
-        le=500,
+        ge=MIN_PAGE_LIMIT,
+        le=MAX_TIMELINE_LIMIT,
         validation_alias="WEREWOLF_STREAMLIT_TURN_LIMIT",
     )
     streamlit_run_limit: int = Field(
         default=DEFAULT_STREAMLIT_RUN_LIMIT,
-        ge=1,
-        le=100,
+        ge=MIN_PAGE_LIMIT,
+        le=MAX_GAME_LIST_LIMIT,
         validation_alias="WEREWOLF_STREAMLIT_RUN_LIMIT",
     )
     streamlit_max_auto_steps: int = Field(
         default=DEFAULT_STREAMLIT_MAX_AUTO_STEPS,
-        ge=1,
+        ge=MIN_STEP_LIMIT,
         validation_alias="WEREWOLF_STREAMLIT_MAX_AUTO_STEPS",
     )
     streamlit_auto_advance_interval_seconds: float = Field(
         default=DEFAULT_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS,
-        gt=0,
+        gt=MIN_INTERVAL_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS",
     )
     streamlit_initial_sidebar_state: StreamlitSidebarState = Field(
@@ -356,7 +396,7 @@ class AppSettings(BaseSettings):
     )
     streamlit_message_max_chars: int = Field(
         default=DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS,
-        ge=1,
+        ge=MIN_TEXT_MAX_CHARS,
         validation_alias="WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS",
     )
     streamlit_service_name: str = Field(
@@ -366,17 +406,17 @@ class AppSettings(BaseSettings):
 
     game_min_players: int = Field(
         default=DEFAULT_GAME_MIN_PLAYERS,
-        ge=1,
+        ge=MIN_PLAYER_COUNT,
         validation_alias="WEREWOLF_GAME_MIN_PLAYERS",
     )
     game_max_players: int = Field(
         default=DEFAULT_GAME_MAX_PLAYERS,
-        ge=1,
+        ge=MIN_PLAYER_COUNT,
         validation_alias="WEREWOLF_GAME_MAX_PLAYERS",
     )
     game_default_player_count: int = Field(
         default=DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
-        ge=1,
+        ge=MIN_PLAYER_COUNT,
         validation_alias="WEREWOLF_GAME_DEFAULT_PLAYER_COUNT",
     )
     game_supported_agent_type: str = Field(
@@ -386,6 +426,10 @@ class AppSettings(BaseSettings):
     game_supported_agent_name: str = Field(
         default=DEFAULT_GAME_SUPPORTED_AGENT_NAME,
         validation_alias="WEREWOLF_GAME_SUPPORTED_AGENT_NAME",
+    )
+    game_default_narration_mode: SharedNarrationMode = Field(
+        default=cast(SharedNarrationMode, DEFAULT_GAME_DEFAULT_NARRATION_MODE),
+        validation_alias="WEREWOLF_GAME_DEFAULT_NARRATION_MODE",
     )
     game_default_setup_id: str = Field(
         default=DEFAULT_GAME_DEFAULT_SETUP_ID,
@@ -430,6 +474,26 @@ class AppSettings(BaseSettings):
     reveal_api_enabled: bool = Field(
         default=DEFAULT_REVEAL_API_ENABLED,
         validation_alias="WEREWOLF_REVEAL_API_ENABLED",
+    )
+    api_game_list_default_limit: int = Field(
+        default=DEFAULT_API_GAME_LIST_DEFAULT_LIMIT,
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT",
+    )
+    api_game_list_max_limit: int = Field(
+        default=DEFAULT_API_GAME_LIST_MAX_LIMIT,
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_GAME_LIST_MAX_LIMIT",
+    )
+    api_timeline_default_limit: int = Field(
+        default=DEFAULT_API_TIMELINE_DEFAULT_LIMIT,
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_TIMELINE_DEFAULT_LIMIT",
+    )
+    api_timeline_max_limit: int = Field(
+        default=DEFAULT_API_TIMELINE_MAX_LIMIT,
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_TIMELINE_MAX_LIMIT",
     )
     api_cors_allowed_origins: str = Field(
         default=DEFAULT_API_CORS_ALLOWED_ORIGINS,
@@ -638,7 +702,7 @@ class AppSettings(BaseSettings):
         """Return a safe non-empty operational log file name."""
         file_name = normalize_non_blank(value, field_name="log_file_name")
         if Path(file_name).name != file_name:
-            raise ValueError("log_file_name must be a file name")
+            raise ValueError(MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME)
         return file_name
 
     @field_validator("streamlit_language", mode="before")
@@ -734,6 +798,17 @@ class AppSettings(BaseSettings):
             case="lower",
         )
 
+    @field_validator("game_default_narration_mode", mode="before")
+    @classmethod
+    def normalize_game_default_narration_mode(cls, value: object) -> str:
+        """Return the configured default narration mode."""
+        return normalize_choice(
+            value,
+            field_name="game_default_narration_mode",
+            choices=NARRATION_MODE_CHOICES,
+            case="lower",
+        )
+
     @field_validator(
         "game_supported_agent_name",
         "game_default_setup_id",
@@ -755,6 +830,20 @@ class AppSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_game_settings(self) -> Self:
         """Ensure game count defaults are internally consistent."""
+        if self.api_game_list_default_limit > self.api_game_list_max_limit:
+            raise ValueError(
+                message_field_must_be_le_field(
+                    "api_game_list_default_limit",
+                    "api_game_list_max_limit",
+                )
+            )
+        if self.api_timeline_default_limit > self.api_timeline_max_limit:
+            raise ValueError(
+                message_field_must_be_le_field(
+                    "api_timeline_default_limit",
+                    "api_timeline_max_limit",
+                )
+            )
         if self.game_min_players > self.game_max_players:
             raise ValueError(message_game_min_players_le_max_players())
         if not self.game_min_players <= self.game_default_player_count <= self.game_max_players:
@@ -775,12 +864,10 @@ class AppSettings(BaseSettings):
 
     def _validate_llm_settings(self) -> None:
         """Ensure provider-specific LLM settings are complete."""
-        if self.llm_provider == "lmstudio" and not self.llm_base_url:
-            raise ValueError(
-                "WEREWOLF_LLM_BASE_URL is required when WEREWOLF_LLM_PROVIDER=lmstudio"
-            )
-        if self.llm_provider == "openai" and not self.configured_openai_api_key:
-            raise ValueError("OPENAI_API_KEY is required when WEREWOLF_LLM_PROVIDER=openai")
+        if self.llm_provider == LLM_PROVIDER_LMSTUDIO and not self.llm_base_url:
+            raise ValueError(message_settings_llm_base_url_required(LLM_PROVIDER_LMSTUDIO))
+        if self.llm_provider == LLM_PROVIDER_OPENAI and not self.configured_openai_api_key:
+            raise ValueError(message_settings_openai_api_key_required(LLM_PROVIDER_OPENAI))
 
     def _validate_definition_settings(self) -> None:
         """Ensure runtime definitions are loadable and match configured settings."""
@@ -793,13 +880,10 @@ class AppSettings(BaseSettings):
                 if player_count not in game_definitions.roles.default_role_counts
             ]
         except Exception as exc:
-            raise ValueError(f"definition settings are invalid: {exc}") from exc
+            raise ValueError(message_definition_settings_invalid(exc)) from exc
         if missing_counts:
             missing = ", ".join(str(player_count) for player_count in missing_counts)
-            raise ValueError(
-                "game role definition default_role_counts must define configured "
-                f"player counts: {missing}"
-            )
+            raise ValueError(message_role_definition_missing_player_counts(missing))
 
 
 @lru_cache(maxsize=1)

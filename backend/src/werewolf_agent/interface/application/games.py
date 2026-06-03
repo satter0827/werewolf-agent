@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 import werewolf_agent.usecase.jobs as game_jobs
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_SUCCESS, MIN_PAGE_LIMIT
 from werewolf_agent.commons.shared.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
@@ -21,6 +22,7 @@ from werewolf_agent.commons.shared.messages import (
     LOG_PLAYER_ACTION_SUBMITTED,
     LOG_PRIVATE_OBSERVATION_RETURNED,
     MESSAGE_GAME_NOT_FOUND,
+    message_field_must_be_between,
 )
 from werewolf_agent.contracts import (
     AppError,
@@ -57,6 +59,7 @@ from werewolf_agent.interface.application.settings import (
 )
 from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
 from werewolf_agent.interface.runtime import AppSettings
+from werewolf_agent.interface.shared.messages import MESSAGE_REVEAL_API_DISABLED
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
@@ -104,7 +107,7 @@ def create_game(
         LOG_GAME_CREATED,
         extra={
             "event_action": LOG_GAME_CREATED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": response.game_id,
             "player_count": request.player_count,
         },
@@ -150,7 +153,7 @@ def get_game_reveal(
 ) -> GameRevealResponse:
     """Return full observer-only game information when reveal API is enabled."""
     if not settings.reveal_api_enabled:
-        raise AppError("Reveal API is disabled.", code=ErrorCode.AUTHORIZATION_FAILED)
+        raise AppError(MESSAGE_REVEAL_API_DISABLED, code=ErrorCode.AUTHORIZATION_FAILED)
     with session_scope(session_factory) as session:
         try:
             response = _use_cases(session, settings).get_game_reveal(
@@ -166,7 +169,7 @@ def list_games(
     session_factory: SessionFactory,
     settings: AppSettings,
     status: game_jobs.GameStatus | None = None,
-    limit: int = 20,
+    limit: int | None = None,
     offset: int = 0,
 ) -> GameListResponse:
     """Return public game summaries.
@@ -182,17 +185,23 @@ def list_games(
         Public game summaries and pagination metadata.
 
     """
+    resolved_limit = _api_page_limit(
+        limit,
+        default=settings.api_game_list_default_limit,
+        maximum=settings.api_game_list_max_limit,
+        field_name="limit",
+    )
     with session_scope(session_factory) as session:
         response = _use_cases(session, settings).list_games(
-            game_jobs.ListGamesQuery(status=status, limit=limit, offset=offset)
+            game_jobs.ListGamesQuery(status=status, limit=resolved_limit, offset=offset)
         )
     logger.debug(
         LOG_GAMES_LISTED,
         extra={
             "event_action": LOG_GAMES_LISTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_status": status,
-            "limit": limit,
+            "limit": resolved_limit,
             "offset": offset,
             "count": len(response.games),
         },
@@ -231,7 +240,7 @@ def advance_game(
         LOG_GAME_STEPPED,
         extra={
             "event_action": LOG_GAME_STEPPED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": response.game_id,
             "game_status": response.status,
             "game_phase": response.state.get("phase"),
@@ -249,7 +258,7 @@ def list_timeline(
     session_factory: SessionFactory,
     settings: AppSettings,
     after: int = 0,
-    limit: int = 100,
+    limit: int | None = None,
 ) -> GameTimelineResponse:
     """List public timeline items after a sequence number.
 
@@ -267,10 +276,20 @@ def list_timeline(
         ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
+    resolved_limit = _api_page_limit(
+        limit,
+        default=settings.api_timeline_default_limit,
+        maximum=settings.api_timeline_max_limit,
+        field_name="limit",
+    )
     with session_scope(session_factory) as session:
         try:
             response = _use_cases(session, settings).list_timeline(
-                game_jobs.ListTimelineQuery(game_id=game_id, after=after, limit=limit)
+                game_jobs.ListTimelineQuery(
+                    game_id=game_id,
+                    after=after,
+                    limit=resolved_limit,
+                )
             )
         except (GameNotFoundError, InvalidGameIdError) as exc:
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
@@ -278,10 +297,10 @@ def list_timeline(
         LOG_GAME_TIMELINE_LISTED,
         extra={
             "event_action": LOG_GAME_TIMELINE_LISTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "after": after,
-            "limit": limit,
+            "limit": resolved_limit,
             "count": len(response.items),
             "next_after": response.next_after,
         },
@@ -328,7 +347,7 @@ def get_player_observation(
         LOG_PRIVATE_OBSERVATION_RETURNED,
         extra={
             "event_action": LOG_PRIVATE_OBSERVATION_RETURNED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
         },
     )
@@ -377,7 +396,7 @@ def submit_player_action(
         LOG_PLAYER_ACTION_SUBMITTED,
         extra={
             "event_action": LOG_PLAYER_ACTION_SUBMITTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": request.target_id is not None,
             "has_message": bool(request.message),
@@ -419,7 +438,7 @@ def _create_command(
         rules=request.rules or settings.game_definitions.rules.local_rules,
         scenario_id=request.scenario_id,
         setup_preset_id=request.setup_preset_id,
-        narration_mode=request.narration_mode,
+        narration_mode=request.narration_mode or settings.game_default_narration_mode,
         character_assignments=request.character_assignments,
         custom_roles=[
             CustomRoleDefinition.model_validate(item.model_dump(mode="json"))
@@ -430,6 +449,23 @@ def _create_command(
             for item in request.custom_characters
         ],
     )
+
+
+def _api_page_limit(
+    value: int | None,
+    *,
+    default: int,
+    maximum: int,
+    field_name: str,
+) -> int:
+    limit = default if value is None else value
+    if limit < MIN_PAGE_LIMIT or limit > maximum:
+        raise AppError(
+            message_field_must_be_between(field_name, MIN_PAGE_LIMIT, maximum),
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+            context={field_name: limit, "max_limit": maximum},
+        )
+    return limit
 
 
 def _setup_options_response(

@@ -13,12 +13,18 @@ from langchain_core.prompts import ChatPromptTemplate
 
 from werewolf_agent.commons.shared.definitions import FakeDecisionCatalog, PromptDefinition
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_LLM_DECISION_PLAYER_MISMATCH,
+    MESSAGE_LLM_MODEL_NOT_CONFIGURED,
     MESSAGE_NO_ATTACK_TARGETS,
     MESSAGE_NO_GUARD_TARGETS,
     MESSAGE_NO_INSPECT_TARGETS,
+    MESSAGE_NO_TARGET,
     MESSAGE_NO_VALID_VOTE_TARGETS,
     MESSAGE_OBSERVATION_BELONGS_TO_ANOTHER_PLAYER,
     MESSAGE_PLAYER_IS_DEAD,
+    message_invalid_llm_decision,
+    message_llm_decision_action_unavailable,
+    message_llm_decision_target_unavailable,
     message_no_action_for_phase,
 )
 from werewolf_agent.domain.llm.models import (
@@ -78,7 +84,7 @@ class LangChainDecisionProvider:
         except Exception as exc:
             return AgentDecision.pass_(
                 player_id=player_id,
-                reason=f"invalid llm decision: {type(exc).__name__}",
+                reason=message_invalid_llm_decision(type(exc).__name__),
             )
         return _validated_decision(player_id, observation, decision)
 
@@ -98,7 +104,7 @@ class LangChainDecisionProvider:
             )
             return FakeListLLM(responses=[response]).invoke(prompt_value)
         if self.model is None:
-            raise RuntimeError("llm model is not configured")
+            raise RuntimeError(MESSAGE_LLM_MODEL_NOT_CONFIGURED)
         return self.model.invoke(prompt_value)
 
 
@@ -209,7 +215,7 @@ def _missing_target_reason(action_type: AgentActionType) -> str:
         return MESSAGE_NO_INSPECT_TARGETS
     if action_type is AgentActionType.KNIGHT_GUARD:
         return MESSAGE_NO_GUARD_TARGETS
-    return "no target"
+    return MESSAGE_NO_TARGET
 
 
 def _fake_response_selector(
@@ -366,13 +372,13 @@ def _validated_decision(
     decision: AgentDecision,
 ) -> AgentDecision:
     if decision.player_id != player_id:
-        return AgentDecision.pass_(player_id=player_id, reason="llm decision player mismatch")
+        return AgentDecision.pass_(player_id=player_id, reason=MESSAGE_LLM_DECISION_PLAYER_MISMATCH)
     if decision.type is AgentActionType.PASS:
         return decision
     if decision.type not in observation.available_actions:
         return AgentDecision.pass_(
             player_id=player_id,
-            reason=f"llm decision action unavailable: {decision.type.value}",
+            reason=message_llm_decision_action_unavailable(decision.type.value),
         )
     if (
         decision.type in AgentDecision.TARGET_TYPES
@@ -380,7 +386,7 @@ def _validated_decision(
     ):
         return AgentDecision.pass_(
             player_id=player_id,
-            reason=f"llm decision target unavailable: {decision.type.value}",
+            reason=message_llm_decision_target_unavailable(decision.type.value),
         )
     return decision
 

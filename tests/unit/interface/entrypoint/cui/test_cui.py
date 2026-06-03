@@ -616,6 +616,7 @@ def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:
 
     client = HttpGameApiClient(
         "http://api.test/api/v1",
+        timeout=1.0,
         transport=httpx.MockTransport(handler),
     )
 

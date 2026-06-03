@@ -30,6 +30,7 @@ def default_setup_options(
         default_rules=definitions.rules.local_rules,
         default_scenario_id=default_scenario_id,
         default_setup_preset_id=default_setup_preset_id,
+        default_narration_mode=config.default_narration_mode,
         abilities={
             ability_id: definition.model_dump(mode="json")
             for ability_id, definition in definitions.catalog.abilities.items()

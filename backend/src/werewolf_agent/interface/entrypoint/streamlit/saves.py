@@ -10,6 +10,12 @@ from pathlib import Path
 from typing import cast
 from uuid import uuid4
 
+from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE, NARRATION_MODE_CHOICES
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_ROLE_COUNTS_MUST_BE_OBJECT,
+    MESSAGE_SAVE_SLOT_MUST_NOT_CONTAIN_MANUAL_TOKEN,
+    message_save_slot_field_must_be_non_empty,
+)
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
@@ -189,7 +195,7 @@ def build_saved_game_options(
                 game_id=game.game_id,
                 mode="observer",
                 seed=game.seed,
-                narration_mode="standard",
+                narration_mode=DEFAULT_NARRATION_MODE,
             )
         )
     return options
@@ -198,7 +204,7 @@ def build_saved_game_options(
 def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
     try:
         if "manual_token" in payload:
-            raise ValueError("save slot must not contain manual_token")
+            raise ValueError(MESSAGE_SAVE_SLOT_MUST_NOT_CONTAIN_MANUAL_TOKEN)
         return SaveSlot(
             slot_id=_required_text(payload, "slot_id"),
             game_id=_required_text(payload, "game_id"),
@@ -238,7 +244,7 @@ def _required_text(payload: dict[str, object], key: str) -> str:
     value = payload[key]
     text = str(value).strip()
     if not text:
-        raise ValueError(f"{key} must be non-empty")
+        raise ValueError(message_save_slot_field_must_be_non_empty(key))
     return text
 
 
@@ -259,7 +265,7 @@ def _optional_int(value: object) -> int | None:
 
 def _role_counts(value: object) -> dict[str, int]:
     if not isinstance(value, dict):
-        raise ValueError("role_counts must be an object")
+        raise ValueError(MESSAGE_ROLE_COUNTS_MUST_BE_OBJECT)
     return {str(role_id): int(count) for role_id, count in value.items()}
 
 
@@ -272,10 +278,10 @@ def _text_map(value: object) -> dict[str, str]:
 
 
 def _narration_mode(value: object) -> NarrationMode:
-    text = str(value or "standard").strip()
-    if text in {"none", "standard", "rich"}:
+    text = str(value or DEFAULT_NARRATION_MODE).strip()
+    if text in NARRATION_MODE_CHOICES:
         return cast(NarrationMode, text)
-    return "standard"
+    return DEFAULT_NARRATION_MODE
 
 
 def _custom_roles(value: object) -> list[CustomRoleDefinitionRequest]:

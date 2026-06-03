@@ -10,6 +10,8 @@ from werewolf_agent.interface.shared.api_client import HttpGameApiClient
 from werewolf_agent.interface.shared.diagnostics import build_interface_diagnostics
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
+HTTP_CLIENT_TEST_TIMEOUT = 1.0
+
 
 def test_build_create_game_request_supports_manual_player() -> None:
     request = build_create_game_request(
@@ -22,6 +24,7 @@ def test_build_create_game_request_supports_manual_player() -> None:
     assert request.player_count == 5
     assert request.manual_player_id == "player-2"
     assert request.role_counts == {"werewolf": 1, "villager": 4}
+    assert request.narration_mode is None
     assert request.rules is None
 
 
@@ -71,6 +74,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
 
     client = HttpGameApiClient(
         "http://api.test/api/v1",
+        timeout=HTTP_CLIENT_TEST_TIMEOUT,
         transport=httpx.MockTransport(handler),
     )
     request = build_create_game_request(
@@ -135,6 +139,7 @@ def test_http_client_parses_problem_details_from_public_api() -> None:
 
     client = HttpGameApiClient(
         "http://api.test/api/v1",
+        timeout=HTTP_CLIENT_TEST_TIMEOUT,
         transport=httpx.MockTransport(handler),
     )
 
@@ -154,6 +159,7 @@ def test_http_client_propagates_trace_id_header() -> None:
 
     client = HttpGameApiClient(
         "http://api.test/api/v1",
+        timeout=HTTP_CLIENT_TEST_TIMEOUT,
         transport=httpx.MockTransport(handler),
     )
 

@@ -6,6 +6,13 @@ from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
+from werewolf_agent.commons.shared.constants import UNKNOWN_VALUE_LABEL
+from werewolf_agent.commons.shared.messages import (
+    message_field_must_be_non_empty_string,
+    message_field_must_be_toml_table,
+    message_localized_keys_must_match_en,
+    message_localized_label_kinds_must_match_en,
+)
 from werewolf_agent.contracts import ConfigError
 from werewolf_agent.interface.entrypoint.streamlit.state import KEY_STREAMLIT_PREFERENCES
 from werewolf_agent.interface.runtime import AppSettings
@@ -35,7 +42,7 @@ class I18nCatalog:
         """Return a translated label for a stable game identifier."""
         text = str(value or "")
         if kind == "winner" and not text:
-            text = "unknown"
+            text = UNKNOWN_VALUE_LABEL
         if not text:
             return self.t(lang, "common.unknown")
         return (
@@ -135,14 +142,14 @@ def _text_map(value: object, *, field_name: str) -> dict[str, str]:
 
 def _as_mapping(value: object, *, field_name: str) -> Mapping[str, object]:
     if not isinstance(value, Mapping):
-        raise ConfigError(f"{field_name} must be a TOML table")
+        raise ConfigError(message_field_must_be_toml_table(field_name))
     return {str(key): item for key, item in value.items()}
 
 
 def _required_text(value: object, field_name: str) -> str:
     text = str(value or "").strip()
     if not text:
-        raise ConfigError(f"{field_name} must be a non-empty string")
+        raise ConfigError(message_field_must_be_non_empty_string(field_name))
     return text
 
 
@@ -157,8 +164,12 @@ def _validate_complete_keys(
         extra = sorted(set(values) - expected)
         if missing or extra:
             raise ConfigError(
-                f"{field_name}.{lang} keys must match en: "
-                f"missing={','.join(missing)} extra={','.join(extra)}"
+                message_localized_keys_must_match_en(
+                    field_name,
+                    lang,
+                    missing=",".join(missing),
+                    extra=",".join(extra),
+                )
             )
 
 
@@ -168,7 +179,7 @@ def _validate_complete_label_keys(
     expected_kinds = set(localized_labels["en"])
     for lang, labels in localized_labels.items():
         if set(labels) != expected_kinds:
-            raise ConfigError(f"labels.{lang} kinds must match en")
+            raise ConfigError(message_localized_label_kinds_must_match_en(lang))
         for kind, values in labels.items():
             _validate_complete_keys(
                 {"en": localized_labels["en"][kind], lang: values},

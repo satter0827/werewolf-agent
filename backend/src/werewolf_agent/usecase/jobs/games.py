@@ -9,6 +9,22 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.constants import (
+    DEFAULT_NARRATION_MODE,
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_PROVIDER_OPENAI,
+    MAX_LLM_TEMPERATURE,
+    MIN_LLM_TEMPERATURE,
+    MIN_PAGE_LIMIT,
+    MIN_PAGE_OFFSET,
+    MIN_RETRY_COUNT,
+    MIN_ROLE_COUNT,
+    MIN_SEQUENCE,
+    MIN_TIMEOUT_SECONDS_EXCLUSIVE,
+    MIN_VERSION,
+    NARRATION_MODE_CHOICES,
+    NarrationMode,
+)
 from werewolf_agent.commons.shared.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
@@ -16,9 +32,31 @@ from werewolf_agent.commons.shared.definitions import (
     LlmDefinitions,
     LocalRulesDefinition,
 )
-from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_AT_LEAST_ONE
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
+    MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE,
+    MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE,
+    MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE,
+    MESSAGE_DEFAULT_NARRATION_MODE_UNSUPPORTED,
+    MESSAGE_DEFAULT_PLAYER_COUNT_WITHIN_MIN_MAX,
+    MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE,
+    MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX,
+    MESSAGE_GAME_LIST_MAX_LIMIT_MUST_BE_AT_LEAST_ONE,
+    MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS,
+    MESSAGE_MAX_PLAYERS_MUST_BE_GE_MIN_PLAYERS,
+    MESSAGE_MIN_PLAYERS_MUST_BE_AT_LEAST_ONE,
+    MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
+    MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE,
+    MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX,
+    MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE,
+    message_field_must_be_at_least,
+    message_field_must_be_between,
+    message_field_must_be_greater_than,
+    message_llm_base_url_required,
+    message_openai_api_key_required,
+)
 from werewolf_agent.commons.shared.models import StrictModel
-from werewolf_agent.commons.shared.validation import non_blank
+from werewolf_agent.commons.shared.validation import generated_player_ids, non_blank
 from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink, TelemetrySink
 
 if TYPE_CHECKING:
@@ -30,8 +68,7 @@ EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
 RoleId = str
 Winner = Literal["villagers", "werewolves"]
-RoleCount = Annotated[int, Field(ge=0)]
-NarrationMode = Literal["none", "standard", "rich"]
+RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 
 
 @dataclass(frozen=True)
@@ -52,16 +89,27 @@ class LlmProviderConfig:
         model = non_blank(self.model, "llm model")
         base_url = self.base_url.strip()
         api_key = self.api_key.strip()
-        if self.timeout_seconds <= 0:
-            raise ValueError("llm timeout_seconds must be greater than 0")
-        if self.max_retries < 0:
-            raise ValueError("llm max_retries must be at least 0")
-        if not 0 <= self.temperature <= 2:
-            raise ValueError("llm temperature must be between 0 and 2")
-        if provider == "lmstudio" and not base_url:
-            raise ValueError("llm base_url is required for lmstudio provider")
-        if provider == "openai" and not api_key:
-            raise ValueError("OPENAI_API_KEY is required for openai provider")
+        if self.timeout_seconds <= MIN_TIMEOUT_SECONDS_EXCLUSIVE:
+            raise ValueError(
+                message_field_must_be_greater_than(
+                    "llm timeout_seconds",
+                    MIN_TIMEOUT_SECONDS_EXCLUSIVE,
+                )
+            )
+        if self.max_retries < MIN_RETRY_COUNT:
+            raise ValueError(message_field_must_be_at_least("llm max_retries", MIN_RETRY_COUNT))
+        if not MIN_LLM_TEMPERATURE <= self.temperature <= MAX_LLM_TEMPERATURE:
+            raise ValueError(
+                message_field_must_be_between(
+                    "llm temperature",
+                    MIN_LLM_TEMPERATURE,
+                    MAX_LLM_TEMPERATURE,
+                )
+            )
+        if provider == LLM_PROVIDER_LMSTUDIO and not base_url:
+            raise ValueError(message_llm_base_url_required(LLM_PROVIDER_LMSTUDIO))
+        if provider == LLM_PROVIDER_OPENAI and not api_key:
+            raise ValueError(message_openai_api_key_required(LLM_PROVIDER_OPENAI))
 
         object.__setattr__(self, "provider", provider)
         object.__setattr__(self, "model", model)
@@ -78,6 +126,34 @@ class GameUseCaseConfig:
     default_player_count: int
     supported_agent_type: str
     default_setup_id: str
+    default_narration_mode: NarrationMode
+    game_list_default_limit: int
+    game_list_max_limit: int
+    timeline_default_limit: int
+    timeline_max_limit: int
+
+    def __post_init__(self) -> None:
+        """Validate business settings supplied by the outer layer."""
+        if self.min_players < 1:
+            raise ValueError(MESSAGE_MIN_PLAYERS_MUST_BE_AT_LEAST_ONE)
+        if self.max_players < self.min_players:
+            raise ValueError(MESSAGE_MAX_PLAYERS_MUST_BE_GE_MIN_PLAYERS)
+        if not self.min_players <= self.default_player_count <= self.max_players:
+            raise ValueError(MESSAGE_DEFAULT_PLAYER_COUNT_WITHIN_MIN_MAX)
+        if self.default_narration_mode not in NARRATION_MODE_CHOICES:
+            raise ValueError(MESSAGE_DEFAULT_NARRATION_MODE_UNSUPPORTED)
+        if self.game_list_default_limit < MIN_PAGE_LIMIT:
+            raise ValueError(MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE)
+        if self.game_list_max_limit < MIN_PAGE_LIMIT:
+            raise ValueError(MESSAGE_GAME_LIST_MAX_LIMIT_MUST_BE_AT_LEAST_ONE)
+        if self.game_list_default_limit > self.game_list_max_limit:
+            raise ValueError(MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX)
+        if self.timeline_default_limit < MIN_PAGE_LIMIT:
+            raise ValueError(MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE)
+        if self.timeline_max_limit < MIN_PAGE_LIMIT:
+            raise ValueError(MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE)
+        if self.timeline_default_limit > self.timeline_max_limit:
+            raise ValueError(MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX)
 
 
 @dataclass(frozen=True)
@@ -102,7 +178,7 @@ class CreateGameCommand(_UseCaseModel):
     seed: int | None = None
     scenario_id: str | None = None
     setup_preset_id: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     manual_player_id: str | None = None
@@ -152,21 +228,21 @@ class CreateGameCommand(_UseCaseModel):
     @model_validator(mode="after")
     def validate_manual_player_within_generated_seats(self) -> Self:
         """Ensure the requested manual seat exists in the generated table."""
-        valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
+        valid_player_ids = generated_player_ids(self.player_count)
         if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
-            raise ValueError("manual_player_id must match a generated player id")
+            raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
         unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
         if unknown_assignments:
-            raise ValueError("character_assignments keys must match generated player ids")
+            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS)
         assigned_character_ids = list(self.character_assignments.values())
         if len(set(assigned_character_ids)) != len(assigned_character_ids):
-            raise ValueError("character_assignments values must be unique")
+            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE)
         custom_role_ids = [definition.id for definition in self.custom_roles]
         if len(set(custom_role_ids)) != len(custom_role_ids):
-            raise ValueError("custom role ids must be unique")
+            raise ValueError(MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE)
         custom_character_ids = [definition.id for definition in self.custom_characters]
         if len(set(custom_character_ids)) != len(custom_character_ids):
-            raise ValueError("custom character ids must be unique")
+            raise ValueError(MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE)
         return self
 
     @property
@@ -227,8 +303,8 @@ class ListGamesQuery(_UseCaseModel):
     """Query for listing public games."""
 
     status: GameStatus | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
+    limit: int | None = Field(default=None, ge=MIN_PAGE_LIMIT)
+    offset: int = Field(default=MIN_PAGE_OFFSET, ge=MIN_PAGE_OFFSET)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -237,8 +313,8 @@ class ListTimelineQuery(_UseCaseModel):
     """Query for listing public timeline items after a sequence cursor."""
 
     game_id: str | UUID
-    after: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
+    after: int = Field(default=MIN_PAGE_OFFSET, ge=MIN_PAGE_OFFSET)
+    limit: int | None = Field(default=None, ge=MIN_PAGE_LIMIT)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -252,7 +328,7 @@ class GameSetupOptionsResult(_UseCaseModel):
     default_rules: LocalRulesDefinition
     default_scenario_id: str | None = None
     default_setup_preset_id: str | None = None
-    default_narration_mode: NarrationMode = "standard"
+    default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
     scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
     setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
@@ -354,7 +430,7 @@ class GameRevealResult(_UseCaseModel):
     seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     players: list[GameRevealPlayer]
@@ -444,7 +520,7 @@ class PublicGameState(_UseCaseModel):
     seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     players: list[PublicPlayerState]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
@@ -480,9 +556,9 @@ class PublicGameSummary(_UseCaseModel):
 class GameTimelineItem(_UseCaseModel):
     """Public turn/event record optimized for external timelines."""
 
-    sequence: int = Field(ge=1)
-    event_sequence: int = Field(ge=1)
-    version: int = Field(ge=1)
+    sequence: int = Field(ge=MIN_SEQUENCE)
+    event_sequence: int = Field(ge=MIN_SEQUENCE)
+    version: int = Field(ge=MIN_VERSION)
     phase: GamePhase | None = None
     day: int | None = None
     actor_id: str | None = None

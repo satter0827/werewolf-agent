@@ -10,6 +10,15 @@ from typing import Any, Protocol, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
+from werewolf_agent.commons.shared.constants import (
+    DURATION_MILLISECONDS_DECIMAL_PLACES,
+    EVENT_OUTCOME_FAILURE,
+    EVENT_OUTCOME_SUCCESS,
+    HTTP_FAILURE_STATUS_MIN,
+    HTTP_SERVER_ERROR_STATUS_MIN,
+    MIN_PAGE_OFFSET,
+    SECONDS_TO_MILLISECONDS,
+)
 from werewolf_agent.commons.shared.messages import (
     LOG_SHARED_API_REQUEST_COMPLETED,
     MESSAGE_API_RESPONSE_NOT_JSON,
@@ -35,11 +44,15 @@ from werewolf_agent.contracts.schemas import (
     ProblemDetails,
 )
 from werewolf_agent.interface.runtime import get_observation_context
+from werewolf_agent.interface.shared.constants import (
+    AUTHORIZATION_HEADER,
+    BEARER_AUTH_SCHEME,
+    TRACE_ID_HEADER,
+)
 from werewolf_agent.interface.shared.log_sanitization import safe_http_log_path
 
 TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
-TRACE_ID_HEADER = "X-Trace-Id"
 
 
 class GameApiClient(Protocol):
@@ -64,7 +77,7 @@ class GameApiClient(Protocol):
         self,
         *,
         status: str | None = None,
-        limit: int = 20,
+        limit: int | None = None,
         offset: int = 0,
     ) -> GameListResponse:
         """Fetch public game summaries through the public API."""
@@ -77,7 +90,7 @@ class GameApiClient(Protocol):
         game_id: str,
         *,
         after: int = 0,
-        limit: int = 100,
+        limit: int | None = None,
     ) -> GameTimelineResponse:
         """Fetch public game timeline items through the public API."""
 
@@ -108,7 +121,7 @@ class HttpGameApiClient:
         self,
         base_url: str,
         *,
-        timeout: float = 10.0,
+        timeout: float,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         """Create a client bound to one API base URL."""
@@ -152,11 +165,15 @@ class HttpGameApiClient:
         self,
         *,
         status: str | None = None,
-        limit: int = 20,
+        limit: int | None = None,
         offset: int = 0,
     ) -> GameListResponse:
         """Fetch public game summaries through the public API."""
-        params: dict[str, Any] = {"limit": limit, "offset": offset}
+        params: dict[str, Any] = {}
+        if limit is not None:
+            params["limit"] = limit
+        if offset != MIN_PAGE_OFFSET:
+            params["offset"] = offset
         if status is not None:
             params["status"] = status
         payload = self._request_json("GET", "games", params=params)
@@ -172,13 +189,18 @@ class HttpGameApiClient:
         game_id: str,
         *,
         after: int = 0,
-        limit: int = 100,
+        limit: int | None = None,
     ) -> GameTimelineResponse:
         """Fetch public game timeline items through the public API."""
+        params: dict[str, Any] = {}
+        if after != MIN_PAGE_OFFSET:
+            params["after"] = after
+        if limit is not None:
+            params["limit"] = limit
         payload = self._request_json(
             "GET",
             f"games/{game_id}/timeline",
-            params={"after": after, "limit": limit},
+            params=params,
         )
         return self._parse_model(GameTimelineResponse, payload)
 
@@ -237,11 +259,18 @@ class HttpGameApiClient:
                 LOG_SHARED_API_REQUEST_COMPLETED,
                 extra={
                     "event_action": LOG_SHARED_API_REQUEST_COMPLETED,
-                    "event_outcome": "success" if response.status_code < 400 else "failure",
+                    "event_outcome": (
+                        EVENT_OUTCOME_SUCCESS
+                        if response.status_code < HTTP_FAILURE_STATUS_MIN
+                        else EVENT_OUTCOME_FAILURE
+                    ),
                     "method": method,
                     "path": safe_http_log_path(path),
                     "http_status": response.status_code,
-                    "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "duration_ms": round(
+                        (time.perf_counter() - started) * SECONDS_TO_MILLISECONDS,
+                        DURATION_MILLISECONDS_DECIMAL_PLACES,
+                    ),
                 },
             )
             response.raise_for_status()
@@ -318,12 +347,12 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
         message_problem_detail(problem.code, problem.detail),
         code=code,
         context={"http_status": problem.status, "problem_type": problem.type},
-        retryable=problem.status >= 500,
+        retryable=problem.status >= HTTP_SERVER_ERROR_STATUS_MIN,
     )
 
 
 def _authorization_header(manual_token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {manual_token}"}
+    return {AUTHORIZATION_HEADER: f"{BEARER_AUTH_SCHEME} {manual_token}"}
 
 
 def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:

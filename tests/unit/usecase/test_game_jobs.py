@@ -5,6 +5,13 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from werewolf_agent.commons.shared.constants import (
+    DEFAULT_GAME_LIST_LIMIT,
+    DEFAULT_NARRATION_MODE,
+    DEFAULT_TIMELINE_LIMIT,
+    MAX_GAME_LIST_LIMIT,
+    MAX_TIMELINE_LIMIT,
+)
 from werewolf_agent.commons.shared.definitions import (
     FakeDecisionCatalog,
     GameDefinitions,
@@ -247,6 +254,11 @@ def usecase_config(
         default_player_count=default_player_count,
         supported_agent_type=supported_agent_type,
         default_setup_id=default_setup_id,
+        default_narration_mode=DEFAULT_NARRATION_MODE,
+        game_list_default_limit=DEFAULT_GAME_LIST_LIMIT,
+        game_list_max_limit=MAX_GAME_LIST_LIMIT,
+        timeline_default_limit=DEFAULT_TIMELINE_LIMIT,
+        timeline_max_limit=MAX_TIMELINE_LIMIT,
     )
 
 
@@ -393,6 +405,7 @@ def llm_definitions() -> LlmDefinitions:
 def create_command(**values: object) -> CreateGameCommand:
     values.setdefault("role_counts", DEFAULT_ROLE_COUNTS)
     values.setdefault("rules", local_rules_definition())
+    values.setdefault("narration_mode", DEFAULT_NARRATION_MODE)
     return CreateGameCommand.model_validate(values)
 
 

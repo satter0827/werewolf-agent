@@ -10,6 +10,8 @@ from __future__ import annotations
 import sqlalchemy as sa
 from alembic import op
 
+from werewolf_agent.interface.application import schema
+
 revision = "0001_initial"
 down_revision = None
 branch_labels = None
@@ -19,42 +21,60 @@ depends_on = None
 def upgrade() -> None:
     """Create base game and event tables."""
     op.create_table(
-        "games",
-        sa.Column("id", sa.String(length=36), primary_key=True),
-        sa.Column("status", sa.String(length=24), nullable=False),
-        sa.Column("phase", sa.String(length=32), nullable=False),
-        sa.Column("day", sa.Integer(), nullable=False),
-        sa.Column("seed", sa.Integer(), nullable=True),
-        sa.Column("config", sa.JSON(), nullable=False),
-        sa.Column("public_state", sa.JSON(), nullable=False),
-        sa.Column("private_state", sa.JSON(), nullable=False),
-        sa.Column("version", sa.Integer(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
+        schema.GAMES_TABLE,
+        sa.Column(schema.ID_COLUMN, sa.String(length=schema.UUID_TEXT_LENGTH), primary_key=True),
+        sa.Column(
+            schema.STATUS_COLUMN, sa.String(length=schema.STATUS_TEXT_LENGTH), nullable=False
+        ),
+        sa.Column(schema.PHASE_COLUMN, sa.String(length=schema.PHASE_TEXT_LENGTH), nullable=False),
+        sa.Column(schema.DAY_COLUMN, sa.Integer(), nullable=False),
+        sa.Column(schema.SEED_COLUMN, sa.Integer(), nullable=True),
+        sa.Column(schema.CONFIG_COLUMN, sa.JSON(), nullable=False),
+        sa.Column(schema.PUBLIC_STATE_COLUMN, sa.JSON(), nullable=False),
+        sa.Column(schema.PRIVATE_STATE_COLUMN, sa.JSON(), nullable=False),
+        sa.Column(schema.VERSION_COLUMN, sa.Integer(), nullable=False),
+        sa.Column(schema.CREATED_AT_COLUMN, sa.DateTime(timezone=True), nullable=False),
+        sa.Column(schema.UPDATED_AT_COLUMN, sa.DateTime(timezone=True), nullable=False),
     )
     op.create_table(
-        "game_events",
-        sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
+        schema.GAME_EVENTS_TABLE,
+        sa.Column(schema.ID_COLUMN, sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column(
-            "game_id",
-            sa.String(length=36),
-            sa.ForeignKey("games.id", ondelete="CASCADE"),
+            schema.GAME_ID_COLUMN,
+            sa.String(length=schema.UUID_TEXT_LENGTH),
+            sa.ForeignKey(schema.GAMES_ID_REFERENCE, ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column("sequence", sa.Integer(), nullable=False),
-        sa.Column("event_id", sa.String(length=36), nullable=False),
-        sa.Column("visibility", sa.String(length=24), nullable=False),
-        sa.Column("phase", sa.String(length=32), nullable=True),
-        sa.Column("day", sa.Integer(), nullable=True),
-        sa.Column("actor_id", sa.String(length=128), nullable=True),
-        sa.Column("event_type", sa.String(length=64), nullable=False),
-        sa.Column("payload", sa.JSON(), nullable=False),
-        sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("game_id", "sequence", name="game_events_game_sequence_unique"),
+        sa.Column(schema.SEQUENCE_COLUMN, sa.Integer(), nullable=False),
+        sa.Column(
+            schema.EVENT_ID_COLUMN, sa.String(length=schema.UUID_TEXT_LENGTH), nullable=False
+        ),
+        sa.Column(
+            schema.VISIBILITY_COLUMN,
+            sa.String(length=schema.STATUS_TEXT_LENGTH),
+            nullable=False,
+        ),
+        sa.Column(schema.PHASE_COLUMN, sa.String(length=schema.PHASE_TEXT_LENGTH), nullable=True),
+        sa.Column(schema.DAY_COLUMN, sa.Integer(), nullable=True),
+        sa.Column(
+            schema.ACTOR_ID_COLUMN, sa.String(length=schema.ACTOR_ID_TEXT_LENGTH), nullable=True
+        ),
+        sa.Column(
+            schema.EVENT_TYPE_COLUMN,
+            sa.String(length=schema.EVENT_TYPE_TEXT_LENGTH),
+            nullable=False,
+        ),
+        sa.Column(schema.PAYLOAD_COLUMN, sa.JSON(), nullable=False),
+        sa.Column(schema.OCCURRED_AT_COLUMN, sa.DateTime(timezone=True), nullable=False),
+        sa.UniqueConstraint(
+            schema.GAME_ID_COLUMN,
+            schema.SEQUENCE_COLUMN,
+            name=schema.GAME_EVENTS_GAME_SEQUENCE_UNIQUE,
+        ),
     )
 
 
 def downgrade() -> None:
     """Drop base game and event tables."""
-    op.drop_table("game_events")
-    op.drop_table("games")
+    op.drop_table(schema.GAME_EVENTS_TABLE)
+    op.drop_table(schema.GAMES_TABLE)

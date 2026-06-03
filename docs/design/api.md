@@ -102,6 +102,7 @@ local rule override 付き:
 - `manual_player_id`: 任意。生成される `player-1` から `player-N` のいずれか
 - `manual_player`: `POST /games` の response でだけ返す。`GET /games/{game_id}` には含めない
 - `rules`: 任意。省略時は `interface/application` が runtime default を注入する
+- `narration_mode`: 任意。省略時は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` の値を注入する
 - `character_assignments`、`custom_roles`、`custom_characters`: Streamlit session 内の追加定義を game 作成 request に同梱するための field
 
 ## Setup Options
@@ -121,6 +122,15 @@ local rule override 付き:
 - `default_narration_mode`
 
 definition path と TOML 読み込みは `interface/runtime` に集約します。domain と usecase は source path、packaged default、`.env` を知りません。
+
+## Pagination
+
+`GET /games` と `GET /games/{game_id}/timeline` の `limit` は省略できます。省略時の件数と最大値は runtime settings で管理します。
+
+- game list: `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`
+- timeline: `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`
+
+最大値を超える `limit` は `400 config.invalid_value` を返します。
 
 ## Public State
 

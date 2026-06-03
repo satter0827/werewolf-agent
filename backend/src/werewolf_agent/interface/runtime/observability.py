@@ -14,13 +14,17 @@ import structlog
 from structlog.typing import EventDict
 
 from werewolf_agent.commons.security.redaction import redact_mapping, redact_text
-from werewolf_agent.commons.shared.constants import JSON_ENCODING, JSON_SEPARATORS
+from werewolf_agent.commons.shared.constants import (
+    JSON_ENCODING,
+    JSON_SEPARATORS,
+    LOG_OUTPUT_BOTH,
+    LOG_OUTPUT_FILE,
+    LOG_OUTPUT_NONE,
+    LOG_OUTPUT_STDERR,
+    LOG_OUTPUT_STDOUT,
+)
 from werewolf_agent.interface.runtime.settings import AppSettings
 
-LOG_OUTPUT_BOTH: Final = "both"
-LOG_OUTPUT_FILE: Final = "file"
-LOG_OUTPUT_NONE: Final = "none"
-LOG_OUTPUT_STDOUT: Final = "stdout"
 THIRD_PARTY_LOGGER_NAMES: Final = (
     "alembic",
     "httpcore",
@@ -144,7 +148,7 @@ def _handlers(
         handlers.append(_file_handler(settings, formatter))
     if output == LOG_OUTPUT_STDOUT:
         handlers.append(_stream_handler(sys.stdout, settings.log_level, formatter))
-    if output in {"stderr", LOG_OUTPUT_BOTH}:
+    if output in {LOG_OUTPUT_STDERR, LOG_OUTPUT_BOTH}:
         handlers.append(_stream_handler(sys.stderr, settings.log_level, formatter))
     return handlers
 

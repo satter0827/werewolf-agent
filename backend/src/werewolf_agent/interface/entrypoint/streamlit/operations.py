@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any, cast
 
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_SUCCESS
 from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
@@ -49,7 +50,7 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
         LOG_STREAMLIT_RERUN_STARTED,
         extra={
             "event_action": LOG_STREAMLIT_RERUN_STARTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "api_url": settings.streamlit_resolved_api_url,
             "save_file_path": str(settings.streamlit_save_file_path),
             "log_level": settings.log_level,
@@ -105,7 +106,7 @@ def create_game_from_setup(
         LOG_STREAMLIT_GAME_CREATED,
         extra={
             "event_action": LOG_STREAMLIT_GAME_CREATED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": response.game_id,
             "has_manual_player": manual_player_id is not None,
             "player_count": len(response.state.players),
@@ -156,7 +157,7 @@ def load_game_screen(
         LOG_STREAMLIT_REFRESHED,
         extra={
             "event_action": LOG_STREAMLIT_REFRESHED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "screen_mode": screen_mode,
             "game_status": state.status,
@@ -226,7 +227,7 @@ def submit_screen_action(
         LOG_STREAMLIT_ACTION_SUBMITTED,
         extra={
             "event_action": LOG_STREAMLIT_ACTION_SUBMITTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": target_id is not None,
             "has_message": bool(message),
@@ -246,7 +247,7 @@ def advance_one_step(
         LOG_STREAMLIT_ADVANCE_STEP_STARTED,
         extra={
             "event_action": LOG_STREAMLIT_ADVANCE_STEP_STARTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
         },
     )
@@ -255,7 +256,7 @@ def advance_one_step(
         LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
         extra={
             "event_action": LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "game_status": response.status,
             "game_phase": response.state.phase,

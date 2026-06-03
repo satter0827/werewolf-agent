@@ -9,6 +9,7 @@ from typing import TypeVar
 import typer
 
 from werewolf_agent.commons.security.redaction import redact_mapping
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_FAILURE
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_APPLICATION_ERROR_HANDLED,
     LOG_CLI_UNHANDLED_EXCEPTION,
@@ -32,7 +33,7 @@ def run_app_command(command: Callable[[], T]) -> T:
             extra={
                 **exc.log_extra(),
                 "event_action": LOG_CLI_APPLICATION_ERROR_HANDLED,
-                "event_outcome": "failure",
+                "event_outcome": EVENT_OUTCOME_FAILURE,
             },
         )
         typer.echo(_safe_error_message(exc), err=True)
@@ -44,7 +45,7 @@ def run_app_command(command: Callable[[], T]) -> T:
             extra={
                 **error.log_extra(),
                 "event_action": LOG_CLI_UNHANDLED_EXCEPTION,
-                "event_outcome": "failure",
+                "event_outcome": EVENT_OUTCOME_FAILURE,
             },
         )
         typer.echo(_safe_error_message(error), err=True)

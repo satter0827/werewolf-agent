@@ -5,7 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, cast
 
+from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE, NARRATION_MODE_NONE
 from werewolf_agent.commons.shared.definitions import NarrationProfileDefinition
+from werewolf_agent.commons.shared.validation import public_generated_player_label
 from werewolf_agent.domain.game.models import (
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
@@ -56,7 +58,7 @@ def public_state_payload_from_snapshot(
     created_at: datetime | None = None,
     scenario_id: str | None = None,
     scenario_name: str | None = None,
-    narration_mode: str = "standard",
+    narration_mode: str = DEFAULT_NARRATION_MODE,
 ) -> dict[str, Any]:
     """Project a full domain snapshot into a public state payload."""
     players = [
@@ -146,7 +148,7 @@ def events_to_create(
     events: list[DomainEvent],
     *,
     narration_profile: NarrationProfileDefinition | None = None,
-    narration_mode: str = "standard",
+    narration_mode: str = DEFAULT_NARRATION_MODE,
 ) -> list[GameEventCreate]:
     """Return sanitized event data ready for an outer persistence adapter."""
     return [
@@ -163,7 +165,7 @@ def event_to_create(
     event: DomainEvent,
     *,
     narration_profile: NarrationProfileDefinition | None = None,
-    narration_mode: str = "standard",
+    narration_mode: str = DEFAULT_NARRATION_MODE,
 ) -> GameEventCreate:
     """Return sanitized persistable event data for one domain event."""
     payload = public_safe_payload(event)
@@ -205,7 +207,7 @@ def public_narration(
     narration_mode: str,
 ) -> str:
     """Return one public-safe narration line for a public event."""
-    if narration_mode == "none" or narration_profile is None:
+    if narration_mode == NARRATION_MODE_NONE or narration_profile is None:
         return ""
     event_definition = narration_profile.events.get(event.event_type)
     if event_definition is None:
@@ -232,11 +234,7 @@ def _public_player_label(value: object) -> str:
     if value is None:
         return ""
     text = str(value)
-    if text.startswith("player-"):
-        suffix = text.removeprefix("player-")
-        if suffix.isdigit():
-            return f"P{suffix}"
-    return text
+    return public_generated_player_label(text) or text
 
 
 def _phase_label(value: str) -> str:

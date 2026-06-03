@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Final, Literal, Protocol, cast
 
+from werewolf_agent.commons.shared.messages import MESSAGE_TELEMETRY_LEVEL_MUST_BE_VALID
 from werewolf_agent.commons.shared.validation import non_blank
 
 TelemetryLevel = Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
@@ -26,9 +27,7 @@ class TelemetryEvent:
         object.__setattr__(self, "action", non_blank(self.action, "telemetry action"))
         level = str(self.level).upper()
         if level not in TELEMETRY_LEVELS:
-            raise ValueError(
-                "telemetry level must be one of: DEBUG, INFO, WARNING, ERROR, CRITICAL"
-            )
+            raise ValueError(MESSAGE_TELEMETRY_LEVEL_MUST_BE_VALID)
         object.__setattr__(self, "level", cast(TelemetryLevel, level))
         object.__setattr__(self, "fields", dict(self.fields))
         if self.outcome is not None:

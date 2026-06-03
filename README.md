@@ -23,16 +23,16 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 別ターミナルで CLI から game を実行します。
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --manual-player player-1
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --manual-player player-1
 ```
 
 公開履歴を確認する場合:
 
 ```bash
-uv run werewolf-agent setup-options --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent games --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
+uv run werewolf-agent setup-options
+uv run werewolf-agent games
+uv run werewolf-agent timeline <game_id> --follow
 uv run werewolf-agent replay --timeline .werewolf-agent/logs/game-001.jsonl
 ```
 
@@ -112,6 +112,8 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` が正です。`.env.example` は override 例だけを置きます。
 
 `interface/runtime` が設定、definition TOML、logging bootstrap を浅い入口で解決し、`interface/application` から usecase へ値として注入します。domain と usecase は source path、packaged fallback、`.env`、logging 設定を知りません。
+
+運用時に変える値は `.env` または環境変数で override します。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。CLI の既定 API URL は `WEREWOLF_CLI_API_URL` です。
 
 運用ログは JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。
 

@@ -54,7 +54,7 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
         "uv run mypy backend/src",
         "uv run --extra api alembic upgrade head",
         "uv run werewolf-agent doctor",
-        "uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1",
+        "uv run werewolf-agent play --role-count werewolf=1",
         "docker compose build",
         "docker compose run --rm migrate",
         "docker compose run --rm test",

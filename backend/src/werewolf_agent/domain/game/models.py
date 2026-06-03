@@ -11,14 +11,19 @@ from werewolf_agent.commons.shared.definitions import LocalRulesDefinition
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD,
     MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
+    MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE,
     MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT,
     MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE,
     MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF,
+    MESSAGE_ROLES_REQUIRED,
     MESSAGE_SPEECH_ACTION_FORBIDS_TARGET,
     MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE,
     message_message_not_allowed,
     message_role_count_must_be_zero_or_greater,
     message_target_required,
+    message_unknown_role_in_role_counts,
+    message_unsupported_abilities,
+    message_unsupported_faction,
     message_unsupported_type,
 )
 from werewolf_agent.commons.shared.models import StrictModel
@@ -132,7 +137,7 @@ class RoleDefinition(_DomainModel):
         """Return a supported faction id."""
         faction = non_blank(value, "faction")
         if faction not in SUPPORTED_FACTIONS:
-            raise ValueError(f"unsupported faction: {faction}")
+            raise ValueError(message_unsupported_faction(faction))
         return faction
 
     @field_validator("abilities")
@@ -141,10 +146,10 @@ class RoleDefinition(_DomainModel):
         """Return supported ability ids without duplicates."""
         abilities = tuple(non_blank(item, "ability") for item in value)
         if len(set(abilities)) != len(abilities):
-            raise ValueError("role abilities must be unique")
+            raise ValueError(MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE)
         unknown = sorted(set(abilities) - SUPPORTED_ABILITIES)
         if unknown:
-            raise ValueError(f"unsupported abilities: {', '.join(unknown)}")
+            raise ValueError(message_unsupported_abilities(unknown))
         return abilities
 
     def has_ability(self, ability: str) -> bool:
@@ -165,7 +170,7 @@ class RoleCatalog(_DomainModel):
             non_blank(str(role_id), "role id"): definition for role_id, definition in value.items()
         }
         if not roles:
-            raise ValueError("roles must include at least one role")
+            raise ValueError(MESSAGE_ROLES_REQUIRED)
         return roles
 
     def require_role(self, role: str) -> RoleDefinition:
@@ -201,7 +206,7 @@ class GameConfig(_DomainModel):
         for role, count in self.role_counts.items():
             role_id = non_blank(str(role), "role_counts key")
             if role_id not in self.roles.roles:
-                raise ValueError(f"unknown role in role_counts: {role_id}")
+                raise ValueError(message_unknown_role_in_role_counts(role_id))
             if count < 0:
                 raise ValueError(message_role_count_must_be_zero_or_greater(role_id))
             role_total += count

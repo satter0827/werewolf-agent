@@ -6,6 +6,12 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 
+from werewolf_agent.commons.shared.constants import (
+    LLM_PROVIDER_FAKE,
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_PROVIDER_OPENAI,
+    LLM_STUDIO_API_KEY_PLACEHOLDER,
+)
 from werewolf_agent.commons.shared.definitions import LlmDefinitions
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_MISSING_ATTACK_TARGET,
@@ -13,6 +19,8 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_MISSING_INSPECT_TARGET,
     MESSAGE_MISSING_SPEECH_MESSAGE,
     MESSAGE_MISSING_VOTE_TARGET,
+    message_langchain_openai_required,
+    message_unsupported_llm_provider,
 )
 from werewolf_agent.domain.game.models import Action, Observation, Player
 from werewolf_agent.domain.llm.models import (
@@ -111,17 +119,17 @@ def _decision_provider(
     *,
     definitions: LlmDefinitions,
 ) -> LangChainDecisionProvider:
-    if config.provider == "fake":
+    if config.provider == LLM_PROVIDER_FAKE:
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             fake_responses=definitions.fake_responses,
         )
-    if config.provider in {"lmstudio", "openai"}:
+    if config.provider in {LLM_PROVIDER_LMSTUDIO, LLM_PROVIDER_OPENAI}:
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             model=_openai_compatible_model(config),
         )
-    raise ValueError(f"Unsupported LLM provider: {config.provider}.")
+    raise ValueError(message_unsupported_llm_provider(config.provider))
 
 
 def _openai_compatible_model(config: LlmProviderConfig) -> Any:
@@ -129,13 +137,16 @@ def _openai_compatible_model(config: LlmProviderConfig) -> Any:
         module = import_module("langchain_openai")
     except ImportError as exc:
         raise RuntimeError(
-            "langchain-openai is required for lmstudio and openai LLM providers"
+            message_langchain_openai_required(
+                lmstudio_provider=LLM_PROVIDER_LMSTUDIO,
+                openai_provider=LLM_PROVIDER_OPENAI,
+            )
         ) from exc
     chat_openai = module.__dict__["ChatOpenAI"]
 
     kwargs: dict[str, object] = {
         "model": config.model,
-        "api_key": config.api_key or "lm-studio",
+        "api_key": config.api_key or LLM_STUDIO_API_KEY_PLACEHOLDER,
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
         "max_retries": config.max_retries,

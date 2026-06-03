@@ -9,6 +9,16 @@ from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from werewolf_agent.commons.shared.constants import (
+    NARRATION_MODE_NONE,
+    NARRATION_MODE_RICH,
+    NARRATION_MODE_STANDARD,
+)
+from werewolf_agent.commons.shared.validation import (
+    generated_player_id,
+    generated_player_ids,
+    public_generated_player_label,
+)
 from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
     CustomCharacterDefinitionRequest,
@@ -43,7 +53,12 @@ PRESET_BEGINNER = "beginner"
 PRESET_QUICK = "quick"
 PRESET_LOGIC = "logic"
 PRESETS = (PRESET_STANDARD, PRESET_BEGINNER, PRESET_QUICK, PRESET_LOGIC)
-NARRATION_MODES: tuple[NarrationMode, ...] = ("standard", "rich", "none")
+CUSTOM_ROLE_NO_ABILITIES_TEXT = "none"
+NARRATION_MODES: tuple[NarrationMode, ...] = (
+    NARRATION_MODE_STANDARD,
+    NARRATION_MODE_RICH,
+    NARRATION_MODE_NONE,
+)
 
 
 class GameSetupDraft(BaseModel):
@@ -379,7 +394,7 @@ def character_assignments(
 ) -> dict[str, str]:
     """Return selected character ids keyed by generated player id."""
     assignments = game_setup_draft(session).character_assignments
-    valid_players = {f"player-{index}" for index in range(1, player_count + 1)}
+    valid_players = generated_player_ids(player_count)
     valid_characters = {character.id for character in setup_options.characters}
     return {
         player_id: character_id
@@ -555,7 +570,13 @@ def validate_setup(
 def seat_options(counts: Mapping[str, int]) -> list[tuple[str, str]]:
     """Return generated manual seat options."""
     total = sum(counts.values())
-    return [(f"player-{index}", f"P{index}") for index in range(1, total + 1)]
+    return [
+        (
+            player_id := generated_player_id(index),
+            public_generated_player_label(player_id) or player_id,
+        )
+        for index in range(1, total + 1)
+    ]
 
 
 def setup_summary(
@@ -654,7 +675,7 @@ def _setup_preset_by_id(
 
 
 def _custom_role_description(faction: str, abilities: list[str]) -> str:
-    ability_text = ", ".join(abilities) if abilities else "none"
+    ability_text = ", ".join(abilities) if abilities else CUSTOM_ROLE_NO_ABILITIES_TEXT
     return f"faction={faction}; abilities={ability_text}"
 
 

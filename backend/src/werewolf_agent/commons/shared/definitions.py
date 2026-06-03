@@ -9,17 +9,56 @@ from typing import Annotated, Any, Self
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.commons.shared.constants import (
+    MAX_CHARACTER_AGE,
+    MAX_DAY_SPEECH_LIMIT_PER_PLAYER,
+    MAX_DIFFICULTY,
+    MIN_CHARACTER_AGE,
+    MIN_DAY_SPEECH_LIMIT_PER_PLAYER,
+    MIN_DIFFICULTY,
+    MIN_PLAYER_COUNT,
+    MIN_ROLE_COUNT,
+    MIN_VERSION,
+)
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_ALLOWED_ROLES_MUST_BE_UNIQUE,
+    MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE,
+    MESSAGE_DEFAULT_ROLE_COUNT_KEYS_POSITIVE,
+    MESSAGE_DEFAULT_ROLE_COUNTS_REQUIRED,
+    MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED,
+    MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE,
+    MESSAGE_INPUT_VARIABLES_REQUIRED,
+    MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE,
+    MESSAGE_NARRATION_TEMPLATES_REQUIRED,
+    MESSAGE_PLAYER_PROFILE_NAMES_MUST_BE_UNIQUE,
+    MESSAGE_PLAYERS_REQUIRED,
+    MESSAGE_PROMPT_MESSAGE_ROLE_MUST_BE_VALID,
+    MESSAGE_PROMPT_MESSAGES_REQUIRED,
+    MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION,
+    MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE,
+    MESSAGE_ROLES_REQUIRED,
+    MESSAGE_SETUP_PRESET_ROLE_COUNTS_REQUIRED,
+    message_default_role_counts_must_define_player_count,
+    message_default_role_counts_must_sum,
+    message_default_role_counts_unknown_roles,
+    message_fake_decision_templates_required,
+    message_input_variables_not_used,
+    message_message_variables_missing,
+)
 from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import non_blank
 
 PROMPT_VARIABLE_PATTERN = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
-RoleCount = Annotated[int, Field(ge=0)]
+RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 
 
 class LocalRulesDefinition(StrictModel):
     """Local rule flags used by the game core."""
 
-    day_speech_limit_per_player: int = Field(ge=1, le=10)
+    day_speech_limit_per_player: int = Field(
+        ge=MIN_DAY_SPEECH_LIMIT_PER_PLAYER,
+        le=MAX_DAY_SPEECH_LIMIT_PER_PLAYER,
+    )
     allow_self_vote: bool
     allow_vote_revision: bool
     allow_night_action_revision: bool
@@ -40,10 +79,7 @@ class LocalRulesDefinition(StrictModel):
             self.enable_random_elimination_on_tie,
         ]
         if enabled.count(True) != 1:
-            raise ValueError(
-                "exactly one tie rule must be enabled: "
-                "enable_no_elimination_on_tie, enable_random_elimination_on_tie"
-            )
+            raise ValueError(MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE)
         return self
 
 
@@ -53,7 +89,7 @@ class AbilityDefinition(StrictModel):
     label: str
     description: str
     target_policy: str
-    difficulty: int = Field(default=1, ge=1, le=5)
+    difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     @field_validator("label", "description", "target_policy")
     @classmethod
@@ -69,7 +105,7 @@ class RoleDefinition(StrictModel):
     abilities: tuple[str, ...] = ()
     label: str | None = None
     description: str | None = None
-    difficulty: int = Field(default=1, ge=1, le=5)
+    difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     @field_validator("faction")
     @classmethod
@@ -91,7 +127,7 @@ class RoleDefinition(StrictModel):
         """Return normalized unique ability ids."""
         abilities = tuple(non_blank(item, "ability") for item in value)
         if len(set(abilities)) != len(abilities):
-            raise ValueError("role abilities must be unique")
+            raise ValueError(MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE)
         return abilities
 
 
@@ -103,7 +139,7 @@ class CustomRoleDefinition(StrictModel):
     faction: str
     abilities: list[str] = Field(default_factory=list)
     description: str = ""
-    difficulty: int = Field(default=1, ge=1, le=5)
+    difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     @field_validator("id", "name", "faction")
     @classmethod
@@ -123,7 +159,7 @@ class CustomRoleDefinition(StrictModel):
         """Return normalized unique ability ids."""
         abilities = [non_blank(item, "ability") for item in value]
         if len(set(abilities)) != len(abilities):
-            raise ValueError("custom role abilities must be unique")
+            raise ValueError(MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE)
         return abilities
 
 
@@ -138,7 +174,7 @@ class NarrationEventDefinition(StrictModel):
         """Return non-empty public narration templates."""
         templates = tuple(non_blank(item, "narration template") for item in value)
         if not templates:
-            raise ValueError("narration templates must include at least one value")
+            raise ValueError(MESSAGE_NARRATION_TEMPLATES_REQUIRED)
         return templates
 
 
@@ -187,7 +223,7 @@ class ScenarioDefinition(StrictModel):
         """Return normalized unique allowed role ids."""
         roles = tuple(non_blank(item, "allowed role") for item in value)
         if len(set(roles)) != len(roles):
-            raise ValueError("allowed_roles must be unique")
+            raise ValueError(MESSAGE_ALLOWED_ROLES_MUST_BE_UNIQUE)
         return roles
 
 
@@ -213,7 +249,7 @@ class SetupPresetDefinition(StrictModel):
             non_blank(str(role_id), "role count role id"): count for role_id, count in value.items()
         }
         if sum(counts.values()) < 1:
-            raise ValueError("setup preset role_counts must include at least one player")
+            raise ValueError(MESSAGE_SETUP_PRESET_ROLE_COUNTS_REQUIRED)
         return counts
 
 
@@ -237,7 +273,7 @@ class GameRoleDefinitions(StrictModel):
             non_blank(str(role_id), "role id"): definition for role_id, definition in value.items()
         }
         if not roles:
-            raise ValueError("roles must include at least one role")
+            raise ValueError(MESSAGE_ROLES_REQUIRED)
         return roles
 
     @field_validator("default_role_counts", mode="before")
@@ -252,16 +288,16 @@ class GameRoleDefinitions(StrictModel):
     def validate_default_role_counts(self) -> Self:
         """Ensure default role counts reference known roles and match their player count."""
         if not self.default_role_counts:
-            raise ValueError("default_role_counts must include at least one player count")
+            raise ValueError(MESSAGE_DEFAULT_ROLE_COUNTS_REQUIRED)
         role_ids = set(self.roles)
         for player_count, counts in self.default_role_counts.items():
-            if player_count < 1:
-                raise ValueError("default_role_counts keys must be positive player counts")
+            if player_count < MIN_PLAYER_COUNT:
+                raise ValueError(MESSAGE_DEFAULT_ROLE_COUNT_KEYS_POSITIVE)
             unknown = sorted(set(counts) - role_ids)
             if unknown:
-                raise ValueError(f"default_role_counts contain unknown roles: {', '.join(unknown)}")
+                raise ValueError(message_default_role_counts_unknown_roles(unknown))
             if sum(counts.values()) != player_count:
-                raise ValueError(f"default_role_counts[{player_count}] must sum to {player_count}")
+                raise ValueError(message_default_role_counts_must_sum(player_count))
         return self
 
     def default_counts_for(self, player_count: int) -> dict[str, int]:
@@ -270,7 +306,7 @@ class GameRoleDefinitions(StrictModel):
             return dict(self.default_role_counts[player_count])
         except KeyError as exc:
             raise ValueError(
-                f"default_role_counts must define player_count {player_count}"
+                message_default_role_counts_must_define_player_count(player_count)
             ) from exc
 
 
@@ -332,7 +368,7 @@ class PlayerProfile(StrictModel):
 
     enabled: bool = True
     name: str
-    age: int = Field(ge=18, le=99)
+    age: int = Field(ge=MIN_CHARACTER_AGE, le=MAX_CHARACTER_AGE)
     gender: str
     personality: str
     speaking_style: str
@@ -358,7 +394,7 @@ class CustomCharacterDefinition(StrictModel):
 
     id: str
     name: str
-    age: int = Field(ge=18, le=99)
+    age: int = Field(ge=MIN_CHARACTER_AGE, le=MAX_CHARACTER_AGE)
     gender: str
     personality: str
     speaking_style: str
@@ -395,10 +431,10 @@ class PlayerRoster(StrictModel):
             if profile.enabled
         }
         if not players:
-            raise ValueError("players must include at least one enabled profile")
+            raise ValueError(MESSAGE_PLAYERS_REQUIRED)
         names = [profile.name for profile in players.values()]
         if len(set(names)) != len(names):
-            raise ValueError("player profile names must be unique")
+            raise ValueError(MESSAGE_PLAYER_PROFILE_NAMES_MUST_BE_UNIQUE)
         return players
 
 
@@ -414,7 +450,7 @@ class PromptMessageDefinition(StrictModel):
         """Return a supported chat role."""
         role = non_blank(value, "prompt message role").lower()
         if role not in {"system", "human", "ai"}:
-            raise ValueError("prompt message role must be one of: ai, human, system")
+            raise ValueError(MESSAGE_PROMPT_MESSAGE_ROLE_MUST_BE_VALID)
         return role
 
     @field_validator("content")
@@ -436,7 +472,7 @@ class PromptDefinition(StrictModel):
     """MLflow-compatible local prompt definition."""
 
     name: str
-    version: int = Field(ge=1)
+    version: int = Field(ge=MIN_VERSION)
     alias: str
     input_variables: list[str]
     tags: dict[str, str] = Field(default_factory=dict)
@@ -461,9 +497,9 @@ class PromptDefinition(StrictModel):
         """Return unique non-empty input variable names."""
         variables = [non_blank(item, "input variable") for item in value]
         if not variables:
-            raise ValueError("input_variables must include at least one value")
+            raise ValueError(MESSAGE_INPUT_VARIABLES_REQUIRED)
         if len(set(variables)) != len(variables):
-            raise ValueError("input_variables must be unique")
+            raise ValueError(MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE)
         return variables
 
     @field_validator("tags")
@@ -488,19 +524,19 @@ class PromptDefinition(StrictModel):
     def validate_prompt_contract(self) -> Self:
         """Ensure the prompt template and output schema agree."""
         if not self.messages:
-            raise ValueError("messages must include at least one prompt message")
+            raise ValueError(MESSAGE_PROMPT_MESSAGES_REQUIRED)
         if self.response_format.get("schema") != "AgentDecision":
-            raise ValueError("response_format.schema must be AgentDecision")
+            raise ValueError(MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION)
         expected = set(self.input_variables)
         actual = set().union(*(message.variables() for message in self.messages))
         missing_from_messages = expected - actual
         missing_from_metadata = actual - expected
         if missing_from_messages:
             names = ", ".join(sorted(missing_from_messages))
-            raise ValueError(f"input_variables not used by messages: {names}")
+            raise ValueError(message_input_variables_not_used(names))
         if missing_from_metadata:
             names = ", ".join(sorted(missing_from_metadata))
-            raise ValueError(f"message variables missing from input_variables: {names}")
+            raise ValueError(message_message_variables_missing(names))
         return self
 
 
@@ -525,7 +561,7 @@ class FakeDecisionCatalog(StrictModel):
     """Local FakeListLLM response catalog."""
 
     name: str
-    version: int = Field(ge=1)
+    version: int = Field(ge=MIN_VERSION)
     alias: str
     tags: dict[str, str] = Field(default_factory=dict)
     templates: dict[str, tuple[FakeDecisionTemplate, ...]]
@@ -560,12 +596,12 @@ class FakeDecisionCatalog(StrictModel):
     ) -> dict[str, tuple[FakeDecisionTemplate, ...]]:
         """Return non-empty fake decision templates."""
         if "pass" not in value:
-            raise ValueError("templates.pass is required")
+            raise ValueError(MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED)
         templates = {}
         for key, items in value.items():
             action_type = non_blank(key, "fake decision action type")
             if not items:
-                raise ValueError(f"templates.{action_type} must include at least one item")
+                raise ValueError(message_fake_decision_templates_required(action_type))
             templates[action_type] = tuple(items)
         return templates
 

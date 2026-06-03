@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.constants import (
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_STUDIO_API_KEY_PLACEHOLDER,
+)
 from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.interface.runtime import AppSettings, get_settings
 from werewolf_agent.usecase.jobs import GameUseCaseConfig, LlmProviderConfig
@@ -25,6 +29,11 @@ def build_game_usecase_config(settings: AppSettings | None = None) -> GameUseCas
         default_player_count=app_settings.game_default_player_count,
         supported_agent_type=app_settings.game_supported_agent_type,
         default_setup_id=app_settings.game_default_setup_id,
+        default_narration_mode=app_settings.game_default_narration_mode,
+        game_list_default_limit=app_settings.api_game_list_default_limit,
+        game_list_max_limit=app_settings.api_game_list_max_limit,
+        timeline_default_limit=app_settings.api_timeline_default_limit,
+        timeline_max_limit=app_settings.api_timeline_max_limit,
     )
 
 
@@ -41,8 +50,8 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
     """
     app_settings = settings or get_settings()
     api_key = app_settings.configured_openai_api_key
-    if app_settings.llm_provider == "lmstudio" and not api_key:
-        api_key = "lm-studio"
+    if app_settings.llm_provider == LLM_PROVIDER_LMSTUDIO and not api_key:
+        api_key = LLM_STUDIO_API_KEY_PLACEHOLDER
     return LlmProviderConfig(
         provider=app_settings.llm_provider,
         model=app_settings.model,

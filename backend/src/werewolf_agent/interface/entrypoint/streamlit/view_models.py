@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Literal
 
+from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE, UNKNOWN_VALUE_LABEL
+from werewolf_agent.commons.shared.validation import (
+    public_generated_player_label,
+    public_generated_player_name_label,
+)
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
@@ -45,7 +50,7 @@ class SavedGameOptionView:
     seed: int | None = None
     scenario_id: str | None = None
     setup_preset_id: str | None = None
-    narration_mode: str = "standard"
+    narration_mode: str = DEFAULT_NARRATION_MODE
     character_assignments: dict[str, str] | None = None
     custom_roles: list[CustomRoleDefinitionRequest] | None = None
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None
@@ -864,7 +869,7 @@ def _event_title(turn: GameTimelineItem, catalog: I18nCatalog, lang: Language) -
         return (
             f"{catalog.label(lang, 'phase', phase)} {catalog.label(lang, 'event', 'phase_started')}"
         )
-    return catalog.label(lang, "event", turn.event_type if turn.event_type else "unknown")
+    return catalog.label(lang, "event", turn.event_type if turn.event_type else UNKNOWN_VALUE_LABEL)
 
 
 def _event_detail(
@@ -1041,18 +1046,15 @@ def _player_name(players: list[PublicPlayerState], player_id: object) -> str:
 
 def _display_player_name(name: str, *, fallback: str) -> str:
     stripped = name.strip()
-    if stripped.startswith("Player "):
-        suffix = stripped.removeprefix("Player ").strip()
-        if suffix.isdigit():
-            return f"P{suffix}"
-    return stripped or _public_actor_label(fallback) or fallback
+    return (
+        public_generated_player_name_label(stripped)
+        or stripped
+        or _public_actor_label(fallback)
+        or fallback
+    )
 
 
 def _public_actor_label(actor_id: str) -> str:
     if not actor_id:
         return ""
-    if actor_id.startswith("player-"):
-        suffix = actor_id.removeprefix("player-")
-        if suffix.isdigit():
-            return f"P{suffix}"
-    return actor_id
+    return public_generated_player_label(actor_id) or actor_id

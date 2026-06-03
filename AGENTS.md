@@ -83,7 +83,7 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 CLI で 1 game 確認:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 Docker:

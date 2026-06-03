@@ -49,23 +49,8 @@ if defined PYTHONPATH (
 ) else (
     set "PYTHONPATH=%CD%\backend\src"
 )
-if not defined WEREWOLF_LOG_LEVEL (
-    set "WEREWOLF_LOG_LEVEL=INFO"
-)
-if not defined WEREWOLF_LOG_OUTPUT (
-    set "WEREWOLF_LOG_OUTPUT=file"
-)
-if not defined WEREWOLF_LOG_DIR (
-    set "WEREWOLF_LOG_DIR=%CD%\.werewolf-agent\logs"
-)
 if not defined WEREWOLF_LOG_FILE_NAME (
     set "WEREWOLF_LOG_FILE_NAME=check-all.jsonl"
-)
-if not defined WEREWOLF_LOG_RETENTION_DAYS (
-    set "WEREWOLF_LOG_RETENTION_DAYS=14"
-)
-if not defined WEREWOLF_LOG_THIRD_PARTY_LEVEL (
-    set "WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING"
 )
 
 if not defined WEREWOLF_AGENT_RUNTIME_DIR (

@@ -7,6 +7,7 @@ import logging
 import typer
 from pydantic import ValidationError
 
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_SUCCESS
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_APPLICATION_STARTED,
     message_error_line,
@@ -23,6 +24,7 @@ from werewolf_agent.interface.entrypoint.cui.commands import (
     show,
     timeline,
 )
+from werewolf_agent.interface.entrypoint.cui.messages import HELP_APP
 from werewolf_agent.interface.runtime import (
     configure_interface_logging,
     settings_error_detail,
@@ -31,7 +33,7 @@ from werewolf_agent.interface.runtime import (
 logger = logging.getLogger(__name__)
 
 app = typer.Typer(
-    help="Werewolf Agent development and gameplay commands.",
+    help=HELP_APP,
     no_args_is_help=True,
 )
 
@@ -49,7 +51,7 @@ def main(ctx: typer.Context) -> None:
         LOG_CLI_APPLICATION_STARTED,
         extra={
             "event_action": LOG_CLI_APPLICATION_STARTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "cli_command": ctx.invoked_subcommand,
             "log_level": settings.log_level,
             "log_output": settings.log_output,

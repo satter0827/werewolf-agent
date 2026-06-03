@@ -238,6 +238,7 @@ def test_default_setup_options_endpoint_returns_mvp_metadata(client: TestClient)
     assert payload["default_rules"]["day_speech_limit_per_player"] == 1
     assert payload["default_scenario_id"] == "classic_village"
     assert payload["default_setup_preset_id"] == "standard_6"
+    assert payload["default_narration_mode"] == "standard"
     assert {scenario["id"] for scenario in payload["scenarios"]} >= {
         "classic_village",
         "sealed_lab",
@@ -262,6 +263,7 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert state["seed"] == 42
     assert state["scenario_id"] == "classic_village"
     assert state["scenario_name"] == "古い村"
+    assert state["narration_mode"] == "standard"
     assert [player["id"] for player in state["players"]] == [
         "player-1",
         "player-2",
@@ -272,6 +274,27 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert "private_state" not in serialized
     assert "role" not in serialized
     assert "werewolf" not in serialized
+
+
+def test_create_game_uses_configured_default_narration_mode() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="none",
+        game_default_narration_mode="rich",
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            setup = test_client.get("/api/v1/setup-options").json()
+            response = test_client.post("/api/v1/games", json=_create_payload())
+    finally:
+        app.state.engine.dispose()
+
+    assert setup["default_narration_mode"] == "rich"
+    assert response.status_code == 201
+    assert response.json()["state"]["narration_mode"] == "rich"
 
 
 def test_create_game_accepts_day_speech_limit_rule(client: TestClient) -> None:
@@ -465,6 +488,44 @@ def test_game_list_and_timeline_return_public_read_models(client: TestClient) ->
     assert not any(player["name"].startswith("Player ") for player in created["state"]["players"])
     assert timeline_payload["items"]
     assert "role_counts" not in json.dumps(timeline_payload)
+
+
+def test_games_and_timeline_limits_use_settings_defaults_and_max() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        api_debug=False,
+        database_url="sqlite+pysqlite:///:memory:",
+        log_output="none",
+        api_game_list_default_limit=1,
+        api_game_list_max_limit=2,
+        api_timeline_default_limit=1,
+        api_timeline_max_limit=2,
+    )
+    app = create_app(settings, create_schema=True)
+    try:
+        with TestClient(app, raise_server_exceptions=False) as test_client:
+            first = test_client.post("/api/v1/games", json=_create_payload(seed=1)).json()
+            second = test_client.post("/api/v1/games", json=_create_payload(seed=2)).json()
+            test_client.post(f"/api/v1/games/{first['game_id']}/advance")
+
+            games_default = test_client.get("/api/v1/games")
+            games_over_limit = test_client.get("/api/v1/games?limit=3")
+            timeline_default = test_client.get(f"/api/v1/games/{first['game_id']}/timeline")
+            timeline_over_limit = test_client.get(
+                f"/api/v1/games/{second['game_id']}/timeline?limit=3"
+            )
+    finally:
+        app.state.engine.dispose()
+
+    assert games_default.status_code == 200
+    assert len(games_default.json()["games"]) == 1
+    assert games_default.json()["next_offset"] == 1
+    assert games_over_limit.status_code == 400
+    assert games_over_limit.json()["code"] == "config.invalid_value"
+    assert timeline_default.status_code == 200
+    assert len(timeline_default.json()["items"]) == 1
+    assert timeline_over_limit.status_code == 400
+    assert timeline_over_limit.json()["code"] == "config.invalid_value"
 
 
 def test_removed_progress_helper_endpoints_return_not_found(client: TestClient) -> None:

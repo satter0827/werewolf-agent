@@ -11,6 +11,12 @@ from dataclasses import dataclass
 from typing import cast
 from uuid import UUID, uuid4
 
+from werewolf_agent.commons.shared.constants import (
+    DEFAULT_NARRATION_MODE,
+    MIN_PAGE_LIMIT,
+    NARRATION_MODE_CHOICES,
+    NarrationMode,
+)
 from werewolf_agent.commons.shared.definitions import (
     GameDefinitions,
     GameRoleDefinitions,
@@ -21,14 +27,30 @@ from werewolf_agent.commons.shared.definitions import (
     RoleDefinition,
 )
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS,
+    MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS,
+    MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS,
+    MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER,
+    MESSAGE_CUSTOM_ROLES_CONFLICT_WITH_DEFAULT_ROLE_IDS,
+    MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES,
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
     MESSAGE_INVALID_MANUAL_TOKEN,
     MESSAGE_MANUAL_INPUT_REQUIRED,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
+    MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
+    message_field_must_be_between,
     message_player_count_between,
+    message_unknown_scenario,
+    message_unknown_setup_preset,
+    message_unsupported_action_type,
 )
-from werewolf_agent.commons.shared.validation import non_blank
+from werewolf_agent.commons.shared.validation import (
+    generated_player_id,
+    generated_player_ids,
+    generated_player_name,
+    non_blank,
+)
 from werewolf_agent.contracts import (
     GameError,
     GameNotFoundError,
@@ -91,7 +113,6 @@ from werewolf_agent.usecase.jobs.games import (
     ListGamesQuery,
     ListTimelineQuery,
     ManualPlayerCredential,
-    NarrationMode,
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
@@ -299,12 +320,18 @@ def list_games(
     dependencies: GameUseCaseDependencies,
 ) -> GameListResult:
     """Return a page of public game summaries."""
+    limit = _page_limit(
+        query.limit,
+        default=dependencies.config.game_list_default_limit,
+        maximum=dependencies.config.game_list_max_limit,
+        field_name="limit",
+    )
     records = dependencies.repository.list_game_summaries(
         status=query.status,
-        limit=query.limit,
+        limit=limit,
         offset=query.offset,
     )
-    next_offset = query.offset + len(records) if len(records) == query.limit else None
+    next_offset = query.offset + len(records) if len(records) == limit else None
     return GameListResult(
         games=[public_game_summary_payload_from_record(record) for record in records],
         next_offset=next_offset,
@@ -548,10 +575,16 @@ def list_timeline(
     if run is None:
         raise GameNotFoundError(str(game_id))
 
+    limit = _page_limit(
+        query.limit,
+        default=dependencies.config.timeline_default_limit,
+        maximum=dependencies.config.timeline_max_limit,
+        field_name="limit",
+    )
     records = dependencies.repository.list_public_turns(
         run.id,
         after=query.after,
-        limit=query.limit,
+        limit=limit,
     )
     next_after = records[-1].sequence if records else query.after
     return GameTimelineResult(
@@ -559,6 +592,22 @@ def list_timeline(
         items=[public_turn_payload_from_record(record) for record in records],
         next_after=next_after,
     )
+
+
+def _page_limit(
+    value: int | None,
+    *,
+    default: int,
+    maximum: int,
+    field_name: str,
+) -> int:
+    limit = default if value is None else value
+    if limit < MIN_PAGE_LIMIT or limit > maximum:
+        raise GameError(
+            message_field_must_be_between(field_name, MIN_PAGE_LIMIT, maximum),
+            context={field_name: limit, "max_limit": maximum},
+        )
+    return limit
 
 
 def _game_definitions_for(
@@ -572,7 +621,7 @@ def _game_definitions_for(
     conflicts = sorted(custom_role_ids & set(definitions.roles.roles))
     if conflicts:
         raise GameError(
-            "custom roles conflict with default role ids",
+            MESSAGE_CUSTOM_ROLES_CONFLICT_WITH_DEFAULT_ROLE_IDS,
             context={"role_ids": conflicts},
         )
 
@@ -587,7 +636,7 @@ def _game_definitions_for(
     )
     if unknown_abilities:
         raise GameError(
-            "custom roles contain unknown abilities",
+            MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES,
             context={"abilities": unknown_abilities},
         )
 
@@ -625,7 +674,7 @@ def _llm_definitions_for(
     conflicts = sorted(custom_character_ids & set(definitions.players.players))
     if conflicts:
         raise GameError(
-            "custom characters conflict with default character ids",
+            MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS,
             context={"character_ids": conflicts},
         )
 
@@ -672,7 +721,7 @@ def _llm_definitions_with_players(
     try:
         roster = PlayerRoster(players=players)
     except ValueError as exc:
-        raise GameError("custom characters conflict with player roster") from exc
+        raise GameError(MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER) from exc
     return definitions.model_copy(update={"players": roster})
 
 
@@ -686,18 +735,18 @@ def _select_player_profiles(
     if not character_assignments:
         return select_players(roster, player_count=player_count, seed=seed)
 
-    valid_player_ids = {f"player-{index}" for index in range(1, player_count + 1)}
+    valid_player_ids = generated_player_ids(player_count)
     unknown_players = sorted(set(character_assignments) - valid_player_ids)
     if unknown_players:
         raise GameError(
-            "character assignments contain unknown generated player ids",
+            MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS,
             context={"player_ids": unknown_players},
         )
 
     unknown_profiles = sorted(set(character_assignments.values()) - set(roster.players))
     if unknown_profiles:
         raise GameError(
-            "character assignments contain unknown character ids",
+            MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS,
             context={"character_ids": unknown_profiles},
         )
 
@@ -710,12 +759,12 @@ def _select_player_profiles(
     missing_count = player_count - len(character_assignments)
     if missing_count > len(remaining):
         raise GameError(
-            "player roster does not have enough enabled players",
+            MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
             context={"player_count": player_count, "roster_count": len(roster.players)},
         )
     rng = random.Random(seed)
     sampled = {
-        f"player-{index}": SelectedPlayerProfile(profile_id=profile_id, profile=profile)
+        generated_player_id(index): SelectedPlayerProfile(profile_id=profile_id, profile=profile)
         for index, (profile_id, profile) in enumerate(
             rng.sample(remaining, missing_count),
             start=1,
@@ -724,7 +773,7 @@ def _select_player_profiles(
     selected: list[SelectedPlayerProfile] = []
     fallback_index = 1
     for index in range(1, player_count + 1):
-        player_id = f"player-{index}"
+        player_id = generated_player_id(index)
         assigned_id = character_assignments.get(player_id)
         if assigned_id is not None:
             selected.append(
@@ -734,9 +783,9 @@ def _select_player_profiles(
                 )
             )
             continue
-        while f"player-{fallback_index}" not in sampled:
+        while generated_player_id(fallback_index) not in sampled:
             fallback_index += 1
-        selected.append(sampled[f"player-{fallback_index}"])
+        selected.append(sampled[generated_player_id(fallback_index)])
         fallback_index += 1
     return selected
 
@@ -745,7 +794,7 @@ def _scenario_config(command: CreateGameCommand, definitions: GameDefinitions) -
     preset_id = command.setup_preset_id
     if preset_id is not None and preset_id not in definitions.catalog.setup_presets:
         raise GameError(
-            f"Unknown setup preset: {preset_id}",
+            message_unknown_setup_preset(preset_id),
             context={"setup_preset_id": preset_id},
         )
     preset = definitions.catalog.setup_presets.get(preset_id or "")
@@ -756,7 +805,7 @@ def _scenario_config(command: CreateGameCommand, definitions: GameDefinitions) -
         return {}
     scenario = definitions.catalog.scenarios.get(scenario_id)
     if scenario is None:
-        raise GameError(f"Unknown scenario: {scenario_id}", context={"scenario_id": scenario_id})
+        raise GameError(message_unknown_scenario(scenario_id), context={"scenario_id": scenario_id})
     return {
         "scenario_id": scenario_id,
         "scenario_name": scenario.label,
@@ -794,7 +843,9 @@ def _config_text(config: Mapping[str, object], key: str) -> str | None:
 
 def _narration_mode(config: Mapping[str, object]) -> NarrationMode:
     value = _config_text(config, "narration_mode")
-    return cast(NarrationMode, value) if value in {"none", "standard", "rich"} else "standard"
+    if value in NARRATION_MODE_CHOICES:
+        return cast(NarrationMode, value)
+    return DEFAULT_NARRATION_MODE
 
 
 def _player_faction(snapshot: GameSnapshot, player: Player) -> str:
@@ -826,7 +877,7 @@ def _action_type(value: str) -> ActionType:
         return ActionType(value)
     except ValueError as exc:
         raise GameError(
-            f"Unsupported action type: {value}",
+            message_unsupported_action_type(value),
             context={"action_type": value},
         ) from exc
 
@@ -855,11 +906,11 @@ def _requested_player_configs(
         raise GameError(message_player_count_between(config.min_players, config.max_players))
     return [
         RequestedPlayer(
-            id=f"player-{index}",
-            name=f"Player {index}",
+            id=generated_player_id(index),
+            name=generated_player_name(index),
             agent_type=(
                 "manual"
-                if f"player-{index}" == command.manual_player_id
+                if generated_player_id(index) == command.manual_player_id
                 else config.supported_agent_type
             ),
         )

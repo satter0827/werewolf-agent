@@ -11,6 +11,17 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
+from werewolf_agent.commons.shared.constants import (
+    CLI_OUTPUT_FORMAT_CHOICE_SET,
+    CLI_OUTPUT_FORMAT_JSON,
+    CLI_OUTPUT_FORMAT_TABLE,
+    EVENT_OUTCOME_SUCCESS,
+    HEALTH_STATUS_OK,
+    MIN_INTERVAL_SECONDS,
+    MIN_PAGE_OFFSET,
+    MIN_STEP_LIMIT,
+    UNKNOWN_VALUE_LABEL,
+)
 from werewolf_agent.commons.shared.messages import (
     LOG_CLI_ACTION_SUBMITTED,
     LOG_CLI_GAME_CREATED,
@@ -31,6 +42,40 @@ from werewolf_agent.contracts.schemas import (
     PlayerActionRequest,
 )
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
+from werewolf_agent.interface.entrypoint.cui.messages import (
+    COLUMN_CHECK,
+    COLUMN_VALUE,
+    HELP_AFTER_SEQUENCE,
+    HELP_API_URL,
+    HELP_API_URL_WEREWOLF,
+    HELP_FOLLOW,
+    HELP_GAME_ID_ADVANCE,
+    HELP_GAME_ID_INSPECT,
+    HELP_GAME_ID_REPLAY,
+    HELP_GAME_LIST_LIMIT,
+    HELP_GAME_PAGE_OFFSET,
+    HELP_GAME_STATUS_FILTER,
+    HELP_LIMIT_PER_POLL,
+    HELP_LOG_JSONL,
+    HELP_MANUAL_PLAYER,
+    HELP_MAX_STEPS,
+    HELP_OUTPUT_FORMAT,
+    HELP_POLL_INTERVAL_FOLLOW,
+    HELP_POLL_INTERVAL_STEPS,
+    HELP_REPLAY_DELAY,
+    HELP_ROLE_COUNT,
+    HELP_SEED,
+    HELP_SHOW_TIMELINE,
+    HELP_TIMELINE_FILE,
+    MESSAGE_REPLAY_SOURCE_REQUIRED,
+    PROMPT_SPEECH,
+    TABLE_TITLE_DOCTOR,
+    message_created_game,
+    message_game_completed,
+    message_manual_token,
+    message_next_offset,
+    message_target_prompt,
+)
 from werewolf_agent.interface.entrypoint.cui.output import (
     OutputFormat,
     console,
@@ -56,11 +101,11 @@ logger = logging.getLogger(__name__)
 def doctor(
     api_url: Annotated[
         str | None,
-        typer.Option(help="Base URL for the Werewolf Agent API."),
+        typer.Option(help=HELP_API_URL_WEREWOLF),
     ] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Print local development environment diagnostics."""
@@ -76,20 +121,20 @@ def _doctor(*, api_url: str | None, output: str | None) -> None:
     except AppError as exc:
         api_health = exc.detail
     else:
-        api_health = health.get("status", "ok")
+        api_health = health.get("status", HEALTH_STATUS_OK)
     checks = build_interface_diagnostics(
         settings=settings,
         api_url=resolved_api_url,
         api_health=api_health,
     )
 
-    if output_format != "table":
+    if output_format != CLI_OUTPUT_FORMAT_TABLE:
         print_json(checks, output_format=output_format)
         return
 
-    table = Table(title="Werewolf Agent Doctor")
-    table.add_column("Check", style="cyan", no_wrap=True)
-    table.add_column("Value", overflow="fold")
+    table = Table(title=TABLE_TITLE_DOCTOR)
+    table.add_column(COLUMN_CHECK, style="cyan", no_wrap=True)
+    table.add_column(COLUMN_VALUE, overflow="fold")
     for key, value in checks.items():
         table.add_row(key, value)
     console.print(table)
@@ -98,11 +143,11 @@ def _doctor(*, api_url: str | None, output: str | None) -> None:
 def setup_options(
     api_url: Annotated[
         str | None,
-        typer.Option(help="Base URL for the Werewolf Agent API."),
+        typer.Option(help=HELP_API_URL_WEREWOLF),
     ] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Print default game setup metadata."""
@@ -115,19 +160,19 @@ def setup_options(
 
 
 def new(
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
+    seed: Annotated[int | None, typer.Option(help=HELP_SEED)] = None,
     manual_player: Annotated[
         str | None,
-        typer.Option("--manual-player", help="Player id controlled by this CLI."),
+        typer.Option("--manual-player", help=HELP_MANUAL_PLAYER),
     ] = None,
     role_count: Annotated[
         list[str] | None,
-        typer.Option("--role-count", help="Role count entry, e.g. werewolf=1."),
+        typer.Option("--role-count", help=HELP_ROLE_COUNT),
     ] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Create one game through the public HTTP API."""
@@ -160,29 +205,31 @@ def _new(
         LOG_CLI_GAME_CREATED,
         extra={
             "event_action": LOG_CLI_GAME_CREATED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": created.game_id,
             "has_manual_player": manual_player is not None,
         },
     )
-    if output_format != "table":
+    if output_format != CLI_OUTPUT_FORMAT_TABLE:
         print_json(created, output_format=output_format)
         return
-    console.print(Panel.fit(f"Created game [bold]{created.game_id}[/bold]"))
+    console.print(Panel.fit(message_created_game(created.game_id)))
     print_state(created.state)
     if created.manual_player is not None:
         console.print(
-            "[yellow]manual token[/yellow] "
-            f"{created.manual_player.player_id}: {created.manual_player.token}"
+            message_manual_token(
+                created.manual_player.player_id,
+                created.manual_player.token,
+            )
         )
 
 
 def show(
-    game_id: Annotated[str, typer.Argument(help="Game id to inspect.")],
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
+    game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_INSPECT)],
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Print public game state."""
@@ -195,11 +242,11 @@ def show(
 
 
 def advance(
-    game_id: Annotated[str, typer.Argument(help="Game id to advance.")],
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
+    game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_ADVANCE)],
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Advance one game by one API step."""
@@ -214,7 +261,7 @@ def advance(
 
 def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat) -> None:
     response = client.advance_game(game_id)
-    if output_format != "table":
+    if output_format != CLI_OUTPUT_FORMAT_TABLE:
         print_json(response, output_format=output_format)
         return
     print_state(response.state)
@@ -222,29 +269,29 @@ def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat
 
 
 def play(
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
+    seed: Annotated[int | None, typer.Option(help=HELP_SEED)] = None,
     manual_player: Annotated[
         str | None,
-        typer.Option("--manual-player", help="Player id controlled by this CLI."),
+        typer.Option("--manual-player", help=HELP_MANUAL_PLAYER),
     ] = None,
-    max_steps: Annotated[int | None, typer.Option(help="Maximum API step calls.")] = None,
+    max_steps: Annotated[int | None, typer.Option(help=HELP_MAX_STEPS)] = None,
     role_count: Annotated[
         list[str] | None,
-        typer.Option("--role-count", help="Role count entry, e.g. werewolf=1."),
+        typer.Option("--role-count", help=HELP_ROLE_COUNT),
     ] = None,
-    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public timeline JSONL.")] = None,
+    log_jsonl: Annotated[Path | None, typer.Option(help=HELP_LOG_JSONL)] = None,
     poll_interval: Annotated[
         float | None,
-        typer.Option(help="Seconds to wait between API step calls."),
+        typer.Option(help=HELP_POLL_INTERVAL_STEPS),
     ] = None,
     show_timeline: Annotated[
         bool,
-        typer.Option("--show-timeline/--no-show-timeline", help="Print public timeline items."),
+        typer.Option("--show-timeline/--no-show-timeline", help=HELP_SHOW_TIMELINE),
     ] = True,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Create and run one game through the public HTTP API."""
@@ -278,9 +325,9 @@ def _play(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    if max_steps < 1:
+    if max_steps < MIN_STEP_LIMIT:
         raise AppError(MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE, code=ErrorCode.CONFIG_INVALID_VALUE)
-    if poll_interval < 0:
+    if poll_interval < MIN_INTERVAL_SECONDS:
         raise AppError(
             MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
             code=ErrorCode.CONFIG_INVALID_VALUE,
@@ -294,7 +341,7 @@ def _play(
         )
     )
     state = created.state
-    last_sequence = 0
+    last_sequence = MIN_PAGE_OFFSET
     emitted_items: list[GameTimelineItem] = []
     manual_token = (
         created.manual_player.token
@@ -302,8 +349,8 @@ def _play(
         else None
     )
 
-    if output_format == "table":
-        console.print(Panel.fit(f"Created game [bold]{created.game_id}[/bold]"))
+    if output_format == CLI_OUTPUT_FORMAT_TABLE:
+        console.print(Panel.fit(message_created_game(created.game_id)))
         print_state(state)
 
     initial_timeline = client.get_timeline(created.game_id, after=last_sequence)
@@ -312,7 +359,7 @@ def _play(
         initial_timeline.items,
         next_after=initial_timeline.next_after,
         log_jsonl=log_jsonl,
-        show_items=show_timeline and output_format != "json",
+        show_items=show_timeline and output_format != CLI_OUTPUT_FORMAT_JSON,
         output_format=output_format,
     )
 
@@ -337,7 +384,7 @@ def _play(
             timeline_batch.items,
             next_after=timeline_batch.next_after,
             log_jsonl=log_jsonl,
-            show_items=show_timeline and output_format != "json",
+            show_items=show_timeline and output_format != CLI_OUTPUT_FORMAT_JSON,
             output_format=output_format,
         )
 
@@ -347,21 +394,21 @@ def _play(
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 
-    winner = state.winner or "unknown"
+    winner = state.winner or UNKNOWN_VALUE_LABEL
     logger.info(
         LOG_CLI_PLAY_COMPLETED,
         extra={
             "event_action": LOG_CLI_PLAY_COMPLETED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": created.game_id,
             "winner": winner,
             "steps": steps,
         },
     )
-    if output_format == "table":
+    if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_state(state)
-        console.print(f"[bold green]Game completed[/bold green]: winner={winner}, steps={steps}")
-    elif output_format == "json":
+        console.print(message_game_completed(winner=winner, steps=steps))
+    elif output_format == CLI_OUTPUT_FORMAT_JSON:
         print_json(
             {
                 "game_id": created.game_id,
@@ -380,22 +427,22 @@ def _play(
 
 
 def timeline(
-    game_id: Annotated[str, typer.Argument(help="Game id to inspect.")],
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    after: Annotated[int, typer.Option(help="Start after this timeline sequence.")] = 0,
-    limit: Annotated[int | None, typer.Option(help="Maximum items per poll.")] = None,
+    game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_INSPECT)],
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
+    after: Annotated[int, typer.Option(help=HELP_AFTER_SEQUENCE)] = (MIN_PAGE_OFFSET),
+    limit: Annotated[int | None, typer.Option(help=HELP_LIMIT_PER_POLL)] = None,
     poll_interval: Annotated[
         float | None,
-        typer.Option(help="Seconds to wait between polls when following."),
+        typer.Option(help=HELP_POLL_INTERVAL_FOLLOW),
     ] = None,
     follow: Annotated[
         bool,
-        typer.Option("--follow/--no-follow", help="Keep polling for new items."),
+        typer.Option("--follow/--no-follow", help=HELP_FOLLOW),
     ] = False,
-    log_jsonl: Annotated[Path | None, typer.Option(help="Optional public timeline JSONL.")] = None,
+    log_jsonl: Annotated[Path | None, typer.Option(help=HELP_LOG_JSONL)] = None,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Read or follow public game timeline items."""
@@ -427,9 +474,9 @@ def _timeline(
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
-    if follow and output_format == "json":
+    if follow and output_format == CLI_OUTPUT_FORMAT_JSON:
         raise AppError(MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW, code=ErrorCode.CONFIG_INVALID_VALUE)
-    if poll_interval < 0:
+    if poll_interval < MIN_INTERVAL_SECONDS:
         raise AppError(
             MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
             code=ErrorCode.CONFIG_INVALID_VALUE,
@@ -450,7 +497,7 @@ def _timeline(
             LOG_CLI_TIMELINE_POLLED,
             extra={
                 "event_action": LOG_CLI_TIMELINE_POLLED,
-                "event_outcome": "success",
+                "event_outcome": EVENT_OUTCOME_SUCCESS,
                 "game_id": game_id,
                 "after": previous_sequence,
                 "next_after": last_sequence,
@@ -465,27 +512,29 @@ def _timeline(
 def replay(
     timeline_file: Annotated[
         Path | None,
-        typer.Option("--timeline", help="Public timeline JSONL."),
+        typer.Option("--timeline", help=HELP_TIMELINE_FILE),
     ] = None,
     game_id: Annotated[
         str | None,
-        typer.Option("--game-id", help="Game id to replay from the API."),
+        typer.Option("--game-id", help=HELP_GAME_ID_REPLAY),
     ] = None,
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    delay: Annotated[float, typer.Option(help="Seconds to wait between items.")] = 0.0,
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
+    delay: Annotated[float, typer.Option(help=HELP_REPLAY_DELAY)] = (MIN_INTERVAL_SECONDS),
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Replay public timeline items from JSONL or the public HTTP API."""
+    settings = get_settings()
     run_app_command(
         lambda: _replay(
             timeline_file=timeline_file,
             game_id=game_id,
             delay=delay,
             client=_client(api_url),
-            output_format=_output_format(output, get_settings()),
+            output_format=_output_format(output, settings),
+            timeline_limit=settings.api_timeline_max_limit,
         )
     )
 
@@ -497,14 +546,20 @@ def _replay(
     delay: float,
     client: GameApiClient,
     output_format: OutputFormat,
+    timeline_limit: int,
 ) -> None:
-    if delay < 0:
+    if delay < MIN_INTERVAL_SECONDS:
         raise AppError(
             MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
-    replay_items = _load_replay_items(timeline_file, game_id=game_id, client=client)
-    if output_format == "json":
+    replay_items = _load_replay_items(
+        timeline_file,
+        game_id=game_id,
+        client=client,
+        timeline_limit=timeline_limit,
+    )
+    if output_format == CLI_OUTPUT_FORMAT_JSON:
         for _ in replay_items:
             if delay:
                 time.sleep(delay)
@@ -513,7 +568,7 @@ def _replay(
             LOG_CLI_REPLAY_COMPLETED,
             extra={
                 "event_action": LOG_CLI_REPLAY_COMPLETED,
-                "event_outcome": "success",
+                "event_outcome": EVENT_OUTCOME_SUCCESS,
                 "event_count": len(replay_items),
             },
         )
@@ -526,20 +581,20 @@ def _replay(
         LOG_CLI_REPLAY_COMPLETED,
         extra={
             "event_action": LOG_CLI_REPLAY_COMPLETED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "event_count": len(replay_items),
         },
     )
 
 
 def games(
-    api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    status: Annotated[str | None, typer.Option(help="Optional game status filter.")] = None,
-    limit: Annotated[int, typer.Option(help="Maximum games to return.")] = 20,
-    offset: Annotated[int, typer.Option(help="Game page offset.")] = 0,
+    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
+    status: Annotated[str | None, typer.Option(help=HELP_GAME_STATUS_FILTER)] = None,
+    limit: Annotated[int | None, typer.Option(help=HELP_GAME_LIST_LIMIT)] = None,
+    offset: Annotated[int, typer.Option(help=HELP_GAME_PAGE_OFFSET)] = MIN_PAGE_OFFSET,
     output: Annotated[
         str | None,
-        typer.Option("--output", help="Output format: table, json, or jsonl."),
+        typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """List public game summaries."""
@@ -557,15 +612,15 @@ def games(
 def _games(
     *,
     status: str | None,
-    limit: int,
+    limit: int | None,
     offset: int,
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
     response = client.list_games(status=status, limit=limit, offset=offset)
     print_game_summaries(response.games, output_format=output_format)
-    if response.next_offset is not None and output_format == "table":
-        console.print(f"[dim]next offset: {response.next_offset}[/dim]")
+    if response.next_offset is not None and output_format == CLI_OUTPUT_FORMAT_TABLE:
+        console.print(message_next_offset(response.next_offset))
 
 
 def _client(api_url: str | None) -> GameApiClient:
@@ -613,15 +668,15 @@ def _prompt_and_submit_manual_action(
     actions = observation.observation.get("available_actions") or []
     if not actions:
         return
-    if output_format == "table":
+    if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_observation(observation)
     action_type = str(actions[0])
     target_id = None
     message = None
     if action_type == "speech":
-        message = typer.prompt("speech")
+        message = typer.prompt(PROMPT_SPEECH)
     elif action_type != "pass":
-        target_id = typer.prompt(f"{action_type} target_id")
+        target_id = typer.prompt(message_target_prompt(action_type))
     response = client.submit_player_action(
         game_id,
         player_id,
@@ -636,13 +691,13 @@ def _prompt_and_submit_manual_action(
         LOG_CLI_ACTION_SUBMITTED,
         extra={
             "event_action": LOG_CLI_ACTION_SUBMITTED,
-            "event_outcome": "success",
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": target_id is not None,
             "has_message": bool(message),
         },
     )
-    if output_format == "table":
+    if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_timeline(response.timeline)
 
 
@@ -651,6 +706,7 @@ def _load_replay_items(
     *,
     game_id: str | None,
     client: GameApiClient,
+    timeline_limit: int,
 ) -> list[GameTimelineItem]:
     if timeline_file is not None:
         return [
@@ -659,15 +715,16 @@ def _load_replay_items(
             if line.strip()
         ]
     if game_id is not None:
-        return client.get_timeline(game_id, after=0, limit=500).items
-    raise AppError(
-        "Either --timeline or --game-id is required.",
-        code=ErrorCode.CONFIG_INVALID_VALUE,
-    )
+        return client.get_timeline(
+            game_id,
+            after=MIN_PAGE_OFFSET,
+            limit=timeline_limit,
+        ).items
+    raise AppError(MESSAGE_REPLAY_SOURCE_REQUIRED, code=ErrorCode.CONFIG_INVALID_VALUE)
 
 
 def _output_format(value: str | None, settings: AppSettings) -> OutputFormat:
     raw_value = value or settings.cli_output_format
-    if raw_value not in {"table", "json", "jsonl"}:
+    if raw_value not in CLI_OUTPUT_FORMAT_CHOICE_SET:
         raise AppError(MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID, code=ErrorCode.CONFIG_INVALID_VALUE)
     return cast(OutputFormat, raw_value)

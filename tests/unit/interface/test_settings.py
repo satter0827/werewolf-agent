@@ -133,6 +133,10 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_version == "0.1.0"
     assert settings.api_debug is False
     assert settings.reveal_api_enabled is True
+    assert settings.api_game_list_default_limit == 20
+    assert settings.api_game_list_max_limit == 100
+    assert settings.api_timeline_default_limit == 100
+    assert settings.api_timeline_max_limit == 500
     assert settings.llm_provider == "fake"
     assert settings.model == "fake-list-llm"
     assert settings.llm_base_url == ""
@@ -147,6 +151,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
     assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
+    assert settings.game_default_narration_mode == "standard"
     assert settings.game_rules_path is None
     assert settings.game_roles_path is None
 
@@ -170,6 +175,11 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.default_player_count == 7
     assert usecase_config.supported_agent_type == "llm"
     assert usecase_config.default_setup_id == "default"
+    assert usecase_config.default_narration_mode == "standard"
+    assert usecase_config.game_list_default_limit == 20
+    assert usecase_config.game_list_max_limit == 100
+    assert usecase_config.timeline_default_limit == 100
+    assert usecase_config.timeline_max_limit == 500
 
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
@@ -305,6 +315,11 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
     monkeypatch.setenv("WEREWOLF_REVEAL_API_ENABLED", "false")
+    monkeypatch.setenv("WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT", "7")
+    monkeypatch.setenv("WEREWOLF_API_GAME_LIST_MAX_LIMIT", "77")
+    monkeypatch.setenv("WEREWOLF_API_TIMELINE_DEFAULT_LIMIT", "17")
+    monkeypatch.setenv("WEREWOLF_API_TIMELINE_MAX_LIMIT", "177")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_NARRATION_MODE", "rich")
 
     settings = AppSettings(_env_file=None)
 
@@ -366,6 +381,11 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
     assert settings.reveal_api_enabled is False
+    assert settings.api_game_list_default_limit == 7
+    assert settings.api_game_list_max_limit == 77
+    assert settings.api_timeline_default_limit == 17
+    assert settings.api_timeline_max_limit == 177
+    assert settings.game_default_narration_mode == "rich"
 
 
 def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:
@@ -605,12 +625,29 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("streamlit_language", "fr"),
         ("streamlit_initial_sidebar_state", "hidden"),
         ("game_supported_agent_type", "bot"),
+        ("game_default_narration_mode", "verbose"),
         ("llm_provider", "anthropic"),
     ],
 )
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:
     with pytest.raises(ValidationError):
         AppSettings(_env_file=None, **{field_name: value})
+
+
+def test_api_page_limit_settings_reject_inconsistent_defaults() -> None:
+    with pytest.raises(ValidationError, match="api_game_list_default_limit"):
+        AppSettings(
+            _env_file=None,
+            api_game_list_default_limit=101,
+            api_game_list_max_limit=100,
+        )
+
+    with pytest.raises(ValidationError, match="api_timeline_default_limit"):
+        AppSettings(
+            _env_file=None,
+            api_timeline_default_limit=501,
+            api_timeline_max_limit=500,
+        )
 
 
 def test_log_file_name_rejects_paths() -> None:

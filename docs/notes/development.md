@@ -31,11 +31,11 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 CLI:
 
 ```bash
-uv run werewolf-agent setup-options --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --manual-player player-1
-uv run werewolf-agent games --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
+uv run werewolf-agent setup-options
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --manual-player player-1
+uv run werewolf-agent games
+uv run werewolf-agent timeline <game_id> --follow
 ```
 
 Streamlit:
@@ -110,6 +110,8 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 | Streamlit i18n | `backend/src/werewolf_agent/resources/streamlit/i18n.toml` | `WEREWOLF_STREAMLIT_I18N_FILE` | `interface/entrypoint/streamlit` |
 
 `interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行います。`interface/application` は読み込まれた値だけを usecase へ注入します。game 作成時は `role_counts` から人数を導出し、manual seat は `manual_player_id` で指定します。
+
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。
 
 ## DB
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import ValidationError
 
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_INVALID_CREATE_GAME_REQUEST,
     MESSAGE_ROLE_COUNT_MUST_BE_INTEGER,
     MESSAGE_ROLE_COUNT_MUST_USE_EQUALS,
 )
@@ -28,7 +29,7 @@ def build_create_game_request(
     rules: LocalRulesSettings | None = None,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
-    narration_mode: NarrationMode = "standard",
+    narration_mode: NarrationMode | None = None,
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
@@ -49,7 +50,7 @@ def build_create_game_request(
         )
     except ValidationError as exc:
         detail = "; ".join(
-            str(error.get("msg", "invalid create game request")) for error in exc.errors()
+            str(error.get("msg", MESSAGE_INVALID_CREATE_GAME_REQUEST)) for error in exc.errors()
         )
         raise AppError(detail, code=ErrorCode.CONFIG_INVALID_VALUE) from exc
 

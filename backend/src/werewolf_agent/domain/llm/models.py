@@ -9,6 +9,7 @@ from pydantic import Field, field_validator, model_validator
 
 from werewolf_agent.commons.shared.definitions import PlayerProfile as PlayerProfileDefinition
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_AGENT_PROFILES_REQUIRED,
     MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
     MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
     MESSAGE_SPEECH_DECISION_REQUIRES_MESSAGE,
@@ -187,7 +188,7 @@ class PlayerProfileCatalog(_LlmModel):
             if profile.enabled
         }
         if not profiles:
-            raise ValueError("profiles must include at least one enabled profile")
+            raise ValueError(MESSAGE_AGENT_PROFILES_REQUIRED)
         return profiles
 
     def profile_for(self, profile_id: str | None) -> PlayerProfile:

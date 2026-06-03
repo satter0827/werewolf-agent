@@ -81,6 +81,10 @@ MESSAGE_EXPLICIT_ROLES_MUST_MATCH_ROLE_COUNTS = (
 )
 MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF = "Werewolves cannot attack another werewolf."
 MESSAGE_SEER_CANNOT_INSPECT_SELF = "Seer cannot inspect themself."
+MESSAGE_KNIGHT_CANNOT_GUARD_SELF = "knight cannot guard self"
+MESSAGE_KNIGHT_CANNOT_REPEAT_GUARD_TARGET = (
+    "knight cannot guard the same target on consecutive nights"
+)
 MESSAGE_UNSUPPORTED_NIGHT_ACTION = "Unsupported night action."
 MESSAGE_EXPECTED_NIGHT_ACTION = "Expected a night action."
 MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE = "Cannot inspect a player before roles are assigned."
@@ -92,6 +96,7 @@ MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID = "output format must be one of: table, json
 MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW = "Use jsonl output when following streamed timeline items."
 MESSAGE_ROLE_COUNT_MUST_USE_EQUALS = "role count entries must use role=count syntax."
 MESSAGE_ROLE_COUNT_MUST_BE_INTEGER = "role count values must be integers."
+MESSAGE_INVALID_CREATE_GAME_REQUEST = "invalid create game request"
 MESSAGE_API_RESPONSE_NOT_JSON = "api.invalid_response: API response was not valid JSON."
 MESSAGE_API_RESPONSE_NOT_OBJECT = "api.invalid_response: API response was not a JSON object."
 MESSAGE_API_RESPONSE_SCHEMA_MISMATCH = (
@@ -101,9 +106,11 @@ MESSAGE_NO_VALID_VOTE_TARGETS = "no valid vote targets"
 MESSAGE_NO_ATTACK_TARGETS = "no attack targets"
 MESSAGE_NO_INSPECT_TARGETS = "no inspect targets"
 MESSAGE_NO_GUARD_TARGETS = "no guard targets"
+MESSAGE_NO_TARGET = "no target"
 MESSAGE_ROLE_HAS_NO_NIGHT_ACTION = "role has no night action"
 MESSAGE_OBSERVATION_BELONGS_TO_ANOTHER_PLAYER = "observation belongs to another player"
 MESSAGE_PLAYER_IS_DEAD = "player is dead"
+MESSAGE_LLM_DECISION_PLAYER_MISMATCH = "llm decision player mismatch"
 MESSAGE_MISSING_SPEECH_MESSAGE = "missing speech message"
 MESSAGE_MISSING_VOTE_TARGET = "missing vote target"
 MESSAGE_MISSING_ATTACK_TARGET = "missing attack target"
@@ -124,6 +131,78 @@ MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD = "pass actions cannot include target_id or 
 MESSAGE_SPEECH_DECISION_REQUIRES_MESSAGE = "message is required for speech decisions"
 MESSAGE_SPEECH_DECISION_FORBIDS_TARGET = "target_id is not allowed for speech decisions"
 MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD = "pass decisions cannot include target_id or message"
+MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE = (
+    "exactly one tie rule must be enabled: "
+    "enable_no_elimination_on_tie, enable_random_elimination_on_tie"
+)
+MESSAGE_GENERATED_PLAYER_INDEX_MUST_BE_AT_LEAST_ONE = "generated player index must be at least 1"
+MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS = (
+    "character_assignments keys must match generated player ids"
+)
+MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE = "character_assignments values must be unique"
+MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE = "custom role ids must be unique"
+MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE = "custom character ids must be unique"
+MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE = "role abilities must be unique"
+MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE = "custom role abilities must be unique"
+MESSAGE_CUSTOM_ROLES_CONFLICT_WITH_DEFAULT_ROLE_IDS = "custom roles conflict with default role ids"
+MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES = "custom roles contain unknown abilities"
+MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS = (
+    "custom characters conflict with default character ids"
+)
+MESSAGE_NARRATION_TEMPLATES_REQUIRED = "narration templates must include at least one value"
+MESSAGE_ALLOWED_ROLES_MUST_BE_UNIQUE = "allowed_roles must be unique"
+MESSAGE_SETUP_PRESET_ROLE_COUNTS_REQUIRED = (
+    "setup preset role_counts must include at least one player"
+)
+MESSAGE_ROLES_REQUIRED = "roles must include at least one role"
+MESSAGE_DEFAULT_ROLE_COUNTS_REQUIRED = "default_role_counts must include at least one player count"
+MESSAGE_DEFAULT_ROLE_COUNT_KEYS_POSITIVE = "default_role_counts keys must be positive player counts"
+MESSAGE_PLAYERS_REQUIRED = "players must include at least one enabled profile"
+MESSAGE_PLAYER_PROFILE_NAMES_MUST_BE_UNIQUE = "player profile names must be unique"
+MESSAGE_PROMPT_MESSAGE_ROLE_MUST_BE_VALID = "prompt message role must be one of: ai, human, system"
+MESSAGE_INPUT_VARIABLES_REQUIRED = "input_variables must include at least one value"
+MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE = "input_variables must be unique"
+MESSAGE_PROMPT_MESSAGES_REQUIRED = "messages must include at least one prompt message"
+MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION = (
+    "response_format.schema must be AgentDecision"
+)
+MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED = "templates.pass is required"
+MESSAGE_LLM_MODEL_NOT_CONFIGURED = "llm model is not configured"
+MESSAGE_AGENT_PROFILES_REQUIRED = "profiles must include at least one enabled profile"
+MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME = "log_file_name must be a file name"
+MESSAGE_SAVE_SLOT_MUST_NOT_CONTAIN_MANUAL_TOKEN = "save slot must not contain manual_token"
+MESSAGE_ROLE_COUNTS_MUST_BE_OBJECT = "role_counts must be an object"
+MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER = (
+    "custom characters conflict with player roster"
+)
+MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS = (
+    "character assignments contain unknown generated player ids"
+)
+MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS = (
+    "character assignments contain unknown character ids"
+)
+MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS = (
+    "player roster does not have enough enabled players"
+)
+MESSAGE_MIN_PLAYERS_MUST_BE_AT_LEAST_ONE = "min_players must be at least 1"
+MESSAGE_MAX_PLAYERS_MUST_BE_GE_MIN_PLAYERS = (
+    "max_players must be greater than or equal to min_players"
+)
+MESSAGE_DEFAULT_PLAYER_COUNT_WITHIN_MIN_MAX = "default_player_count must be within min/max players"
+MESSAGE_DEFAULT_NARRATION_MODE_UNSUPPORTED = "default_narration_mode is not supported"
+MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE = "game_list_default_limit must be at least 1"
+MESSAGE_GAME_LIST_MAX_LIMIT_MUST_BE_AT_LEAST_ONE = "game_list_max_limit must be at least 1"
+MESSAGE_GAME_LIST_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX = (
+    "game_list_default_limit must not exceed game_list_max_limit"
+)
+MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_BE_AT_LEAST_ONE = "timeline_default_limit must be at least 1"
+MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE = "timeline_max_limit must be at least 1"
+MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX = (
+    "timeline_default_limit must not exceed timeline_max_limit"
+)
+MESSAGE_TELEMETRY_LEVEL_MUST_BE_VALID = (
+    "telemetry level must be one of: DEBUG, INFO, WARNING, ERROR"
+)
 
 
 def message_field_must_be_string(field_name: str) -> str:
@@ -139,6 +218,31 @@ def message_field_must_not_be_blank(field_name: str) -> str:
 def message_field_must_be_one_of(field_name: str, choices: Iterable[str]) -> str:
     """Return a finite-choice validation message."""
     return f"{field_name} must be one of: {', '.join(sorted(choices))}"
+
+
+def message_field_must_be_at_least(field_name: str, minimum: object) -> str:
+    """Return a lower-bound validation message."""
+    return f"{field_name} must be at least {minimum}"
+
+
+def message_field_must_be_greater_than(field_name: str, minimum: object) -> str:
+    """Return an exclusive lower-bound validation message."""
+    return f"{field_name} must be greater than {minimum}"
+
+
+def message_field_must_be_between(field_name: str, minimum: object, maximum: object) -> str:
+    """Return an inclusive range validation message."""
+    return f"{field_name} must be between {minimum} and {maximum}"
+
+
+def message_field_must_not_exceed(field_name: str, maximum_field_name: str) -> str:
+    """Return a field-pair ordering validation message."""
+    return f"{field_name} must not exceed {maximum_field_name}"
+
+
+def message_field_must_be_le_field(field_name: str, maximum_field_name: str) -> str:
+    """Return a less-than-or-equal field-pair validation message."""
+    return f"{field_name} must be less than or equal to {maximum_field_name}"
 
 
 def message_mapping_item_must_use_separator(field_name: str, separator: str) -> str:
@@ -164,9 +268,87 @@ def message_game_setup_description_template_invalid() -> str:
     )
 
 
+def message_missing_default_setting(key: str) -> str:
+    """Return a packaged default lookup failure message."""
+    return f"Missing default setting: {key}"
+
+
+def message_save_slot_field_must_be_non_empty(key: str) -> str:
+    """Return a save-slot required text validation message."""
+    return f"{key} must be non-empty"
+
+
+def message_field_must_be_toml_table(field_name: str) -> str:
+    """Return a TOML table validation message."""
+    return f"{field_name} must be a TOML table"
+
+
+def message_field_must_be_non_empty_string(field_name: str) -> str:
+    """Return a non-empty string validation message."""
+    return f"{field_name} must be a non-empty string"
+
+
+def message_localized_keys_must_match_en(
+    field_name: str,
+    lang: str,
+    *,
+    missing: str,
+    extra: str,
+) -> str:
+    """Return a localized message-key coverage validation message."""
+    return f"{field_name}.{lang} keys must match en: missing={missing} extra={extra}"
+
+
+def message_localized_label_kinds_must_match_en(lang: str) -> str:
+    """Return a localized label-kind coverage validation message."""
+    return f"labels.{lang} kinds must match en"
+
+
+def message_definition_settings_invalid(error: object) -> str:
+    """Return a runtime definition settings validation message."""
+    return f"definition settings are invalid: {error}"
+
+
+def message_role_definition_missing_player_counts(missing: str) -> str:
+    """Return a role definition default-count coverage message."""
+    return (
+        f"game role definition default_role_counts must define configured player counts: {missing}"
+    )
+
+
 def message_role_count_must_be_zero_or_greater(role_id: str) -> str:
     """Return a role count validation message."""
     return f"role_counts[{role_id}] must be zero or greater"
+
+
+def message_default_role_counts_unknown_roles(role_ids: Iterable[str]) -> str:
+    """Return an unknown-role validation message for default role counts."""
+    return f"default_role_counts contain unknown roles: {', '.join(role_ids)}"
+
+
+def message_default_role_counts_must_sum(player_count: int) -> str:
+    """Return a default role-count sum validation message."""
+    return f"default_role_counts[{player_count}] must sum to {player_count}"
+
+
+def message_default_role_counts_must_define_player_count(player_count: int) -> str:
+    """Return a default role-count coverage validation message."""
+    return f"default_role_counts must define player_count {player_count}"
+
+
+def message_unknown_role_in_role_counts(role_id: str) -> str:
+    """Return an unknown role-count key validation message."""
+    return f"unknown role in role_counts: {role_id}"
+
+
+def message_unsupported_faction(faction: str) -> str:
+    """Return an unsupported faction validation message."""
+    return f"unsupported faction: {faction}"
+
+
+def message_unsupported_abilities(abilities: Iterable[str]) -> str:
+    """Return an unsupported abilities validation message."""
+    return f"unsupported abilities: {', '.join(abilities)}"
 
 
 def message_target_required(action_type: str, subject: str) -> str:
@@ -182,6 +364,11 @@ def message_message_not_allowed(action_type: str, subject: str) -> str:
 def message_unsupported_type(value: str, subject: str) -> str:
     """Return an unsupported-type validation message."""
     return f"unsupported {subject} type: {value}"
+
+
+def message_unsupported_action_type(value: str) -> str:
+    """Return an unsupported action type validation message."""
+    return f"Unsupported action type: {value}"
 
 
 def message_action_not_available(action_type: str, phase: str) -> str:
@@ -219,6 +406,21 @@ def message_no_action_for_phase(phase: str) -> str:
     return f"no action for {phase}"
 
 
+def message_invalid_llm_decision(error_type: str) -> str:
+    """Return an invalid LLM decision parse reason."""
+    return f"invalid llm decision: {error_type}"
+
+
+def message_llm_decision_action_unavailable(action_type: str) -> str:
+    """Return an unavailable LLM decision action reason."""
+    return f"llm decision action unavailable: {action_type}"
+
+
+def message_llm_decision_target_unavailable(action_type: str) -> str:
+    """Return an unavailable LLM decision target reason."""
+    return f"llm decision target unavailable: {action_type}"
+
+
 def message_player_count_between(min_players: int, max_players: int) -> str:
     """Return a player-count validation message."""
     return f"player_count must be between {min_players} and {max_players}."
@@ -237,6 +439,58 @@ def message_supported_player_agent_type_only(supported_agent_type: str) -> str:
 def message_unsupported_llm_provider(provider: str) -> str:
     """Return an unsupported LLM provider configuration message."""
     return f"Unsupported LLM provider: {provider}."
+
+
+def message_unknown_setup_preset(preset_id: str) -> str:
+    """Return an unknown setup preset message."""
+    return f"Unknown setup preset: {preset_id}"
+
+
+def message_unknown_scenario(scenario_id: str) -> str:
+    """Return an unknown scenario message."""
+    return f"Unknown scenario: {scenario_id}"
+
+
+def message_llm_base_url_required(provider: str) -> str:
+    """Return an LLM base URL requirement message."""
+    return f"llm base_url is required for {provider} provider"
+
+
+def message_openai_api_key_required(provider: str) -> str:
+    """Return an OpenAI-compatible API key requirement message."""
+    return f"OPENAI_API_KEY is required for {provider} provider"
+
+
+def message_settings_llm_base_url_required(provider: str) -> str:
+    """Return a settings-level LLM base URL requirement message."""
+    return f"WEREWOLF_LLM_BASE_URL is required when WEREWOLF_LLM_PROVIDER={provider}"
+
+
+def message_settings_openai_api_key_required(provider: str) -> str:
+    """Return a settings-level OpenAI API key requirement message."""
+    return f"OPENAI_API_KEY is required when WEREWOLF_LLM_PROVIDER={provider}"
+
+
+def message_langchain_openai_required(*, lmstudio_provider: str, openai_provider: str) -> str:
+    """Return a LangChain provider dependency message."""
+    return (
+        f"langchain-openai is required for {lmstudio_provider} and {openai_provider} LLM providers"
+    )
+
+
+def message_input_variables_not_used(names: str) -> str:
+    """Return a prompt-template unused variable message."""
+    return f"input_variables not used by messages: {names}"
+
+
+def message_message_variables_missing(names: str) -> str:
+    """Return a prompt-template missing variable message."""
+    return f"message variables missing from input_variables: {names}"
+
+
+def message_fake_decision_templates_required(action_type: str) -> str:
+    """Return a FakeListLLM template coverage message."""
+    return f"templates.{action_type} must include at least one item"
 
 
 def message_game_did_not_complete(max_steps: int) -> str:

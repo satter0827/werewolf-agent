@@ -8,6 +8,7 @@ import time
 from typing import Any, cast
 from uuid import uuid4
 
+from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
@@ -52,6 +53,7 @@ from werewolf_agent.interface.entrypoint.streamlit.saves import (
 )
 from werewolf_agent.interface.entrypoint.streamlit.setup import (
     KEY_ROLE_COUNT_WIDGET_PREFIX,
+    NARRATION_MODES,
     VIEW_APP_SETTINGS,
     VIEW_GAME,
     VIEW_OBSERVE_SETUP,
@@ -603,7 +605,7 @@ def _render_narration_setup(
     lang: Language,
 ) -> None:
     """Render the game narration selector."""
-    modes: list[NarrationMode] = ["standard", "rich", "none"]
+    modes = list(NARRATION_MODES)
     current_mode = narration_mode(st.session_state, setup_options)
     selected_mode = st.selectbox(
         catalog.t(lang, "settings.narration"),
@@ -1045,7 +1047,7 @@ def _create_game(
     screen_mode: str,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
-    narration_mode: NarrationMode = "standard",
+    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE,
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None,

@@ -22,12 +22,7 @@
           "PYTHONPATH": "${workspaceFolder}/backend/src",
           "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
           "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
-          "WEREWOLF_LOG_LEVEL": "INFO",
-          "WEREWOLF_LOG_OUTPUT": "file",
-          "WEREWOLF_LOG_DIR": "${workspaceFolder}\\.werewolf-agent\\logs",
-          "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl",
-          "WEREWOLF_LOG_RETENTION_DAYS": "14",
-          "WEREWOLF_LOG_THIRD_PARTY_LEVEL": "WARNING"
+          "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
         }
       },
       "presentation": {

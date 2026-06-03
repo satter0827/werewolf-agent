@@ -13,18 +13,18 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError as PydanticValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_FAILURE
 from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
 from werewolf_agent.contracts.errors import ErrorCode, get_error_spec, problem_type_uri
 from werewolf_agent.contracts.exceptions import AppError, InternalError
 from werewolf_agent.contracts.schemas import ProblemDetails, ProblemIssue
 from werewolf_agent.interface.runtime import get_observation_context
+from werewolf_agent.interface.shared.constants import PROBLEM_JSON_CONTENT_TYPE
 from werewolf_agent.interface.shared.log_levels import log_level_number
 from werewolf_agent.interface.shared.messages import (
     LOG_API_APPLICATION_ERROR_HANDLED,
     LOG_API_UNHANDLED_EXCEPTION,
 )
-
-PROBLEM_JSON_CONTENT_TYPE = "application/problem+json"
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
         extra={
             **error.log_extra(trace_id=_trace_id()),
             "event_action": LOG_API_UNHANDLED_EXCEPTION,
-            "event_outcome": "failure",
+            "event_outcome": EVENT_OUTCOME_FAILURE,
         },
     )
     return problem_response(
@@ -205,6 +205,6 @@ def _log_app_error(error: AppError) -> None:
         extra={
             **error.log_extra(trace_id=_trace_id()),
             "event_action": LOG_API_APPLICATION_ERROR_HANDLED,
-            "event_outcome": "failure",
+            "event_outcome": EVENT_OUTCOME_FAILURE,
         },
     )

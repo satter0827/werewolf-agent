@@ -7,13 +7,39 @@ from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
+from werewolf_agent.commons.shared.constants import (
+    DEFAULT_NARRATION_MODE,
+    MAX_CHARACTER_AGE,
+    MAX_DIFFICULTY,
+    MAX_HTTP_STATUS_CODE,
+    MIN_CHARACTER_AGE,
+    MIN_DIFFICULTY,
+    MIN_HTTP_STATUS_CODE,
+    MIN_PAGE_LIMIT,
+    MIN_PAGE_OFFSET,
+    MIN_ROLE_COUNT,
+    MIN_SEQUENCE,
+    MIN_VERSION,
+    NarrationMode,
+)
 from werewolf_agent.commons.shared.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
     LocalRulesDefinition,
 )
-from werewolf_agent.commons.shared.messages import MESSAGE_PLAYER_COUNT_AT_LEAST_ONE
-from werewolf_agent.commons.shared.validation import non_blank, optional_non_blank
+from werewolf_agent.commons.shared.messages import (
+    MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
+    MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE,
+    MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE,
+    MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE,
+    MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS,
+    MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
+)
+from werewolf_agent.commons.shared.validation import (
+    generated_player_ids,
+    non_blank,
+    optional_non_blank,
+)
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
@@ -21,8 +47,7 @@ PlayerStatus = Literal["alive", "dead"]
 ActionType = str
 RoleId = str
 Winner = Literal["villagers", "werewolves"]
-RoleCount = Annotated[int, Field(ge=0)]
-NarrationMode = Literal["none", "standard", "rich"]
+RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 
 
 class LocalRulesSettings(LocalRulesDefinition):
@@ -47,7 +72,7 @@ class CreateGameRequest(BaseModel):
     seed: int | None = None
     scenario_id: str | None = None
     setup_preset_id: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode | None = None
     role_counts: dict[RoleId, RoleCount]
     manual_player_id: str | None = None
     rules: LocalRulesSettings | None = None
@@ -95,21 +120,21 @@ class CreateGameRequest(BaseModel):
     @model_validator(mode="after")
     def validate_manual_player_within_generated_seats(self) -> Self:
         """Ensure the requested manual seat exists in the generated table."""
-        valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
+        valid_player_ids = generated_player_ids(self.player_count)
         if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
-            raise ValueError("manual_player_id must match a generated player id")
+            raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
         unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
         if unknown_assignments:
-            raise ValueError("character_assignments keys must match generated player ids")
+            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS)
         assigned_character_ids = list(self.character_assignments.values())
         if len(set(assigned_character_ids)) != len(assigned_character_ids):
-            raise ValueError("character_assignments values must be unique")
+            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE)
         custom_role_ids = [definition.id for definition in self.custom_roles]
         if len(set(custom_role_ids)) != len(custom_role_ids):
-            raise ValueError("custom role ids must be unique")
+            raise ValueError(MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE)
         custom_character_ids = [definition.id for definition in self.custom_characters]
         if len(set(custom_character_ids)) != len(custom_character_ids):
-            raise ValueError("custom character ids must be unique")
+            raise ValueError(MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE)
         return self
 
     @property
@@ -142,7 +167,7 @@ class PublicGameState(BaseModel):
     seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     players: list[PublicPlayerState]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
@@ -217,9 +242,9 @@ class GameListResponse(BaseModel):
 class GameTimelineItem(BaseModel):
     """Public timeline item shared by API, CLI, replay, and UI."""
 
-    sequence: int = Field(ge=1)
-    event_sequence: int = Field(ge=1)
-    version: int = Field(ge=1)
+    sequence: int = Field(ge=MIN_SEQUENCE)
+    event_sequence: int = Field(ge=MIN_SEQUENCE)
+    version: int = Field(ge=MIN_VERSION)
     phase: GamePhase | None = None
     day: int | None = None
     actor_id: str | None = None
@@ -315,7 +340,7 @@ class GameRevealResponse(BaseModel):
     seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
-    narration_mode: NarrationMode = "standard"
+    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesSettings
     players: list[GameRevealPlayer]
@@ -334,8 +359,8 @@ class GameListQuery(BaseModel):
     """Query parameters for listing public games."""
 
     status: GameStatus | None = None
-    limit: int = Field(default=20, ge=1, le=100)
-    offset: int = Field(default=0, ge=0)
+    limit: int | None = Field(default=None, ge=MIN_PAGE_LIMIT)
+    offset: int = Field(default=MIN_PAGE_OFFSET, ge=MIN_PAGE_OFFSET)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -343,8 +368,8 @@ class GameListQuery(BaseModel):
 class GameTimelineQuery(BaseModel):
     """Query parameters for reading the public game timeline."""
 
-    after: int = Field(default=0, ge=0)
-    limit: int = Field(default=100, ge=1, le=500)
+    after: int = Field(default=MIN_PAGE_OFFSET, ge=MIN_PAGE_OFFSET)
+    limit: int | None = Field(default=None, ge=MIN_PAGE_LIMIT)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -357,7 +382,7 @@ class RoleDefinitionView(BaseModel):
     faction: str
     abilities: list[str]
     description: str = ""
-    difficulty: int = Field(default=1, ge=1, le=5)
+    difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -377,7 +402,7 @@ class GameSetupOptionsResponse(BaseModel):
     default_rules: LocalRulesSettings
     default_scenario_id: str | None = None
     default_setup_preset_id: str | None = None
-    default_narration_mode: NarrationMode = "standard"
+    default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     abilities: list[AbilityDefinitionView] = Field(default_factory=list)
     scenarios: list[ScenarioDefinitionView] = Field(default_factory=list)
     setup_presets: list[SetupPresetDefinitionView] = Field(default_factory=list)
@@ -393,7 +418,7 @@ class AbilityDefinitionView(BaseModel):
     name: str
     description: str
     target_policy: str
-    difficulty: int = Field(ge=1, le=5)
+    difficulty: int = Field(ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -443,7 +468,7 @@ class CharacterDefinitionView(BaseModel):
 
     id: str
     name: str
-    age: int = Field(ge=18, le=99)
+    age: int = Field(ge=MIN_CHARACTER_AGE, le=MAX_CHARACTER_AGE)
     gender: str
     personality: str
     speaking_style: str
@@ -532,7 +557,7 @@ class ProblemDetails(BaseModel):
 
     type: str
     title: str
-    status: int = Field(ge=100, le=599)
+    status: int = Field(ge=MIN_HTTP_STATUS_CODE, le=MAX_HTTP_STATUS_CODE)
     detail: str
     instance: str
     code: str

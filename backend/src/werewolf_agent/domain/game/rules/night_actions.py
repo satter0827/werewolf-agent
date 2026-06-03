@@ -9,6 +9,8 @@ from collections.abc import Mapping
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE,
     MESSAGE_EXPECTED_NIGHT_ACTION,
+    MESSAGE_KNIGHT_CANNOT_GUARD_SELF,
+    MESSAGE_KNIGHT_CANNOT_REPEAT_GUARD_TARGET,
     MESSAGE_SEER_CANNOT_INSPECT_SELF,
     MESSAGE_UNSUPPORTED_NIGHT_ACTION,
     MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF,
@@ -137,7 +139,7 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
         require_alive(snapshot, target_id)
         if not snapshot.config.rules.allow_knight_self_guard and action.player_id == target_id:
             raise GameError(
-                "knight cannot guard self",
+                MESSAGE_KNIGHT_CANNOT_GUARD_SELF,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         last_night = snapshot.history.nights[-1] if snapshot.history.nights else None
@@ -147,7 +149,7 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
             and last_night.protected_player_id == target_id
         ):
             raise GameError(
-                "knight cannot guard the same target on consecutive nights",
+                MESSAGE_KNIGHT_CANNOT_REPEAT_GUARD_TARGET,
                 context={"player_id": action.player_id, "target_id": target_id},
             )
         return
