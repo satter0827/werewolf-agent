@@ -44,9 +44,10 @@ KEY_ROLE_COUNT_WIDGET_PREFIX = "werewolf_streamlit_game_setup_role_count"
 
 VIEW_PLAY_SETUP = "play_setup"
 VIEW_OBSERVE_SETUP = "observe_setup"
+VIEW_HISTORY = "history"
 VIEW_GAME = "game"
 VIEW_APP_SETTINGS = "app_settings"
-VIEWS = frozenset({VIEW_PLAY_SETUP, VIEW_OBSERVE_SETUP, VIEW_GAME, VIEW_APP_SETTINGS})
+VIEWS = frozenset({VIEW_PLAY_SETUP, VIEW_OBSERVE_SETUP, VIEW_HISTORY, VIEW_GAME, VIEW_APP_SETTINGS})
 
 PRESET_STANDARD = "standard"
 PRESET_BEGINNER = "beginner"
@@ -116,16 +117,9 @@ class GameSetupDraft(BaseModel):
 class StreamlitPreferences(BaseModel):
     """Session-scoped preferences shared by every Streamlit game screen."""
 
-    api_url: str = ""
     language: Language | None = None
 
     model_config = ConfigDict(extra="forbid")
-
-    @field_validator("api_url", mode="before")
-    @classmethod
-    def normalize_api_url(cls, value: object) -> str:
-        """Return the preferred API URL text."""
-        return str(value or "").strip()
 
 
 @dataclass(frozen=True)
@@ -187,18 +181,6 @@ def remember_streamlit_preferences(
 ) -> None:
     """Store Streamlit-wide preferences."""
     session[KEY_STREAMLIT_PREFERENCES] = preferences.model_dump(mode="json", exclude_none=True)
-
-
-def preferred_api_url(session: MutableMapping[str, Any], default_api_url: str) -> str:
-    """Return the session API URL, falling back to runtime settings."""
-    preferences = streamlit_preferences(session)
-    return preferences.api_url or default_api_url
-
-
-def remember_preferred_api_url(session: MutableMapping[str, Any], api_url: str) -> None:
-    """Store the session API URL preference."""
-    preferences = streamlit_preferences(session).model_copy(update={"api_url": api_url.strip()})
-    remember_streamlit_preferences(session, preferences)
 
 
 def preferred_language(session: MutableMapping[str, Any], default_language: Language) -> Language:

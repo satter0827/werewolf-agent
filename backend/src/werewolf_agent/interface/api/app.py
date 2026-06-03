@@ -24,11 +24,6 @@ from werewolf_agent.commons.shared.constants import (
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.interface.api.routers import router
-from werewolf_agent.interface.application.database import (
-    create_database_engine,
-    create_session_factory,
-)
-from werewolf_agent.interface.application.models import Base
 from werewolf_agent.interface.runtime import (
     AppSettings,
     bind_observation_context,
@@ -59,14 +54,10 @@ def create_app(
     create_schema: bool = False,
 ) -> FastAPI:
     """Create the FastAPI ASGI app."""
+    _ = create_schema
     loaded_settings = settings or get_settings()
     configure_interface_logging(loaded_settings)
     _log_api_startup(loaded_settings)
-
-    engine = create_database_engine(loaded_settings)
-    if create_schema:
-        Base.metadata.create_all(engine)
-    session_factory = create_session_factory(engine)
 
     app = FastAPI(
         title=loaded_settings.api_title,
@@ -74,8 +65,6 @@ def create_app(
         debug=loaded_settings.api_debug,
     )
     app.state.settings = loaded_settings
-    app.state.engine = engine
-    app.state.session_factory = session_factory
 
     if loaded_settings.cors_allowed_origins_list:
         app.add_middleware(
@@ -121,30 +110,16 @@ def _log_api_startup(settings: AppSettings) -> None:
         "llm_model": settings.model,
         "llm_base_url": settings.llm_base_url or "provider default",
     }
-    startup_fields.update(_database_log_fields(settings))
+    startup_fields.update(_supabase_log_fields(settings))
     logger.info(LOG_API_APPLICATION_STARTED, extra=startup_fields)
 
 
-def _database_log_fields(settings: AppSettings) -> dict[str, object]:
-    if settings.configured_database_url:
-        return {
-            "database_backend": _database_backend(settings.sqlalchemy_database_url),
-            "database_source": "database_url",
-        }
+def _supabase_log_fields(settings: AppSettings) -> dict[str, object]:
     return {
-        "database_backend": "sqlite",
-        "database_source": "sqlite_path",
-        "sqlite_path": str(settings.sqlite_database_path),
+        "data_backend": "supabase" if settings.supabase_client_configured else "demo",
+        "supabase_configured": settings.supabase_client_configured,
+        "supabase_worker_configured": settings.supabase_worker_configured,
     }
-
-
-def _database_backend(database_url: str) -> str:
-    normalized_url = database_url.lower()
-    if normalized_url.startswith("sqlite"):
-        return "sqlite"
-    if normalized_url.startswith(("postgres://", "postgresql://", "postgresql+")):
-        return "postgresql"
-    return "configured"
 
 
 async def _trace_request(

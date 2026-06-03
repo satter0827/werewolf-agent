@@ -6,7 +6,6 @@ import platform
 import sys
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from urllib.parse import urlsplit, urlunsplit
 
 from werewolf_agent.commons.shared.constants import REDACTED
 from werewolf_agent.interface.runtime import APP_NAME, AppSettings, repository_root
@@ -15,7 +14,7 @@ from werewolf_agent.interface.runtime import APP_NAME, AppSettings, repository_r
 def build_interface_diagnostics(
     *,
     settings: AppSettings,
-    api_url: str,
+    data_source: str,
     api_health: str,
 ) -> dict[str, str]:
     """Build user-facing diagnostics shared by CLI and Streamlit."""
@@ -27,8 +26,13 @@ def build_interface_diagnostics(
         "platform": platform.platform(),
         "repository": str(root),
         "env file": env_file_status(root),
-        "api url": api_url,
-        "api health": api_health,
+        "data source": data_source,
+        "data health": api_health,
+        "supabase url": settings.supabase_url or "not configured",
+        "supabase publishable key": (
+            REDACTED if settings.supabase_publishable_key_value else "not configured"
+        ),
+        "supabase worker dsn": REDACTED if settings.supabase_db_dsn_value else "not configured",
         "provider": settings.llm_provider,
         "model": settings.model,
         "llm base url": settings.llm_base_url or "provider default",
@@ -42,7 +46,7 @@ def build_interface_diagnostics(
         "log file": str(settings.log_file_path),
         "log retention days": str(settings.log_retention_days),
         "log third party level": settings.log_third_party_level,
-        "database": redacted_database_url(settings.sqlalchemy_database_url),
+        "llm trace retention days": str(settings.llm_trace_retention_days),
     }
 
 
@@ -64,22 +68,3 @@ def env_file_status(root: Path) -> str:
     if example_path.exists():
         return ".env missing; packaged defaults are active"
     return ".env and .env.example missing"
-
-
-def redacted_database_url(value: str) -> str:
-    """Return a database URL safe for diagnostics output."""
-    parsed = urlsplit(value)
-    if parsed.password is None:
-        return value
-
-    host = parsed.hostname or ""
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
-    if parsed.port is not None:
-        host = f"{host}:{parsed.port}"
-
-    user = parsed.username or ""
-    credentials = f"{user}:{REDACTED}" if user else REDACTED
-    return urlunsplit(
-        (parsed.scheme, f"{credentials}@{host}", parsed.path, parsed.query, parsed.fragment)
-    )

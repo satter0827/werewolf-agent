@@ -51,6 +51,8 @@ from werewolf_agent.commons.shared.constants import (
 from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME,
+    MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED,
+    MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP,
     message_definition_settings_invalid,
     message_field_must_be_le_field,
     message_game_default_player_count_between,
@@ -114,7 +116,6 @@ APP_NAME: Final = _string_default("app_name")
 DEFAULT_API_SERVICE_NAME: Final = _string_default("api_service_name")
 
 DEFAULT_GENERATED_DIR: Final = _path_default("generated_dir")
-DEFAULT_SQLITE_PATH: Final = _path_default("sqlite_path")
 DEFAULT_LLM_PROVIDER: Final = _string_default("llm_provider")
 DEFAULT_LLM_MODEL: Final = _string_default("model")
 DEFAULT_LLM_BASE_URL: Final = _string_default("llm_base_url")
@@ -131,8 +132,18 @@ DEFAULT_LOG_DIR: Final = _path_default("log_dir")
 DEFAULT_LOG_FILE_NAME: Final = _string_default("log_file_name")
 DEFAULT_LOG_RETENTION_DAYS: Final = _integer_default("log_retention_days")
 DEFAULT_LOG_THIRD_PARTY_LEVEL: Final = _string_default("log_third_party_level")
-DEFAULT_CLI_API_URL: Final = _string_default("cli_api_url")
-DEFAULT_CLI_HTTP_TIMEOUT_SECONDS: Final = _float_default("cli_http_timeout_seconds")
+DEFAULT_SUPABASE_URL: Final = _string_default("supabase_url")
+DEFAULT_SUPABASE_PUBLISHABLE_KEY: Final = _string_default("supabase_publishable_key")
+DEFAULT_SUPABASE_DB_DSN: Final = _string_default("supabase_db_dsn")
+DEFAULT_SUPABASE_AUTH_TIMEOUT_SECONDS: Final = _float_default("supabase_auth_timeout_seconds")
+DEFAULT_SUPABASE_REST_TIMEOUT_SECONDS: Final = _float_default("supabase_rest_timeout_seconds")
+DEFAULT_SUPABASE_WORKER_ID: Final = _string_default("supabase_worker_id")
+DEFAULT_SUPABASE_WORKER_POLL_INTERVAL_SECONDS: Final = _float_default(
+    "supabase_worker_poll_interval_seconds"
+)
+DEFAULT_SUPABASE_WORKER_BATCH_SIZE: Final = _integer_default("supabase_worker_batch_size")
+DEFAULT_SUPABASE_WORKER_CLAIM_SECONDS: Final = _integer_default("supabase_worker_claim_seconds")
+DEFAULT_LLM_TRACE_RETENTION_DAYS: Final = _integer_default("llm_trace_retention_days")
 DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS: Final = _float_default(
     "advance_job_poll_interval_seconds"
 )
@@ -141,12 +152,9 @@ DEFAULT_CLI_MAX_STEPS: Final = _integer_default("cli_max_steps")
 DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = _float_default("cli_poll_interval_seconds")
 DEFAULT_CLI_EVENT_LIMIT: Final = _integer_default("cli_event_limit")
 DEFAULT_CLI_OUTPUT_FORMAT: Final = _string_default("cli_output_format")
-DEFAULT_STREAMLIT_API_URL: Final = _string_default("streamlit_api_url")
-DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS: Final = _float_default("streamlit_http_timeout_seconds")
 DEFAULT_STREAMLIT_REFRESH_INTERVAL_SECONDS: Final = _float_default(
     "streamlit_refresh_interval_seconds"
 )
-DEFAULT_STREAMLIT_EVENT_LIMIT: Final = _integer_default("streamlit_event_limit")
 DEFAULT_STREAMLIT_TURN_LIMIT: Final = _integer_default("streamlit_turn_limit")
 DEFAULT_STREAMLIT_RUN_LIMIT: Final = _integer_default("streamlit_run_limit")
 DEFAULT_STREAMLIT_MAX_AUTO_STEPS: Final = _integer_default("streamlit_max_auto_steps")
@@ -156,8 +164,10 @@ DEFAULT_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS: Final = _float_default(
 DEFAULT_STREAMLIT_INITIAL_SIDEBAR_STATE: Final = _string_default("streamlit_initial_sidebar_state")
 DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
 DEFAULT_STREAMLIT_I18N_FILE: Final = _string_default("streamlit_i18n_file")
-DEFAULT_STREAMLIT_SAVE_FILE: Final = _path_default("streamlit_save_file")
+DEFAULT_STREAMLIT_CSS_FILE: Final = _string_default("streamlit_css_file")
+DEFAULT_STREAMLIT_SCREENS_FILE: Final = _string_default("streamlit_screens_file")
 DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
+DEFAULT_STREAMLIT_RANDOM_SEED_MAX: Final = _integer_default("streamlit_random_seed_max")
 DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID: Final = _string_default(
     "streamlit_default_manual_player_id"
 )
@@ -305,14 +315,51 @@ class AppSettings(BaseSettings):
         default=DEFAULT_LOG_THIRD_PARTY_LEVEL,
         validation_alias="WEREWOLF_LOG_THIRD_PARTY_LEVEL",
     )
-    cli_api_url: str = Field(
-        default=DEFAULT_CLI_API_URL,
-        validation_alias="WEREWOLF_CLI_API_URL",
+    supabase_url: str = Field(
+        default=DEFAULT_SUPABASE_URL,
+        validation_alias="WEREWOLF_SUPABASE_URL",
     )
-    cli_http_timeout_seconds: float = Field(
-        default=DEFAULT_CLI_HTTP_TIMEOUT_SECONDS,
+    supabase_publishable_key: SecretStr = Field(
+        default=SecretStr(DEFAULT_SUPABASE_PUBLISHABLE_KEY),
+        validation_alias="WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
+    )
+    supabase_db_dsn: SecretStr = Field(
+        default=SecretStr(DEFAULT_SUPABASE_DB_DSN),
+        validation_alias=AliasChoices("WEREWOLF_SUPABASE_DB_DSN", "SUPABASE_DB_DSN"),
+    )
+    supabase_auth_timeout_seconds: float = Field(
+        default=DEFAULT_SUPABASE_AUTH_TIMEOUT_SECONDS,
         gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
-        validation_alias="WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS",
+        validation_alias="WEREWOLF_SUPABASE_AUTH_TIMEOUT_SECONDS",
+    )
+    supabase_rest_timeout_seconds: float = Field(
+        default=DEFAULT_SUPABASE_REST_TIMEOUT_SECONDS,
+        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
+        validation_alias="WEREWOLF_SUPABASE_REST_TIMEOUT_SECONDS",
+    )
+    supabase_worker_id: str = Field(
+        default=DEFAULT_SUPABASE_WORKER_ID,
+        validation_alias="WEREWOLF_SUPABASE_WORKER_ID",
+    )
+    supabase_worker_poll_interval_seconds: float = Field(
+        default=DEFAULT_SUPABASE_WORKER_POLL_INTERVAL_SECONDS,
+        ge=MIN_INTERVAL_SECONDS,
+        validation_alias="WEREWOLF_SUPABASE_WORKER_POLL_INTERVAL_SECONDS",
+    )
+    supabase_worker_batch_size: int = Field(
+        default=DEFAULT_SUPABASE_WORKER_BATCH_SIZE,
+        ge=1,
+        validation_alias="WEREWOLF_SUPABASE_WORKER_BATCH_SIZE",
+    )
+    supabase_worker_claim_seconds: int = Field(
+        default=DEFAULT_SUPABASE_WORKER_CLAIM_SECONDS,
+        ge=1,
+        validation_alias="WEREWOLF_SUPABASE_WORKER_CLAIM_SECONDS",
+    )
+    llm_trace_retention_days: int = Field(
+        default=DEFAULT_LLM_TRACE_RETENTION_DAYS,
+        ge=MIN_RETENTION_DAYS,
+        validation_alias="WEREWOLF_LLM_TRACE_RETENTION_DAYS",
     )
     advance_job_poll_interval_seconds: float = Field(
         default=DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS,
@@ -344,25 +391,10 @@ class AppSettings(BaseSettings):
         default=cast(SharedCliOutputFormat, DEFAULT_CLI_OUTPUT_FORMAT),
         validation_alias="WEREWOLF_CLI_OUTPUT_FORMAT",
     )
-    streamlit_api_url: str = Field(
-        default=DEFAULT_STREAMLIT_API_URL,
-        validation_alias="WEREWOLF_STREAMLIT_API_URL",
-    )
-    streamlit_http_timeout_seconds: float = Field(
-        default=DEFAULT_STREAMLIT_HTTP_TIMEOUT_SECONDS,
-        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
-        validation_alias="WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS",
-    )
     streamlit_refresh_interval_seconds: float = Field(
         default=DEFAULT_STREAMLIT_REFRESH_INTERVAL_SECONDS,
         ge=MIN_INTERVAL_SECONDS,
         validation_alias="WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS",
-    )
-    streamlit_event_limit: int = Field(
-        default=DEFAULT_STREAMLIT_EVENT_LIMIT,
-        ge=MIN_PAGE_LIMIT,
-        le=MAX_TIMELINE_LIMIT,
-        validation_alias="WEREWOLF_STREAMLIT_EVENT_LIMIT",
     )
     streamlit_turn_limit: int = Field(
         default=DEFAULT_STREAMLIT_TURN_LIMIT,
@@ -398,9 +430,13 @@ class AppSettings(BaseSettings):
         default=DEFAULT_STREAMLIT_I18N_FILE,
         validation_alias="WEREWOLF_STREAMLIT_I18N_FILE",
     )
-    streamlit_save_file: Path = Field(
-        default=DEFAULT_STREAMLIT_SAVE_FILE,
-        validation_alias="WEREWOLF_STREAMLIT_SAVE_FILE",
+    streamlit_css_file: str = Field(
+        default=DEFAULT_STREAMLIT_CSS_FILE,
+        validation_alias="WEREWOLF_STREAMLIT_CSS_FILE",
+    )
+    streamlit_screens_file: str = Field(
+        default=DEFAULT_STREAMLIT_SCREENS_FILE,
+        validation_alias="WEREWOLF_STREAMLIT_SCREENS_FILE",
     )
     streamlit_page_title: str = Field(
         default=DEFAULT_STREAMLIT_PAGE_TITLE,
@@ -409,6 +445,11 @@ class AppSettings(BaseSettings):
     streamlit_default_seed: int = Field(
         default=DEFAULT_STREAMLIT_DEFAULT_SEED,
         validation_alias="WEREWOLF_STREAMLIT_DEFAULT_SEED",
+    )
+    streamlit_random_seed_max: int = Field(
+        default=DEFAULT_STREAMLIT_RANDOM_SEED_MAX,
+        ge=1,
+        validation_alias="WEREWOLF_STREAMLIT_RANDOM_SEED_MAX",
     )
     streamlit_default_manual_player_id: str = Field(
         default=DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID,
@@ -527,14 +568,6 @@ class AppSettings(BaseSettings):
         default=DEFAULT_API_CORS_ALLOWED_HEADERS,
         validation_alias="WEREWOLF_CORS_ALLOWED_HEADERS",
     )
-    sqlite_path: Path = Field(
-        default=DEFAULT_SQLITE_PATH,
-        validation_alias="WEREWOLF_SQLITE_PATH",
-    )
-    database_url: SecretStr = Field(
-        default=SecretStr(""),
-        validation_alias=AliasChoices("WEREWOLF_DATABASE_URL", "DATABASE_URL"),
-    )
     openai_api_key: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="OPENAI_API_KEY",
@@ -563,6 +596,26 @@ class AppSettings(BaseSettings):
         return split_csv(self.api_cors_allowed_headers)
 
     @property
+    def supabase_publishable_key_value(self) -> str:
+        """Return the public Supabase browser/client key."""
+        return self.supabase_publishable_key.get_secret_value().strip()
+
+    @property
+    def supabase_db_dsn_value(self) -> str:
+        """Return the worker-only Supabase direct database DSN."""
+        return self.supabase_db_dsn.get_secret_value().strip()
+
+    @property
+    def supabase_client_configured(self) -> bool:
+        """Return whether UI/CLI can use Supabase directly."""
+        return bool(self.supabase_url and self.supabase_publishable_key_value)
+
+    @property
+    def supabase_worker_configured(self) -> bool:
+        """Return whether the worker can connect to Supabase Postgres."""
+        return bool(self.supabase_db_dsn_value)
+
+    @property
     def game_role_name_map(self) -> dict[str, str]:
         """Return configured public role display names."""
         return split_mapping(self.game_role_names, field_name="game_role_names")
@@ -573,31 +626,19 @@ class AppSettings(BaseSettings):
         return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
-    def streamlit_resolved_api_url(self) -> str:
-        """Return Streamlit API URL, falling back to the CLI API URL."""
-        api_url = self.streamlit_api_url.strip()
-        return api_url or self.cli_api_url
-
-    @property
-    def streamlit_save_file_path(self) -> Path:
-        """Return the absolute local save-slot file for the Streamlit UI."""
-        save_file = self.streamlit_save_file.expanduser()
-        if save_file.is_absolute():
-            return save_file
-        return repository_root() / save_file
-
-    @property
     def streamlit_i18n_path(self) -> Path | None:
         """Return the configured external Streamlit i18n file, if any."""
         return _optional_repository_path(self.streamlit_i18n_file)
 
     @property
-    def sqlite_database_path(self) -> Path:
-        """Return an absolute SQLite path, creating parent directories on demand elsewhere."""
-        sqlite_path = self.sqlite_path.expanduser()
-        if sqlite_path.is_absolute():
-            return sqlite_path
-        return repository_root() / sqlite_path
+    def streamlit_css_path(self) -> Path | None:
+        """Return the configured external Streamlit CSS file, if any."""
+        return _optional_repository_path(self.streamlit_css_file)
+
+    @property
+    def streamlit_screens_path(self) -> Path | None:
+        """Return the configured external Streamlit screen definition file, if any."""
+        return _optional_repository_path(self.streamlit_screens_file)
 
     @property
     def llm_prompt_path(self) -> Path | None:
@@ -662,26 +703,9 @@ class AppSettings(BaseSettings):
         return self.log_directory_path / self.log_file_name
 
     @property
-    def configured_database_url(self) -> str:
-        """Return the configured database URL without exposing it in repr output."""
-        return self.database_url.get_secret_value().strip()
-
-    @property
     def configured_openai_api_key(self) -> str:
         """Return the configured OpenAI-compatible API key without exposing it in repr output."""
         return self.openai_api_key.get_secret_value().strip()
-
-    @property
-    def sqlalchemy_database_url(self) -> str:
-        """Return a SQLAlchemy database URL, defaulting to local SQLite."""
-        database_url = self.configured_database_url
-        if database_url:
-            if database_url.startswith("postgres://"):
-                return database_url.replace("postgres://", "postgresql+psycopg://", 1)
-            if database_url.startswith("postgresql://"):
-                return database_url.replace("postgresql://", "postgresql+psycopg://", 1)
-            return database_url
-        return f"sqlite:///{self.sqlite_database_path.as_posix()}"
 
     @field_validator("log_level", mode="before")
     @classmethod
@@ -725,6 +749,25 @@ class AppSettings(BaseSettings):
             raise ValueError(MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME)
         return file_name
 
+    @field_validator("supabase_url", mode="before")
+    @classmethod
+    def normalize_supabase_url(cls, value: object) -> str:
+        """Return an optional Supabase project URL."""
+        if value is None:
+            return ""
+        url = str(value).strip().rstrip("/")
+        if not url:
+            return ""
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP)
+        return url
+
+    @field_validator("supabase_worker_id", mode="before")
+    @classmethod
+    def normalize_supabase_worker_id(cls, value: object) -> str:
+        """Return a non-empty worker id for queue ownership."""
+        return normalize_non_blank(value, field_name="supabase_worker_id")
+
     @field_validator("streamlit_language", mode="before")
     @classmethod
     def normalize_streamlit_language(cls, value: object) -> str:
@@ -753,10 +796,15 @@ class AppSettings(BaseSettings):
         """Return non-empty Streamlit display/service settings."""
         return normalize_non_blank(value, field_name=str(info.field_name))
 
-    @field_validator("streamlit_i18n_file", mode="before")
+    @field_validator(
+        "streamlit_i18n_file",
+        "streamlit_css_file",
+        "streamlit_screens_file",
+        mode="before",
+    )
     @classmethod
-    def normalize_streamlit_i18n_file(cls, value: object) -> str:
-        """Return an optional Streamlit i18n file path."""
+    def normalize_streamlit_optional_file(cls, value: object) -> str:
+        """Return an optional Streamlit resource override file path."""
         return "" if value is None else str(value).strip()
 
     @field_validator("streamlit_default_manual_player_id", mode="before")
@@ -764,14 +812,6 @@ class AppSettings(BaseSettings):
     def normalize_streamlit_player_id(cls, value: object) -> str:
         """Return the default Streamlit player id."""
         return normalize_non_blank(value, field_name="streamlit_default_manual_player_id")
-
-    @field_validator("streamlit_save_file", mode="before")
-    @classmethod
-    def normalize_streamlit_save_file(cls, value: object) -> Path:
-        """Return a non-empty Streamlit save file path."""
-        if isinstance(value, Path):
-            return value
-        return Path(normalize_non_blank(value, field_name="streamlit_save_file"))
 
     @field_validator("cli_output_format", mode="before")
     @classmethod
@@ -839,7 +879,6 @@ class AppSettings(BaseSettings):
         "api_title",
         "api_service_name",
         "api_version",
-        "cli_api_url",
         mode="before",
     )
     @classmethod
@@ -851,6 +890,7 @@ class AppSettings(BaseSettings):
     def validate_game_settings(self) -> Self:
         """Ensure game count defaults are internally consistent."""
         self._normalize_provider_base_url()
+        self._validate_supabase_settings()
         if self.api_game_list_default_limit > self.api_game_list_max_limit:
             raise ValueError(
                 message_field_must_be_le_field(
@@ -913,6 +953,13 @@ class AppSettings(BaseSettings):
         if missing_counts:
             missing = ", ".join(str(player_count) for player_count in missing_counts)
             raise ValueError(message_role_definition_missing_player_counts(missing))
+
+    def _validate_supabase_settings(self) -> None:
+        """Ensure client-facing Supabase settings are provided as a pair."""
+        has_url = bool(self.supabase_url)
+        has_key = bool(self.supabase_publishable_key_value)
+        if has_url != has_key:
+            raise ValueError(MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED)
 
 
 @lru_cache(maxsize=1)

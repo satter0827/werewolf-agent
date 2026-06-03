@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from contextlib import suppress
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -46,8 +47,7 @@ from werewolf_agent.interface.entrypoint.cui.messages import (
     COLUMN_CHECK,
     COLUMN_VALUE,
     HELP_AFTER_SEQUENCE,
-    HELP_API_URL,
-    HELP_API_URL_WEREWOLF,
+    HELP_EMAIL,
     HELP_FOLLOW,
     HELP_GAME_ID_ADVANCE,
     HELP_GAME_ID_INSPECT,
@@ -60,6 +60,7 @@ from werewolf_agent.interface.entrypoint.cui.messages import (
     HELP_MANUAL_PLAYER,
     HELP_MAX_STEPS,
     HELP_OUTPUT_FORMAT,
+    HELP_PASSWORD,
     HELP_POLL_INTERVAL_FOLLOW,
     HELP_POLL_INTERVAL_STEPS,
     HELP_REPLAY_DELAY,
@@ -67,7 +68,11 @@ from werewolf_agent.interface.entrypoint.cui.messages import (
     HELP_SEED,
     HELP_SHOW_TIMELINE,
     HELP_TIMELINE_FILE,
+    MESSAGE_LOGIN_SUCCEEDED,
+    MESSAGE_LOGOUT_SUCCEEDED,
+    MESSAGE_NOT_LOGGED_IN,
     MESSAGE_REPLAY_SOURCE_REQUIRED,
+    MESSAGE_SUPABASE_LOGIN_CONFIG_REQUIRED,
     PROMPT_SPEECH,
     TABLE_TITLE_DOCTOR,
     message_created_game,
@@ -88,43 +93,97 @@ from werewolf_agent.interface.entrypoint.cui.output import (
     print_timeline,
 )
 from werewolf_agent.interface.runtime import AppSettings, get_settings
-from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
+from werewolf_agent.interface.shared.client_factory import build_game_client
 from werewolf_agent.interface.shared.diagnostics import build_interface_diagnostics
+from werewolf_agent.interface.shared.game_client import GameClient
 from werewolf_agent.interface.shared.game_requests import (
     build_create_game_request,
     parse_role_counts,
 )
+from werewolf_agent.interface.supabase import SupabaseAuthClient, SupabaseSessionStore
 
 logger = logging.getLogger(__name__)
 
 
+def login(
+    email: Annotated[str, typer.Option(help=HELP_EMAIL, prompt=True)],
+    password: Annotated[str, typer.Option(help=HELP_PASSWORD, prompt=True, hide_input=True)],
+) -> None:
+    """Sign in to Supabase for persistent personal history."""
+    run_app_command(lambda: _login(email=email, password=password))
+
+
+def _login(*, email: str, password: str) -> None:
+    settings = get_settings()
+    if not settings.supabase_client_configured:
+        raise AppError(
+            MESSAGE_SUPABASE_LOGIN_CONFIG_REQUIRED,
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+        )
+    session = SupabaseAuthClient(
+        settings.supabase_url,
+        settings.supabase_publishable_key_value,
+        timeout=settings.supabase_auth_timeout_seconds,
+    ).sign_in_with_password(email=email, password=password)
+    SupabaseSessionStore().save(session)
+    console.print(MESSAGE_LOGIN_SUCCEEDED)
+
+
+def logout() -> None:
+    """Sign out and clear the local Supabase session."""
+    run_app_command(_logout)
+
+
+def _logout() -> None:
+    settings = get_settings()
+    store = SupabaseSessionStore()
+    session = store.load()
+    if session is not None and settings.supabase_client_configured:
+        with suppress(AppError):
+            SupabaseAuthClient(
+                settings.supabase_url,
+                settings.supabase_publishable_key_value,
+                timeout=settings.supabase_auth_timeout_seconds,
+            ).sign_out(session)
+    store.clear()
+    console.print(MESSAGE_LOGOUT_SUCCEEDED)
+
+
+def whoami() -> None:
+    """Print the current CLI auth mode."""
+    run_app_command(_whoami)
+
+
+def _whoami() -> None:
+    session = SupabaseSessionStore().load()
+    if session is None:
+        console.print(MESSAGE_NOT_LOGGED_IN)
+        return
+    console.print(session.email or session.user_id)
+
+
 def doctor(
-    api_url: Annotated[
-        str | None,
-        typer.Option(help=HELP_API_URL_WEREWOLF),
-    ] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
     """Print local development environment diagnostics."""
-    run_app_command(lambda: _doctor(api_url=api_url, output=output))
+    run_app_command(lambda: _doctor(output=output))
 
 
-def _doctor(*, api_url: str | None, output: str | None) -> None:
+def _doctor(*, output: str | None) -> None:
     settings = get_settings()
-    resolved_api_url = api_url or settings.cli_api_url
     output_format = _output_format(output, settings)
     try:
-        health = _build_game_api_client(resolved_api_url).health()
+        health = build_game_client(settings).health()
     except AppError as exc:
         api_health = exc.detail
     else:
         api_health = health.get("status", HEALTH_STATUS_OK)
     checks = build_interface_diagnostics(
         settings=settings,
-        api_url=resolved_api_url,
+        data_source=health.get("service", "demo") if "health" in locals() else "demo",
         api_health=api_health,
     )
 
@@ -141,10 +200,6 @@ def _doctor(*, api_url: str | None, output: str | None) -> None:
 
 
 def setup_options(
-    api_url: Annotated[
-        str | None,
-        typer.Option(help=HELP_API_URL_WEREWOLF),
-    ] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
@@ -153,14 +208,13 @@ def setup_options(
     """Print default game setup metadata."""
     run_app_command(
         lambda: print_setup_options(
-            _client(api_url).get_setup_options(),
+            _client().get_setup_options(),
             output_format=_output_format(output, get_settings()),
         )
     )
 
 
 def new(
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     seed: Annotated[int | None, typer.Option(help=HELP_SEED)] = None,
     manual_player: Annotated[
         str | None,
@@ -175,13 +229,13 @@ def new(
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
-    """Create one game through the public HTTP API."""
+    """Create one game through the active data source."""
     run_app_command(
         lambda: _new(
             seed=seed,
             manual_player=manual_player,
             role_count=role_count or [],
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -192,7 +246,7 @@ def _new(
     seed: int | None,
     manual_player: str | None,
     role_count: list[str],
-    client: GameApiClient,
+    client: GameClient,
     output_format: OutputFormat,
 ) -> None:
     request = _create_request(
@@ -226,7 +280,6 @@ def _new(
 
 def show(
     game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_INSPECT)],
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
@@ -235,7 +288,7 @@ def show(
     """Print public game state."""
     run_app_command(
         lambda: print_state(
-            _client(api_url).get_game(game_id).state,
+            _client().get_game(game_id).state,
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -243,23 +296,22 @@ def show(
 
 def advance(
     game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_ADVANCE)],
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
-    """Advance one game by one API step."""
+    """Advance one game by one data-source step."""
     run_app_command(
         lambda: _advance(
             game_id=game_id,
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, get_settings()),
         )
     )
 
 
-def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat) -> None:
+def _advance(*, game_id: str, client: GameClient, output_format: OutputFormat) -> None:
     response = client.advance_game(game_id)
     if output_format != CLI_OUTPUT_FORMAT_TABLE:
         print_json(response, output_format=output_format)
@@ -269,7 +321,6 @@ def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat
 
 
 def play(
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     seed: Annotated[int | None, typer.Option(help=HELP_SEED)] = None,
     manual_player: Annotated[
         str | None,
@@ -294,7 +345,7 @@ def play(
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
-    """Create and run one game through the public HTTP API."""
+    """Create and run one game through the active data source."""
     settings = get_settings()
     run_app_command(
         lambda: _play(
@@ -307,7 +358,7 @@ def play(
                 settings.cli_poll_interval_seconds if poll_interval is None else poll_interval
             ),
             show_timeline=show_timeline,
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, settings),
         )
     )
@@ -322,7 +373,7 @@ def _play(
     log_jsonl: Path | None,
     poll_interval: float,
     show_timeline: bool,
-    client: GameApiClient,
+    client: GameClient,
     output_format: OutputFormat,
 ) -> None:
     if max_steps < MIN_STEP_LIMIT:
@@ -428,7 +479,6 @@ def _play(
 
 def timeline(
     game_id: Annotated[str, typer.Argument(help=HELP_GAME_ID_INSPECT)],
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     after: Annotated[int, typer.Option(help=HELP_AFTER_SEQUENCE)] = (MIN_PAGE_OFFSET),
     limit: Annotated[int | None, typer.Option(help=HELP_LIMIT_PER_POLL)] = None,
     poll_interval: Annotated[
@@ -457,7 +507,7 @@ def timeline(
             ),
             follow=follow,
             log_jsonl=log_jsonl,
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, settings),
         )
     )
@@ -471,7 +521,7 @@ def _timeline(
     poll_interval: float,
     follow: bool,
     log_jsonl: Path | None,
-    client: GameApiClient,
+    client: GameClient,
     output_format: OutputFormat,
 ) -> None:
     if follow and output_format == CLI_OUTPUT_FORMAT_JSON:
@@ -518,21 +568,20 @@ def replay(
         str | None,
         typer.Option("--game-id", help=HELP_GAME_ID_REPLAY),
     ] = None,
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     delay: Annotated[float, typer.Option(help=HELP_REPLAY_DELAY)] = (MIN_INTERVAL_SECONDS),
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
-    """Replay public timeline items from JSONL or the public HTTP API."""
+    """Replay public timeline items from JSONL or the active data source."""
     settings = get_settings()
     run_app_command(
         lambda: _replay(
             timeline_file=timeline_file,
             game_id=game_id,
             delay=delay,
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, settings),
             timeline_limit=settings.api_timeline_max_limit,
         )
@@ -544,7 +593,7 @@ def _replay(
     timeline_file: Path | None,
     game_id: str | None,
     delay: float,
-    client: GameApiClient,
+    client: GameClient,
     output_format: OutputFormat,
     timeline_limit: int,
 ) -> None:
@@ -588,7 +637,6 @@ def _replay(
 
 
 def games(
-    api_url: Annotated[str | None, typer.Option(help=HELP_API_URL)] = None,
     status: Annotated[str | None, typer.Option(help=HELP_GAME_STATUS_FILTER)] = None,
     limit: Annotated[int | None, typer.Option(help=HELP_GAME_LIST_LIMIT)] = None,
     offset: Annotated[int, typer.Option(help=HELP_GAME_PAGE_OFFSET)] = MIN_PAGE_OFFSET,
@@ -603,7 +651,7 @@ def games(
             status=status,
             limit=limit,
             offset=offset,
-            client=_client(api_url),
+            client=_client(),
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -614,7 +662,7 @@ def _games(
     status: str | None,
     limit: int | None,
     offset: int,
-    client: GameApiClient,
+    client: GameClient,
     output_format: OutputFormat,
 ) -> None:
     response = client.list_games(status=status, limit=limit, offset=offset)
@@ -623,19 +671,9 @@ def _games(
         console.print(message_next_offset(response.next_offset))
 
 
-def _client(api_url: str | None) -> GameApiClient:
+def _client() -> GameClient:
     settings = get_settings()
-    return _build_game_api_client(api_url or settings.cli_api_url)
-
-
-def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None) -> GameApiClient:
-    resolved_settings = settings or get_settings()
-    return build_game_api_client(
-        api_url,
-        timeout=resolved_settings.cli_http_timeout_seconds,
-        advance_job_poll_interval_seconds=(resolved_settings.advance_job_poll_interval_seconds),
-        advance_job_poll_timeout_seconds=resolved_settings.advance_job_poll_timeout_seconds,
-    )
+    return build_game_client(settings)
 
 
 def _create_request(
@@ -659,7 +697,7 @@ def _create_request(
 
 def _prompt_and_submit_manual_action(
     *,
-    client: GameApiClient,
+    client: GameClient,
     game_id: str,
     player_id: str,
     manual_token: str,
@@ -710,7 +748,7 @@ def _load_replay_items(
     timeline_file: Path | None,
     *,
     game_id: str | None,
-    client: GameApiClient,
+    client: GameClient,
     timeline_limit: int,
 ) -> list[GameTimelineItem]:
     if timeline_file is not None:

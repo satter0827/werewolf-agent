@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from collections.abc import MutableMapping
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
 
-KEY_SELECTED_SAVE_ID = "werewolf_streamlit_selected_save_id"
+if TYPE_CHECKING:
+    from werewolf_agent.interface.entrypoint.streamlit.history import SessionGameSelection
+
+KEY_SELECTED_HISTORY_ID = "werewolf_streamlit_selected_history_id"
+KEY_ACTIVE_GAME_SELECTION = "werewolf_streamlit_active_game_selection"
 KEY_MESSAGE = "werewolf_streamlit_message"
 KEY_STREAMLIT_PREFERENCES = "werewolf_streamlit_preferences"
 KEY_MANUAL_PLAYER_TOKENS = "werewolf_streamlit_manual_player_tokens"
@@ -35,9 +39,25 @@ def text_value(session: MutableMapping[str, Any], key: str, default: str = "") -
     return str(value) if value is not None else default
 
 
-def remember_selected_save(session: MutableMapping[str, Any], option_id: str) -> None:
-    """Store the selected save option id."""
-    session[KEY_SELECTED_SAVE_ID] = option_id
+def remember_selected_history(session: MutableMapping[str, Any], option_id: str) -> None:
+    """Store the selected history option id."""
+    session[KEY_SELECTED_HISTORY_ID] = option_id
+
+
+def remember_active_game_selection(
+    session: MutableMapping[str, Any],
+    selection: SessionGameSelection,
+) -> None:
+    """Store the session-only playable game selection."""
+    session[KEY_ACTIVE_GAME_SELECTION] = selection
+
+
+def active_game_selection(session: MutableMapping[str, Any]) -> SessionGameSelection | None:
+    """Return the session-only playable game selection, if present."""
+    value = session.get(KEY_ACTIVE_GAME_SELECTION)
+    if not hasattr(value, "selection_id") or not hasattr(value, "game_id"):
+        return None
+    return cast("SessionGameSelection", value)
 
 
 def remember_manual_player_token(

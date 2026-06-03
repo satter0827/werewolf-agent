@@ -1,41 +1,34 @@
 # API
 
-この文書は、FastAPI / CLI / Streamlit が共有する外部契約を固定します。
+この文書は、CLI / Streamlit / worker が共有する外部契約と、health-only FastAPI の公開面を固定します。
 判断履歴や作業メモは `docs/notes/` に置きます。
 
 ## 目的
 
-- LLM 同士の game と 1 人 manual player 混在 game を、公開 API だけで決着まで進める
+- LLM 同士の game と 1 人 manual player 混在 game を、`GameClient` port と Supabase queue worker で決着まで進める
 - public response、public timeline、operational log に role、night action target、private state、token、API key、raw provider response を出さない
 - 旧 endpoint、旧 field、旧 DTO 名、旧 save format の fallback は持たない
 
 ## 現在地
 
-- REST API
+- health-only REST API
+- Supabase Auth / Data API direct access
+- Supabase queue worker
 - `llm` agent と LangChain provider による自動進行
 - 1 game につき 1 人の manual player
-- dedicated reveal API による observer / demo 表示
+- admin / demo reveal DTO による observer / demo 表示
 - RFC 9457 Problem Details
-- React UI、複数 manual player、永続 login / session は未実装
+- React UI、複数 manual player は未実装
 
 ## Endpoints
 
 | Method | Path | 用途 |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | health check |
-| `GET` | `/api/v1/setup-options` | game 作成用 metadata |
-| `POST` | `/api/v1/games` | game 作成 |
-| `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public game summary 一覧 |
-| `GET` | `/api/v1/games/{game_id}` | public state |
-| `POST` | `/api/v1/games/{game_id}/advance` | 現在の usecase step を 1 回進める job を作成する |
-| `GET` | `/api/v1/games/{game_id}/advance-jobs/{job_id}` | advance job の状態、結果、失敗理由を返す |
-| `GET` | `/api/v1/games/{game_id}/advance-jobs/latest` | 最新 advance job を返す |
-| `GET` | `/api/v1/games/{game_id}/timeline?after=<seq>&limit=<n>` | public timeline |
-| `GET` | `/api/v1/games/{game_id}/reveal` | observer / demo 用 reveal DTO |
-| `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | Bearer token 付き private observation |
-| `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | Bearer token 付き manual action |
 
-`POST /advance` は `202 Accepted` で `AdvanceGameJobResponse` を返します。LLM provider 呼び出しは HTTP request と DB transaction の外で実行します。manual input が必要な場合、finished game を進めようとした場合、provider が失敗した場合は job を `failed` にし、`error` に Problem Details を格納します。CLI と Streamlit は job を poll し、完了、失敗、上限到達、停止操作のいずれかで止めます。
+CLI / Streamlit は backend game API を呼びません。ログイン時は Supabase Data API の `game_operation_requests` に操作を enqueue し、worker が usecase を実行して `games`、`game_summaries`、`game_public_turns`、`game_player_observations`、`llm_invocations` を更新します。未ログイン時は同じ wire schema を demo client が process-local に返します。
+
+operation request は完了時に `result_payload`、失敗時に Problem Details 互換の `error_payload` を持ちます。LLM provider 呼び出しは UI / CLI process の外、worker transaction の中で trace とともに保存します。
 
 ## Wire Schemas
 
@@ -265,16 +258,18 @@ Error response は RFC 9457 Problem Details 互換です。
 | `contracts/schemas.py` | HTTP wire DTO、Problem Details schema |
 | `contracts/errors.py` | error code metadata |
 | `interface/runtime/` | settings、definition loader、logging bootstrap |
-| `interface/api/routers.py` | endpoint |
-| `interface/application/games.py` | game transaction、依存注入、wire schema 変換 |
-| `interface/application/advance_jobs.py` | advance job 作成、polling、background 実行 |
-| `interface/application/repositories.py` | SQLAlchemy repository adapter |
+| `interface/api/routers.py` | health endpoint |
+| `interface/shared/game_client.py` | CLI / Streamlit が使う client port |
+| `interface/demo/client.py` | 未ログイン用 demo client |
+| `interface/supabase/client.py` | Supabase Data API adapter |
+| `interface/worker/service.py` | operation request worker |
+| `interface/worker/repository.py` | Supabase Postgres repository adapter |
 | `usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
 
 ## 検証
 
 ```bash
-uv run --extra api alembic upgrade head
+supabase migration up
 uv run --extra api pytest tests/integration/api
 ```

@@ -6,7 +6,6 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_INVALID_VALUE,
     message_field_must_be_one_of,
     message_invalid_llm_decision,
-    message_save_slot_field_must_be_non_empty,
 )
 from werewolf_agent.commons.shared.validation import (
     generated_player_id,
@@ -35,7 +34,6 @@ def test_shared_validation_uses_catalog_messages() -> None:
     assert message_invalid_llm_decision("ValidationError") == (
         "invalid llm decision: ValidationError"
     )
-    assert message_save_slot_field_must_be_non_empty("slot_id") == "slot_id must be non-empty"
 
 
 def test_generated_player_helpers_share_id_and_label_contracts() -> None:

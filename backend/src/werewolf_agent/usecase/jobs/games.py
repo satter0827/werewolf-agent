@@ -32,6 +32,7 @@ from werewolf_agent.commons.shared.definitions import (
     LlmDefinitions,
     LocalRulesDefinition,
 )
+from werewolf_agent.commons.shared.llm_tracing import LlmTraceSink, NullLlmTraceSink
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
     MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE,
@@ -165,6 +166,7 @@ class GameUseCaseDependencies:
     config: GameUseCaseConfig
     llm_provider_config: LlmProviderConfig
     telemetry: TelemetrySink = field(default_factory=NullTelemetrySink)
+    llm_trace_sink: LlmTraceSink = field(default_factory=NullLlmTraceSink)
 
 
 class _UseCaseModel(StrictModel):
@@ -309,7 +311,8 @@ class GetPlayerObservationQuery(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    manual_token: str
+    manual_token: str = ""
+    trusted_user_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -319,7 +322,8 @@ class PlayerActionCommand(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    manual_token: str
+    manual_token: str = ""
+    trusted_user_id: str | None = None
     type: ActionTypeId
     target_id: str | None = None
     message: str | None = None

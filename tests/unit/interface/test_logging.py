@@ -115,7 +115,7 @@ def test_configure_observability_keeps_third_party_loggers_quiet(tmp_path: Path)
     settings = _settings(tmp_path, log_third_party_level="WARNING")
     configure_observability(settings)
 
-    assert logging.getLogger("sqlalchemy").level == logging.WARNING
+    assert logging.getLogger("psycopg").level == logging.WARNING
     assert logging.getLogger("httpx").level == logging.WARNING
     assert logging.getLogger("uvicorn").level == logging.WARNING
 

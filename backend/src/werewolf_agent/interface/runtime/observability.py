@@ -26,10 +26,9 @@ from werewolf_agent.commons.shared.constants import (
 from werewolf_agent.interface.runtime.settings import AppSettings
 
 THIRD_PARTY_LOGGER_NAMES: Final = (
-    "alembic",
     "httpcore",
     "httpx",
-    "sqlalchemy",
+    "psycopg",
     "streamlit",
     "uvicorn",
     "uvicorn.access",

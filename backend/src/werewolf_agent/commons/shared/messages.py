@@ -177,7 +177,6 @@ MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED = "templates.pass is required"
 MESSAGE_LLM_MODEL_NOT_CONFIGURED = "llm model is not configured"
 MESSAGE_AGENT_PROFILES_REQUIRED = "profiles must include at least one enabled profile"
 MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME = "log_file_name must be a file name"
-MESSAGE_SAVE_SLOT_MUST_NOT_CONTAIN_MANUAL_TOKEN = "save slot must not contain manual_token"
 MESSAGE_ROLE_COUNTS_MUST_BE_OBJECT = "role_counts must be an object"
 MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER = (
     "custom characters conflict with player roster"
@@ -210,6 +209,29 @@ MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX = (
 MESSAGE_TELEMETRY_LEVEL_MUST_BE_VALID = (
     "telemetry level must be one of: DEBUG, INFO, WARNING, ERROR"
 )
+MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP = "supabase_url must start with http:// or https://"
+MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED = (
+    "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY must be set together."
+)
+MESSAGE_SUPABASE_WORKER_DSN_REQUIRED = "WEREWOLF_SUPABASE_DB_DSN is required for the worker."
+MESSAGE_SUPABASE_AUTH_UNAVAILABLE = "Supabase Auth is unavailable."
+MESSAGE_SUPABASE_AUTH_INVALID_RESPONSE = "Supabase Auth returned an invalid response."
+MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION = "Supabase Auth returned an incomplete session."
+MESSAGE_SUPABASE_DATA_API_UNAVAILABLE = "Supabase Data API is unavailable."
+MESSAGE_SUPABASE_DATA_API_NON_LIST_RESPONSE = "Supabase Data API returned a non-list response."
+MESSAGE_SUPABASE_OPERATION_NOT_RETURNED = "Supabase did not return the queued operation."
+MESSAGE_SUPABASE_GAME_REVEAL_NOT_FOUND = "Game reveal not found."
+MESSAGE_ADVANCE_REQUEST_RESULT_MISSING = "Advance request completed without a result."
+MESSAGE_ADVANCE_REQUEST_FAILED = "Advance request failed."
+MESSAGE_ADVANCE_REQUEST_TIMED_OUT = "Advance request timed out."
+MESSAGE_OPERATION_REQUEST_CANCELLED = "Operation request was cancelled."
+MESSAGE_OPERATION_REQUEST_TIMED_OUT = "Operation request timed out."
+MESSAGE_COMPLETED_OPERATION_RESULT_MISSING = (
+    "Completed operation does not contain a result payload."
+)
+MESSAGE_OPERATION_REQUEST_FAILED = "Operation request failed."
+MESSAGE_PLAYER_SEAT_NOT_OWNED = "The current user does not own this player seat."
+MESSAGE_WORKER_REQUEST_FAILED = "Worker request failed."
 
 
 def message_field_must_be_string(field_name: str) -> str:
@@ -280,11 +302,6 @@ def message_missing_default_setting(key: str) -> str:
     return f"Missing default setting: {key}"
 
 
-def message_save_slot_field_must_be_non_empty(key: str) -> str:
-    """Return a save-slot required text validation message."""
-    return f"{key} must be non-empty"
-
-
 def message_field_must_be_toml_table(field_name: str) -> str:
     """Return a TOML table validation message."""
     return f"{field_name} must be a TOML table"
@@ -309,6 +326,64 @@ def message_localized_keys_must_match_en(
 def message_localized_label_kinds_must_match_en(lang: str) -> str:
     """Return a localized label-kind coverage validation message."""
     return f"labels.{lang} kinds must match en"
+
+
+def message_streamlit_screen_definition_invalid(error: object) -> str:
+    """Return a Streamlit screen-definition validation message."""
+    return f"streamlit screen definition is invalid: {error}"
+
+
+def message_streamlit_screen_unknown_region(screen_id: str, region_id: str) -> str:
+    """Return an unknown Streamlit screen region message."""
+    return f"streamlit screen {screen_id} has unknown region: {region_id}"
+
+
+def message_streamlit_screen_unknown_element(
+    screen_id: str,
+    region_id: str,
+    element_id: str,
+) -> str:
+    """Return an unknown Streamlit screen element message."""
+    return f"streamlit screen {screen_id}.{region_id} has unknown element: {element_id}"
+
+
+def message_streamlit_screen_duplicate_order(
+    screen_id: str,
+    region_id: str,
+    order: int,
+) -> str:
+    """Return a duplicate Streamlit screen order message."""
+    return f"streamlit screen {screen_id}.{region_id} has duplicate order: {order}"
+
+
+def message_streamlit_screen_duplicate_element(
+    screen_id: str,
+    region_id: str,
+    element_id: str,
+    variant: str,
+) -> str:
+    """Return a duplicate Streamlit screen element message."""
+    suffix = f":{variant}" if variant else ""
+    return f"streamlit screen {screen_id}.{region_id} has duplicate element: {element_id}{suffix}"
+
+
+def message_streamlit_screen_invalid_columns(screen_id: str) -> str:
+    """Return an invalid Streamlit screen column-ratio message."""
+    return f"streamlit screen {screen_id} column ratios must be positive"
+
+
+def message_streamlit_screen_column_count_between(
+    field_name: str,
+    minimum: int,
+    maximum: int,
+) -> str:
+    """Return a Streamlit screen column-count validation message."""
+    return f"{field_name} must be between {minimum} and {maximum}"
+
+
+def message_streamlit_screen_missing_layout(screen_id: str, field_name: str) -> str:
+    """Return a missing Streamlit screen layout setting message."""
+    return f"streamlit screen {screen_id} must define layout.{field_name}"
 
 
 def message_definition_settings_invalid(error: object) -> str:
@@ -538,3 +613,23 @@ def message_error_line(detail: str, suffix: str = "") -> str:
 def message_invalid_configuration_for(location: str, message: str) -> str:
     """Return a settings validation detail."""
     return f"Invalid configuration for {location}: {message}"
+
+
+def message_unsupported_operation_type(operation_type: str) -> str:
+    """Return an unsupported Supabase queue operation message."""
+    return f"Unsupported operation_type: {operation_type}"
+
+
+def message_supabase_auth_http_error(status_code: int) -> str:
+    """Return a Supabase Auth HTTP failure message."""
+    return f"Supabase Auth request failed with HTTP {status_code}."
+
+
+def message_supabase_data_api_http_error(status_code: int) -> str:
+    """Return a Supabase Data API HTTP failure message."""
+    return f"Supabase Data API request failed with HTTP {status_code}."
+
+
+def message_supabase_payload_schema_mismatch(model_name: str) -> str:
+    """Return a Supabase payload schema mismatch message."""
+    return f"Supabase payload does not match {model_name}."

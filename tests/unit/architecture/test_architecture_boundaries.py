@@ -34,22 +34,30 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
 
 def test_interface_imports_only_public_usecase_jobs_from_application_bridge() -> None:
     imported = _imports_under(PACKAGE / "interface")
-    application_path = PACKAGE / "interface" / "application"
+    allowed_paths = (
+        PACKAGE / "interface" / "application",
+        PACKAGE / "interface" / "demo",
+        PACKAGE / "interface" / "shared",
+        PACKAGE / "interface" / "worker",
+    )
     allowed_module = "werewolf_agent.usecase.jobs"
 
     assert not [
         (path, module)
         for path, module in imported
         if (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase."))
-        and (not path.is_relative_to(application_path) or module != allowed_module)
+        and (
+            not any(path.is_relative_to(allowed_path) for allowed_path in allowed_paths)
+            or module != allowed_module
+        )
     ]
 
 
 def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
     router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
 
+    assert "games" not in router_source
     assert "game_id: UUID" not in router_source
-    assert "game_id: str" in router_source
 
 
 def test_usecase_jobs_public_surface_is_minimal() -> None:
@@ -233,12 +241,11 @@ def test_usecase_internal_does_not_import_interface_or_wire_contracts() -> None:
     ]
 
 
-def test_interface_application_bridge_is_stateless() -> None:
+def test_interface_application_bridge_has_no_stateful_db_adapter() -> None:
     app_source = (PACKAGE / "interface" / "api" / "app.py").read_text(encoding="utf-8")
-    bridge_source = (PACKAGE / "interface" / "application" / "games.py").read_text(encoding="utf-8")
 
-    assert "class GameApplication" not in bridge_source
     assert "app.state.game_application" not in app_source
+    assert "sqlalchemy" not in app_source.lower()
 
 
 def test_game_and_llm_subdomains_do_not_import_each_other() -> None:
@@ -388,18 +395,14 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
     }
 
     api_env = configurations["API: uvicorn"]["env"]
-    migrate_env = configurations["API: migrate"]["env"]
+    worker_env = configurations["Worker: run"]["env"]
     streamlit_env = configurations["UI: Streamlit"]["env"]
 
-    assert api_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
-    assert migrate_env["WEREWOLF_SQLITE_PATH"] == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
-    assert streamlit_env["WEREWOLF_STREAMLIT_API_URL"] == "http://127.0.0.1:8000/api/v1"
-    assert (
-        streamlit_env["WEREWOLF_STREAMLIT_SAVE_FILE"]
-        == "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json"
-    )
+    assert "WEREWOLF_SQLITE_PATH" not in api_env
+    assert "WEREWOLF_STREAMLIT_API_URL" not in streamlit_env
+    assert "WEREWOLF_STREAMLIT_SAVE_FILE" not in streamlit_env
     _assert_process_log_file_env(api_env, "api.jsonl")
-    _assert_process_log_file_env(migrate_env, "migrate.jsonl")
+    _assert_process_log_file_env(worker_env, "worker.jsonl")
     _assert_process_log_file_env(streamlit_env, "streamlit.jsonl")
 
     for name, configuration in configurations.items():
@@ -410,31 +413,16 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
             assert "WEREWOLF_LOG_OUTPUT" not in env
 
 
-def test_vscode_migration_task_matches_launch_runtime_state() -> None:
-    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+def test_vscode_supabase_task_matches_runtime_state() -> None:
     tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
-    app_compound = next(
-        compound for compound in launch["compounds"] if compound["name"] == "App: API + Streamlit"
-    )
     migrate_task = next(
-        task for task in tasks["tasks"] if task["label"] == app_compound["preLaunchTask"]
+        task for task in tasks["tasks"] if task["label"] == "Supabase: migration up"
     )
 
     assert migrate_task["args"] == [
-        "run",
-        "--no-sync",
-        "--extra",
-        "api",
-        "python",
-        "-m",
-        "alembic",
-        "upgrade",
-        "head",
+        "migration",
+        "up",
     ]
-    assert (
-        migrate_task["options"]["env"]["WEREWOLF_SQLITE_PATH"]
-        == "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3"
-    )
     _assert_process_log_file_env(migrate_task["options"]["env"], "migrate.jsonl")
 
 
@@ -464,22 +452,15 @@ def test_runtime_default_env_values_are_not_mirrored_by_tooling() -> None:
     assert "WEREWOLF_GAME_" + "RULESET" not in combined
 
 
-def test_db_schema_constants_are_used_by_models_and_migrations() -> None:
-    schema_path = PACKAGE / "interface" / "application" / "schema.py"
-    models_source = (PACKAGE / "interface" / "application" / "models.py").read_text(
-        encoding="utf-8"
-    )
-    migration_sources = [
+def test_supabase_migration_enables_rls_and_admin_claims() -> None:
+    migration_sources = "\n".join(
         path.read_text(encoding="utf-8")
-        for path in (PACKAGE / "interface" / "application" / "migrations" / "versions").glob("*.py")
-    ]
-
-    assert schema_path.exists()
-    assert "from werewolf_agent.interface.application import schema" in models_source
-    assert all(
-        "from werewolf_agent.interface.application import schema" in source
-        for source in migration_sources
+        for path in (ROOT / "supabase" / "migrations").glob("*.sql")
     )
+
+    assert "enable row level security" in migration_sources.lower()
+    assert "auth.jwt() -> 'app_metadata'" in migration_sources
+    assert "service_role" in migration_sources
 
 
 def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None:
@@ -522,6 +503,7 @@ def test_operational_log_file_names_use_process_names_not_launcher_names() -> No
     assert "streamlit.jsonl" in combined
     assert "cli.jsonl" in combined
     assert "migrate.jsonl" in combined
+    assert "worker.jsonl" in combined
 
 
 def test_log_defaults_are_documented_as_workspace_log_defaults() -> None:
@@ -628,6 +610,7 @@ def test_contracts_do_not_import_api_frameworks() -> None:
 def test_domain_does_not_import_outer_layers() -> None:
     allowed_commons_modules = {
         "werewolf_agent.commons.shared.definitions",
+        "werewolf_agent.commons.shared.llm_tracing",
         "werewolf_agent.commons.shared.messages",
         "werewolf_agent.commons.shared.models",
         "werewolf_agent.commons.shared.validation",

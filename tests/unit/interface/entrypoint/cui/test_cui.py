@@ -4,7 +4,6 @@ import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
-import httpx
 import pytest
 import typer
 from typer.testing import CliRunner
@@ -31,7 +30,6 @@ from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
 from werewolf_agent.interface.entrypoint.cui.app import app
 from werewolf_agent.interface.entrypoint.cui.errors import run_app_command
 from werewolf_agent.interface.runtime import get_settings
-from werewolf_agent.interface.shared.api_client import HttpGameApiClient
 
 
 @pytest.fixture(autouse=True)
@@ -102,7 +100,7 @@ def _run_summary() -> PublicGameSummary:
     )
 
 
-class FakeGameApiClient:
+class FakeGameClient:
     def __init__(self) -> None:
         self.calls: list[tuple[str, object]] = []
         self.available_sequence = 0
@@ -279,19 +277,19 @@ def test_doctor_json_output_is_machine_readable() -> None:
     assert payload["provider"] == "lmstudio"
     assert payload["model"] == "auto"
     assert payload["prompt file"] == "packaged"
-    assert payload["api url"]
+    assert payload["data source"] == "werewolf-agent-demo"
 
 
-def test_doctor_command_redacts_database_password() -> None:
+def test_doctor_command_redacts_supabase_worker_dsn() -> None:
     get_settings.cache_clear()
     try:
         result = CliRunner().invoke(
             app,
             ["doctor"],
             env={
-                "WEREWOLF_DATABASE_URL": (
-                    "postgres://werewolf_agent:secret@example.test:5432/werewolf_agent"
-                )
+                "WEREWOLF_SUPABASE_URL": "http://127.0.0.1:54321",
+                "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "anon-test",
+                "WEREWOLF_SUPABASE_DB_DSN": "postgresql://postgres:secret@db.test/postgres",
             },
         )
     finally:
@@ -416,16 +414,14 @@ def test_play_command_uses_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
     log_path = tmp_path / "timeline.jsonl"
 
     result = CliRunner().invoke(
         app,
         [
             "play",
-            "--api-url",
-            "http://api.test/api/v1",
             "--role-count",
             "werewolf=1",
             "--role-count",
@@ -462,8 +458,8 @@ def test_play_command_uses_public_api_client(
 def test_play_json_output_is_single_machine_readable_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
     get_settings.cache_clear()
     env = {"WEREWOLF_LOG_LEVEL": "CRITICAL"}
 
@@ -472,8 +468,6 @@ def test_play_json_output_is_single_machine_readable_document(
             app,
             [
                 "play",
-                "--api-url",
-                "http://api.test/api/v1",
                 "--role-count",
                 "werewolf=1",
                 "--role-count",
@@ -502,15 +496,13 @@ def test_play_json_output_is_single_machine_readable_document(
 
 
 def test_new_command_can_request_one_manual_player(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
 
     result = CliRunner().invoke(
         app,
         [
             "new",
-            "--api-url",
-            "http://api.test/api/v1",
             "--manual-player",
             "player-1",
             "--role-count",
@@ -546,16 +538,12 @@ def test_new_command_rejects_unknown_manual_player() -> None:
 def test_setup_options_show_and_advance_commands_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
 
-    setup_options_result = CliRunner().invoke(
-        app, ["setup-options", "--api-url", "http://api.test/api/v1"]
-    )
-    show_result = CliRunner().invoke(app, ["show", "game-1", "--api-url", "http://api.test/api/v1"])
-    advance_result = CliRunner().invoke(
-        app, ["advance", "game-1", "--api-url", "http://api.test/api/v1"]
-    )
+    setup_options_result = CliRunner().invoke(app, ["setup-options"])
+    show_result = CliRunner().invoke(app, ["show", "game-1"])
+    advance_result = CliRunner().invoke(app, ["advance", "game-1"])
 
     assert setup_options_result.exit_code == 0
     assert show_result.exit_code == 0
@@ -565,8 +553,8 @@ def test_setup_options_show_and_advance_commands_use_public_api_client(
     assert ("advance", "game-1") in fake_client.calls
 
 
-def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
-    class FailingGameApiClient(FakeGameApiClient):
+def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingGameClient(FakeGameClient):
         def create_game(self, request: CreateGameRequest) -> GameResponse:
             _ = request
             raise AppError(
@@ -577,11 +565,11 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(
         cui_commands,
-        "_build_game_api_client",
-        lambda _api_url: FailingGameApiClient(),
+        "build_game_client",
+        lambda _settings: FailingGameClient(),
     )
 
-    result = CliRunner().invoke(app, ["play", "--api-url", "http://api.test/api/v1"])
+    result = CliRunner().invoke(app, ["play"])
 
     assert result.exit_code == 1
     assert "game.invalid_action: The selected action is not allowed." in result.output
@@ -592,19 +580,19 @@ def test_timeline_replay_and_games_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    fake_client = FakeGameApiClient()
+    fake_client = FakeGameClient()
     fake_client.available_sequence = 3
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
     log_path = tmp_path / "timeline-watch.jsonl"
     timeline_path = tmp_path / "timeline.jsonl"
     timeline_path.write_text(_event(1, "game_started", {"player_count": 6}).model_dump_json())
 
     timeline_result = CliRunner().invoke(
         app,
-        ["timeline", "game-1", "--api-url", "http://api.test/api/v1", "--log-jsonl", str(log_path)],
+        ["timeline", "game-1", "--log-jsonl", str(log_path)],
     )
     replay_result = CliRunner().invoke(app, ["replay", "--timeline", str(timeline_path)])
-    games_result = CliRunner().invoke(app, ["games", "--api-url", "http://api.test/api/v1"])
+    games_result = CliRunner().invoke(app, ["games"])
 
     assert timeline_result.exit_code == 0
     assert replay_result.exit_code == 0
@@ -615,16 +603,14 @@ def test_timeline_replay_and_games_use_public_api_client(
 
 
 def test_timeline_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) -> None:
-    fake_client = FakeGameApiClient()
-    monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: fake_client)
 
     result = CliRunner().invoke(
         app,
         [
             "timeline",
             "game-1",
-            "--api-url",
-            "http://api.test/api/v1",
             "--follow",
             "--output",
             "json",
@@ -633,30 +619,6 @@ def test_timeline_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) ->
 
     assert result.exit_code == 1
     assert "Use jsonl output when following streamed timeline items." in result.output
-
-
-def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:
-    requests: list[tuple[str, str]] = []
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        requests.append((request.method, request.url.path))
-        return httpx.Response(
-            200,
-            json={"game_id": "game-1", "state": _state().model_dump(mode="json")},
-        )
-
-    client = HttpGameApiClient(
-        "http://api.test/api/v1",
-        timeout=1.0,
-        advance_job_poll_interval_seconds=0.0,
-        advance_job_poll_timeout_seconds=1.0,
-        transport=httpx.MockTransport(handler),
-    )
-
-    response = client.get_game("game-1")
-
-    assert response.game_id == "game-1"
-    assert requests == [("GET", "/api/v1/games/game-1")]
 
 
 def test_cui_does_not_import_internal_game_layers() -> None:

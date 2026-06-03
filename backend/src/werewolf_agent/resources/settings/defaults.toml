@@ -2,7 +2,6 @@ app_name = "werewolf-agent"
 api_service_name = "werewolf-agent-api"
 
 generated_dir = ".werewolf-agent"
-sqlite_path = ".werewolf-agent/db/db.sqlite3"
 
 llm_provider = "lmstudio"
 model = "auto"
@@ -22,8 +21,17 @@ log_file_name = "werewolf-agent.jsonl"
 log_retention_days = 14
 log_third_party_level = "WARNING"
 
-cli_api_url = "http://127.0.0.1:8000/api/v1"
-cli_http_timeout_seconds = 5.0
+supabase_url = ""
+supabase_publishable_key = ""
+supabase_db_dsn = ""
+supabase_auth_timeout_seconds = 10.0
+supabase_rest_timeout_seconds = 10.0
+supabase_worker_id = "worker-default"
+supabase_worker_poll_interval_seconds = 1.0
+supabase_worker_batch_size = 5
+supabase_worker_claim_seconds = 60
+llm_trace_retention_days = 30
+
 advance_job_poll_interval_seconds = 0.25
 advance_job_poll_timeout_seconds = 60.0
 cli_max_steps = 64
@@ -31,10 +39,7 @@ cli_poll_interval_seconds = 0.0
 cli_event_limit = 100
 cli_output_format = "table"
 
-streamlit_api_url = ""
-streamlit_http_timeout_seconds = 5.0
 streamlit_refresh_interval_seconds = 5.0
-streamlit_event_limit = 100
 streamlit_turn_limit = 100
 streamlit_run_limit = 20
 streamlit_max_auto_steps = 64
@@ -42,8 +47,10 @@ streamlit_auto_advance_interval_seconds = 1.0
 streamlit_initial_sidebar_state = "expanded"
 streamlit_language = "ja"
 streamlit_i18n_file = ""
-streamlit_save_file = ".werewolf-agent/streamlit/saves.json"
+streamlit_css_file = ""
+streamlit_screens_file = ""
 streamlit_default_seed = 1
+streamlit_random_seed_max = 1000000
 streamlit_default_manual_player_id = "player-1"
 streamlit_message_max_chars = 200
 streamlit_page_title = "Werewolf Agent"

@@ -1,6 +1,7 @@
 import logging
 from datetime import UTC, datetime
 
+from werewolf_agent.contracts import ResourceNotFoundError
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     AdvanceGameResponse,
@@ -32,8 +33,6 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
         log_level="DEBUG",
         log_output="both",
         log_third_party_level="INFO",
-        streamlit_api_url="http://api.test/api/v1",
-        streamlit_save_file=tmp_path / "saves.json",
     )
 
     with caplog.at_level(logging.DEBUG, logger=operations.__name__):
@@ -43,8 +42,7 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
         record for record in caplog.records if record.event_action == "streamlit.rerun.started"
     )
     assert record.event_outcome == "success"
-    assert record.api_url == "http://api.test/api/v1"
-    assert record.save_file_path == str(tmp_path / "saves.json")
+    assert record.data_source == "demo"
     assert record.log_level == "DEBUG"
     assert record.log_output == "both"
     assert record.log_file_path == str(settings.log_file_path)
@@ -179,7 +177,6 @@ def test_advance_one_step_logs_public_step_without_private_context(
 
     with caplog.at_level(logging.DEBUG, logger=operations.__name__):
         operations.advance_one_step(
-            api_url="http://api.test/api/v1",
             settings=settings,
             game_id="game-1",
         )
@@ -206,7 +203,6 @@ def test_advance_one_step_reuses_existing_trace_context(
 
     with bind_observation_context(trace_id="trace-existing"):
         operations.advance_one_step(
-            api_url="http://api.test/api/v1",
             settings=settings,
             game_id="game-1",
         )
@@ -220,7 +216,6 @@ def test_start_advance_step_returns_job_with_trace_context(monkeypatch) -> None:
     settings = AppSettings(_env_file=None)
 
     job = operations.start_advance_step(
-        api_url="http://api.test/api/v1",
         settings=settings,
         game_id="game-1",
     )
@@ -237,7 +232,6 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
 
     with caplog.at_level(logging.INFO, logger=operations.__name__):
         created = operations.create_game_from_setup(
-            api_url="http://api.test/api/v1",
             settings=settings,
             role_counts={"werewolf": 1, "villager": 4},
             rules=rules,
@@ -272,7 +266,6 @@ def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -
     catalog = load_i18n(settings)
 
     screen = operations.load_game_screen(
-        api_url="http://api.test/api/v1",
         settings=settings,
         game_id="game-1",
         manual_player_id=None,
@@ -286,6 +279,33 @@ def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -
     assert screen.observation is None
     assert screen.observer_log is not None
     assert screen.seats[1].role_label == "人狼"
+
+
+def test_observer_screen_allows_public_view_without_admin_reveal(monkeypatch) -> None:
+    class PublicOnlyClient(FakeStreamlitClient):
+        def get_game_reveal(self, game_id: str) -> GameRevealResponse:
+            raise ResourceNotFoundError("Game reveal not found.")
+
+    client = PublicOnlyClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
+    settings = AppSettings(_env_file=None)
+    catalog = load_i18n(settings)
+
+    screen = operations.load_game_screen(
+        settings=settings,
+        game_id="game-1",
+        manual_player_id=None,
+        manual_token="",
+        screen_mode="observer",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert screen.screen_mode == "observer"
+    assert screen.observation is None
+    assert screen.observer_log is not None
+    assert screen.observer_log.role_lines == []
+    assert screen.observer_log.action_lines == []
 
 
 def _state(*, status: str, phase: str) -> PublicGameState:

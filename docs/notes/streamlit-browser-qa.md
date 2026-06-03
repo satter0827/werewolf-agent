@@ -12,14 +12,15 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 起動
 
 VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
-VS Code から `App: API + Streamlit` を起動する場合は、migration task、API、Streamlit が同じ一時 runtime を使います。
-SQLite は `%TEMP%\werewolf-agent\db\vscode.sqlite3`、Streamlit save は `%TEMP%\werewolf-agent\streamlit\saves.json` です。
+VS Code から `App: API + Worker + Streamlit` を起動する場合は、migration task、API、worker、Streamlit が同じ設定を使います。
+運用ログは `.werewolf-agent/logs`、一時 cache と screenshot は `%TEMP%\werewolf-agent` 配下を使います。
 
-別 terminal で API と Streamlit を起動します。
+別 terminal で Supabase migration、API、worker、Streamlit を起動します。
 
 ```bash
-uv run --no-sync --group dev --extra api alembic upgrade head
+supabase migration up
 uv run --no-sync --group dev --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8765
+uv run --no-sync --group dev --extra worker werewolf-agent-worker run
 uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
@@ -137,7 +138,7 @@ QA screenshot は `.werewolf-agent/cache` に残しません。保存が必要�
 ## 今回の確認結果
 
 - 実行日: 2026-05-29
-- API: `http://127.0.0.1:8765/api/v1`
+- API: `http://127.0.0.1:8765/api/v1/health`
 - Streamlit: `http://127.0.0.1:8766`
 - desktop: `新しいゲームを始める` から A案画面まで到達
 - desktop: `ゲーム卓`、`あなたの手番`、`公開タイムライン` を A案構成で確認

@@ -16,6 +16,7 @@ from werewolf_agent.commons.shared.constants import (
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
 from werewolf_agent.commons.shared.definitions import LlmDefinitions
+from werewolf_agent.commons.shared.llm_tracing import LlmTraceSink
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_MISSING_ATTACK_TARGET,
     MESSAGE_MISSING_GUARD_TARGET,
@@ -118,11 +119,12 @@ def langchain_agent_factory(
     definitions: LlmDefinitions,
     profile_ids_by_player: dict[str, str] | None = None,
     scenario: AgentScenario | None = None,
+    trace_sink: LlmTraceSink | None = None,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from use case settings."""
     profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
-        provider=_decision_provider(config, definitions=definitions),
+        provider=_decision_provider(config, definitions=definitions, trace_sink=trace_sink),
         profiles=profiles.profiles,
         profile_ids_by_player=profile_ids_by_player or {},
         scenario=scenario,
@@ -133,6 +135,7 @@ def _decision_provider(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
+    trace_sink: LlmTraceSink | None,
 ) -> LangChainDecisionProvider:
     if config.provider == LLM_PROVIDER_FAKE:
         return LangChainDecisionProvider(
@@ -140,6 +143,7 @@ def _decision_provider(
             fake_responses=definitions.fake_responses,
             provider_name=config.provider,
             model_name=config.model,
+            trace_sink=trace_sink,
         )
     if config.provider in {LLM_PROVIDER_LMSTUDIO, LLM_PROVIDER_OPENAI}:
         model_id = _openai_compatible_model_id(config)
@@ -151,6 +155,7 @@ def _decision_provider(
             base_url=config.base_url,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+            trace_sink=trace_sink,
         )
     raise ValueError(message_unsupported_llm_provider(config.provider))
 

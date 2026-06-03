@@ -36,25 +36,6 @@
       "justMyCode": true
     },
     {
-      "name": "API: migrate",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "alembic",
-      "args": [
-        "upgrade",
-        "head"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
-        "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
-      },
-      "justMyCode": true
-    },
-    {
       "name": "API: uvicorn",
       "type": "debugpy",
       "request": "launch",
@@ -72,8 +53,24 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
         "WEREWOLF_LOG_FILE_NAME": "api.jsonl"
+      },
+      "justMyCode": true
+    },
+    {
+      "name": "Worker: run",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "werewolf_agent.interface.entrypoint.worker.app",
+      "args": [
+        "run"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
       },
       "justMyCode": true
     },
@@ -95,8 +92,6 @@
       "envFile": "${workspaceFolder}/.env",
       "env": {
         "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
-        "WEREWOLF_STREAMLIT_SAVE_FILE": "${env:TEMP}\\werewolf-agent\\streamlit\\saves.json",
         "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl"
       },
       "justMyCode": true
@@ -250,12 +245,12 @@
       "justMyCode": true
     },
     {
-      "name": "CLI: runs",
+      "name": "CLI: games",
       "type": "debugpy",
       "request": "launch",
       "module": "werewolf_agent",
       "args": [
-        "runs"
+        "games"
       ],
       "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
@@ -354,12 +349,12 @@
   ],
   "compounds": [
     {
-      "name": "App: API + Streamlit",
+      "name": "App: API + Worker + Streamlit",
       "configurations": [
         "API: uvicorn",
+        "Worker: run",
         "UI: Streamlit"
       ],
-      "preLaunchTask": "API: migrate (python -m alembic)",
       "stopAll": true
     }
   ],

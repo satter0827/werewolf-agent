@@ -14,7 +14,9 @@ from werewolf_agent.interface.runtime import (
     DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
     DEFAULT_GAME_MAX_PLAYERS,
     DEFAULT_GAME_MIN_PLAYERS,
-    DEFAULT_SQLITE_PATH,
+    DEFAULT_STREAMLIT_CSS_FILE,
+    DEFAULT_STREAMLIT_RANDOM_SEED_MAX,
+    DEFAULT_STREAMLIT_SCREENS_FILE,
     PACKAGED_DEFAULTS,
     AppSettings,
     repository_root,
@@ -55,36 +57,42 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["llm_players_file"] == ""
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
     assert PACKAGED_DEFAULTS["game_roles_file"] == ""
+    assert PACKAGED_DEFAULTS["streamlit_css_file"] == ""
+    assert PACKAGED_DEFAULTS["streamlit_screens_file"] == ""
+    assert PACKAGED_DEFAULTS["streamlit_random_seed_max"] == 1000000
 
 
-def test_database_settings_default_to_sqlite_path_under_generated_dir() -> None:
+def test_supabase_settings_default_to_unconfigured_demo_mode() -> None:
     settings = AppSettings(_env_file=None)
 
-    assert settings.sqlite_path == DEFAULT_SQLITE_PATH
-    assert settings.sqlite_database_path == repository_root() / DEFAULT_SQLITE_PATH
-    assert settings.configured_database_url == ""
-    assert settings.sqlalchemy_database_url == (
-        f"sqlite:///{(repository_root() / DEFAULT_SQLITE_PATH).as_posix()}"
-    )
+    assert settings.supabase_url == ""
+    assert settings.supabase_publishable_key_value == ""
+    assert settings.supabase_db_dsn_value == ""
+    assert settings.supabase_client_configured is False
+    assert settings.supabase_worker_configured is False
+    assert settings.supabase_auth_timeout_seconds == 10.0
+    assert settings.supabase_rest_timeout_seconds == 10.0
+    assert settings.supabase_worker_id == "worker-default"
+    assert settings.supabase_worker_poll_interval_seconds == 1.0
+    assert settings.supabase_worker_batch_size == 5
+    assert settings.supabase_worker_claim_seconds == 60
+    assert settings.llm_trace_retention_days == 30
 
 
-def test_sqlite_path_can_be_overridden() -> None:
-    settings = AppSettings(_env_file=None, sqlite_path=Path("tmp/test.sqlite3"))
+def test_supabase_client_settings_must_be_supplied_as_pair() -> None:
+    with pytest.raises(ValidationError, match="WEREWOLF_SUPABASE_URL"):
+        AppSettings(_env_file=None, supabase_url="http://127.0.0.1:54321")
 
-    assert settings.sqlite_database_path == repository_root() / "tmp/test.sqlite3"
-    assert settings.sqlalchemy_database_url == (
-        f"sqlite:///{(repository_root() / 'tmp/test.sqlite3').as_posix()}"
-    )
-
-
-def test_database_url_overrides_sqlite_and_normalizes_postgres_scheme() -> None:
     settings = AppSettings(
         _env_file=None,
-        database_url="postgres://werewolf_agent:secret@example.test:5432/werewolf_agent",
+        supabase_url="http://127.0.0.1:54321/",
+        supabase_publishable_key="anon-test",
+        supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
     )
 
-    assert settings.configured_database_url.endswith("@example.test:5432/werewolf_agent")
-    assert settings.sqlalchemy_database_url.startswith("postgresql+psycopg://")
+    assert settings.supabase_url == "http://127.0.0.1:54321"
+    assert settings.supabase_publishable_key_value == "anon-test"
+    assert settings.supabase_worker_configured is True
 
 
 def test_logging_settings_have_safe_defaults() -> None:
@@ -101,19 +109,13 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_directory_path == repository_root() / ".werewolf-agent/logs"
     assert settings.log_file_path == repository_root() / ".werewolf-agent/logs/werewolf-agent.jsonl"
     assert settings.log_third_party_level == "WARNING"
-    assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
-    assert settings.cli_http_timeout_seconds == 5.0
     assert settings.advance_job_poll_interval_seconds == 0.25
     assert settings.advance_job_poll_timeout_seconds == 60.0
     assert settings.cli_max_steps == 64
     assert settings.cli_poll_interval_seconds == 0.0
     assert settings.cli_event_limit == 100
     assert settings.cli_output_format == "table"
-    assert settings.streamlit_api_url == ""
-    assert settings.streamlit_resolved_api_url == settings.cli_api_url
-    assert settings.streamlit_http_timeout_seconds == 5.0
     assert settings.streamlit_refresh_interval_seconds == 5.0
-    assert settings.streamlit_event_limit == 100
     assert settings.streamlit_turn_limit == 100
     assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
@@ -122,12 +124,13 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_i18n_file == ""
     assert settings.streamlit_i18n_path is None
-    assert settings.streamlit_save_file == Path(".werewolf-agent/streamlit/saves.json")
-    assert settings.streamlit_save_file_path == (
-        repository_root() / ".werewolf-agent/streamlit/saves.json"
-    )
+    assert settings.streamlit_css_file == DEFAULT_STREAMLIT_CSS_FILE
+    assert settings.streamlit_css_path is None
+    assert settings.streamlit_screens_file == DEFAULT_STREAMLIT_SCREENS_FILE
+    assert settings.streamlit_screens_path is None
     assert settings.streamlit_page_title == "Werewolf Agent"
     assert settings.streamlit_default_seed == 1
+    assert settings.streamlit_random_seed_max == DEFAULT_STREAMLIT_RANDOM_SEED_MAX
     assert settings.streamlit_default_manual_player_id == "player-1"
     assert settings.streamlit_message_max_chars == 200
     assert settings.streamlit_service_name == "werewolf-agent-streamlit"
@@ -302,24 +305,22 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_SETUP_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
-    monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
     monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS", "0.1")
     monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_API_URL", "http://ui-api.test/api/v1")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS", "5")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_REFRESH_INTERVAL_SECONDS", "2")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_EVENT_LIMIT", "50")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_TURN_LIMIT", "40")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_RUN_LIMIT", "9")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_LANGUAGE", "en")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_I18N_FILE", "tmp/streamlit/i18n.toml")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_SAVE_FILE", "tmp/streamlit/saves.json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MAX_AUTO_STEPS", "12")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS", "0.5")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE", "collapsed")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_CSS_FILE", "tmp/streamlit/default.css")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_SCREENS_FILE", "tmp/streamlit/screens.toml")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_RANDOM_SEED_MAX", "999")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID", "player-2")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS", "120")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
@@ -330,6 +331,14 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_API_TIMELINE_DEFAULT_LIMIT", "17")
     monkeypatch.setenv("WEREWOLF_API_TIMELINE_MAX_LIMIT", "177")
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_NARRATION_MODE", "rich")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "http://127.0.0.1:54321")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "anon-test")
+    monkeypatch.setenv(
+        "WEREWOLF_SUPABASE_DB_DSN",
+        "postgresql://postgres:secret@127.0.0.1:54322/postgres",
+    )
+    monkeypatch.setenv("WEREWOLF_SUPABASE_WORKER_ID", "worker-1")
+    monkeypatch.setenv("WEREWOLF_LLM_TRACE_RETENTION_DAYS", "45")
 
     settings = AppSettings(_env_file=None)
 
@@ -370,15 +379,10 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_setup_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
-    assert settings.cli_api_url == "http://api.test/api/v1"
     assert settings.advance_job_poll_interval_seconds == 0.1
     assert settings.advance_job_poll_timeout_seconds == 30.0
     assert settings.cli_output_format == "json"
-    assert settings.streamlit_api_url == "http://ui-api.test/api/v1"
-    assert settings.streamlit_resolved_api_url == "http://ui-api.test/api/v1"
-    assert settings.streamlit_http_timeout_seconds == 5.0
     assert settings.streamlit_refresh_interval_seconds == 2.0
-    assert settings.streamlit_event_limit == 50
     assert settings.streamlit_turn_limit == 40
     assert settings.streamlit_run_limit == 9
     assert settings.streamlit_max_auto_steps == 12
@@ -386,9 +390,11 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_initial_sidebar_state == "collapsed"
     assert settings.streamlit_language == "en"
     assert settings.streamlit_i18n_path == repository_root() / "tmp/streamlit/i18n.toml"
-    assert settings.streamlit_save_file_path == repository_root() / "tmp/streamlit/saves.json"
+    assert settings.streamlit_css_path == repository_root() / "tmp/streamlit/default.css"
+    assert settings.streamlit_screens_path == repository_root() / "tmp/streamlit/screens.toml"
     assert settings.streamlit_page_title == "Werewolf Console"
     assert settings.streamlit_default_seed == 33
+    assert settings.streamlit_random_seed_max == 999
     assert settings.streamlit_default_manual_player_id == "player-2"
     assert settings.streamlit_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
@@ -399,6 +405,11 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.api_timeline_default_limit == 17
     assert settings.api_timeline_max_limit == 177
     assert settings.game_default_narration_mode == "rich"
+    assert settings.supabase_url == "http://127.0.0.1:54321"
+    assert settings.supabase_publishable_key_value == "anon-test"
+    assert settings.supabase_worker_configured is True
+    assert settings.supabase_worker_id == "worker-1"
+    assert settings.llm_trace_retention_days == 45
 
 
 def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:

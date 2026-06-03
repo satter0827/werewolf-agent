@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -14,6 +15,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.utils.json import parse_json_markdown
 
 from werewolf_agent.commons.shared.definitions import FakeDecisionCatalog, PromptDefinition
+from werewolf_agent.commons.shared.llm_tracing import LlmInvocationTrace, LlmTraceSink
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_LLM_DECISION_PLAYER_MISMATCH,
     MESSAGE_LLM_MODEL_NOT_CONFIGURED,
@@ -80,6 +82,7 @@ class LangChainDecisionProvider:
     base_url: str = ""
     timeout_seconds: float | None = None
     max_tokens: int | None = None
+    trace_sink: LlmTraceSink | None = field(default=None, repr=False, compare=False)
     parser: PydanticOutputParser[AgentDecision] = field(
         default_factory=lambda: PydanticOutputParser(pydantic_object=AgentDecision)
     )
@@ -109,6 +112,8 @@ class LangChainDecisionProvider:
                 parser=self.parser,
             )
         )
+        prompt_messages = _prompt_messages(prompt_value)
+        started = time.perf_counter()
         try:
             raw_output = self._invoke_model(
                 prompt_value,
@@ -117,9 +122,25 @@ class LangChainDecisionProvider:
                 target_id,
                 observation,
             )
-        except LlmModelInvocationError:
+        except LlmModelInvocationError as exc:
+            self._record_trace(
+                player_id=player_id,
+                observation=observation,
+                prompt_messages=prompt_messages,
+                request_payload=_trace_request_payload(action_type, target_id),
+                error_payload=dict(exc.context),
+                latency_ms=_elapsed_ms(started),
+            )
             raise
         except Exception as exc:
+            self._record_trace(
+                player_id=player_id,
+                observation=observation,
+                prompt_messages=prompt_messages,
+                request_payload=_trace_request_payload(action_type, target_id),
+                error_payload={"error_type": type(exc).__name__},
+                latency_ms=_elapsed_ms(started),
+            )
             return AgentDecision.pass_(
                 player_id=player_id,
                 reason=message_invalid_llm_decision(type(exc).__name__),
@@ -135,11 +156,30 @@ class LangChainDecisionProvider:
                 parser=self.parser,
             )
         except Exception as exc:
+            self._record_trace(
+                player_id=player_id,
+                observation=observation,
+                prompt_messages=prompt_messages,
+                request_payload=_trace_request_payload(action_type, target_id),
+                raw_response=_json_mapping(raw_output),
+                error_payload={"error_type": type(exc).__name__},
+                latency_ms=_elapsed_ms(started),
+            )
             return AgentDecision.pass_(
                 player_id=player_id,
                 reason=message_invalid_llm_decision(type(exc).__name__),
             )
-        return _validated_decision(player_id, observation, decision)
+        validated = _validated_decision(player_id, observation, decision)
+        self._record_trace(
+            player_id=player_id,
+            observation=observation,
+            prompt_messages=prompt_messages,
+            request_payload=_trace_request_payload(action_type, target_id),
+            raw_response=_json_mapping(raw_output),
+            parsed_decision=validated.model_dump(mode="json"),
+            latency_ms=_elapsed_ms(started),
+        )
+        return validated
 
     def _invoke_model(
         self,
@@ -184,6 +224,37 @@ class LangChainDecisionProvider:
             context[ERROR_CONTEXT_LLM_MAX_TOKENS] = self.max_tokens
         return context
 
+    def _record_trace(
+        self,
+        *,
+        player_id: str,
+        observation: AgentObservation,
+        prompt_messages: list[Mapping[str, object]],
+        request_payload: Mapping[str, object],
+        raw_response: Mapping[str, object] | None = None,
+        parsed_decision: Mapping[str, object] | None = None,
+        error_payload: Mapping[str, object] | None = None,
+        latency_ms: float | None = None,
+    ) -> None:
+        if self.trace_sink is None:
+            return
+        self.trace_sink.record_invocation(
+            LlmInvocationTrace(
+                provider=self.provider_name,
+                model=self.model_name,
+                player_id=player_id,
+                phase=observation.phase.value,
+                day=observation.day,
+                prompt_messages=prompt_messages,
+                prompt_hash=_prompt_hash(prompt_messages),
+                request_payload=request_payload,
+                raw_response=raw_response,
+                parsed_decision=parsed_decision,
+                error_payload=error_payload,
+                latency_ms=latency_ms,
+            )
+        )
+
 
 def _preflight_decision(
     player_id: str,
@@ -208,6 +279,64 @@ def _to_chat_prompt(prompt: PromptDefinition) -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages(
         [(message.role, message.langchain_content()) for message in prompt.messages]
     )
+
+
+def _prompt_messages(prompt_value: Any) -> list[Mapping[str, object]]:
+    messages: list[Any] = getattr(prompt_value, "to_messages", lambda: [])()
+    records: list[Mapping[str, object]] = []
+    for message in messages:
+        records.append(
+            {
+                "type": str(getattr(message, "type", "")),
+                "content": _json_compatible(getattr(message, "content", "")),
+            }
+        )
+    return records
+
+
+def _prompt_hash(prompt_messages: list[Mapping[str, object]]) -> str:
+    payload = json.dumps(
+        prompt_messages,
+        ensure_ascii=False,
+        sort_keys=True,
+        default=str,
+        separators=PROMPT_JSON_SEPARATORS,
+    )
+    return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _trace_request_payload(
+    action_type: AgentActionType,
+    target_id: str | None,
+) -> Mapping[str, object]:
+    payload: dict[str, object] = {"selected_action": action_type.value}
+    if target_id is not None:
+        payload["target_id"] = target_id
+    return payload
+
+
+def _json_mapping(value: object) -> Mapping[str, object]:
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump(mode="json")
+        if isinstance(dumped, dict):
+            return dumped
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    return {"value": _json_compatible(value)}
+
+
+def _json_compatible(value: object) -> object:
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return [_json_compatible(item) for item in value]
+    return str(value)
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 3)
 
 
 def _selected_action(observation: AgentObservation) -> AgentActionType:

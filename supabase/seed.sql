@@ -1,0 +1,2 @@
+-- Local development seed data is intentionally empty.
+-- Runtime defaults live in backend packaged TOML files.

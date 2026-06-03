@@ -34,13 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 api = [
-    "alembic>=1.14,<2",
     "fastapi>=0.115,<1",
-    "langchain-openai>=0.3,<0.4",
-    "openai>=1.59,<2",
-    "psycopg[binary]>=3.2,<4",
-    "sqlalchemy>=2.0,<3",
-    "sse-starlette>=2.2,<4",
     "uvicorn[standard]>=0.34,<1",
 ]
 llm = [
@@ -48,17 +42,17 @@ llm = [
     "openai>=1.59,<2",
 ]
 streamlit = [
-    "alembic>=1.14,<2",
-    "fastapi>=0.115,<1",
-    "psycopg[binary]>=3.2,<4",
-    "sqlalchemy>=2.0,<3",
-    "sse-starlette>=2.2,<4",
     "streamlit>=1.41,<2",
-    "uvicorn[standard]>=0.34,<1",
+]
+worker = [
+    "langchain-openai>=0.3,<0.4",
+    "openai>=1.59,<2",
+    "psycopg[binary]>=3.2,<4",
 ]
 
 [project.scripts]
 werewolf-agent = "werewolf_agent.interface.entrypoint.cui.app:app"
+werewolf-agent-worker = "werewolf_agent.interface.entrypoint.worker.app:app"
 
 [dependency-groups]
 dev = [
@@ -88,11 +82,12 @@ packages = ["backend/src/werewolf_agent"]
 "backend/src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
 "backend/src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
 "backend/src/werewolf_agent/resources/streamlit/i18n.toml" = "werewolf_agent/resources/streamlit/i18n.toml"
+"backend/src/werewolf_agent/resources/streamlit/default.css" = "werewolf_agent/resources/streamlit/default.css"
+"backend/src/werewolf_agent/resources/streamlit/screens.toml" = "werewolf_agent/resources/streamlit/screens.toml"
 
 [tool.hatch.build.targets.sdist]
 only-include = [
     ".env.example",
-    "alembic.ini",
     "LICENSE",
     "README.md",
     "backend/src",
@@ -102,6 +97,7 @@ only-include = [
     "docs",
     "pyproject.toml",
     "scripts",
+    "supabase",
     "tests",
 ]
 exclude = [

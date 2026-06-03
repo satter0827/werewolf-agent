@@ -1,8 +1,9 @@
-x-api-environment: &api-environment
+x-runtime-environment: &runtime-environment
   WEREWOLF_API_DEBUG: ${WEREWOLF_API_DEBUG:-true}
   WEREWOLF_CORS_ALLOWED_ORIGINS: ${WEREWOLF_CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
-  WEREWOLF_SQLITE_PATH: /data/db.sqlite3
-  WEREWOLF_DATABASE_URL: ${WEREWOLF_DATABASE_URL:-}
+  WEREWOLF_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-}
+  WEREWOLF_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
+  WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_SUPABASE_DB_DSN:-}
   OPENAI_API_KEY: ${OPENAI_API_KEY:-}
 
 x-backend-build: &backend-build
@@ -12,14 +13,13 @@ x-backend-build: &backend-build
 
 x-backend-volumes: &backend-volumes
   - .:/app
-  - werewolf-sqlite:/data
 
 services:
   api:
     build: *backend-build
     init: true
     environment:
-      <<: *api-environment
+      <<: *runtime-environment
       WEREWOLF_LOG_FILE_NAME: api.jsonl
     volumes: *backend-volumes
     ports:
@@ -38,23 +38,21 @@ services:
       retries: 5
       start_period: 10s
 
-  migrate:
+  worker:
     build: *backend-build
-    profiles: ["tools"]
+    profiles: ["worker"]
+    init: true
     environment:
-      <<: *api-environment
-      WEREWOLF_LOG_FILE_NAME: migrate.jsonl
+      <<: *runtime-environment
+      WEREWOLF_LOG_FILE_NAME: worker.jsonl
     volumes: *backend-volumes
-    command: alembic upgrade head
+    command: werewolf-agent-worker run
 
   test:
     build: *backend-build
     profiles: ["tools"]
     environment:
-      <<: *api-environment
+      <<: *runtime-environment
       WEREWOLF_LOG_FILE_NAME: test.jsonl
     volumes: *backend-volumes
     command: pytest
-
-volumes:
-  werewolf-sqlite:

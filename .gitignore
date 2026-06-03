@@ -15,18 +15,22 @@ __pycache__/
 /.env.*
 !.env.example
 /.envrc
+/supabase/**/.env
+/supabase/**/signing_keys.json
+/supabase/**/secrets.*
 
 # Werewolf Agent local generated artifacts
 /.werewolf-agent/
 
-# Django and local databases
+# Supabase local runtime state
+/supabase/.branches/
+/supabase/.temp/
+
+# Local databases
 *.sqlite3
 *.sqlite3-journal
 db.sqlite3
 db.sqlite3-journal
-local_settings.py
-/media/
-/staticfiles/
 
 # Logs
 *.log

@@ -6,28 +6,30 @@
 ## 現在地
 
 - deterministic domain core 実装済み
-- FastAPI / CLI / Streamlit から LLM 同士の game と 1 人 manual player 混在 game を進められる
+- CLI / Streamlit は Supabase に直接接続し、未ログイン時は process-local demo client で game を進められる
 - `GameService` facade 経由で create / get / advance / list / timeline / reveal / private observation / manual action を扱う
-- FastAPI の公開面は `/health`、`/setup-options`、`/games`、`/advance`、`/advance-jobs`、`/timeline`、`/reveal`、manual player endpoint に絞る
-- CLI `doctor` / `setup-options` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `games` は HTTP API だけを使う
-- Streamlit は public API 経由で Play / Observe を提供する
+- FastAPI の公開面は `/health` だけに絞る
+- CLI `doctor` / `login` / `logout` / `whoami` / `setup-options` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `games` は `GameClient` port だけを使う
+- Streamlit は Play / Observe / History を提供し、ログイン有無と admin 権限で表示を分ける
 - LLM provider の既定は LM Studio。`WEREWOLF_MODEL=auto` で `/v1/models` の先頭 model を使う
-- advance は API-side job として保存し、LLM 呼び出しを HTTP request wait と DB transaction から分離する
+- Supabase queue worker が game 作成、advance、manual action を処理し、LLM 呼び出しを UI / CLI process から分離する
+- LLM trace は prompt hash、prompt messages、request payload、raw response、parsed decision、error payload、latency を永続化する
 - LangChain `fake` と OpenAI provider は設定値で明示的に切り替える
-- 複数 manual player、永続 login / session、React UI は未実装
+- 複数 manual player、React UI は未実装
 
 ## 最初に実行
 
 ```bash
-uv sync --group dev --extra api --extra llm --extra streamlit
+uv sync --group dev --extra api --extra llm --extra streamlit --extra worker
 uv run werewolf-agent doctor
-uv run --extra api alembic upgrade head
+supabase migration up
 ```
 
 API:
 
 ```bash
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
+uv run --extra worker werewolf-agent-worker run
 ```
 
 CLI:
@@ -50,7 +52,7 @@ uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entr
 
 この repository は OneDrive の reparse point 配下で作業されることがあります。Codex の sandbox から repository 配下へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite `disk I/O error` が出る場合があります。
 
-検証用 cache、SQLite、Streamlit save、browser QA screenshot は `%TEMP%\werewolf-agent` 配下へ置きます。運用ログだけは `.werewolf-agent/logs` 配下へ統一します。依存関係が同期済みなら `uv run --no-sync ...` を優先し、Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
+検証用 cache と browser QA screenshot は `%TEMP%\werewolf-agent` 配下へ置きます。運用ログだけは `.werewolf-agent/logs` 配下へ統一します。依存関係が同期済みなら `uv run --no-sync ...` を優先し、Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使います。
 
 まとめて検証:
 
@@ -58,13 +60,14 @@ uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entr
 scripts\check-all.cmd --api --keep-going
 ```
 
-API を一時 DB で起動:
+API と worker を個別に起動:
 
 ```bat
-scripts\run-api.cmd --temp-state --reload
+scripts\run-api.cmd --reload
+scripts\run-worker.cmd --once
 ```
 
-VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-agent` 配下へ向けます。運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
+VS Code の Run and Debug は cache を `%TEMP%\werewolf-agent` 配下へ向けます。運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 ## 配置
 
@@ -76,21 +79,24 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 | `backend/src/werewolf_agent/usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/runtime/` | settings、definition loader、logging bootstrap |
-| `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、advance job、依存注入、wire schema 変換 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI app、router |
-| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、HTTP client、表示 |
+| `backend/src/werewolf_agent/interface/application/` | settings から usecase へ渡す依存関係の組み立て |
+| `backend/src/werewolf_agent/interface/api/` | health check 用 FastAPI app、router |
+| `backend/src/werewolf_agent/interface/demo/` | 未ログイン用 process-local game client |
+| `backend/src/werewolf_agent/interface/supabase/` | Supabase Auth / Data API client と session store |
+| `backend/src/werewolf_agent/interface/worker/` | Supabase queue worker、Postgres repository、LLM trace sink |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、Supabase login、client port 経由の操作 |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
-| `backend/src/werewolf_agent/interface/shared/` | HTTP client、request builder、HTTP 例外変換、event sink |
+| `backend/src/werewolf_agent/interface/shared/` | game client port、request builder、diagnostics、共通 adapter |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、Problem Details |
 | `backend/src/werewolf_agent/commons/` | constants、messages、validation、definition value、redaction |
 | `tests/unit/` | process 内 unit test |
-| `tests/integration/api/` | FastAPI / DB / API integration test |
+| `tests/integration/api/` | FastAPI health integration test |
 
 ## 境界
 
-- CLI は `contracts/schemas.py` と `GameApiClient` だけを使う
+- CLI / Streamlit は `contracts/schemas.py` と `GameClient` port だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interface/application` に限定する
+- interface 層から usecase を呼ぶ場所は `interface/application`、`interface/demo`、`interface/worker`、`interface/shared/setup_options.py` に限定する
 - 設定読み込み、definition loading、logging bootstrap は `interface/runtime` に置く
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `usecase/jobs` は domain を import せず、facade、command / query、repository / telemetry port に限定する
@@ -110,24 +116,29 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 | LLM prompt | `backend/src/werewolf_agent/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` | `domain.llm` |
 | Fake responses | `backend/src/werewolf_agent/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` | `domain.llm` |
 | Streamlit i18n | `backend/src/werewolf_agent/resources/streamlit/i18n.toml` | `WEREWOLF_STREAMLIT_I18N_FILE` | `interface/entrypoint/streamlit` |
+| Streamlit CSS | `backend/src/werewolf_agent/resources/streamlit/default.css` | `WEREWOLF_STREAMLIT_CSS_FILE` | `interface/entrypoint/streamlit` |
+| Streamlit screen | `backend/src/werewolf_agent/resources/streamlit/screens.toml` | `WEREWOLF_STREAMLIT_SCREENS_FILE` | `interface/entrypoint/streamlit` |
 
-`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行います。`interface/application` は読み込まれた値だけを usecase へ注入します。game 作成時は `role_counts` から人数を導出し、manual seat は `manual_player_id` で指定します。
+`interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行います。adapter は読み込まれた値だけを usecase へ注入します。game 作成時は `role_counts` から人数を導出し、manual seat は `manual_player_id` で指定します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、advance job polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS` で制御します。
+Streamlit CSS は追記ではなく置換方式です。画面定義体は表示要素、表示順、配置、列数だけを制御し、public / private 判定、action availability、API payload、game state 計算は `streamlit/app.py` と表示 model 側に残します。
+
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
 
 ## DB
 
-- `WEREWOLF_DATABASE_URL` が空なら SQLite
-- SQLite の既定値は `.werewolf-agent/db/db.sqlite3`
-- SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
-- usecase の保存単位は `games`、`game_events`、`game_summaries`、`game_turns`、`game_advance_jobs`
+- Supabase が永続化の正本
+- 画面から変更する game、参加者、履歴、private observation、operation request、LLM trace、audit は DB に保存する
+- 運用だけで変更する設定値、definition、UI text、CSS、screen 配置は settings / resource file に保存する
+- `public` schema は RLS を有効化し、CLI / Streamlit が Data API から触る最小 table だけを expose する
+- `private` schema は worker 専用で、private state と private event stream を public API / Data API へ出さない
 - manual player token は作成時だけ平文で返し、DB には hash だけを保存する
-- 外部公開の履歴は `GameTimelineItem` だけに統一する
+- 外部公開の履歴は `game_public_turns` と `game_summaries` に統一する
 
 Migration:
 
 ```bash
-uv run --extra api alembic upgrade head
+supabase migration up
 ```
 
 ## テスト
@@ -139,6 +150,11 @@ uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src
 uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
+supabase migration up
+uv run --extra worker werewolf-agent-worker run
+docker compose build
+docker compose --profile worker up worker
+docker compose run --rm test
 ```
 
 配置方針:
@@ -147,16 +163,16 @@ uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src
 - LLM observation / decision: `tests/unit/domain/test_langchain_llm.py`
 - usecase workflow と境界: `tests/unit/usecase/`
 - import 境界と公開面: `tests/unit/architecture/`
-- CLI / Streamlit / shared client: `tests/unit/interface/`
-- FastAPI / DB / endpoint: `tests/integration/api/`
+- CLI / Streamlit / client adapter: `tests/unit/interface/`
+- FastAPI health: `tests/integration/api/`
 
 ## 生成物
 
 Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` または `%TEMP%\werewolf-agent` に集約します。
 
-- SQLite: `.werewolf-agent/db/db.sqlite3`
 - operational logs: `.werewolf-agent/logs/werewolf-agent.jsonl`
-- Streamlit save: game metadata だけを保存し、manual token は現在の Streamlit session 内だけに保持する
+- Supabase session file: OS user profile 側の app config directory
+- Streamlit active game selection: 現在の Streamlit session 内だけに保持する
 - pytest / ruff / mypy cache: `.werewolf-agent/cache/`
 - pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
 - coverage data: `.werewolf-agent/coverage/.coverage`
@@ -176,7 +192,6 @@ uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/s
 
 - 実 provider の長時間 QA と evaluation workflow
 - 複数 manual player
-- 永続 login / session
 - React UI
 
 ## Handoff

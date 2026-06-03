@@ -64,7 +64,6 @@ def test_setup_draft_and_preferences_use_single_session_models() -> None:
     setup.remember_role_counts(session, {"werewolf": 1, "villager": 5})
     setup.remember_seed_text(session, "42")
     setup.remember_manual_player_id(session, "player-2")
-    setup.remember_preferred_api_url(session, " http://127.0.0.1:8000/api/v1 ")
     setup.remember_preferred_language(session, "en")
 
     assert set(session) == {
@@ -72,7 +71,6 @@ def test_setup_draft_and_preferences_use_single_session_models() -> None:
         setup.KEY_STREAMLIT_PREFERENCES,
     }
     assert setup.game_setup_draft(session).manual_player_id == "player-2"
-    assert setup.preferred_api_url(session, "default") == "http://127.0.0.1:8000/api/v1"
     assert setup.preferred_language(session, "ja") == "en"
 
 

@@ -10,8 +10,8 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 現在の状態:
 
-- LangChain `fake` provider だけで FastAPI 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、FastAPI、CLI、Streamlit、manual action API、private observation API、public timeline は実装済み
+- CLI / Streamlit は Supabase に直接接続し、未ログイン時は demo client で 1 game を完走できる
+- `domain`、`usecase`、health-only FastAPI、CLI、Streamlit、Supabase worker、public timeline、個人履歴、LLM trace は実装済み
 - 実 LLM provider QA、複数 manual player、React UI は未実装
 
 ## Read First
@@ -33,29 +33,32 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 | `backend/src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い usecase facade、DTO、repository port |
 | `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力 |
-| `backend/src/werewolf_agent/interface/application/` | stateless application bridge、DB repository、transaction、依存注入 |
-| `backend/src/werewolf_agent/interface/entrypoint/cui/` | 公開 HTTP API だけを呼ぶ CLI |
-| `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
+| `backend/src/werewolf_agent/interface/api/` | health check 用 FastAPI |
+| `backend/src/werewolf_agent/interface/application/` | stateless application bridge、settings から usecase への依存注入 |
+| `backend/src/werewolf_agent/interface/demo/` | 未ログイン用 process-local game client |
+| `backend/src/werewolf_agent/interface/supabase/` | Supabase Auth / Data API client、session store |
+| `backend/src/werewolf_agent/interface/worker/` | Supabase queue worker、Postgres repository、LLM trace sink |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、Supabase login、client port 経由の操作 |
+| `backend/src/werewolf_agent/interface/shared/` | game client port、request builder、diagnostics、interface 共通 message |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
 | `tests/unit/` | unit test |
-| `tests/integration/api/` | FastAPI / DB / API integration test |
+| `tests/integration/api/` | FastAPI health integration test |
 
 境界ルール:
 
-- domain は `.env`、FastAPI、SQLAlchemy、LLM provider、file I/O、logging 設定に依存させない
-- CLI は domain / usecase を直接 import せず、public wire schema と HTTP client だけを使う
+- domain は `.env`、FastAPI、Supabase、SQLAlchemy、LLM provider、file I/O、logging 設定に依存させない
+- CLI / Streamlit は domain / usecase を直接 import せず、public wire schema と `GameClient` port だけを使う
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interface/application/` に限定する
+- interface 層から usecase を呼ぶ場所は `interface/application/`、`interface/demo/`、`interface/worker/`、`interface/shared/setup_options.py` に限定する
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `usecase/jobs` は domain を import せず、public DTO と stateless facade に限定する
 - usecase から domain を参照する code は `usecase/internal` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
 - `usecase/internal` は interface / wire schema に依存させない
 - `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換してつなぐ
 - 業務要件は usecase、コアルールは domain、HTTP / CLI / 画面向け変換は interface に置く
-- API は `private_state` を保存してよいが、公開 DTO や public timeline へ role / night action / secret を出さない
+- worker は `private_state` を保存してよいが、公開 DTO や public timeline へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
 - LLM 出力は自由文のまま使わず、Pydantic / JSON Schema 相当で検証する
 
@@ -64,20 +67,22 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 基本:
 
 ```bash
-uv sync --group dev --extra api
+uv sync --group dev --extra api --extra worker --extra streamlit --extra llm
 uv run werewolf-agent doctor
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
+uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
 uv run mypy backend/src
 ```
 
 API:
 
 ```bash
-uv run --extra api alembic upgrade head
+supabase migration up
 uv run --extra api pytest tests/integration/api
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
+uv run --extra worker werewolf-agent-worker run
 ```
 
 CLI で 1 game 確認:
@@ -90,19 +95,19 @@ Docker:
 
 ```bash
 docker compose build
-docker compose run --rm migrate
 docker compose up api
+docker compose --profile worker up worker
 docker compose run --rm test
 ```
 
 Windows / OneDrive / Codex での実行:
 
-- この checkout は OneDrive の reparse point 配下に置かれることがある。Codex の sandbox から PowerShell で repository 内へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite `disk I/O error` が起きる場合がある
-- AI は検証用の cache、SQLite、Streamlit save、browser QA screenshot を repository 配下へ直接書かず、`%TEMP%\werewolf-agent` 配下を使う
+- この checkout は OneDrive の reparse point 配下に置かれることがある。Codex の sandbox から PowerShell で repository 内へ新規生成物を書くと、`Access is denied` や Ruff cache warning が起きる場合がある
+- AI は検証用の cache と browser QA screenshot を repository 配下へ直接書かず、`%TEMP%\werewolf-agent` 配下を使う
 - 依存関係がすでに同期済みなら、AI は `uv run --no-sync ...` を優先する。Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使う
-- まとめて検証する場合は `scripts\check-all.cmd` を使う。この script は pytest / mypy cache と検証用 SQLite を `%TEMP%\werewolf-agent` に置く
-- API の手動 QA で一時 DB を使う場合は `scripts\run-api.cmd --temp-state` を使う。直接起動する場合は `WEREWOLF_SQLITE_PATH` と `WEREWOLF_STREAMLIT_SAVE_FILE` を `%TEMP%\werewolf-agent` 配下へ向ける
-- VS Code の `launch.json` / `tasks.json` から起動する場合も、API 用 SQLite と Streamlit save は `%TEMP%\werewolf-agent` 配下へ向ける。launch 設定を変更する場合は、この方針を維持する
+- まとめて検証する場合は `scripts\check-all.cmd` を使う。この script は pytest / mypy cache を `%TEMP%\werewolf-agent` に置く
+- API の手動 QA は `scripts\run-api.cmd`、worker の手動 QA は `scripts\run-worker.cmd` を使う
+- VS Code の `launch.json` / `tasks.json` から起動する場合も、この方針を維持する
 
 ## Working Rules
 
@@ -113,8 +118,8 @@ Windows / OneDrive / Codex での実行:
 - 関係ないリファクタリングや整形だけの変更を混ぜない
 - ユーザーや他エージェントの未コミット変更を勝手に戻さない
 - 新しい設定値は安全な default、`.env.example`、README / docs、テストを揃える
-- DB、provider、API、ログは設定値で切り替えられるようにする
-- ログファイル名に `vscode`、`codex`、`local` など起動手段や作業者由来のメタ名称を入れない。`api.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl` のように実行される機能・プロセス名で命名する
+- DB、provider、API、worker、ログは設定値で切り替えられるようにする
+- ログファイル名に `vscode`、`codex`、`local` など起動手段や作業者由来のメタ名称を入れない。`api.jsonl`、`worker.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl` のように実行される機能・プロセス名で命名する
 - 不確かな仕様は断定せず、docs に前提・未決・選択肢として残す
 - 大きな構成変更は、先に docs へ意図を残す
 

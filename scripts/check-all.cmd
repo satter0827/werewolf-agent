@@ -62,9 +62,6 @@ if not exist "%WEREWOLF_AGENT_RUNTIME_DIR%\cache\pytest" (
 if not exist "%WEREWOLF_AGENT_RUNTIME_DIR%\cache\mypy" (
     mkdir "%WEREWOLF_AGENT_RUNTIME_DIR%\cache\mypy" >nul 2>nul
 )
-if not exist "%WEREWOLF_AGENT_RUNTIME_DIR%\db" (
-    mkdir "%WEREWOLF_AGENT_RUNTIME_DIR%\db" >nul 2>nul
-)
 
 echo.
 echo === doctor ===
@@ -104,15 +101,6 @@ if errorlevel 1 goto finish
 
 if not "%RUN_API_CHECKS%"=="1" goto finish
 
-if not defined WEREWOLF_SQLITE_PATH (
-    set "WEREWOLF_SQLITE_PATH=%WEREWOLF_AGENT_RUNTIME_DIR%\db\check-all.sqlite3"
-)
-echo.
-echo === alembic upgrade head ===
-"%PYTHON%" -m alembic upgrade head
-call :check_status %ERRORLEVEL%
-if errorlevel 1 goto finish
-
 echo.
 echo === pytest tests/integration/api ===
 "%PYTHON%" -m pytest tests/integration/api
@@ -144,8 +132,8 @@ exit /b %STATUS%
 echo Usage: scripts\check-all.cmd [--api] [--keep-going]
 echo.
 echo Runs local validation with .venv\Scripts\python.exe.
-echo Runtime cache and temporary SQLite files default to %%TEMP%%\werewolf-agent.
+echo Runtime cache defaults to %%TEMP%%\werewolf-agent.
 echo Operational logs default to .werewolf-agent\logs\check-all.jsonl.
-echo   --api         Also run Alembic migration and API integration tests.
+echo   --api         Also run API integration tests.
 echo   --keep-going  Continue after failed checks and exit non-zero at the end.
 exit /b 0

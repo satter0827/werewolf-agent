@@ -35,6 +35,10 @@ from werewolf_agent.interface.entrypoint.streamlit.components import (
     status_grid_html,
     timeline_section_html,
 )
+from werewolf_agent.interface.entrypoint.streamlit.history import (
+    build_history_options,
+    create_session_game_selection,
+)
 from werewolf_agent.interface.entrypoint.streamlit.i18n import (
     I18nCatalog,
     Language,
@@ -50,17 +54,17 @@ from werewolf_agent.interface.entrypoint.streamlit.operations import (
     start_advance_step,
     submit_screen_action,
 )
-from werewolf_agent.interface.entrypoint.streamlit.saves import (
-    build_saved_game_options,
-    create_save_slot,
-    load_save_slots,
-    upsert_save_slot,
+from werewolf_agent.interface.entrypoint.streamlit.screens import (
+    ScreenCatalog,
+    ScreenElement,
+    load_screen_catalog,
 )
 from werewolf_agent.interface.entrypoint.streamlit.setup import (
     KEY_ROLE_COUNT_WIDGET_PREFIX,
     NARRATION_MODES,
     VIEW_APP_SETTINGS,
     VIEW_GAME,
+    VIEW_HISTORY,
     VIEW_OBSERVE_SETUP,
     VIEW_PLAY_SETUP,
     add_custom_character,
@@ -71,13 +75,11 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
     custom_characters,
     custom_roles,
     narration_mode,
-    preferred_api_url,
     preferred_language,
     preset_counts,
     remember_character_assignment,
     remember_manual_player_id,
     remember_narration_mode,
-    remember_preferred_api_url,
     remember_preferred_language,
     remember_role_counts,
     remember_rules,
@@ -99,7 +101,8 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
 )
 from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_MESSAGE,
-    KEY_SELECTED_SAVE_ID,
+    KEY_SELECTED_HISTORY_ID,
+    active_game_selection,
     advance_job_id,
     auto_advance_state,
     clear_advance_job,
@@ -108,14 +111,15 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
     manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
+    remember_active_game_selection,
     remember_advance_job,
     remember_manual_player_token,
-    remember_selected_save,
+    remember_selected_history,
     start_auto_advance,
     sync_auto_advance_game,
     text_value,
 )
-from werewolf_agent.interface.entrypoint.streamlit.styles import STREAMLIT_CSS
+from werewolf_agent.interface.entrypoint.streamlit.styles import load_style_tag
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ActionChoiceView,
     GameScreenView,
@@ -142,6 +146,7 @@ def main() -> None:
 def _render_app(st: Any, settings: AppSettings) -> None:
     """Render one Streamlit rerun with a bound observation context."""
     catalog = load_i18n(settings)
+    screens = load_screen_catalog(settings)
     lang = preferred_language(st.session_state, settings.streamlit_language)
     st.set_page_config(
         page_title=settings.streamlit_page_title,
@@ -149,27 +154,46 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         layout="wide",
         initial_sidebar_state=settings.streamlit_initial_sidebar_state,
     )
-    st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
+    st.markdown(load_style_tag(settings), unsafe_allow_html=True)
 
-    api_url, selected_option, view = _render_sidebar(st, settings, catalog=catalog, lang=lang)
+    selected_option, view = _render_sidebar(
+        st,
+        settings,
+        catalog=catalog,
+        lang=lang,
+        screens=screens,
+    )
     if view == VIEW_APP_SETTINGS:
-        _render_settings_screen(st, settings=settings, api_url=api_url, catalog=catalog, lang=lang)
+        _render_settings_screen(
+            st,
+            settings=settings,
+            catalog=catalog,
+            lang=lang,
+            screens=screens,
+        )
+        return
+    if view == VIEW_HISTORY:
+        _render_history_screen(
+            st,
+            settings=settings,
+            catalog=catalog,
+            lang=lang,
+        )
         return
     if view != VIEW_GAME or selected_option is None:
         _render_setup_screen(
             st,
             settings=settings,
-            api_url=api_url,
             catalog=catalog,
             lang=lang,
             observer=view == VIEW_OBSERVE_SETUP,
+            screens=screens,
         )
         return
 
     sync_auto_advance_game(st.session_state, selected_option.game_id)
     try:
         screen = load_game_screen(
-            api_url=api_url,
             settings=settings,
             game_id=selected_option.game_id,
             manual_player_id=selected_option.manual_player_id,
@@ -184,31 +208,92 @@ def _render_app(st: Any, settings: AppSettings) -> None:
     if selected_option.mode != "playable" or screen.can_submit_action or screen.is_completed:
         pause_auto_advance(st.session_state)
 
-    _render_status_bar(st, screen)
-    table_column, hand_column = st.columns([1.55, 1], gap="medium")
+    _render_game_screen(
+        st,
+        settings=settings,
+        screen=screen,
+        selected_option=selected_option,
+        catalog=catalog,
+        lang=lang,
+        screens=screens,
+    )
+
+
+def _render_game_screen(
+    st: Any,
+    *,
+    settings: AppSettings,
+    screen: GameScreenView,
+    selected_option: SavedGameOptionView,
+    catalog: I18nCatalog,
+    lang: Language,
+    screens: ScreenCatalog,
+) -> None:
+    """Render the active game screen from its screen definition."""
+    for element in screens.elements("game", "top"):
+        if element.id == "status_bar":
+            _render_status_bar(st, screen)
+
+    layout = screens.layout("game")
+    table_column, hand_column = st.columns(layout.columns, gap=layout.gap)
     with table_column:
-        _render_game_table(st, screen, catalog=catalog, lang=lang)
-        _render_timeline(st, screen, variant="desktop", catalog=catalog, lang=lang)
-        _render_next_actions(
-            st,
-            settings=settings,
-            api_url=api_url,
-            screen=screen,
-            selected_option=selected_option,
-            catalog=catalog,
-            lang=lang,
-        )
+        for element in screens.elements("game", "main"):
+            _render_game_main_element(
+                st,
+                element,
+                settings=settings,
+                screen=screen,
+                selected_option=selected_option,
+                catalog=catalog,
+                lang=lang,
+                screens=screens,
+            )
     with hand_column:
         _render_action_panel(
             st,
             settings=settings,
-            api_url=api_url,
             screen=screen,
             selected_option=selected_option,
             catalog=catalog,
             lang=lang,
+            screens=screens,
         )
-    _render_timeline(st, screen, variant="mobile", catalog=catalog, lang=lang)
+
+    for element in screens.elements("game", "bottom"):
+        if element.id == "timeline":
+            _render_timeline(
+                st, screen, variant=element.variant or "mobile", catalog=catalog, lang=lang
+            )
+
+
+def _render_game_main_element(
+    st: Any,
+    element: ScreenElement,
+    *,
+    settings: AppSettings,
+    screen: GameScreenView,
+    selected_option: SavedGameOptionView,
+    catalog: I18nCatalog,
+    lang: Language,
+    screens: ScreenCatalog,
+) -> None:
+    """Render one configured main game element."""
+    if element.id == "game_table":
+        _render_game_table(st, screen, catalog=catalog, lang=lang)
+    elif element.id == "timeline":
+        _render_timeline(
+            st, screen, variant=element.variant or "desktop", catalog=catalog, lang=lang
+        )
+    elif element.id == "next_actions":
+        _render_next_actions(
+            st,
+            settings=settings,
+            screen=screen,
+            selected_option=selected_option,
+            catalog=catalog,
+            lang=lang,
+            column_count=cast(int, screens.layout("game").next_action_columns),
+        )
 
 
 def _render_sidebar(
@@ -217,32 +302,43 @@ def _render_sidebar(
     *,
     catalog: I18nCatalog,
     lang: Language,
-) -> tuple[str, SavedGameOptionView | None, str]:
-    _render_sidebar_brand(st, catalog=catalog, lang=lang)
-    api_url = preferred_api_url(st.session_state, settings.streamlit_resolved_api_url)
+    screens: ScreenCatalog,
+) -> tuple[SavedGameOptionView | None, str]:
+    selected_option: SavedGameOptionView | None = None
 
-    st.sidebar.divider()
-    st.sidebar.subheader(catalog.t(lang, "sidebar.saves"))
-    selected_option = _render_save_selector(
-        st,
-        settings=settings,
-        api_url=api_url,
-        catalog=catalog,
-        lang=lang,
-    )
+    for element in screens.elements("sidebar", "main"):
+        if element.id == "brand":
+            _render_sidebar_brand(st, catalog=catalog, lang=lang)
+        elif element.id == "history_selector":
+            st.sidebar.divider()
+            st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
+            selected_option = _render_history_selector(
+                st,
+                settings=settings,
+                catalog=catalog,
+                lang=lang,
+            )
+        elif element.id == "navigation":
+            st.sidebar.divider()
+            st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
+            _render_sidebar_navigation(st, catalog=catalog, lang=lang)
+    return selected_option, current_view(st.session_state)
 
-    st.sidebar.divider()
-    st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
+
+def _render_sidebar_navigation(st: Any, *, catalog: I18nCatalog, lang: Language) -> None:
+    """Render sidebar navigation controls."""
     if st.sidebar.button(f"▶ {catalog.t(lang, 'nav.play')}", use_container_width=True):
         switch_view(st.session_state, VIEW_PLAY_SETUP)
         st.rerun()
     if st.sidebar.button(f"◉ {catalog.t(lang, 'nav.observe')}", use_container_width=True):
         switch_view(st.session_state, VIEW_OBSERVE_SETUP)
         st.rerun()
+    if st.sidebar.button(f"▣ {catalog.t(lang, 'nav.history')}", use_container_width=True):
+        switch_view(st.session_state, VIEW_HISTORY)
+        st.rerun()
     if st.sidebar.button(f"⚙ {catalog.t(lang, 'nav.settings')}", use_container_width=True):
         switch_view(st.session_state, VIEW_APP_SETTINGS)
         st.rerun()
-    return api_url, selected_option, current_view(st.session_state)
 
 
 def _render_sidebar_brand(st: Any, *, catalog: I18nCatalog, lang: Language) -> None:
@@ -260,77 +356,156 @@ def _render_sidebar_brand(st: Any, *, catalog: I18nCatalog, lang: Language) -> N
     )
 
 
-def _render_save_selector(
+def _render_history_selector(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     catalog: I18nCatalog,
     lang: Language,
 ) -> SavedGameOptionView | None:
-    slots = load_save_slots(settings.streamlit_save_file_path)
     try:
-        games = list_recent_games(api_url=api_url, settings=settings)
+        games = list_recent_games(settings=settings)
     except AppError:
         games = []
-        st.sidebar.caption(catalog.t(lang, "save.unavailable"))
-    options = build_saved_game_options(
-        slots,
+        st.sidebar.caption(catalog.t(lang, "history.unavailable"))
+    options = build_history_options(
+        active_game_selection(st.session_state),
         games,
         catalog=catalog,
         lang=lang,
         manual_player_tokens=manual_player_tokens_by_slot(st.session_state),
     )
     if not options:
-        st.sidebar.caption(catalog.t(lang, "save.empty"))
+        st.sidebar.caption(catalog.t(lang, "history.empty"))
         return None
 
-    selected_id = text_value(st.session_state, KEY_SELECTED_SAVE_ID)
+    selected_id = text_value(st.session_state, KEY_SELECTED_HISTORY_ID)
     index = _selected_option_index(options, selected_id)
     selected_option = st.sidebar.selectbox(
-        catalog.t(lang, "save.selector"),
+        catalog.t(lang, "history.selector"),
         options,
         index=index,
         format_func=lambda option: option.label,
     )
     selected_option = cast(SavedGameOptionView, selected_option)
-    if st.sidebar.button(catalog.t(lang, "save.open"), use_container_width=True):
-        remember_selected_save(st.session_state, selected_option.option_id)
+    if st.sidebar.button(catalog.t(lang, "history.open"), use_container_width=True):
+        remember_selected_history(st.session_state, selected_option.option_id)
         switch_view(st.session_state, VIEW_GAME)
         st.rerun()
     if current_view(st.session_state) != VIEW_GAME:
         return None
-    return _selected_option_by_id(options, text_value(st.session_state, KEY_SELECTED_SAVE_ID))
+    return _selected_option_by_id(options, text_value(st.session_state, KEY_SELECTED_HISTORY_ID))
+
+
+def _render_history_screen(
+    st: Any,
+    *,
+    settings: AppSettings,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render personal game history and compact result analysis."""
+    st.header(catalog.t(lang, "history.title"))
+    mode_key = (
+        "settings.mode.supabase" if settings.supabase_client_configured else "settings.mode.demo"
+    )
+    st.caption(catalog.t(lang, mode_key))
+    try:
+        games = list_recent_games(settings=settings)
+    except AppError as exc:
+        st.error(exc.detail)
+        return
+    if not games:
+        st.info(catalog.t(lang, "history.empty"))
+        return
+
+    completed = [game for game in games if game.status == "completed"]
+    running = [game for game in games if game.status != "completed"]
+    winner_counts: dict[str, int] = {}
+    for game in completed:
+        winner = game.winner or "-"
+        winner_counts[winner] = winner_counts.get(winner, 0) + 1
+    top_winner = "-"
+    if winner_counts:
+        top_winner = max(winner_counts.items(), key=lambda item: item[1])[0]
+
+    columns = st.columns(4)
+    columns[0].metric(catalog.t(lang, "history.metric.total"), len(games))
+    columns[1].metric(catalog.t(lang, "history.metric.completed"), len(completed))
+    columns[2].metric(catalog.t(lang, "history.metric.running"), len(running))
+    columns[3].metric(catalog.t(lang, "history.metric.top_winner"), top_winner)
+    st.table(
+        [
+            {
+                catalog.t(lang, "history.column.status"): catalog.label(
+                    lang, "status", game.status
+                ),
+                catalog.t(lang, "history.column.day"): game.day,
+                catalog.t(lang, "history.column.players"): game.player_count,
+                catalog.t(lang, "history.column.winner"): catalog.label(
+                    lang, "winner", game.winner
+                ),
+                catalog.t(lang, "history.column.updated"): game.updated_at.strftime("%H:%M:%S"),
+            }
+            for game in games
+        ]
+    )
 
 
 def _render_setup_screen(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     catalog: I18nCatalog,
     lang: Language,
     observer: bool,
+    screens: ScreenCatalog,
 ) -> None:
     try:
         setup_options = setup_options_with_session_customs(
             st.session_state,
-            load_setup_options(api_url=api_url, settings=settings),
+            load_setup_options(settings=settings),
         )
     except AppError as exc:
         st.error(exc.detail)
         return
 
-    st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
-    st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
+    seed_value = seed_text(st.session_state, settings.streamlit_default_seed)
+    counts = role_counts(st.session_state, setup_options)
 
-    _render_setup_preset_selector(st, setup_options=setup_options, catalog=catalog, lang=lang)
-    _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
-    _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
-    seed_value = _render_seed_controls(st, settings, catalog, lang)
-    counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
-    _render_character_assignments(st, setup_options=setup_options, catalog=catalog, lang=lang)
-    _render_local_rules_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    for element in screens.elements("setup", "main"):
+        if element.id == "header":
+            st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
+            st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
+        elif element.id == "preset":
+            _render_setup_preset_selector(
+                st, setup_options=setup_options, catalog=catalog, lang=lang
+            )
+        elif element.id == "scenario":
+            _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        elif element.id == "narration":
+            _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        elif element.id == "seed":
+            seed_value = _render_seed_controls(
+                st,
+                settings,
+                catalog,
+                lang,
+                column_count=cast(int, screens.layout("setup").seed_columns),
+            )
+        elif element.id == "role_counts":
+            counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
+        elif element.id == "character_assignments":
+            _render_character_assignments(
+                st,
+                setup_options=setup_options,
+                catalog=catalog,
+                lang=lang,
+            )
+        elif element.id == "local_rules":
+            _render_local_rules_settings(
+                st, setup_options=setup_options, catalog=catalog, lang=lang
+            )
 
     counts = role_counts(st.session_state, setup_options)
     active_rules = rules(st.session_state, setup_options)
@@ -339,43 +514,13 @@ def _render_setup_screen(
     active_narration_mode = narration_mode(st.session_state, setup_options)
     validation = validate_setup(counts, setup_options, catalog=catalog, lang=lang)
     total_players = sum(counts.values())
-    summary_columns = st.columns(3)
-    summary_columns[0].metric(
-        catalog.t(lang, "settings.scenario"),
-        _scenario_name(setup_options, scenario_id, catalog, lang),
-    )
-    summary_columns[1].metric(catalog.t(lang, "setup.total_players"), f"{total_players}")
-    summary_columns[2].metric(
-        catalog.t(lang, "settings.narration"),
-        _narration_label(active_narration_mode, catalog, lang),
-    )
-    if preset_id is not None:
-        st.caption(_setup_preset_name(setup_options, preset_id, catalog, lang))
-    for message in validation.messages:
-        st.warning(message)
-
     manual_player_id = (
         None
         if observer
-        else _render_manual_seat_selector(
-            st,
+        else selected_manual_player_id(
+            st.session_state,
             counts,
-            settings=settings,
-            catalog=catalog,
-            lang=lang,
-        )
-    )
-    try:
-        seed_from_text(seed_value)
-    except ValueError:
-        st.warning(catalog.t(lang, "setup.seed_warning"))
-    st.caption(
-        setup_summary(
-            counts,
-            rules=active_rules,
-            setup_options=setup_options,
-            catalog=catalog,
-            lang=lang,
+            default_player_id=settings.streamlit_default_manual_player_id,
         )
     )
 
@@ -384,36 +529,164 @@ def _render_setup_screen(
         setup_options,
         player_count=total_players,
     )
+
+    for element in screens.elements("setup", "summary"):
+        if element.id == "summary_metrics":
+            _render_setup_summary_metrics(
+                st,
+                setup_options=setup_options,
+                scenario_id=scenario_id,
+                preset_id=preset_id,
+                narration_mode_value=active_narration_mode,
+                total_players=total_players,
+                column_count=cast(int, screens.layout("setup").summary_columns),
+                catalog=catalog,
+                lang=lang,
+            )
+        elif element.id == "validation_messages":
+            _render_setup_validation_messages(
+                st,
+                validation=validation,
+                seed_value=seed_value,
+                catalog=catalog,
+                lang=lang,
+            )
+        elif element.id == "manual_seat" and not observer:
+            manual_player_id = _render_manual_seat_selector(
+                st,
+                counts,
+                settings=settings,
+                catalog=catalog,
+                lang=lang,
+            )
+        elif element.id == "setup_summary":
+            st.caption(
+                setup_summary(
+                    counts,
+                    rules=active_rules,
+                    setup_options=setup_options,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            )
+
+    for element in screens.elements("setup", "action"):
+        if element.id == "submit":
+            _render_setup_submit(
+                st,
+                settings=settings,
+                counts=counts,
+                rules_value=active_rules,
+                seed_value=seed_value,
+                observer=observer,
+                manual_player_id=manual_player_id,
+                validation=validation,
+                scenario_id=scenario_id,
+                setup_preset_id=preset_id,
+                narration_mode_value=active_narration_mode,
+                character_assignments_value=active_assignments,
+                catalog=catalog,
+                lang=lang,
+            )
+
+
+def _render_setup_summary_metrics(
+    st: Any,
+    *,
+    setup_options: GameSetupOptionsResponse,
+    scenario_id: str | None,
+    preset_id: str | None,
+    narration_mode_value: NarrationMode,
+    total_players: int,
+    column_count: int,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render configured setup summary metrics."""
+    metrics = (
+        (
+            catalog.t(lang, "settings.scenario"),
+            _scenario_name(setup_options, scenario_id, catalog, lang) if scenario_id else "-",
+        ),
+        (catalog.t(lang, "setup.total_players"), f"{total_players}"),
+        (
+            catalog.t(lang, "settings.narration"),
+            _narration_label(narration_mode_value, catalog, lang),
+        ),
+    )
+    columns = st.columns(column_count)
+    for index, (label, value) in enumerate(metrics):
+        columns[index % len(columns)].metric(label, value)
+    if preset_id is not None:
+        st.caption(_setup_preset_name(setup_options, preset_id, catalog, lang))
+
+
+def _render_setup_validation_messages(
+    st: Any,
+    *,
+    validation: Any,
+    seed_value: str,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render setup validation messages."""
+    for message in validation.messages:
+        st.warning(message)
+    try:
+        seed_from_text(seed_value)
+    except ValueError:
+        st.warning(catalog.t(lang, "setup.seed_warning"))
+
+
+def _render_setup_submit(
+    st: Any,
+    *,
+    settings: AppSettings,
+    counts: dict[str, int],
+    rules_value: LocalRulesSettings,
+    seed_value: str,
+    observer: bool,
+    manual_player_id: str | None,
+    validation: Any,
+    scenario_id: str | None,
+    setup_preset_id: str | None,
+    narration_mode_value: NarrationMode,
+    character_assignments_value: dict[str, str],
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render the configured setup submit action."""
     disabled = (
         not validation.is_valid
         or (manual_player_id is None and not observer)
-        or _has_duplicate_values(active_assignments)
+        or scenario_id is None
+        or _has_duplicate_values(character_assignments_value)
     )
-    if st.button(
+    if not st.button(
         catalog.t(lang, "action.create_observer" if observer else "action.create_playable"),
         type="primary",
         use_container_width=True,
         disabled=disabled,
     ):
-        _create_game(
-            st,
-            feedback=st,
-            settings=settings,
-            api_url=api_url,
-            role_counts=counts,
-            rules=active_rules,
-            seed_text=seed_value,
-            manual_player_id=None if observer else str(manual_player_id),
-            screen_mode="observer" if observer else "playable",
-            scenario_id=scenario_id,
-            setup_preset_id=preset_id,
-            narration_mode=active_narration_mode,
-            character_assignments=active_assignments,
-            custom_roles=custom_roles(st.session_state),
-            custom_characters=custom_characters(st.session_state),
-            catalog=catalog,
-            lang=lang,
-        )
+        return
+    _create_game(
+        st,
+        feedback=st,
+        settings=settings,
+        role_counts=counts,
+        rules=rules_value,
+        seed_text=seed_value,
+        manual_player_id=None if observer else str(manual_player_id),
+        screen_mode="observer" if observer else "playable",
+        scenario_id=scenario_id,
+        setup_preset_id=setup_preset_id,
+        narration_mode=narration_mode_value,
+        character_assignments=character_assignments_value,
+        custom_roles=custom_roles(st.session_state),
+        custom_characters=custom_characters(st.session_state),
+        catalog=catalog,
+        lang=lang,
+    )
 
 
 def _render_role_counts(
@@ -481,6 +754,8 @@ def _render_seed_controls(
     settings: AppSettings,
     catalog: I18nCatalog,
     lang: Language,
+    *,
+    column_count: int,
 ) -> str:
     seed = str(
         st.text_input(
@@ -490,17 +765,16 @@ def _render_seed_controls(
         )
     )
     remember_seed_text(st.session_state, seed)
-    first_column, second_column = st.columns(2)
+    seed_columns = st.columns(column_count)
+    first_column, second_column = seed_columns[0], seed_columns[1]
     if first_column.button(catalog.t(lang, "action.random_seed"), use_container_width=True):
-        remember_seed_text(st.session_state, str(secrets.randbelow(1_000_000)))
+        remember_seed_text(
+            st.session_state, str(secrets.randbelow(settings.streamlit_random_seed_max))
+        )
         st.rerun()
     if second_column.button(catalog.t(lang, "action.unset_seed"), use_container_width=True):
         remember_seed_text(st.session_state, "")
         st.rerun()
-    try:
-        seed_from_text(seed)
-    except ValueError:
-        st.warning(catalog.t(lang, "setup.seed_warning"))
     return seed
 
 
@@ -508,44 +782,61 @@ def _render_settings_screen(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     catalog: I18nCatalog,
     lang: Language,
+    screens: ScreenCatalog,
 ) -> None:
     """Render Streamlit-wide preferences and definition management."""
     st.header(catalog.t(lang, "settings.title"))
     st.caption(catalog.t(lang, "settings.caption"))
-    preferences_tab, roles_tab, characters_tab = st.tabs(
-        [
-            catalog.t(lang, "settings.tab.preferences"),
-            catalog.t(lang, "settings.tab.role_definitions"),
-            catalog.t(lang, "settings.tab.character_definitions"),
-        ]
-    )
-
-    with preferences_tab:
-        _render_common_settings(st, settings=settings, catalog=catalog, lang=lang)
-
-    try:
-        setup_options = setup_options_with_session_customs(
-            st.session_state,
-            load_setup_options(api_url=api_url, settings=settings),
-        )
-    except AppError as exc:
-        with roles_tab:
-            st.error(exc.detail)
-        with characters_tab:
-            st.error(exc.detail)
+    elements = screens.elements("settings", "tabs")
+    if not elements:
         return
 
-    with roles_tab:
-        _render_role_definition_settings(
-            st, setup_options=setup_options, catalog=catalog, lang=lang
-        )
-    with characters_tab:
-        _render_character_definition_settings(
-            st, setup_options=setup_options, catalog=catalog, lang=lang
-        )
+    tabs = st.tabs([_settings_tab_label(element, catalog, lang) for element in elements])
+    setup_options: GameSetupOptionsResponse | None = None
+    setup_error: AppError | None = None
+    if any(element.id in {"role_definitions", "character_definitions"} for element in elements):
+        try:
+            setup_options = setup_options_with_session_customs(
+                st.session_state,
+                load_setup_options(settings=settings),
+            )
+        except AppError as exc:
+            setup_error = exc
+
+    for element, tab in zip(elements, tabs, strict=True):
+        with tab:
+            if element.id == "preferences":
+                _render_common_settings(st, settings=settings, catalog=catalog, lang=lang)
+            elif setup_error is not None:
+                st.error(setup_error.detail)
+            elif element.id == "role_definitions" and setup_options is not None:
+                _render_role_definition_settings(
+                    st,
+                    setup_options=setup_options,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            elif element.id == "character_definitions" and setup_options is not None:
+                _render_character_definition_settings(
+                    st,
+                    setup_options=setup_options,
+                    catalog=catalog,
+                    lang=lang,
+                )
+
+
+def _settings_tab_label(
+    element: ScreenElement,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    if element.id == "preferences":
+        return catalog.t(lang, "settings.tab.preferences")
+    if element.id == "role_definitions":
+        return catalog.t(lang, "settings.tab.role_definitions")
+    return catalog.t(lang, "settings.tab.character_definitions")
 
 
 def _render_common_settings(
@@ -567,16 +858,10 @@ def _render_common_settings(
         remember_preferred_language(st.session_state, str(selected_language))
         st.rerun()
 
-    current_api_url = preferred_api_url(st.session_state, settings.streamlit_resolved_api_url)
-    selected_api_url = str(
-        st.text_input(
-            catalog.t(lang, "settings.api_url"),
-            value=current_api_url,
-        )
+    mode_key = (
+        "settings.mode.supabase" if settings.supabase_client_configured else "settings.mode.demo"
     )
-    if selected_api_url.strip() != current_api_url:
-        remember_preferred_api_url(st.session_state, selected_api_url)
-        st.rerun()
+    st.caption(catalog.t(lang, mode_key))
 
     if st.button(catalog.t(lang, "settings.clear_custom"), use_container_width=True):
         clear_custom_definitions(st.session_state)
@@ -1047,7 +1332,6 @@ def _create_game(
     *,
     feedback: Any,
     settings: AppSettings,
-    api_url: str,
     role_counts: dict[str, int],
     rules: LocalRulesSettings,
     seed_text: str,
@@ -1064,7 +1348,6 @@ def _create_game(
 ) -> None:
     try:
         created = create_game_from_setup(
-            api_url=api_url,
             settings=settings,
             role_counts=role_counts,
             rules=rules,
@@ -1086,7 +1369,7 @@ def _create_game(
         if created.manual_player is not None and created.manual_player.player_id == manual_player_id
         else ""
     )
-    slot = create_save_slot(
+    selection = create_session_game_selection(
         created,
         manual_player_id=manual_player_id,
         role_counts=role_counts,
@@ -1099,13 +1382,13 @@ def _create_game(
         custom_roles=custom_roles or [],
         custom_characters=custom_characters or [],
     )
-    upsert_save_slot(settings.streamlit_save_file_path, slot)
+    remember_active_game_selection(st.session_state, selection)
     remember_manual_player_token(
         st.session_state,
-        slot_id=slot.slot_id,
+        slot_id=selection.selection_id,
         manual_token=manual_token,
     )
-    remember_selected_save(st.session_state, f"slot:{slot.slot_id}")
+    remember_selected_history(st.session_state, f"session:{selection.selection_id}")
     switch_view(st.session_state, VIEW_GAME)
     clear_message(st.session_state)
     success_key = (
@@ -1161,11 +1444,11 @@ def _render_next_actions(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     screen: GameScreenView,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
+    column_count: int,
 ) -> None:
     if not screen.is_completed:
         return
@@ -1176,13 +1459,13 @@ def _render_next_actions(
         return
 
     st.divider()
-    first, second, third, fourth = st.columns(4)
+    action_columns = st.columns(column_count)
+    first, second, third, fourth = action_columns[:4]
     if first.button(catalog.t(lang, "next_actions.random_seed"), use_container_width=True):
         _create_game(
             st,
             feedback=st,
             settings=settings,
-            api_url=api_url,
             role_counts=role_counts_value,
             rules=rules_value,
             seed_text="",
@@ -1206,7 +1489,6 @@ def _render_next_actions(
             st,
             feedback=st,
             settings=settings,
-            api_url=api_url,
             role_counts=role_counts_value,
             rules=rules_value,
             seed_text=same_seed_text,
@@ -1253,78 +1535,88 @@ def _render_action_panel(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     screen: GameScreenView,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
+    screens: ScreenCatalog,
 ) -> None:
+    elements = screens.elements("game", "side")
+    if not elements:
+        return
+    has_active_job = bool(advance_job_id(st.session_state, selected_option.game_id))
+    is_playable = screen.screen_mode != "observer"
+
     with st.container(border=False, key="right_command_panel"):
-        st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
-        if screen.screen_mode == "observer":
-            if screen.observer_log is not None:
+        for element in elements:
+            if element.id == "hand_panel":
+                st.markdown(hand_panel_html(screen.hand_panel), unsafe_allow_html=True)
+            elif (
+                element.id == "observer_log" and not is_playable and screen.observer_log is not None
+            ):
                 st.markdown(observer_log_html(screen.observer_log), unsafe_allow_html=True)
-            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
-            return
-
-        if screen.observation is not None:
-            st.markdown(
-                observation_panel_html(
-                    screen.observation,
-                    role_title=catalog.t(lang, "observation.role_title"),
-                    info_title=catalog.t(lang, "observation.info_title"),
-                    role_note_template=catalog.t(lang, "game.role_note"),
-                    empty_text=catalog.t(lang, "observation.empty"),
-                ),
-                unsafe_allow_html=True,
-            )
-
-        if screen.is_completed:
-            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
-            return
-
-        if advance_job_id(st.session_state, selected_option.game_id):
-            _render_advance_job_progress(
-                st,
-                settings=settings,
-                api_url=api_url,
-                selected_option=selected_option,
-                catalog=catalog,
-                lang=lang,
-            )
-            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
-            return
-
-        if screen.can_submit_action:
-            _render_action_form(
-                st,
-                settings=settings,
-                api_url=api_url,
-                screen=screen,
-                selected_option=selected_option,
-                catalog=catalog,
-                lang=lang,
-            )
-            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
-            return
-
-        _render_auto_advance_controls(
-            st,
-            settings=settings,
-            api_url=api_url,
-            screen=screen,
-            selected_option=selected_option,
-            catalog=catalog,
-            lang=lang,
-        )
-        st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
+            elif element.id == "observation" and is_playable and screen.observation is not None:
+                st.markdown(
+                    observation_panel_html(
+                        screen.observation,
+                        role_title=catalog.t(lang, "observation.role_title"),
+                        info_title=catalog.t(lang, "observation.info_title"),
+                        role_note_template=catalog.t(lang, "game.role_note"),
+                        empty_text=catalog.t(lang, "observation.empty"),
+                    ),
+                    unsafe_allow_html=True,
+                )
+            elif (
+                element.id == "advance_job"
+                and is_playable
+                and not screen.is_completed
+                and has_active_job
+            ):
+                _render_advance_job_progress(
+                    st,
+                    settings=settings,
+                    selected_option=selected_option,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            elif (
+                element.id == "action_form"
+                and is_playable
+                and not screen.is_completed
+                and not has_active_job
+                and screen.can_submit_action
+            ):
+                _render_action_form(
+                    st,
+                    settings=settings,
+                    screen=screen,
+                    selected_option=selected_option,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            elif (
+                element.id == "auto_advance"
+                and is_playable
+                and not screen.is_completed
+                and not has_active_job
+                and not screen.can_submit_action
+            ):
+                _render_auto_advance_controls(
+                    st,
+                    settings=settings,
+                    screen=screen,
+                    selected_option=selected_option,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            elif element.id == "observation_memo":
+                st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
 
 
 def _render_action_form(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     screen: GameScreenView,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
@@ -1384,7 +1676,6 @@ def _render_action_form(
             return
         try:
             submit_screen_action(
-                api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
                 manual_player_id=manual_player_id,
@@ -1400,7 +1691,6 @@ def _render_action_form(
         try:
             _start_and_remember_advance_job(
                 st,
-                api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
             )
@@ -1414,7 +1704,6 @@ def _render_auto_advance_controls(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     screen: GameScreenView,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
@@ -1455,7 +1744,6 @@ def _render_auto_advance_controls(
     _render_auto_advance_fragment(
         st,
         settings=settings,
-        api_url=api_url,
         selected_option=selected_option,
         catalog=catalog,
         lang=lang,
@@ -1466,7 +1754,6 @@ def _render_advance_job_progress(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
@@ -1486,7 +1773,6 @@ def _render_advance_job_progress(
     _render_auto_advance_fragment(
         st,
         settings=settings,
-        api_url=api_url,
         selected_option=selected_option,
         catalog=catalog,
         lang=lang,
@@ -1496,11 +1782,10 @@ def _render_advance_job_progress(
 def _start_and_remember_advance_job(
     st: Any,
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
 ) -> None:
-    job = start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+    job = start_advance_step(settings=settings, game_id=game_id)
     remember_advance_job(st.session_state, game_id=game_id, job_id=job.job_id)
 
 
@@ -1508,7 +1793,6 @@ def _render_auto_advance_fragment(
     st: Any,
     *,
     settings: AppSettings,
-    api_url: str,
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
@@ -1526,7 +1810,6 @@ def _render_auto_advance_fragment(
         if job_id:
             try:
                 job = load_advance_job(
-                    api_url=api_url,
                     settings=settings,
                     game_id=selected_option.game_id,
                     job_id=job_id,
@@ -1565,7 +1848,6 @@ def _render_auto_advance_fragment(
         try:
             _start_and_remember_advance_job(
                 st,
-                api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
             )

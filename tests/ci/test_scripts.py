@@ -24,6 +24,7 @@ def test_expected_batch_scripts_exist() -> None:
     for name in (
         "run-cli.cmd",
         "run-api.cmd",
+        "run-worker.cmd",
         "check-all.cmd",
         "rebuild-sphinx-docs.cmd",
         "clean-caches.cmd",

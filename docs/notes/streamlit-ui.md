@@ -10,7 +10,7 @@ Observe では `観戦ログ` を主役にします。
 ## 目的
 
 - 一般ユーザーが Streamlit だけで 1 game を開始し、1 manual player として決着まで遊べる
-- 画面は FastAPI の公開 HTTP API だけを使い、domain / usecase / DB へ直接触れない
+- 画面は `GameClient` port だけを使い、ログイン時は Supabase、未ログイン時は demo client に接続する
 - 文言はゲームらしさと分かりやすさのバランスを取り、メタ表現を画面本文に出さない
 - 設定値、表示モデル、API 操作、HTML 部品を分け、画面変更が内側の層へ波及しないようにする
 
@@ -24,11 +24,11 @@ A案を実装の基準にします。中央の `ゲーム卓` にプレイヤー
 画面構成:
 
 - メイン初期画面: `ゲーム開始設定`。初回表示と sidebar の `プレイ` は常に開始設定へ戻す
-- 左サイドバー: `保存データ`、`プレイ`、`観戦`、`設定`
-- `保存データ`: プルダウンから保存スロットを選び、game ID や操作用キーは画面に出さない
+- 左サイドバー: `履歴`、`プレイ`、`観戦`、`設定`
+- `履歴`: 個人の game summary と session 中の demo game を選び、操作用キーは画面に出さない
 - `ゲーム開始設定` / `観戦開始設定`: シナリオ、設定プリセット、ナレーション、seed、役職人数、キャラクター割当、local rules を編集する。全体人数の直接入力は置かず、役職人数から導出する
 - `プレイ`: 操作席を選ぶ。`観戦` は操作席を持たず reveal 専用で開始する
-- `設定`: 言語、API URL、役職定義、キャラクター定義、追加定義のクリアだけを扱う。game 固有の設定は置かない
+- `設定`: 言語、データソース状態、役職定義、キャラクター定義、追加定義のクリアだけを扱う。game 固有の設定は置かない
 - 上部ステータス: フェーズ、日数、生存人数、経過ターン、現在の手番、状態、勝敗
 - 中央: `ゲーム卓`
 - 右側: Play では `あなたの手番`、`あなたの役職`、`見えている情報`、`できる行動`
@@ -59,13 +59,16 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - アイコンは当面、Streamlit 標準で扱える絵文字/記号を使う
 - UI 文言とイベント種別、行動、フェーズ、役職の表示名は `resources/streamlit/i18n.toml` に閉じる
 - `WEREWOLF_STREAMLIT_I18N_FILE` を指定すると外部 TOML で UI 文言を差し替えられる
-- 画面起動時の初期言語と API URL は `AppSettings` から読み、実行中の選択は `StreamlitPreferences` として Streamlit session state に保持する
+- CSS は `resources/streamlit/default.css` に閉じ、`WEREWOLF_STREAMLIT_CSS_FILE` を指定すると外部 CSS で丸ごと置換する
+- 画面要素の表示有無、順序、配置、列数は `resources/streamlit/screens.toml` に閉じ、`WEREWOLF_STREAMLIT_SCREENS_FILE` で差し替える
+- 画面定義体は表示構成だけを扱い、public / private 判定、action availability、API payload、game state 計算は持たない
+- 画面起動時の初期言語とデータソース状態は `AppSettings` から読み、実行中の選択は `StreamlitPreferences` として Streamlit session state に保持する
 - `streamlit/icons.py` は icon metadata だけを持ち、label は i18n catalog から取得する
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
-- `app.py` は Streamlit widget と画面配置だけを担当する
-- API 呼び出しは `streamlit/operations.py` から `GameApiClient` protocol を直接使う
+- `app.py` は Streamlit widget と renderer registry だけを担当する
+- game 操作は `streamlit/operations.py` から `GameClient` protocol を直接使う
 - game 固有の開始設定は `GameSetupDraft` として `streamlit/setup.py` に閉じる
-- 発言・投票送信後は公開 API の `/advance` を 1 回だけ呼び、次の手番へ進める
+- 発言・投票送信後は active client の `advance_game` を 1 回だけ呼び、次の手番へ進める
 - `入力待ちまで進める` は Streamlit session state と `st.fragment` で 1 step ずつ進め、`一時停止` で次 step 前に止める
 - 右ペインは `right_command_panel` container を操作盤の外枠とし、手番状態、秘匿観測、操作、観測メモを固定順に並べる
 - domain / usecase の `available_actions` を正とし、画面側だけで多重発言や多重投票を隠す実装にはしない
@@ -74,9 +77,9 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
 - 右ペイン最下部の `観測メモ（公開情報）` は public state と public timeline だけから作り、private observation や reveal は混ぜない
 - 発言内容、投票、投票結果、夜明けの犠牲者有無は表示し、夜行動の対象、護衛先、占い結果、role は表示しない
-- Observe は `GET /api/v1/games/{game_id}/reveal` だけから秘匿情報を読み、Play の表示 model へは混ぜない
+- Observe は admin / demo が取得できる reveal DTO だけから秘匿情報を読み、Play の表示 model へは混ぜない
 - 操作用キーは Streamlit session state のみに保持し、保存スロット、画面、ログには出さない
-- save slot は現在 version だけを読み、旧 version fallback は持たない
+- history selection は現在 version だけを読み、旧 save fallback は持たない
 
 ## ブラウザ QA
 

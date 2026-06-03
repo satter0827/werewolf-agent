@@ -15,6 +15,7 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_REFRESHED,
     LOG_STREAMLIT_RERUN_STARTED,
 )
+from werewolf_agent.contracts import ResourceNotFoundError
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     CustomCharacterDefinitionRequest,
@@ -39,20 +40,16 @@ from werewolf_agent.interface.runtime import (
     bind_observation_context,
     get_observation_context,
 )
-from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
+from werewolf_agent.interface.shared.client_factory import build_game_client
+from werewolf_agent.interface.shared.game_client import GameClient
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 logger = logging.getLogger(__name__)
 
 
-def build_streamlit_client(api_url: str, settings: AppSettings) -> GameApiClient:
-    """Build the shared public API client with Streamlit settings."""
-    return build_game_api_client(
-        api_url,
-        timeout=settings.streamlit_http_timeout_seconds,
-        advance_job_poll_interval_seconds=settings.advance_job_poll_interval_seconds,
-        advance_job_poll_timeout_seconds=settings.advance_job_poll_timeout_seconds,
-    )
+def build_streamlit_client(settings: AppSettings) -> GameClient:
+    """Build the shared Supabase/demo client with Streamlit settings."""
+    return build_game_client(settings)
 
 
 def log_streamlit_rerun_started(settings: AppSettings) -> None:
@@ -62,8 +59,7 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
         extra={
             "event_action": LOG_STREAMLIT_RERUN_STARTED,
             "event_outcome": EVENT_OUTCOME_SUCCESS,
-            "api_url": settings.streamlit_resolved_api_url,
-            "save_file_path": str(settings.streamlit_save_file_path),
+            "data_source": "supabase" if settings.supabase_client_configured else "demo",
             "log_level": settings.log_level,
             "log_output": settings.log_output,
             "log_file_path": str(settings.log_file_path),
@@ -75,20 +71,19 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
     )
 
 
-def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameSummary]:
+def list_recent_games(*, settings: AppSettings) -> list[PublicGameSummary]:
     """Return recent public games for the sidebar selector."""
-    client = build_streamlit_client(api_url, settings)
+    client = build_streamlit_client(settings)
     return client.list_games(limit=settings.streamlit_run_limit).games
 
 
-def load_setup_options(*, api_url: str, settings: AppSettings) -> GameSetupOptionsResponse:
-    """Return setup metadata from the public API."""
-    return build_streamlit_client(api_url, settings).get_setup_options()
+def load_setup_options(*, settings: AppSettings) -> GameSetupOptionsResponse:
+    """Return setup metadata from the active data source."""
+    return build_streamlit_client(settings).get_setup_options()
 
 
 def create_game_from_setup(
     *,
-    api_url: str,
     settings: AppSettings,
     role_counts: dict[str, int],
     rules: LocalRulesSettings,
@@ -115,7 +110,7 @@ def create_game_from_setup(
         custom_roles=custom_roles,
         custom_characters=custom_characters,
     )
-    response = build_streamlit_client(api_url, settings).create_game(request)
+    response = build_streamlit_client(settings).create_game(request)
     logger.info(
         LOG_STREAMLIT_GAME_CREATED,
         extra={
@@ -132,7 +127,6 @@ def create_game_from_setup(
 
 def load_game_screen(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
     manual_player_id: str | None,
@@ -142,7 +136,7 @@ def load_game_screen(
     lang: Language,
 ) -> GameScreenView:
     """Load public and private data needed by the playable screen."""
-    client = build_streamlit_client(api_url, settings)
+    client = build_streamlit_client(settings)
     state = client.get_game(game_id).state
     timeline = client.get_timeline(game_id, limit=settings.streamlit_turn_limit).items
     observation = (
@@ -155,7 +149,7 @@ def load_game_screen(
         if screen_mode == "playable"
         else None
     )
-    reveal = client.get_game_reveal(game_id) if screen_mode == "observer" else None
+    reveal = _load_optional_reveal(client=client, game_id=game_id, screen_mode=screen_mode)
     screen = build_game_screen_view(
         state=state,
         turns=timeline,
@@ -190,16 +184,31 @@ def load_game_screen(
 
 def load_reveal(
     *,
-    client: GameApiClient,
+    client: GameClient,
     game_id: str,
 ) -> GameRevealResponse:
     """Return full observer information through the dedicated reveal API."""
     return client.get_game_reveal(game_id)
 
 
+def _load_optional_reveal(
+    *,
+    client: GameClient,
+    game_id: str,
+    screen_mode: ScreenMode,
+) -> GameRevealResponse | None:
+    """Return reveal data only when the active user is allowed to see it."""
+    if screen_mode != "observer":
+        return None
+    try:
+        return client.get_game_reveal(game_id)
+    except ResourceNotFoundError:
+        return None
+
+
 def load_observation(
     *,
-    client: GameApiClient,
+    client: GameClient,
     game_id: str,
     manual_player_id: str | None,
     manual_token: str,
@@ -216,7 +225,6 @@ def load_observation(
 
 def submit_screen_action(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
     manual_player_id: str,
@@ -231,7 +239,7 @@ def submit_screen_action(
         target_id=target_id,
         message=message,
     )
-    build_streamlit_client(api_url, settings).submit_player_action(
+    build_streamlit_client(settings).submit_player_action(
         game_id,
         manual_player_id,
         request,
@@ -251,49 +259,45 @@ def submit_screen_action(
 
 def advance_one_step(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
 ) -> None:
-    """Advance the game by one public API step for Streamlit controls."""
+    """Advance the game by one data-source step for Streamlit controls."""
     if get_observation_context().get("trace_id"):
-        _advance_one_step(api_url=api_url, settings=settings, game_id=game_id)
+        _advance_one_step(settings=settings, game_id=game_id)
         return
     with bind_observation_context(trace_id=str(uuid4())):
-        _advance_one_step(api_url=api_url, settings=settings, game_id=game_id)
+        _advance_one_step(settings=settings, game_id=game_id)
 
 
 def start_advance_step(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
 ) -> AdvanceGameJobResponse:
-    """Start an API-side advance job for Streamlit controls."""
+    """Start a data-source advance job for Streamlit controls."""
     if get_observation_context().get("trace_id"):
-        return _start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+        return _start_advance_step(settings=settings, game_id=game_id)
     with bind_observation_context(trace_id=str(uuid4())):
-        return _start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+        return _start_advance_step(settings=settings, game_id=game_id)
 
 
 def load_advance_job(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
     job_id: str,
 ) -> AdvanceGameJobResponse:
-    """Load one API-side advance job for Streamlit polling."""
-    return build_streamlit_client(api_url, settings).get_advance_job(game_id, job_id)
+    """Load one data-source advance job for Streamlit polling."""
+    return build_streamlit_client(settings).get_advance_job(game_id, job_id)
 
 
 def _advance_one_step(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
 ) -> None:
-    client = build_streamlit_client(api_url, settings)
+    client = build_streamlit_client(settings)
     logger.info(
         LOG_STREAMLIT_ADVANCE_STEP_STARTED,
         extra={
@@ -320,11 +324,10 @@ def _advance_one_step(
 
 def _start_advance_step(
     *,
-    api_url: str,
     settings: AppSettings,
     game_id: str,
 ) -> AdvanceGameJobResponse:
-    client = build_streamlit_client(api_url, settings)
+    client = build_streamlit_client(settings)
     logger.info(
         LOG_STREAMLIT_ADVANCE_STEP_STARTED,
         extra={

@@ -2,27 +2,44 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "API: migrate (python -m alembic)",
+      "label": "Supabase: migration up",
+      "type": "shell",
+      "command": "supabase",
+      "args": [
+        "migration",
+        "up"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}",
+        "env": {
+          "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
+        }
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Worker: once",
       "type": "shell",
       "command": "uv",
       "args": [
         "run",
         "--no-sync",
         "--extra",
-        "api",
-        "python",
-        "-m",
-        "alembic",
-        "upgrade",
-        "head"
+        "worker",
+        "werewolf-agent-worker",
+        "once"
       ],
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
           "PYTHONPATH": "${workspaceFolder}/backend/src",
           "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
-          "WEREWOLF_SQLITE_PATH": "${env:TEMP}\\werewolf-agent\\db\\vscode.sqlite3",
-          "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
+          "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
         }
       },
       "presentation": {

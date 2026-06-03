@@ -35,6 +35,8 @@ PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
 STREAMLIT_I18N_FILE = "i18n.toml"
+STREAMLIT_CSS_FILE = "default.css"
+STREAMLIT_SCREENS_FILE = "screens.toml"
 
 
 def load_packaged_defaults() -> dict[str, object]:
@@ -47,6 +49,12 @@ def load_packaged_toml(package: str, file_name: str) -> dict[str, object]:
     resource = files(package).joinpath(file_name)
     with resource.open("rb") as file:
         return tomllib.load(file)
+
+
+def load_packaged_text(package: str, file_name: str) -> str:
+    """Load a packaged text resource."""
+    resource = files(package).joinpath(file_name)
+    return resource.read_text(encoding="utf-8")
 
 
 def load_toml_model(
@@ -74,12 +82,35 @@ def load_external_toml(path: Path) -> dict[str, object]:
         return tomllib.load(file)
 
 
+def load_external_text(path: Path) -> str:
+    """Load an external text file."""
+    return path.read_text(encoding="utf-8")
+
+
 def load_streamlit_i18n(override_path: Path | None) -> dict[str, object]:
     """Load Streamlit UI translations from settings."""
     return (
         load_external_toml(override_path)
         if override_path is not None
         else load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_I18N_FILE)
+    )
+
+
+def load_streamlit_css(override_path: Path | None) -> str:
+    """Load Streamlit UI CSS from settings."""
+    return (
+        load_external_text(override_path)
+        if override_path is not None
+        else load_packaged_text(STREAMLIT_PACKAGE, STREAMLIT_CSS_FILE)
+    )
+
+
+def load_streamlit_screens(override_path: Path | None) -> dict[str, object]:
+    """Load Streamlit screen definitions from settings."""
+    return (
+        load_external_toml(override_path)
+        if override_path is not None
+        else load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_SCREENS_FILE)
     )
 
 
@@ -142,11 +173,15 @@ def load_llm_definitions(
 
 
 __all__ = [
+    "load_external_text",
     "load_external_toml",
     "load_game_definitions",
     "load_llm_definitions",
     "load_packaged_defaults",
+    "load_packaged_text",
     "load_packaged_toml",
+    "load_streamlit_css",
     "load_streamlit_i18n",
+    "load_streamlit_screens",
     "load_toml_model",
 ]

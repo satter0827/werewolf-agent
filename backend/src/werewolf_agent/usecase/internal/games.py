@@ -419,6 +419,7 @@ def run_prepared_advance(
             definitions=_llm_definitions_for_game(prepared.config, dependencies.llm_definitions),
             profile_ids_by_player=_player_profile_ids(prepared.config),
             scenario=_agent_scenario(prepared.config),
+            trace_sink=dependencies.llm_trace_sink,
         ),
         agent_type=dependencies.config.supported_agent_type,
         manual_player_ids=manual_player_ids,
@@ -535,7 +536,12 @@ def get_player_observation(
     run = dependencies.repository.get(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    _authorize_manual_player(run, query.player_id, query.manual_token)
+    _authorize_manual_player(
+        run,
+        query.player_id,
+        query.manual_token,
+        trusted_user_id=query.trusted_user_id,
+    )
     snapshot = GameSnapshot.model_validate(run.private_state)
     pending_actions = PendingActions.model_validate(run.pending_actions)
     observation = observe(snapshot, pending_actions, query.player_id)
@@ -559,7 +565,12 @@ def submit_player_action(
     if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
-    _authorize_manual_player(run, command.player_id, command.manual_token)
+    _authorize_manual_player(
+        run,
+        command.player_id,
+        command.manual_token,
+        trusted_user_id=command.trusted_user_id,
+    )
     snapshot = GameSnapshot.model_validate(run.private_state)
     pending_actions = PendingActions.model_validate(run.pending_actions)
     action = Action(
@@ -1003,9 +1014,13 @@ def _authorize_manual_player(
     run: StoredGame,
     player_id: str,
     manual_token: str,
+    *,
+    trusted_user_id: str | None = None,
 ) -> None:
     if player_id not in _manual_player_ids(run.config):
         raise InvalidManualTokenError(MESSAGE_PLAYER_IS_NOT_MANUAL)
+    if trusted_user_id:
+        return
     expected_hash = run.manual_token_hashes.get(player_id)
     if expected_hash is None or not hmac.compare_digest(
         expected_hash,

@@ -23,12 +23,13 @@ def test_docker_workflow_runs_container_build_and_test() -> None:
     assert "docker compose down -v" in workflow
 
 
-def test_compose_tools_expose_migration_and_pytest_services() -> None:
+def test_compose_tools_expose_worker_and_pytest_services() -> None:
     compose = _read("compose.yaml")
 
-    assert "migrate:" in compose
+    assert "worker:" in compose
+    assert 'profiles: ["worker"]' in compose
+    assert "command: werewolf-agent-worker run" in compose
     assert 'profiles: ["tools"]' in compose
-    assert "command: alembic upgrade head" in compose
     assert "test:" in compose
     assert "command: pytest" in compose
 
@@ -52,11 +53,12 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
             "--ignore D100,D104 backend/src/werewolf_agent"
         ),
         "uv run mypy backend/src",
-        "uv run --extra api alembic upgrade head",
+        "supabase migration up",
+        "uv run --extra worker werewolf-agent-worker run",
         "uv run werewolf-agent doctor",
         "uv run werewolf-agent play --role-count werewolf=1",
         "docker compose build",
-        "docker compose run --rm migrate",
+        "docker compose --profile worker up worker",
         "docker compose run --rm test",
     ):
         assert command in docs

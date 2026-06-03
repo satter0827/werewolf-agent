@@ -17,12 +17,15 @@ from werewolf_agent.interface.entrypoint.cui.commands import (
     advance,
     doctor,
     games,
+    login,
+    logout,
     new,
     play,
     replay,
     setup_options,
     show,
     timeline,
+    whoami,
 )
 from werewolf_agent.interface.entrypoint.cui.messages import HELP_APP
 from werewolf_agent.interface.runtime import (
@@ -62,6 +65,9 @@ def main(ctx: typer.Context) -> None:
 
 
 app.command(name="doctor")(doctor)
+app.command(name="login")(login)
+app.command(name="logout")(logout)
+app.command(name="whoami")(whoami)
 app.command(name="setup-options")(setup_options)
 app.command(name="new")(new)
 app.command(name="show")(show)

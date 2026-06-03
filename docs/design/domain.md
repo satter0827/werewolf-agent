@@ -39,7 +39,7 @@ API 詳細、UI 手順、handoff は別文書に置きます。
 
 - `.env` / `get_settings()`
 - FastAPI / Streamlit / Typer
-- SQLAlchemy model
+- Supabase / DB adapter
 - file I/O
 - logging bootstrap
 - API key
