@@ -8,10 +8,12 @@
 - deterministic domain core 実装済み
 - FastAPI / CLI / Streamlit から LLM 同士の game と 1 人 manual player 混在 game を進められる
 - `GameService` facade 経由で create / get / advance / list / timeline / reveal / private observation / manual action を扱う
-- FastAPI の公開面は `/health`、`/setup-options`、`/games`、`/advance`、`/timeline`、`/reveal`、manual player endpoint に絞る
+- FastAPI の公開面は `/health`、`/setup-options`、`/games`、`/advance`、`/advance-jobs`、`/timeline`、`/reveal`、manual player endpoint に絞る
 - CLI `doctor` / `setup-options` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `games` は HTTP API だけを使う
 - Streamlit は public API 経由で Play / Observe を提供する
-- LLM provider は LangChain `fake`、LM Studio、OpenAI を設定値で切り替える
+- LLM provider の既定は LM Studio。`WEREWOLF_MODEL=auto` で `/v1/models` の先頭 model を使う
+- advance は API-side job として保存し、LLM 呼び出しを HTTP request wait と DB transaction から分離する
+- LangChain `fake` と OpenAI provider は設定値で明示的に切り替える
 - 複数 manual player、永続 login / session、React UI は未実装
 
 ## 最初に実行
@@ -74,7 +76,7 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 | `backend/src/werewolf_agent/usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/interface/runtime/` | settings、definition loader、logging bootstrap |
-| `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、依存注入、wire schema 変換 |
+| `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、advance job、依存注入、wire schema 変換 |
 | `backend/src/werewolf_agent/interface/api/` | FastAPI app、router |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、HTTP client、表示 |
 | `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
@@ -111,14 +113,14 @@ VS Code の Run and Debug は SQLite と Streamlit save を `%TEMP%\werewolf-age
 
 `interface/runtime` が path 解決、packaged default、外部 TOML 読み込み、Pydantic 検証を共通処理で行います。`interface/application` は読み込まれた値だけを usecase へ注入します。game 作成時は `role_counts` から人数を導出し、manual seat は `manual_player_id` で指定します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、advance job polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS` で制御します。
 
 ## DB
 
 - `WEREWOLF_DATABASE_URL` が空なら SQLite
 - SQLite の既定値は `.werewolf-agent/db/db.sqlite3`
 - SQLite の場所は `WEREWOLF_SQLITE_PATH` で変更できる
-- usecase の保存単位は `games`、`game_events`、`game_summaries`、`game_turns`
+- usecase の保存単位は `games`、`game_events`、`game_summaries`、`game_turns`、`game_advance_jobs`
 - manual player token は作成時だけ平文で返し、DB には hash だけを保存する
 - 外部公開の履歴は `GameTimelineItem` だけに統一する
 

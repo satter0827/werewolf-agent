@@ -13,6 +13,8 @@ from werewolf_agent.commons.shared.validation import (
     public_generated_player_name_label,
 )
 from werewolf_agent.contracts.schemas import (
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_RUNNING,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     GameRevealAction,
@@ -235,7 +237,7 @@ def build_game_screen_view(
     )
     can_submit_action = (
         effective_mode == "playable"
-        and state.status != "completed"
+        and state.status != GAME_STATUS_COMPLETED
         and observation_view is not None
         and bool(observation_view.available_actions)
     )
@@ -259,7 +261,7 @@ def build_game_screen_view(
         phase_label=catalog.label(lang, "phase", state.phase),
         day_label=_day_label(state.day, catalog, lang),
         status_label=catalog.t(lang, "status.running")
-        if state.status == "running"
+        if state.status == GAME_STATUS_RUNNING
         else catalog.t(lang, "status.completed"),
         alive_label=f"{len(state.alive_player_ids)} / {len(state.players)}",
         turn_label=f"{state.version}",
@@ -314,7 +316,7 @@ def build_game_screen_view(
         ),
         current_turn_title=current_title,
         current_turn_detail=current_detail,
-        is_completed=state.status == "completed",
+        is_completed=state.status == GAME_STATUS_COMPLETED,
         can_submit_action=can_submit_action,
     )
 
@@ -555,7 +557,7 @@ def hand_panel_view(
         if screen_mode == "observer"
         else catalog.t(lang, "game.hand.heading")
     )
-    if state.status == "completed":
+    if state.status == GAME_STATUS_COMPLETED:
         return HandPanelView(
             heading=heading,
             title=catalog.t(lang, "game.completed.title"),
@@ -673,7 +675,7 @@ def result_summary_view(
     lang: Language,
 ) -> ResultSummaryView | None:
     """Return a completed-game summary after the public timeline."""
-    if state.status != "completed":
+    if state.status != GAME_STATUS_COMPLETED:
         return None
     public_names = _player_name_map(state.players)
     facts = [
@@ -766,7 +768,7 @@ def observation_memo_view(
             day=_day_label(state.day, catalog, lang),
         ),
     ]
-    if state.status == "completed":
+    if state.status == GAME_STATUS_COMPLETED:
         lines.append(
             catalog.t(
                 lang,
@@ -812,7 +814,7 @@ def current_turn_title(
     lang: Language,
 ) -> str:
     """Return the current hand title."""
-    if state.status == "completed":
+    if state.status == GAME_STATUS_COMPLETED:
         return catalog.t(lang, "game.completed.title")
     if screen_mode == "observer":
         return catalog.t(lang, "game.current.observer")
@@ -829,7 +831,7 @@ def current_turn_detail(
     lang: Language,
 ) -> str:
     """Return the current hand detail text."""
-    if state.status == "completed":
+    if state.status == GAME_STATUS_COMPLETED:
         return catalog.t(
             lang,
             "result.fact.winner",
@@ -853,7 +855,7 @@ def game_option_label(
     """Return one sidebar label without exposing the internal game id."""
     status = (
         catalog.t(lang, "status.completed")
-        if game.status == "completed"
+        if game.status == GAME_STATUS_COMPLETED
         else catalog.t(lang, "status.running")
     )
     return (

@@ -13,7 +13,12 @@ from werewolf_agent.domain.llm.models import (
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.service import (
+    LLM_SPEECH_MESSAGE_MAX_CHARS,
+    PROMPT_RECENT_SPEECH_LIMIT,
+    PROMPT_RECENT_VOTE_ROUND_LIMIT,
     LangChainDecisionProvider,
+    _compact_observation,
+    _decision_format_instructions,
 )
 from werewolf_agent.interface.runtime.resources import load_llm_definitions
 
@@ -93,6 +98,7 @@ def test_prompt_resource_uses_mlflow_style_metadata_and_langchain_variables() ->
     assert prompt.model_config_metadata["model_name"] == "fake-list-llm"
     assert prompt.response_format["schema"] == "AgentDecision"
     assert "{{player_id}}" in prompt.messages[-1].content
+    assert "{{selected_action}}" in prompt.messages[-1].content
     assert "{player_id}" in prompt.messages[-1].langchain_content()
 
 
@@ -131,6 +137,44 @@ def test_prompt_resource_rejects_missing_variable_metadata() -> None:
                 )
             ],
         )
+
+
+def test_compact_observation_keeps_only_recent_public_history() -> None:
+    base_observation = observation(player_id="p2", role="seer", phase=AgentPhase.VOTING)
+    agent_observation = AgentObservation.model_validate(
+        {
+            **base_observation.model_dump(mode="json"),
+            "speeches": [
+                {"player_id": "p1", "message": f"speech-{index}"}
+                for index in range(PROMPT_RECENT_SPEECH_LIMIT + 2)
+            ],
+            "vote_rounds": [
+                {
+                    "day": index,
+                    "votes": {"p1": "p2"},
+                    "counts": {"p2": 1},
+                    "eliminated_player_id": None,
+                }
+                for index in range(PROMPT_RECENT_VOTE_ROUND_LIMIT + 2)
+            ],
+        }
+    )
+
+    compact = _compact_observation(agent_observation)
+
+    assert [speech["message"] for speech in compact["speeches"]] == [
+        f"speech-{index}" for index in range(2, PROMPT_RECENT_SPEECH_LIMIT + 2)
+    ]
+    assert [vote_round["day"] for vote_round in compact["vote_rounds"]] == list(
+        range(2, PROMPT_RECENT_VOTE_ROUND_LIMIT + 2)
+    )
+
+
+def test_decision_format_instructions_use_speech_limit_constant() -> None:
+    assert (
+        f"Speech message must be {LLM_SPEECH_MESSAGE_MAX_CHARS} characters or less."
+        in _decision_format_instructions()
+    )
 
 
 def test_langchain_fake_provider_returns_role_specific_night_decisions() -> None:
@@ -218,7 +262,35 @@ def test_langchain_fake_provider_falls_back_for_invalid_json() -> None:
     assert decision.reason.startswith("invalid llm decision")
 
 
-def test_langchain_fake_provider_falls_back_for_invalid_target() -> None:
+def test_langchain_provider_parses_markdown_fenced_json_output() -> None:
+    class FencedJsonModel:
+        def invoke(self, _prompt_value: object) -> str:
+            return (
+                "```json\n"
+                '{"type":"speech","player_id":"p1","target_id":"p1",'
+                '"message":"extra","reason":"suspect"}\n'
+                "```"
+            )
+
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+    decision = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        model=FencedJsonModel(),
+    ).choose_decision(
+        "p2",
+        observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
+    )
+
+    assert decision.type is AgentActionType.VOTE
+    assert decision.player_id == "p2"
+    assert decision.target_id == "p1"
+
+
+def test_langchain_provider_replaces_invalid_target_with_deterministic_target() -> None:
     fake_responses = FakeDecisionCatalog.model_validate(
         {
             "name": "bad",
@@ -246,5 +318,6 @@ def test_langchain_fake_provider_falls_back_for_invalid_target() -> None:
         observation(player_id="p2", role="seer", phase=AgentPhase.VOTING),
     )
 
-    assert decision.type is AgentActionType.PASS
-    assert decision.reason == "llm decision target unavailable: vote"
+    assert decision.type is AgentActionType.VOTE
+    assert decision.target_id in {"p1", "p3", "p4", "p5"}
+    assert decision.reason == "bad target"

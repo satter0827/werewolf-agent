@@ -1,6 +1,8 @@
 import logging
+from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
+    AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameResponse,
@@ -13,7 +15,11 @@ from werewolf_agent.contracts.schemas import (
 )
 from werewolf_agent.interface.entrypoint.streamlit import operations
 from werewolf_agent.interface.entrypoint.streamlit.i18n import load_i18n
-from werewolf_agent.interface.runtime import AppSettings
+from werewolf_agent.interface.runtime import (
+    AppSettings,
+    bind_observation_context,
+    get_observation_context,
+)
 
 
 def test_streamlit_rerun_startup_log_includes_runtime_paths(
@@ -43,6 +49,9 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
     assert record.log_output == "both"
     assert record.log_file_path == str(settings.log_file_path)
     assert record.log_third_party_level == "INFO"
+    assert record.llm_provider == "lmstudio"
+    assert record.llm_model == "auto"
+    assert record.llm_base_url == "http://127.0.0.1:1234/v1"
     assert not hasattr(record, "manual_token")
 
 
@@ -50,6 +59,7 @@ class FakeStreamlitClient:
     def __init__(self) -> None:
         self.stepped = False
         self.created_request: CreateGameRequest | None = None
+        self.advance_context: dict[str, str] = {}
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         self.created_request = request
@@ -121,12 +131,41 @@ class FakeStreamlitClient:
         )
 
     def advance_game(self, game_id: str) -> AdvanceGameResponse:
+        self.advance_context = get_observation_context()
         self.stepped = True
         return AdvanceGameResponse(
             game_id=game_id,
             status="completed",
             state=_state(status="completed", phase="finished"),
             timeline=[],
+        )
+
+    def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
+        self.advance_context = get_observation_context()
+        return AdvanceGameJobResponse(
+            job_id="job-1",
+            game_id=game_id,
+            status="queued",
+            state_version=2,
+            poll_url="/api/v1/games/game-1/advance-jobs/job-1",
+            created_at=_timestamp(),
+            updated_at=_timestamp(),
+        )
+
+    def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
+        return AdvanceGameJobResponse(
+            job_id=job_id,
+            game_id=game_id,
+            status="completed",
+            state_version=2,
+            result=AdvanceGameResponse(
+                game_id=game_id,
+                status="completed",
+                state=_state(status="completed", phase="finished"),
+                timeline=[],
+            ),
+            created_at=_timestamp(),
+            updated_at=_timestamp(),
         )
 
 
@@ -146,6 +185,7 @@ def test_advance_one_step_logs_public_step_without_private_context(
         )
 
     assert client.stepped is True
+    assert client.advance_context["trace_id"]
     actions = [record.event_action for record in caplog.records]
     assert "streamlit.advance_step.started" in actions
     completed = next(
@@ -155,6 +195,38 @@ def test_advance_one_step_logs_public_step_without_private_context(
     )
     assert completed.game_phase == "finished"
     assert not hasattr(completed, "manual_token")
+
+
+def test_advance_one_step_reuses_existing_trace_context(
+    monkeypatch,
+) -> None:
+    client = FakeStreamlitClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
+    settings = AppSettings(_env_file=None)
+
+    with bind_observation_context(trace_id="trace-existing"):
+        operations.advance_one_step(
+            api_url="http://api.test/api/v1",
+            settings=settings,
+            game_id="game-1",
+        )
+
+    assert client.advance_context["trace_id"] == "trace-existing"
+
+
+def test_start_advance_step_returns_job_with_trace_context(monkeypatch) -> None:
+    client = FakeStreamlitClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
+    settings = AppSettings(_env_file=None)
+
+    job = operations.start_advance_step(
+        api_url="http://api.test/api/v1",
+        settings=settings,
+        game_id="game-1",
+    )
+
+    assert job.job_id == "job-1"
+    assert client.advance_context["trace_id"]
 
 
 def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -> None:
@@ -233,6 +305,10 @@ def _state(*, status: str, phase: str) -> PublicGameState:
         winner=None,
         summary={"alive_count": 2},
     )
+
+
+def _timestamp() -> datetime:
+    return datetime(2026, 1, 1, tzinfo=UTC)
 
 
 def _rules() -> LocalRulesSettings:

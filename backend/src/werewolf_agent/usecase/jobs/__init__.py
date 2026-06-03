@@ -1,8 +1,10 @@
 """Public game use case entry points and ports."""
 
+from werewolf_agent.contracts import GameStatus
 from werewolf_agent.usecase.jobs.games import (
     AdvanceGameCommand,
     AdvanceGameResult,
+    ComputedAdvanceGame,
     CreateGameCommand,
     GameEventCreate,
     GameListResult,
@@ -17,7 +19,6 @@ from werewolf_agent.usecase.jobs.games import (
     GameRevealVote,
     GameService,
     GameSetupOptionsResult,
-    GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
     GetGameQuery,
@@ -28,6 +29,7 @@ from werewolf_agent.usecase.jobs.games import (
     LlmProviderConfig,
     ManualPlayerCredential,
     PlayerActionCommand,
+    PreparedAdvanceGame,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,
@@ -39,6 +41,7 @@ from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
 __all__ = [
     "AdvanceGameCommand",
     "AdvanceGameResult",
+    "ComputedAdvanceGame",
     "CreateGameCommand",
     "GameEventCreate",
     "GameListResult",
@@ -65,6 +68,7 @@ __all__ = [
     "LlmProviderConfig",
     "ManualPlayerCredential",
     "PlayerActionCommand",
+    "PreparedAdvanceGame",
     "StoredGame",
     "StoredGameEvent",
     "StoredGameSummary",

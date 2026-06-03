@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from importlib import import_module
 from typing import Any, Protocol
 
+import httpx
+
 from werewolf_agent.commons.shared.constants import (
+    LLM_MODEL_AUTO,
     LLM_PROVIDER_FAKE,
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
@@ -22,6 +25,15 @@ from werewolf_agent.commons.shared.messages import (
     message_langchain_openai_required,
     message_unsupported_llm_provider,
 )
+from werewolf_agent.contracts import (
+    ERROR_CONTEXT_LLM_BASE_URL,
+    ERROR_CONTEXT_LLM_ERROR_TYPE,
+    ERROR_CONTEXT_LLM_PROVIDER,
+    ERROR_CONTEXT_LLM_TIMEOUT_SECONDS,
+    LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE,
+    LLM_PROVIDER_ERROR_NO_LOADED_MODEL,
+    LlmProviderError,
+)
 from werewolf_agent.domain.game.models import Action, Observation, Player
 from werewolf_agent.domain.llm.models import (
     AgentActionType,
@@ -34,7 +46,7 @@ from werewolf_agent.domain.llm.models import (
     VisiblePlayer,
 )
 from werewolf_agent.domain.llm.ports import LlmDecisionProvider
-from werewolf_agent.domain.llm.service import LangChainDecisionProvider
+from werewolf_agent.domain.llm.service import LangChainDecisionProvider, LlmModelInvocationError
 from werewolf_agent.usecase.internal.definitions import to_player_profiles
 from werewolf_agent.usecase.jobs.games import LlmProviderConfig
 
@@ -69,7 +81,10 @@ class LlmAgent:
             profile=self.profile,
             scenario=self.scenario,
         )
-        decision = self.provider.choose_decision(self.player_id, agent_observation)
+        try:
+            decision = self.provider.choose_decision(self.player_id, agent_observation)
+        except LlmModelInvocationError as exc:
+            raise LlmProviderError(context=exc.context) from exc
         return _game_action_from_decision(decision)
 
 
@@ -123,20 +138,28 @@ def _decision_provider(
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             fake_responses=definitions.fake_responses,
+            provider_name=config.provider,
+            model_name=config.model,
         )
     if config.provider in {LLM_PROVIDER_LMSTUDIO, LLM_PROVIDER_OPENAI}:
+        model_id = _openai_compatible_model_id(config)
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
-            model=_openai_compatible_model(config),
+            model=_openai_compatible_model(config, model_id=model_id),
+            provider_name=config.provider,
+            model_name=model_id,
+            base_url=config.base_url,
+            timeout_seconds=config.timeout_seconds,
+            max_tokens=config.max_tokens,
         )
     raise ValueError(message_unsupported_llm_provider(config.provider))
 
 
-def _openai_compatible_model(config: LlmProviderConfig) -> Any:
+def _openai_compatible_model(config: LlmProviderConfig, *, model_id: str) -> Any:
     try:
         module = import_module("langchain_openai")
     except ImportError as exc:
-        raise RuntimeError(
+        raise LlmProviderError(
             message_langchain_openai_required(
                 lmstudio_provider=LLM_PROVIDER_LMSTUDIO,
                 openai_provider=LLM_PROVIDER_OPENAI,
@@ -145,15 +168,60 @@ def _openai_compatible_model(config: LlmProviderConfig) -> Any:
     chat_openai = module.__dict__["ChatOpenAI"]
 
     kwargs: dict[str, object] = {
-        "model": config.model,
+        "model": model_id,
         "api_key": config.api_key or LLM_STUDIO_API_KEY_PLACEHOLDER,
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
         "max_retries": config.max_retries,
+        "max_tokens": config.max_tokens,
     }
     if config.base_url:
         kwargs["base_url"] = config.base_url
     return chat_openai(**kwargs)
+
+
+def _openai_compatible_model_id(config: LlmProviderConfig) -> str:
+    if config.provider == LLM_PROVIDER_LMSTUDIO and config.model == LLM_MODEL_AUTO:
+        return _lmstudio_model_id(config)
+    return config.model
+
+
+def _lmstudio_model_id(config: LlmProviderConfig) -> str:
+    models_url = f"{config.base_url.rstrip('/')}/models"
+    try:
+        response = httpx.get(models_url, timeout=config.timeout_seconds)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as exc:
+        raise LlmProviderError(
+            context={
+                ERROR_CONTEXT_LLM_ERROR_TYPE: type(exc).__name__,
+                ERROR_CONTEXT_LLM_PROVIDER: config.provider,
+                ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
+                ERROR_CONTEXT_LLM_TIMEOUT_SECONDS: config.timeout_seconds,
+            }
+        ) from exc
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        raise LlmProviderError(
+            context={
+                ERROR_CONTEXT_LLM_ERROR_TYPE: LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE,
+                ERROR_CONTEXT_LLM_PROVIDER: config.provider,
+                ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
+            }
+        )
+    for item in data:
+        if isinstance(item, dict):
+            model_id = str(item.get("id") or "").strip()
+            if model_id:
+                return model_id
+    raise LlmProviderError(
+        context={
+            ERROR_CONTEXT_LLM_ERROR_TYPE: LLM_PROVIDER_ERROR_NO_LOADED_MODEL,
+            ERROR_CONTEXT_LLM_PROVIDER: config.provider,
+            ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
+        }
+    )
 
 
 def _agent_observation_from_game(

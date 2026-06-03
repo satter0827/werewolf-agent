@@ -6,11 +6,11 @@ from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
+from werewolf_agent.contracts import GameStatus
 from werewolf_agent.usecase.jobs.games import (
     GameEventCreate,
     GameRecordCreate,
     GameRecordUpdate,
-    GameStatus,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,

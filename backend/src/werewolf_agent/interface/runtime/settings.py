@@ -120,6 +120,7 @@ DEFAULT_LLM_MODEL: Final = _string_default("model")
 DEFAULT_LLM_BASE_URL: Final = _string_default("llm_base_url")
 DEFAULT_LLM_TIMEOUT_SECONDS: Final = _float_default("llm_timeout_seconds")
 DEFAULT_LLM_MAX_RETRIES: Final = _integer_default("llm_max_retries")
+DEFAULT_LLM_MAX_TOKENS: Final = _integer_default("llm_max_tokens")
 DEFAULT_LLM_TEMPERATURE: Final = _float_default("llm_temperature")
 DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
 DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
@@ -132,6 +133,10 @@ DEFAULT_LOG_RETENTION_DAYS: Final = _integer_default("log_retention_days")
 DEFAULT_LOG_THIRD_PARTY_LEVEL: Final = _string_default("log_third_party_level")
 DEFAULT_CLI_API_URL: Final = _string_default("cli_api_url")
 DEFAULT_CLI_HTTP_TIMEOUT_SECONDS: Final = _float_default("cli_http_timeout_seconds")
+DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS: Final = _float_default(
+    "advance_job_poll_interval_seconds"
+)
+DEFAULT_ADVANCE_JOB_POLL_TIMEOUT_SECONDS: Final = _float_default("advance_job_poll_timeout_seconds")
 DEFAULT_CLI_MAX_STEPS: Final = _integer_default("cli_max_steps")
 DEFAULT_CLI_POLL_INTERVAL_SECONDS: Final = _float_default("cli_poll_interval_seconds")
 DEFAULT_CLI_EVENT_LIMIT: Final = _integer_default("cli_event_limit")
@@ -258,6 +263,11 @@ class AppSettings(BaseSettings):
         ge=MIN_RETRY_COUNT,
         validation_alias="WEREWOLF_LLM_MAX_RETRIES",
     )
+    llm_max_tokens: int = Field(
+        default=DEFAULT_LLM_MAX_TOKENS,
+        ge=1,
+        validation_alias="WEREWOLF_LLM_MAX_TOKENS",
+    )
     llm_temperature: float = Field(
         default=DEFAULT_LLM_TEMPERATURE,
         ge=MIN_LLM_TEMPERATURE,
@@ -303,6 +313,16 @@ class AppSettings(BaseSettings):
         default=DEFAULT_CLI_HTTP_TIMEOUT_SECONDS,
         gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_CLI_HTTP_TIMEOUT_SECONDS",
+    )
+    advance_job_poll_interval_seconds: float = Field(
+        default=DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS,
+        ge=MIN_INTERVAL_SECONDS,
+        validation_alias="WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS",
+    )
+    advance_job_poll_timeout_seconds: float = Field(
+        default=DEFAULT_ADVANCE_JOB_POLL_TIMEOUT_SECONDS,
+        gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
+        validation_alias="WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS",
     )
     cli_max_steps: int = Field(
         default=DEFAULT_CLI_MAX_STEPS,
@@ -830,6 +850,7 @@ class AppSettings(BaseSettings):
     @model_validator(mode="after")
     def validate_game_settings(self) -> Self:
         """Ensure game count defaults are internally consistent."""
+        self._normalize_provider_base_url()
         if self.api_game_list_default_limit > self.api_game_list_max_limit:
             raise ValueError(
                 message_field_must_be_le_field(
@@ -861,6 +882,14 @@ class AppSettings(BaseSettings):
         self._validate_llm_settings()
         self._validate_definition_settings()
         return self
+
+    def _normalize_provider_base_url(self) -> None:
+        """Clear provider-specific default base URLs after provider override."""
+        if (
+            self.llm_provider != LLM_PROVIDER_LMSTUDIO
+            and "llm_base_url" not in self.model_fields_set
+        ):
+            self.llm_base_url = ""
 
     def _validate_llm_settings(self) -> None:
         """Ensure provider-specific LLM settings are complete."""

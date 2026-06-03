@@ -234,6 +234,7 @@ def dependencies(
             api_key="",
             timeout_seconds=30.0,
             max_retries=2,
+            max_tokens=96,
             temperature=0.7,
         ),
         telemetry=telemetry or CollectingTelemetrySink(),

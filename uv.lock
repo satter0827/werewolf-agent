@@ -2888,6 +2888,8 @@ dependencies = [
 api = [
     { name = "alembic" },
     { name = "fastapi" },
+    { name = "langchain-openai" },
+    { name = "openai" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
     { name = "sse-starlette" },
@@ -2927,7 +2929,9 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'streamlit'", specifier = ">=0.115,<1" },
     { name = "httpx", specifier = ">=0.28,<1" },
     { name = "langchain-core", specifier = ">=0.3,<0.4" },
+    { name = "langchain-openai", marker = "extra == 'api'", specifier = ">=0.3,<0.4" },
     { name = "langchain-openai", marker = "extra == 'llm'", specifier = ">=0.3,<0.4" },
+    { name = "openai", marker = "extra == 'api'", specifier = ">=1.59,<2" },
     { name = "openai", marker = "extra == 'llm'", specifier = ">=1.59,<2" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'api'", specifier = ">=3.2,<4" },
     { name = "psycopg", extras = ["binary"], marker = "extra == 'streamlit'", specifier = ">=3.2,<4" },

@@ -21,16 +21,27 @@ from werewolf_agent.commons.shared.constants import (
 )
 from werewolf_agent.commons.shared.messages import (
     LOG_SHARED_API_REQUEST_COMPLETED,
+    MESSAGE_ADVANCE_JOB_FAILED,
+    MESSAGE_ADVANCE_JOB_RESULT_MISSING,
     MESSAGE_API_RESPONSE_NOT_JSON,
     MESSAGE_API_RESPONSE_NOT_OBJECT,
     MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
+    message_advance_job_timed_out,
     message_api_http_error,
     message_api_unavailable,
     message_problem_detail,
 )
-from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts import (
+    ADVANCE_JOB_STATUS_COMPLETED,
+    ADVANCE_JOB_STATUS_FAILED,
+    ERROR_CONTEXT_HTTP_STATUS,
+    ERROR_CONTEXT_PROBLEM_TYPE,
+    ERROR_CONTEXT_SCHEMA,
+    AppError,
+)
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
+    AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameListResponse,
@@ -85,6 +96,15 @@ class GameApiClient(Protocol):
     def advance_game(self, game_id: str) -> AdvanceGameResponse:
         """Advance one game through the public API."""
 
+    def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
+        """Start one API-side advance job through the public API."""
+
+    def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
+        """Fetch one API-side advance job through the public API."""
+
+    def get_latest_advance_job(self, game_id: str) -> AdvanceGameJobResponse:
+        """Fetch the latest API-side advance job through the public API."""
+
     def get_timeline(
         self,
         game_id: str,
@@ -122,10 +142,14 @@ class HttpGameApiClient:
         base_url: str,
         *,
         timeout: float,
+        advance_job_poll_interval_seconds: float,
+        advance_job_poll_timeout_seconds: float,
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         """Create a client bound to one API base URL."""
         self.base_url = base_url.rstrip("/") + "/"
+        self._advance_job_poll_interval_seconds = advance_job_poll_interval_seconds
+        self._advance_job_poll_timeout_seconds = advance_job_poll_timeout_seconds
         self._client = httpx.Client(
             base_url=self.base_url,
             timeout=timeout,
@@ -181,8 +205,46 @@ class HttpGameApiClient:
 
     def advance_game(self, game_id: str) -> AdvanceGameResponse:
         """Advance one game through the public API."""
+        job = self.start_advance_game(game_id)
+        deadline = time.perf_counter() + self._advance_job_poll_timeout_seconds
+        while True:
+            if job.status == ADVANCE_JOB_STATUS_COMPLETED:
+                if job.result is None:
+                    raise AppError(
+                        MESSAGE_ADVANCE_JOB_RESULT_MISSING,
+                        code=ErrorCode.INTERNAL_UNEXPECTED,
+                    )
+                return job.result
+            if job.status == ADVANCE_JOB_STATUS_FAILED:
+                if job.error is not None:
+                    raise _app_error_from_problem(job.error)
+                raise AppError(
+                    MESSAGE_ADVANCE_JOB_FAILED,
+                    code=ErrorCode.INTERNAL_UNEXPECTED,
+                )
+            if time.perf_counter() >= deadline:
+                raise AppError(
+                    message_advance_job_timed_out(job.job_id),
+                    code=ErrorCode.API_UNAVAILABLE,
+                    retryable=True,
+                )
+            time.sleep(self._advance_job_poll_interval_seconds)
+            job = self.get_advance_job(game_id, job.job_id)
+
+    def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
+        """Start one API-side advance job through the public API."""
         payload = self._request_json("POST", f"games/{game_id}/advance")
-        return self._parse_model(AdvanceGameResponse, payload)
+        return self._parse_model(AdvanceGameJobResponse, payload)
+
+    def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
+        """Fetch one API-side advance job through the public API."""
+        payload = self._request_json("GET", f"games/{game_id}/advance-jobs/{job_id}")
+        return self._parse_model(AdvanceGameJobResponse, payload)
+
+    def get_latest_advance_job(self, game_id: str) -> AdvanceGameJobResponse:
+        """Fetch the latest API-side advance job through the public API."""
+        payload = self._request_json("GET", f"games/{game_id}/advance-jobs/latest")
+        return self._parse_model(AdvanceGameJobResponse, payload)
 
     def get_timeline(
         self,
@@ -307,7 +369,7 @@ class HttpGameApiClient:
             raise AppError(
                 MESSAGE_API_RESPONSE_SCHEMA_MISMATCH,
                 code=ErrorCode.INTERNAL_UNEXPECTED,
-                context={"schema": model_type.__name__},
+                context={ERROR_CONTEXT_SCHEMA: model_type.__name__},
             ) from exc
 
 
@@ -315,10 +377,18 @@ def build_game_api_client(
     api_url: str,
     *,
     timeout: float,
+    advance_job_poll_interval_seconds: float,
+    advance_job_poll_timeout_seconds: float,
     transport: httpx.BaseTransport | None = None,
 ) -> GameApiClient:
     """Build a public API client for interface entry points."""
-    return HttpGameApiClient(api_url, timeout=timeout, transport=transport)
+    return HttpGameApiClient(
+        api_url,
+        timeout=timeout,
+        advance_job_poll_interval_seconds=advance_job_poll_interval_seconds,
+        advance_job_poll_timeout_seconds=advance_job_poll_timeout_seconds,
+        transport=transport,
+    )
 
 
 def _api_error_from_response(response: httpx.Response) -> AppError:
@@ -333,7 +403,7 @@ def _api_error_from_response(response: httpx.Response) -> AppError:
     return AppError(
         message_api_http_error(response.status_code),
         code=ErrorCode.INTERNAL_UNEXPECTED,
-        context={"http_status": response.status_code},
+        context={ERROR_CONTEXT_HTTP_STATUS: response.status_code},
     )
 
 
@@ -346,7 +416,10 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
     return AppError(
         message_problem_detail(problem.code, problem.detail),
         code=code,
-        context={"http_status": problem.status, "problem_type": problem.type},
+        context={
+            ERROR_CONTEXT_HTTP_STATUS: problem.status,
+            ERROR_CONTEXT_PROBLEM_TYPE: problem.type,
+        },
         retryable=problem.status >= HTTP_SERVER_ERROR_STATUS_MIN,
     )
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Literal, Self
+from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
@@ -41,8 +41,23 @@ from werewolf_agent.commons.shared.validation import (
     optional_non_blank,
 )
 
+GAME_PHASE_NIGHT: Final = "night"
+GAME_PHASE_DAY_DISCUSSION: Final = "day_discussion"
+GAME_PHASE_VOTING: Final = "voting"
+GAME_PHASE_FINISHED: Final = "finished"
+GAME_STATUS_RUNNING: Final = "running"
+GAME_STATUS_COMPLETED: Final = "completed"
+ADVANCE_JOB_STATUS_QUEUED: Final = "queued"
+ADVANCE_JOB_STATUS_RUNNING: Final = "running"
+ADVANCE_JOB_STATUS_COMPLETED: Final = "completed"
+ADVANCE_JOB_STATUS_FAILED: Final = "failed"
+
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
+AdvanceJobStatus = Literal["queued", "running", "completed", "failed"]
+ACTIVE_ADVANCE_JOB_STATUSES: Final[frozenset[AdvanceJobStatus]] = frozenset(
+    {ADVANCE_JOB_STATUS_QUEUED, ADVANCE_JOB_STATUS_RUNNING}
+)
 PlayerStatus = Literal["alive", "dead"]
 ActionType = str
 RoleId = str
@@ -573,6 +588,24 @@ class ProblemDetails(BaseModel):
         return non_blank(value, str(info.field_name))
 
 
+class AdvanceGameJobResponse(BaseModel):
+    """Public response for an API-side advance job."""
+
+    job_id: str
+    game_id: str
+    status: AdvanceJobStatus
+    state_version: int = Field(ge=MIN_VERSION)
+    poll_url: str | None = None
+    result: AdvanceGameResponse | None = None
+    error: ProblemDetails | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    updated_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class ErrorEventPayload(BaseModel):
     """Replay-safe JSONL payload for an application error event."""
 
@@ -591,9 +624,22 @@ class ErrorEventPayload(BaseModel):
 
 
 __all__ = [
+    "ACTIVE_ADVANCE_JOB_STATUSES",
+    "ADVANCE_JOB_STATUS_COMPLETED",
+    "ADVANCE_JOB_STATUS_FAILED",
+    "ADVANCE_JOB_STATUS_QUEUED",
+    "ADVANCE_JOB_STATUS_RUNNING",
+    "GAME_PHASE_DAY_DISCUSSION",
+    "GAME_PHASE_FINISHED",
+    "GAME_PHASE_NIGHT",
+    "GAME_PHASE_VOTING",
+    "GAME_STATUS_COMPLETED",
+    "GAME_STATUS_RUNNING",
     "AbilityDefinitionView",
     "ActionType",
+    "AdvanceGameJobResponse",
     "AdvanceGameResponse",
+    "AdvanceJobStatus",
     "CharacterDefinitionView",
     "CreateGameRequest",
     "CustomCharacterDefinitionRequest",

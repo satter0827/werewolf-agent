@@ -8,6 +8,13 @@ from typing import Any, cast
 from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE, NARRATION_MODE_NONE
 from werewolf_agent.commons.shared.definitions import NarrationProfileDefinition
 from werewolf_agent.commons.shared.validation import public_generated_player_label
+from werewolf_agent.contracts import (
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_RUNNING,
+    GamePhase,
+    GameStatus,
+    Winner,
+)
 from werewolf_agent.domain.game.models import (
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
@@ -18,8 +25,6 @@ from werewolf_agent.domain.game.models import (
 )
 from werewolf_agent.usecase.jobs.games import (
     GameEventCreate,
-    GamePhase,
-    GameStatus,
     GameTimelineItem,
     PublicGameState,
     PublicGameSummary,
@@ -27,7 +32,6 @@ from werewolf_agent.usecase.jobs.games import (
     StoredGame,
     StoredGameSummary,
     StoredGameTurn,
-    Winner,
 )
 
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
@@ -256,8 +260,8 @@ def _winner_label(value: object) -> str:
 def status_from_snapshot(snapshot: GameSnapshot) -> GameStatus:
     """Return the public game status for a domain snapshot."""
     if snapshot.phase is Phase.FINISHED:
-        return "completed"
-    return "running"
+        return GAME_STATUS_COMPLETED
+    return GAME_STATUS_RUNNING
 
 
 def winner_from_snapshot(snapshot: GameSnapshot) -> Winner | None:

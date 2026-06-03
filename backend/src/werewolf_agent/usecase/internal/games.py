@@ -27,6 +27,7 @@ from werewolf_agent.commons.shared.definitions import (
     RoleDefinition,
 )
 from werewolf_agent.commons.shared.messages import (
+    MESSAGE_ADVANCE_JOB_STATE_CHANGED,
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS,
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS,
     MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS,
@@ -52,9 +53,12 @@ from werewolf_agent.commons.shared.validation import (
     non_blank,
 )
 from werewolf_agent.contracts import (
+    GAME_STATUS_COMPLETED,
     GameError,
     GameNotFoundError,
+    GamePhase,
     GamePhaseError,
+    GameStatus,
     InvalidGameIdError,
     InvalidManualTokenError,
 )
@@ -91,9 +95,9 @@ from werewolf_agent.usecase.internal.projections import (
 from werewolf_agent.usecase.jobs.games import (
     AdvanceGameCommand,
     AdvanceGameResult,
+    ComputedAdvanceGame,
     CreateGameCommand,
     GameListResult,
-    GamePhase,
     GameRecordCreate,
     GameRecordUpdate,
     GameResult,
@@ -103,7 +107,6 @@ from werewolf_agent.usecase.jobs.games import (
     GameRevealPlayer,
     GameRevealResult,
     GameRevealVote,
-    GameStatus,
     GameTimelineResult,
     GameUseCaseConfig,
     GameUseCaseDependencies,
@@ -116,6 +119,7 @@ from werewolf_agent.usecase.jobs.games import (
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
+    PreparedAdvanceGame,
     StoredGame,
 )
 from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
@@ -344,15 +348,25 @@ def advance_game(
     dependencies: GameUseCaseDependencies,
 ) -> AdvanceGameResult:
     """Advance one game by one business step."""
+    prepared = prepare_advance_game(command, dependencies=dependencies)
+    computed = run_prepared_advance(prepared, dependencies=dependencies)
+    return commit_prepared_advance(computed, dependencies=dependencies)
+
+
+def prepare_advance_game(
+    command: AdvanceGameCommand,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> PreparedAdvanceGame:
+    """Prepare immutable advance input in a short persistence unit."""
     game_id = _parse_game_id(command.game_id)
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    if run.status == "completed":
+    if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
     snapshot = GameSnapshot.model_validate(run.private_state)
-    runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
     pending_actions = PendingActions.model_validate(run.pending_actions)
     manual_player_ids = _manual_player_ids(run.config)
     if _manual_input_required(snapshot, pending_actions, manual_player_ids):
@@ -364,23 +378,47 @@ def advance_game(
                 "day": snapshot.day,
             },
         )
+    return PreparedAdvanceGame(
+        game_id=str(run.id),
+        version=run.version,
+        seed=run.seed,
+        config=dict(run.config),
+        private_state=snapshot.model_dump(mode="json"),
+        pending_actions=pending_actions.model_dump(mode="json"),
+        created_at=run.created_at,
+    )
+
+
+def run_prepared_advance(
+    prepared: PreparedAdvanceGame,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> ComputedAdvanceGame:
+    """Run LLM and domain advance computation without persistence access."""
+    snapshot = GameSnapshot.model_validate(prepared.private_state)
+    runtime_rng = random.Random(_runtime_seed(prepared.seed, prepared.version))
+    pending_actions = PendingActions.model_validate(prepared.pending_actions)
+    manual_player_ids = _manual_player_ids(prepared.config)
     dependencies.telemetry.record(
         TelemetryEvent(
             "game.phase.drive_started",
             level="DEBUG",
-            fields=_telemetry_state_fields(run, snapshot),
+            fields={
+                **_telemetry_snapshot_fields(snapshot, version=prepared.version),
+                "game_id": prepared.game_id,
+            },
         )
     )
     snapshot, pending_actions, action_events = _drive_current_phase(
         snapshot,
-        seed=run.seed,
-        version=run.version,
+        seed=prepared.seed,
+        version=prepared.version,
         pending_actions=pending_actions,
         agent_factory=langchain_agent_factory(
             dependencies.llm_provider_config,
-            definitions=_llm_definitions_for_game(run.config, dependencies.llm_definitions),
-            profile_ids_by_player=_player_profile_ids(run.config),
-            scenario=_agent_scenario(run.config),
+            definitions=_llm_definitions_for_game(prepared.config, dependencies.llm_definitions),
+            profile_ids_by_player=_player_profile_ids(prepared.config),
+            scenario=_agent_scenario(prepared.config),
         ),
         agent_type=dependencies.config.supported_agent_type,
         manual_player_ids=manual_player_ids,
@@ -391,7 +429,7 @@ def advance_game(
             "game.phase.drive_completed",
             level="DEBUG",
             fields={
-                **_telemetry_snapshot_fields(snapshot, version=run.version),
+                **_telemetry_snapshot_fields(snapshot, version=prepared.version),
                 "event_count": len(action_events),
             },
         )
@@ -400,7 +438,7 @@ def advance_game(
         TelemetryEvent(
             "game.phase.advance_started",
             level="DEBUG",
-            fields=_telemetry_snapshot_fields(snapshot, version=run.version),
+            fields=_telemetry_snapshot_fields(snapshot, version=prepared.version),
         )
     )
     next_snapshot, _next_pending_actions, phase_events = advance_phase(
@@ -413,42 +451,66 @@ def advance_game(
             "game.phase.advance_completed",
             level="DEBUG",
             fields={
-                **_telemetry_snapshot_fields(next_snapshot, version=run.version + 1),
+                **_telemetry_snapshot_fields(next_snapshot, version=prepared.version + 1),
                 "event_count": len(phase_events),
             },
         )
     )
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
-        game_id=str(run.id),
-        version=run.version + 1,
-        seed=run.seed,
-        created_at=run.created_at,
-        scenario_id=_config_text(run.config, "scenario_id"),
-        scenario_name=_config_text(run.config, "scenario_name"),
-        narration_mode=_narration_mode(run.config),
+        game_id=prepared.game_id,
+        version=prepared.version + 1,
+        seed=prepared.seed,
+        created_at=prepared.created_at,
+        scenario_id=_config_text(prepared.config, "scenario_id"),
+        scenario_name=_config_text(prepared.config, "scenario_name"),
+        narration_mode=_narration_mode(prepared.config),
+    )
+    return ComputedAdvanceGame(
+        game_id=prepared.game_id,
+        expected_version=prepared.version,
+        status=cast(GameStatus, next_public_state["status"]),
+        phase=cast(GamePhase, next_public_state["phase"]),
+        day=cast(int, next_public_state["day"]),
+        public_state=next_public_state,
+        private_state=next_snapshot.model_dump(mode="json"),
+        pending_actions=_next_pending_actions.model_dump(mode="json"),
+        events=events_to_create(
+            [*action_events, *phase_events],
+            narration_profile=_narration_profile(prepared.config, dependencies.game_definitions),
+            narration_mode=_narration_mode(prepared.config),
+        ),
     )
 
+
+def commit_prepared_advance(
+    computed: ComputedAdvanceGame,
+    *,
+    dependencies: GameUseCaseDependencies,
+) -> AdvanceGameResult:
+    """Persist a computed advance result after checking the game version."""
+    game_id = _parse_game_id(computed.game_id)
+    run = dependencies.repository.get_for_update(game_id)
+    if run is None:
+        raise GameNotFoundError(str(game_id))
+    if run.version != computed.expected_version:
+        raise GamePhaseError(MESSAGE_ADVANCE_JOB_STATE_CHANGED)
     updated_run = dependencies.repository.save(
         GameRecordUpdate(
-            id=run.id,
-            status=cast(GameStatus, next_public_state["status"]),
-            phase=cast(GamePhase, next_public_state["phase"]),
-            day=cast(int, next_public_state["day"]),
-            public_state=next_public_state,
-            private_state=next_snapshot.model_dump(mode="json"),
-            pending_actions=_next_pending_actions.model_dump(mode="json"),
-            version=run.version + 1,
+            id=game_id,
+            status=computed.status,
+            phase=computed.phase,
+            day=computed.day,
+            public_state=computed.public_state,
+            private_state=computed.private_state,
+            pending_actions=computed.pending_actions,
+            version=computed.expected_version + 1,
         )
     )
     latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)
     records = dependencies.repository.append_events(
         updated_run.id,
-        events_to_create(
-            [*action_events, *phase_events],
-            narration_profile=_narration_profile(run.config, dependencies.game_definitions),
-            narration_mode=_narration_mode(run.config),
-        ),
+        computed.events,
     )
     turns = dependencies.repository.list_public_turns(
         updated_run.id,
@@ -494,7 +556,7 @@ def submit_player_action(
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    if run.status == "completed":
+    if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
     _authorize_manual_player(run, command.player_id, command.manual_token)

@@ -11,6 +11,7 @@ from typer.testing import CliRunner
 
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
+    AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameListResponse,
@@ -168,6 +169,34 @@ class FakeGameApiClient:
             timeline=timeline,
         )
 
+    def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
+        self.calls.append(("start_advance", game_id))
+        return AdvanceGameJobResponse(
+            job_id="job-1",
+            game_id=game_id,
+            status="queued",
+            state_version=self.available_sequence,
+            poll_url="/api/v1/games/game-1/advance-jobs/job-1",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+
+    def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
+        self.calls.append(("advance_job", job_id))
+        result = self.advance_game(game_id)
+        return AdvanceGameJobResponse(
+            job_id=job_id,
+            game_id=game_id,
+            status="completed",
+            state_version=result.state.version,
+            result=result,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            updated_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+
+    def get_latest_advance_job(self, game_id: str) -> AdvanceGameJobResponse:
+        return self.get_advance_job(game_id, "job-1")
+
     def get_timeline(
         self,
         game_id: str,
@@ -238,7 +267,8 @@ def test_doctor_command_succeeds() -> None:
 
     assert result.exit_code == 0
     assert "Werewolf Agent Doctor" in result.output
-    assert "fake-list-llm" in result.output
+    assert "lmstudio" in result.output
+    assert "auto" in result.output
 
 
 def test_doctor_json_output_is_machine_readable() -> None:
@@ -246,7 +276,8 @@ def test_doctor_json_output_is_machine_readable() -> None:
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["provider"] == "fake"
+    assert payload["provider"] == "lmstudio"
+    assert payload["model"] == "auto"
     assert payload["prompt file"] == "packaged"
     assert payload["api url"]
 
@@ -617,6 +648,8 @@ def test_http_client_uses_public_v1_contract_with_mock_transport() -> None:
     client = HttpGameApiClient(
         "http://api.test/api/v1",
         timeout=1.0,
+        advance_job_poll_interval_seconds=0.0,
+        advance_job_poll_timeout_seconds=1.0,
         transport=httpx.MockTransport(handler),
     )
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from enum import StrEnum
 from http import HTTPStatus
-from typing import Final, Literal
+from typing import Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
@@ -39,8 +39,20 @@ from werewolf_agent.commons.shared.messages import (
     TITLE_RESOURCE_NOT_FOUND,
     TITLE_UNEXPECTED_INTERNAL_ERROR,
 )
+from werewolf_agent.contracts.schemas import ProblemDetails, ProblemIssue
 
 PROBLEM_TYPE_TAG_PREFIX: Final = "tag:werewolf-agent,2026:problem:"
+ERROR_CONTEXT_LLM_ERROR_TYPE: Final = "llm_error_type"
+ERROR_CONTEXT_LLM_PROVIDER: Final = "llm_provider"
+ERROR_CONTEXT_LLM_MODEL: Final = "llm_model"
+ERROR_CONTEXT_LLM_BASE_URL: Final = "llm_base_url"
+ERROR_CONTEXT_LLM_TIMEOUT_SECONDS: Final = "llm_timeout_seconds"
+ERROR_CONTEXT_LLM_MAX_TOKENS: Final = "llm_max_tokens"
+ERROR_CONTEXT_HTTP_STATUS: Final = "http_status"
+ERROR_CONTEXT_PROBLEM_TYPE: Final = "problem_type"
+ERROR_CONTEXT_SCHEMA: Final = "schema"
+LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE: Final = "InvalidModelsResponse"
+LLM_PROVIDER_ERROR_NO_LOADED_MODEL: Final = "NoLoadedModel"
 ErrorLogLevel = Literal["INFO", "WARNING", "ERROR"]
 
 
@@ -73,6 +85,14 @@ class ErrorSpec(BaseModel):
     log_level: ErrorLogLevel = "INFO"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ProblemDetailsSource(Protocol):
+    """Application error shape needed to build Problem Details."""
+
+    code: ErrorCode
+    spec: ErrorSpec
+    detail: str
 
 
 ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
@@ -181,3 +201,42 @@ def problem_type_uri(code: ErrorCode | str) -> str:
 
     """
     return f"{PROBLEM_TYPE_TAG_PREFIX}{code}"
+
+
+def problem_details_from_error(
+    error: ProblemDetailsSource,
+    *,
+    instance: str,
+    trace_id: str | None = None,
+) -> ProblemDetails:
+    """Return public Problem Details for an application error."""
+    return problem_details_from_spec(
+        error.code,
+        instance=instance,
+        trace_id=trace_id,
+        detail=error.detail,
+    )
+
+
+def problem_details_from_spec(
+    code: ErrorCode | str,
+    *,
+    instance: str,
+    trace_id: str | None = None,
+    status_code: int | HTTPStatus | None = None,
+    detail: str | None = None,
+    errors: list[ProblemIssue] | None = None,
+) -> ProblemDetails:
+    """Return public RFC 9457 Problem Details from stable error metadata."""
+    error_code = ErrorCode(code)
+    spec = get_error_spec(error_code)
+    return ProblemDetails(
+        type=problem_type_uri(error_code.value),
+        title=spec.title,
+        status=int(spec.status if status_code is None else status_code),
+        detail=spec.detail if detail is None else detail,
+        instance=instance,
+        code=error_code.value,
+        trace_id=trace_id,
+        errors=errors,
+    )

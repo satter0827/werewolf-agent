@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 import httpx
 import pytest
 
-from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts import ERROR_CONTEXT_HTTP_STATUS, AppError
 from werewolf_agent.contracts.schemas import PlayerActionRequest
 from werewolf_agent.interface.runtime import AppSettings, bind_observation_context
 from werewolf_agent.interface.shared.api_client import HttpGameApiClient
@@ -55,8 +55,14 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         if request.url.path.endswith("/games/game-1/reveal"):
             return httpx.Response(200, json=_reveal_payload())
         if request.url.path.endswith("/games/game-1/advance"):
+            return httpx.Response(202, json=_advance_job_payload(status="queued"))
+        if request.url.path.endswith("/games/game-1/advance-jobs/job-1"):
             return httpx.Response(
-                200, json={**_game_payload(), "status": "running", "timeline": []}
+                200,
+                json=_advance_job_payload(
+                    status="completed",
+                    result={**_game_payload(), "status": "running", "timeline": []},
+                ),
             )
         if request.url.path.endswith("/games/game-1/timeline"):
             return httpx.Response(
@@ -75,6 +81,8 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
     client = HttpGameApiClient(
         "http://api.test/api/v1",
         timeout=HTTP_CLIENT_TEST_TIMEOUT,
+        advance_job_poll_interval_seconds=0.0,
+        advance_job_poll_timeout_seconds=1.0,
         transport=httpx.MockTransport(handler),
     )
     request = build_create_game_request(
@@ -117,6 +125,7 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         ("GET", "/api/v1/games/game-1"),
         ("GET", "/api/v1/games/game-1/reveal"),
         ("POST", "/api/v1/games/game-1/advance"),
+        ("GET", "/api/v1/games/game-1/advance-jobs/job-1"),
         ("GET", "/api/v1/games/game-1/timeline"),
         ("GET", "/api/v1/games/game-1/players/player-1/observation"),
         ("POST", "/api/v1/games/game-1/players/player-1/actions"),
@@ -140,6 +149,8 @@ def test_http_client_parses_problem_details_from_public_api() -> None:
     client = HttpGameApiClient(
         "http://api.test/api/v1",
         timeout=HTTP_CLIENT_TEST_TIMEOUT,
+        advance_job_poll_interval_seconds=0.0,
+        advance_job_poll_timeout_seconds=1.0,
         transport=httpx.MockTransport(handler),
     )
 
@@ -147,7 +158,7 @@ def test_http_client_parses_problem_details_from_public_api() -> None:
         client.get_game("missing")
 
     assert exc_info.value.detail == "resource.not_found: Game not found."
-    assert exc_info.value.context["http_status"] == 404
+    assert exc_info.value.context[ERROR_CONTEXT_HTTP_STATUS] == 404
 
 
 def test_http_client_propagates_trace_id_header() -> None:
@@ -160,6 +171,8 @@ def test_http_client_propagates_trace_id_header() -> None:
     client = HttpGameApiClient(
         "http://api.test/api/v1",
         timeout=HTTP_CLIENT_TEST_TIMEOUT,
+        advance_job_poll_interval_seconds=0.0,
+        advance_job_poll_timeout_seconds=1.0,
         transport=httpx.MockTransport(handler),
     )
 
@@ -183,6 +196,7 @@ def test_diagnostics_redacts_database_password() -> None:
     )
 
     assert diagnostics["api url"] == "http://api.test/api/v1"
+    assert diagnostics["env file"] == ".env missing; packaged defaults are active"
     assert "secret" not in diagnostics["database"]
     assert "[REDACTED]" in diagnostics["database"]
     assert diagnostics["llm api key"] == "[REDACTED]"
@@ -191,6 +205,24 @@ def test_diagnostics_redacts_database_password() -> None:
 
 def _game_payload() -> dict[str, object]:
     return {"game_id": "game-1", "state": _state_payload()}
+
+
+def _advance_job_payload(
+    *,
+    status: str,
+    result: dict[str, object] | None = None,
+) -> dict[str, object]:
+    timestamp = datetime(2026, 1, 1, tzinfo=UTC).isoformat()
+    return {
+        "job_id": "job-1",
+        "game_id": "game-1",
+        "status": status,
+        "state_version": 1,
+        "poll_url": "/api/v1/games/game-1/advance-jobs/job-1",
+        "result": result,
+        "created_at": timestamp,
+        "updated_at": timestamp,
+    }
 
 
 def _state_payload() -> dict[str, object]:

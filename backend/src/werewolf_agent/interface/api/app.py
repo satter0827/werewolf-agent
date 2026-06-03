@@ -117,6 +117,9 @@ def _log_api_startup(settings: AppSettings) -> None:
         "log_output": settings.log_output,
         "log_file_path": str(settings.log_file_path),
         "log_third_party_level": settings.log_third_party_level,
+        "llm_provider": settings.llm_provider,
+        "llm_model": settings.model,
+        "llm_base_url": settings.llm_base_url or "provider default",
     }
     startup_fields.update(_database_log_fields(settings))
     logger.info(LOG_API_APPLICATION_STARTED, extra=startup_fields)

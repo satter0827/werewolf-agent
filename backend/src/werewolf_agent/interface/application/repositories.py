@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from werewolf_agent.commons.shared.messages import message_game_not_found
+from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
 from werewolf_agent.interface.application.models import (
     GameEventModel,
     GameModel,
@@ -25,7 +26,6 @@ from werewolf_agent.usecase.jobs import (
     GameRecordCreate,
     GameRecordUpdate,
     GameRepository,
-    GameStatus,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,
@@ -238,7 +238,7 @@ class SqlAlchemyGameRepository(GameRepository):
         summary.turn_count = turn_count
         summary.created_at = game.created_at
         summary.updated_at = game.updated_at
-        summary.completed_at = game.updated_at if game.status == "completed" else None
+        summary.completed_at = game.updated_at if game.status == GAME_STATUS_COMPLETED else None
         self._session.flush()
 
 

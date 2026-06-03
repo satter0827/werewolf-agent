@@ -62,7 +62,7 @@ def env_file_status(root: Path) -> str:
     if env_path.exists():
         return ".env found"
     if example_path.exists():
-        return ".env missing; copy .env.example when enabling real providers"
+        return ".env missing; packaged defaults are active"
     return ".env and .env.example missing"
 
 

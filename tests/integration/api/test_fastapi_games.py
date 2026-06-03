@@ -9,6 +9,10 @@ import pytest
 fastapi_testclient = pytest.importorskip("fastapi.testclient")
 TestClient = fastapi_testclient.TestClient
 
+from werewolf_agent.contracts import (  # noqa: E402
+    ADVANCE_JOB_STATUS_FAILED,
+    GAME_STATUS_COMPLETED,
+)
 from werewolf_agent.interface.api.app import create_app  # noqa: E402
 from werewolf_agent.interface.runtime import AppSettings  # noqa: E402
 
@@ -16,10 +20,19 @@ DEFAULT_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
 SIX_PLAYER_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3}
 
 
+def _fake_settings(**overrides: object) -> AppSettings:
+    return AppSettings(
+        _env_file=None,
+        llm_provider="fake",
+        model="fake-list-llm",
+        llm_base_url="",
+        **overrides,
+    )
+
+
 @pytest.fixture
 def client(tmp_path) -> Iterator[TestClient]:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="none",
@@ -74,13 +87,30 @@ def _manual_action_payload(observation: dict[str, object], *, player_id: str) ->
     return payload
 
 
+def _advance_job(client: TestClient, game_id: str) -> dict[str, object]:
+    response = client.post(f"/api/v1/games/{game_id}/advance")
+    assert response.status_code == 202
+    started = response.json()
+    poll_url = str(started["poll_url"])
+    polled = client.get(poll_url)
+    assert polled.status_code == 200
+    return polled.json()
+
+
+def _advance_payload(client: TestClient, game_id: str) -> dict[str, object]:
+    job = _advance_job(client, game_id)
+    assert job["status"] == "completed"
+    assert isinstance(job["result"], dict)
+    return job["result"]
+
+
 def _advance_until_manual_input(client: TestClient, game_id: str, *, max_steps: int = 8) -> None:
     for _ in range(max_steps):
-        response = client.post(f"/api/v1/games/{game_id}/advance")
-        if response.status_code == 409:
-            assert response.json()["code"] == "game.invalid_phase"
+        job = _advance_job(client, game_id)
+        if job["status"] == "failed":
+            assert job["error"]["code"] == "game.invalid_phase"
             return
-        assert response.status_code == 200
+        assert job["status"] == "completed"
     raise AssertionError("manual input was not required")
 
 
@@ -93,8 +123,7 @@ def test_health_endpoint_returns_ok(client: TestClient) -> None:
 
 
 def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         sqlite_path=tmp_path / "api.sqlite3",
         log_output="file",
@@ -129,6 +158,9 @@ def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
     assert startup_payload["sqlite_path"] == str(settings.sqlite_database_path)
     assert startup_payload["log_output"] == "file"
     assert startup_payload["log_file_path"] == str(settings.log_file_path)
+    assert startup_payload["llm.provider"] == settings.llm_provider
+    assert startup_payload["llm.model"] == settings.model
+    assert startup_payload["llm.base_url"] == "provider default"
     assert "database_url" not in startup_payload
     assert request_payload["message"] == "http.request.completed"
     assert request_payload["event.outcome"] == "success"
@@ -140,8 +172,7 @@ def test_request_logging_writes_trace_and_http_fields(tmp_path: Path) -> None:
 
 
 def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="file",
@@ -177,8 +208,7 @@ def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:
 
 
 def test_api_logs_expected_user_error_at_info(tmp_path: Path) -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="file",
@@ -277,8 +307,7 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
 
 
 def test_create_game_uses_configured_default_narration_mode() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="none",
@@ -333,7 +362,7 @@ def test_manual_player_create_returns_manual_token_once(client: TestClient) -> N
 def test_reveal_endpoint_returns_dedicated_private_dto(client: TestClient) -> None:
     created = client.post("/api/v1/games", json=_create_payload(seed=1)).json()
     game_id = created["game_id"]
-    client.post(f"/api/v1/games/{game_id}/advance")
+    _advance_payload(client, game_id)
 
     reveal_response = client.get(f"/api/v1/games/{game_id}/reveal")
     public_response = client.get(f"/api/v1/games/{game_id}")
@@ -349,8 +378,7 @@ def test_reveal_endpoint_returns_dedicated_private_dto(client: TestClient) -> No
 
 
 def test_reveal_endpoint_can_be_disabled() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="none",
@@ -457,9 +485,7 @@ def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) 
     state = create_response.json()["state"]
     timeline_payload = {"items": []}
     for _ in range(32):
-        advance_response = client.post(f"/api/v1/games/{game_id}/advance")
-        assert advance_response.status_code == 200
-        advance_payload = advance_response.json()
+        advance_payload = _advance_payload(client, game_id)
         state = advance_payload["state"]
         timeline_payload = client.get(f"/api/v1/games/{game_id}/timeline?after=0").json()
         if state["status"] == "completed":
@@ -475,7 +501,7 @@ def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) 
 def test_game_list_and_timeline_return_public_read_models(client: TestClient) -> None:
     created = client.post("/api/v1/games", json=_create_payload(seed=2)).json()
     game_id = created["game_id"]
-    client.post(f"/api/v1/games/{game_id}/advance")
+    _advance_payload(client, game_id)
 
     games_response = client.get("/api/v1/games?limit=10")
     timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
@@ -491,8 +517,7 @@ def test_game_list_and_timeline_return_public_read_models(client: TestClient) ->
 
 
 def test_games_and_timeline_limits_use_settings_defaults_and_max() -> None:
-    settings = AppSettings(
-        _env_file=None,
+    settings = _fake_settings(
         api_debug=False,
         database_url="sqlite+pysqlite:///:memory:",
         log_output="none",
@@ -506,7 +531,7 @@ def test_games_and_timeline_limits_use_settings_defaults_and_max() -> None:
         with TestClient(app, raise_server_exceptions=False) as test_client:
             first = test_client.post("/api/v1/games", json=_create_payload(seed=1)).json()
             second = test_client.post("/api/v1/games", json=_create_payload(seed=2)).json()
-            test_client.post(f"/api/v1/games/{first['game_id']}/advance")
+            _advance_payload(test_client, str(first["game_id"]))
 
             games_default = test_client.get("/api/v1/games")
             games_over_limit = test_client.get("/api/v1/games?limit=3")
@@ -548,17 +573,21 @@ def test_finished_game_advance_returns_problem_details(client: TestClient) -> No
     advance_url = f"/api/v1/games/{created['game_id']}/advance"
     state = created["state"]
     for _ in range(32):
-        response = client.post(advance_url)
-        state = response.json()["state"]
-        if state["status"] == "completed":
+        state = _advance_payload(client, created["game_id"])["state"]
+        if state["status"] == GAME_STATUS_COMPLETED:
             break
 
     response = client.post(advance_url)
+    assert response.status_code == 202
+    job = client.get(response.json()["poll_url"])
 
-    assert state["status"] == "completed"
-    assert response.status_code == 409
-    assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["code"] == "game.invalid_phase"
+    assert state["status"] == GAME_STATUS_COMPLETED
+    assert job.status_code == 200
+    job_payload = job.json()
+    assert job_payload["status"] == ADVANCE_JOB_STATUS_FAILED
+    assert job_payload["error"]["code"] == "game.invalid_phase"
+    assert job_payload["error"]["type"] == "tag:werewolf-agent,2026:problem:game.invalid_phase"
+    assert job_payload["error"]["instance"] == job_payload["poll_url"]
 
 
 def test_create_game_rejects_legacy_players_as_validation_error(
@@ -616,12 +645,11 @@ def test_api_discussion_records_one_speech_per_alive_player_from_definition(
     ).json()
     game_id = created["game_id"]
 
-    after_night = client.post(f"/api/v1/games/{game_id}/advance").json()["state"]
-    response = client.post(f"/api/v1/games/{game_id}/advance")
+    after_night = _advance_payload(client, game_id)["state"]
+    response = _advance_payload(client, game_id)
 
-    assert response.status_code == 200
     speech_events = [
-        item for item in response.json()["timeline"] if item["event_type"] == "speech_recorded"
+        item for item in response["timeline"] if item["event_type"] == "speech_recorded"
     ]
     assert len(speech_events) == len(after_night["alive_player_ids"])
     assert all(item["payload"].get("message") for item in speech_events)

@@ -34,7 +34,7 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE,
     message_game_did_not_complete,
 )
-from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts import GAME_STATUS_COMPLETED, AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
@@ -364,7 +364,7 @@ def _play(
     )
 
     steps = 0
-    while state.status != "completed" and steps < max_steps:
+    while state.status != GAME_STATUS_COMPLETED and steps < max_steps:
         if manual_player is not None and manual_token is not None:
             _prompt_and_submit_manual_action(
                 client=client,
@@ -388,7 +388,7 @@ def _play(
             output_format=output_format,
         )
 
-    if state.status != "completed":
+    if state.status != GAME_STATUS_COMPLETED:
         raise AppError(
             message_game_did_not_complete(max_steps),
             code=ErrorCode.CONFIG_INVALID_VALUE,
@@ -630,7 +630,12 @@ def _client(api_url: str | None) -> GameApiClient:
 
 def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None) -> GameApiClient:
     resolved_settings = settings or get_settings()
-    return build_game_api_client(api_url, timeout=resolved_settings.cli_http_timeout_seconds)
+    return build_game_api_client(
+        api_url,
+        timeout=resolved_settings.cli_http_timeout_seconds,
+        advance_job_poll_interval_seconds=(resolved_settings.advance_job_poll_interval_seconds),
+        advance_job_poll_timeout_seconds=resolved_settings.advance_job_poll_timeout_seconds,
+    )
 
 
 def _create_request(

@@ -15,9 +15,9 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_FAILURE
 from werewolf_agent.commons.shared.messages import MESSAGE_INVALID_VALUE
-from werewolf_agent.contracts.errors import ErrorCode, get_error_spec, problem_type_uri
+from werewolf_agent.contracts.errors import ErrorCode, get_error_spec, problem_details_from_spec
 from werewolf_agent.contracts.exceptions import AppError, InternalError
-from werewolf_agent.contracts.schemas import ProblemDetails, ProblemIssue
+from werewolf_agent.contracts.schemas import ProblemIssue
 from werewolf_agent.interface.runtime import get_observation_context
 from werewolf_agent.interface.shared.constants import PROBLEM_JSON_CONTENT_TYPE
 from werewolf_agent.interface.shared.log_levels import log_level_number
@@ -34,7 +34,6 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     _log_app_error(exc)
     return problem_response(
         code=exc.code.value,
-        title=exc.spec.title,
         status_code=int(exc.spec.status),
         detail=exc.detail,
         request=request,
@@ -66,7 +65,6 @@ async def http_exception_handler(
     spec = get_error_spec(code)
     return problem_response(
         code=code.value,
-        title=spec.title,
         status_code=exc.status_code,
         detail=spec.detail,
         request=request,
@@ -86,7 +84,6 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     )
     return problem_response(
         code=error.code.value,
-        title=error.spec.title,
         status_code=int(error.spec.status),
         detail=error.detail,
         request=request,
@@ -103,7 +100,6 @@ def validation_problem_response(
     spec = get_error_spec(ErrorCode.REQUEST_VALIDATION_FAILED)
     return problem_response(
         code=ErrorCode.REQUEST_VALIDATION_FAILED.value,
-        title=spec.title,
         status_code=int(status_code),
         detail=spec.detail,
         request=request,
@@ -114,7 +110,6 @@ def validation_problem_response(
 def problem_response(
     *,
     code: str,
-    title: str,
     status_code: int,
     detail: str,
     request: Request,
@@ -124,7 +119,6 @@ def problem_response(
     return JSONResponse(
         problem_body(
             code=code,
-            title=title,
             status_code=status_code,
             detail=detail,
             request=request,
@@ -138,20 +132,17 @@ def problem_response(
 def problem_body(
     *,
     code: str,
-    title: str,
     status_code: int,
     detail: str,
     request: Request,
     errors: list[ProblemIssue] | None = None,
 ) -> dict[str, Any]:
     """Return a Problem Details response body."""
-    return ProblemDetails(
-        type=problem_type_uri(code),
-        title=title,
-        status=status_code,
+    return problem_details_from_spec(
+        code,
+        status_code=status_code,
         detail=detail,
         instance=str(request.url.path),
-        code=code,
         trace_id=_trace_id(),
         errors=errors,
     ).model_dump(mode="json", exclude_none=True)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
+from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
@@ -14,11 +14,11 @@ from werewolf_agent.commons.shared.constants import (
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
     MAX_LLM_TEMPERATURE,
+    MIN_LLM_MAX_TOKENS,
     MIN_LLM_TEMPERATURE,
     MIN_PAGE_LIMIT,
     MIN_PAGE_OFFSET,
     MIN_RETRY_COUNT,
-    MIN_ROLE_COUNT,
     MIN_SEQUENCE,
     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
     MIN_VERSION,
@@ -57,18 +57,14 @@ from werewolf_agent.commons.shared.messages import (
 )
 from werewolf_agent.commons.shared.models import StrictModel
 from werewolf_agent.commons.shared.validation import generated_player_ids, non_blank
+from werewolf_agent.contracts import GamePhase, GameStatus, RoleCount, RoleId, Winner
 from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink, TelemetrySink
 
 if TYPE_CHECKING:
     from werewolf_agent.usecase.jobs.ports import GameRepository
 
-GamePhase = Literal["night", "day_discussion", "voting", "finished"]
-GameStatus = Literal["running", "completed"]
 EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
-RoleId = str
-Winner = Literal["villagers", "werewolves"]
-RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 
 
 @dataclass(frozen=True)
@@ -81,6 +77,7 @@ class LlmProviderConfig:
     api_key: str = field(repr=False)
     timeout_seconds: float
     max_retries: int
+    max_tokens: int
     temperature: float
 
     def __post_init__(self) -> None:
@@ -98,6 +95,8 @@ class LlmProviderConfig:
             )
         if self.max_retries < MIN_RETRY_COUNT:
             raise ValueError(message_field_must_be_at_least("llm max_retries", MIN_RETRY_COUNT))
+        if self.max_tokens < MIN_LLM_MAX_TOKENS:
+            raise ValueError(message_field_must_be_at_least("llm max_tokens", MIN_LLM_MAX_TOKENS))
         if not MIN_LLM_TEMPERATURE <= self.temperature <= MAX_LLM_TEMPERATURE:
             raise ValueError(
                 message_field_must_be_between(
@@ -271,6 +270,36 @@ class AdvanceGameCommand(_UseCaseModel):
     """Command for advancing one game by one business step."""
 
     game_id: str | UUID
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PreparedAdvanceGame(_UseCaseModel):
+    """Prepared immutable input for one advance computation."""
+
+    game_id: str
+    version: int
+    seed: int | None
+    config: dict[str, Any]
+    private_state: dict[str, Any]
+    pending_actions: dict[str, Any]
+    created_at: datetime
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ComputedAdvanceGame(_UseCaseModel):
+    """Computed advance result waiting for version-checked persistence."""
+
+    game_id: str
+    expected_version: int
+    status: GameStatus
+    phase: GamePhase
+    day: int
+    public_state: dict[str, Any]
+    private_state: dict[str, Any]
+    pending_actions: dict[str, Any]
+    events: list[GameEventCreate]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -740,6 +769,24 @@ class GameService:
         from werewolf_agent.usecase.internal.games import advance_game
 
         return advance_game(command, dependencies=self._dependencies)
+
+    def prepare_advance_game(self, command: AdvanceGameCommand) -> PreparedAdvanceGame:
+        """Prepare immutable advance input in a short persistence unit of work."""
+        from werewolf_agent.usecase.internal.games import prepare_advance_game
+
+        return prepare_advance_game(command, dependencies=self._dependencies)
+
+    def run_prepared_advance(self, prepared: PreparedAdvanceGame) -> ComputedAdvanceGame:
+        """Run LLM/domain advance computation without persistence access."""
+        from werewolf_agent.usecase.internal.games import run_prepared_advance
+
+        return run_prepared_advance(prepared, dependencies=self._dependencies)
+
+    def commit_prepared_advance(self, computed: ComputedAdvanceGame) -> AdvanceGameResult:
+        """Persist a computed advance result after checking the expected version."""
+        from werewolf_agent.usecase.internal.games import commit_prepared_advance
+
+        return commit_prepared_advance(computed, dependencies=self._dependencies)
 
     def get_player_observation(
         self,

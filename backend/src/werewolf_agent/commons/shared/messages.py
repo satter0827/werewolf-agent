@@ -38,6 +38,9 @@ MESSAGE_INVALID_APPLICATION_CONFIGURATION = "Invalid application configuration."
 MESSAGE_INVALID_VALUE = "Invalid value."
 MESSAGE_SETTINGS = "settings"
 LOG_GAME_CREATED = "game.created"
+LOG_GAME_ADVANCE_JOB_COMPLETED = "game.advance_job.completed"
+LOG_GAME_ADVANCE_JOB_FAILED = "game.advance_job.failed"
+LOG_GAME_ADVANCE_JOB_STARTED = "game.advance_job.started"
 LOG_GAME_STEPPED = "game.stepped"
 LOG_GAMES_LISTED = "games.listed"
 LOG_GAME_TIMELINE_LISTED = "game.timeline.listed"
@@ -72,6 +75,10 @@ MESSAGE_PLAYER_LIST_LENGTH_MUST_MATCH_CONFIG = (
     "Player list length must match game config player_count."
 )
 MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED = "Finished games cannot be advanced."
+MESSAGE_ADVANCE_JOB_NOT_FOUND = "Advance job not found."
+MESSAGE_ADVANCE_JOB_FAILED = "Advance job failed."
+MESSAGE_ADVANCE_JOB_RESULT_MISSING = "Advance job completed without a result."
+MESSAGE_ADVANCE_JOB_STATE_CHANGED = "Game changed while advance job was running."
 MESSAGE_GAME_ID_MUST_BE_VALID_UUID = "game_id must be a valid UUID."
 MESSAGE_PLAYER_IDS_MUST_BE_UNIQUE = "Player ids must be unique."
 MESSAGE_PLAYER_ID_VALUES_MUST_BE_UNIQUE = "player id values must be unique."
@@ -511,6 +518,11 @@ def message_api_unavailable(error: object) -> str:
 def message_api_http_error(status_code: int) -> str:
     """Return an HTTP status failure message."""
     return f"api.http_error: API request failed with HTTP {status_code}."
+
+
+def message_advance_job_timed_out(job_id: str) -> str:
+    """Return an advance-job timeout message."""
+    return f"api.unavailable: Advance job timed out: {job_id}."
 
 
 def message_problem_detail(code: str, detail: str) -> str:

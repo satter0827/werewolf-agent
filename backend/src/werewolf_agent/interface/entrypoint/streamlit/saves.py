@@ -17,6 +17,8 @@ from werewolf_agent.commons.shared.messages import (
     message_save_slot_field_must_be_non_empty,
 )
 from werewolf_agent.contracts.schemas import (
+    GAME_STATUS_COMPLETED,
+    GAME_STATUS_RUNNING,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     GameResponse,
@@ -141,7 +143,7 @@ def build_saved_game_options(
     manual_player_tokens_by_slot = manual_player_tokens or {}
     for index, slot in enumerate(slots, start=1):
         game = games_by_id.get(slot.game_id)
-        status = game.status if game is not None else "running"
+        status = game.status if game is not None else GAME_STATUS_RUNNING
         day = game.day if game is not None else 1
         player_count = game.player_count if game is not None else sum(slot.role_counts.values())
         updated_at = game.updated_at if game is not None else None
@@ -317,7 +319,7 @@ def _option_label(
 ) -> str:
     status_label = (
         catalog.t(lang, "status.completed")
-        if status == "completed"
+        if status == GAME_STATUS_COMPLETED
         else catalog.t(lang, "status.running")
     )
     updated_label = updated_at.strftime("%H:%M") if updated_at is not None else "-"

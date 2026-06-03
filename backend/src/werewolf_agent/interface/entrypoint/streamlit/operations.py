@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, cast
+from uuid import uuid4
 
 from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_SUCCESS
 from werewolf_agent.commons.shared.messages import (
@@ -15,6 +16,7 @@ from werewolf_agent.commons.shared.messages import (
     LOG_STREAMLIT_RERUN_STARTED,
 )
 from werewolf_agent.contracts.schemas import (
+    AdvanceGameJobResponse,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     GameResponse,
@@ -32,7 +34,11 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ScreenMode,
     build_game_screen_view,
 )
-from werewolf_agent.interface.runtime import AppSettings
+from werewolf_agent.interface.runtime import (
+    AppSettings,
+    bind_observation_context,
+    get_observation_context,
+)
 from werewolf_agent.interface.shared.api_client import GameApiClient, build_game_api_client
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
@@ -41,7 +47,12 @@ logger = logging.getLogger(__name__)
 
 def build_streamlit_client(api_url: str, settings: AppSettings) -> GameApiClient:
     """Build the shared public API client with Streamlit settings."""
-    return build_game_api_client(api_url, timeout=settings.streamlit_http_timeout_seconds)
+    return build_game_api_client(
+        api_url,
+        timeout=settings.streamlit_http_timeout_seconds,
+        advance_job_poll_interval_seconds=settings.advance_job_poll_interval_seconds,
+        advance_job_poll_timeout_seconds=settings.advance_job_poll_timeout_seconds,
+    )
 
 
 def log_streamlit_rerun_started(settings: AppSettings) -> None:
@@ -57,6 +68,9 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
             "log_output": settings.log_output,
             "log_file_path": str(settings.log_file_path),
             "log_third_party_level": settings.log_third_party_level,
+            "llm_provider": settings.llm_provider,
+            "llm_model": settings.model,
+            "llm_base_url": settings.llm_base_url or "provider default",
         },
     )
 
@@ -242,6 +256,43 @@ def advance_one_step(
     game_id: str,
 ) -> None:
     """Advance the game by one public API step for Streamlit controls."""
+    if get_observation_context().get("trace_id"):
+        _advance_one_step(api_url=api_url, settings=settings, game_id=game_id)
+        return
+    with bind_observation_context(trace_id=str(uuid4())):
+        _advance_one_step(api_url=api_url, settings=settings, game_id=game_id)
+
+
+def start_advance_step(
+    *,
+    api_url: str,
+    settings: AppSettings,
+    game_id: str,
+) -> AdvanceGameJobResponse:
+    """Start an API-side advance job for Streamlit controls."""
+    if get_observation_context().get("trace_id"):
+        return _start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+    with bind_observation_context(trace_id=str(uuid4())):
+        return _start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+
+
+def load_advance_job(
+    *,
+    api_url: str,
+    settings: AppSettings,
+    game_id: str,
+    job_id: str,
+) -> AdvanceGameJobResponse:
+    """Load one API-side advance job for Streamlit polling."""
+    return build_streamlit_client(api_url, settings).get_advance_job(game_id, job_id)
+
+
+def _advance_one_step(
+    *,
+    api_url: str,
+    settings: AppSettings,
+    game_id: str,
+) -> None:
     client = build_streamlit_client(api_url, settings)
     logger.info(
         LOG_STREAMLIT_ADVANCE_STEP_STARTED,
@@ -265,3 +316,21 @@ def advance_one_step(
             "event_count": len(response.timeline),
         },
     )
+
+
+def _start_advance_step(
+    *,
+    api_url: str,
+    settings: AppSettings,
+    game_id: str,
+) -> AdvanceGameJobResponse:
+    client = build_streamlit_client(api_url, settings)
+    logger.info(
+        LOG_STREAMLIT_ADVANCE_STEP_STARTED,
+        extra={
+            "event_action": LOG_STREAMLIT_ADVANCE_STEP_STARTED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
+            "game_id": game_id,
+        },
+    )
+    return client.start_advance_game(game_id)

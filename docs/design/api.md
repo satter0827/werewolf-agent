@@ -11,7 +11,7 @@
 
 ## 現在地
 
-- 同期 REST API
+- REST API
 - `llm` agent と LangChain provider による自動進行
 - 1 game につき 1 人の manual player
 - dedicated reveal API による observer / demo 表示
@@ -27,13 +27,15 @@
 | `POST` | `/api/v1/games` | game 作成 |
 | `GET` | `/api/v1/games?status=<status>&limit=<n>&offset=<n>` | public game summary 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state |
-| `POST` | `/api/v1/games/{game_id}/advance` | 現在の usecase step を 1 回進める |
+| `POST` | `/api/v1/games/{game_id}/advance` | 現在の usecase step を 1 回進める job を作成する |
+| `GET` | `/api/v1/games/{game_id}/advance-jobs/{job_id}` | advance job の状態、結果、失敗理由を返す |
+| `GET` | `/api/v1/games/{game_id}/advance-jobs/latest` | 最新 advance job を返す |
 | `GET` | `/api/v1/games/{game_id}/timeline?after=<seq>&limit=<n>` | public timeline |
 | `GET` | `/api/v1/games/{game_id}/reveal` | observer / demo 用 reveal DTO |
 | `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | Bearer token 付き private observation |
 | `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | Bearer token 付き manual action |
 
-`advance` は常に 1 step だけ進めます。manual input が必要な場合は state を変更せず `409 game.invalid_phase` を返します。CLI と Streamlit は `advance` を繰り返し呼び、入力待ち、完了、上限到達、停止操作のいずれかで止めます。
+`POST /advance` は `202 Accepted` で `AdvanceGameJobResponse` を返します。LLM provider 呼び出しは HTTP request と DB transaction の外で実行します。manual input が必要な場合、finished game を進めようとした場合、provider が失敗した場合は job を `failed` にし、`error` に Problem Details を格納します。CLI と Streamlit は job を poll し、完了、失敗、上限到達、停止操作のいずれかで止めます。
 
 ## Wire Schemas
 
@@ -45,6 +47,7 @@
 | `ManualPlayerCredential` | `player_id` と token。作成レスポンスで 1 回だけ返す |
 | `GameListResponse` | `PublicGameSummary` の page |
 | `AdvanceGameResponse` | 進行後の public state と追加 public timeline |
+| `AdvanceGameJobResponse` | advance job の状態、poll URL、完了時 result、失敗時 Problem Details |
 | `GameTimelineResponse` | `GameTimelineItem` の page |
 | `PlayerObservationResponse` | authenticated manual player の private observation |
 | `PlayerActionRequest` / `PlayerActionResponse` | manual action 入出力 |
@@ -251,7 +254,7 @@ Error response は RFC 9457 Problem Details 互換です。
 | `403` | `auth.forbidden` | token 不正、または非 manual player |
 | `404` | `resource.not_found` | game が存在しない |
 | `405` | `request.method_not_allowed` | method が未対応 |
-| `409` | `game.invalid_phase` | manual input 待ち、または終了済み game の進行 |
+| `409` | `game.invalid_phase` | manual input 待ち、または終了済み game の進行。advance では job.error に格納する |
 | `422` | `game.invalid_action` | action ルール違反 |
 | `500` | `internal.unexpected` | 想定外エラー |
 
@@ -263,7 +266,8 @@ Error response は RFC 9457 Problem Details 互換です。
 | `contracts/errors.py` | error code metadata |
 | `interface/runtime/` | settings、definition loader、logging bootstrap |
 | `interface/api/routers.py` | endpoint |
-| `interface/application/games.py` | transaction、依存注入、wire schema 変換 |
+| `interface/application/games.py` | game transaction、依存注入、wire schema 変換 |
+| `interface/application/advance_jobs.py` | advance job 作成、polling、background 実行 |
 | `interface/application/repositories.py` | SQLAlchemy repository adapter |
 | `usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, BackgroundTasks, Depends, Header
 
 from werewolf_agent.commons.shared.constants import HEALTH_STATUS_OK
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    AdvanceGameResponse,
+    AdvanceGameJobResponse,
     CreateGameRequest,
     GameListQuery,
     GameListResponse,
@@ -22,6 +22,7 @@ from werewolf_agent.contracts.schemas import (
     PlayerObservationResponse,
 )
 from werewolf_agent.interface.api.dependencies import app_settings, game_session_factory
+from werewolf_agent.interface.application import advance_jobs as advance_job_application
 from werewolf_agent.interface.application import games as game_application
 from werewolf_agent.interface.application.database import SessionFactory
 from werewolf_agent.interface.runtime import AppSettings
@@ -29,6 +30,7 @@ from werewolf_agent.interface.shared.constants import (
     API_PREFIX,
     AUTHORIZATION_HEADER,
     BEARER_AUTH_SCHEME,
+    HTTP_ACCEPTED,
     HTTP_CREATED,
 )
 from werewolf_agent.interface.shared.messages import MESSAGE_AUTHORIZATION_HEADER_REQUIRED
@@ -118,15 +120,64 @@ def get_game_reveal(
     )
 
 
-@router.post("/games/{game_id}/advance", response_model=AdvanceGameResponse)
+@router.post(
+    "/games/{game_id}/advance",
+    response_model=AdvanceGameJobResponse,
+    status_code=HTTP_ACCEPTED,
+)
 def advance_game(
+    game_id: str,
+    background_tasks: BackgroundTasks,
+    session_factory: SessionFactory = SESSION_FACTORY,
+    settings: AppSettings = APP_SETTINGS,
+) -> AdvanceGameJobResponse:
+    """Start one API-side advance job and return its polling state."""
+    response, should_schedule = advance_job_application.start_advance_job(
+        game_id,
+        session_factory=session_factory,
+        settings=settings,
+    )
+    if should_schedule:
+        background_tasks.add_task(
+            advance_job_application.run_advance_job,
+            response.job_id,
+            session_factory=session_factory,
+            settings=settings,
+        )
+    return response
+
+
+@router.get(
+    "/games/{game_id}/advance-jobs/latest",
+    response_model=AdvanceGameJobResponse,
+)
+def latest_advance_job(
     game_id: str,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
-) -> AdvanceGameResponse:
-    """Advance one game by one synchronous use case step."""
-    return game_application.advance_game(
+) -> AdvanceGameJobResponse:
+    """Return the latest advance job for one game."""
+    return advance_job_application.get_latest_advance_job(
         game_id,
+        session_factory=session_factory,
+        settings=settings,
+    )
+
+
+@router.get(
+    "/games/{game_id}/advance-jobs/{job_id}",
+    response_model=AdvanceGameJobResponse,
+)
+def get_advance_job(
+    game_id: str,
+    job_id: str,
+    session_factory: SessionFactory = SESSION_FACTORY,
+    settings: AppSettings = APP_SETTINGS,
+) -> AdvanceGameJobResponse:
+    """Return one advance job for one game."""
+    return advance_job_application.get_advance_job(
+        game_id,
+        job_id,
         session_factory=session_factory,
         settings=settings,
     )

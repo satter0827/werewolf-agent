@@ -5,11 +5,14 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_AUTO_ADVANCE_RUNNING,
     KEY_AUTO_ADVANCE_STEPS,
     KEY_MANUAL_PLAYER_TOKENS,
+    advance_job_id,
     auto_advance_state,
+    clear_advance_job,
     consume_auto_advance_notice,
     manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
+    remember_advance_job,
     remember_manual_player_token,
     start_auto_advance,
     sync_auto_advance_game,
@@ -55,6 +58,7 @@ def test_auto_advance_resets_when_visible_game_changes() -> None:
     session: dict[str, object] = {}
     start_auto_advance(session, "game-1")
     record_auto_advance_step(session, game_id="game-1", now=1.0)
+    remember_advance_job(session, game_id="game-1", job_id="job-1")
 
     sync_auto_advance_game(session, "game-2")
 
@@ -63,8 +67,22 @@ def test_auto_advance_resets_when_visible_game_changes() -> None:
     assert session[KEY_AUTO_ADVANCE_STEPS] == 0
     assert session[KEY_AUTO_ADVANCE_LAST_STEP_AT] == 0.0
     assert auto_advance_state(session, "game-1").running is False
+    assert advance_job_id(session, "game-1") == ""
 
     remember_manual_player_token(session, slot_id="", manual_token="token-secret")
     remember_manual_player_token(session, slot_id="slot-1", manual_token="")
 
     assert manual_player_tokens_by_slot(session) == {}
+
+
+def test_advance_job_state_is_scoped_to_visible_game() -> None:
+    session: dict[str, object] = {}
+
+    remember_advance_job(session, game_id="game-1", job_id="job-1")
+
+    assert advance_job_id(session, "game-1") == "job-1"
+    assert advance_job_id(session, "game-2") == ""
+
+    clear_advance_job(session)
+
+    assert advance_job_id(session, "game-1") == ""

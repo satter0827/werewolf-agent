@@ -7,6 +7,7 @@ deterministic domain core がゲームの真実を管理し、外側には publi
 
 - FastAPI / CLI / Streamlit から、LLM 同士の game と 1 人 manual player 混在 game を決着まで進められる
 - LangChain `fake` provider、LM Studio、OpenAI provider を設定値で切り替えられる
+- API の game advance は job 化し、LLM 呼び出しを HTTP request wait と DB transaction から分離している
 - role、rule、scenario、LLM player、prompt、fake response、Streamlit i18n は runtime definition として読み込む
 - 公開 API は `health`、`setup-options`、`games`、`advance`、`timeline`、`reveal`、`player observation`、`player action` に絞る
 - manual player の token は作成レスポンスで 1 回だけ返し、保存・public response・public timeline・運用ログへ出さない
@@ -46,20 +47,27 @@ VS Code では `App: API + Streamlit` を使います。OneDrive / sandbox の�
 
 ## LLM Provider
 
-既定は外部 API を使わない `fake` provider です。
+既定は local LM Studio server を使う `lmstudio` provider です。
 
 ```text
-WEREWOLF_LLM_PROVIDER=fake
-WEREWOLF_MODEL=fake-list-llm
+WEREWOLF_LLM_PROVIDER=lmstudio
+WEREWOLF_MODEL=auto
+WEREWOLF_LLM_BASE_URL=http://127.0.0.1:1234/v1
+WEREWOLF_LLM_TIMEOUT_SECONDS=12
+WEREWOLF_LLM_MAX_RETRIES=0
+WEREWOLF_LLM_MAX_TOKENS=96
 ```
 
 LM Studio:
 
 ```text
 WEREWOLF_LLM_PROVIDER=lmstudio
-WEREWOLF_MODEL=<LM Studio model identifier>
-WEREWOLF_LLM_BASE_URL=http://host.docker.internal:1234/v1
+WEREWOLF_MODEL=auto
+WEREWOLF_LLM_BASE_URL=http://127.0.0.1:1234/v1
 ```
+
+`WEREWOLF_MODEL=auto` は LM Studio の `/v1/models` から最初の loaded model id を取得します。LM Studio server が起動していない場合は `fake` へ戻さず、`llm.provider_unavailable` として失敗させます。
+LM Studio 本体設定は変更せず、timeout、retry、出力 token、job polling はこの repository の設定値で制御します。
 
 OpenAI:
 
@@ -81,7 +89,9 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 | `POST` | `/api/v1/games` | game 作成 |
 | `GET` | `/api/v1/games` | game 一覧 |
 | `GET` | `/api/v1/games/{game_id}` | public state |
-| `POST` | `/api/v1/games/{game_id}/advance` | 1 step 進行 |
+| `POST` | `/api/v1/games/{game_id}/advance` | 1 step 進行 job 作成 |
+| `GET` | `/api/v1/games/{game_id}/advance-jobs/{job_id}` | advance job 状態 |
+| `GET` | `/api/v1/games/{game_id}/advance-jobs/latest` | 最新 advance job 状態 |
 | `GET` | `/api/v1/games/{game_id}/timeline` | public timeline |
 | `GET` | `/api/v1/games/{game_id}/reveal` | observer / demo 用 reveal |
 | `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | Bearer token 付き private observation |
@@ -113,7 +123,7 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 
 `interface/runtime` が設定、definition TOML、logging bootstrap を浅い入口で解決し、`interface/application` から usecase へ値として注入します。domain と usecase は source path、packaged fallback、`.env`、logging 設定を知りません。
 
-運用時に変える値は `.env` または環境変数で override します。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。CLI の既定 API URL は `WEREWOLF_CLI_API_URL` です。
+運用時に変える値は `.env` または環境変数で override します。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。CLI の既定 API URL は `WEREWOLF_CLI_API_URL` です。advance job polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS` で変更できます。
 
 運用ログは JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。
 

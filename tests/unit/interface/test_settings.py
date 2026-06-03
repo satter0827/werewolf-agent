@@ -48,8 +48,9 @@ def test_split_mapping_parses_key_value_items() -> None:
 
 def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
-    assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
-    assert PACKAGED_DEFAULTS["llm_base_url"] == ""
+    assert PACKAGED_DEFAULTS["llm_provider"] == "lmstudio"
+    assert PACKAGED_DEFAULTS["model"] == "auto"
+    assert PACKAGED_DEFAULTS["llm_base_url"] == "http://127.0.0.1:1234/v1"
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
     assert PACKAGED_DEFAULTS["llm_players_file"] == ""
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
@@ -101,14 +102,16 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.log_file_path == repository_root() / ".werewolf-agent/logs/werewolf-agent.jsonl"
     assert settings.log_third_party_level == "WARNING"
     assert settings.cli_api_url == "http://127.0.0.1:8000/api/v1"
-    assert settings.cli_http_timeout_seconds == 10.0
+    assert settings.cli_http_timeout_seconds == 5.0
+    assert settings.advance_job_poll_interval_seconds == 0.25
+    assert settings.advance_job_poll_timeout_seconds == 60.0
     assert settings.cli_max_steps == 64
     assert settings.cli_poll_interval_seconds == 0.0
     assert settings.cli_event_limit == 100
     assert settings.cli_output_format == "table"
     assert settings.streamlit_api_url == ""
     assert settings.streamlit_resolved_api_url == settings.cli_api_url
-    assert settings.streamlit_http_timeout_seconds == 10.0
+    assert settings.streamlit_http_timeout_seconds == 5.0
     assert settings.streamlit_refresh_interval_seconds == 5.0
     assert settings.streamlit_event_limit == 100
     assert settings.streamlit_turn_limit == 100
@@ -137,9 +140,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_game_list_max_limit == 100
     assert settings.api_timeline_default_limit == 100
     assert settings.api_timeline_max_limit == 500
-    assert settings.llm_provider == "fake"
-    assert settings.model == "fake-list-llm"
-    assert settings.llm_base_url == ""
+    assert settings.llm_provider == "lmstudio"
+    assert settings.model == "auto"
+    assert settings.llm_base_url == "http://127.0.0.1:1234/v1"
     assert settings.configured_openai_api_key == ""
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
@@ -182,12 +185,13 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.timeline_max_limit == 500
 
     llm_config = build_llm_provider_config(settings)
-    assert llm_config.provider == "fake"
-    assert llm_config.model == "fake-list-llm"
-    assert llm_config.base_url == ""
-    assert llm_config.api_key == ""
-    assert llm_config.timeout_seconds == 30.0
-    assert llm_config.max_retries == 2
+    assert llm_config.provider == "lmstudio"
+    assert llm_config.model == "auto"
+    assert llm_config.base_url == "http://127.0.0.1:1234/v1"
+    assert llm_config.api_key == "lm-studio"
+    assert llm_config.timeout_seconds == 12.0
+    assert llm_config.max_retries == 0
+    assert llm_config.max_tokens == 96
     assert llm_config.temperature == 0.7
 
     game_definitions = build_game_definitions(settings)
@@ -215,6 +219,7 @@ def test_lmstudio_llm_provider_config_is_built_from_settings() -> None:
         llm_base_url="http://127.0.0.1:1234/v1",
         llm_timeout_seconds=45,
         llm_max_retries=3,
+        llm_max_tokens=128,
         llm_temperature=0.2,
     )
 
@@ -226,6 +231,7 @@ def test_lmstudio_llm_provider_config_is_built_from_settings() -> None:
     assert llm_config.api_key == "lm-studio"
     assert llm_config.timeout_seconds == 45.0
     assert llm_config.max_retries == 3
+    assert llm_config.max_tokens == 128
     assert llm_config.temperature == 0.2
     assert "lm-studio" not in repr(llm_config)
 
@@ -244,6 +250,7 @@ def test_openai_llm_provider_config_uses_secret_api_key() -> None:
     assert llm_config.model == "gpt-4.1-mini"
     assert llm_config.base_url == ""
     assert llm_config.api_key == "sk-test"
+    assert llm_config.max_tokens == 96
     assert "sk-test" not in repr(llm_config)
 
 
@@ -251,7 +258,7 @@ def test_llm_provider_settings_validate_required_values() -> None:
     AppSettings(_env_file=None, llm_provider="fake")
 
     with pytest.raises(ValidationError, match="WEREWOLF_LLM_BASE_URL"):
-        AppSettings(_env_file=None, llm_provider="lmstudio")
+        AppSettings(_env_file=None, llm_provider="lmstudio", llm_base_url="")
 
     with pytest.raises(ValidationError, match="OPENAI_API_KEY"):
         AppSettings(_env_file=None, llm_provider="openai")
@@ -268,6 +275,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
     monkeypatch.setenv("WEREWOLF_LLM_TIMEOUT_SECONDS", "45")
     monkeypatch.setenv("WEREWOLF_LLM_MAX_RETRIES", "3")
+    monkeypatch.setenv("WEREWOLF_LLM_MAX_TOKENS", "128")
     monkeypatch.setenv("WEREWOLF_LLM_TEMPERATURE", "0.2")
     monkeypatch.setenv(
         "WEREWOLF_LLM_PROMPT_FILE",
@@ -295,6 +303,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
     monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
+    monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS", "0.1")
+    monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_API_URL", "http://ui-api.test/api/v1")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_HTTP_TIMEOUT_SECONDS", "5")
@@ -333,6 +343,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.llm_base_url == "http://127.0.0.1:1234/v1"
     assert settings.llm_timeout_seconds == 45.0
     assert settings.llm_max_retries == 3
+    assert settings.llm_max_tokens == 128
     assert settings.llm_temperature == 0.2
     assert (
         settings.llm_prompt_path
@@ -360,6 +371,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
     assert settings.cli_api_url == "http://api.test/api/v1"
+    assert settings.advance_job_poll_interval_seconds == 0.1
+    assert settings.advance_job_poll_timeout_seconds == 30.0
     assert settings.cli_output_format == "json"
     assert settings.streamlit_api_url == "http://ui-api.test/api/v1"
     assert settings.streamlit_resolved_api_url == "http://ui-api.test/api/v1"

@@ -61,6 +61,29 @@ class GameModel(Base):
         back_populates="game",
         cascade="all, delete-orphan",
     )
+    advance_jobs: Mapped[list[GameAdvanceJobModel]] = relationship(
+        back_populates="game",
+        cascade="all, delete-orphan",
+    )
+
+
+class GameAdvanceJobModel(Base):
+    """Persisted API-side advance job for one game."""
+
+    __tablename__ = schema.GAME_ADVANCE_JOBS_TABLE
+
+    id: Mapped[str] = mapped_column(String(schema.UUID_TEXT_LENGTH), primary_key=True)
+    game_id: Mapped[str] = mapped_column(ForeignKey(schema.GAMES_ID_REFERENCE, ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(schema.STATUS_TEXT_LENGTH), nullable=False)
+    state_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    result: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    game: Mapped[GameModel] = relationship(back_populates="advance_jobs")
 
 
 class GameEventModel(Base):

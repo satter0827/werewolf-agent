@@ -9,7 +9,11 @@ from typing import Any, cast
 from uuid import uuid4
 
 from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE
-from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts import (
+    ACTIVE_ADVANCE_JOB_STATUSES,
+    ADVANCE_JOB_STATUS_FAILED,
+    AppError,
+)
 from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
     CustomCharacterDefinitionRequest,
@@ -37,12 +41,13 @@ from werewolf_agent.interface.entrypoint.streamlit.i18n import (
     load_i18n,
 )
 from werewolf_agent.interface.entrypoint.streamlit.operations import (
-    advance_one_step,
     create_game_from_setup,
     list_recent_games,
+    load_advance_job,
     load_game_screen,
     load_setup_options,
     log_streamlit_rerun_started,
+    start_advance_step,
     submit_screen_action,
 )
 from werewolf_agent.interface.entrypoint.streamlit.saves import (
@@ -95,12 +100,15 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
 from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_MESSAGE,
     KEY_SELECTED_SAVE_ID,
+    advance_job_id,
     auto_advance_state,
+    clear_advance_job,
     clear_message,
     consume_auto_advance_notice,
     manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
+    remember_advance_job,
     remember_manual_player_token,
     remember_selected_save,
     start_auto_advance,
@@ -1275,6 +1283,18 @@ def _render_action_panel(
             st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
             return
 
+        if advance_job_id(st.session_state, selected_option.game_id):
+            _render_advance_job_progress(
+                st,
+                settings=settings,
+                api_url=api_url,
+                selected_option=selected_option,
+                catalog=catalog,
+                lang=lang,
+            )
+            st.markdown(observation_memo_html(screen.observation_memo), unsafe_allow_html=True)
+            return
+
         if screen.can_submit_action:
             _render_action_form(
                 st,
@@ -1378,7 +1398,8 @@ def _render_action_form(
             return
         clear_message(st.session_state)
         try:
-            advance_one_step(
+            _start_and_remember_advance_job(
+                st,
                 api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
@@ -1441,6 +1462,48 @@ def _render_auto_advance_controls(
     )
 
 
+def _render_advance_job_progress(
+    st: Any,
+    *,
+    settings: AppSettings,
+    api_url: str,
+    selected_option: SavedGameOptionView,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    notice = consume_auto_advance_notice(st.session_state)
+    if notice:
+        st.warning(notice)
+    state = auto_advance_state(st.session_state, selected_option.game_id)
+    st.markdown(
+        auto_progress_html(
+            detail=catalog.t(lang, "action.auto_advance_running"),
+            steps=state.steps,
+            max_steps=settings.streamlit_max_auto_steps,
+        ),
+        unsafe_allow_html=True,
+    )
+    _render_auto_advance_fragment(
+        st,
+        settings=settings,
+        api_url=api_url,
+        selected_option=selected_option,
+        catalog=catalog,
+        lang=lang,
+    )
+
+
+def _start_and_remember_advance_job(
+    st: Any,
+    *,
+    api_url: str,
+    settings: AppSettings,
+    game_id: str,
+) -> None:
+    job = start_advance_step(api_url=api_url, settings=settings, game_id=game_id)
+    remember_advance_job(st.session_state, game_id=game_id, job_id=job.job_id)
+
+
 def _render_auto_advance_fragment(
     st: Any,
     *,
@@ -1450,11 +1513,43 @@ def _render_auto_advance_fragment(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    if not auto_advance_state(st.session_state, selected_option.game_id).running:
+    current_job_id = advance_job_id(st.session_state, selected_option.game_id)
+    if (
+        not auto_advance_state(st.session_state, selected_option.game_id).running
+        and not current_job_id
+    ):
         return
 
     def auto_advance_once() -> None:
         state = auto_advance_state(st.session_state, selected_option.game_id)
+        job_id = advance_job_id(st.session_state, selected_option.game_id)
+        if job_id:
+            try:
+                job = load_advance_job(
+                    api_url=api_url,
+                    settings=settings,
+                    game_id=selected_option.game_id,
+                    job_id=job_id,
+                )
+            except AppError as exc:
+                clear_advance_job(st.session_state)
+                pause_auto_advance(st.session_state, notice=exc.detail)
+                st.rerun(scope="app")
+            if job.status in ACTIVE_ADVANCE_JOB_STATUSES:
+                return
+            clear_advance_job(st.session_state)
+            if job.status == ADVANCE_JOB_STATUS_FAILED:
+                detail = job.error.detail if job.error is not None else ""
+                pause_auto_advance(st.session_state, notice=detail)
+                st.rerun(scope="app")
+            if state.running:
+                record_auto_advance_step(
+                    st.session_state,
+                    game_id=selected_option.game_id,
+                    now=time.monotonic(),
+                )
+            st.rerun(scope="app")
+
         if not state.running:
             return
         now = time.monotonic()
@@ -1468,7 +1563,8 @@ def _render_auto_advance_fragment(
             )
             st.rerun(scope="app")
         try:
-            advance_one_step(
+            _start_and_remember_advance_job(
+                st,
                 api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
@@ -1476,11 +1572,6 @@ def _render_auto_advance_fragment(
         except AppError as exc:
             pause_auto_advance(st.session_state, notice=exc.detail)
             st.rerun(scope="app")
-        record_auto_advance_step(
-            st.session_state,
-            game_id=selected_option.game_id,
-            now=now,
-        )
         st.rerun(scope="app")
 
     st.fragment(run_every=settings.streamlit_auto_advance_interval_seconds)(auto_advance_once)()

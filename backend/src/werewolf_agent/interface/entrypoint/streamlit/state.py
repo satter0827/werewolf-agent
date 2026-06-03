@@ -15,6 +15,8 @@ KEY_AUTO_ADVANCE_RUNNING = "werewolf_streamlit_auto_advance_running"
 KEY_AUTO_ADVANCE_STEPS = "werewolf_streamlit_auto_advance_steps"
 KEY_AUTO_ADVANCE_LAST_STEP_AT = "werewolf_streamlit_auto_advance_last_step_at"
 KEY_AUTO_ADVANCE_NOTICE = "werewolf_streamlit_auto_advance_notice"
+KEY_ADVANCE_JOB_GAME_ID = "werewolf_streamlit_advance_job_game_id"
+KEY_ADVANCE_JOB_ID = "werewolf_streamlit_advance_job_id"
 
 
 @dataclass(frozen=True)
@@ -81,6 +83,7 @@ def sync_auto_advance_game(session: MutableMapping[str, Any], game_id: str) -> N
     session[KEY_AUTO_ADVANCE_STEPS] = 0
     session[KEY_AUTO_ADVANCE_LAST_STEP_AT] = 0.0
     session.pop(KEY_AUTO_ADVANCE_NOTICE, None)
+    clear_advance_job(session)
 
 
 def auto_advance_state(session: MutableMapping[str, Any], game_id: str) -> AutoAdvanceState:
@@ -125,6 +128,30 @@ def record_auto_advance_step(
     session[KEY_AUTO_ADVANCE_RUNNING] = state.running
     session[KEY_AUTO_ADVANCE_STEPS] = state.steps + 1
     session[KEY_AUTO_ADVANCE_LAST_STEP_AT] = float(now)
+
+
+def remember_advance_job(
+    session: MutableMapping[str, Any],
+    *,
+    game_id: str,
+    job_id: str,
+) -> None:
+    """Remember the advance job currently being polled by the UI."""
+    session[KEY_ADVANCE_JOB_GAME_ID] = game_id.strip()
+    session[KEY_ADVANCE_JOB_ID] = job_id.strip()
+
+
+def advance_job_id(session: MutableMapping[str, Any], game_id: str) -> str:
+    """Return the remembered advance job id for one game."""
+    if session.get(KEY_ADVANCE_JOB_GAME_ID) != game_id.strip():
+        return ""
+    return text_value(session, KEY_ADVANCE_JOB_ID)
+
+
+def clear_advance_job(session: MutableMapping[str, Any]) -> None:
+    """Clear the currently remembered advance job."""
+    session.pop(KEY_ADVANCE_JOB_GAME_ID, None)
+    session.pop(KEY_ADVANCE_JOB_ID, None)
 
 
 def consume_auto_advance_notice(session: MutableMapping[str, Any]) -> str:

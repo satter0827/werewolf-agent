@@ -59,6 +59,7 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         api_key=api_key,
         timeout_seconds=app_settings.llm_timeout_seconds,
         max_retries=app_settings.llm_max_retries,
+        max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
     )
 
