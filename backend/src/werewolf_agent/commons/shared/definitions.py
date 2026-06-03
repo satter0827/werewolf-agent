@@ -19,6 +19,7 @@ RoleCount = Annotated[int, Field(ge=0)]
 class LocalRulesDefinition(StrictModel):
     """Local rule flags used by the game core."""
 
+    day_speech_limit_per_player: int = Field(ge=1, le=10)
     allow_self_vote: bool
     allow_vote_revision: bool
     allow_night_action_revision: bool

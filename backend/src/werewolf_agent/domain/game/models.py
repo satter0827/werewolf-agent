@@ -184,7 +184,7 @@ class RoleCatalog(_DomainModel):
 
 
 class GameConfig(_DomainModel):
-    """Settings for one deterministic game run."""
+    """Settings for one deterministic game."""
 
     player_count: int
     role_counts: dict[str, int]

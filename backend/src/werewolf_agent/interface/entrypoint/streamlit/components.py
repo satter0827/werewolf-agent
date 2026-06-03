@@ -259,8 +259,8 @@ def html(markup: str) -> str:
 
 def _seat_html(seat: PlayerSeatView) -> str:
     classes = ["wa-seat", f"wa-seat-activity-{css_token(seat.activity_tone)}"]
-    if seat.is_human:
-        classes.append("wa-seat-human")
+    if seat.is_manual:
+        classes.append("wa-seat-manual")
     if seat.is_current:
         classes.append("wa-seat-current")
     if not seat.is_alive:

@@ -77,6 +77,7 @@ def role_catalog() -> RoleCatalog:
 
 def local_rules(*, random_tie: bool = False) -> LocalRules:
     return LocalRules(
+        day_speech_limit_per_player=1,
         allow_self_vote=False,
         allow_vote_revision=False,
         allow_night_action_revision=False,
@@ -271,6 +272,28 @@ def test_day_speech_limit_resets_on_next_day() -> None:
     assert run.snapshot.phase is Phase.DAY_DISCUSSION
     assert run.snapshot.day == 2
     assert run.observe("p2").available_actions == [ActionType.SPEECH]
+
+
+def test_day_speech_limit_is_rule_driven() -> None:
+    config = mvp_config().model_copy(
+        update={"rules": local_rules().model_copy(update={"day_speech_limit_per_player": 2})}
+    )
+    snapshot, events = start_game(config, fixed_players(), random.Random(7))
+    run = HeadlessRun(
+        snapshot=snapshot,
+        pending=PendingActions(),
+        rng=random.Random(7),
+        events=events,
+    )
+
+    run.advance()
+    run.submit(Action.speech("p2", "first"))
+    assert run.observe("p2").available_actions == [ActionType.SPEECH]
+    run.submit(Action.speech("p2", "second"))
+
+    assert run.observe("p2").available_actions == []
+    with pytest.raises(GameError):
+        run.submit(Action.speech("p2", "third"))
 
 
 def test_vote_and_night_actions_are_single_submission_by_default() -> None:

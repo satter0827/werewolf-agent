@@ -11,25 +11,25 @@ from werewolf_agent.interface.shared.diagnostics import build_interface_diagnost
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
 
 
-def test_build_create_game_request_supports_human_player() -> None:
+def test_build_create_game_request_supports_manual_player() -> None:
     request = build_create_game_request(
         seed=1,
-        human_player_id="player-2",
+        manual_player_id="player-2",
         role_counts={"werewolf": 1, "villager": 4},
     )
 
     assert request.seed == 1
     assert request.player_count == 5
-    assert request.human_player_id == "player-2"
+    assert request.manual_player_id == "player-2"
     assert request.role_counts == {"werewolf": 1, "villager": 4}
     assert request.rules is None
 
 
-def test_build_create_game_request_rejects_unknown_human_player() -> None:
+def test_build_create_game_request_rejects_unknown_manual_player() -> None:
     with pytest.raises(AppError):
         build_create_game_request(
             seed=None,
-            human_player_id="player-9",
+            manual_player_id="player-9",
             role_counts={"werewolf": 1, "villager": 4},
         )
 
@@ -41,12 +41,12 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         requests.append((request.method, request.url.path))
         if request.url.path.endswith("/health"):
             return httpx.Response(200, json={"status": "ok", "service": "api"})
-        if request.url.path.endswith("/ruleset"):
-            return httpx.Response(200, json=_ruleset_payload())
+        if request.url.path.endswith("/setup-options"):
+            return httpx.Response(200, json=_setup_options_payload())
         if request.url.path.endswith("/games") and request.method == "POST":
             return httpx.Response(201, json=_game_payload())
         if request.url.path.endswith("/games") and request.method == "GET":
-            return httpx.Response(200, json={"runs": [_run_payload()]})
+            return httpx.Response(200, json={"games": [_run_payload()]})
         if request.url.path.endswith("/games/game-1"):
             return httpx.Response(200, json=_game_payload())
         if request.url.path.endswith("/games/game-1/reveal"):
@@ -54,17 +54,6 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
         if request.url.path.endswith("/games/game-1/advance"):
             return httpx.Response(
                 200, json={**_game_payload(), "status": "running", "timeline": []}
-            )
-        if request.url.path.endswith("/games/game-1/advance-until-input"):
-            return httpx.Response(
-                200,
-                json={
-                    **_game_payload(),
-                    "status": "running",
-                    "timeline": [],
-                    "stop_reason": "manual_input_required",
-                    "steps": 1,
-                },
             )
         if request.url.path.endswith("/games/game-1/timeline"):
             return httpx.Response(
@@ -86,24 +75,23 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
     )
     request = build_create_game_request(
         seed=1,
-        human_player_id=None,
+        manual_player_id=None,
         role_counts={"werewolf": 1, "villager": 4},
     )
 
     assert client.health()["status"] == "ok"
-    assert client.get_ruleset().default_role_counts == {"werewolf": 1, "villager": 4}
+    assert client.get_setup_options().default_role_counts == {"werewolf": 1, "villager": 4}
     assert client.create_game(request).game_id == "game-1"
-    assert client.list_games().runs
+    assert client.list_games().games
     assert client.get_game("game-1").game_id == "game-1"
     assert client.get_game_reveal("game-1").players[1].role == "werewolf"
     assert client.advance_game("game-1").game_id == "game-1"
-    assert client.advance_until_input("game-1", max_steps=3).stop_reason == "manual_input_required"
     assert client.get_timeline("game-1").items
     assert (
         client.get_private_observation(
             "game-1",
             "player-1",
-            control_token="token",
+            manual_token="token",
         ).player_id
         == "player-1"
     )
@@ -112,20 +100,19 @@ def test_http_client_uses_minimal_public_v1_contract() -> None:
             "game-1",
             "player-1",
             PlayerActionRequest(type="speech", message="hello"),
-            control_token="token",
+            manual_token="token",
         ).timeline
         == []
     )
 
     assert requests == [
         ("GET", "/api/v1/health"),
-        ("GET", "/api/v1/ruleset"),
+        ("GET", "/api/v1/setup-options"),
         ("POST", "/api/v1/games"),
         ("GET", "/api/v1/games"),
         ("GET", "/api/v1/games/game-1"),
         ("GET", "/api/v1/games/game-1/reveal"),
         ("POST", "/api/v1/games/game-1/advance"),
-        ("POST", "/api/v1/games/game-1/advance-until-input"),
         ("GET", "/api/v1/games/game-1/timeline"),
         ("GET", "/api/v1/games/game-1/players/player-1/observation"),
         ("POST", "/api/v1/games/game-1/players/player-1/actions"),
@@ -261,7 +248,7 @@ def _reveal_payload() -> dict[str, object]:
         "version": 1,
         "seed": 1,
         "role_counts": {"werewolf": 1, "villager": 1},
-        "rules": _ruleset_payload()["default_rules"],
+        "rules": _setup_options_payload()["default_rules"],
         "players": [
             {
                 "id": "player-1",
@@ -285,7 +272,7 @@ def _reveal_payload() -> dict[str, object]:
     }
 
 
-def _ruleset_payload() -> dict[str, object]:
+def _setup_options_payload() -> dict[str, object]:
     return {
         "player_count": {"min": 5, "max": 8},
         "roles": [
@@ -294,6 +281,7 @@ def _ruleset_payload() -> dict[str, object]:
         ],
         "default_role_counts": {"werewolf": 1, "villager": 4},
         "default_rules": {
+            "day_speech_limit_per_player": 1,
             "allow_self_vote": False,
             "allow_vote_revision": False,
             "allow_night_action_revision": False,

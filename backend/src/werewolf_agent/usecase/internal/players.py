@@ -1,4 +1,4 @@
-"""Player roster selection for game runs."""
+"""Player roster selection for games."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ def select_players(
     player_count: int,
     seed: int | None,
 ) -> list[SelectedPlayerProfile]:
-    """Select unique player profiles for one game run."""
+    """Select unique player profiles for one game."""
     candidates = sorted(roster.players.items())
     if player_count > len(candidates):
         raise GameError(

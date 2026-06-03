@@ -13,11 +13,10 @@ from uuid import uuid4
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
-    GameRunResponse,
+    GameResponse,
     LocalRulesSettings,
     NarrationMode,
-    PublicGameRunSummary,
-    PublicGameState,
+    PublicGameSummary,
 )
 from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
@@ -25,7 +24,7 @@ from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     ScreenMode,
 )
 
-SAVE_FILE_VERSION = 4
+SAVE_FILE_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -34,7 +33,7 @@ class SaveSlot:
 
     slot_id: str
     game_id: str
-    human_player_id: str | None
+    manual_player_id: str | None
     role_counts: dict[str, int]
     rules: LocalRulesSettings
     seed: int | None
@@ -44,37 +43,6 @@ class SaveSlot:
     character_assignments: dict[str, str]
     custom_roles: list[CustomRoleDefinitionRequest]
     custom_characters: list[CustomCharacterDefinitionRequest]
-    status: str
-    phase: str
-    day: int
-    player_count: int
-    alive_count: int
-    created_at: datetime | None
-    updated_at: datetime | None
-
-    def with_state(self, state: PublicGameState) -> SaveSlot:
-        """Return this slot refreshed with the latest public game metadata."""
-        return SaveSlot(
-            slot_id=self.slot_id,
-            game_id=self.game_id,
-            human_player_id=self.human_player_id,
-            role_counts=dict(self.role_counts),
-            rules=self.rules,
-            seed=self.seed,
-            scenario_id=self.scenario_id,
-            setup_preset_id=self.setup_preset_id,
-            narration_mode=self.narration_mode,
-            character_assignments=dict(self.character_assignments),
-            custom_roles=list(self.custom_roles),
-            custom_characters=list(self.custom_characters),
-            status=state.status,
-            phase=state.phase,
-            day=state.day,
-            player_count=len(state.players),
-            alive_count=len(state.alive_player_ids),
-            created_at=state.created_at or self.created_at,
-            updated_at=state.updated_at or self.updated_at,
-        )
 
 
 def load_save_slots(save_file: Path) -> list[SaveSlot]:
@@ -93,11 +61,7 @@ def load_save_slots(save_file: Path) -> list[SaveSlot]:
     if not isinstance(raw_slots, list):
         return []
     slots = [_slot_from_dict(item) for item in raw_slots if isinstance(item, dict)]
-    return sorted(
-        [slot for slot in slots if slot is not None],
-        key=lambda slot: slot.updated_at or slot.created_at or datetime.min,
-        reverse=True,
-    )
+    return [slot for slot in slots if slot is not None]
 
 
 def write_save_slots(save_file: Path, slots: list[SaveSlot]) -> None:
@@ -123,9 +87,9 @@ def upsert_save_slot(save_file: Path, slot: SaveSlot) -> None:
 
 
 def create_save_slot(
-    response: GameRunResponse,
+    response: GameResponse,
     *,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     role_counts: Mapping[str, int],
     rules: LocalRulesSettings,
     seed: int | None,
@@ -137,11 +101,10 @@ def create_save_slot(
     custom_characters: list[CustomCharacterDefinitionRequest],
 ) -> SaveSlot:
     """Create a playable save slot from a newly created game response."""
-    state = response.state
     return SaveSlot(
         slot_id=uuid4().hex,
         game_id=response.game_id,
-        human_player_id=human_player_id,
+        manual_player_id=manual_player_id,
         role_counts={str(role_id): int(count) for role_id, count in role_counts.items()},
         rules=rules,
         seed=seed,
@@ -154,37 +117,30 @@ def create_save_slot(
         },
         custom_roles=list(custom_roles),
         custom_characters=list(custom_characters),
-        status=state.status,
-        phase=state.phase,
-        day=state.day,
-        player_count=len(state.players),
-        alive_count=len(state.alive_player_ids),
-        created_at=state.created_at,
-        updated_at=state.updated_at,
     )
 
 
 def build_saved_game_options(
     slots: list[SaveSlot],
-    runs: list[PublicGameRunSummary],
+    games: list[PublicGameSummary],
     *,
     catalog: I18nCatalog,
     lang: Language,
-    control_tokens: Mapping[str, str] | None = None,
+    manual_player_tokens: Mapping[str, str] | None = None,
 ) -> list[SavedGameOptionView]:
     """Return save-selector options without exposing internal ids in labels."""
     options: list[SavedGameOptionView] = []
-    runs_by_game = {run.game_id: run for run in runs}
+    games_by_id = {game.game_id: game for game in games}
     saved_game_ids = {slot.game_id for slot in slots}
-    control_tokens_by_slot = control_tokens or {}
+    manual_player_tokens_by_slot = manual_player_tokens or {}
     for index, slot in enumerate(slots, start=1):
-        run = runs_by_game.get(slot.game_id)
-        status = run.status if run is not None else slot.status
-        day = run.day if run is not None else slot.day
-        player_count = run.player_count if run is not None else slot.player_count
-        updated_at = run.updated_at if run is not None else slot.updated_at
-        control_token = control_tokens_by_slot.get(slot.slot_id, "")
-        mode: ScreenMode = "playable" if control_token else "observer"
+        game = games_by_id.get(slot.game_id)
+        status = game.status if game is not None else "running"
+        day = game.day if game is not None else 1
+        player_count = game.player_count if game is not None else sum(slot.role_counts.values())
+        updated_at = game.updated_at if game is not None else None
+        manual_token = manual_player_tokens_by_slot.get(slot.slot_id, "")
+        mode: ScreenMode = "playable" if manual_token else "observer"
         options.append(
             SavedGameOptionView(
                 option_id=f"slot:{slot.slot_id}",
@@ -195,15 +151,15 @@ def build_saved_game_options(
                     player_count=player_count,
                     updated_at=updated_at,
                     mode_label=catalog.t(lang, "setup.mode.play")
-                    if control_token
+                    if manual_token
                     else catalog.t(lang, "setup.mode.observe"),
                     catalog=catalog,
                     lang=lang,
                 ),
                 game_id=slot.game_id,
                 mode=mode,
-                human_player_id=slot.human_player_id if control_token else None,
-                control_token=control_token,
+                manual_player_id=slot.manual_player_id if manual_token else None,
+                manual_token=manual_token,
                 role_counts=dict(slot.role_counts),
                 rules=slot.rules,
                 seed=slot.seed,
@@ -215,24 +171,24 @@ def build_saved_game_options(
                 custom_characters=list(slot.custom_characters),
             )
         )
-    observer_runs = [run for run in runs if run.game_id not in saved_game_ids]
-    for index, run in enumerate(observer_runs, start=1):
+    observer_games = [game for game in games if game.game_id not in saved_game_ids]
+    for index, game in enumerate(observer_games, start=1):
         options.append(
             SavedGameOptionView(
-                option_id=f"run:{run.game_id}",
+                option_id=f"game:{game.game_id}",
                 label=_option_label(
                     prefix=catalog.t(lang, "save.prefix.observer", index=index),
-                    status=run.status,
-                    day=run.day,
-                    player_count=run.player_count,
-                    updated_at=run.updated_at,
+                    status=game.status,
+                    day=game.day,
+                    player_count=game.player_count,
+                    updated_at=game.updated_at,
                     mode_label=catalog.t(lang, "setup.mode.observe"),
                     catalog=catalog,
                     lang=lang,
                 ),
-                game_id=run.game_id,
+                game_id=game.game_id,
                 mode="observer",
-                seed=run.seed,
+                seed=game.seed,
                 narration_mode="standard",
             )
         )
@@ -241,10 +197,12 @@ def build_saved_game_options(
 
 def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
     try:
+        if "manual_token" in payload:
+            raise ValueError("save slot must not contain manual_token")
         return SaveSlot(
             slot_id=_required_text(payload, "slot_id"),
             game_id=_required_text(payload, "game_id"),
-            human_player_id=_optional_text(payload.get("human_player_id")),
+            manual_player_id=_optional_text(payload.get("manual_player_id")),
             role_counts=_role_counts(payload.get("role_counts")),
             rules=LocalRulesSettings.model_validate(payload["rules"]),
             seed=_optional_int(payload.get("seed")),
@@ -254,13 +212,6 @@ def _slot_from_dict(payload: dict[str, object]) -> SaveSlot | None:
             character_assignments=_text_map(payload.get("character_assignments")),
             custom_roles=_custom_roles(payload.get("custom_roles")),
             custom_characters=_custom_characters(payload.get("custom_characters")),
-            status=_required_text(payload, "status"),
-            phase=_required_text(payload, "phase"),
-            day=_required_int(payload, "day"),
-            player_count=_required_int(payload, "player_count"),
-            alive_count=_required_int(payload, "alive_count"),
-            created_at=_optional_datetime(payload.get("created_at")),
-            updated_at=_optional_datetime(payload.get("updated_at")),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -270,7 +221,7 @@ def _slot_to_dict(slot: SaveSlot) -> dict[str, object]:
     return {
         "slot_id": slot.slot_id,
         "game_id": slot.game_id,
-        "human_player_id": slot.human_player_id,
+        "manual_player_id": slot.manual_player_id,
         "role_counts": dict(slot.role_counts),
         "rules": slot.rules.model_dump(mode="json"),
         "seed": slot.seed,
@@ -280,13 +231,6 @@ def _slot_to_dict(slot: SaveSlot) -> dict[str, object]:
         "character_assignments": dict(slot.character_assignments),
         "custom_roles": [item.model_dump(mode="json") for item in slot.custom_roles],
         "custom_characters": [item.model_dump(mode="json") for item in slot.custom_characters],
-        "status": slot.status,
-        "phase": slot.phase,
-        "day": slot.day,
-        "player_count": slot.player_count,
-        "alive_count": slot.alive_count,
-        "created_at": _datetime_text(slot.created_at),
-        "updated_at": _datetime_text(slot.updated_at),
     }
 
 
@@ -303,15 +247,6 @@ def _optional_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
-
-
-def _required_int(payload: dict[str, object], key: str) -> int:
-    value = payload[key]
-    if isinstance(value, (str, bytes, bytearray)):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    raise ValueError(f"{key} must be an integer")
 
 
 def _optional_int(value: object) -> int | None:
@@ -361,16 +296,6 @@ def _custom_characters(value: object) -> list[CustomCharacterDefinitionRequest]:
         if isinstance(item, dict):
             characters.append(CustomCharacterDefinitionRequest.model_validate(item))
     return characters
-
-
-def _optional_datetime(value: object) -> datetime | None:
-    if value in (None, ""):
-        return None
-    return datetime.fromisoformat(str(value))
-
-
-def _datetime_text(value: datetime | None) -> str | None:
-    return value.isoformat() if value is not None else None
 
 
 def _option_label(

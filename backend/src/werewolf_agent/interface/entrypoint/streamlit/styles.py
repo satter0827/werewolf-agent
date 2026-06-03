@@ -257,7 +257,7 @@ STREAMLIT_CSS = """
         justify-content: center;
         gap: 6px;
     }
-    .wa-seat-human {
+    .wa-seat-manual {
         border-color: #fca5a5;
         background: #fff7f7;
     }
@@ -265,7 +265,7 @@ STREAMLIT_CSS = """
         border-color: var(--wa-teal);
         box-shadow: 0 0 0 5px rgba(15, 118, 110, 0.11);
     }
-    .wa-seat-human.wa-seat-current {
+    .wa-seat-manual.wa-seat-current {
         border-color: var(--wa-red);
         box-shadow: 0 0 0 5px rgba(220, 38, 38, 0.11);
     }
@@ -284,7 +284,7 @@ STREAMLIT_CSS = """
         background: #f9fafb;
         font-size: 24px;
     }
-    .wa-seat-human .wa-seat-avatar {
+    .wa-seat-manual .wa-seat-avatar {
         border-color: var(--wa-red);
     }
     .wa-chip {

@@ -6,10 +6,10 @@ from collections.abc import MutableMapping
 from dataclasses import dataclass
 from typing import Any
 
-KEY_API_URL = "werewolf_streamlit_api_url"
 KEY_SELECTED_SAVE_ID = "werewolf_streamlit_selected_save_id"
 KEY_MESSAGE = "werewolf_streamlit_message"
-KEY_CONTROL_TOKENS = "werewolf_streamlit_control_tokens"
+KEY_STREAMLIT_PREFERENCES = "werewolf_streamlit_preferences"
+KEY_MANUAL_PLAYER_TOKENS = "werewolf_streamlit_manual_player_tokens"
 KEY_AUTO_ADVANCE_GAME_ID = "werewolf_streamlit_auto_advance_game_id"
 KEY_AUTO_ADVANCE_RUNNING = "werewolf_streamlit_auto_advance_running"
 KEY_AUTO_ADVANCE_STEPS = "werewolf_streamlit_auto_advance_steps"
@@ -38,25 +38,25 @@ def remember_selected_save(session: MutableMapping[str, Any], option_id: str) ->
     session[KEY_SELECTED_SAVE_ID] = option_id
 
 
-def remember_control_token(
+def remember_manual_player_token(
     session: MutableMapping[str, Any],
     *,
     slot_id: str,
-    control_token: str,
+    manual_token: str,
 ) -> None:
     """Store one playable token in the current Streamlit session only."""
     slot_id_text = slot_id.strip()
-    token_text = control_token.strip()
+    token_text = manual_token.strip()
     if not slot_id_text or not token_text:
         return
-    tokens = control_tokens_by_slot(session)
+    tokens = manual_player_tokens_by_slot(session)
     tokens[slot_id_text] = token_text
-    session[KEY_CONTROL_TOKENS] = tokens
+    session[KEY_MANUAL_PLAYER_TOKENS] = tokens
 
 
-def control_tokens_by_slot(session: MutableMapping[str, Any]) -> dict[str, str]:
+def manual_player_tokens_by_slot(session: MutableMapping[str, Any]) -> dict[str, str]:
     """Return playable tokens held only by the current Streamlit session."""
-    value = session.get(KEY_CONTROL_TOKENS)
+    value = session.get(KEY_MANUAL_PLAYER_TOKENS)
     if not isinstance(value, dict):
         return {}
     return {

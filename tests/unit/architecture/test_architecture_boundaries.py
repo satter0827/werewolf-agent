@@ -57,12 +57,14 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
         game_jobs,
         {
             "CreateGameCommand",
-            "AdvanceGameRunCommand",
-            "AdvanceUntilInputCommand",
+            "AdvanceGameCommand",
+            "AdvanceGameResult",
             "GameEventCreate",
+            "GameListResult",
             "GameRepository",
-            "GameRunCreate",
-            "GameRunUpdate",
+            "GameRecordCreate",
+            "GameRecordUpdate",
+            "GameResult",
             "GameRevealAction",
             "GameRevealInspection",
             "GameRevealNight",
@@ -72,18 +74,19 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GameStatus",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
-            "GameUseCases",
-            "GetGameRunQuery",
+            "GameService",
+            "GetGameQuery",
             "GetGameRevealQuery",
-            "GetGameTimelineQuery",
             "GetPlayerObservationQuery",
-            "ListGameRunsQuery",
+            "ListGamesQuery",
+            "ListTimelineQuery",
             "LlmProviderConfig",
+            "ManualPlayerCredential",
             "PlayerActionCommand",
-            "RulesetResult",
+            "GameSetupOptionsResult",
             "StoredGameEvent",
-            "StoredGameRun",
-            "StoredGameRunSummary",
+            "StoredGame",
+            "StoredGameSummary",
             "StoredGameTurn",
             "TelemetryEvent",
             "TelemetrySink",
@@ -93,44 +96,24 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
 
 def test_old_usecase_jobs_names_are_not_public() -> None:
     removed_names = {
-        "ActionTypeId",
-        "AdvanceGameCommand",
-        "AdvanceGameResult",
+        "AdvanceGameRunCommand",
         "AdvanceGameRunResult",
+        "AdvanceUntilInputCommand",
         "AdvanceUntilInputResult",
         "CreateGameRunCommand",
-        "CustomCharacterDefinitionCommand",
-        "CustomRoleDefinitionCommand",
-        "GamePhase",
-        "GameResult",
+        "GameRunCreate",
         "GameRunResult",
-        "GameRunsResult",
-        "GameTurnsResult",
-        "GameTimelineItemsResult",
-        "GameTimelineItem",
-        "GameTimelineResult",
-        "GetGameQuery",
-        "GetPrivateObservationQuery",
-        "ListGameTimelineItemsQuery",
+        "GameRunResponse",
+        "GameRunUpdate",
+        "GameRunsResponse",
+        "GameUseCases",
+        "GetGameRunQuery",
+        "GetGameTimelineQuery",
         "ListGameRunsResult",
-        "ListGameTurnsQuery",
-        "ListGamesQuery",
-        "ListPublicEventsQuery",
-        "NullTelemetrySink",
-        "PlayerActionResult",
-        "PlayerObservationResult",
-        "PrivateObservationResult",
-        "PublicEventsResult",
-        "PublicGameRunSummary",
-        "advance_game",
-        "create_game",
-        "get_game",
-        "get_private_observation",
-        "list_game_turns",
-        "list_games",
-        "list_public_events",
-        "list_public_game_events",
-        "list_public_game_turns",
+        "ListGameRunsQuery",
+        "RulesetResult",
+        "StoredGameRun",
+        "StoredGameRunSummary",
     }
 
     assert not [name for name in removed_names if hasattr(game_jobs, name)]
@@ -157,28 +140,28 @@ def test_domain_llm_public_surface_is_minimal() -> None:
 
 def test_usecase_jobs_expose_facade_instead_of_top_level_workflows() -> None:
     workflow_names = {
-        "advance_game_run",
-        "advance_until_input",
-        "create_game_run",
-        "get_game_run",
+        "advance_game",
+        "create_game",
+        "get_game",
         "get_player_observation",
-        "get_game_timeline",
-        "list_game_runs",
+        "list_timeline",
+        "list_games",
         "submit_player_action",
     }
 
     assert not [name for name in workflow_names if hasattr(game_jobs, name)]
+    assert not hasattr(game_jobs.GameService, "advance_until_input")
 
     for method_name in workflow_names:
-        signature = inspect.signature(getattr(game_jobs.GameUseCases, method_name))
+        signature = inspect.signature(getattr(game_jobs.GameService, method_name))
         parameters = list(signature.parameters.values())
 
         assert parameters[0].name == "self"
         assert all(parameter.name != "dependencies" for parameter in parameters)
 
 
-def test_ruleset_metadata_does_not_require_repository_dependency() -> None:
-    signature = inspect.signature(game_jobs.GameUseCases.get_default_ruleset)
+def test_setup_options_metadata_does_not_require_repository_dependency() -> None:
+    signature = inspect.signature(game_jobs.GameService.get_setup_options)
     assert list(signature.parameters) == [
         "config",
         "game_definitions",
@@ -202,7 +185,10 @@ def test_usecase_runtime_values_must_be_supplied_by_outer_layer() -> None:
 
     assert game_job_models.CreateGameCommand.model_fields["role_counts"].is_required()
     assert game_job_models.CreateGameCommand.model_fields["rules"].is_required()
-    assert game_job_models.AdvanceUntilInputCommand.model_fields["max_steps"].is_required()
+    assert (
+        game_job_models.GameUseCaseConfig.__dataclass_fields__["default_setup_id"].default
+        is MISSING
+    )
 
 
 def test_usecase_imports_domain_only_from_internal_boundary() -> None:
@@ -330,6 +316,26 @@ def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
     assert not [
         (path, module)
         for path, module in view_model_imports
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
+    ]
+
+
+def test_streamlit_setup_state_does_not_import_ui_or_inner_layers() -> None:
+    forbidden_modules = (
+        "rich",
+        "streamlit",
+        "typer",
+        "werewolf_agent.domain",
+        "werewolf_agent.interface.shared",
+        "werewolf_agent.usecase",
+    )
+
+    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
+    setup_imports = [(path, module) for path, module in imported if path.name == "setup.py"]
+
+    assert not [
+        (path, module)
+        for path, module in setup_imports
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
     ]
 

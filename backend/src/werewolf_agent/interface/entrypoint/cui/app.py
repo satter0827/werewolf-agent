@@ -15,11 +15,11 @@ from werewolf_agent.contracts import ConfigError
 from werewolf_agent.interface.entrypoint.cui.commands import (
     advance,
     doctor,
+    games,
     new,
     play,
     replay,
-    ruleset,
-    runs,
+    setup_options,
     show,
     timeline,
 )
@@ -60,14 +60,14 @@ def main(ctx: typer.Context) -> None:
 
 
 app.command(name="doctor")(doctor)
-app.command(name="ruleset")(ruleset)
+app.command(name="setup-options")(setup_options)
 app.command(name="new")(new)
 app.command(name="show")(show)
 app.command(name="advance")(advance)
 app.command(name="play")(play)
 app.command(name="timeline")(timeline)
 app.command(name="replay")(replay)
-app.command(name="runs")(runs)
+app.command(name="games")(games)
 
 
 if __name__ == "__main__":

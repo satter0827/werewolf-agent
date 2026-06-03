@@ -8,7 +8,7 @@ import random
 import secrets
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import cast
 from uuid import UUID, uuid4
 
 from werewolf_agent.commons.shared.definitions import (
@@ -23,7 +23,7 @@ from werewolf_agent.commons.shared.definitions import (
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
-    MESSAGE_INVALID_CONTROL_TOKEN,
+    MESSAGE_INVALID_MANUAL_TOKEN,
     MESSAGE_MANUAL_INPUT_REQUIRED,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
     message_player_count_between,
@@ -33,8 +33,8 @@ from werewolf_agent.contracts import (
     GameError,
     GameNotFoundError,
     GamePhaseError,
-    InvalidControlTokenError,
     InvalidGameIdError,
+    InvalidManualTokenError,
 )
 from werewolf_agent.domain.game.models import (
     Action,
@@ -60,43 +60,42 @@ from werewolf_agent.usecase.internal.players import (
 )
 from werewolf_agent.usecase.internal.projections import (
     events_to_create,
-    public_run_summary_payload_from_record,
-    public_state_payload_from_run,
+    public_game_summary_payload_from_record,
+    public_state_payload_from_game,
     public_state_payload_from_snapshot,
     public_turn_payload_from_record,
     winner_from_snapshot,
 )
 from werewolf_agent.usecase.jobs.games import (
-    AdvanceGameRunCommand,
-    AdvanceGameRunResult,
-    AdvanceUntilInputCommand,
-    AdvanceUntilInputResult,
+    AdvanceGameCommand,
+    AdvanceGameResult,
     CreateGameCommand,
+    GameListResult,
     GamePhase,
+    GameRecordCreate,
+    GameRecordUpdate,
+    GameResult,
     GameRevealAction,
     GameRevealInspection,
     GameRevealNight,
     GameRevealPlayer,
     GameRevealResult,
     GameRevealVote,
-    GameRunCreate,
-    GameRunResult,
-    GameRunUpdate,
     GameStatus,
     GameTimelineResult,
     GameUseCaseConfig,
     GameUseCaseDependencies,
+    GetGameQuery,
     GetGameRevealQuery,
-    GetGameRunQuery,
-    GetGameTimelineQuery,
     GetPlayerObservationQuery,
-    ListGameRunsQuery,
-    ListGameRunsResult,
+    ListGamesQuery,
+    ListTimelineQuery,
+    ManualPlayerCredential,
     NarrationMode,
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
-    StoredGameRun,
+    StoredGame,
 )
 from werewolf_agent.usecase.jobs.telemetry import TelemetryEvent, TelemetrySink
 
@@ -110,11 +109,11 @@ class RequestedPlayer:
     agent_type: str
 
 
-def create_game_run(
+def create_game(
     command: CreateGameCommand,
     *,
     dependencies: GameUseCaseDependencies,
-) -> GameRunResult:
+) -> GameResult:
     """Create and persist one deterministic game."""
     game_id = uuid4()
     requested_players = _requested_player_configs(command, dependencies.config)
@@ -133,7 +132,7 @@ def create_game_run(
         )
         for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
     ]
-    control_tokens = _control_tokens_for(command)
+    manual_player = _manual_player_credential_for(command)
     config = _domain_config(
         command,
         player_count=len(players),
@@ -168,7 +167,7 @@ def create_game_run(
         narration_mode=command.narration_mode,
     )
     run = dependencies.repository.create(
-        GameRunCreate(
+        GameRecordCreate(
             id=game_id,
             status=cast(GameStatus, public_state["status"]),
             phase=cast(GamePhase, public_state["phase"]),
@@ -178,7 +177,7 @@ def create_game_run(
             public_state=public_state,
             private_state=snapshot.model_dump(mode="json"),
             pending_actions=PendingActions().model_dump(mode="json"),
-            control_token_hashes=_control_token_hashes(control_tokens),
+            manual_token_hashes=_manual_token_hashes(manual_player),
             version=1,
         )
     )
@@ -190,24 +189,24 @@ def create_game_run(
             narration_mode=command.narration_mode,
         ),
     )
-    return GameRunResult(
+    return GameResult(
         game_id=str(run.id),
-        state=public_state_payload_from_run(run),
-        control_tokens=control_tokens or None,
+        state=public_state_payload_from_game(run),
+        manual_player=manual_player,
     )
 
 
-def get_game_run(
-    query: GetGameRunQuery,
+def get_game(
+    query: GetGameQuery,
     *,
     dependencies: GameUseCaseDependencies,
-) -> GameRunResult:
-    """Return the current public state for one game run."""
+) -> GameResult:
+    """Return the current public state for one game."""
     game_id = _parse_game_id(query.game_id)
     run = dependencies.repository.get(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    return GameRunResult(game_id=str(run.id), state=public_state_payload_from_run(run))
+    return GameResult(game_id=str(run.id), state=public_state_payload_from_game(run))
 
 
 def get_game_reveal(
@@ -294,30 +293,30 @@ def get_game_reveal(
     )
 
 
-def list_game_runs(
-    query: ListGameRunsQuery,
+def list_games(
+    query: ListGamesQuery,
     *,
     dependencies: GameUseCaseDependencies,
-) -> ListGameRunsResult:
-    """Return a page of public game run summaries."""
-    records = dependencies.repository.list_run_summaries(
+) -> GameListResult:
+    """Return a page of public game summaries."""
+    records = dependencies.repository.list_game_summaries(
         status=query.status,
         limit=query.limit,
         offset=query.offset,
     )
     next_offset = query.offset + len(records) if len(records) == query.limit else None
-    return ListGameRunsResult(
-        runs=[public_run_summary_payload_from_record(record) for record in records],
+    return GameListResult(
+        games=[public_game_summary_payload_from_record(record) for record in records],
         next_offset=next_offset,
     )
 
 
-def advance_game_run(
-    command: AdvanceGameRunCommand,
+def advance_game(
+    command: AdvanceGameCommand,
     *,
     dependencies: GameUseCaseDependencies,
-) -> AdvanceGameRunResult:
-    """Advance one game run by one business step."""
+) -> AdvanceGameResult:
+    """Advance one game by one business step."""
     game_id = _parse_game_id(command.game_id)
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
@@ -328,8 +327,8 @@ def advance_game_run(
     snapshot = GameSnapshot.model_validate(run.private_state)
     runtime_rng = random.Random(_runtime_seed(run.seed, run.version))
     pending_actions = PendingActions.model_validate(run.pending_actions)
-    human_player_ids = _human_player_ids(run.config)
-    if _manual_input_required(snapshot, pending_actions, human_player_ids):
+    manual_player_ids = _manual_player_ids(run.config)
+    if _manual_input_required(snapshot, pending_actions, manual_player_ids):
         raise GamePhaseError(
             MESSAGE_MANUAL_INPUT_REQUIRED,
             context={
@@ -352,12 +351,12 @@ def advance_game_run(
         pending_actions=pending_actions,
         agent_factory=langchain_agent_factory(
             dependencies.llm_provider_config,
-            definitions=_llm_definitions_for_run(run.config, dependencies.llm_definitions),
+            definitions=_llm_definitions_for_game(run.config, dependencies.llm_definitions),
             profile_ids_by_player=_player_profile_ids(run.config),
             scenario=_agent_scenario(run.config),
         ),
         agent_type=dependencies.config.supported_agent_type,
-        human_player_ids=human_player_ids,
+        manual_player_ids=manual_player_ids,
         telemetry=dependencies.telemetry,
     )
     dependencies.telemetry.record(
@@ -404,7 +403,7 @@ def advance_game_run(
     )
 
     updated_run = dependencies.repository.save(
-        GameRunUpdate(
+        GameRecordUpdate(
             id=run.id,
             status=cast(GameStatus, next_public_state["status"]),
             phase=cast(GamePhase, next_public_state["phase"]),
@@ -429,64 +428,12 @@ def advance_game_run(
         after=latest_turn_sequence,
         limit=max(len(records), 1),
     )
-    return AdvanceGameRunResult(
+    return AdvanceGameResult(
         game_id=str(updated_run.id),
         status=updated_run.status,
-        state=public_state_payload_from_run(updated_run),
+        state=public_state_payload_from_game(updated_run),
         timeline=[public_turn_payload_from_record(record) for record in turns],
     )
-
-
-def advance_until_input(
-    command: AdvanceUntilInputCommand,
-    *,
-    dependencies: GameUseCaseDependencies,
-) -> AdvanceUntilInputResult:
-    """Advance a game until a manual player can act, completion, or step limit."""
-    game_id = _parse_game_id(command.game_id)
-    timeline: list[dict[str, Any]] = []
-    steps = 0
-    while True:
-        run = dependencies.repository.get_for_update(game_id)
-        if run is None:
-            raise GameNotFoundError(str(game_id))
-
-        snapshot = GameSnapshot.model_validate(run.private_state)
-        pending_actions = PendingActions.model_validate(run.pending_actions)
-        if run.status == "completed":
-            return AdvanceUntilInputResult(
-                game_id=str(run.id),
-                status=run.status,
-                state=public_state_payload_from_run(run),
-                timeline=timeline,
-                stop_reason="completed",
-                steps=steps,
-            )
-        if _manual_input_required(snapshot, pending_actions, _human_player_ids(run.config)):
-            return AdvanceUntilInputResult(
-                game_id=str(run.id),
-                status=run.status,
-                state=public_state_payload_from_run(run),
-                timeline=timeline,
-                stop_reason="manual_input_required",
-                steps=steps,
-            )
-        if steps >= command.max_steps:
-            return AdvanceUntilInputResult(
-                game_id=str(run.id),
-                status=run.status,
-                state=public_state_payload_from_run(run),
-                timeline=timeline,
-                stop_reason="hit_limit",
-                steps=steps,
-            )
-
-        advanced = advance_game_run(
-            AdvanceGameRunCommand(game_id=game_id),
-            dependencies=dependencies,
-        )
-        timeline.extend(advanced.timeline)
-        steps += 1
 
 
 def get_player_observation(
@@ -499,7 +446,7 @@ def get_player_observation(
     run = dependencies.repository.get(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
-    _authorize_manual_player(run, query.player_id, query.control_token)
+    _authorize_manual_player(run, query.player_id, query.manual_token)
     snapshot = GameSnapshot.model_validate(run.private_state)
     pending_actions = PendingActions.model_validate(run.pending_actions)
     observation = observe(snapshot, pending_actions, query.player_id)
@@ -523,7 +470,7 @@ def submit_player_action(
     if run.status == "completed":
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
-    _authorize_manual_player(run, command.player_id, command.control_token)
+    _authorize_manual_player(run, command.player_id, command.manual_token)
     snapshot = GameSnapshot.model_validate(run.private_state)
     pending_actions = PendingActions.model_validate(run.pending_actions)
     action = Action(
@@ -557,7 +504,7 @@ def submit_player_action(
         narration_mode=_narration_mode(run.config),
     )
     updated_run = dependencies.repository.save(
-        GameRunUpdate(
+        GameRecordUpdate(
             id=run.id,
             status=cast(GameStatus, next_public_state["status"]),
             phase=cast(GamePhase, next_public_state["phase"]),
@@ -585,13 +532,13 @@ def submit_player_action(
     return PlayerActionResult(
         game_id=str(updated_run.id),
         player_id=command.player_id,
-        state=public_state_payload_from_run(updated_run),
+        state=public_state_payload_from_game(updated_run),
         timeline=[public_turn_payload_from_record(record) for record in turns],
     )
 
 
-def get_game_timeline(
-    query: GetGameTimelineQuery,
+def list_timeline(
+    query: ListTimelineQuery,
     *,
     dependencies: GameUseCaseDependencies,
 ) -> GameTimelineResult:
@@ -700,7 +647,7 @@ def _llm_definitions_for(
     return _llm_definitions_with_players(definitions, players)
 
 
-def _llm_definitions_for_run(
+def _llm_definitions_for_game(
     config: Mapping[str, object],
     definitions: LlmDefinitions,
 ) -> LlmDefinitions:
@@ -911,8 +858,8 @@ def _requested_player_configs(
             id=f"player-{index}",
             name=f"Player {index}",
             agent_type=(
-                "human"
-                if f"player-{index}" == command.human_player_id
+                "manual"
+                if f"player-{index}" == command.manual_player_id
                 else config.supported_agent_type
             ),
         )
@@ -920,41 +867,46 @@ def _requested_player_configs(
     ]
 
 
-def _control_tokens_for(command: CreateGameCommand) -> dict[str, str]:
-    if command.human_player_id is None:
+def _manual_player_credential_for(command: CreateGameCommand) -> ManualPlayerCredential | None:
+    if command.manual_player_id is None:
+        return None
+    return ManualPlayerCredential(
+        player_id=command.manual_player_id,
+        token=secrets.token_urlsafe(32),
+    )
+
+
+def _manual_token_hashes(credential: ManualPlayerCredential | None) -> dict[str, str]:
+    if credential is None:
         return {}
-    return {command.human_player_id: secrets.token_urlsafe(32)}
+    return {credential.player_id: _hash_manual_token(credential.token)}
 
 
-def _control_token_hashes(control_tokens: Mapping[str, str]) -> dict[str, str]:
-    return {player_id: _hash_control_token(token) for player_id, token in control_tokens.items()}
-
-
-def _hash_control_token(token: str) -> str:
+def _hash_manual_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 def _authorize_manual_player(
-    run: StoredGameRun,
+    run: StoredGame,
     player_id: str,
-    control_token: str,
+    manual_token: str,
 ) -> None:
-    if player_id not in _human_player_ids(run.config):
-        raise InvalidControlTokenError(MESSAGE_PLAYER_IS_NOT_MANUAL)
-    expected_hash = run.control_token_hashes.get(player_id)
+    if player_id not in _manual_player_ids(run.config):
+        raise InvalidManualTokenError(MESSAGE_PLAYER_IS_NOT_MANUAL)
+    expected_hash = run.manual_token_hashes.get(player_id)
     if expected_hash is None or not hmac.compare_digest(
         expected_hash,
-        _hash_control_token(control_token),
+        _hash_manual_token(manual_token),
     ):
-        raise InvalidControlTokenError(MESSAGE_INVALID_CONTROL_TOKEN)
+        raise InvalidManualTokenError(MESSAGE_INVALID_MANUAL_TOKEN)
 
 
-def _human_player_ids(config: Mapping[str, object]) -> set[str]:
+def _manual_player_ids(config: Mapping[str, object]) -> set[str]:
     agent_types = config.get("player_agent_types")
     if not isinstance(agent_types, dict):
         return set()
     return {
-        str(player_id) for player_id, agent_type in agent_types.items() if agent_type == "human"
+        str(player_id) for player_id, agent_type in agent_types.items() if agent_type == "manual"
     }
 
 
@@ -968,12 +920,12 @@ def _player_profile_ids(config: Mapping[str, object]) -> dict[str, str]:
 def _manual_input_required(
     snapshot: GameSnapshot,
     pending_actions: PendingActions,
-    human_player_ids: set[str],
+    manual_player_ids: set[str],
 ) -> bool:
     return any(
         player_id in snapshot.players
         and bool(observe(snapshot, pending_actions, player_id).available_actions)
-        for player_id in human_player_ids
+        for player_id in manual_player_ids
     )
 
 
@@ -985,7 +937,7 @@ def _drive_current_phase(
     pending_actions: PendingActions,
     agent_factory: AgentFactory,
     agent_type: str,
-    human_player_ids: set[str],
+    manual_player_ids: set[str],
     telemetry: TelemetrySink,
 ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
     current_snapshot = snapshot
@@ -997,7 +949,7 @@ def _drive_current_phase(
         for index, player in enumerate(turn_snapshot.players.values()):
             if player.status is not PlayerStatus.ALIVE:
                 continue
-            if player.id in human_player_ids:
+            if player.id in manual_player_ids:
                 continue
             agent = agent_factory.create(
                 player.id,
@@ -1026,7 +978,7 @@ def _drive_current_phase(
     return current_snapshot, current_pending_actions, events
 
 
-def _telemetry_state_fields(run: StoredGameRun, snapshot: GameSnapshot) -> dict[str, object]:
+def _telemetry_state_fields(run: StoredGame, snapshot: GameSnapshot) -> dict[str, object]:
     return {
         **_telemetry_snapshot_fields(snapshot, version=run.version),
         "game_id": str(run.id),

@@ -1,18 +1,15 @@
 # Werewolf Agent
 
 LLM agent を人狼ゲームのプレイヤーとして動かす Python backend です。
-ゲームの真実は deterministic domain core が持ち、外側には公開状態と public timeline だけを出します。
+deterministic domain core がゲームの真実を管理し、外側には public state と public timeline だけを返します。
 
 ## 現在地
 
-- 5〜8 人の同期ゲームを FastAPI 経由で作成、進行、一覧、再生できる
-- packaged default の役職は `villager`、`werewolf`、`seer`、`knight`
-- ルール、役職、シナリオ、LLM player profile、prompt、fake response は runtime definition として読み込む
-- フェーズは `night`、`day_discussion`、`voting`、`finished`
-- LangChain `FakeListLLM`、LM Studio、OpenAI provider を設定値で切り替えられる
-- CLI は `doctor`、`ruleset`、`new`、`show`、`advance`、`play`、`timeline`、`replay`、`runs` を持つ
-- 1 game につき 1 人の `human` player を CLI / Streamlit から操作できる
-- 複数 human player、React UI は未実装
+- FastAPI / CLI / Streamlit から、LLM 同士の game と 1 人 manual player 混在 game を決着まで進められる
+- LangChain `fake` provider、LM Studio、OpenAI provider を設定値で切り替えられる
+- role、rule、scenario、LLM player、prompt、fake response、Streamlit i18n は runtime definition として読み込む
+- 公開 API は `health`、`setup-options`、`games`、`advance`、`timeline`、`reveal`、`player observation`、`player action` に絞る
+- manual player の token は作成レスポンスで 1 回だけ返し、保存・public response・public timeline・運用ログへ出さない
 
 ## 起動
 
@@ -23,85 +20,40 @@ uv run --extra api alembic upgrade head
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 ```
 
-別ターミナルで 1 game を実行します。
+別ターミナルで CLI から game を実行します。
 
 ```bash
 uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --manual-player player-1
 ```
 
-手動 player を含む game を作る場合:
+公開履歴を確認する場合:
 
 ```bash
-uv run werewolf-agent new --api-url http://127.0.0.1:8000/api/v1 --human-player player-1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
-uv run werewolf-agent show <game_id> --api-url http://127.0.0.1:8000/api/v1
-uv run werewolf-agent advance <game_id> --api-url http://127.0.0.1:8000/api/v1
-```
-
-公開 timeline を確認、保存、再生する場合:
-
-```bash
-uv run werewolf-agent runs --api-url http://127.0.0.1:8000/api/v1
+uv run werewolf-agent setup-options --api-url http://127.0.0.1:8000/api/v1
+uv run werewolf-agent games --api-url http://127.0.0.1:8000/api/v1
 uv run werewolf-agent timeline <game_id> --api-url http://127.0.0.1:8000/api/v1 --follow
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1 --log-jsonl .werewolf-agent/logs/game-001.jsonl
 uv run werewolf-agent replay --timeline .werewolf-agent/logs/game-001.jsonl
 ```
 
-Streamlit のプレイ画面:
+Streamlit:
 
 ```bash
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
 
-VS Code では `App: API + Streamlit` を選択します。OneDrive / sandbox の権限差分を避けるため、SQLite と Streamlit 保存データは `%TEMP%\werewolf-agent` 配下へ置き、運用ログだけ `.werewolf-agent/logs` 配下へ出します。
+VS Code では `App: API + Streamlit` を使います。OneDrive / sandbox の権限差分を避けるため、検証用 SQLite と Streamlit save は `%TEMP%\werewolf-agent` 配下、運用ログは `.werewolf-agent/logs` 配下へ置きます。
 
-## API
+## LLM Provider
 
-公開 HTTP API は次だけです。
+既定は外部 API を使わない `fake` provider です。
 
-| Method | Path | 用途 |
-| --- | --- | --- |
-| `GET` | `/api/v1/health` | health check |
-| `GET` | `/api/v1/ruleset` | 既定 ruleset metadata |
-| `POST` | `/api/v1/games` | game run 作成 |
-| `GET` | `/api/v1/games` | game run 一覧 |
-| `GET` | `/api/v1/games/{game_id}` | 公開状態取得 |
-| `GET` | `/api/v1/games/{game_id}/reveal` | 観戦 UI 用 reveal 取得 |
-| `POST` | `/api/v1/games/{game_id}/advance` | 1 usecase step 進行 |
-| `POST` | `/api/v1/games/{game_id}/advance-until-input` | 次の manual 入力待ちまで進行 |
-| `GET` | `/api/v1/games/{game_id}/timeline` | 公開 timeline 取得 |
-| `GET` | `/api/v1/games/{game_id}/timeline/stream` | 公開 timeline SSE |
-| `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | private observation 取得 |
-| `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | manual action 投稿 |
+```text
+WEREWOLF_LLM_PROVIDER=fake
+WEREWOLF_MODEL=fake-list-llm
+```
 
-詳細は [docs/design/api.md](docs/design/api.md) を参照してください。
-
-## 構成
-
-| Path | 責務 |
-| --- | --- |
-| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider |
-| `backend/src/werewolf_agent/resources/` | packaged settings、game / LLM definition、prompt、FakeListLLM response fixture |
-| `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い `GameUseCases` facade、command、repository / telemetry port |
-| `backend/src/werewolf_agent/usecase/internal/` | usecase 実処理、projection、唯一の domain 接点 |
-| `backend/src/werewolf_agent/interface/runtime/` | settings、definition TOML loader、logging bootstrap、structlog context |
-| `backend/src/werewolf_agent/interface/application/` | transaction、SQLAlchemy repository、依存注入、wire schema 変換 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
-| `backend/src/werewolf_agent/interface/entrypoint/cui/` | Typer CLI、public HTTP client 利用、表示 |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
-| `backend/src/werewolf_agent/interface/shared/` | HTTP client、request builder、diagnostics、HTTP 例外変換、event sink |
-| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | 副作用のない constants、messages、validation、definition value、redaction |
-
-## 設定とログ
-
-設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` が正です。`.env.example` は override 用の雛形であり、既定値の二重管理には使いません。
-
-`interface/runtime` が `defaults.toml`、`.env`、環境変数、定義体 TOML を読み取り、設定構築時に検証します。API / CLI / Streamlit の浅い場所では、検証済みの設定値を usecase へ依存として注入します。DB は `WEREWOLF_DATABASE_URL` が空なら `WEREWOLF_SQLITE_PATH` の SQLite を使います。
-
-定義体は疎結合のための運用単位です。game rules は `WEREWOLF_GAME_RULES_FILE`、game roles は `WEREWOLF_GAME_ROLES_FILE`、game catalog は `WEREWOLF_GAME_CATALOG_FILE`、LLM players は `WEREWOLF_LLM_PLAYERS_FILE`、prompt は `WEREWOLF_LLM_PROMPT_FILE`、fake responses は `WEREWOLF_LLM_FAKE_RESPONSES_FILE`、Streamlit 翻訳は `WEREWOLF_STREAMLIT_I18N_FILE` で外部 TOML に差し替えられます。game catalog はシナリオ、ナレーション、設定プリセット、能力表示を持ちます。game 作成時は `role_counts` から人数を導出し、human seat は `human_player_id` で指定します。Streamlit のカスタム役職・キャラクターは現在の session 内で追加し、game 作成 request に同梱します。usecase / domain は具体 agent type、role id、local rule の default を生成しません。
-
-LLM provider は `WEREWOLF_LLM_PROVIDER` で `fake`、`lmstudio`、`openai` を選びます。既定は `fake` です。LM Studio は OpenAI-compatible API の `/v1/chat/completions` を使い、Docker Compose からホストの LM Studio server へ接続する場合は次を `.env` に置きます。
+LM Studio:
 
 ```text
 WEREWOLF_LLM_PROVIDER=lmstudio
@@ -109,7 +61,7 @@ WEREWOLF_MODEL=<LM Studio model identifier>
 WEREWOLF_LLM_BASE_URL=http://host.docker.internal:1234/v1
 ```
 
-OpenAI へ切り替える場合は provider、model、API key だけを変更します。
+OpenAI:
 
 ```text
 WEREWOLF_LLM_PROVIDER=openai
@@ -118,43 +70,73 @@ WEREWOLF_LLM_BASE_URL=
 OPENAI_API_KEY=<secret>
 ```
 
-Streamlit は初期言語を `WEREWOLF_STREAMLIT_LANGUAGE` から読み、既定は `ja` です。画面上の `設定` でシナリオ、配役、登場キャラクター、ナレーション、詳細ルールを変更できます。選択値とカスタム定義は現在の Streamlit session 内では優先します。
+LLM には `AgentObservation` だけを渡します。観測には `available_actions`、action ごとの `legal_targets`、公開 speech / vote history を含め、role、夜行動 target、private state、raw prompt、raw provider response、API key は保存・公開・ログ出力しません。
 
-観戦モードは `GET /api/v1/games/{game_id}/reveal` だけから秘匿情報を読みます。`WEREWOLF_REVEAL_API_ENABLED` は既定で `true` ですが、公開 API の state / timeline / private observation には role、night action target、private state を混ぜません。
+## API
 
-運用ログは ECS 風 field の JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。public response、public timeline、operational log には role、night action target、private state、token、API key を出しません。
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v1/health` | health check |
+| `GET` | `/api/v1/setup-options` | game 作成用 metadata |
+| `POST` | `/api/v1/games` | game 作成 |
+| `GET` | `/api/v1/games` | game 一覧 |
+| `GET` | `/api/v1/games/{game_id}` | public state |
+| `POST` | `/api/v1/games/{game_id}/advance` | 1 step 進行 |
+| `GET` | `/api/v1/games/{game_id}/timeline` | public timeline |
+| `GET` | `/api/v1/games/{game_id}/reveal` | observer / demo 用 reveal |
+| `GET` | `/api/v1/games/{game_id}/players/{player_id}/observation` | Bearer token 付き private observation |
+| `POST` | `/api/v1/games/{game_id}/players/{player_id}/actions` | Bearer token 付き manual action |
+
+詳細は [docs/design/api.md](docs/design/api.md) を参照してください。
+
+## 構成
+
+| Path | 責務 |
+| --- | --- |
+| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
+| `backend/src/werewolf_agent/domain/llm/` | provider 非依存 observation / decision、LangChain provider |
+| `backend/src/werewolf_agent/resources/` | packaged settings、game / LLM definition、prompt、FakeListLLM response |
+| `backend/src/werewolf_agent/usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
+| `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
+| `backend/src/werewolf_agent/interface/runtime/` | settings、definition loader、logging bootstrap |
+| `backend/src/werewolf_agent/interface/application/` | transaction、repository adapter、依存注入、wire schema 変換 |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI router |
+| `backend/src/werewolf_agent/interface/entrypoint/cui/` | public HTTP API だけを呼ぶ CLI |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、状態、表示 model |
+| `backend/src/werewolf_agent/interface/shared/` | HTTP client、request builder、HTTP 例外変換 |
+| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、Problem Details |
+| `backend/src/werewolf_agent/commons/` | 副作用のない共通値、validation、redaction |
+
+## 設定とログ
+
+設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` が正です。`.env.example` は override 例だけを置きます。
+
+`interface/runtime` が設定、definition TOML、logging bootstrap を浅い入口で解決し、`interface/application` から usecase へ値として注入します。domain と usecase は source path、packaged fallback、`.env`、logging 設定を知りません。
+
+運用ログは JSON Lines です。既定出力先は `.werewolf-agent/logs/werewolf-agent.jsonl` です。script、VS Code、Docker Compose は `.werewolf-agent/logs` を使い、API は `api.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` に出します。
 
 ## 検証
 
-```bash
+```bat
 scripts\check-all.cmd --api --keep-going
-uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
-uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
 ```
 
 個別に確認する場合:
 
 ```bash
 uv run pytest
+uv run --extra api pytest tests/integration/api
 uv run ruff check .
 uv run ruff format --check .
 uv run mypy backend/src
-uv run --extra api pytest tests/integration/api
+uv run --group docs --extra api --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
 ```
 
-## ドキュメント
+## 未実装
 
-- [docs/design/domain.md](docs/design/domain.md): domain core と境界
-- [docs/design/api.md](docs/design/api.md): 公開 API 契約
-- [docs/notes/development.md](docs/notes/development.md): 再開メモ、未実装、handoff
-- [docs/sphinx/index.md](docs/sphinx/index.md): Sphinx 入口
-- `docs/reference/`: autodoc API reference
-
-## 次の一手
-
-- LM Studio / OpenAI provider の接続 QA と evaluation workflow
-- 複数 human player / external agent action API
-- 永続 login/session による private observation 認証
+- 実 provider の長時間 QA と evaluation workflow
+- 複数 manual player
+- 永続 login / session
 - React UI
 
 ## License

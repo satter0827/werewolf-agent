@@ -35,10 +35,10 @@ from werewolf_agent.interface.entrypoint.cui.output import (
     OutputFormat,
     console,
     consume_timeline,
+    print_game_summaries,
     print_json,
     print_observation,
-    print_ruleset,
-    print_run_summaries,
+    print_setup_options,
     print_state,
     print_timeline,
 )
@@ -95,7 +95,7 @@ def _doctor(*, api_url: str | None, output: str | None) -> None:
     console.print(table)
 
 
-def ruleset(
+def setup_options(
     api_url: Annotated[
         str | None,
         typer.Option(help="Base URL for the Werewolf Agent API."),
@@ -105,10 +105,10 @@ def ruleset(
         typer.Option("--output", help="Output format: table, json, or jsonl."),
     ] = None,
 ) -> None:
-    """Print default ruleset metadata."""
+    """Print default game setup metadata."""
     run_app_command(
-        lambda: print_ruleset(
-            _client(api_url).get_ruleset(),
+        lambda: print_setup_options(
+            _client(api_url).get_setup_options(),
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -117,9 +117,9 @@ def ruleset(
 def new(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
     seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
-    human_player: Annotated[
+    manual_player: Annotated[
         str | None,
-        typer.Option("--human-player", help="Player id controlled by this CLI."),
+        typer.Option("--manual-player", help="Player id controlled by this CLI."),
     ] = None,
     role_count: Annotated[
         list[str] | None,
@@ -134,7 +134,7 @@ def new(
     run_app_command(
         lambda: _new(
             seed=seed,
-            human_player=human_player,
+            manual_player=manual_player,
             role_count=role_count or [],
             client=_client(api_url),
             output_format=_output_format(output, get_settings()),
@@ -145,14 +145,14 @@ def new(
 def _new(
     *,
     seed: int | None,
-    human_player: str | None,
+    manual_player: str | None,
     role_count: list[str],
     client: GameApiClient,
     output_format: OutputFormat,
 ) -> None:
     request = _create_request(
         seed=seed,
-        human_player=human_player,
+        manual_player=manual_player,
         role_count=role_count,
     )
     created = client.create_game(request)
@@ -162,7 +162,7 @@ def _new(
             "event_action": LOG_CLI_GAME_CREATED,
             "event_outcome": "success",
             "game_id": created.game_id,
-            "has_human_player": human_player is not None,
+            "has_manual_player": manual_player is not None,
         },
     )
     if output_format != "table":
@@ -170,9 +170,11 @@ def _new(
         return
     console.print(Panel.fit(f"Created game [bold]{created.game_id}[/bold]"))
     print_state(created.state)
-    if created.control_tokens:
-        for player_id, control_token in created.control_tokens.items():
-            console.print(f"[yellow]control token[/yellow] {player_id}: {control_token}")
+    if created.manual_player is not None:
+        console.print(
+            "[yellow]manual token[/yellow] "
+            f"{created.manual_player.player_id}: {created.manual_player.token}"
+        )
 
 
 def show(
@@ -222,9 +224,9 @@ def _advance(*, game_id: str, client: GameApiClient, output_format: OutputFormat
 def play(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
     seed: Annotated[int | None, typer.Option(help="Deterministic seed.")] = None,
-    human_player: Annotated[
+    manual_player: Annotated[
         str | None,
-        typer.Option("--human-player", help="Player id controlled by this CLI."),
+        typer.Option("--manual-player", help="Player id controlled by this CLI."),
     ] = None,
     max_steps: Annotated[int | None, typer.Option(help="Maximum API step calls.")] = None,
     role_count: Annotated[
@@ -250,7 +252,7 @@ def play(
     run_app_command(
         lambda: _play(
             seed=seed,
-            human_player=human_player,
+            manual_player=manual_player,
             role_count=role_count or [],
             max_steps=max_steps or settings.cli_max_steps,
             log_jsonl=log_jsonl,
@@ -267,7 +269,7 @@ def play(
 def _play(
     *,
     seed: int | None,
-    human_player: str | None,
+    manual_player: str | None,
     role_count: list[str],
     max_steps: int,
     log_jsonl: Path | None,
@@ -287,16 +289,16 @@ def _play(
     created = client.create_game(
         _create_request(
             seed=seed,
-            human_player=human_player,
+            manual_player=manual_player,
             role_count=role_count,
         )
     )
     state = created.state
     last_sequence = 0
     emitted_items: list[GameTimelineItem] = []
-    control_token = (
-        created.control_tokens.get(human_player)
-        if created.control_tokens is not None and human_player is not None
+    manual_token = (
+        created.manual_player.token
+        if created.manual_player is not None and created.manual_player.player_id == manual_player
         else None
     )
 
@@ -316,12 +318,12 @@ def _play(
 
     steps = 0
     while state.status != "completed" and steps < max_steps:
-        if human_player is not None and control_token is not None:
-            _prompt_and_submit_human_action(
+        if manual_player is not None and manual_token is not None:
+            _prompt_and_submit_manual_action(
                 client=client,
                 game_id=created.game_id,
-                player_id=human_player,
-                control_token=control_token,
+                player_id=manual_player,
+                manual_token=manual_token,
                 output_format=output_format,
             )
         if poll_interval:
@@ -530,19 +532,19 @@ def _replay(
     )
 
 
-def runs(
+def games(
     api_url: Annotated[str | None, typer.Option(help="Base URL for the API.")] = None,
-    status: Annotated[str | None, typer.Option(help="Optional run status filter.")] = None,
-    limit: Annotated[int, typer.Option(help="Maximum runs to return.")] = 20,
-    offset: Annotated[int, typer.Option(help="Run page offset.")] = 0,
+    status: Annotated[str | None, typer.Option(help="Optional game status filter.")] = None,
+    limit: Annotated[int, typer.Option(help="Maximum games to return.")] = 20,
+    offset: Annotated[int, typer.Option(help="Game page offset.")] = 0,
     output: Annotated[
         str | None,
         typer.Option("--output", help="Output format: table, json, or jsonl."),
     ] = None,
 ) -> None:
-    """List public game run summaries."""
+    """List public game summaries."""
     run_app_command(
-        lambda: _runs(
+        lambda: _games(
             status=status,
             limit=limit,
             offset=offset,
@@ -552,7 +554,7 @@ def runs(
     )
 
 
-def _runs(
+def _games(
     *,
     status: str | None,
     limit: int,
@@ -561,7 +563,7 @@ def _runs(
     output_format: OutputFormat,
 ) -> None:
     response = client.list_games(status=status, limit=limit, offset=offset)
-    print_run_summaries(response.runs, output_format=output_format)
+    print_game_summaries(response.games, output_format=output_format)
     if response.next_offset is not None and output_format == "table":
         console.print(f"[dim]next offset: {response.next_offset}[/dim]")
 
@@ -579,7 +581,7 @@ def _build_game_api_client(api_url: str, *, settings: AppSettings | None = None)
 def _create_request(
     *,
     seed: int | None,
-    human_player: str | None,
+    manual_player: str | None,
     role_count: list[str],
 ) -> CreateGameRequest:
     settings = get_settings()
@@ -590,23 +592,23 @@ def _create_request(
     )
     return build_create_game_request(
         seed=seed,
-        human_player_id=human_player,
+        manual_player_id=manual_player,
         role_counts=role_counts,
     )
 
 
-def _prompt_and_submit_human_action(
+def _prompt_and_submit_manual_action(
     *,
     client: GameApiClient,
     game_id: str,
     player_id: str,
-    control_token: str,
+    manual_token: str,
     output_format: OutputFormat,
 ) -> None:
     observation = client.get_private_observation(
         game_id,
         player_id,
-        control_token=control_token,
+        manual_token=manual_token,
     )
     actions = observation.observation.get("available_actions") or []
     if not actions:
@@ -628,7 +630,7 @@ def _prompt_and_submit_human_action(
             target_id=target_id,
             message=message,
         ),
-        control_token=control_token,
+        manual_token=manual_token,
     )
     logger.info(
         LOG_CLI_ACTION_SUBMITTED,

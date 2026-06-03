@@ -2,28 +2,23 @@
 
 from __future__ import annotations
 
-import json
-from collections.abc import AsyncIterator
-
-from fastapi import APIRouter, Depends, Header, Query
-from sse_starlette.sse import EventSourceResponse
+from fastapi import APIRouter, Depends, Header
 
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    AdvanceGameRunResponse,
-    AdvanceUntilInputResponse,
+    AdvanceGameResponse,
     CreateGameRequest,
+    GameListQuery,
+    GameListResponse,
+    GameResponse,
     GameRevealResponse,
-    GameRunResponse,
-    GameRunsQuery,
-    GameRunsResponse,
+    GameSetupOptionsResponse,
     GameTimelineQuery,
     GameTimelineResponse,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
-    RulesetResponse,
 )
 from werewolf_agent.interface.api.dependencies import app_settings, game_session_factory
 from werewolf_agent.interface.application import games as game_application
@@ -42,17 +37,17 @@ def health(settings: AppSettings = APP_SETTINGS) -> dict[str, str]:
     return {"status": "ok", "service": settings.api_service_name}
 
 
-@router.get("/ruleset", response_model=RulesetResponse)
-def ruleset(
+@router.get("/setup-options", response_model=GameSetupOptionsResponse)
+def setup_options(
     settings: AppSettings = APP_SETTINGS,
-) -> RulesetResponse:
-    """Return the default ruleset."""
-    return game_application.get_default_ruleset(settings=settings)
+) -> GameSetupOptionsResponse:
+    """Return setup options for game creation."""
+    return game_application.get_setup_options(settings=settings)
 
 
 @router.post(
     "/games",
-    response_model=GameRunResponse,
+    response_model=GameResponse,
     response_model_exclude_none=True,
     status_code=201,
 )
@@ -60,26 +55,26 @@ def create_game(
     request: CreateGameRequest,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
-) -> GameRunResponse:
-    """Create a new deterministic game run."""
-    return game_application.create_game_run(
+) -> GameResponse:
+    """Create a new deterministic game."""
+    return game_application.create_game(
         request,
         session_factory=session_factory,
         settings=settings,
     )
 
 
-@router.get("/games", response_model=GameRunsResponse)
+@router.get("/games", response_model=GameListResponse)
 def list_games(
     status: str | None = None,
     limit: int = 20,
     offset: int = 0,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
-) -> GameRunsResponse:
-    """Return public game run summaries."""
-    query = GameRunsQuery.model_validate({"status": status, "limit": limit, "offset": offset})
-    return game_application.list_game_runs(
+) -> GameListResponse:
+    """Return public game summaries."""
+    query = GameListQuery.model_validate({"status": status, "limit": limit, "offset": offset})
+    return game_application.list_games(
         session_factory=session_factory,
         settings=settings,
         status=query.status,
@@ -88,14 +83,14 @@ def list_games(
     )
 
 
-@router.get("/games/{game_id}", response_model=GameRunResponse, response_model_exclude_none=True)
+@router.get("/games/{game_id}", response_model=GameResponse, response_model_exclude_none=True)
 def get_game(
     game_id: str,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
-) -> GameRunResponse:
+) -> GameResponse:
     """Return public game state."""
-    return game_application.get_game_run(
+    return game_application.get_game(
         game_id,
         session_factory=session_factory,
         settings=settings,
@@ -116,33 +111,17 @@ def get_game_reveal(
     )
 
 
-@router.post("/games/{game_id}/advance", response_model=AdvanceGameRunResponse)
+@router.post("/games/{game_id}/advance", response_model=AdvanceGameResponse)
 def advance_game(
     game_id: str,
     session_factory: SessionFactory = SESSION_FACTORY,
     settings: AppSettings = APP_SETTINGS,
-) -> AdvanceGameRunResponse:
+) -> AdvanceGameResponse:
     """Advance one game by one synchronous use case step."""
-    return game_application.advance_game_run(
+    return game_application.advance_game(
         game_id,
         session_factory=session_factory,
         settings=settings,
-    )
-
-
-@router.post("/games/{game_id}/advance-until-input", response_model=AdvanceUntilInputResponse)
-def advance_until_input(
-    game_id: str,
-    max_steps: int | None = Query(default=None, ge=1),
-    session_factory: SessionFactory = SESSION_FACTORY,
-    settings: AppSettings = APP_SETTINGS,
-) -> AdvanceUntilInputResponse:
-    """Advance a game until manual input, completion, or the configured step limit."""
-    return game_application.advance_until_input(
-        game_id,
-        session_factory=session_factory,
-        settings=settings,
-        max_steps=max_steps,
     )
 
 
@@ -156,33 +135,13 @@ def game_timeline(
 ) -> GameTimelineResponse:
     """Return public timeline items after an optional sequence cursor."""
     query = GameTimelineQuery.model_validate({"after": after, "limit": limit})
-    return game_application.get_game_timeline(
+    return game_application.list_timeline(
         game_id,
         session_factory=session_factory,
         settings=settings,
         after=query.after,
         limit=query.limit,
     )
-
-
-@router.get("/games/{game_id}/timeline/stream")
-def game_timeline_stream(
-    game_id: str,
-    after: int = 0,
-    limit: int = 100,
-    session_factory: SessionFactory = SESSION_FACTORY,
-    settings: AppSettings = APP_SETTINGS,
-) -> EventSourceResponse:
-    """Return a finite SSE batch of public timeline items after a cursor."""
-    query = GameTimelineQuery.model_validate({"after": after, "limit": limit})
-    response = game_application.get_game_timeline(
-        game_id,
-        session_factory=session_factory,
-        settings=settings,
-        after=query.after,
-        limit=query.limit,
-    )
-    return EventSourceResponse(_timeline_batch(response))
 
 
 @router.get(
@@ -202,7 +161,7 @@ def player_observation(
         player_id,
         session_factory=session_factory,
         settings=settings,
-        control_token=_bearer_token(authorization),
+        manual_token=_bearer_token(authorization),
     )
 
 
@@ -225,17 +184,8 @@ def submit_player_action(
         request,
         session_factory=session_factory,
         settings=settings,
-        control_token=_bearer_token(authorization),
+        manual_token=_bearer_token(authorization),
     )
-
-
-async def _timeline_batch(response: GameTimelineResponse) -> AsyncIterator[dict[str, str]]:
-    for item in response.items:
-        yield {
-            "event": "timeline_item",
-            "id": str(item.sequence),
-            "data": json.dumps(item.model_dump(mode="json"), ensure_ascii=False),
-        }
 
 
 def _bearer_token(authorization: str | None) -> str:

@@ -32,16 +32,19 @@ def client(tmp_path) -> Iterator[TestClient]:
 
 def _create_payload(
     *,
-    human_player_id: str | None = None,
+    manual_player_id: str | None = None,
     role_counts: dict[str, int] | None = None,
+    rules: dict[str, object] | None = None,
     seed: int | None = 42,
 ) -> dict[str, object]:
     payload: dict[str, object] = {
         "seed": seed,
         "role_counts": role_counts or DEFAULT_ROLE_COUNTS,
     }
-    if human_player_id is not None:
-        payload["human_player_id"] = human_player_id
+    if manual_player_id is not None:
+        payload["manual_player_id"] = manual_player_id
+    if rules is not None:
+        payload["rules"] = rules
     return payload
 
 
@@ -69,6 +72,16 @@ def _manual_action_payload(observation: dict[str, object], *, player_id: str) ->
     )
     payload["target_id"] = target
     return payload
+
+
+def _advance_until_manual_input(client: TestClient, game_id: str, *, max_steps: int = 8) -> None:
+    for _ in range(max_steps):
+        response = client.post(f"/api/v1/games/{game_id}/advance")
+        if response.status_code == 409:
+            assert response.json()["code"] == "game.invalid_phase"
+            return
+        assert response.status_code == 200
+    raise AssertionError("manual input was not required")
 
 
 def test_health_endpoint_returns_ok(client: TestClient) -> None:
@@ -155,9 +168,7 @@ def test_application_logs_share_request_trace_id(tmp_path: Path) -> None:
     ]
 
     assert response.status_code == 201
-    game_log = next(
-        payload for payload in payloads if payload["event.action"] == "game.run.created"
-    )
+    game_log = next(payload for payload in payloads if payload["event.action"] == "game.created")
     request_log = next(
         payload for payload in payloads if payload["event.action"] == "http.request.completed"
     )
@@ -205,8 +216,8 @@ def test_api_logs_expected_user_error_at_info(tmp_path: Path) -> None:
     assert error_log["error.code"] == "game.invalid_action"
 
 
-def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> None:
-    response = client.get("/api/v1/ruleset")
+def test_default_setup_options_endpoint_returns_mvp_metadata(client: TestClient) -> None:
+    response = client.get("/api/v1/setup-options")
 
     assert response.status_code == 200
     payload = response.json()
@@ -224,6 +235,7 @@ def test_default_ruleset_endpoint_returns_mvp_metadata(client: TestClient) -> No
         "villager": 3,
     }
     assert payload["default_rules"]["enable_no_elimination_on_tie"] is True
+    assert payload["default_rules"]["day_speech_limit_per_player"] == 1
     assert payload["default_scenario_id"] == "classic_village"
     assert payload["default_setup_preset_id"] == "standard_6"
     assert {scenario["id"] for scenario in payload["scenarios"]} >= {
@@ -262,24 +274,37 @@ def test_create_game_returns_public_state_without_private_fields(client: TestCli
     assert "werewolf" not in serialized
 
 
-def test_human_player_create_returns_control_token_once(client: TestClient) -> None:
-    payload = _create_payload(human_player_id="player-1")
+def test_create_game_accepts_day_speech_limit_rule(client: TestClient) -> None:
+    rules = dict(client.get("/api/v1/setup-options").json()["default_rules"])
+    rules["day_speech_limit_per_player"] = 2
+
+    response = client.post("/api/v1/games", json=_create_payload(rules=rules))
+
+    assert response.status_code == 201
+    game_id = response.json()["game_id"]
+    reveal = client.get(f"/api/v1/games/{game_id}/reveal").json()
+    assert reveal["rules"]["day_speech_limit_per_player"] == 2
+
+
+def test_manual_player_create_returns_manual_token_once(client: TestClient) -> None:
+    payload = _create_payload(manual_player_id="player-1")
 
     response = client.post("/api/v1/games", json=payload)
 
     assert response.status_code == 201
     created = response.json()
     game_id = created["game_id"]
-    assert set(created["control_tokens"]) == {"player-1"}
-    assert created["control_tokens"]["player-1"]
+    assert created["manual_player"]["player_id"] == "player-1"
+    assert created["manual_player"]["token"]
+    assert "manual_tokens" not in created
 
     state_response = client.get(f"/api/v1/games/{game_id}")
     timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
 
-    assert "control_tokens" not in state_response.json()
+    assert "manual_player" not in state_response.json()
     serialized_public = json.dumps([state_response.json(), timeline_response.json()])
-    assert created["control_tokens"]["player-1"] not in serialized_public
-    assert "control_token" not in serialized_public
+    assert created["manual_player"]["token"] not in serialized_public
+    assert "manual_token" not in serialized_public
 
 
 def test_reveal_endpoint_returns_dedicated_private_dto(client: TestClient) -> None:
@@ -321,11 +346,11 @@ def test_reveal_endpoint_can_be_disabled() -> None:
     assert response.json()["code"] == "auth.forbidden"
 
 
-def test_private_observation_requires_valid_control_token(client: TestClient) -> None:
-    payload = _create_payload(human_player_id="player-1")
+def test_private_observation_requires_valid_manual_token(client: TestClient) -> None:
+    payload = _create_payload(manual_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["player-1"]
+    token = created["manual_player"]["token"]
     url = f"/api/v1/games/{game_id}/players/player-1/observation"
 
     missing = client.get(url)
@@ -341,11 +366,11 @@ def test_private_observation_requires_valid_control_token(client: TestClient) ->
     assert valid.json()["observation"]["me"]["role"]
 
 
-def test_private_player_endpoints_reject_non_human_player(client: TestClient) -> None:
-    payload = _create_payload(human_player_id="player-1")
+def test_private_player_endpoints_reject_non_manual_player(client: TestClient) -> None:
+    payload = _create_payload(manual_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["player-1"]
+    token = created["manual_player"]["token"]
     headers = {"Authorization": f"Bearer {token}"}
 
     observation = client.get(
@@ -364,21 +389,19 @@ def test_private_player_endpoints_reject_non_human_player(client: TestClient) ->
     assert action.json()["code"] == "auth.forbidden"
 
 
-def test_human_player_can_submit_manual_action(client: TestClient) -> None:
-    payload = _create_payload(human_player_id="player-1")
+def test_manual_player_can_submit_manual_action(client: TestClient) -> None:
+    payload = _create_payload(manual_player_id="player-1")
     created = client.post("/api/v1/games", json=payload).json()
     game_id = created["game_id"]
-    token = created["control_tokens"]["player-1"]
+    token = created["manual_player"]["token"]
     headers = {"Authorization": f"Bearer {token}"}
 
-    stopped = client.post(f"/api/v1/games/{game_id}/advance-until-input?max_steps=8")
+    _advance_until_manual_input(client, game_id)
     observation = client.get(
         f"/api/v1/games/{game_id}/players/player-1/observation",
         headers=headers,
     ).json()["observation"]
 
-    assert stopped.status_code == 200
-    assert stopped.json()["stop_reason"] == "manual_input_required"
     assert observation["available_actions"]
     action_payload = _manual_action_payload(observation, player_id="player-1")
 
@@ -398,7 +421,7 @@ def test_human_player_can_submit_manual_action(client: TestClient) -> None:
     assert duplicate.json()["code"] == "game.invalid_action"
     serialized = json.dumps(response.json())
     assert token not in serialized
-    assert "control_token" not in serialized
+    assert "manual_token" not in serialized
 
 
 def test_advance_completes_game_and_timeline_is_public_only(client: TestClient) -> None:
@@ -431,28 +454,29 @@ def test_game_list_and_timeline_return_public_read_models(client: TestClient) ->
     game_id = created["game_id"]
     client.post(f"/api/v1/games/{game_id}/advance")
 
-    runs_response = client.get("/api/v1/games?limit=10")
+    games_response = client.get("/api/v1/games?limit=10")
     timeline_response = client.get(f"/api/v1/games/{game_id}/timeline?after=0")
 
-    assert runs_response.status_code == 200
+    assert games_response.status_code == 200
     assert timeline_response.status_code == 200
-    runs_payload = runs_response.json()
+    games_payload = games_response.json()
     timeline_payload = timeline_response.json()
-    assert any(run["game_id"] == game_id for run in runs_payload["runs"])
+    assert any(game["game_id"] == game_id for game in games_payload["games"])
     assert not any(player["name"].startswith("Player ") for player in created["state"]["players"])
     assert timeline_payload["items"]
     assert "role_counts" not in json.dumps(timeline_payload)
 
 
-def test_public_timeline_stream_returns_sse_batch(client: TestClient) -> None:
+def test_removed_progress_helper_endpoints_return_not_found(client: TestClient) -> None:
     created = client.post("/api/v1/games", json=_create_payload(seed=2)).json()
 
-    response = client.get(f"/api/v1/games/{created['game_id']}/timeline/stream?after=0")
+    stream_response = client.get(f"/api/v1/games/{created['game_id']}/timeline/stream?after=0")
+    advance_response = client.post(
+        f"/api/v1/games/{created['game_id']}/advance-until-input?max_steps=8"
+    )
 
-    assert response.status_code == 200
-    assert response.headers["content-type"].startswith("text/event-stream")
-    assert "event: timeline_item" in response.text
-    assert "data:" in response.text
+    assert stream_response.status_code == 404
+    assert advance_response.status_code == 404
 
 
 def test_finished_game_advance_returns_problem_details(client: TestClient) -> None:

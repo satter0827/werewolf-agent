@@ -30,7 +30,6 @@ EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
 RoleId = str
 Winner = Literal["villagers", "werewolves"]
-AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
 NarrationMode = Literal["none", "standard", "rich"]
 
@@ -78,8 +77,7 @@ class GameUseCaseConfig:
     max_players: int
     default_player_count: int
     supported_agent_type: str
-    default_ruleset_id: str
-    advance_until_input_max_steps: int
+    default_setup_id: str
 
 
 @dataclass(frozen=True)
@@ -107,7 +105,7 @@ class CreateGameCommand(_UseCaseModel):
     narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
-    human_player_id: str | None = None
+    manual_player_id: str | None = None
     character_assignments: dict[str, str] = Field(default_factory=dict)
     custom_roles: list[CustomRoleDefinition] = Field(default_factory=list)
     custom_characters: list[CustomCharacterDefinition] = Field(default_factory=list)
@@ -123,13 +121,13 @@ class CreateGameCommand(_UseCaseModel):
             raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
         return normalized
 
-    @field_validator("human_player_id")
+    @field_validator("manual_player_id")
     @classmethod
-    def validate_human_player_id(cls, value: str | None) -> str | None:
-        """Return a stripped optional human player id."""
+    def validate_manual_player_id(cls, value: str | None) -> str | None:
+        """Return a stripped optional manual player id."""
         if value is None:
             return None
-        return non_blank(value, "human_player_id")
+        return non_blank(value, "manual_player_id")
 
     @field_validator("scenario_id", "setup_preset_id")
     @classmethod
@@ -152,11 +150,11 @@ class CreateGameCommand(_UseCaseModel):
         }
 
     @model_validator(mode="after")
-    def validate_human_player_within_generated_seats(self) -> Self:
-        """Ensure the requested human seat exists in the generated table."""
+    def validate_manual_player_within_generated_seats(self) -> Self:
+        """Ensure the requested manual seat exists in the generated table."""
         valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
-        if self.human_player_id is not None and self.human_player_id not in valid_player_ids:
-            raise ValueError("human_player_id must match a generated player id")
+        if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
+            raise ValueError("manual_player_id must match a generated player id")
         unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
         if unknown_assignments:
             raise ValueError("character_assignments keys must match generated player ids")
@@ -177,7 +175,7 @@ class CreateGameCommand(_UseCaseModel):
         return sum(self.role_counts.values())
 
 
-class GetGameRunQuery(_UseCaseModel):
+class GetGameQuery(_UseCaseModel):
     """Query for loading one game."""
 
     game_id: str | UUID
@@ -193,19 +191,10 @@ class GetGameRevealQuery(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class AdvanceGameRunCommand(_UseCaseModel):
+class AdvanceGameCommand(_UseCaseModel):
     """Command for advancing one game by one business step."""
 
     game_id: str | UUID
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class AdvanceUntilInputCommand(_UseCaseModel):
-    """Command for advancing a game until manual input, completion, or limit."""
-
-    game_id: str | UUID
-    max_steps: int = Field(ge=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -215,7 +204,7 @@ class GetPlayerObservationQuery(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    control_token: str
+    manual_token: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -225,7 +214,7 @@ class PlayerActionCommand(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    control_token: str
+    manual_token: str
     type: ActionTypeId
     target_id: str | None = None
     message: str | None = None
@@ -234,8 +223,8 @@ class PlayerActionCommand(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ListGameRunsQuery(_UseCaseModel):
-    """Query for listing public game runs."""
+class ListGamesQuery(_UseCaseModel):
+    """Query for listing public games."""
 
     status: GameStatus | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -244,7 +233,7 @@ class ListGameRunsQuery(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GetGameTimelineQuery(_UseCaseModel):
+class ListTimelineQuery(_UseCaseModel):
     """Query for listing public timeline items after a sequence cursor."""
 
     game_id: str | UUID
@@ -254,8 +243,8 @@ class GetGameTimelineQuery(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class RulesetResult(_UseCaseModel):
-    """Ruleset business metadata returned by use cases."""
+class GameSetupOptionsResult(_UseCaseModel):
+    """Game setup metadata returned by use cases."""
 
     player_count: dict[str, int]
     roles: dict[RoleId, dict[str, Any]]
@@ -272,12 +261,21 @@ class RulesetResult(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunResult(_UseCaseModel):
+class ManualPlayerCredential(_UseCaseModel):
+    """Plain manual-player credential returned only on game creation."""
+
+    player_id: str
+    token: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class GameResult(_UseCaseModel):
     """Current game state returned by use cases."""
 
     game_id: str
     state: dict[str, Any]
-    control_tokens: dict[str, str] | None = None
+    manual_player: ManualPlayerCredential | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -392,26 +390,13 @@ class PlayerActionResult(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class AdvanceGameRunResult(_UseCaseModel):
+class AdvanceGameResult(_UseCaseModel):
     """Result from advancing a game by one use case step."""
 
     game_id: str
     status: GameStatus
     state: dict[str, Any]
     timeline: list[dict[str, Any]]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class AdvanceUntilInputResult(_UseCaseModel):
-    """Result from advancing until a manual player needs to act."""
-
-    game_id: str
-    status: GameStatus
-    state: dict[str, Any]
-    timeline: list[dict[str, Any]]
-    stop_reason: AdvanceUntilInputStopReason
-    steps: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -426,10 +411,10 @@ class GameTimelineResult(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ListGameRunsResult(_UseCaseModel):
-    """Page of public game run summaries."""
+class GameListResult(_UseCaseModel):
+    """Page of public game summaries."""
 
-    runs: list[dict[str, Any]]
+    games: list[dict[str, Any]]
     next_offset: int | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -471,8 +456,8 @@ class PublicGameState(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicGameRunSummary(_UseCaseModel):
-    """Public summary of a persisted game run."""
+class PublicGameSummary(_UseCaseModel):
+    """Public summary of a persisted game."""
 
     game_id: str
     status: GameStatus
@@ -538,8 +523,8 @@ class StoredGameTurn(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class StoredGameRunSummary(_UseCaseModel):
-    """Run summary read model loaded from an outer persistence adapter."""
+class StoredGameSummary(_UseCaseModel):
+    """Game summary read model loaded from an outer persistence adapter."""
 
     game_id: UUID
     status: GameStatus
@@ -559,8 +544,8 @@ class StoredGameRunSummary(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunCreate(_UseCaseModel):
-    """New game run data to be persisted by an outer repository."""
+class GameRecordCreate(_UseCaseModel):
+    """New game data to be persisted by an outer repository."""
 
     id: UUID
     status: GameStatus
@@ -571,14 +556,14 @@ class GameRunCreate(_UseCaseModel):
     public_state: dict[str, Any]
     private_state: dict[str, Any]
     pending_actions: dict[str, Any] = Field(default_factory=dict)
-    control_token_hashes: dict[str, str] = Field(default_factory=dict)
+    manual_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunUpdate(_UseCaseModel):
-    """Persistable updates for an existing game run."""
+class GameRecordUpdate(_UseCaseModel):
+    """Persistable updates for an existing game."""
 
     id: UUID
     status: GameStatus
@@ -592,8 +577,8 @@ class GameRunUpdate(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class StoredGameRun(_UseCaseModel):
-    """Game run loaded from an outer persistence adapter."""
+class StoredGame(_UseCaseModel):
+    """Game loaded from an outer persistence adapter."""
 
     id: UUID
     status: GameStatus
@@ -604,7 +589,7 @@ class StoredGameRun(_UseCaseModel):
     public_state: dict[str, Any]
     private_state: dict[str, Any]
     pending_actions: dict[str, Any] = Field(default_factory=dict)
-    control_token_hashes: dict[str, str] = Field(default_factory=dict)
+    manual_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
     created_at: datetime
     updated_at: datetime
@@ -628,7 +613,7 @@ class StoredGameEvent(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameUseCases:
+class GameService:
     """Small facade over internal game workflows with injected dependencies."""
 
     def __init__(self, dependencies: GameUseCaseDependencies) -> None:
@@ -636,31 +621,31 @@ class GameUseCases:
         self._dependencies = dependencies
 
     @staticmethod
-    def get_default_ruleset(
+    def get_setup_options(
         config: GameUseCaseConfig,
         game_definitions: GameDefinitions,
         llm_definitions: LlmDefinitions,
-    ) -> RulesetResult:
-        """Return business metadata for the default ruleset."""
-        from werewolf_agent.usecase.internal.rulesets import default_ruleset
+    ) -> GameSetupOptionsResult:
+        """Return business metadata for game setup."""
+        from werewolf_agent.usecase.internal.setup_options import default_setup_options
 
-        return default_ruleset(
+        return default_setup_options(
             config,
             game_definitions,
             llm_definitions,
         )
 
-    def create_game_run(self, command: CreateGameCommand) -> GameRunResult:
+    def create_game(self, command: CreateGameCommand) -> GameResult:
         """Create and persist one deterministic game."""
-        from werewolf_agent.usecase.internal.games import create_game_run
+        from werewolf_agent.usecase.internal.games import create_game
 
-        return create_game_run(command, dependencies=self._dependencies)
+        return create_game(command, dependencies=self._dependencies)
 
-    def get_game_run(self, query: GetGameRunQuery) -> GameRunResult:
-        """Return the current public state for one game run."""
-        from werewolf_agent.usecase.internal.games import get_game_run
+    def get_game(self, query: GetGameQuery) -> GameResult:
+        """Return the current public state for one game."""
+        from werewolf_agent.usecase.internal.games import get_game
 
-        return get_game_run(query, dependencies=self._dependencies)
+        return get_game(query, dependencies=self._dependencies)
 
     def get_game_reveal(self, query: GetGameRevealQuery) -> GameRevealResult:
         """Return observer-only full game information."""
@@ -668,23 +653,17 @@ class GameUseCases:
 
         return get_game_reveal(query, dependencies=self._dependencies)
 
-    def list_game_runs(self, query: ListGameRunsQuery) -> ListGameRunsResult:
-        """Return a page of public game run summaries."""
-        from werewolf_agent.usecase.internal.games import list_game_runs
+    def list_games(self, query: ListGamesQuery) -> GameListResult:
+        """Return a page of public game summaries."""
+        from werewolf_agent.usecase.internal.games import list_games
 
-        return list_game_runs(query, dependencies=self._dependencies)
+        return list_games(query, dependencies=self._dependencies)
 
-    def advance_game_run(self, command: AdvanceGameRunCommand) -> AdvanceGameRunResult:
-        """Advance one game run by one business step."""
-        from werewolf_agent.usecase.internal.games import advance_game_run
+    def advance_game(self, command: AdvanceGameCommand) -> AdvanceGameResult:
+        """Advance one game by one business step."""
+        from werewolf_agent.usecase.internal.games import advance_game
 
-        return advance_game_run(command, dependencies=self._dependencies)
-
-    def advance_until_input(self, command: AdvanceUntilInputCommand) -> AdvanceUntilInputResult:
-        """Advance a game until a manual player needs input or the game stops."""
-        from werewolf_agent.usecase.internal.games import advance_until_input
-
-        return advance_until_input(command, dependencies=self._dependencies)
+        return advance_game(command, dependencies=self._dependencies)
 
     def get_player_observation(
         self,
@@ -701,8 +680,8 @@ class GameUseCases:
 
         return submit_player_action(command, dependencies=self._dependencies)
 
-    def get_game_timeline(self, query: GetGameTimelineQuery) -> GameTimelineResult:
+    def list_timeline(self, query: ListTimelineQuery) -> GameTimelineResult:
         """Return public timeline items after a sequence number."""
-        from werewolf_agent.usecase.internal.games import get_game_timeline
+        from werewolf_agent.usecase.internal.games import list_timeline
 
-        return get_game_timeline(query, dependencies=self._dependencies)
+        return list_timeline(query, dependencies=self._dependencies)

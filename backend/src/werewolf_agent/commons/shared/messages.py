@@ -37,9 +37,9 @@ DETAIL_INTERNAL_UNEXPECTED = "An unexpected internal error occurred."
 MESSAGE_INVALID_APPLICATION_CONFIGURATION = "Invalid application configuration."
 MESSAGE_INVALID_VALUE = "Invalid value."
 MESSAGE_SETTINGS = "settings"
-LOG_GAME_RUN_CREATED = "game.run.created"
-LOG_GAME_RUN_STEPPED = "game.run.stepped"
-LOG_GAME_RUNS_LISTED = "game.runs.listed"
+LOG_GAME_CREATED = "game.created"
+LOG_GAME_STEPPED = "game.stepped"
+LOG_GAMES_LISTED = "games.listed"
 LOG_GAME_TIMELINE_LISTED = "game.timeline.listed"
 LOG_PRIVATE_OBSERVATION_RETURNED = "game.private_observation.returned"
 LOG_PLAYER_ACTION_SUBMITTED = "game.manual_action.accepted"
@@ -60,11 +60,11 @@ LOG_STREAMLIT_GAME_CREATED = "streamlit.game.created"
 LOG_STREAMLIT_RERUN_STARTED = "streamlit.rerun.started"
 LOG_STREAMLIT_REFRESHED = "streamlit.screen.loaded"
 MESSAGE_GAME_NOT_FOUND = "Game not found."
-MESSAGE_GAME_RUN_NOT_FOUND_TEMPLATE = "Game run not found: {game_id}"
+MESSAGE_GAME_NOT_FOUND_TEMPLATE = "Game not found: {game_id}"
 MESSAGE_UNSUPPORTED_AGENT_ACTION = "Unsupported agent action."
-MESSAGE_UNSUPPORTED_HUMAN_PLAYER_COUNT = "Only one human player is supported."
-MESSAGE_INVALID_CONTROL_TOKEN = "Invalid control token."
-MESSAGE_HUMAN_PLAYER_ID_MUST_MATCH_PLAYERS = "human_player must match a generated player id."
+MESSAGE_UNSUPPORTED_MANUAL_PLAYER_COUNT = "Only one manual player is supported."
+MESSAGE_INVALID_MANUAL_TOKEN = "Invalid manual token."
+MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS = "manual_player_id must match a generated player id."
 MESSAGE_PLAYER_IS_NOT_MANUAL = "Player is not configured for manual control."
 MESSAGE_EXPECTED_SPEECH_ACTION = "Expected a speech action."
 MESSAGE_MANUAL_INPUT_REQUIRED = "Manual player input is required before advancing."
@@ -156,10 +156,10 @@ def message_game_min_players_le_max_players() -> str:
     return "game_min_players must be less than or equal to game_max_players"
 
 
-def message_ruleset_description_template_invalid() -> str:
-    """Return a ruleset description template validation message."""
+def message_game_setup_description_template_invalid() -> str:
+    """Return a game setup description template validation message."""
     return (
-        "game_ruleset_description_template must use only min_players, "
+        "game_setup_description_template must use only min_players, "
         "max_players, and default_player_count placeholders"
     )
 
@@ -244,9 +244,9 @@ def message_game_did_not_complete(max_steps: int) -> str:
     return f"Game did not complete within {max_steps} API steps."
 
 
-def message_game_run_not_found(game_id: object) -> str:
+def message_game_not_found(game_id: object) -> str:
     """Return an internal persistence missing-row message."""
-    return MESSAGE_GAME_RUN_NOT_FOUND_TEMPLATE.format(game_id=game_id)
+    return MESSAGE_GAME_NOT_FOUND_TEMPLATE.format(game_id=game_id)
 
 
 def message_api_unavailable(error: object) -> str:

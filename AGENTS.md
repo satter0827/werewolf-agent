@@ -11,8 +11,8 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 現在の状態:
 
 - LangChain `fake` provider だけで FastAPI 経由の 1 game を CLI から完走できる
-- `domain`、`usecase`、FastAPI、CLI、manual action API、private observation API、public timeline stream は実装済み
-- 実 LLM provider、複数 human player、Streamlit / React UI は未実装
+- `domain`、`usecase`、FastAPI、CLI、Streamlit、manual action API、private observation API、public timeline は実装済み
+- 実 LLM provider QA、複数 manual player、React UI は未実装
 
 ## Read First
 
@@ -33,11 +33,11 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 | `backend/src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
 | `backend/src/werewolf_agent/usecase/jobs/` | interface 向けの薄い usecase facade、DTO、repository port |
 | `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
-| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力、SSE |
+| `backend/src/werewolf_agent/interface/api/` | FastAPI、HTTP 入出力 |
 | `backend/src/werewolf_agent/interface/application/` | stateless application bridge、DB repository、transaction、依存注入 |
 | `backend/src/werewolf_agent/interface/entrypoint/cui/` | 公開 HTTP API だけを呼ぶ CLI |
 | `backend/src/werewolf_agent/interface/shared/` | HTTP 例外変換、interface 共通 message、event sink |
-| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | 将来の Streamlit 入口 |
+| `backend/src/werewolf_agent/interface/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
 | `backend/src/werewolf_agent/commons/` | configuration、logging、message catalog、redaction、shared helper |
 | `tests/unit/` | unit test |
@@ -83,7 +83,7 @@ uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
 CLI で 1 game 確認:
 
 ```bash
-uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --players 6 --seed 1
+uv run werewolf-agent play --api-url http://127.0.0.1:8000/api/v1 --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 Docker:

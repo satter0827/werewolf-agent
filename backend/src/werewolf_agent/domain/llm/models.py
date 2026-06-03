@@ -138,6 +138,7 @@ class AgentObservation(_LlmModel):
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
+    legal_targets: dict[AgentActionType, list[str]] = Field(default_factory=dict)
     speeches: list[_AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[_AgentVoteRound] = Field(default_factory=list)
 
@@ -154,6 +155,20 @@ class AgentObservation(_LlmModel):
         return {
             non_blank(str(player_id), "known role player id"): non_blank(role, "known role")
             for player_id, role in value.items()
+        }
+
+    @field_validator("legal_targets")
+    @classmethod
+    def validate_legal_targets(
+        cls,
+        value: dict[AgentActionType, list[str]],
+    ) -> dict[AgentActionType, list[str]]:
+        """Return legal target ids keyed by action type."""
+        return {
+            AgentActionType(action_type): [
+                non_blank(str(player_id), "legal target player id") for player_id in player_ids
+            ]
+            for action_type, player_ids in value.items()
         }
 
 

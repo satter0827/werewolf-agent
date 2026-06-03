@@ -22,8 +22,8 @@ from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefini
 from werewolf_agent.commons.shared.messages import (
     message_game_default_player_count_between,
     message_game_min_players_le_max_players,
+    message_game_setup_description_template_invalid,
     message_mapping_item_must_use_separator,
-    message_ruleset_description_template_invalid,
 )
 from werewolf_agent.commons.shared.validation import normalize_choice, normalize_non_blank
 from werewolf_agent.interface.runtime.resources import (
@@ -116,8 +116,8 @@ DEFAULT_STREAMLIT_LANGUAGE: Final = _string_default("streamlit_language")
 DEFAULT_STREAMLIT_I18N_FILE: Final = _string_default("streamlit_i18n_file")
 DEFAULT_STREAMLIT_SAVE_FILE: Final = _path_default("streamlit_save_file")
 DEFAULT_STREAMLIT_DEFAULT_SEED: Final = _integer_default("streamlit_default_seed")
-DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID: Final = _string_default(
-    "streamlit_default_human_player_id"
+DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID: Final = _string_default(
+    "streamlit_default_manual_player_id"
 )
 DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS: Final = _integer_default("streamlit_message_max_chars")
 DEFAULT_STREAMLIT_PAGE_TITLE: Final = _string_default("streamlit_page_title")
@@ -134,17 +134,12 @@ DEFAULT_GAME_MAX_PLAYERS: Final = _integer_default("game_max_players")
 DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = _integer_default("game_default_player_count")
 DEFAULT_GAME_SUPPORTED_AGENT_TYPE: Final = _string_default("game_supported_agent_type")
 DEFAULT_GAME_SUPPORTED_AGENT_NAME: Final = _string_default("game_supported_agent_name")
-DEFAULT_GAME_DEFAULT_RULESET_ID: Final = _string_default("game_default_ruleset_id")
-DEFAULT_GAME_DEFAULT_RULESET_NAME: Final = _string_default("game_default_ruleset_name")
+DEFAULT_GAME_DEFAULT_SETUP_ID: Final = _string_default("game_default_setup_id")
+DEFAULT_GAME_DEFAULT_SETUP_NAME: Final = _string_default("game_default_setup_name")
 DEFAULT_GAME_RULES_FILE: Final = _string_default("game_rules_file")
 DEFAULT_GAME_ROLES_FILE: Final = _string_default("game_roles_file")
 DEFAULT_GAME_CATALOG_FILE: Final = _string_default("game_catalog_file")
-DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS: Final = _integer_default(
-    "game_advance_until_input_max_steps"
-)
-DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE: Final = _string_default(
-    "game_ruleset_description_template"
-)
+DEFAULT_GAME_SETUP_DESCRIPTION_TEMPLATE: Final = _string_default("game_setup_description_template")
 DEFAULT_GAME_ROLE_NAMES: Final = _string_default("game_role_names")
 DEFAULT_GAME_PHASE_NAMES: Final = _string_default("game_phase_names")
 
@@ -355,9 +350,9 @@ class AppSettings(BaseSettings):
         default=DEFAULT_STREAMLIT_DEFAULT_SEED,
         validation_alias="WEREWOLF_STREAMLIT_DEFAULT_SEED",
     )
-    streamlit_default_human_player_id: str = Field(
-        default=DEFAULT_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID,
-        validation_alias="WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID",
+    streamlit_default_manual_player_id: str = Field(
+        default=DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID,
+        validation_alias="WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID",
     )
     streamlit_message_max_chars: int = Field(
         default=DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS,
@@ -392,13 +387,13 @@ class AppSettings(BaseSettings):
         default=DEFAULT_GAME_SUPPORTED_AGENT_NAME,
         validation_alias="WEREWOLF_GAME_SUPPORTED_AGENT_NAME",
     )
-    game_default_ruleset_id: str = Field(
-        default=DEFAULT_GAME_DEFAULT_RULESET_ID,
-        validation_alias="WEREWOLF_GAME_DEFAULT_RULESET_ID",
+    game_default_setup_id: str = Field(
+        default=DEFAULT_GAME_DEFAULT_SETUP_ID,
+        validation_alias="WEREWOLF_GAME_DEFAULT_SETUP_ID",
     )
-    game_default_ruleset_name: str = Field(
-        default=DEFAULT_GAME_DEFAULT_RULESET_NAME,
-        validation_alias="WEREWOLF_GAME_DEFAULT_RULESET_NAME",
+    game_default_setup_name: str = Field(
+        default=DEFAULT_GAME_DEFAULT_SETUP_NAME,
+        validation_alias="WEREWOLF_GAME_DEFAULT_SETUP_NAME",
     )
     game_rules_file: str = Field(
         default=DEFAULT_GAME_RULES_FILE,
@@ -412,14 +407,9 @@ class AppSettings(BaseSettings):
         default=DEFAULT_GAME_CATALOG_FILE,
         validation_alias="WEREWOLF_GAME_CATALOG_FILE",
     )
-    game_advance_until_input_max_steps: int = Field(
-        default=DEFAULT_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS,
-        ge=1,
-        validation_alias="WEREWOLF_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS",
-    )
-    game_ruleset_description_template: str = Field(
-        default=DEFAULT_GAME_RULESET_DESCRIPTION_TEMPLATE,
-        validation_alias="WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE",
+    game_setup_description_template: str = Field(
+        default=DEFAULT_GAME_SETUP_DESCRIPTION_TEMPLATE,
+        validation_alias="WEREWOLF_GAME_SETUP_DESCRIPTION_TEMPLATE",
     )
     game_role_names: str = Field(
         default=DEFAULT_GAME_ROLE_NAMES,
@@ -685,11 +675,11 @@ class AppSettings(BaseSettings):
         """Return an optional Streamlit i18n file path."""
         return "" if value is None else str(value).strip()
 
-    @field_validator("streamlit_default_human_player_id", mode="before")
+    @field_validator("streamlit_default_manual_player_id", mode="before")
     @classmethod
     def normalize_streamlit_player_id(cls, value: object) -> str:
         """Return the default Streamlit player id."""
-        return normalize_non_blank(value, field_name="streamlit_default_human_player_id")
+        return normalize_non_blank(value, field_name="streamlit_default_manual_player_id")
 
     @field_validator("streamlit_save_file", mode="before")
     @classmethod
@@ -746,9 +736,9 @@ class AppSettings(BaseSettings):
 
     @field_validator(
         "game_supported_agent_name",
-        "game_default_ruleset_id",
-        "game_default_ruleset_name",
-        "game_ruleset_description_template",
+        "game_default_setup_id",
+        "game_default_setup_name",
+        "game_setup_description_template",
         "game_role_names",
         "game_phase_names",
         "api_title",
@@ -772,13 +762,13 @@ class AppSettings(BaseSettings):
         split_mapping(self.game_role_names, field_name="game_role_names")
         split_mapping(self.game_phase_names, field_name="game_phase_names")
         try:
-            self.game_ruleset_description_template.format(
+            self.game_setup_description_template.format(
                 min_players=self.game_min_players,
                 max_players=self.game_max_players,
                 default_player_count=self.game_default_player_count,
             )
         except (KeyError, ValueError) as exc:
-            raise ValueError(message_ruleset_description_template_invalid()) from exc
+            raise ValueError(message_game_setup_description_template_invalid()) from exc
         self._validate_llm_settings()
         self._validate_definition_settings()
         return self

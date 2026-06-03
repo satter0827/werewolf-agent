@@ -1,4 +1,4 @@
-"""Create game run and event tables.
+"""Create game and event tables.
 
 Revision ID: 0001_initial
 Revises:
@@ -17,9 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    """Create base game run and event tables."""
+    """Create base game and event tables."""
     op.create_table(
-        "game_runs",
+        "games",
         sa.Column("id", sa.String(length=36), primary_key=True),
         sa.Column("status", sa.String(length=24), nullable=False),
         sa.Column("phase", sa.String(length=32), nullable=False),
@@ -36,9 +36,9 @@ def upgrade() -> None:
         "game_events",
         sa.Column("id", sa.Integer(), primary_key=True, autoincrement=True),
         sa.Column(
-            "run_id",
+            "game_id",
             sa.String(length=36),
-            sa.ForeignKey("game_runs.id", ondelete="CASCADE"),
+            sa.ForeignKey("games.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column("sequence", sa.Integer(), nullable=False),
@@ -50,11 +50,11 @@ def upgrade() -> None:
         sa.Column("event_type", sa.String(length=64), nullable=False),
         sa.Column("payload", sa.JSON(), nullable=False),
         sa.Column("occurred_at", sa.DateTime(timezone=True), nullable=False),
-        sa.UniqueConstraint("run_id", "sequence", name="game_events_run_sequence_unique"),
+        sa.UniqueConstraint("game_id", "sequence", name="game_events_game_sequence_unique"),
     )
 
 
 def downgrade() -> None:
-    """Drop base game run and event tables."""
+    """Drop base game and event tables."""
     op.drop_table("game_events")
-    op.drop_table("game_runs")
+    op.drop_table("games")

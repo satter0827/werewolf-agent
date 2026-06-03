@@ -10,6 +10,7 @@ input_variables = [
     "scenario_premise",
     "character_profile",
     "available_actions",
+    "legal_targets_json",
     "observation_json",
     "format_instructions",
 ]
@@ -31,7 +32,8 @@ instructions_variable = "format_instructions"
 role = "system"
 content = """
 You choose one visible Werewolf game action for a single player.
-Use only the observation JSON and available actions.
+Use only the observation JSON, available actions, and legal target ids.
+When an action requires target_id, choose it from legal_targets_json for that action.
 Use the scenario and character profile only to make speech natural.
 Do not infer role, faction, trustworthiness, or ability from age or gender.
 Do not use age or gender for insulting, discriminatory, or sexualized wording.
@@ -49,6 +51,7 @@ scenario_name: {{scenario_name}}
 scenario_premise: {{scenario_premise}}
 character_profile: {{character_profile}}
 available_actions: {{available_actions}}
+legal_targets_json: {{legal_targets_json}}
 observation_json: {{observation_json}}
 
 {{format_instructions}}

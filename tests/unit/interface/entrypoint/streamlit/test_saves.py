@@ -1,10 +1,11 @@
 from datetime import UTC, datetime
 
 from werewolf_agent.contracts.schemas import (
-    GameRunResponse,
+    GameResponse,
     LocalRulesSettings,
-    PublicGameRunSummary,
+    ManualPlayerCredential,
     PublicGameState,
+    PublicGameSummary,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.i18n import load_i18n
@@ -47,8 +48,8 @@ def _state() -> PublicGameState:
     )
 
 
-def _run() -> PublicGameRunSummary:
-    return PublicGameRunSummary(
+def _run() -> PublicGameSummary:
+    return PublicGameSummary(
         game_id="game-secret-1",
         status="running",
         phase="day_discussion",
@@ -66,14 +67,14 @@ def _run() -> PublicGameRunSummary:
 
 def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
     save_file = tmp_path / "saves.json"
-    response = GameRunResponse(
+    response = GameResponse(
         game_id="game-secret-1",
         state=_state(),
-        control_tokens={"player-1": "token-secret"},
+        manual_player=ManualPlayerCredential(player_id="player-1", token="token-secret"),
     )
     slot = create_save_slot(
         response,
-        human_player_id="player-1",
+        manual_player_id="player-1",
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
@@ -90,20 +91,23 @@ def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
     loaded = load_save_slots(save_file)
     assert loaded == [slot]
     saved_text = save_file.read_text(encoding="utf-8")
-    assert "control_token" not in saved_text
+    assert "manual_token" not in saved_text
     assert "token-secret" not in saved_text
+    assert "status" not in saved_text
+    assert "phase" not in saved_text
+    assert "alive_count" not in saved_text
 
     option = build_saved_game_options(
         loaded,
         [_run()],
         catalog=_catalog(),
         lang="ja",
-        control_tokens={slot.slot_id: "token-secret"},
+        manual_player_tokens={slot.slot_id: "token-secret"},
     )[0]
     assert option.mode == "playable"
     assert option.game_id == "game-secret-1"
-    assert option.human_player_id == "player-1"
-    assert option.control_token == "token-secret"
+    assert option.manual_player_id == "player-1"
+    assert option.manual_token == "token-secret"
     assert "操作あり" in option.label
     assert "game-secret-1" not in option.label
     assert "player-1" not in option.label
@@ -113,8 +117,8 @@ def test_new_game_save_slot_can_be_loaded_as_playable(tmp_path) -> None:
 def test_saved_slot_without_session_token_becomes_observer_option(tmp_path) -> None:
     save_file = tmp_path / "saves.json"
     slot = create_save_slot(
-        GameRunResponse(game_id="game-secret-1", state=_state()),
-        human_player_id="player-1",
+        GameResponse(game_id="game-secret-1", state=_state()),
+        manual_player_id="player-1",
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
@@ -135,8 +139,8 @@ def test_saved_slot_without_session_token_becomes_observer_option(tmp_path) -> N
     )[0]
 
     assert option.mode == "observer"
-    assert option.human_player_id is None
-    assert option.control_token == ""
+    assert option.manual_player_id is None
+    assert option.manual_token == ""
     assert "観戦専用" in option.label
 
 
@@ -144,8 +148,8 @@ def test_api_run_without_save_slot_becomes_observer_option() -> None:
     option = build_saved_game_options([], [_run()], catalog=_catalog(), lang="ja")[0]
 
     assert option.mode == "observer"
-    assert option.human_player_id is None
-    assert option.control_token == ""
+    assert option.manual_player_id is None
+    assert option.manual_token == ""
     assert "観戦専用" in option.label
     assert "game-secret-1" not in option.label
 
@@ -156,24 +160,31 @@ def test_invalid_save_file_is_ignored(tmp_path) -> None:
 
     assert load_save_slots(save_file) == []
 
+    save_file.write_text('{"version": 4, "slots": []}', encoding="utf-8")
+    assert load_save_slots(save_file) == []
+
+    save_file.write_text('{"version": 5, "slots": []}', encoding="utf-8")
+    assert load_save_slots(save_file) == []
+
     save_file.write_text("{not-json", encoding="utf-8")
     assert load_save_slots(save_file) == []
 
 
-def test_token_bearing_save_slot_loads_without_exposing_token(tmp_path) -> None:
+def test_token_bearing_save_slot_is_ignored(tmp_path) -> None:
     save_file = tmp_path / "saves.json"
     save_file.write_text(
         """
         {
-          "version": 4,
+          "version": 6,
           "slots": [
             {
               "slot_id": "slot-1",
               "game_id": "game-secret-1",
-              "human_player_id": "player-1",
-              "control_token": "token-secret",
+              "manual_player_id": "player-1",
+              "manual_token": "token-secret",
               "role_counts": {"werewolf": 1, "villager": 1},
               "rules": {
+                "day_speech_limit_per_player": 1,
                 "allow_self_vote": false,
                 "allow_vote_revision": false,
                 "allow_night_action_revision": false,
@@ -192,14 +203,7 @@ def test_token_bearing_save_slot_loads_without_exposing_token(tmp_path) -> None:
               "narration_mode": "standard",
               "character_assignments": {},
               "custom_roles": [],
-              "custom_characters": [],
-              "status": "running",
-              "phase": "day_discussion",
-              "day": 1,
-              "player_count": 2,
-              "alive_count": 2,
-              "created_at": null,
-              "updated_at": null
+              "custom_characters": []
             }
           ]
         }
@@ -207,21 +211,24 @@ def test_token_bearing_save_slot_loads_without_exposing_token(tmp_path) -> None:
         encoding="utf-8",
     )
 
+    loaded = load_save_slots(save_file)
+    assert loaded == []
+
     option = build_saved_game_options(
-        load_save_slots(save_file),
+        loaded,
         [_run()],
         catalog=_catalog(),
         lang="ja",
     )[0]
-    assert option.control_token == ""
+    assert option.manual_token == ""
     assert "token-secret" not in option.label
 
 
-def test_save_slot_refreshes_from_public_state() -> None:
+def test_save_slot_without_api_summary_uses_draft_fallback_label() -> None:
     slot = SaveSlot(
         slot_id="slot-1",
         game_id="game-secret-1",
-        human_player_id="player-1",
+        manual_player_id="player-1",
         role_counts={"werewolf": 1, "villager": 1},
         rules=_rules(),
         seed=1,
@@ -231,17 +238,10 @@ def test_save_slot_refreshes_from_public_state() -> None:
         character_assignments={},
         custom_roles=[],
         custom_characters=[],
-        status="running",
-        phase="night",
-        day=1,
-        player_count=2,
-        alive_count=2,
-        created_at=None,
-        updated_at=None,
     )
 
-    refreshed = slot.with_state(_state())
+    option = build_saved_game_options([slot], [], catalog=_catalog(), lang="ja")[0]
 
-    assert refreshed.phase == "day_discussion"
-    assert refreshed.day == 2
-    assert refreshed.updated_at == datetime(2026, 1, 1, 12, 34, tzinfo=UTC)
+    assert option.game_id == "game-secret-1"
+    assert option.role_counts == {"werewolf": 1, "villager": 1}
+    assert "2" in option.label

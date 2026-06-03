@@ -48,6 +48,9 @@ class LangChainDecisionProvider:
         if preflight_decision is not None:
             return preflight_decision
 
+        observation = observation.model_copy(
+            update={"legal_targets": _legal_targets_by_action(observation)}
+        )
         action_type = _selected_action(observation)
         target_id = _target_for_action(observation, action_type)
         if action_type in AgentDecision.TARGET_TYPES and target_id is None:
@@ -151,7 +154,7 @@ def _target_for_action(
     observation: AgentObservation,
     action_type: AgentActionType,
 ) -> str | None:
-    candidates = _target_candidates(observation, action_type)
+    candidates = _legal_targets_by_action(observation).get(action_type, [])
     if not candidates:
         return None
     selector = _fake_target_selector(observation.me.id, observation, action_type)
@@ -178,6 +181,23 @@ def _target_candidates(
     if action_type is AgentActionType.KNIGHT_GUARD:
         return alive_players
     return []
+
+
+def _legal_targets_by_action(
+    observation: AgentObservation,
+) -> dict[AgentActionType, list[str]]:
+    """Return legal target ids for available target-taking actions."""
+    targets: dict[AgentActionType, list[str]] = {}
+    for action_type in observation.available_actions:
+        if action_type not in AgentDecision.TARGET_TYPES:
+            continue
+        configured_targets = observation.legal_targets.get(action_type)
+        targets[action_type] = (
+            list(configured_targets)
+            if configured_targets is not None
+            else _target_candidates(observation, action_type)
+        )
+    return targets
 
 
 def _missing_target_reason(action_type: AgentActionType) -> str:
@@ -319,6 +339,13 @@ def _prompt_inputs(
             [action.value for action in observation.available_actions],
             ensure_ascii=False,
         ),
+        "legal_targets_json": json.dumps(
+            {
+                action_type.value: player_ids
+                for action_type, player_ids in _legal_targets_by_action(observation).items()
+            },
+            ensure_ascii=False,
+        ),
         "observation_json": observation.model_dump_json(),
         "format_instructions": parser.get_format_instructions(),
     }
@@ -347,8 +374,9 @@ def _validated_decision(
             player_id=player_id,
             reason=f"llm decision action unavailable: {decision.type.value}",
         )
-    if decision.type in AgentDecision.TARGET_TYPES and decision.target_id not in _target_candidates(
-        observation, decision.type
+    if (
+        decision.type in AgentDecision.TARGET_TYPES
+        and decision.target_id not in _legal_targets_by_action(observation).get(decision.type, [])
     ):
         return AgentDecision.pass_(
             player_id=player_id,

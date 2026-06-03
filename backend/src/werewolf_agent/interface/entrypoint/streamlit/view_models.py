@@ -16,8 +16,8 @@ from werewolf_agent.contracts.schemas import (
     GameTimelineItem,
     LocalRulesSettings,
     PlayerObservationResponse,
-    PublicGameRunSummary,
     PublicGameState,
+    PublicGameSummary,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
@@ -38,8 +38,8 @@ class SavedGameOptionView:
     label: str
     game_id: str
     mode: ScreenMode
-    human_player_id: str | None = None
-    control_token: str = ""
+    manual_player_id: str | None = None
+    manual_token: str = ""
     role_counts: dict[str, int] | None = None
     rules: LocalRulesSettings | None = None
     seed: int | None = None
@@ -61,7 +61,7 @@ class PlayerSeatView:
     activity: str
     activity_tone: str
     is_alive: bool
-    is_human: bool
+    is_manual: bool
     is_current: bool
     role_label: str | None = None
     faction_label: str | None = None
@@ -207,7 +207,7 @@ def build_game_screen_view(
     turns: list[GameTimelineItem],
     observation: PlayerObservationResponse | None,
     reveal: GameRevealResponse | None,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     screen_mode: ScreenMode | None = None,
     catalog: I18nCatalog,
     lang: Language,
@@ -221,7 +221,7 @@ def build_game_screen_view(
         observation_view_from_response(
             observation,
             state=state,
-            human_player_id=human_player_id,
+            manual_player_id=manual_player_id,
             catalog=catalog,
             lang=lang,
         )
@@ -236,7 +236,13 @@ def build_game_screen_view(
     )
     current_title = current_turn_title(state, observation_view, effective_mode, catalog, lang)
     current_detail = current_turn_detail(state, observation_view, effective_mode, catalog, lang)
-    human_label = _human_player_label(state.players, human_player_id, effective_mode, catalog, lang)
+    manual_label = _manual_player_label(
+        state.players,
+        manual_player_id,
+        effective_mode,
+        catalog,
+        lang,
+    )
     updated_label = _optional_time_text(state.updated_at, catalog, lang)
     role_counts = dict(reveal.role_counts) if reveal is not None else {}
     public_timeline = timeline_items(turns, players=state.players, catalog=catalog, lang=lang)
@@ -252,7 +258,7 @@ def build_game_screen_view(
         else catalog.t(lang, "status.completed"),
         alive_label=f"{len(state.alive_player_ids)} / {len(state.players)}",
         turn_label=f"{state.version}",
-        player_label=human_label,
+        player_label=manual_label,
         updated_label=updated_label,
         winner_label=catalog.label(lang, "winner", state.winner),
         player_count=len(state.players),
@@ -264,7 +270,7 @@ def build_game_screen_view(
             state,
             current_turn=current_title,
             current_turn_detail=current_detail,
-            human_label=human_label,
+            manual_label=manual_label,
             updated_label=updated_label,
             refresh_interval_seconds=refresh_interval_seconds,
             catalog=catalog,
@@ -276,7 +282,7 @@ def build_game_screen_view(
             turns=turns,
             observation=observation_view,
             reveal=reveal,
-            human_player_id=human_player_id if effective_mode == "playable" else None,
+            manual_player_id=manual_player_id if effective_mode == "playable" else None,
             catalog=catalog,
             lang=lang,
         ),
@@ -313,7 +319,7 @@ def status_metrics(
     *,
     current_turn: str,
     current_turn_detail: str,
-    human_label: str,
+    manual_label: str,
     updated_label: str,
     refresh_interval_seconds: float,
     catalog: I18nCatalog,
@@ -343,7 +349,7 @@ def status_metrics(
         (
             "player",
             catalog.t(lang, "metric.player"),
-            human_label,
+            manual_label,
             current_turn_detail if current_turn == catalog.t(lang, "game.current.playable") else "",
         ),
         ("updated", catalog.t(lang, "metric.updated"), updated_label, ""),
@@ -377,29 +383,29 @@ def player_seats(
     turns: list[GameTimelineItem],
     observation: ObservationView | None,
     reveal: GameRevealResponse | None,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     catalog: I18nCatalog,
     lang: Language,
 ) -> list[PlayerSeatView]:
     """Return compact game-table player seats."""
     last_speaker = _last_actor(turns, event_type="speech_recorded")
-    active_player_id = human_player_id if _has_available_actions(observation) else last_speaker
+    active_player_id = manual_player_id if _has_available_actions(observation) else last_speaker
     reveal_players = {player.id: player for player in reveal.players} if reveal is not None else {}
     seats: list[PlayerSeatView] = []
     for player in players:
-        is_human = player.id == human_player_id
+        is_manual = player.id == manual_player_id
         is_current = player.id == active_player_id
         if not player.alive:
             activity = catalog.label(lang, "activity", "dead")
             activity_tone = "muted"
-        elif is_human and observation is not None and observation.available_actions:
+        elif is_manual and observation is not None and observation.available_actions:
             activity = catalog.label(lang, "activity", "input")
             activity_tone = "danger"
         elif player.id == last_speaker:
             activity = catalog.label(lang, "activity", "acted")
             activity_tone = "safe"
-        elif is_human:
-            activity = catalog.label(lang, "activity", "human")
+        elif is_manual:
+            activity = catalog.label(lang, "activity", "manual")
             activity_tone = "danger"
         else:
             activity = catalog.label(lang, "activity", "idle")
@@ -417,7 +423,7 @@ def player_seats(
                 activity=activity,
                 activity_tone=activity_tone,
                 is_alive=player.alive,
-                is_human=is_human,
+                is_manual=is_manual,
                 is_current=is_current,
                 role_label=catalog.label(lang, "role", reveal_player.role)
                 if reveal_player is not None
@@ -458,7 +464,7 @@ def observation_view_from_response(
     response: PlayerObservationResponse,
     *,
     state: PublicGameState,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     catalog: I18nCatalog,
     lang: Language,
 ) -> ObservationView:
@@ -485,7 +491,7 @@ def observation_view_from_response(
                 action,
                 state=state,
                 observation=observation,
-                human_player_id=human_player_id,
+                manual_player_id=manual_player_id,
             )
             for action in actions
         },
@@ -508,7 +514,7 @@ def target_candidates_for_action(
     *,
     state: PublicGameState,
     observation: dict[str, Any],
-    human_player_id: str | None,
+    manual_player_id: str | None,
 ) -> list[str]:
     """Return visible player ids that can be offered as target candidates."""
     alive_ids = [player.id for player in state.players if player.alive]
@@ -524,10 +530,10 @@ def target_candidates_for_action(
         return [
             player_id
             for player_id in alive_ids
-            if player_id != human_player_id and player_id not in werewolves
+            if player_id != manual_player_id and player_id not in werewolves
         ]
     if action_type in {"vote", "seer_inspect"}:
-        return [player_id for player_id in alive_ids if player_id != human_player_id]
+        return [player_id for player_id in alive_ids if player_id != manual_player_id]
     return []
 
 
@@ -834,20 +840,20 @@ def current_turn_detail(
     return catalog.t(lang, "game.play.waiting.detail")
 
 
-def game_run_option_label(
-    run: PublicGameRunSummary,
+def game_option_label(
+    game: PublicGameSummary,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str:
     """Return one sidebar label without exposing the internal game id."""
     status = (
         catalog.t(lang, "status.completed")
-        if run.status == "completed"
+        if game.status == "completed"
         else catalog.t(lang, "status.running")
     )
     return (
-        f"{status} / {_day_label(run.day, catalog, lang)} / {run.player_count} / "
-        f"{catalog.t(lang, 'metric.updated')} {_time_text(run.updated_at)} / "
+        f"{status} / {_day_label(game.day, catalog, lang)} / {game.player_count} / "
+        f"{catalog.t(lang, 'metric.updated')} {_time_text(game.updated_at)} / "
         f"{catalog.t(lang, 'setup.mode.observe')}"
     )
 
@@ -1013,16 +1019,16 @@ def _seconds_label(value: float, catalog: I18nCatalog, lang: Language) -> str:
     return catalog.t(lang, "time.seconds", seconds=seconds)
 
 
-def _human_player_label(
+def _manual_player_label(
     players: list[PublicPlayerState],
-    human_player_id: str | None,
+    manual_player_id: str | None,
     screen_mode: ScreenMode,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str:
-    if screen_mode == "observer" or human_player_id is None:
+    if screen_mode == "observer" or manual_player_id is None:
         return catalog.t(lang, "metric.player_observer")
-    return _player_name(players, human_player_id)
+    return _player_name(players, manual_player_id)
 
 
 def _player_name(players: list[PublicPlayerState], player_id: object) -> str:

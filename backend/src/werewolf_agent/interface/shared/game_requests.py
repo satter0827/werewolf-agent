@@ -24,7 +24,7 @@ def build_create_game_request(
     *,
     seed: int | None,
     role_counts: dict[RoleId, int],
-    human_player_id: str | None,
+    manual_player_id: str | None,
     rules: LocalRulesSettings | None = None,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
@@ -38,7 +38,7 @@ def build_create_game_request(
         return CreateGameRequest(
             seed=seed,
             role_counts=role_counts,
-            human_player_id=human_player_id,
+            manual_player_id=manual_player_id,
             rules=rules,
             scenario_id=scenario_id,
             setup_preset_id=setup_preset_id,

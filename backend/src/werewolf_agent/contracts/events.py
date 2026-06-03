@@ -34,7 +34,6 @@ class GameEvent(BaseModel):
     event_id: UUID = Field(default_factory=uuid4)
     occurred_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     event_type: str
-    run_id: str | None = None
     game_id: str | None = None
     phase: str | None = None
     day: int | None = None

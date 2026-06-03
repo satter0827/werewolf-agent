@@ -4,35 +4,35 @@ from werewolf_agent.interface.entrypoint.streamlit.state import (
     KEY_AUTO_ADVANCE_NOTICE,
     KEY_AUTO_ADVANCE_RUNNING,
     KEY_AUTO_ADVANCE_STEPS,
-    KEY_CONTROL_TOKENS,
+    KEY_MANUAL_PLAYER_TOKENS,
     auto_advance_state,
     consume_auto_advance_notice,
-    control_tokens_by_slot,
+    manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
-    remember_control_token,
+    remember_manual_player_token,
     start_auto_advance,
     sync_auto_advance_game,
 )
 
 
-def test_control_tokens_are_kept_in_session_state_only() -> None:
+def test_manual_player_tokens_are_kept_in_session_state_only() -> None:
     session: dict[str, object] = {}
 
-    remember_control_token(
+    remember_manual_player_token(
         session,
         slot_id="slot-1",
-        control_token="token-secret",
+        manual_token="token-secret",
     )
 
-    assert session[KEY_CONTROL_TOKENS] == {"slot-1": "token-secret"}
-    assert control_tokens_by_slot(session) == {"slot-1": "token-secret"}
+    assert session[KEY_MANUAL_PLAYER_TOKENS] == {"slot-1": "token-secret"}
+    assert manual_player_tokens_by_slot(session) == {"slot-1": "token-secret"}
 
 
-def test_control_token_session_helper_ignores_empty_or_invalid_values() -> None:
-    session: dict[str, object] = {KEY_CONTROL_TOKENS: "not-a-dict"}
+def test_manual_player_token_session_helper_ignores_empty_or_invalid_values() -> None:
+    session: dict[str, object] = {KEY_MANUAL_PLAYER_TOKENS: "not-a-dict"}
 
-    assert control_tokens_by_slot(session) == {}
+    assert manual_player_tokens_by_slot(session) == {}
 
 
 def test_auto_advance_state_tracks_start_pause_and_step_count() -> None:
@@ -64,7 +64,7 @@ def test_auto_advance_resets_when_visible_game_changes() -> None:
     assert session[KEY_AUTO_ADVANCE_LAST_STEP_AT] == 0.0
     assert auto_advance_state(session, "game-1").running is False
 
-    remember_control_token(session, slot_id="", control_token="token-secret")
-    remember_control_token(session, slot_id="slot-1", control_token="")
+    remember_manual_player_token(session, slot_id="", manual_token="token-secret")
+    remember_manual_player_token(session, slot_id="slot-1", manual_token="")
 
-    assert control_tokens_by_slot(session) == {}
+    assert manual_player_tokens_by_slot(session) == {}

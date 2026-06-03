@@ -1,4 +1,4 @@
-"""Playable Streamlit entry point for one human player."""
+"""Playable Streamlit entry point for one manual player."""
 
 from __future__ import annotations
 
@@ -13,9 +13,9 @@ from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
-    RulesetResponse,
 )
 from werewolf_agent.interface.entrypoint.streamlit.components import (
     action_header_html,
@@ -33,16 +33,14 @@ from werewolf_agent.interface.entrypoint.streamlit.components import (
 from werewolf_agent.interface.entrypoint.streamlit.i18n import (
     I18nCatalog,
     Language,
-    current_language,
     load_i18n,
-    remember_language,
 )
 from werewolf_agent.interface.entrypoint.streamlit.operations import (
     advance_one_step,
     create_game_from_setup,
     list_recent_games,
     load_game_screen,
-    load_ruleset,
+    load_setup_options,
     log_streamlit_rerun_started,
     submit_screen_action,
 )
@@ -53,11 +51,11 @@ from werewolf_agent.interface.entrypoint.streamlit.saves import (
     upsert_save_slot,
 )
 from werewolf_agent.interface.entrypoint.streamlit.setup import (
-    KEY_SETUP_ROLE_COUNTS,
+    KEY_ROLE_COUNT_WIDGET_PREFIX,
+    VIEW_APP_SETTINGS,
     VIEW_GAME,
-    VIEW_OBSERVER_SETUP,
-    VIEW_SETTINGS,
-    VIEW_SETUP,
+    VIEW_OBSERVE_SETUP,
+    VIEW_PLAY_SETUP,
     add_custom_character,
     add_custom_role,
     character_assignments,
@@ -66,9 +64,14 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
     custom_characters,
     custom_roles,
     narration_mode,
+    preferred_api_url,
+    preferred_language,
     preset_counts,
     remember_character_assignment,
+    remember_manual_player_id,
     remember_narration_mode,
+    remember_preferred_api_url,
+    remember_preferred_language,
     remember_role_counts,
     remember_rules,
     remember_scenario_id,
@@ -76,27 +79,27 @@ from werewolf_agent.interface.entrypoint.streamlit.setup import (
     remember_setup_preset_id,
     role_counts,
     rules,
-    ruleset_with_session_customs,
     seat_options,
     seed_from_text,
     seed_text,
+    selected_manual_player_id,
     selected_scenario_id,
     selected_setup_preset_id,
+    setup_options_with_session_customs,
     setup_summary,
     switch_view,
     validate_setup,
 )
 from werewolf_agent.interface.entrypoint.streamlit.state import (
-    KEY_API_URL,
     KEY_MESSAGE,
     KEY_SELECTED_SAVE_ID,
     auto_advance_state,
     clear_message,
     consume_auto_advance_notice,
-    control_tokens_by_slot,
+    manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
-    remember_control_token,
+    remember_manual_player_token,
     remember_selected_save,
     start_auto_advance,
     sync_auto_advance_game,
@@ -129,7 +132,7 @@ def main() -> None:
 def _render_app(st: Any, settings: AppSettings) -> None:
     """Render one Streamlit rerun with a bound observation context."""
     catalog = load_i18n(settings)
-    lang = current_language(st.session_state, settings)
+    lang = preferred_language(st.session_state, settings.streamlit_language)
     st.set_page_config(
         page_title=settings.streamlit_page_title,
         page_icon="🐺",
@@ -139,7 +142,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
     st.markdown(STREAMLIT_CSS, unsafe_allow_html=True)
 
     api_url, selected_option, view = _render_sidebar(st, settings, catalog=catalog, lang=lang)
-    if view == VIEW_SETTINGS:
+    if view == VIEW_APP_SETTINGS:
         _render_settings_screen(st, settings=settings, api_url=api_url, catalog=catalog, lang=lang)
         return
     if view != VIEW_GAME or selected_option is None:
@@ -149,7 +152,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
             api_url=api_url,
             catalog=catalog,
             lang=lang,
-            observer=view == VIEW_OBSERVER_SETUP,
+            observer=view == VIEW_OBSERVE_SETUP,
         )
         return
 
@@ -159,8 +162,8 @@ def _render_app(st: Any, settings: AppSettings) -> None:
             api_url=api_url,
             settings=settings,
             game_id=selected_option.game_id,
-            human_player_id=selected_option.human_player_id,
-            control_token=selected_option.control_token,
+            manual_player_id=selected_option.manual_player_id,
+            manual_token=selected_option.manual_token,
             screen_mode=selected_option.mode,
             catalog=catalog,
             lang=lang,
@@ -206,13 +209,7 @@ def _render_sidebar(
     lang: Language,
 ) -> tuple[str, SavedGameOptionView | None, str]:
     _render_sidebar_brand(st, catalog=catalog, lang=lang)
-    default_api_url = text_value(
-        st.session_state,
-        KEY_API_URL,
-        settings.streamlit_resolved_api_url,
-    )
-    api_url = default_api_url
-    st.session_state[KEY_API_URL] = api_url
+    api_url = preferred_api_url(st.session_state, settings.streamlit_resolved_api_url)
 
     st.sidebar.divider()
     st.sidebar.subheader(catalog.t(lang, "sidebar.saves"))
@@ -227,13 +224,13 @@ def _render_sidebar(
     st.sidebar.divider()
     st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
     if st.sidebar.button(f"▶ {catalog.t(lang, 'nav.play')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_SETUP)
-        st.rerun()
-    if st.sidebar.button(f"⚙ {catalog.t(lang, 'nav.settings')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_SETTINGS)
+        switch_view(st.session_state, VIEW_PLAY_SETUP)
         st.rerun()
     if st.sidebar.button(f"◉ {catalog.t(lang, 'nav.observe')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_OBSERVER_SETUP)
+        switch_view(st.session_state, VIEW_OBSERVE_SETUP)
+        st.rerun()
+    if st.sidebar.button(f"⚙ {catalog.t(lang, 'nav.settings')}", use_container_width=True):
+        switch_view(st.session_state, VIEW_APP_SETTINGS)
         st.rerun()
     return api_url, selected_option, current_view(st.session_state)
 
@@ -263,16 +260,16 @@ def _render_save_selector(
 ) -> SavedGameOptionView | None:
     slots = load_save_slots(settings.streamlit_save_file_path)
     try:
-        runs = list_recent_games(api_url=api_url, settings=settings)
+        games = list_recent_games(api_url=api_url, settings=settings)
     except AppError:
-        runs = []
+        games = []
         st.sidebar.caption(catalog.t(lang, "save.unavailable"))
     options = build_saved_game_options(
         slots,
-        runs,
+        games,
         catalog=catalog,
         lang=lang,
-        control_tokens=control_tokens_by_slot(st.session_state),
+        manual_player_tokens=manual_player_tokens_by_slot(st.session_state),
     )
     if not options:
         st.sidebar.caption(catalog.t(lang, "save.empty"))
@@ -306,9 +303,9 @@ def _render_setup_screen(
     observer: bool,
 ) -> None:
     try:
-        ruleset = ruleset_with_session_customs(
+        setup_options = setup_options_with_session_customs(
             st.session_state,
-            load_ruleset(api_url=api_url, settings=settings),
+            load_setup_options(api_url=api_url, settings=settings),
         )
     except AppError as exc:
         st.error(exc.detail)
@@ -316,17 +313,26 @@ def _render_setup_screen(
 
     st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
     st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
-    counts = role_counts(st.session_state, ruleset)
-    active_rules = rules(st.session_state, ruleset)
-    scenario_id = selected_scenario_id(st.session_state, ruleset)
-    preset_id = selected_setup_preset_id(st.session_state, ruleset)
-    active_narration_mode = narration_mode(st.session_state, ruleset)
-    validation = validate_setup(counts, ruleset, catalog=catalog, lang=lang)
+
+    _render_setup_preset_selector(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    seed_value = _render_seed_controls(st, settings, catalog, lang)
+    counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
+    _render_character_assignments(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    _render_local_rules_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+
+    counts = role_counts(st.session_state, setup_options)
+    active_rules = rules(st.session_state, setup_options)
+    scenario_id = selected_scenario_id(st.session_state, setup_options)
+    preset_id = selected_setup_preset_id(st.session_state, setup_options)
+    active_narration_mode = narration_mode(st.session_state, setup_options)
+    validation = validate_setup(counts, setup_options, catalog=catalog, lang=lang)
     total_players = sum(counts.values())
     summary_columns = st.columns(3)
     summary_columns[0].metric(
         catalog.t(lang, "settings.scenario"),
-        _scenario_name(ruleset, scenario_id, catalog, lang),
+        _scenario_name(setup_options, scenario_id, catalog, lang),
     )
     summary_columns[1].metric(catalog.t(lang, "setup.total_players"), f"{total_players}")
     summary_columns[2].metric(
@@ -334,13 +340,21 @@ def _render_setup_screen(
         _narration_label(active_narration_mode, catalog, lang),
     )
     if preset_id is not None:
-        st.caption(_setup_preset_name(ruleset, preset_id, catalog, lang))
+        st.caption(_setup_preset_name(setup_options, preset_id, catalog, lang))
     for message in validation.messages:
         st.warning(message)
 
-    seats = seat_options(counts)
-    human_player_id = None if observer else _render_human_seat_selector(st, seats, catalog, lang)
-    seed_value = seed_text(st.session_state, settings.streamlit_default_seed)
+    manual_player_id = (
+        None
+        if observer
+        else _render_manual_seat_selector(
+            st,
+            counts,
+            settings=settings,
+            catalog=catalog,
+            lang=lang,
+        )
+    )
     try:
         seed_from_text(seed_value)
     except ValueError:
@@ -349,7 +363,7 @@ def _render_setup_screen(
         setup_summary(
             counts,
             rules=active_rules,
-            ruleset=ruleset,
+            setup_options=setup_options,
             catalog=catalog,
             lang=lang,
         )
@@ -357,12 +371,12 @@ def _render_setup_screen(
 
     active_assignments = character_assignments(
         st.session_state,
-        ruleset,
+        setup_options,
         player_count=total_players,
     )
     disabled = (
         not validation.is_valid
-        or (human_player_id is None and not observer)
+        or (manual_player_id is None and not observer)
         or _has_duplicate_values(active_assignments)
     )
     if st.button(
@@ -379,7 +393,7 @@ def _render_setup_screen(
             role_counts=counts,
             rules=active_rules,
             seed_text=seed_value,
-            human_player_id=None if observer else str(human_player_id),
+            manual_player_id=None if observer else str(manual_player_id),
             screen_mode="observer" if observer else "playable",
             scenario_id=scenario_id,
             setup_preset_id=preset_id,
@@ -394,26 +408,26 @@ def _render_setup_screen(
 
 def _render_role_counts(
     st: Any,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     *,
     catalog: I18nCatalog,
     lang: Language,
 ) -> dict[str, int]:
-    counts = role_counts(st.session_state, ruleset)
+    counts = role_counts(st.session_state, setup_options)
     st.subheader(catalog.t(lang, "setup.role_counts"))
     next_counts: dict[str, int] = {}
-    for role in ruleset.roles:
+    for role in setup_options.roles:
         widget_key = _role_count_key(role.id)
         if widget_key not in st.session_state:
             st.session_state[widget_key] = int(counts.get(role.id, 0))
         ability_names = [
-            _ability_name(ruleset, ability_id, catalog, lang) for ability_id in role.abilities
+            _ability_name(setup_options, ability_id, catalog, lang) for ability_id in role.abilities
         ]
         next_counts[role.id] = int(
             st.number_input(
                 role.name,
                 min_value=0,
-                max_value=ruleset.player_count["max"],
+                max_value=setup_options.player_count["max"],
                 step=1,
                 key=widget_key,
                 help=f"{catalog.label(lang, 'faction', role.faction)} / "
@@ -424,23 +438,32 @@ def _render_role_counts(
     return next_counts
 
 
-def _render_human_seat_selector(
+def _render_manual_seat_selector(
     st: Any,
-    seats: list[tuple[str, str]],
+    counts: dict[str, int],
+    *,
+    settings: AppSettings,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str | None:
+    """Render the playable manual-seat selector."""
+    seats = seat_options(counts)
     if not seats:
         st.warning(catalog.t(lang, "setup.no_seats"))
         return None
-    return str(
-        st.selectbox(
-            catalog.t(lang, "setup.seat"),
-            seats,
-            index=0,
-            format_func=lambda option: option[1],
-        )[0]
+    current_player_id = selected_manual_player_id(
+        st.session_state,
+        counts,
+        default_player_id=settings.streamlit_default_manual_player_id,
     )
+    selected = st.selectbox(
+        catalog.t(lang, "setup.seat"),
+        seats,
+        index=_seat_index(seats, current_player_id),
+        format_func=lambda option: option[1],
+    )
+    remember_manual_player_id(st.session_state, selected[0])
+    return str(selected[0])
 
 
 def _render_seed_controls(
@@ -479,47 +502,50 @@ def _render_settings_screen(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    try:
-        ruleset = ruleset_with_session_customs(
-            st.session_state,
-            load_ruleset(api_url=api_url, settings=settings),
-        )
-    except AppError as exc:
-        st.error(exc.detail)
-        return
-
+    """Render Streamlit-wide preferences and definition management."""
     st.header(catalog.t(lang, "settings.title"))
     st.caption(catalog.t(lang, "settings.caption"))
-    start_tab, scenario_tab, roles_tab, characters_tab, rules_tab = st.tabs(
+    preferences_tab, roles_tab, characters_tab = st.tabs(
         [
-            catalog.t(lang, "settings.tab.start"),
-            catalog.t(lang, "settings.tab.scenario"),
-            catalog.t(lang, "settings.tab.roles"),
-            catalog.t(lang, "settings.tab.characters"),
-            catalog.t(lang, "settings.tab.rules"),
+            catalog.t(lang, "settings.tab.preferences"),
+            catalog.t(lang, "settings.tab.role_definitions"),
+            catalog.t(lang, "settings.tab.character_definitions"),
         ]
     )
 
-    with start_tab:
-        _render_start_settings(st, settings=settings, ruleset=ruleset, catalog=catalog, lang=lang)
-    with scenario_tab:
-        _render_scenario_settings(st, ruleset=ruleset, catalog=catalog, lang=lang)
+    with preferences_tab:
+        _render_common_settings(st, settings=settings, catalog=catalog, lang=lang)
+
+    try:
+        setup_options = setup_options_with_session_customs(
+            st.session_state,
+            load_setup_options(api_url=api_url, settings=settings),
+        )
+    except AppError as exc:
+        with roles_tab:
+            st.error(exc.detail)
+        with characters_tab:
+            st.error(exc.detail)
+        return
+
     with roles_tab:
-        _render_role_settings(st, ruleset=ruleset, catalog=catalog, lang=lang)
+        _render_role_definition_settings(
+            st, setup_options=setup_options, catalog=catalog, lang=lang
+        )
     with characters_tab:
-        _render_character_settings(st, ruleset=ruleset, catalog=catalog, lang=lang)
-    with rules_tab:
-        _render_local_rules_settings(st, ruleset=ruleset, catalog=catalog, lang=lang)
+        _render_character_definition_settings(
+            st, setup_options=setup_options, catalog=catalog, lang=lang
+        )
 
 
-def _render_start_settings(
+def _render_common_settings(
     st: Any,
     *,
     settings: AppSettings,
-    ruleset: RulesetResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
+    """Render preferences shared by every game screen."""
     language_codes = list(catalog.languages)
     selected_language = st.selectbox(
         catalog.t(lang, "settings.language"),
@@ -528,19 +554,20 @@ def _render_start_settings(
         format_func=lambda value: catalog.languages[value],
     )
     if selected_language != lang:
-        remember_language(st.session_state, str(selected_language))
+        remember_preferred_language(st.session_state, str(selected_language))
         st.rerun()
 
-    modes: list[NarrationMode] = ["standard", "rich", "none"]
-    current_mode = narration_mode(st.session_state, ruleset)
-    selected_mode = st.selectbox(
-        catalog.t(lang, "settings.narration"),
-        modes,
-        index=modes.index(current_mode) if current_mode in modes else 0,
-        format_func=lambda value: _narration_label(value, catalog, lang),
+    current_api_url = preferred_api_url(st.session_state, settings.streamlit_resolved_api_url)
+    selected_api_url = str(
+        st.text_input(
+            catalog.t(lang, "settings.api_url"),
+            value=current_api_url,
+        )
     )
-    remember_narration_mode(st.session_state, cast(NarrationMode, selected_mode))
-    _render_seed_controls(st, settings, catalog, lang)
+    if selected_api_url.strip() != current_api_url:
+        remember_preferred_api_url(st.session_state, selected_api_url)
+        st.rerun()
+
     if st.button(catalog.t(lang, "settings.clear_custom"), use_container_width=True):
         clear_custom_definitions(st.session_state)
         st.success(catalog.t(lang, "settings.saved"))
@@ -550,82 +577,107 @@ def _render_start_settings(
 def _render_scenario_settings(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    if not ruleset.scenarios:
+    if not setup_options.scenarios:
         st.caption(catalog.t(lang, "common.none"))
         return
-    current_id = selected_scenario_id(st.session_state, ruleset)
+    current_id = selected_scenario_id(st.session_state, setup_options)
     selected = st.selectbox(
         catalog.t(lang, "settings.scenario"),
-        ruleset.scenarios,
-        index=_scenario_index(ruleset, current_id),
+        setup_options.scenarios,
+        index=_scenario_index(setup_options, current_id),
         format_func=lambda value: value.name,
     )
     remember_scenario_id(st.session_state, selected.id)
     st.info(selected.summary)
 
 
-def _render_role_settings(
+def _render_narration_setup(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    if ruleset.setup_presets:
-        current_preset_id = selected_setup_preset_id(st.session_state, ruleset)
-        selected_preset = st.selectbox(
-            catalog.t(lang, "setup.preset"),
-            ruleset.setup_presets,
-            index=_setup_preset_index(ruleset, current_preset_id),
-            format_func=lambda value: value.name,
-        )
-        if selected_preset.id != current_preset_id:
-            counts = preset_counts(selected_preset.id, ruleset)
-            remember_setup_preset_id(st.session_state, selected_preset.id)
-            remember_scenario_id(st.session_state, selected_preset.scenario_id)
-            remember_role_counts(st.session_state, counts)
-            for role_id, count in counts.items():
-                st.session_state[_role_count_key(role_id)] = count
-            st.rerun()
+    """Render the game narration selector."""
+    modes: list[NarrationMode] = ["standard", "rich", "none"]
+    current_mode = narration_mode(st.session_state, setup_options)
+    selected_mode = st.selectbox(
+        catalog.t(lang, "settings.narration"),
+        modes,
+        index=modes.index(current_mode) if current_mode in modes else 0,
+        format_func=lambda value: _narration_label(value, catalog, lang),
+    )
+    remember_narration_mode(st.session_state, cast(NarrationMode, selected_mode))
 
-    counts = _render_role_counts(st, ruleset, catalog=catalog, lang=lang)
-    validation = validate_setup(counts, ruleset, catalog=catalog, lang=lang)
-    st.metric(catalog.t(lang, "setup.total_players"), f"{sum(counts.values())}")
-    for message in validation.messages:
-        st.warning(message)
 
+def _render_setup_preset_selector(
+    st: Any,
+    *,
+    setup_options: GameSetupOptionsResponse,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render the game setup preset selector."""
+    if not setup_options.setup_presets:
+        return
+    current_preset_id = selected_setup_preset_id(st.session_state, setup_options)
+    selected_preset = st.selectbox(
+        catalog.t(lang, "setup.preset"),
+        setup_options.setup_presets,
+        index=_setup_preset_index(setup_options, current_preset_id),
+        format_func=lambda value: value.name,
+    )
+    if selected_preset.id != current_preset_id:
+        counts = preset_counts(selected_preset.id, setup_options)
+        remember_setup_preset_id(st.session_state, selected_preset.id)
+        remember_scenario_id(st.session_state, selected_preset.scenario_id)
+        remember_role_counts(st.session_state, counts)
+        for role_id, count in counts.items():
+            st.session_state[_role_count_key(role_id)] = count
+        st.rerun()
+
+
+def _render_role_definition_settings(
+    st: Any,
+    *,
+    setup_options: GameSetupOptionsResponse,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render shared role definitions and custom role management."""
     st.subheader(catalog.t(lang, "settings.role_catalog"))
-    for role in ruleset.roles:
+    for role in setup_options.roles:
         abilities = [
-            _ability_name(ruleset, ability_id, catalog, lang) for ability_id in role.abilities
+            _ability_name(setup_options, ability_id, catalog, lang) for ability_id in role.abilities
         ]
         ability_text = ", ".join(abilities) if abilities else catalog.t(lang, "common.none")
         st.markdown(
             f"**{role.name}** / {catalog.label(lang, 'faction', role.faction)} / {ability_text}"
         )
-    _render_custom_role_form(st, ruleset=ruleset, catalog=catalog, lang=lang)
+    _render_custom_role_form(st, setup_options=setup_options, catalog=catalog, lang=lang)
 
 
-def _render_character_settings(
+def _render_character_assignments(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    counts = role_counts(st.session_state, ruleset)
+    """Render game character assignments for generated seats."""
+    counts = role_counts(st.session_state, setup_options)
     total_players = sum(counts.values())
     current_assignments = character_assignments(
         st.session_state,
-        ruleset,
+        setup_options,
         player_count=total_players,
     )
     st.subheader(catalog.t(lang, "settings.character_assignments"))
-    character_options: list[CharacterDefinitionView | None] = [None, *ruleset.characters]
+    character_options: list[CharacterDefinitionView | None] = [None, *setup_options.characters]
     for player_id, seat_label in seat_options(counts):
         current_character_id = current_assignments.get(player_id)
         selected = st.selectbox(
@@ -644,22 +696,31 @@ def _render_character_settings(
         )
     refreshed_assignments = character_assignments(
         st.session_state,
-        ruleset,
+        setup_options,
         player_count=total_players,
     )
     if _has_duplicate_values(refreshed_assignments):
         st.warning(catalog.t(lang, "settings.character.duplicate"))
 
+
+def _render_character_definition_settings(
+    st: Any,
+    *,
+    setup_options: GameSetupOptionsResponse,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Render shared character definitions and custom character management."""
     st.subheader(catalog.t(lang, "settings.character_catalog"))
-    for character in ruleset.characters:
+    for character in setup_options.characters:
         st.markdown(f"**{character.name}** / {character.age} / {character.gender}")
-    _render_custom_character_form(st, ruleset=ruleset, catalog=catalog, lang=lang)
+    _render_custom_character_form(st, setup_options=setup_options, catalog=catalog, lang=lang)
 
 
 def _render_custom_role_form(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
@@ -680,8 +741,8 @@ def _render_custom_role_form(
         )
         abilities = st.multiselect(
             catalog.t(lang, "settings.custom_role.abilities"),
-            [ability.id for ability in ruleset.abilities],
-            format_func=lambda value: _ability_name(ruleset, str(value), catalog, lang),
+            [ability.id for ability in setup_options.abilities],
+            format_func=lambda value: _ability_name(setup_options, str(value), catalog, lang),
         )
         difficulty = st.slider(
             catalog.t(lang, "settings.custom_role.difficulty"),
@@ -705,7 +766,7 @@ def _render_custom_role_form(
 def _render_custom_character_form(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
@@ -774,7 +835,7 @@ def _render_custom_character_form(
         )
         submitted = st.form_submit_button(catalog.t(lang, "settings.custom_character.add"))
     if submitted:
-        existing_names = {character.name for character in ruleset.characters}
+        existing_names = {character.name for character in setup_options.characters}
         if str(name) in existing_names:
             st.warning(catalog.t(lang, "settings.character.name_duplicate"))
             return
@@ -795,101 +856,102 @@ def _render_custom_character_form(
 def _render_local_rules_settings(
     st: Any,
     *,
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    current_rules = rules(st.session_state, ruleset)
+    """Render local rules for the next game."""
+    current_rules = rules(st.session_state, setup_options)
     st.subheader(catalog.t(lang, "settings.local_rules"))
-    with st.form("streamlit-settings-rules"):
-        allow_self_vote = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_self_vote"),
-            value=current_rules.allow_self_vote,
-        )
-        allow_vote_revision = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_vote_revision"),
-            value=current_rules.allow_vote_revision,
-        )
-        allow_night_action_revision = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_night_action_revision"),
-            value=current_rules.allow_night_action_revision,
-        )
-        enable_first_night_attack = st.checkbox(
-            catalog.t(lang, "settings.rule.enable_first_night_attack"),
-            value=current_rules.enable_first_night_attack,
-        )
-        allow_knight_self_guard = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_knight_self_guard"),
-            value=current_rules.allow_knight_self_guard,
-        )
-        allow_knight_repeat_guard = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_knight_repeat_guard"),
-            value=current_rules.allow_knight_repeat_guard,
-        )
-        allow_seer_self_inspect = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_seer_self_inspect"),
-            value=current_rules.allow_seer_self_inspect,
-        )
-        allow_werewolf_friendly_fire = st.checkbox(
-            catalog.t(lang, "settings.rule.allow_werewolf_friendly_fire"),
-            value=current_rules.allow_werewolf_friendly_fire,
-        )
-        reveal_role_on_death = st.checkbox(
-            catalog.t(lang, "settings.rule.reveal_role_on_death"),
-            value=current_rules.reveal_role_on_death,
-        )
-        tie_rule = st.radio(
-            catalog.t(lang, "settings.rule.tie"),
-            ["no_elimination", "random_elimination"],
-            index=0 if current_rules.enable_no_elimination_on_tie else 1,
-            format_func=lambda value: catalog.t(
-                lang,
-                "settings.rule.tie.no_elimination"
-                if value == "no_elimination"
-                else "settings.rule.tie.random_elimination",
-            ),
-        )
-        apply_clicked = st.form_submit_button(
-            catalog.t(lang, "common.apply"),
-            use_container_width=True,
-        )
-        reset_clicked = st.form_submit_button(
-            catalog.t(lang, "common.default"),
-            use_container_width=True,
-        )
+    day_speech_limit_per_player = st.number_input(
+        catalog.t(lang, "settings.rule.day_speech_limit_per_player"),
+        min_value=1,
+        max_value=10,
+        step=1,
+        value=current_rules.day_speech_limit_per_player,
+    )
+    allow_self_vote = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_self_vote"),
+        value=current_rules.allow_self_vote,
+    )
+    allow_vote_revision = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_vote_revision"),
+        value=current_rules.allow_vote_revision,
+    )
+    allow_night_action_revision = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_night_action_revision"),
+        value=current_rules.allow_night_action_revision,
+    )
+    enable_first_night_attack = st.checkbox(
+        catalog.t(lang, "settings.rule.enable_first_night_attack"),
+        value=current_rules.enable_first_night_attack,
+    )
+    allow_knight_self_guard = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_knight_self_guard"),
+        value=current_rules.allow_knight_self_guard,
+    )
+    allow_knight_repeat_guard = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_knight_repeat_guard"),
+        value=current_rules.allow_knight_repeat_guard,
+    )
+    allow_seer_self_inspect = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_seer_self_inspect"),
+        value=current_rules.allow_seer_self_inspect,
+    )
+    allow_werewolf_friendly_fire = st.checkbox(
+        catalog.t(lang, "settings.rule.allow_werewolf_friendly_fire"),
+        value=current_rules.allow_werewolf_friendly_fire,
+    )
+    reveal_role_on_death = st.checkbox(
+        catalog.t(lang, "settings.rule.reveal_role_on_death"),
+        value=current_rules.reveal_role_on_death,
+    )
+    tie_rule = st.radio(
+        catalog.t(lang, "settings.rule.tie"),
+        ["no_elimination", "random_elimination"],
+        index=0 if current_rules.enable_no_elimination_on_tie else 1,
+        format_func=lambda value: catalog.t(
+            lang,
+            "settings.rule.tie.no_elimination"
+            if value == "no_elimination"
+            else "settings.rule.tie.random_elimination",
+        ),
+    )
+    next_rules = LocalRulesSettings(
+        day_speech_limit_per_player=int(day_speech_limit_per_player),
+        allow_self_vote=allow_self_vote,
+        allow_vote_revision=allow_vote_revision,
+        allow_night_action_revision=allow_night_action_revision,
+        enable_first_night_attack=enable_first_night_attack,
+        enable_no_elimination_on_tie=tie_rule == "no_elimination",
+        enable_random_elimination_on_tie=tie_rule == "random_elimination",
+        allow_knight_self_guard=allow_knight_self_guard,
+        allow_knight_repeat_guard=allow_knight_repeat_guard,
+        allow_seer_self_inspect=allow_seer_self_inspect,
+        allow_werewolf_friendly_fire=allow_werewolf_friendly_fire,
+        reveal_role_on_death=reveal_role_on_death,
+    )
+    if next_rules != current_rules:
+        remember_rules(st.session_state, next_rules)
+    reset_clicked = st.button(
+        catalog.t(lang, "common.default"),
+        use_container_width=True,
+    )
     if reset_clicked:
-        remember_rules(st.session_state, ruleset.default_rules)
+        remember_rules(st.session_state, setup_options.default_rules)
         st.success(catalog.t(lang, "settings.reset"))
         st.rerun()
-    if apply_clicked:
-        remember_rules(
-            st.session_state,
-            LocalRulesSettings(
-                allow_self_vote=allow_self_vote,
-                allow_vote_revision=allow_vote_revision,
-                allow_night_action_revision=allow_night_action_revision,
-                enable_first_night_attack=enable_first_night_attack,
-                enable_no_elimination_on_tie=tie_rule == "no_elimination",
-                enable_random_elimination_on_tie=tie_rule == "random_elimination",
-                allow_knight_self_guard=allow_knight_self_guard,
-                allow_knight_repeat_guard=allow_knight_repeat_guard,
-                allow_seer_self_inspect=allow_seer_self_inspect,
-                allow_werewolf_friendly_fire=allow_werewolf_friendly_fire,
-                reveal_role_on_death=reveal_role_on_death,
-            ),
-        )
-        st.success(catalog.t(lang, "settings.saved"))
 
 
-def _scenario_index(ruleset: RulesetResponse, scenario_id: str | None) -> int:
-    for index, scenario in enumerate(ruleset.scenarios):
+def _scenario_index(setup_options: GameSetupOptionsResponse, scenario_id: str | None) -> int:
+    for index, scenario in enumerate(setup_options.scenarios):
         if scenario.id == scenario_id:
             return index
     return 0
 
 
-def _setup_preset_index(ruleset: RulesetResponse, preset_id: str | None) -> int:
-    for index, preset in enumerate(ruleset.setup_presets):
+def _setup_preset_index(setup_options: GameSetupOptionsResponse, preset_id: str | None) -> int:
+    for index, preset in enumerate(setup_options.setup_presets):
         if preset.id == preset_id:
             return index
     return 0
@@ -905,25 +967,33 @@ def _character_option_index(
     return 0
 
 
+def _seat_index(seats: list[tuple[str, str]], player_id: str | None) -> int:
+    """Return the selected seat index for Streamlit selectbox defaults."""
+    for index, seat in enumerate(seats):
+        if seat[0] == player_id:
+            return index
+    return 0
+
+
 def _scenario_name(
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     scenario_id: str | None,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str:
-    for scenario in ruleset.scenarios:
+    for scenario in setup_options.scenarios:
         if scenario.id == scenario_id:
             return scenario.name
     return catalog.t(lang, "common.none")
 
 
 def _setup_preset_name(
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     preset_id: str,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str:
-    for preset in ruleset.setup_presets:
+    for preset in setup_options.setup_presets:
         if preset.id == preset_id:
             return preset.name
     return catalog.t(lang, "common.none")
@@ -934,12 +1004,12 @@ def _narration_label(value: NarrationMode, catalog: I18nCatalog, lang: Language)
 
 
 def _ability_name(
-    ruleset: RulesetResponse,
+    setup_options: GameSetupOptionsResponse,
     ability_id: str,
     catalog: I18nCatalog,
     lang: Language,
 ) -> str:
-    for ability in ruleset.abilities:
+    for ability in setup_options.abilities:
         if ability.id == ability_id:
             return ability.name
     return catalog.label(lang, "action", ability_id)
@@ -959,7 +1029,7 @@ def _has_duplicate_values(values: dict[str, str]) -> bool:
 
 
 def _role_count_key(role_id: str) -> str:
-    return f"{KEY_SETUP_ROLE_COUNTS}:{role_id}"
+    return f"{KEY_ROLE_COUNT_WIDGET_PREFIX}:{role_id}"
 
 
 def _create_game(
@@ -971,7 +1041,7 @@ def _create_game(
     role_counts: dict[str, int],
     rules: LocalRulesSettings,
     seed_text: str,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     screen_mode: str,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
@@ -989,7 +1059,7 @@ def _create_game(
             role_counts=role_counts,
             rules=rules,
             seed_text=seed_text,
-            human_player_id=human_player_id,
+            manual_player_id=manual_player_id,
             scenario_id=scenario_id,
             setup_preset_id=setup_preset_id,
             narration_mode=narration_mode,
@@ -1001,10 +1071,14 @@ def _create_game(
         feedback.error(str(exc))
         return
 
-    control_token = (created.control_tokens or {}).get(human_player_id or "", "")
+    manual_token = (
+        created.manual_player.token
+        if created.manual_player is not None and created.manual_player.player_id == manual_player_id
+        else ""
+    )
     slot = create_save_slot(
         created,
-        human_player_id=human_player_id,
+        manual_player_id=manual_player_id,
         role_counts=role_counts,
         rules=rules,
         seed=seed_from_text(seed_text),
@@ -1016,10 +1090,10 @@ def _create_game(
         custom_characters=custom_characters or [],
     )
     upsert_save_slot(settings.streamlit_save_file_path, slot)
-    remember_control_token(
+    remember_manual_player_token(
         st.session_state,
         slot_id=slot.slot_id,
-        control_token=control_token,
+        manual_token=manual_token,
     )
     remember_selected_save(st.session_state, f"slot:{slot.slot_id}")
     switch_view(st.session_state, VIEW_GAME)
@@ -1102,7 +1176,7 @@ def _render_next_actions(
             role_counts=role_counts_value,
             rules=rules_value,
             seed_text="",
-            human_player_id=selected_option.human_player_id
+            manual_player_id=selected_option.manual_player_id
             if selected_option.mode == "playable"
             else None,
             screen_mode=selected_option.mode,
@@ -1126,10 +1200,16 @@ def _render_next_actions(
             role_counts=role_counts_value,
             rules=rules_value,
             seed_text=same_seed_text,
-            human_player_id=selected_option.human_player_id
+            manual_player_id=selected_option.manual_player_id
             if selected_option.mode == "playable"
             else None,
             screen_mode=selected_option.mode,
+            scenario_id=selected_option.scenario_id,
+            setup_preset_id=selected_option.setup_preset_id,
+            narration_mode=cast(NarrationMode, selected_option.narration_mode),
+            character_assignments=selected_option.character_assignments or {},
+            custom_roles=selected_option.custom_roles or [],
+            custom_characters=selected_option.custom_characters or [],
             catalog=catalog,
             lang=lang,
         )
@@ -1143,9 +1223,16 @@ def _render_next_actions(
             st.session_state,
             cast(NarrationMode, selected_option.narration_mode),
         )
+        remember_manual_player_id(st.session_state, selected_option.manual_player_id)
+        for player_id, character_id in (selected_option.character_assignments or {}).items():
+            remember_character_assignment(
+                st.session_state,
+                player_id=player_id,
+                character_id=character_id,
+            )
         switch_view(
             st.session_state,
-            VIEW_SETUP if selected_option.mode == "playable" else VIEW_OBSERVER_SETUP,
+            VIEW_PLAY_SETUP if selected_option.mode == "playable" else VIEW_OBSERVE_SETUP,
         )
         st.rerun()
     if fourth.button(catalog.t(lang, "next_actions.saves"), use_container_width=True):
@@ -1221,8 +1308,8 @@ def _render_action_form(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    human_player_id = selected_option.human_player_id
-    if screen.observation is None or human_player_id is None:
+    manual_player_id = selected_option.manual_player_id
+    if screen.observation is None or manual_player_id is None:
         return
 
     st.markdown(command_divider_html(), unsafe_allow_html=True)
@@ -1278,8 +1365,8 @@ def _render_action_form(
                 api_url=api_url,
                 settings=settings,
                 game_id=selected_option.game_id,
-                human_player_id=human_player_id,
-                control_token=selected_option.control_token,
+                manual_player_id=manual_player_id,
+                manual_token=selected_option.manual_token,
                 action_type=selected_action.action_type,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
@@ -1310,7 +1397,7 @@ def _render_auto_advance_controls(
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
-    if selected_option.human_player_id is None:
+    if selected_option.manual_player_id is None:
         return
 
     st.markdown(command_divider_html(), unsafe_allow_html=True)
@@ -1335,7 +1422,7 @@ def _render_auto_advance_controls(
             pause_auto_advance(st.session_state)
             st.rerun()
     elif screen.hand_panel.can_advance and st.button(
-        catalog.t(lang, "action.advance_until_input"),
+        catalog.t(lang, "action.advance_one_step"),
         type="primary",
         use_container_width=True,
     ):

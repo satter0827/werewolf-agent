@@ -28,7 +28,10 @@ def available_actions(
     if player.status is not PlayerStatus.ALIVE:
         return []
     if snapshot.phase is Phase.DAY_DISCUSSION:
-        if _speech_count_for_today(snapshot, player_id) < 1:
+        if (
+            _speech_count_for_today(snapshot, player_id)
+            < snapshot.config.rules.day_speech_limit_per_player
+        ):
             return [ActionType.SPEECH]
         return []
     if snapshot.phase is Phase.VOTING:

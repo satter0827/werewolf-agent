@@ -16,14 +16,14 @@ from werewolf_agent.commons.shared.messages import (
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    GameResponse,
     GameRevealResponse,
-    GameRunResponse,
+    GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
     PlayerActionRequest,
     PlayerObservationResponse,
-    PublicGameRunSummary,
-    RulesetResponse,
+    PublicGameSummary,
 )
 from werewolf_agent.interface.entrypoint.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
@@ -60,15 +60,15 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
     )
 
 
-def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameRunSummary]:
-    """Return recent public game runs for the sidebar selector."""
+def list_recent_games(*, api_url: str, settings: AppSettings) -> list[PublicGameSummary]:
+    """Return recent public games for the sidebar selector."""
     client = build_streamlit_client(api_url, settings)
-    return client.list_games(limit=settings.streamlit_run_limit).runs
+    return client.list_games(limit=settings.streamlit_run_limit).games
 
 
-def load_ruleset(*, api_url: str, settings: AppSettings) -> RulesetResponse:
+def load_setup_options(*, api_url: str, settings: AppSettings) -> GameSetupOptionsResponse:
     """Return setup metadata from the public API."""
-    return build_streamlit_client(api_url, settings).get_ruleset()
+    return build_streamlit_client(api_url, settings).get_setup_options()
 
 
 def create_game_from_setup(
@@ -78,20 +78,20 @@ def create_game_from_setup(
     role_counts: dict[str, int],
     rules: LocalRulesSettings,
     seed_text: str,
-    human_player_id: str | None,
+    manual_player_id: str | None,
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode: NarrationMode,
     character_assignments: dict[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
     custom_characters: list[CustomCharacterDefinitionRequest],
-) -> GameRunResponse:
+) -> GameResponse:
     """Create a game from the shared Play/Observe setup."""
     seed = int(seed_text) if seed_text.strip() else None
     request = build_create_game_request(
         seed=seed,
         role_counts=role_counts,
-        human_player_id=human_player_id,
+        manual_player_id=manual_player_id,
         rules=rules,
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
@@ -107,7 +107,7 @@ def create_game_from_setup(
             "event_action": LOG_STREAMLIT_GAME_CREATED,
             "event_outcome": "success",
             "game_id": response.game_id,
-            "has_human_player": human_player_id is not None,
+            "has_manual_player": manual_player_id is not None,
             "player_count": len(response.state.players),
             "seed": seed,
         },
@@ -120,8 +120,8 @@ def load_game_screen(
     api_url: str,
     settings: AppSettings,
     game_id: str,
-    human_player_id: str | None,
-    control_token: str,
+    manual_player_id: str | None,
+    manual_token: str,
     screen_mode: ScreenMode,
     catalog: I18nCatalog,
     lang: Language,
@@ -134,8 +134,8 @@ def load_game_screen(
         load_observation(
             client=client,
             game_id=game_id,
-            human_player_id=human_player_id,
-            control_token=control_token,
+            manual_player_id=manual_player_id,
+            manual_token=manual_token,
         )
         if screen_mode == "playable"
         else None
@@ -146,7 +146,7 @@ def load_game_screen(
         turns=timeline,
         observation=observation,
         reveal=reveal,
-        human_player_id=human_player_id,
+        manual_player_id=manual_player_id,
         screen_mode=screen_mode,
         catalog=catalog,
         lang=lang,
@@ -186,16 +186,16 @@ def load_observation(
     *,
     client: GameApiClient,
     game_id: str,
-    human_player_id: str | None,
-    control_token: str,
+    manual_player_id: str | None,
+    manual_token: str,
 ) -> PlayerObservationResponse | None:
     """Return private observation only when the screen has enough operation context."""
-    if not game_id or not human_player_id or not control_token:
+    if not game_id or not manual_player_id or not manual_token:
         return None
     return client.get_private_observation(
         game_id,
-        human_player_id,
-        control_token=control_token,
+        manual_player_id,
+        manual_token=manual_token,
     )
 
 
@@ -204,8 +204,8 @@ def submit_screen_action(
     api_url: str,
     settings: AppSettings,
     game_id: str,
-    human_player_id: str,
-    control_token: str,
+    manual_player_id: str,
+    manual_token: str,
     action_type: str,
     target_id: str | None,
     message: str | None,
@@ -218,9 +218,9 @@ def submit_screen_action(
     )
     build_streamlit_client(api_url, settings).submit_player_action(
         game_id,
-        human_player_id,
+        manual_player_id,
         request,
-        control_token=control_token,
+        manual_token=manual_token,
     )
     logger.info(
         LOG_STREAMLIT_ACTION_SUBMITTED,

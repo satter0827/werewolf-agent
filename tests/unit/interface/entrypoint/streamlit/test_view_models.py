@@ -6,15 +6,15 @@ from werewolf_agent.contracts.schemas import (
     GameTimelineItem,
     LocalRulesSettings,
     PlayerObservationResponse,
-    PublicGameRunSummary,
     PublicGameState,
+    PublicGameSummary,
     PublicPlayerState,
 )
 from werewolf_agent.interface.entrypoint.streamlit.i18n import load_i18n
 from werewolf_agent.interface.entrypoint.streamlit.icons import action_icon, event_icon
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
     build_game_screen_view,
-    game_run_option_label,
+    game_option_label,
     target_candidates_for_action,
 )
 from werewolf_agent.interface.runtime import AppSettings
@@ -61,6 +61,7 @@ def _turn(event_type: str, payload: dict[str, object]) -> GameTimelineItem:
 
 def _rules() -> LocalRulesSettings:
     return LocalRulesSettings(
+        day_speech_limit_per_player=1,
         allow_self_vote=False,
         allow_vote_revision=False,
         allow_night_action_revision=False,
@@ -154,7 +155,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         turns=[_turn("unknown_private_event", {"target_id": "player-2", "role": "werewolf"})],
         observation=observation,
         reveal=None,
-        human_player_id="player-1",
+        manual_player_id="player-1",
         screen_mode="playable",
         catalog=catalog,
         lang="ja",
@@ -188,7 +189,7 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
         turns=turns,
         observation=None,
         reveal=None,
-        human_player_id=None,
+        manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
         lang="ja",
@@ -208,7 +209,7 @@ def test_observer_mode_uses_reveal_without_action_state() -> None:
         turns=[_turn("game_finished", {"winner": "villagers"})],
         observation=None,
         reveal=_reveal(),
-        human_player_id=None,
+        manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
         lang="ja",
@@ -233,7 +234,7 @@ def test_play_result_summary_uses_public_information_only() -> None:
         turns=[_turn("game_finished", {"winner": "villagers"})],
         observation=None,
         reveal=None,
-        human_player_id=None,
+        manual_player_id=None,
         screen_mode="playable",
         catalog=catalog,
         lang="ja",
@@ -253,7 +254,7 @@ def test_status_metrics_use_public_game_context_without_ids() -> None:
         turns=[],
         observation=None,
         reveal=None,
-        human_player_id=None,
+        manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
         lang="ja",
@@ -274,7 +275,7 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
         "vote",
         state=_state(),
         observation={"known_roles": {}},
-        human_player_id="player-1",
+        manual_player_id="player-1",
     )
 
     assert candidates == ["player-2"]
@@ -282,7 +283,7 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
 
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
     catalog = _catalog()
-    run = PublicGameRunSummary(
+    game = PublicGameSummary(
         game_id="game-unknown",
         status="running",
         phase="day_discussion",
@@ -300,7 +301,7 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
     assert event_icon("unknown_event").symbol == "•"
     assert action_icon("unknown_action").symbol == "•"
     assert catalog.label("ja", "event", "unknown_event") == "unknown_event"
-    assert "進行中 / Day 1 / 6" in game_run_option_label(run, catalog, "ja")
+    assert "進行中 / Day 1 / 6" in game_option_label(game, catalog, "ja")
 
 
 def test_observation_memo_uses_public_timeline_sanitization() -> None:
@@ -320,7 +321,7 @@ def test_observation_memo_uses_public_timeline_sanitization() -> None:
         ],
         observation=None,
         reveal=None,
-        human_player_id=None,
+        manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
         lang="ja",

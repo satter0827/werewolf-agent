@@ -12,7 +12,6 @@ from werewolf_agent.interface.shared.events.sinks import JsonlEventWriter, NullE
 def test_game_event_serializes_to_single_json_line() -> None:
     event = GameEvent(
         event_type="phase_started",
-        run_id="run-1",
         game_id="game-1",
         phase="day",
         day=1,
@@ -26,7 +25,6 @@ def test_game_event_serializes_to_single_json_line() -> None:
     assert payload["schema_version"] == "1.0"
     assert payload["event_id"] == str(event.event_id)
     assert payload["event_type"] == "phase_started"
-    assert payload["run_id"] == "run-1"
     assert payload["game_id"] == "game-1"
     assert payload["visibility"] == "public"
     assert payload["payload"] == {"message": "昼が始まりました", "api_key": "[REDACTED]"}
@@ -55,7 +53,6 @@ def test_null_event_sink_accepts_events() -> None:
 def test_error_event_serializes_safe_error_payload() -> None:
     event = error_event(
         ObservationError("Could not write event.", context={"api_key": "secret"}),
-        run_id="run-1",
         game_id="game-1",
     )
 

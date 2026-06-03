@@ -26,6 +26,7 @@ def test_language_state_defaults_to_settings_then_session_wins() -> None:
     assert current_language(session, settings) == "ja"
     remember_language(session, "en")
     assert current_language(session, settings) == "en"
+    assert session["werewolf_streamlit_preferences"] == {"language": "en"}
 
 
 def test_i18n_catalog_can_be_overridden_by_settings_file(tmp_path: Path) -> None:

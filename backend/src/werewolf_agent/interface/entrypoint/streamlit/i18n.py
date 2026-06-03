@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from typing import Any, Final, Literal, cast
 
 from werewolf_agent.contracts import ConfigError
+from werewolf_agent.interface.entrypoint.streamlit.state import KEY_STREAMLIT_PREFERENCES
 from werewolf_agent.interface.runtime import AppSettings
 from werewolf_agent.interface.runtime.resources import load_streamlit_i18n
 
 Language = Literal["ja", "en"]
-KEY_UI_LANGUAGE: Final = "werewolf_streamlit_ui_language"
 SUPPORTED_LANGUAGES: Final[frozenset[Language]] = frozenset({"ja", "en"})
 
 
@@ -56,13 +56,21 @@ def load_i18n(settings: AppSettings) -> I18nCatalog:
 
 def current_language(session: MutableMapping[str, Any], settings: AppSettings) -> Language:
     """Return the current UI language, defaulting to settings only on first load."""
-    raw_value = session.get(KEY_UI_LANGUAGE, settings.streamlit_language)
+    preferences = session.get(KEY_STREAMLIT_PREFERENCES)
+    raw_value = (
+        preferences.get("language", settings.streamlit_language)
+        if isinstance(preferences, dict)
+        else settings.streamlit_language
+    )
     return normalize_language(raw_value)
 
 
 def remember_language(session: MutableMapping[str, Any], language: str) -> None:
     """Store the current UI language in Streamlit session state."""
-    session[KEY_UI_LANGUAGE] = normalize_language(language)
+    preferences = session.get(KEY_STREAMLIT_PREFERENCES)
+    next_preferences = dict(preferences) if isinstance(preferences, dict) else {}
+    next_preferences["language"] = normalize_language(language)
+    session[KEY_STREAMLIT_PREFERENCES] = next_preferences
 
 
 def normalize_language(value: object) -> Language:

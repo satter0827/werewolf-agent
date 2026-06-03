@@ -1,10 +1,10 @@
 import logging
 
 from werewolf_agent.contracts.schemas import (
-    AdvanceGameRunResponse,
+    AdvanceGameResponse,
     CreateGameRequest,
+    GameResponse,
     GameRevealResponse,
-    GameRunResponse,
     GameTimelineResponse,
     LocalRulesSettings,
     PlayerObservationResponse,
@@ -43,7 +43,7 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
     assert record.log_output == "both"
     assert record.log_file_path == str(settings.log_file_path)
     assert record.log_third_party_level == "INFO"
-    assert not hasattr(record, "control_token")
+    assert not hasattr(record, "manual_token")
 
 
 class FakeStreamlitClient:
@@ -51,14 +51,14 @@ class FakeStreamlitClient:
         self.stepped = False
         self.created_request: CreateGameRequest | None = None
 
-    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameResponse:
         self.created_request = request
-        return GameRunResponse(game_id="game-1", state=_state(status="running", phase="night"))
+        return GameResponse(game_id="game-1", state=_state(status="running", phase="night"))
 
-    def get_game(self, game_id: str) -> GameRunResponse:
+    def get_game(self, game_id: str) -> GameResponse:
         phase = "finished" if self.stepped else "day_discussion"
         status = "completed" if self.stepped else "running"
-        return GameRunResponse(game_id=game_id, state=_state(status=status, phase=phase))
+        return GameResponse(game_id=game_id, state=_state(status=status, phase=phase))
 
     def get_game_reveal(self, game_id: str) -> GameRevealResponse:
         return GameRevealResponse(
@@ -107,9 +107,9 @@ class FakeStreamlitClient:
         game_id: str,
         player_id: str,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerObservationResponse:
-        _ = control_token
+        _ = manual_token
         return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
@@ -120,9 +120,9 @@ class FakeStreamlitClient:
             },
         )
 
-    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
+    def advance_game(self, game_id: str) -> AdvanceGameResponse:
         self.stepped = True
-        return AdvanceGameRunResponse(
+        return AdvanceGameResponse(
             game_id=game_id,
             status="completed",
             state=_state(status="completed", phase="finished"),
@@ -154,7 +154,7 @@ def test_advance_one_step_logs_public_step_without_private_context(
         if record.event_action == "streamlit.advance_step.completed"
     )
     assert completed.game_phase == "finished"
-    assert not hasattr(completed, "control_token")
+    assert not hasattr(completed, "manual_token")
 
 
 def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -> None:
@@ -170,7 +170,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
             role_counts={"werewolf": 1, "villager": 4},
             rules=rules,
             seed_text="7",
-            human_player_id="player-1",
+            manual_player_id="player-1",
             scenario_id="classic_village",
             setup_preset_id="standard_6",
             narration_mode="standard",
@@ -182,7 +182,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
     assert created.game_id == "game-1"
     assert client.created_request is not None
     assert client.created_request.role_counts == {"werewolf": 1, "villager": 4}
-    assert client.created_request.human_player_id == "player-1"
+    assert client.created_request.manual_player_id == "player-1"
     assert client.created_request.seed == 7
     assert client.created_request.rules == rules
     assert client.created_request.scenario_id == "classic_village"
@@ -190,7 +190,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
         record for record in caplog.records if record.event_action == "streamlit.game.created"
     )
     assert record.player_count == 2
-    assert not hasattr(record, "control_token")
+    assert not hasattr(record, "manual_token")
 
 
 def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -> None:
@@ -203,8 +203,8 @@ def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -
         api_url="http://api.test/api/v1",
         settings=settings,
         game_id="game-1",
-        human_player_id=None,
-        control_token="",
+        manual_player_id=None,
+        manual_token="",
         screen_mode="observer",
         catalog=catalog,
         lang="ja",
@@ -237,6 +237,7 @@ def _state(*, status: str, phase: str) -> PublicGameState:
 
 def _rules() -> LocalRulesSettings:
     return LocalRulesSettings(
+        day_speech_limit_per_player=1,
         allow_self_vote=False,
         allow_vote_revision=False,
         allow_night_action_revision=False,

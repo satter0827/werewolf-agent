@@ -11,19 +11,20 @@ from typer.testing import CliRunner
 
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
-    AdvanceGameRunResponse,
+    AdvanceGameResponse,
     CreateGameRequest,
-    GameRunResponse,
-    GameRunsResponse,
+    GameListResponse,
+    GameResponse,
+    GameSetupOptionsResponse,
     GameTimelineItem,
     GameTimelineResponse,
+    ManualPlayerCredential,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
-    PublicGameRunSummary,
     PublicGameState,
+    PublicGameSummary,
     PublicPlayerState,
-    RulesetResponse,
 )
 from werewolf_agent.interface.entrypoint.cui import commands as cui_commands
 from werewolf_agent.interface.entrypoint.cui.app import app
@@ -81,8 +82,8 @@ def _event(sequence: int, event_type: str, payload: dict[str, object]) -> GameTi
     )
 
 
-def _run_summary() -> PublicGameRunSummary:
-    return PublicGameRunSummary(
+def _run_summary() -> PublicGameSummary:
+    return PublicGameSummary(
         game_id="game-1",
         status="completed",
         phase="finished",
@@ -110,23 +111,27 @@ class FakeGameApiClient:
             _event(3, "game_finished", {"winner": "villagers"}),
         ]
 
-    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameResponse:
         self.calls.append(("create", request.player_count))
         self.available_sequence = 1
-        control_tokens = {"player-1": "token"} if request.human_player_id == "player-1" else None
-        return GameRunResponse(game_id="game-1", state=_state(), control_tokens=control_tokens)
+        manual_player = (
+            ManualPlayerCredential(player_id="player-1", token="token")
+            if request.manual_player_id == "player-1"
+            else None
+        )
+        return GameResponse(game_id="game-1", state=_state(), manual_player=manual_player)
 
-    def get_game(self, game_id: str) -> GameRunResponse:
+    def get_game(self, game_id: str) -> GameResponse:
         self.calls.append(("get", game_id))
-        return GameRunResponse(game_id="game-1", state=_state())
+        return GameResponse(game_id="game-1", state=_state())
 
     def health(self) -> dict[str, str]:
         self.calls.append(("health", "ok"))
         return {"status": "ok", "service": "werewolf-agent-api"}
 
-    def get_ruleset(self) -> RulesetResponse:
-        self.calls.append(("ruleset", "default"))
-        return RulesetResponse(
+    def get_setup_options(self) -> GameSetupOptionsResponse:
+        self.calls.append(("setup_options", "default"))
+        return GameSetupOptionsResponse(
             player_count={"min": 5, "max": 8},
             roles=[
                 {"id": "villager", "name": "Villager", "faction": "village", "abilities": []},
@@ -134,6 +139,7 @@ class FakeGameApiClient:
             ],
             default_role_counts={"werewolf": 1, "villager": 4},
             default_rules={
+                "day_speech_limit_per_player": 1,
                 "allow_self_vote": False,
                 "allow_vote_revision": False,
                 "allow_night_action_revision": False,
@@ -148,14 +154,14 @@ class FakeGameApiClient:
             },
         )
 
-    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
+    def advance_game(self, game_id: str) -> AdvanceGameResponse:
         self.calls.append(("advance", game_id))
         self.available_sequence += 1
         status = "completed" if self.available_sequence >= 3 else "running"
         phase = "finished" if status == "completed" else "day_discussion"
         winner = "villagers" if status == "completed" else None
         timeline = [item for item in self.events if item.sequence == self.available_sequence]
-        return AdvanceGameRunResponse(
+        return AdvanceGameResponse(
             game_id=game_id,
             status=status,
             state=_state(status=status, phase=phase, winner=winner),
@@ -183,18 +189,18 @@ class FakeGameApiClient:
         status: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> GameRunsResponse:
-        self.calls.append(("runs", (status, limit, offset)))
-        return GameRunsResponse(runs=[_run_summary()])
+    ) -> GameListResponse:
+        self.calls.append(("games", (status, limit, offset)))
+        return GameListResponse(games=[_run_summary()])
 
     def get_private_observation(
         self,
         game_id: str,
         player_id: str,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerObservationResponse:
-        self.calls.append(("observation", (game_id, player_id, control_token)))
+        self.calls.append(("observation", (game_id, player_id, manual_token)))
         return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
@@ -214,9 +220,9 @@ class FakeGameApiClient:
         player_id: str,
         request: PlayerActionRequest,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerActionResponse:
-        self.calls.append(("action", (game_id, player_id, request.type, control_token)))
+        self.calls.append(("action", (game_id, player_id, request.type, manual_token)))
         return PlayerActionResponse(
             game_id=game_id,
             player_id=player_id,
@@ -372,7 +378,7 @@ def test_cli_startup_log_writes_trace_settings(tmp_path: Path) -> None:
     assert startup_payload["log_output"] == "file"
     assert startup_payload["log_file_path"] == str(log_file)
     assert startup_payload["log_third_party_level"] == "INFO"
-    assert "control_token" not in startup_payload
+    assert "manual_token" not in startup_payload
 
 
 def test_play_command_uses_public_api_client(
@@ -464,7 +470,7 @@ def test_play_json_output_is_single_machine_readable_document(
     assert [item["sequence"] for item in payload["timeline"]] == [1, 2, 3]
 
 
-def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_new_command_can_request_one_manual_player(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
 
@@ -474,7 +480,7 @@ def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatc
             "new",
             "--api-url",
             "http://api.test/api/v1",
-            "--human-player",
+            "--manual-player",
             "player-1",
             "--role-count",
             "werewolf=1",
@@ -484,11 +490,11 @@ def test_new_command_can_request_one_human_player(monkeypatch: pytest.MonkeyPatc
     )
 
     assert result.exit_code == 0
-    assert "control token" in result.output
+    assert "manual token" in result.output
     assert fake_client.calls == [("create", 5)]
 
 
-def test_new_command_rejects_unknown_human_player() -> None:
+def test_new_command_rejects_unknown_manual_player() -> None:
     result = CliRunner().invoke(
         app,
         [
@@ -497,38 +503,40 @@ def test_new_command_rejects_unknown_human_player() -> None:
             "werewolf=1",
             "--role-count",
             "villager=4",
-            "--human-player",
+            "--manual-player",
             "player-9",
         ],
     )
 
     assert result.exit_code == 1
-    assert "human_player_id must match a generated player id" in result.output
+    assert "manual_player_id must match a generated player id" in result.output
 
 
-def test_ruleset_show_and_advance_commands_use_public_api_client(
+def test_setup_options_show_and_advance_commands_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fake_client = FakeGameApiClient()
     monkeypatch.setattr(cui_commands, "_build_game_api_client", lambda _api_url: fake_client)
 
-    ruleset_result = CliRunner().invoke(app, ["ruleset", "--api-url", "http://api.test/api/v1"])
+    setup_options_result = CliRunner().invoke(
+        app, ["setup-options", "--api-url", "http://api.test/api/v1"]
+    )
     show_result = CliRunner().invoke(app, ["show", "game-1", "--api-url", "http://api.test/api/v1"])
     advance_result = CliRunner().invoke(
         app, ["advance", "game-1", "--api-url", "http://api.test/api/v1"]
     )
 
-    assert ruleset_result.exit_code == 0
+    assert setup_options_result.exit_code == 0
     assert show_result.exit_code == 0
     assert advance_result.exit_code == 0
-    assert ("ruleset", "default") in fake_client.calls
+    assert ("setup_options", "default") in fake_client.calls
     assert ("get", "game-1") in fake_client.calls
     assert ("advance", "game-1") in fake_client.calls
 
 
 def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingGameApiClient(FakeGameApiClient):
-        def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+        def create_game(self, request: CreateGameRequest) -> GameResponse:
             _ = request
             raise AppError(
                 "game.invalid_action: The selected action is not allowed.",
@@ -549,7 +557,7 @@ def test_play_command_handles_api_problem_safely(monkeypatch: pytest.MonkeyPatch
     assert "secret" not in result.output
 
 
-def test_timeline_replay_and_runs_use_public_api_client(
+def test_timeline_replay_and_games_use_public_api_client(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -565,12 +573,12 @@ def test_timeline_replay_and_runs_use_public_api_client(
         ["timeline", "game-1", "--api-url", "http://api.test/api/v1", "--log-jsonl", str(log_path)],
     )
     replay_result = CliRunner().invoke(app, ["replay", "--timeline", str(timeline_path)])
-    runs_result = CliRunner().invoke(app, ["runs", "--api-url", "http://api.test/api/v1"])
+    games_result = CliRunner().invoke(app, ["games", "--api-url", "http://api.test/api/v1"])
 
     assert timeline_result.exit_code == 0
     assert replay_result.exit_code == 0
-    assert runs_result.exit_code == 0
-    assert "Game Runs" in runs_result.output
+    assert games_result.exit_code == 0
+    assert "Games" in games_result.output
     assert "game_started" in timeline_result.output
     assert log_path.exists()
 

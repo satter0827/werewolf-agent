@@ -1,4 +1,4 @@
-"""SQLAlchemy persistence models for game runs and events."""
+"""SQLAlchemy persistence models for games and events."""
 
 from __future__ import annotations
 
@@ -20,10 +20,10 @@ class Base(DeclarativeBase):
     """Base class for SQLAlchemy ORM models."""
 
 
-class GameRunModel(Base):
-    """Persisted game run owned by the API server."""
+class GameModel(Base):
+    """Persisted game owned by the API server."""
 
-    __tablename__ = "game_runs"
+    __tablename__ = "games"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     status: Mapped[str] = mapped_column(String(24), nullable=False)
@@ -34,35 +34,35 @@ class GameRunModel(Base):
     public_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     private_state: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     pending_actions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
-    control_token_hashes: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
+    manual_token_hashes: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False, default=dict)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     events: Mapped[list[GameEventModel]] = relationship(
-        back_populates="run",
+        back_populates="game",
         cascade="all, delete-orphan",
     )
-    summary: Mapped[GameRunSummaryModel | None] = relationship(
-        back_populates="run",
+    summary: Mapped[GameSummaryModel | None] = relationship(
+        back_populates="game",
         cascade="all, delete-orphan",
     )
     turns: Mapped[list[GameTurnModel]] = relationship(
-        back_populates="run",
+        back_populates="game",
         cascade="all, delete-orphan",
     )
 
 
 class GameEventModel(Base):
-    """Persisted event stream record for one game run."""
+    """Persisted event stream record for one game."""
 
     __tablename__ = "game_events"
     __table_args__ = (
-        UniqueConstraint("run_id", "sequence", name="game_events_run_sequence_unique"),
+        UniqueConstraint("game_id", "sequence", name="game_events_game_sequence_unique"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(ForeignKey("game_runs.id", ondelete="CASCADE"))
+    game_id: Mapped[str] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"))
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     event_id: Mapped[str] = mapped_column(
         String(36),
@@ -77,16 +77,16 @@ class GameEventModel(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    run: Mapped[GameRunModel] = relationship(back_populates="events")
+    game: Mapped[GameModel] = relationship(back_populates="events")
 
 
-class GameRunSummaryModel(Base):
-    """Persisted read model for run lists and analytics."""
+class GameSummaryModel(Base):
+    """Persisted read model for game lists and analytics."""
 
-    __tablename__ = "game_run_summaries"
+    __tablename__ = "game_summaries"
 
-    run_id: Mapped[str] = mapped_column(
-        ForeignKey("game_runs.id", ondelete="CASCADE"),
+    game_id: Mapped[str] = mapped_column(
+        ForeignKey("games.id", ondelete="CASCADE"),
         primary_key=True,
     )
     status: Mapped[str] = mapped_column(String(24), nullable=False)
@@ -103,20 +103,20 @@ class GameRunSummaryModel(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    run: Mapped[GameRunModel] = relationship(back_populates="summary")
+    game: Mapped[GameModel] = relationship(back_populates="summary")
 
 
 class GameTurnModel(Base):
-    """Persisted public timeline read model for one game run."""
+    """Persisted public timeline read model for one game."""
 
     __tablename__ = "game_turns"
     __table_args__ = (
-        UniqueConstraint("run_id", "sequence", name="game_turns_run_sequence_unique"),
-        UniqueConstraint("run_id", "event_sequence", name="game_turns_run_event_unique"),
+        UniqueConstraint("game_id", "sequence", name="game_turns_game_sequence_unique"),
+        UniqueConstraint("game_id", "event_sequence", name="game_turns_game_event_unique"),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    run_id: Mapped[str] = mapped_column(ForeignKey("game_runs.id", ondelete="CASCADE"))
+    game_id: Mapped[str] = mapped_column(ForeignKey("games.id", ondelete="CASCADE"))
     sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     event_sequence: Mapped[int] = mapped_column(Integer, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -127,7 +127,7 @@ class GameTurnModel(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
-    run: Mapped[GameRunModel] = relationship(back_populates="turns")
+    game: Mapped[GameModel] = relationship(back_populates="turns")
 
 
 def max_event_sequence() -> Any:

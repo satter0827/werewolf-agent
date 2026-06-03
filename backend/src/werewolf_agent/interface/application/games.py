@@ -14,10 +14,10 @@ from werewolf_agent.commons.shared.definitions import (
     CustomRoleDefinition,
 )
 from werewolf_agent.commons.shared.messages import (
-    LOG_GAME_RUN_CREATED,
-    LOG_GAME_RUN_STEPPED,
-    LOG_GAME_RUNS_LISTED,
+    LOG_GAME_CREATED,
+    LOG_GAME_STEPPED,
     LOG_GAME_TIMELINE_LISTED,
+    LOG_GAMES_LISTED,
     LOG_PLAYER_ACTION_SUBMITTED,
     LOG_PRIVATE_OBSERVATION_RETURNED,
     MESSAGE_GAME_NOT_FOUND,
@@ -31,25 +31,24 @@ from werewolf_agent.contracts import (
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     AbilityDefinitionView,
-    AdvanceGameRunResponse,
-    AdvanceUntilInputResponse,
+    AdvanceGameResponse,
     CharacterDefinitionView,
     CreateGameRequest,
+    GameListResponse,
+    GameResponse,
     GameRevealResponse,
-    GameRunResponse,
-    GameRunsResponse,
+    GameSetupOptionsResponse,
     GameTimelineResponse,
     LocalRulesSettings,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
     RoleDefinitionView,
-    RulesetResponse,
     ScenarioDefinitionView,
     SetupPresetDefinitionView,
 )
 from werewolf_agent.interface.application.database import SessionFactory, session_scope
-from werewolf_agent.interface.application.repositories import SqlAlchemyGameRunRepository
+from werewolf_agent.interface.application.repositories import SqlAlchemyGameRepository
 from werewolf_agent.interface.application.settings import (
     build_game_definitions,
     build_game_usecase_config,
@@ -63,30 +62,30 @@ TModel = TypeVar("TModel", bound=BaseModel)
 logger = logging.getLogger(__name__)
 
 
-def get_default_ruleset(*, settings: AppSettings) -> RulesetResponse:
-    """Return the public ruleset.
+def get_setup_options(*, settings: AppSettings) -> GameSetupOptionsResponse:
+    """Return public setup options.
 
     Args:
         settings: Loaded application settings.
 
     Returns:
-        Wire schema containing ruleset metadata and display names.
+        Wire schema containing setup metadata and display names.
 
     """
-    ruleset = game_jobs.GameUseCases.get_default_ruleset(
+    options = game_jobs.GameService.get_setup_options(
         build_game_usecase_config(settings),
         build_game_definitions(settings),
         build_llm_definitions(settings),
     )
-    return _ruleset_response(ruleset, settings)
+    return _setup_options_response(options, settings)
 
 
-def create_game_run(
+def create_game(
     request: CreateGameRequest,
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
-) -> GameRunResponse:
+) -> GameResponse:
     """Create and persist one deterministic game.
 
     Args:
@@ -100,26 +99,26 @@ def create_game_run(
     """
     command = _create_command(request, settings)
     with session_scope(session_factory) as session:
-        response = _use_cases(session, settings).create_game_run(command)
+        response = _use_cases(session, settings).create_game(command)
     logger.info(
-        LOG_GAME_RUN_CREATED,
+        LOG_GAME_CREATED,
         extra={
-            "event_action": LOG_GAME_RUN_CREATED,
+            "event_action": LOG_GAME_CREATED,
             "event_outcome": "success",
             "game_id": response.game_id,
             "player_count": request.player_count,
         },
     )
-    return _wire_model(GameRunResponse, response)
+    return _wire_model(GameResponse, response)
 
 
-def get_game_run(
+def get_game(
     game_id: str,
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
-) -> GameRunResponse:
-    """Return the current public state for one game run.
+) -> GameResponse:
+    """Return the current public state for one game.
 
     Args:
         game_id: Game id from the public route.
@@ -130,17 +129,17 @@ def get_game_run(
         Public game response.
 
     Raises:
-        ResourceNotFoundError: If the id is invalid or the run is absent.
+        ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
     with session_scope(session_factory) as session:
         try:
-            response = _use_cases(session, settings).get_game_run(
-                game_jobs.GetGameRunQuery(game_id=game_id)
+            response = _use_cases(session, settings).get_game(
+                game_jobs.GetGameQuery(game_id=game_id)
             )
         except (GameNotFoundError, InvalidGameIdError) as exc:
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-    return _wire_model(GameRunResponse, response)
+    return _wire_model(GameResponse, response)
 
 
 def get_game_reveal(
@@ -162,52 +161,52 @@ def get_game_reveal(
     return _wire_model(GameRevealResponse, response)
 
 
-def list_game_runs(
+def list_games(
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
     status: game_jobs.GameStatus | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> GameRunsResponse:
-    """Return public game run summaries.
+) -> GameListResponse:
+    """Return public game summaries.
 
     Args:
         session_factory: SQLAlchemy session factory for one transaction.
         settings: Loaded application settings.
-        status: Optional public run status filter.
+        status: Optional public game status filter.
         limit: Maximum number of rows to return.
         offset: Result offset for pagination.
 
     Returns:
-        Public run summaries and pagination metadata.
+        Public game summaries and pagination metadata.
 
     """
     with session_scope(session_factory) as session:
-        response = _use_cases(session, settings).list_game_runs(
-            game_jobs.ListGameRunsQuery(status=status, limit=limit, offset=offset)
+        response = _use_cases(session, settings).list_games(
+            game_jobs.ListGamesQuery(status=status, limit=limit, offset=offset)
         )
     logger.debug(
-        LOG_GAME_RUNS_LISTED,
+        LOG_GAMES_LISTED,
         extra={
-            "event_action": LOG_GAME_RUNS_LISTED,
+            "event_action": LOG_GAMES_LISTED,
             "event_outcome": "success",
             "game_status": status,
             "limit": limit,
             "offset": offset,
-            "count": len(response.runs),
+            "count": len(response.games),
         },
     )
-    return _wire_model(GameRunsResponse, response)
+    return _wire_model(GameListResponse, response)
 
 
-def advance_game_run(
+def advance_game(
     game_id: str,
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
-) -> AdvanceGameRunResponse:
-    """Advance one game run by one deterministic use case step.
+) -> AdvanceGameResponse:
+    """Advance one game by one deterministic use case step.
 
     Args:
         game_id: Game id from the public route.
@@ -218,20 +217,20 @@ def advance_game_run(
         Updated public state and emitted public timeline items.
 
     Raises:
-        ResourceNotFoundError: If the id is invalid or the run is absent.
+        ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
     with session_scope(session_factory) as session:
         try:
-            response = _use_cases(session, settings).advance_game_run(
-                game_jobs.AdvanceGameRunCommand(game_id=game_id)
+            response = _use_cases(session, settings).advance_game(
+                game_jobs.AdvanceGameCommand(game_id=game_id)
             )
         except (GameNotFoundError, InvalidGameIdError) as exc:
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
     logger.info(
-        LOG_GAME_RUN_STEPPED,
+        LOG_GAME_STEPPED,
         extra={
-            "event_action": LOG_GAME_RUN_STEPPED,
+            "event_action": LOG_GAME_STEPPED,
             "event_outcome": "success",
             "game_id": response.game_id,
             "game_status": response.status,
@@ -241,46 +240,10 @@ def advance_game_run(
             "event_count": len(response.timeline),
         },
     )
-    return _wire_model(AdvanceGameRunResponse, response)
+    return _wire_model(AdvanceGameResponse, response)
 
 
-def advance_until_input(
-    game_id: str,
-    *,
-    session_factory: SessionFactory,
-    settings: AppSettings,
-    max_steps: int | None = None,
-) -> AdvanceUntilInputResponse:
-    """Advance one game until manual input, completion, or step limit."""
-    with session_scope(session_factory) as session:
-        try:
-            response = _use_cases(session, settings).advance_until_input(
-                game_jobs.AdvanceUntilInputCommand(
-                    game_id=game_id,
-                    max_steps=max_steps or settings.game_advance_until_input_max_steps,
-                )
-            )
-        except (GameNotFoundError, InvalidGameIdError) as exc:
-            raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
-    logger.info(
-        LOG_GAME_RUN_STEPPED,
-        extra={
-            "event_action": LOG_GAME_RUN_STEPPED,
-            "event_outcome": "success",
-            "game_id": response.game_id,
-            "game_status": response.status,
-            "game_phase": response.state.get("phase"),
-            "game_day": response.state.get("day"),
-            "game_version": response.state.get("version"),
-            "event_count": len(response.timeline),
-            "stop_reason": response.stop_reason,
-            "steps": response.steps,
-        },
-    )
-    return _wire_model(AdvanceUntilInputResponse, response)
-
-
-def get_game_timeline(
+def list_timeline(
     game_id: str,
     *,
     session_factory: SessionFactory,
@@ -301,13 +264,13 @@ def get_game_timeline(
         Public timeline items and the next sequence cursor.
 
     Raises:
-        ResourceNotFoundError: If the id is invalid or the run is absent.
+        ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
     with session_scope(session_factory) as session:
         try:
-            response = _use_cases(session, settings).get_game_timeline(
-                game_jobs.GetGameTimelineQuery(game_id=game_id, after=after, limit=limit)
+            response = _use_cases(session, settings).list_timeline(
+                game_jobs.ListTimelineQuery(game_id=game_id, after=after, limit=limit)
             )
         except (GameNotFoundError, InvalidGameIdError) as exc:
             raise ResourceNotFoundError(MESSAGE_GAME_NOT_FOUND) from exc
@@ -332,7 +295,7 @@ def get_player_observation(
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
-    control_token: str,
+    manual_token: str,
 ) -> PlayerObservationResponse:
     """Return a private observation for one authenticated manual player.
 
@@ -341,13 +304,13 @@ def get_player_observation(
         player_id: Player id from the public route.
         session_factory: SQLAlchemy session factory for one transaction.
         settings: Loaded application settings.
-        control_token: Bearer token supplied by the client.
+        manual_token: Bearer token supplied by the client.
 
     Returns:
         Private observation visible to the authenticated player.
 
     Raises:
-        ResourceNotFoundError: If the id is invalid or the run is absent.
+        ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
     with session_scope(session_factory) as session:
@@ -356,7 +319,7 @@ def get_player_observation(
                 game_jobs.GetPlayerObservationQuery(
                     game_id=game_id,
                     player_id=player_id,
-                    control_token=control_token,
+                    manual_token=manual_token,
                 )
             )
         except (GameNotFoundError, InvalidGameIdError) as exc:
@@ -379,7 +342,7 @@ def submit_player_action(
     *,
     session_factory: SessionFactory,
     settings: AppSettings,
-    control_token: str,
+    manual_token: str,
 ) -> PlayerActionResponse:
     """Submit one authenticated manual player action.
 
@@ -389,13 +352,13 @@ def submit_player_action(
         request: Validated manual action body.
         session_factory: SQLAlchemy session factory for one transaction.
         settings: Loaded application settings.
-        control_token: Bearer token supplied by the client.
+        manual_token: Bearer token supplied by the client.
 
     Returns:
         Updated public state and public timeline items caused by the action.
 
     Raises:
-        ResourceNotFoundError: If the id is invalid or the run is absent.
+        ResourceNotFoundError: If the id is invalid or the game is absent.
 
     """
     with session_scope(session_factory) as session:
@@ -404,7 +367,7 @@ def submit_player_action(
                 game_jobs.PlayerActionCommand(
                     game_id=game_id,
                     player_id=player_id,
-                    control_token=control_token,
+                    manual_token=manual_token,
                     **request.model_dump(mode="json"),
                 )
             )
@@ -423,8 +386,8 @@ def submit_player_action(
     return _wire_model(PlayerActionResponse, response)
 
 
-def _use_cases(session: Session, settings: AppSettings) -> game_jobs.GameUseCases:
-    return game_jobs.GameUseCases(_dependencies(session, settings))
+def _use_cases(session: Session, settings: AppSettings) -> game_jobs.GameService:
+    return game_jobs.GameService(_dependencies(session, settings))
 
 
 def _dependencies(
@@ -432,7 +395,7 @@ def _dependencies(
     settings: AppSettings,
 ) -> game_jobs.GameUseCaseDependencies:
     return game_jobs.GameUseCaseDependencies(
-        repository=SqlAlchemyGameRunRepository(session),
+        repository=SqlAlchemyGameRepository(session),
         config=build_game_usecase_config(settings),
         game_definitions=build_game_definitions(settings),
         llm_definitions=build_llm_definitions(settings),
@@ -452,7 +415,7 @@ def _create_command(
     return game_jobs.CreateGameCommand(
         seed=request.seed,
         role_counts=request.role_counts,
-        human_player_id=request.human_player_id,
+        manual_player_id=request.manual_player_id,
         rules=request.rules or settings.game_definitions.rules.local_rules,
         scenario_id=request.scenario_id,
         setup_preset_id=request.setup_preset_id,
@@ -469,10 +432,13 @@ def _create_command(
     )
 
 
-def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -> RulesetResponse:
+def _setup_options_response(
+    options: game_jobs.GameSetupOptionsResult,
+    settings: AppSettings,
+) -> GameSetupOptionsResponse:
     role_names = settings.game_role_name_map
-    return RulesetResponse(
-        player_count=ruleset.player_count,
+    return GameSetupOptionsResponse(
+        player_count=options.player_count,
         roles=[
             RoleDefinitionView(
                 id=role_id,
@@ -482,15 +448,15 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
                 description=str(definition.get("description") or ""),
                 difficulty=int(definition.get("difficulty") or 1),
             )
-            for role_id, definition in ruleset.roles.items()
+            for role_id, definition in options.roles.items()
         ],
-        default_role_counts=ruleset.default_role_counts,
+        default_role_counts=options.default_role_counts,
         default_rules=LocalRulesSettings.model_validate(
-            ruleset.default_rules.model_dump(mode="json")
+            options.default_rules.model_dump(mode="json")
         ),
-        default_scenario_id=ruleset.default_scenario_id,
-        default_setup_preset_id=ruleset.default_setup_preset_id,
-        default_narration_mode=ruleset.default_narration_mode,
+        default_scenario_id=options.default_scenario_id,
+        default_setup_preset_id=options.default_setup_preset_id,
+        default_narration_mode=options.default_narration_mode,
         abilities=[
             AbilityDefinitionView(
                 id=ability_id,
@@ -499,7 +465,7 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
                 target_policy=str(definition["target_policy"]),
                 difficulty=int(definition["difficulty"]),
             )
-            for ability_id, definition in ruleset.abilities.items()
+            for ability_id, definition in options.abilities.items()
         ],
         scenarios=[
             ScenarioDefinitionView(
@@ -511,7 +477,7 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
                     definition.get("recommended_setup_preset"),
                 ),
             )
-            for scenario_id, definition in ruleset.scenarios.items()
+            for scenario_id, definition in options.scenarios.items()
         ],
         setup_presets=[
             SetupPresetDefinitionView(
@@ -523,7 +489,7 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
                     for role_id, count in dict(definition["role_counts"]).items()
                 },
             )
-            for preset_id, definition in ruleset.setup_presets.items()
+            for preset_id, definition in options.setup_presets.items()
         ],
         characters=[
             CharacterDefinitionView(
@@ -536,6 +502,6 @@ def _ruleset_response(ruleset: game_jobs.RulesetResult, settings: AppSettings) -
                 reasoning_style=str(definition["reasoning_style"]),
                 risk_tolerance=str(definition["risk_tolerance"]),
             )
-            for character_id, definition in ruleset.characters.items()
+            for character_id, definition in options.characters.items()
         ],
     )

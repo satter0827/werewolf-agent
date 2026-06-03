@@ -42,7 +42,7 @@ class AgentFactory(Protocol):
     """Factory for deterministic player agents."""
 
     def create(self, player_id: str, *, seed: int) -> PlayerAgent:
-        """Create one player agent for a deterministic run step."""
+        """Create one player agent for a deterministic game step."""
 
 
 @dataclass(frozen=True)
@@ -67,7 +67,7 @@ class LlmAgent:
 
 @dataclass(frozen=True)
 class LlmAgentFactory:
-    """Create LLM agents for automated game runs."""
+    """Create LLM agents for automated games."""
 
     provider: LlmDecisionProvider
     profiles: dict[str, PlayerProfile]
@@ -75,7 +75,7 @@ class LlmAgentFactory:
     scenario: AgentScenario | None = None
 
     def create(self, player_id: str, *, seed: int) -> LlmAgent:
-        """Create one LLM agent for a deterministic run step."""
+        """Create one LLM agent for a deterministic game step."""
         profile_id = self.profile_ids_by_player.get(player_id)
         if profile_id is None or profile_id not in self.profiles:
             profile_ids = sorted(self.profiles)

@@ -20,27 +20,26 @@ from werewolf_agent.commons.shared.definitions import (
 )
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
 from werewolf_agent.usecase.jobs import (
-    AdvanceGameRunCommand,
-    AdvanceUntilInputCommand,
+    AdvanceGameCommand,
     CreateGameCommand,
     GameEventCreate,
+    GameRecordCreate,
+    GameRecordUpdate,
     GameRepository,
-    GameRunCreate,
-    GameRunUpdate,
+    GameService,
     GameStatus,
     GameUseCaseConfig,
     GameUseCaseDependencies,
-    GameUseCases,
+    GetGameQuery,
     GetGameRevealQuery,
-    GetGameRunQuery,
-    GetGameTimelineQuery,
     GetPlayerObservationQuery,
-    ListGameRunsQuery,
+    ListGamesQuery,
+    ListTimelineQuery,
     LlmProviderConfig,
     PlayerActionCommand,
+    StoredGame,
     StoredGameEvent,
-    StoredGameRun,
-    StoredGameRunSummary,
+    StoredGameSummary,
     StoredGameTurn,
     TelemetryEvent,
     TelemetrySink,
@@ -63,54 +62,54 @@ def test_dependencies_require_definition_values() -> None:
 
 class InMemoryGameRepository(GameRepository):
     def __init__(self) -> None:
-        self.runs: dict[UUID, StoredGameRun] = {}
+        self.games: dict[UUID, StoredGame] = {}
         self.events: dict[UUID, list[StoredGameEvent]] = {}
         self.turns: dict[UUID, list[StoredGameTurn]] = {}
 
-    def create(self, run: GameRunCreate) -> StoredGameRun:
-        stored = StoredGameRun(
-            id=run.id,
-            status=run.status,
-            phase=run.phase,
-            day=run.day,
-            seed=run.seed,
-            config=run.config,
-            public_state=run.public_state,
-            private_state=run.private_state,
-            pending_actions=run.pending_actions,
-            control_token_hashes=run.control_token_hashes,
-            version=run.version,
+    def create(self, game: GameRecordCreate) -> StoredGame:
+        stored = StoredGame(
+            id=game.id,
+            status=game.status,
+            phase=game.phase,
+            day=game.day,
+            seed=game.seed,
+            config=game.config,
+            public_state=game.public_state,
+            private_state=game.private_state,
+            pending_actions=game.pending_actions,
+            manual_token_hashes=game.manual_token_hashes,
+            version=game.version,
             created_at=NOW,
             updated_at=NOW,
         )
-        self.runs[stored.id] = stored
+        self.games[stored.id] = stored
         self.events[stored.id] = []
         self.turns[stored.id] = []
         return stored
 
-    def get(self, game_id: UUID) -> StoredGameRun | None:
-        return self.runs.get(game_id)
+    def get(self, game_id: UUID) -> StoredGame | None:
+        return self.games.get(game_id)
 
-    def get_for_update(self, game_id: UUID) -> StoredGameRun | None:
+    def get_for_update(self, game_id: UUID) -> StoredGame | None:
         return self.get(game_id)
 
-    def list_run_summaries(
+    def list_game_summaries(
         self,
         *,
         status: GameStatus | None,
         limit: int,
         offset: int,
-    ) -> list[StoredGameRunSummary]:
-        runs = [
-            run
-            for run in sorted(self.runs.values(), key=lambda item: item.created_at, reverse=True)
-            if status is None or run.status == status
+    ) -> list[StoredGameSummary]:
+        games = [
+            game
+            for game in sorted(self.games.values(), key=lambda item: item.created_at, reverse=True)
+            if status is None or game.status == status
         ]
-        return [self._summary(run) for run in runs[offset : offset + limit]]
+        return [self._summary(game) for game in games[offset : offset + limit]]
 
-    def save(self, update: GameRunUpdate) -> StoredGameRun:
-        current = self.runs[update.id]
-        stored = StoredGameRun(
+    def save(self, update: GameRecordUpdate) -> StoredGame:
+        current = self.games[update.id]
+        stored = StoredGame(
             id=update.id,
             status=update.status,
             phase=update.phase,
@@ -120,20 +119,20 @@ class InMemoryGameRepository(GameRepository):
             public_state=update.public_state,
             private_state=update.private_state,
             pending_actions=update.pending_actions,
-            control_token_hashes=current.control_token_hashes,
+            manual_token_hashes=current.manual_token_hashes,
             version=update.version,
             created_at=current.created_at,
             updated_at=NOW,
         )
-        self.runs[stored.id] = stored
+        self.games[stored.id] = stored
         return stored
 
     def append_events(
         self,
-        run_id: UUID,
+        game_id: UUID,
         events: Sequence[GameEventCreate],
     ) -> list[StoredGameEvent]:
-        stream = self.events.setdefault(run_id, [])
+        stream = self.events.setdefault(game_id, [])
         records = [
             StoredGameEvent(
                 sequence=len(stream) + offset,
@@ -149,13 +148,13 @@ class InMemoryGameRepository(GameRepository):
             for offset, event in enumerate(events, start=1)
         ]
         stream.extend(records)
-        turn_stream = self.turns.setdefault(run_id, [])
-        run = self.runs[run_id]
+        turn_stream = self.turns.setdefault(game_id, [])
+        game = self.games[game_id]
         turn_stream.extend(
             StoredGameTurn(
                 sequence=len(turn_stream) + offset,
                 event_sequence=event.sequence,
-                version=run.version,
+                version=game.version,
                 phase=event.phase,
                 day=event.day,
                 actor_id=event.actor_id,
@@ -168,37 +167,37 @@ class InMemoryGameRepository(GameRepository):
         )
         return records
 
-    def latest_public_turn_sequence(self, run_id: UUID) -> int:
-        turns = self.turns.get(run_id, [])
+    def latest_public_turn_sequence(self, game_id: UUID) -> int:
+        turns = self.turns.get(game_id, [])
         return turns[-1].sequence if turns else 0
 
     def list_public_turns(
         self,
-        run_id: UUID,
+        game_id: UUID,
         *,
         after: int,
         limit: int,
     ) -> list[StoredGameTurn]:
-        return [turn for turn in self.turns.get(run_id, []) if turn.sequence > after][:limit]
+        return [turn for turn in self.turns.get(game_id, []) if turn.sequence > after][:limit]
 
-    def _summary(self, run: StoredGameRun) -> StoredGameRunSummary:
-        state = run.public_state
+    def _summary(self, game: StoredGame) -> StoredGameSummary:
+        state = game.public_state
         summary = state.get("summary") or {}
-        return StoredGameRunSummary(
-            game_id=run.id,
-            status=run.status,
-            phase=run.phase,
-            day=run.day,
-            version=run.version,
-            seed=run.seed,
+        return StoredGameSummary(
+            game_id=game.id,
+            status=game.status,
+            phase=game.phase,
+            day=game.day,
+            version=game.version,
+            seed=game.seed,
             player_count=len(state.get("players") or []),
             alive_count=int(summary.get("alive_count") or 0),
             winner=state.get("winner"),
-            step_count=max(run.version - 1, 0),
-            turn_count=len(self.turns.get(run.id, [])),
-            created_at=run.created_at,
-            updated_at=run.updated_at,
-            completed_at=run.updated_at if run.status == "completed" else None,
+            step_count=max(game.version - 1, 0),
+            turn_count=len(self.turns.get(game.id, [])),
+            created_at=game.created_at,
+            updated_at=game.updated_at,
+            completed_at=game.updated_at if game.status == "completed" else None,
         )
 
 
@@ -240,21 +239,20 @@ def usecase_config(
     max_players: int = 8,
     default_player_count: int = 5,
     supported_agent_type: str = DEFAULT_AGENT_TYPE,
-    default_ruleset_id: str = "default",
-    advance_until_input_max_steps: int = 64,
+    default_setup_id: str = "default",
 ) -> GameUseCaseConfig:
     return GameUseCaseConfig(
         min_players=min_players,
         max_players=max_players,
         default_player_count=default_player_count,
         supported_agent_type=supported_agent_type,
-        default_ruleset_id=default_ruleset_id,
-        advance_until_input_max_steps=advance_until_input_max_steps,
+        default_setup_id=default_setup_id,
     )
 
 
 def local_rules_definition() -> LocalRulesDefinition:
     return LocalRulesDefinition(
+        day_speech_limit_per_player=1,
         allow_self_vote=False,
         allow_vote_revision=False,
         allow_night_action_revision=False,
@@ -351,6 +349,7 @@ def llm_definitions() -> LlmDefinitions:
                 "scenario_premise",
                 "character_profile",
                 "available_actions",
+                "legal_targets_json",
                 "observation_json",
                 "format_instructions",
             ],
@@ -361,7 +360,8 @@ def llm_definitions() -> LlmDefinitions:
                     content=(
                         "{{player_id}} {{phase}} {{day}} {{role}} "
                         "{{scenario_name}} {{scenario_premise}} {{character_profile}} "
-                        "{{available_actions}} {{observation_json}} {{format_instructions}}"
+                        "{{available_actions}} {{legal_targets_json}} "
+                        "{{observation_json}} {{format_instructions}}"
                     ),
                 )
             ],
@@ -416,17 +416,31 @@ def _first_target(observation: dict[str, object], *, player_id: str) -> str:
     raise AssertionError("no target candidate")
 
 
-def test_default_ruleset_returns_business_identifiers_only() -> None:
+def _advance_until_manual_input(
+    use_cases: GameService,
+    game_id: str,
+    *,
+    max_steps: int = 8,
+) -> None:
+    for _ in range(max_steps):
+        try:
+            use_cases.advance_game(AdvanceGameCommand(game_id=game_id))
+        except GameError:
+            return
+    raise AssertionError("manual input was not required")
+
+
+def test_default_setup_options_returns_business_identifiers_only() -> None:
     deps, _repository = dependencies(
         config=usecase_config(
             min_players=4,
             max_players=10,
             default_player_count=5,
             supported_agent_type=DEFAULT_AGENT_TYPE,
-            default_ruleset_id="custom",
+            default_setup_id="custom",
         )
     )
-    result = GameUseCases.get_default_ruleset(
+    result = GameService.get_setup_options(
         deps.config,
         deps.game_definitions,
         deps.llm_definitions,
@@ -441,7 +455,7 @@ def test_default_ruleset_returns_business_identifiers_only() -> None:
 def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
-    result = GameUseCases(deps).create_game_run(create_command(seed=42))
+    result = GameService(deps).create_game(create_command(seed=42))
 
     assert [player["id"] for player in result.state["players"]] == [
         "player-1",
@@ -458,11 +472,11 @@ def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
 
 def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     deps, _repository = dependencies()
-    use_cases = GameUseCases(deps)
+    use_cases = GameService(deps)
 
-    first = use_cases.create_game_run(create_command(seed=10))
-    second = use_cases.create_game_run(create_command(seed=10))
-    third = use_cases.create_game_run(create_command(seed=11))
+    first = use_cases.create_game(create_command(seed=10))
+    second = use_cases.create_game(create_command(seed=10))
+    third = use_cases.create_game(create_command(seed=11))
 
     first_names = [player["name"] for player in first.state["players"]]
     second_names = [player["name"] for player in second.state["players"]]
@@ -474,24 +488,26 @@ def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     assert not any(str(name).startswith("Player ") for name in first_names)
 
 
-def test_create_game_returns_control_token_for_requested_human_seat() -> None:
+def test_create_game_returns_manual_player_for_requested_manual_seat() -> None:
     deps, _repository = dependencies()
 
-    result = GameUseCases(deps).create_game_run(
-        create_command(human_player_id="player-1", seed=42),
+    result = GameService(deps).create_game(
+        create_command(manual_player_id="player-1", seed=42),
     )
 
-    assert set(result.control_tokens or {}) == {"player-1"}
+    assert result.manual_player is not None
+    assert result.manual_player.player_id == "player-1"
+    assert result.manual_player.token
 
 
 def test_reveal_returns_roles_and_private_resolution_without_changing_public_state() -> None:
     deps, _repository = dependencies()
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(seed=1))
-    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    use_cases = GameService(deps)
+    created = use_cases.create_game(create_command(seed=1))
+    use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 
     reveal = use_cases.get_game_reveal(GetGameRevealQuery(game_id=created.game_id))
-    public_state = use_cases.get_game_run(GetGameRunQuery(game_id=created.game_id))
+    public_state = use_cases.get_game(GetGameQuery(game_id=created.game_id))
 
     assert reveal.role_counts == DEFAULT_ROLE_COUNTS
     assert {player.role for player in reveal.players} >= {"werewolf", "villager"}
@@ -504,29 +520,27 @@ def test_create_game_rejects_out_of_range_role_count_total() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        GameUseCases(deps).create_game_run(
-            create_command(role_counts={"werewolf": 1, "villager": 3})
-        )
+        GameService(deps).create_game(create_command(role_counts={"werewolf": 1, "villager": 3}))
 
 
 def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(InvalidGameIdError):
-        GameUseCases(deps).get_game_run(GetGameRunQuery(game_id="not-a-uuid"))
+        GameService(deps).get_game(GetGameQuery(game_id="not-a-uuid"))
 
     with pytest.raises(GameNotFoundError):
-        GameUseCases(deps).get_game_run(GetGameRunQuery(game_id=str(uuid4())))
+        GameService(deps).get_game(GetGameQuery(game_id=str(uuid4())))
 
 
 def test_advance_game_delegates_core_progression_and_returns_public_payloads() -> None:
     telemetry = CollectingTelemetrySink()
     deps, repository = dependencies(telemetry=telemetry)
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(seed=1))
+    use_cases = GameService(deps)
+    created = use_cases.create_game(create_command(seed=1))
 
-    advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
-    timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id, after=0))
+    advanced = use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
+    timeline = use_cases.list_timeline(ListTimelineQuery(game_id=created.game_id, after=0))
 
     assert advanced.state["version"] == 2
     assert advanced.timeline
@@ -553,11 +567,11 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
 
 def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> None:
     deps, _repository = dependencies()
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(seed=1))
+    use_cases = GameService(deps)
+    created = use_cases.create_game(create_command(seed=1))
 
-    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
-    advanced = use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
+    advanced = use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
     serialized = json.dumps(advanced.timeline)
     speech_events = [item for item in advanced.timeline if item["event_type"] == "speech_recorded"]
 
@@ -571,17 +585,17 @@ def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> 
 def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     telemetry = CollectingTelemetrySink()
     deps, _repository = dependencies(telemetry=telemetry)
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(
-        create_command(human_player_id="player-1", seed=2),
+    use_cases = GameService(deps)
+    created = use_cases.create_game(
+        create_command(manual_player_id="player-1", seed=2),
     )
-    control_token = created.control_tokens["player-1"] if created.control_tokens else ""
-    use_cases.advance_until_input(AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8))
+    manual_token = created.manual_player.token if created.manual_player is not None else ""
+    _advance_until_manual_input(use_cases, created.game_id)
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
             player_id="player-1",
-            control_token=control_token,
+            manual_token=manual_token,
         )
     )
     action_type = str(observation.observation["available_actions"][0])
@@ -596,7 +610,7 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
         PlayerActionCommand(
             game_id=created.game_id,
             player_id="player-1",
-            control_token=control_token,
+            manual_token=manual_token,
             type=action_type,
             target_id=target_id,
             message=message,
@@ -609,30 +623,27 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     assert event.fields["has_message"] is bool(message)
     assert "player_id" not in event.fields
     assert "game_action_type" not in event.fields
-    assert "control_token" not in event.fields
+    assert "manual_token" not in event.fields
     assert "message" not in event.fields
 
 
 def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     deps, _repository = dependencies()
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(
-        create_command(human_player_id="player-1", seed=2),
+    use_cases = GameService(deps)
+    created = use_cases.create_game(
+        create_command(manual_player_id="player-1", seed=2),
     )
-    control_token = created.control_tokens["player-1"] if created.control_tokens else ""
+    manual_token = created.manual_player.token if created.manual_player is not None else ""
 
-    stopped = use_cases.advance_until_input(
-        AdvanceUntilInputCommand(game_id=created.game_id, max_steps=8)
-    )
-    assert stopped.stop_reason == "manual_input_required"
+    _advance_until_manual_input(use_cases, created.game_id)
     with pytest.raises(GameError):
-        use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+        use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
             player_id="player-1",
-            control_token=control_token,
+            manual_token=manual_token,
         )
     )
     action_type = str(observation.observation["available_actions"][0])
@@ -642,7 +653,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     command = PlayerActionCommand(
         game_id=created.game_id,
         player_id="player-1",
-        control_token=control_token,
+        manual_token=manual_token,
         type=action_type,
         target_id=target_id,
         message="hello" if action_type == "speech" else None,
@@ -655,14 +666,14 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
 
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
-    use_cases = GameUseCases(deps)
-    created = use_cases.create_game_run(create_command(seed=1))
-    use_cases.advance_game_run(AdvanceGameRunCommand(game_id=created.game_id))
+    use_cases = GameService(deps)
+    created = use_cases.create_game(create_command(seed=1))
+    use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 
-    runs = use_cases.list_game_runs(ListGameRunsQuery(limit=10))
-    timeline = use_cases.get_game_timeline(GetGameTimelineQuery(game_id=created.game_id))
+    games = use_cases.list_games(ListGamesQuery(limit=10))
+    timeline = use_cases.list_timeline(ListTimelineQuery(game_id=created.game_id))
 
-    assert runs.runs[0]["game_id"] == created.game_id
-    assert runs.runs[0]["turn_count"] == len(timeline.items)
+    assert games.games[0]["game_id"] == created.game_id
+    assert games.games[0]["turn_count"] == len(timeline.items)
     assert timeline.items
     assert "role_counts" not in json.dumps(timeline.model_dump(mode="json"))

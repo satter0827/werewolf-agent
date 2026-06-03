@@ -14,7 +14,6 @@ from werewolf_agent.contracts.events import GameEvent
 def error_event(
     error: AppError,
     *,
-    run_id: str | None = None,
     game_id: str | None = None,
     phase: str | None = None,
     day: int | None = None,
@@ -32,7 +31,6 @@ def error_event(
 
     return GameEvent(
         event_type=ERROR_EVENT_TYPE,
-        run_id=run_id,
         game_id=game_id,
         phase=phase,
         day=day,

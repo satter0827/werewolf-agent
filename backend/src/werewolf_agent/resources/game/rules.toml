@@ -1,4 +1,5 @@
 [local_rules]
+day_speech_limit_per_player = 1
 allow_self_vote = false
 allow_vote_revision = false
 allow_night_action_revision = false

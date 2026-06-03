@@ -22,18 +22,17 @@ from werewolf_agent.commons.shared.messages import (
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
-    AdvanceGameRunResponse,
-    AdvanceUntilInputResponse,
+    AdvanceGameResponse,
     CreateGameRequest,
+    GameListResponse,
+    GameResponse,
     GameRevealResponse,
-    GameRunResponse,
-    GameRunsResponse,
+    GameSetupOptionsResponse,
     GameTimelineResponse,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
     ProblemDetails,
-    RulesetResponse,
 )
 from werewolf_agent.interface.runtime import get_observation_context
 from werewolf_agent.interface.shared.log_sanitization import safe_http_log_path
@@ -49,13 +48,13 @@ class GameApiClient(Protocol):
     def health(self) -> dict[str, str]:
         """Fetch API health through the public API."""
 
-    def get_ruleset(self) -> RulesetResponse:
-        """Fetch the default ruleset through the public API."""
+    def get_setup_options(self) -> GameSetupOptionsResponse:
+        """Fetch game setup options through the public API."""
 
-    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Create one game through the public API."""
 
-    def get_game(self, game_id: str) -> GameRunResponse:
+    def get_game(self, game_id: str) -> GameResponse:
         """Fetch one game through the public API."""
 
     def get_game_reveal(self, game_id: str) -> GameRevealResponse:
@@ -67,14 +66,11 @@ class GameApiClient(Protocol):
         status: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> GameRunsResponse:
-        """Fetch public game run summaries through the public API."""
+    ) -> GameListResponse:
+        """Fetch public game summaries through the public API."""
 
-    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
+    def advance_game(self, game_id: str) -> AdvanceGameResponse:
         """Advance one game through the public API."""
-
-    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
-        """Advance a game until manual input, completion, or step limit."""
 
     def get_timeline(
         self,
@@ -90,7 +86,7 @@ class GameApiClient(Protocol):
         game_id: str,
         player_id: str,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerObservationResponse:
         """Fetch one player's private observation."""
 
@@ -100,7 +96,7 @@ class GameApiClient(Protocol):
         player_id: str,
         request: PlayerActionRequest,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerActionResponse:
         """Submit one manual player action."""
 
@@ -128,24 +124,24 @@ class HttpGameApiClient:
         payload = self._request_json("GET", "health")
         return {key: str(value) for key, value in payload.items()}
 
-    def get_ruleset(self) -> RulesetResponse:
-        """Fetch the default ruleset through the public API."""
-        payload = self._request_json("GET", "ruleset")
-        return self._parse_model(RulesetResponse, payload)
+    def get_setup_options(self) -> GameSetupOptionsResponse:
+        """Fetch game setup options through the public API."""
+        payload = self._request_json("GET", "setup-options")
+        return self._parse_model(GameSetupOptionsResponse, payload)
 
-    def create_game(self, request: CreateGameRequest) -> GameRunResponse:
+    def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Create one game through the public API."""
         payload = self._request_json(
             "POST",
             "games",
             body=request.model_dump(mode="json", exclude_none=True, exclude_defaults=True),
         )
-        return self._parse_model(GameRunResponse, payload)
+        return self._parse_model(GameResponse, payload)
 
-    def get_game(self, game_id: str) -> GameRunResponse:
+    def get_game(self, game_id: str) -> GameResponse:
         """Fetch one game through the public API."""
         payload = self._request_json("GET", f"games/{game_id}")
-        return self._parse_model(GameRunResponse, payload)
+        return self._parse_model(GameResponse, payload)
 
     def get_game_reveal(self, game_id: str) -> GameRevealResponse:
         """Fetch full observer-only game information through the reveal API."""
@@ -158,27 +154,18 @@ class HttpGameApiClient:
         status: str | None = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> GameRunsResponse:
-        """Fetch public game run summaries through the public API."""
+    ) -> GameListResponse:
+        """Fetch public game summaries through the public API."""
         params: dict[str, Any] = {"limit": limit, "offset": offset}
         if status is not None:
             params["status"] = status
         payload = self._request_json("GET", "games", params=params)
-        return self._parse_model(GameRunsResponse, payload)
+        return self._parse_model(GameListResponse, payload)
 
-    def advance_game(self, game_id: str) -> AdvanceGameRunResponse:
+    def advance_game(self, game_id: str) -> AdvanceGameResponse:
         """Advance one game through the public API."""
         payload = self._request_json("POST", f"games/{game_id}/advance")
-        return self._parse_model(AdvanceGameRunResponse, payload)
-
-    def advance_until_input(self, game_id: str, *, max_steps: int) -> AdvanceUntilInputResponse:
-        """Advance a game until manual input, completion, or step limit."""
-        payload = self._request_json(
-            "POST",
-            f"games/{game_id}/advance-until-input",
-            params={"max_steps": max_steps},
-        )
-        return self._parse_model(AdvanceUntilInputResponse, payload)
+        return self._parse_model(AdvanceGameResponse, payload)
 
     def get_timeline(
         self,
@@ -200,13 +187,13 @@ class HttpGameApiClient:
         game_id: str,
         player_id: str,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerObservationResponse:
         """Fetch one player's private observation."""
         payload = self._request_json(
             "GET",
             f"games/{game_id}/players/{player_id}/observation",
-            headers=_authorization_header(control_token),
+            headers=_authorization_header(manual_token),
         )
         return self._parse_model(PlayerObservationResponse, payload)
 
@@ -216,14 +203,14 @@ class HttpGameApiClient:
         player_id: str,
         request: PlayerActionRequest,
         *,
-        control_token: str,
+        manual_token: str,
     ) -> PlayerActionResponse:
         """Submit one manual player action."""
         payload = self._request_json(
             "POST",
             f"games/{game_id}/players/{player_id}/actions",
             body=request.model_dump(mode="json", exclude_none=True),
-            headers=_authorization_header(control_token),
+            headers=_authorization_header(manual_token),
         )
         return self._parse_model(PlayerActionResponse, payload)
 
@@ -335,8 +322,8 @@ def _app_error_from_problem(problem: ProblemDetails) -> AppError:
     )
 
 
-def _authorization_header(control_token: str) -> dict[str, str]:
-    return {"Authorization": f"Bearer {control_token}"}
+def _authorization_header(manual_token: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {manual_token}"}
 
 
 def _request_headers(headers: Mapping[str, str] | None) -> dict[str, str]:

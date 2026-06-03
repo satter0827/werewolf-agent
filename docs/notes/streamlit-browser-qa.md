@@ -61,7 +61,7 @@ await tab.playwright.waitForLoadState({ state: "load", timeoutMs: 30000 });
 await tab.playwright.waitForTimeout(3000);
 
 const snapshot = await tab.playwright.domSnapshot();
-const required = ["Werewolf Agent", "API 接続", "新しいゲーム", "新しいゲームを始める", "現在のゲーム"];
+const required = ["Werewolf Agent", "プレイ", "観戦", "設定", "新しいゲームを始める"];
 console.log(required.map((text) => [text, snapshot.includes(text)]));
 console.log(await tab.dev.logs({ levels: ["error", "warn"], limit: 50 }));
 ```

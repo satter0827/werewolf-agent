@@ -82,14 +82,14 @@ class ResourceNotFoundError(AppError):
 
 
 class GameNotFoundError(LookupError):
-    """Raised when a requested game run is absent from the repository."""
+    """Raised when a requested game is absent from the repository."""
 
 
 class InvalidGameIdError(ValueError):
     """Raised when a game id cannot be parsed as a UUID."""
 
 
-class InvalidControlTokenError(AppError):
+class InvalidManualTokenError(AppError):
     """Raised when a private player credential is missing or invalid."""
 
     code = ErrorCode.AUTHORIZATION_FAILED
@@ -127,8 +127,8 @@ __all__ = [
     "GameNotFoundError",
     "GamePhaseError",
     "InternalError",
-    "InvalidControlTokenError",
     "InvalidGameIdError",
+    "InvalidManualTokenError",
     "LlmProviderError",
     "ObservationError",
     "ResourceNotFoundError",

@@ -125,7 +125,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     )
     assert settings.streamlit_page_title == "Werewolf Agent"
     assert settings.streamlit_default_seed == 1
-    assert settings.streamlit_default_human_player_id == "player-1"
+    assert settings.streamlit_default_manual_player_id == "player-1"
     assert settings.streamlit_message_max_chars == 200
     assert settings.streamlit_service_name == "werewolf-agent-streamlit"
     assert settings.api_title == "Werewolf Agent API"
@@ -149,7 +149,6 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
     assert settings.game_rules_path is None
     assert settings.game_roles_path is None
-    assert settings.game_advance_until_input_max_steps == 64
 
 
 def test_game_usecase_config_is_built_from_interface_settings() -> None:
@@ -160,9 +159,8 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
         game_default_player_count=7,
         game_supported_agent_type="llm",
         game_supported_agent_name="LLM Agent",
-        game_default_ruleset_id="default",
-        game_default_ruleset_name="Custom Rules",
-        game_advance_until_input_max_steps=9,
+        game_default_setup_id="default",
+        game_default_setup_name="Custom Rules",
     )
 
     usecase_config = build_game_usecase_config(settings)
@@ -171,8 +169,7 @@ def test_game_usecase_config_is_built_from_interface_settings() -> None:
     assert usecase_config.max_players == 8
     assert usecase_config.default_player_count == 7
     assert usecase_config.supported_agent_type == "llm"
-    assert usecase_config.default_ruleset_id == "default"
-    assert usecase_config.advance_until_input_max_steps == 9
+    assert usecase_config.default_setup_id == "default"
 
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
@@ -274,8 +271,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "WEREWOLF_LLM_PLAYERS_FILE",
         "backend/src/werewolf_agent/resources/llm/players.toml",
     )
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_ID", "custom")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_RULESET_NAME", "Custom Rules")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_SETUP_ID", "custom")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_SETUP_NAME", "Custom Rules")
     monkeypatch.setenv(
         "WEREWOLF_GAME_RULES_FILE",
         "backend/src/werewolf_agent/resources/game/rules.toml",
@@ -284,8 +281,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "WEREWOLF_GAME_ROLES_FILE",
         "backend/src/werewolf_agent/resources/game/roles.toml",
     )
-    monkeypatch.setenv("WEREWOLF_GAME_ADVANCE_UNTIL_INPUT_MAX_STEPS", "13")
-    monkeypatch.setenv("WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
+    monkeypatch.setenv("WEREWOLF_GAME_SETUP_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
     monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
     monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
     monkeypatch.setenv("WEREWOLF_CLI_API_URL", "http://api.test/api/v1")
@@ -304,7 +300,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE", "collapsed")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_HUMAN_PLAYER_ID", "player-2")
+    monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID", "player-2")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS", "120")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_API_SERVICE_NAME", "test-api")
@@ -335,8 +331,8 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         settings.llm_players_path
         == repository_root() / "backend/src/werewolf_agent/resources/llm/players.toml"
     )
-    assert settings.game_default_ruleset_id == "custom"
-    assert settings.game_default_ruleset_name == "Custom Rules"
+    assert settings.game_default_setup_id == "custom"
+    assert settings.game_default_setup_name == "Custom Rules"
     assert (
         settings.game_rules_path
         == repository_root() / "backend/src/werewolf_agent/resources/game/rules.toml"
@@ -345,8 +341,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         settings.game_roles_path
         == repository_root() / "backend/src/werewolf_agent/resources/game/roles.toml"
     )
-    assert settings.game_advance_until_input_max_steps == 13
-    assert settings.game_ruleset_description_template == "{min_players}-{max_players}"
+    assert settings.game_setup_description_template == "{min_players}-{max_players}"
     assert settings.game_role_name_map == {"villager": "Villager"}
     assert settings.game_phase_name_map == {"night": "Night"}
     assert settings.cli_api_url == "http://api.test/api/v1"
@@ -366,7 +361,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_save_file_path == repository_root() / "tmp/streamlit/saves.json"
     assert settings.streamlit_page_title == "Werewolf Console"
     assert settings.streamlit_default_seed == 33
-    assert settings.streamlit_default_human_player_id == "player-2"
+    assert settings.streamlit_default_manual_player_id == "player-2"
     assert settings.streamlit_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.api_service_name == "test-api"
@@ -383,6 +378,7 @@ def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None
     rules_file.write_text(
         """
 [local_rules]
+day_speech_limit_per_player = 1
 allow_self_vote = false
 allow_vote_revision = false
 allow_night_action_revision = false
@@ -506,7 +502,7 @@ enable_random_elimination_on_tie = false
         encoding="utf-8",
     )
 
-    with pytest.raises(ValidationError, match="allow_self_vote"):
+    with pytest.raises(ValidationError, match="day_speech_limit_per_player"):
         AppSettings(
             _env_file=None,
             game_rules_file=str(rules_file),
@@ -579,7 +575,7 @@ def test_game_settings_reject_inconsistent_player_counts() -> None:
         AppSettings(_env_file=None, game_role_names="villager")
 
     with pytest.raises(ValidationError):
-        AppSettings(_env_file=None, game_ruleset_description_template="{unknown}")
+        AppSettings(_env_file=None, game_setup_description_template="{unknown}")
 
 
 def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:

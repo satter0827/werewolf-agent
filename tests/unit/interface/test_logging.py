@@ -196,7 +196,7 @@ def test_logging_telemetry_sink_writes_structured_event(tmp_path: Path) -> None:
                 "game_id": "game-1",
                 "game_phase": "voting",
                 "game_version": 3,
-                "control_token": "secret",
+                "manual_token": "secret",
             },
         )
     )
@@ -208,7 +208,7 @@ def test_logging_telemetry_sink_writes_structured_event(tmp_path: Path) -> None:
     assert payload["game.id"] == "game-1"
     assert payload["game.phase"] == "voting"
     assert payload["game.version"] == 3
-    assert payload["control_token"] == "[REDACTED]"
+    assert payload["manual_token"] == "[REDACTED]"
 
 
 def test_observability_drops_private_gameplay_fields(tmp_path: Path) -> None:
@@ -224,7 +224,7 @@ def test_observability_drops_private_gameplay_fields(tmp_path: Path) -> None:
             "target_id": "player-4",
             "private_state": {"players": {"player-1": {"role": "seer"}}},
             "pending_actions": {"night": {"player-1": "player-2"}},
-            "control_token_hashes": {"player-1": "hash"},
+            "manual_token_hashes": {"player-1": "hash"},
             "role": "seer",
             "error_context": {"player_id": "player-3", "safe": "kept"},
             "count": 1,
@@ -244,7 +244,7 @@ def test_observability_drops_private_gameplay_fields(tmp_path: Path) -> None:
     assert "target.id" not in payload
     assert "private_state" not in payload
     assert "pending_actions" not in payload
-    assert "control_token_hashes" not in payload
+    assert "manual_token_hashes" not in payload
     assert "role" not in payload
     assert payload["error_context"] == {"safe": "kept"}
     serialized = json.dumps(payload, ensure_ascii=False)

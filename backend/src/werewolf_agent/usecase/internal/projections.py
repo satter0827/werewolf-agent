@@ -19,11 +19,11 @@ from werewolf_agent.usecase.jobs.games import (
     GamePhase,
     GameStatus,
     GameTimelineItem,
-    PublicGameRunSummary,
     PublicGameState,
+    PublicGameSummary,
     PublicPlayerState,
-    StoredGameRun,
-    StoredGameRunSummary,
+    StoredGame,
+    StoredGameSummary,
     StoredGameTurn,
     Winner,
 )
@@ -39,11 +39,11 @@ PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
 }
 
 
-def public_state_payload_from_run(run: StoredGameRun) -> dict[str, Any]:
+def public_state_payload_from_game(game: StoredGame) -> dict[str, Any]:
     """Return public game state payload with persistence timestamps attached."""
-    payload = dict(run.public_state)
-    payload["created_at"] = run.created_at
-    payload["updated_at"] = run.updated_at
+    payload = dict(game.public_state)
+    payload["created_at"] = game.created_at
+    payload["updated_at"] = game.updated_at
     return PublicGameState.model_validate(payload).model_dump(mode="json")
 
 
@@ -102,9 +102,9 @@ def public_state_payload_from_snapshot(
     return state.model_dump(mode="json")
 
 
-def public_run_summary_payload_from_record(record: StoredGameRunSummary) -> dict[str, Any]:
-    """Project a stored run summary into a public payload."""
-    summary = PublicGameRunSummary(
+def public_game_summary_payload_from_record(record: StoredGameSummary) -> dict[str, Any]:
+    """Project a stored game summary into a public payload."""
+    summary = PublicGameSummary(
         game_id=str(record.game_id),
         status=record.status,
         phase=record.phase,
@@ -256,7 +256,7 @@ def _winner_label(value: object) -> str:
 
 
 def status_from_snapshot(snapshot: GameSnapshot) -> GameStatus:
-    """Return the public run status for a domain snapshot."""
+    """Return the public game status for a domain snapshot."""
     if snapshot.phase is Phase.FINISHED:
         return "completed"
     return "running"

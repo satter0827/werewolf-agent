@@ -11,11 +11,11 @@ from rich.console import Console
 from rich.table import Table
 
 from werewolf_agent.contracts.schemas import (
+    GameSetupOptionsResponse,
     GameTimelineItem,
     PlayerObservationResponse,
-    PublicGameRunSummary,
     PublicGameState,
-    RulesetResponse,
+    PublicGameSummary,
 )
 
 console = Console()
@@ -36,18 +36,22 @@ def print_health(payload: dict[str, str], *, output_format: OutputFormat = "tabl
     console.print(table)
 
 
-def print_ruleset(ruleset: RulesetResponse, *, output_format: OutputFormat = "table") -> None:
-    """Print public ruleset metadata."""
+def print_setup_options(
+    options: GameSetupOptionsResponse,
+    *,
+    output_format: OutputFormat = "table",
+) -> None:
+    """Print public setup metadata."""
     if output_format != "table":
-        print_json(ruleset, output_format=output_format)
+        print_json(options, output_format=output_format)
         return
 
-    table = Table(title="Ruleset")
+    table = Table(title="Game Setup")
     table.add_column("Field", style="cyan", no_wrap=True)
     table.add_column("Value", overflow="fold")
-    table.add_row("player count", str(ruleset.player_count))
-    table.add_row("roles", ", ".join(role.id for role in ruleset.roles))
-    table.add_row("default role counts", str(ruleset.default_role_counts))
+    table.add_row("player count", str(options.player_count))
+    table.add_row("roles", ", ".join(role.id for role in options.roles))
+    table.add_row("default role counts", str(options.default_role_counts))
     console.print(table)
 
 
@@ -124,31 +128,31 @@ def print_timeline(items: list[GameTimelineItem], *, output_format: OutputFormat
         console.print(f"[dim]{item.sequence}[/dim] [bold]{item.event_type}[/bold] {item.payload}")
 
 
-def print_run_summaries(
-    runs: list[PublicGameRunSummary],
+def print_game_summaries(
+    games: list[PublicGameSummary],
     *,
     output_format: OutputFormat = "table",
 ) -> None:
-    """Print public run summaries."""
+    """Print public game summaries."""
     if output_format != "table":
-        print_json(runs, output_format=output_format)
+        print_json(games, output_format=output_format)
         return
 
-    table = Table(title="Game Runs")
+    table = Table(title="Games")
     table.add_column("Game", overflow="fold")
     table.add_column("Status", no_wrap=True)
     table.add_column("Phase", no_wrap=True)
     table.add_column("Day", justify="right")
     table.add_column("Winner", no_wrap=True)
     table.add_column("Turns", justify="right")
-    for run in runs:
+    for game in games:
         table.add_row(
-            run.game_id,
-            run.status,
-            run.phase,
-            str(run.day),
-            run.winner or "-",
-            str(run.turn_count),
+            game.game_id,
+            game.status,
+            game.phase,
+            str(game.day),
+            game.winner or "-",
+            str(game.turn_count),
         )
     console.print(table)
 

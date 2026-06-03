@@ -21,7 +21,6 @@ PlayerStatus = Literal["alive", "dead"]
 ActionType = str
 RoleId = str
 Winner = Literal["villagers", "werewolves"]
-AdvanceUntilInputStopReason = Literal["manual_input_required", "completed", "hit_limit"]
 RoleCount = Annotated[int, Field(ge=0)]
 NarrationMode = Literal["none", "standard", "rich"]
 
@@ -50,7 +49,7 @@ class CreateGameRequest(BaseModel):
     setup_preset_id: str | None = None
     narration_mode: NarrationMode = "standard"
     role_counts: dict[RoleId, RoleCount]
-    human_player_id: str | None = None
+    manual_player_id: str | None = None
     rules: LocalRulesSettings | None = None
     character_assignments: dict[str, str] = Field(default_factory=dict)
     custom_roles: list[CustomRoleDefinitionRequest] = Field(default_factory=list)
@@ -69,10 +68,10 @@ class CreateGameRequest(BaseModel):
             raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
         return normalized
 
-    @field_validator("human_player_id")
+    @field_validator("manual_player_id")
     @classmethod
-    def validate_human_player_id(cls, value: str | None, info: ValidationInfo) -> str | None:
-        """Return a stripped optional human player id."""
+    def validate_manual_player_id(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """Return a stripped optional manual player id."""
         return optional_non_blank(value, str(info.field_name))
 
     @field_validator("scenario_id", "setup_preset_id")
@@ -94,11 +93,11 @@ class CreateGameRequest(BaseModel):
         }
 
     @model_validator(mode="after")
-    def validate_human_player_within_generated_seats(self) -> Self:
-        """Ensure the requested human seat exists in the generated table."""
+    def validate_manual_player_within_generated_seats(self) -> Self:
+        """Ensure the requested manual seat exists in the generated table."""
         valid_player_ids = {f"player-{index}" for index in range(1, self.player_count + 1)}
-        if self.human_player_id is not None and self.human_player_id not in valid_player_ids:
-            raise ValueError("human_player_id must match a generated player id")
+        if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
+            raise ValueError("manual_player_id must match a generated player id")
         unknown_assignments = sorted(set(self.character_assignments) - valid_player_ids)
         if unknown_assignments:
             raise ValueError("character_assignments keys must match generated player ids")
@@ -155,17 +154,26 @@ class PublicGameState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunResponse(BaseModel):
-    """Response containing the current public game state."""
+class ManualPlayerCredential(BaseModel):
+    """One manual player credential returned only when creating a game."""
 
-    game_id: str
-    state: PublicGameState
-    control_tokens: dict[str, str] | None = None
+    player_id: str
+    token: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class AdvanceGameRunResponse(BaseModel):
+class GameResponse(BaseModel):
+    """Response containing the current public game state."""
+
+    game_id: str
+    state: PublicGameState
+    manual_player: ManualPlayerCredential | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AdvanceGameResponse(BaseModel):
     """Response from advancing a game by one API-side step."""
 
     game_id: str
@@ -176,21 +184,8 @@ class AdvanceGameRunResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class AdvanceUntilInputResponse(BaseModel):
-    """Response from advancing until manual input, completion, or configured limit."""
-
-    game_id: str
-    status: GameStatus
-    state: PublicGameState
-    timeline: list[GameTimelineItem]
-    stop_reason: AdvanceUntilInputStopReason
-    steps: int
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class PublicGameRunSummary(BaseModel):
-    """Public run summary for CLI and future UI lists."""
+class PublicGameSummary(BaseModel):
+    """Public game summary for CLI and UI lists."""
 
     game_id: str
     status: GameStatus
@@ -210,17 +205,17 @@ class PublicGameRunSummary(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunsResponse(BaseModel):
-    """Public run list response."""
+class GameListResponse(BaseModel):
+    """Public game list response."""
 
-    runs: list[PublicGameRunSummary]
+    games: list[PublicGameSummary]
     next_offset: int | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GameTimelineItem(BaseModel):
-    """Public timeline item shared by API, CLI, replay, SSE, and UI."""
+    """Public timeline item shared by API, CLI, replay, and UI."""
 
     sequence: int = Field(ge=1)
     event_sequence: int = Field(ge=1)
@@ -335,8 +330,8 @@ class GameRevealResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class GameRunsQuery(BaseModel):
-    """Query parameters for listing public runs."""
+class GameListQuery(BaseModel):
+    """Query parameters for listing public games."""
 
     status: GameStatus | None = None
     limit: int = Field(default=20, ge=1, le=100)
@@ -373,8 +368,8 @@ class RoleDefinitionView(BaseModel):
         return non_blank(value, str(info.field_name))
 
 
-class RulesetResponse(BaseModel):
-    """Public ruleset metadata for client bootstrapping."""
+class GameSetupOptionsResponse(BaseModel):
+    """Public setup metadata for client bootstrapping."""
 
     player_count: dict[str, int]
     roles: list[RoleDefinitionView]
@@ -573,28 +568,29 @@ class ErrorEventPayload(BaseModel):
 __all__ = [
     "AbilityDefinitionView",
     "ActionType",
-    "AdvanceGameRunResponse",
-    "AdvanceUntilInputResponse",
+    "AdvanceGameResponse",
     "CharacterDefinitionView",
     "CreateGameRequest",
     "CustomCharacterDefinitionRequest",
     "CustomRoleDefinitionRequest",
     "ErrorEventPayload",
+    "GameListQuery",
+    "GameListResponse",
     "GamePhase",
+    "GameResponse",
     "GameRevealAction",
     "GameRevealInspection",
     "GameRevealNight",
     "GameRevealPlayer",
     "GameRevealResponse",
     "GameRevealVote",
-    "GameRunResponse",
-    "GameRunsQuery",
-    "GameRunsResponse",
+    "GameSetupOptionsResponse",
     "GameStatus",
     "GameTimelineItem",
     "GameTimelineQuery",
     "GameTimelineResponse",
     "LocalRulesSettings",
+    "ManualPlayerCredential",
     "NarrationMode",
     "PlayerActionRequest",
     "PlayerActionResponse",
@@ -602,13 +598,12 @@ __all__ = [
     "PlayerStatus",
     "ProblemDetails",
     "ProblemIssue",
-    "PublicGameRunSummary",
     "PublicGameState",
+    "PublicGameSummary",
     "PublicPlayerState",
     "RoleCount",
     "RoleDefinitionView",
     "RoleId",
-    "RulesetResponse",
     "ScenarioDefinitionView",
     "SetupPresetDefinitionView",
     "Winner",

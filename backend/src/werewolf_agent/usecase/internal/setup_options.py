@@ -1,26 +1,26 @@
-"""Internal ruleset metadata helpers for game jobs."""
+"""Internal setup metadata helpers for game jobs."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
 
 from werewolf_agent.commons.shared.definitions import GameDefinitions, LlmDefinitions
-from werewolf_agent.usecase.jobs.games import GameUseCaseConfig, RulesetResult
+from werewolf_agent.usecase.jobs.games import GameSetupOptionsResult, GameUseCaseConfig
 
 
-def default_ruleset(
+def default_setup_options(
     config: GameUseCaseConfig,
     definitions: GameDefinitions,
     llm_definitions: LlmDefinitions,
-) -> RulesetResult:
-    """Return ruleset business metadata."""
+) -> GameSetupOptionsResult:
+    """Return game setup business metadata."""
     default_setup_preset_id = _first_key(definitions.catalog.setup_presets)
     default_scenario_id = (
         definitions.catalog.setup_presets[default_setup_preset_id].scenario_id
         if default_setup_preset_id is not None
         else _first_key(definitions.catalog.scenarios)
     )
-    return RulesetResult(
+    return GameSetupOptionsResult(
         player_count={"min": config.min_players, "max": config.max_players},
         roles={
             role_id: definition.model_dump(mode="json")
