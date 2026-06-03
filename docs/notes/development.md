@@ -22,14 +22,12 @@
 ```bash
 uv sync --group dev --extra api --extra llm --extra streamlit --extra worker
 uv run werewolf-agent doctor
-supabase migration up
 ```
 
 API:
 
 ```bash
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
-uv run --extra worker werewolf-agent-worker run
 ```
 
 CLI:
@@ -46,6 +44,13 @@ Streamlit:
 
 ```bash
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
+```
+
+Supabase queue worker を使う場合:
+
+```bash
+supabase migration up
+uv run --extra worker werewolf-agent-worker run
 ```
 
 ## Windows / OneDrive / Codex
@@ -67,7 +72,9 @@ scripts\run-api.cmd --reload
 scripts\run-worker.cmd --once
 ```
 
-VS Code の Run and Debug は cache を `%TEMP%\werewolf-agent` 配下へ向けます。運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
+`scripts\run-worker.cmd` は `WEREWOLF_SUPABASE_DB_DSN` が設定されている環境でだけ使います。demo 起動では不要です。
+
+VS Code の Run and Debug では demo 起動用に `App: API + Streamlit` を使います。worker は `WEREWOLF_SUPABASE_DB_DSN` を設定した場合だけ `Worker: run` で別起動します。cache は `%TEMP%\werewolf-agent` 配下へ向けます。運用ログは `.werewolf-agent/logs` 配下へ出し、API は `api.jsonl`、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 ## 配置
 
@@ -123,7 +130,7 @@ VS Code の Run and Debug は cache を `%TEMP%\werewolf-agent` 配下へ向け�
 
 Streamlit CSS は追記ではなく置換方式です。画面定義体は表示要素、表示順、配置、列数だけを制御し、public / private 判定、action availability、API payload、game state 計算は `streamlit/app.py` と表示 model 側に残します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
 
 ## DB
 
@@ -173,8 +180,8 @@ Git 管理しない runtime 生成物は、原則として `.werewolf-agent/` �
 - operational logs: `.werewolf-agent/logs/werewolf-agent.jsonl`
 - Supabase session file: OS user profile 側の app config directory
 - Streamlit active game selection: 現在の Streamlit session 内だけに保持する
-- pytest / ruff / mypy cache: `.werewolf-agent/cache/`
-- pytest tmp: `.werewolf-agent/cache/pytest/tmp/`
+- pytest / ruff / mypy cache: `%TEMP%\werewolf-agent\cache\`
+- pytest tmp: `%TEMP%\werewolf-agent\cache\pytest\`
 - coverage data: `.werewolf-agent/coverage/.coverage`
 - public timeline JSONL logs
 

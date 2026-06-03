@@ -1,10 +1,12 @@
 from werewolf_agent.interface.entrypoint.streamlit.components import (
     action_header_html,
+    hand_panel_html,
     observation_memo_html,
     observation_panel_html,
     timeline_section_html,
 )
 from werewolf_agent.interface.entrypoint.streamlit.view_models import (
+    HandPanelView,
     ObservationMemoView,
     ObservationView,
     TimelineItemView,
@@ -59,14 +61,37 @@ def test_observation_panel_escapes_private_lines() -> None:
         ),
         role_title="あなたの役職",
         info_title="見えている情報",
-        role_note_template="{role}。あなただけに見えている情報です。",
+        role_note_template="あなただけに見えている情報です。",
         empty_text="いま表示できる追加情報はありません。",
     )
 
-    assert "村人。あなただけに見えている情報です。" in html
+    assert "wa-private-summary" in html
+    assert "あなたの役職" in html
+    assert "村人" in html
+    assert "あなただけに見えている情報です。" in html
+    assert "wa-private-visible" in html
     assert "P1: &lt;secret&gt;" in html
     assert "<secret>" not in html
     assert "wa-command-section" in html
+
+
+def test_hand_panel_renders_compact_status_card() -> None:
+    html = hand_panel_html(
+        HandPanelView(
+            heading="あなたの手番",
+            title="進行待ち",
+            detail="次の入力待ちまで進められます。",
+            tone="day",
+            advance_title="今できること",
+            advance_detail="次にあなたの入力が必要な場面までゲームを進められます。",
+            can_advance=True,
+        )
+    )
+
+    assert 'class="wa-hand-panel wa-command-section wa-hand-panel-day"' in html
+    assert "wa-hand-label" in html
+    assert "あなたの手番" in html
+    assert "進行待ち" in html
 
 
 def test_observation_memo_escapes_public_lines() -> None:

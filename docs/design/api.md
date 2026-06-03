@@ -32,6 +32,9 @@ operation request は完了時に `result_payload`、失敗時に Problem Detail
 
 ## Wire Schemas
 
+ここにある schema は FastAPI game endpoint の契約ではなく、CLI / Streamlit が使う
+`GameClient` port、Supabase operation request、process-local demo client で共有する外部契約です。
+
 | Schema | 用途 |
 | --- | --- |
 | `GameSetupOptionsResponse` | client bootstrapping 用の role、scenario、preset、character、default rules |
@@ -47,6 +50,10 @@ operation request は完了時に `result_payload`、失敗時に Problem Detail
 | `GameRevealResponse` | observer / demo 用の専用 reveal DTO |
 
 ## Create Game
+
+`GameClient.create_game` は Supabase 利用時に `game_operation_requests` へ
+`operation_type = create_game` を enqueue します。demo client は同じ request / response schema を
+process-local repository に対して同期実行します。
 
 人数は `role_counts` の合計から導出します。全体人数だけを指定する field は持ちません。
 
@@ -96,14 +103,15 @@ local rule override 付き:
 
 - `role_counts`: 必須。合計が configured min / max の範囲内で、人狼側 1 以上、村側 1 以上
 - `manual_player_id`: 任意。生成される `player-1` から `player-N` のいずれか
-- `manual_player`: `POST /games` の response でだけ返す。`GET /games/{game_id}` には含めない
+- `manual_player`: `GameClient.create_game` の response でだけ返す。`GameClient.get_game` と list には含めない
 - `rules`: 任意。省略時は `interface/application` が runtime default を注入する
 - `narration_mode`: 任意。省略時は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` の値を注入する
 - `character_assignments`、`custom_roles`、`custom_characters`: Streamlit session 内の追加定義を game 作成 request に同梱するための field
 
 ## Setup Options
 
-`GET /setup-options` は client の開始画面を作るための metadata だけを返します。
+`GameClient.get_setup_options` は client の開始画面を作るための metadata だけを返します。
+Supabase table を読まず、`interface/runtime` で解決した definition から組み立てます。
 
 - `player_count`
 - `roles`
@@ -121,7 +129,7 @@ definition path と TOML 読み込みは `interface/runtime` に集約します�
 
 ## Pagination
 
-`GET /games` と `GET /games/{game_id}/timeline` の `limit` は省略できます。省略時の件数と最大値は runtime settings で管理します。
+`GameClient.list_games` と `GameClient.get_timeline` の `limit` は省略できます。省略時の件数と最大値は runtime settings で管理します。
 
 - game list: `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`
 - timeline: `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`
@@ -178,10 +186,12 @@ Cursor:
 - token、API key、authorization
 - raw prompt / raw provider response
 
-## Reveal API
+## Reveal
 
-`GET /api/v1/games/{game_id}/reveal` は observer / demo 用の専用 DTO です。
-`WEREWOLF_REVEAL_API_ENABLED=false` の場合は `403 auth.forbidden` を返します。
+`GameClient.get_game_reveal` は observer / demo 用の専用 DTO を返します。
+Supabase 利用時は `game_reveals` view と RLS / admin claim が公開範囲を決めます。
+demo client は process-local state から同じ DTO を返します。
+`WEREWOLF_REVEAL_API_ENABLED=false` の場合、worker は既存 reveal payload を削除し、demo client は reveal を返しません。
 
 返すもの:
 
@@ -199,7 +209,7 @@ Cursor:
 
 ## Manual Player
 
-manual player は `POST /games` の `manual_player_id` で 1 人だけ指定できます。
+manual player は `GameClient.create_game` の `manual_player_id` で 1 人だけ指定できます。
 作成 response の `manual_player` は次の形です。
 
 ```json
@@ -209,7 +219,9 @@ manual player は `POST /games` の `manual_player_id` で 1 人だけ指定で�
 }
 ```
 
-private observation と manual action は `Authorization: Bearer <token>` を使います。
+private observation と manual action は `GameClient.get_private_observation` /
+`GameClient.submit_player_action` で扱います。Supabase adapter ではログイン session と RLS が
+観測範囲を制御し、demo client では作成時 token を process-local repository に照合します。
 
 | 状態 | Status | Code |
 | --- | --- | --- |
@@ -237,8 +249,9 @@ provider は Pydantic で `AgentDecision` を検証します。不正 JSON、不
 
 ## Errors
 
-Error response は RFC 9457 Problem Details 互換です。
-`Content-Type` は `application/problem+json` です。
+Error payload は RFC 9457 Problem Details 互換です。FastAPI health endpoint では
+`application/problem+json` の HTTP response として返し、Supabase worker では
+`game_operation_requests.error_payload` に同じ schema を保存します。
 
 | Status | Code | 例 |
 | --- | --- | --- |
@@ -255,7 +268,7 @@ Error response は RFC 9457 Problem Details 互換です。
 
 | Path | 責務 |
 | --- | --- |
-| `contracts/schemas.py` | HTTP wire DTO、Problem Details schema |
+| `contracts/schemas.py` | GameClient / Supabase / demo で共有する wire DTO、Problem Details schema |
 | `contracts/errors.py` | error code metadata |
 | `interface/runtime/` | settings、definition loader、logging bootstrap |
 | `interface/api/routers.py` | health endpoint |

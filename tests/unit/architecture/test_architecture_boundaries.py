@@ -60,6 +60,28 @@ def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
     assert "game_id: UUID" not in router_source
 
 
+def test_design_docs_describe_game_surface_as_client_operations() -> None:
+    api_doc = (ROOT / "docs" / "design" / "api.md").read_text(encoding="utf-8")
+    domain_doc = (ROOT / "docs" / "design" / "domain.md").read_text(encoding="utf-8")
+
+    assert "health-only REST API" in api_doc
+    assert "`GameClient.get_setup_options`" in api_doc
+    assert "`GameClient.create_game`" in api_doc
+    assert "`GameClient.get_game_reveal`" in api_doc
+    assert (
+        "`interface/application`、`interface/demo`、`interface/worker`、`interface/shared/setup_options.py`"
+        in domain_doc
+    )
+
+    for old_route in (
+        "`GET /setup-options`",
+        "`POST /games`",
+        "`GET /games`",
+        "`GET /api/v1/games",
+    ):
+        assert old_route not in api_doc
+
+
 def test_usecase_jobs_public_surface_is_minimal() -> None:
     _assert_public_surface(
         game_jobs,
@@ -411,6 +433,18 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
             _assert_process_log_file_env(env, "cli.jsonl")
         elif name.startswith("Pytest: "):
             assert "WEREWOLF_LOG_OUTPUT" not in env
+
+
+def test_vscode_default_compound_does_not_start_supabase_worker() -> None:
+    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    compounds = {compound["name"]: compound for compound in launch["compounds"]}
+
+    demo_compound = compounds["App: API + Streamlit"]
+
+    assert demo_compound["configurations"] == [
+        "API: uvicorn",
+        "UI: Streamlit",
+    ]
 
 
 def test_vscode_supabase_task_matches_runtime_state() -> None:

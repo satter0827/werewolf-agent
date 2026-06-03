@@ -587,19 +587,19 @@ header[data-testid="stHeader"] {
 }
 
 .wa-command-section + .wa-command-section {
-    margin-top: var(--wa-space-5);
+    margin-top: var(--wa-space-4);
 }
 
 .wa-command-divider {
     height: 1px;
-    margin: var(--wa-space-6) 0 var(--wa-space-4);
+    margin: var(--wa-space-4) 0 var(--wa-space-3);
     background: var(--wa-line);
 }
 
 .wa-hand-panel {
     border: 1px solid var(--wa-danger-line);
     border-radius: var(--wa-radius);
-    padding: var(--wa-space-4);
+    padding: 15px var(--wa-space-4);
     background: var(--wa-danger-soft);
 }
 
@@ -618,11 +618,27 @@ header[data-testid="stHeader"] {
     background: var(--wa-safe-soft);
 }
 
-.wa-hand-head h3 {
-    margin: 0 0 var(--wa-space-3);
+.wa-hand-label {
+    color: var(--wa-muted);
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: 0;
+    line-height: 1.35;
+}
+
+.wa-hand-title {
+    margin-top: 7px;
     color: var(--wa-text);
-    font-size: 21px;
+    font-size: 20px;
+    font-weight: 900;
     line-height: 1.25;
+}
+
+.wa-hand-panel p {
+    margin: 6px 0 0;
+    color: #475467;
+    font-size: 13px;
+    line-height: 1.45;
 }
 
 .wa-action-heading {
@@ -661,40 +677,69 @@ header[data-testid="stHeader"] {
     font-weight: 900;
 }
 
-.wa-primary-note {
-    color: var(--wa-text);
-}
-
-.wa-primary-note b {
-    display: block;
-    font-size: 15px;
-    line-height: 1.35;
-}
-
 .wa-private-panel {
     display: flex;
     flex-direction: column;
-    gap: var(--wa-space-4);
+    gap: 10px;
     padding-top: 0;
 }
 
-.wa-private-block h3 {
-    margin: 0 0 8px;
-    color: var(--wa-text);
-    font-size: 17px;
-    line-height: 1.3;
+.wa-private-summary {
+    border: 1px solid #cfe0f5;
+    border-radius: var(--wa-radius);
+    padding: 12px var(--wa-space-3);
+    background: var(--wa-info-soft);
 }
 
-.wa-role-note {
-    border-radius: var(--wa-radius);
-    padding: 10px var(--wa-space-3);
-    background: var(--wa-info-soft);
+.wa-private-summary-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.wa-private-summary-head span {
+    color: #315f9f;
+    font-size: 12px;
+    font-weight: 900;
+    line-height: 1.35;
+}
+
+.wa-private-summary-head strong {
+    flex: 0 0 auto;
+    border: 1px solid #b7d0f0;
+    border-radius: 999px;
+    padding: 3px 9px;
+    background: #ffffff;
     color: #23518e;
     font-size: 13px;
-    font-weight: 800;
+    font-weight: 900;
+    line-height: 1.35;
+}
+
+.wa-private-summary p {
+    margin: 8px 0 0;
+    color: #23518e;
+    font-size: 13px;
+    font-weight: 700;
     line-height: 1.45;
 }
 
+.wa-private-visible {
+    border: 1px solid var(--wa-line);
+    border-radius: var(--wa-radius);
+    padding: 12px var(--wa-space-3);
+    background: #fbfcfe;
+}
+
+.wa-private-visible h3 {
+    margin: 0 0 8px;
+    color: var(--wa-text);
+    font-size: 15px;
+    line-height: 1.3;
+}
+
+.wa-private-visible ul,
 .wa-private-block ul {
     margin: 0;
     padding-left: 1.1rem;
@@ -743,7 +788,7 @@ header[data-testid="stHeader"] {
 .wa-observation-memo {
     border: 1px solid var(--wa-line);
     border-radius: var(--wa-radius);
-    padding: var(--wa-space-3);
+    padding: 11px var(--wa-space-3);
     background: #fbfcfe;
 }
 
@@ -773,12 +818,14 @@ header[data-testid="stHeader"] {
     padding-left: 1.1rem;
     color: #344054;
     font-size: 12px;
-    line-height: 1.5;
+    line-height: 1.55;
 }
 
 .wa-advance-note {
-    border-left: 3px solid var(--wa-day);
-    padding: 3px 0 3px var(--wa-space-3);
+    border: 1px solid var(--wa-day-line);
+    border-radius: var(--wa-radius);
+    padding: 12px var(--wa-space-3);
+    background: #fffaf0;
     color: var(--wa-text);
 }
 
@@ -794,9 +841,8 @@ header[data-testid="stHeader"] {
     line-height: 1.3;
 }
 
-.wa-primary-note div,
 .wa-advance-note div {
-    margin-top: 3px;
+    margin-top: 5px;
     color: #4b5563;
     font-size: 13px;
     line-height: 1.45;
@@ -867,10 +913,6 @@ header[data-testid="stHeader"] {
     .st-key-right_command_panel {
         margin-top: var(--wa-space-4);
         padding: 14px !important;
-    }
-
-    .wa-hand-head h3 {
-        font-size: 20px;
     }
 
     .wa-observation-memo-head {

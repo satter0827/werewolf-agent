@@ -14,15 +14,15 @@ deterministic domain core がゲームの真実を管理し、外側には publi
 
 ## 起動
 
+local demo:
+
 ```bash
 uv sync --group dev --extra api --extra llm --extra streamlit --extra worker
 uv run werewolf-agent doctor
-supabase migration up
 uv run --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory
-uv run --extra worker werewolf-agent-worker run
 ```
 
-別ターミナルで CLI から game を実行します。`WEREWOLF_SUPABASE_URL` と `WEREWOLF_SUPABASE_PUBLISHABLE_KEY` が未設定、または login session がない場合は demo mode で動きます。
+別ターミナルで CLI から game を実行します。`WEREWOLF_SUPABASE_URL` と `WEREWOLF_SUPABASE_PUBLISHABLE_KEY` が未設定、または login session がない場合は demo mode で動きます。demo mode では Supabase queue worker は起動しません。
 
 ```bash
 uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
@@ -44,7 +44,14 @@ Streamlit:
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py
 ```
 
-VS Code では `App: API + Worker + Streamlit` を使います。OneDrive / sandbox の権限差分を避けるため、検証用 cache と screenshot は `%TEMP%\werewolf-agent` 配下、運用ログは `.werewolf-agent/logs` 配下へ置きます。
+Supabase queue worker を使う場合:
+
+```bash
+supabase migration up
+uv run --extra worker werewolf-agent-worker run
+```
+
+VS Code では demo 起動用に `App: API + Streamlit` を使います。Supabase queue worker は `WEREWOLF_SUPABASE_DB_DSN` を設定した場合だけ `Worker: run` で別起動します。OneDrive / sandbox の権限差分を避けるため、検証用 cache と screenshot は `%TEMP%\werewolf-agent` 配下、運用ログは `.werewolf-agent/logs` 配下へ置きます。
 
 ## LLM Provider
 
@@ -118,7 +125,7 @@ CLI / Streamlit は backend game API を呼ばず、Supabase Data API と Auth �
 
 `interface/runtime` が設定、definition TOML、logging bootstrap を浅い入口で解決し、adapter から usecase へ値として注入します。domain と usecase は source path、packaged fallback、`.env`、Supabase、logging 設定を知りません。
 
-運用時に変える値は `.env` または環境変数で override します。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、LLM trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で変更できます。
+運用時に変える値は `.env` または環境変数で override します。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、game 作成時の既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、LLM trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で変更できます。
 
 Streamlit の文言、CSS、画面配置は `resources/streamlit/` の packaged default を使います。`WEREWOLF_STREAMLIT_I18N_FILE`、`WEREWOLF_STREAMLIT_CSS_FILE`、`WEREWOLF_STREAMLIT_SCREENS_FILE` を指定すると外部ファイルで丸ごと差し替えます。
 

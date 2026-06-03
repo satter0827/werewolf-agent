@@ -67,7 +67,7 @@ definition path 解決と TOML 読み込みは `interface/runtime` に集約し�
 - domain へ入る code は `usecase/internal` 配下に限定する
 - `usecase/internal` は interface / wire schema に依存しない
 - `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interface/application` に限定する
+- interface 層から usecase を呼ぶ場所は `interface/application`、`interface/demo`、`interface/worker`、`interface/shared/setup_options.py` に限定する
 - `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 
 この境界は `tests/unit/architecture/test_architecture_boundaries.py` で固定します。
@@ -129,7 +129,11 @@ prompt resource は `AgentObservation` の契約だけを参照します。raw p
 - `AgentDecision` を domain `Action` へ変換する
 - repository port に保存する payload を作る
 
-`usecase.jobs.GameService` は interface 向けの最小 facade です。
+`usecase.jobs.GameService` は interface 向けの最小 facade です。`interface/application` は
+settings と definition を usecase 用の値へ変換し、`interface/demo` と `interface/worker` は
+repository / telemetry / LLM provider 設定を注入して facade を実行します。
+`interface/shared/setup_options.py` は HTTP を介さない CLI / Streamlit の開始画面 metadata だけを
+facade から取得します。
 
 - `create_game`
 - `get_game`

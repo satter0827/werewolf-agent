@@ -191,19 +191,7 @@ def _submit_action(
 
 def _materialize_private_views(connection: Any, settings: AppSettings, game_id: str) -> None:
     service = _service(connection, settings)
-    reveal = service.get_game_reveal(game_jobs.GetGameRevealQuery(game_id=game_id))
-    reveal_response = _wire_model(GameRevealResponse, reveal)
-    connection.execute(
-        """
-        insert into public.game_reveals (game_id, reveal_payload, state_version, updated_at)
-        values (%s, %s, %s, timezone('utc', now()))
-        on conflict (game_id) do update set
-          reveal_payload = excluded.reveal_payload,
-          state_version = excluded.state_version,
-          updated_at = excluded.updated_at
-        """,
-        (game_id, Jsonb(reveal_response.model_dump(mode="json")), reveal_response.version),
-    )
+    state_version = _materialize_reveal_view(connection, settings, service, game_id)
     participants = connection.execute(
         """
         select user_id, player_id
@@ -238,10 +226,47 @@ def _materialize_private_views(connection: Any, settings: AppSettings, game_id: 
                 game_id,
                 player_id,
                 participant["user_id"],
-                reveal_response.version,
+                state_version,
                 Jsonb(observation.observation),
             ),
         )
+
+
+def _materialize_reveal_view(
+    connection: Any,
+    settings: AppSettings,
+    service: game_jobs.GameService,
+    game_id: str,
+) -> int:
+    if not settings.reveal_api_enabled:
+        connection.execute(
+            """
+            delete from public.game_reveals
+            where game_id = %s
+            """,
+            (game_id,),
+        )
+        return _current_game_version(service, game_id)
+
+    reveal = service.get_game_reveal(game_jobs.GetGameRevealQuery(game_id=game_id))
+    reveal_response = _wire_model(GameRevealResponse, reveal)
+    connection.execute(
+        """
+        insert into public.game_reveals (game_id, reveal_payload, state_version, updated_at)
+        values (%s, %s, %s, timezone('utc', now()))
+        on conflict (game_id) do update set
+          reveal_payload = excluded.reveal_payload,
+          state_version = excluded.state_version,
+          updated_at = excluded.updated_at
+        """,
+        (game_id, Jsonb(reveal_response.model_dump(mode="json")), reveal_response.version),
+    )
+    return reveal_response.version
+
+
+def _current_game_version(service: game_jobs.GameService, game_id: str) -> int:
+    game = service.get_game(game_jobs.GetGameQuery(game_id=game_id))
+    return int(game.state["version"])
 
 
 def _service(

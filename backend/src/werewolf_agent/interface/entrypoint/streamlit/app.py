@@ -1735,7 +1735,7 @@ def _render_auto_advance_controls(
             st.rerun()
     elif screen.hand_panel.can_advance and st.button(
         catalog.t(lang, "action.advance_one_step"),
-        type="primary",
+        type="secondary",
         use_container_width=True,
     ):
         start_auto_advance(st.session_state, selected_option.game_id)

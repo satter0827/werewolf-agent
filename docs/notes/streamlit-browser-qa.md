@@ -12,16 +12,21 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 起動
 
 VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
-VS Code から `App: API + Worker + Streamlit` を起動する場合は、migration task、API、worker、Streamlit が同じ設定を使います。
+VS Code から demo を確認する場合は `App: API + Streamlit` を起動します。Supabase queue worker は `WEREWOLF_SUPABASE_DB_DSN` を設定した場合だけ `Worker: run` で別起動します。
 運用ログは `.werewolf-agent/logs`、一時 cache と screenshot は `%TEMP%\werewolf-agent` 配下を使います。
 
-別 terminal で Supabase migration、API、worker、Streamlit を起動します。
+別 terminal で API、Streamlit を起動します。Supabase worker を含めて確認する場合だけ、先に migration と worker を起動します。
+
+```bash
+uv run --no-sync --group dev --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8765
+uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
+```
+
+Supabase worker も確認する場合:
 
 ```bash
 supabase migration up
-uv run --no-sync --group dev --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8765
 uv run --no-sync --group dev --extra worker werewolf-agent-worker run
-uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
 HTTP smoke:
@@ -123,7 +128,7 @@ await viewport.reset();
 
 ## スクリーンショット
 
-QA screenshot は `.werewolf-agent/cache` に残しません。保存が必要な画像は
+QA screenshot は repository 配下の cache に残しません。保存が必要な画像は
 `docs/notes/assets/streamlit-ui/` に置きます。
 
 今回移動済みの画像:
@@ -133,7 +138,7 @@ QA screenshot は `.werewolf-agent/cache` に残しません。保存が必要�
 - `docs/notes/assets/streamlit-ui/09-qa-observer-mobile.png`
 - `docs/notes/assets/streamlit-ui/10-qa-zero-base-review.png`
 
-一時ファイルとして保存する場合だけ `.werewolf-agent/qa/` を使い、採用する画像は docs 配下へ移します。
+一時ファイルとして保存する場合は `%TEMP%\werewolf-agent\qa\` を使い、採用する画像は docs 配下へ移します。
 
 ## 今回の確認結果
 

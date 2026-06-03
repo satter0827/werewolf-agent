@@ -47,7 +47,7 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 
 ## QA 画像
 
-`.werewolf-agent/cache` は一時キャッシュです。画面検討・QA の画像は docs 配下へ置きます。
+一時キャッシュと採用前の QA screenshot は `%TEMP%\werewolf-agent` 配下へ置きます。画面検討・QA の採用画像は docs 配下へ置きます。
 
 - ![QA desktop console](assets/streamlit-ui/07-qa-console-desktop.png)
 - ![QA observer desktop](assets/streamlit-ui/08-qa-observer-desktop.png)

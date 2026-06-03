@@ -1,4 +1,4 @@
-"""API-facing operations for the Streamlit play screen."""
+"""GameClient-facing operations for the Streamlit play screen."""
 
 from __future__ import annotations
 
@@ -187,7 +187,7 @@ def load_reveal(
     client: GameClient,
     game_id: str,
 ) -> GameRevealResponse:
-    """Return full observer information through the dedicated reveal API."""
+    """Return full observer information through the dedicated reveal operation."""
     return client.get_game_reveal(game_id)
 
 

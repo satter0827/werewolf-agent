@@ -38,6 +38,7 @@ from werewolf_agent.interface.application.telemetry import LoggingTelemetrySink
 from werewolf_agent.interface.demo.repository import InMemoryGameRepository
 from werewolf_agent.interface.runtime import AppSettings
 from werewolf_agent.interface.shared.game_requests import build_create_game_request
+from werewolf_agent.interface.shared.messages import MESSAGE_REVEAL_DISABLED
 from werewolf_agent.interface.shared.setup_options import get_local_setup_options
 
 TModel = TypeVar("TModel", bound=BaseModel)
@@ -91,6 +92,8 @@ class DemoGameClient:
 
     def get_game_reveal(self, game_id: str) -> GameRevealResponse:
         """Return full demo reveal information."""
+        if not self._settings.reveal_api_enabled:
+            raise ResourceNotFoundError(MESSAGE_REVEAL_DISABLED)
         return _wire_model(
             GameRevealResponse,
             self._not_found_as_resource(

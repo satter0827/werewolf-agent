@@ -57,10 +57,10 @@
 - 狙い: Human player 用の専用入力装置を設計する。
 - 不採用理由: 今回は初期コンソール案へ戻し、Human Action は同一画面内の tab として扱う。
 
-## 現在の実装スコープ
+## 当時の実装スコープ
 
 - Sidebar: 履歴、接続状態、新規作成、再開
 - Main: status bar、ゲーム卓、これまでの流れ
 - Right panel: あなたの手番、役職、見えている情報、行動入力、次の入力待ちまで進行
 - Data access: すべて `interface/shared` の `GameClient` 経由
-- Text: 日本語を既定とし、現時点では runtime i18n module を持たない
+- Text: 日本語を既定とし、当時は runtime i18n module を持たない

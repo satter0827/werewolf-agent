@@ -1,4 +1,4 @@
-"""Public wire schemas shared by API, CUI, and future UI entry points."""
+"""Public wire schemas shared by GameClient adapters and interface entry points."""
 
 from __future__ import annotations
 
@@ -172,7 +172,7 @@ class PublicPlayerState(BaseModel):
 
 
 class PublicGameState(BaseModel):
-    """Public game state exposed to CUI and future UI clients."""
+    """Public game state exposed to CLI and UI clients."""
 
     game_id: str
     status: GameStatus
@@ -214,7 +214,7 @@ class GameResponse(BaseModel):
 
 
 class AdvanceGameResponse(BaseModel):
-    """Response from advancing a game by one API-side step."""
+    """Response from advancing a game by one queued or local step."""
 
     game_id: str
     status: GameStatus
@@ -282,7 +282,7 @@ class GameTimelineResponse(BaseModel):
 
 
 class GameRevealPlayer(BaseModel):
-    """Full player state exposed only by the dedicated reveal API."""
+    """Full player state exposed only by the dedicated reveal operation."""
 
     id: str
     name: str
@@ -297,7 +297,7 @@ class GameRevealPlayer(BaseModel):
 
 
 class GameRevealAction(BaseModel):
-    """Pending action exposed only by the dedicated reveal API."""
+    """Pending action exposed only by the dedicated reveal operation."""
 
     player_id: str
     type: ActionType
@@ -308,7 +308,7 @@ class GameRevealAction(BaseModel):
 
 
 class GameRevealInspection(BaseModel):
-    """Resolved inspection exposed only by the dedicated reveal API."""
+    """Resolved inspection exposed only by the dedicated reveal operation."""
 
     seer_id: str
     target_id: str
@@ -319,7 +319,7 @@ class GameRevealInspection(BaseModel):
 
 
 class GameRevealNight(BaseModel):
-    """Resolved night record exposed only by the dedicated reveal API."""
+    """Resolved night record exposed only by the dedicated reveal operation."""
 
     day: int
     attacked_player_id: str | None = None
@@ -331,7 +331,7 @@ class GameRevealNight(BaseModel):
 
 
 class GameRevealVote(BaseModel):
-    """Resolved vote record exposed only by the dedicated reveal API."""
+    """Resolved vote record exposed only by the dedicated reveal operation."""
 
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
@@ -518,7 +518,7 @@ class PlayerObservationResponse(BaseModel):
 
 
 class PlayerActionRequest(BaseModel):
-    """One manual player action submitted through the API."""
+    """One manual player action submitted through the client port."""
 
     type: ActionType
     target_id: str | None = None
@@ -589,7 +589,7 @@ class ProblemDetails(BaseModel):
 
 
 class AdvanceGameJobResponse(BaseModel):
-    """Public response for an API-side advance job."""
+    """Public response for a queued advance job."""
 
     job_id: str
     game_id: str

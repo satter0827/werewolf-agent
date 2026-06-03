@@ -117,11 +117,14 @@ def observation_panel_html(
     return html(
         f"""
         <section class="wa-private-panel wa-command-section">
-            <div class="wa-private-block">
-                <h3>{escape(role_title)}</h3>
-                <div class="wa-role-note">{role_note}</div>
+            <div class="wa-private-summary">
+                <div class="wa-private-summary-head">
+                    <span>{escape(role_title)}</span>
+                    <strong>{escape(observation.role)}</strong>
+                </div>
+                <p>{role_note}</p>
             </div>
-            <div class="wa-private-block">
+            <div class="wa-private-visible">
                 <h3>{escape(info_title)}</h3>
                 {known_body}
             </div>
@@ -136,13 +139,9 @@ def hand_panel_html(hand: HandPanelView) -> str:
     return html(
         f"""
         <aside class="wa-hand-panel wa-command-section wa-hand-panel-{tone}">
-            <div class="wa-hand-head">
-                <h3>{escape(hand.heading)}</h3>
-            </div>
-            <div class="wa-primary-note">
-                <b>{escape(hand.title)}</b>
-                <div>{escape(hand.detail)}</div>
-            </div>
+            <div class="wa-hand-label">{escape(hand.heading)}</div>
+            <div class="wa-hand-title">{escape(hand.title)}</div>
+            <p>{escape(hand.detail)}</p>
         </aside>
         """
     )

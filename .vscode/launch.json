@@ -349,10 +349,9 @@
   ],
   "compounds": [
     {
-      "name": "App: API + Worker + Streamlit",
+      "name": "App: API + Streamlit",
       "configurations": [
         "API: uvicorn",
-        "Worker: run",
         "UI: Streamlit"
       ],
       "stopAll": true
