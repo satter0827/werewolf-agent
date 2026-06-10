@@ -5,8 +5,8 @@ from __future__ import annotations
 import random
 from collections.abc import Sequence
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import MESSAGE_UNSUPPORTED_AGENT_ACTION
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
     ActionType,

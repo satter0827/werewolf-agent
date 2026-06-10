@@ -16,31 +16,23 @@ COPY backend ./backend
 
 FROM base AS dev
 
-RUN uv sync --frozen --group dev --extra api --extra llm --extra worker
+RUN uv sync --frozen --group dev --extra llm --extra streamlit --extra worker
 
-EXPOSE 8000
-
-CMD ["uvicorn", "werewolf_agent.interface.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["pytest"]
 
 FROM base AS runtime
 
-ENV WEREWOLF_API_DEBUG=false \
-    WEREWOLF_LOG_DIR=.werewolf-agent/logs \
+ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs \
     WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl \
     WEREWOLF_LOG_OUTPUT=file \
     WEREWOLF_LOG_RETENTION_DAYS=14 \
-    WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING \
-    PORT=8000
+    WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 
-RUN uv sync --frozen --no-dev --extra api --extra llm --extra worker
+RUN uv sync --frozen --no-dev --extra llm --extra worker
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && chown -R app:app /app
 
 USER app
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % port, timeout=5).read()" || exit 1
-
-CMD ["sh", "-c", "uvicorn werewolf_agent.interface.api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["werewolf-agent-worker", "run"]

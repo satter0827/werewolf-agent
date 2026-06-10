@@ -5,6 +5,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from werewolf_agent.commons.resources import (
+    load_llm_definitions as load_runtime_llm_definitions,
+)
 from werewolf_agent.commons.shared.constants import (
     DEFAULT_GAME_LIST_LIMIT,
     DEFAULT_NARRATION_MODE,
@@ -26,9 +29,6 @@ from werewolf_agent.commons.shared.definitions import (
     RoleDefinition,
 )
 from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
-from werewolf_agent.interface.runtime.resources import (
-    load_llm_definitions as load_runtime_llm_definitions,
-)
 from werewolf_agent.usecase.jobs import (
     AdvanceGameCommand,
     CreateGameCommand,

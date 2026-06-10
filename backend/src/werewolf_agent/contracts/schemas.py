@@ -1,4 +1,4 @@
-"""Public wire schemas shared by GameClient adapters and interface entry points."""
+"""Public wire schemas shared by GameApi adapters and entry points."""
 
 from __future__ import annotations
 
@@ -537,7 +537,7 @@ class PlayerObservationResponse(BaseModel):
 
 
 class PlayerActionRequest(BaseModel):
-    """One manual player action submitted through the client port."""
+    """One manual player action submitted through the API port."""
 
     type: ActionType
     target_id: str | None = None

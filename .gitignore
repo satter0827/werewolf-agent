@@ -73,6 +73,10 @@ node_modules/
 /front-web/dist/
 /front-web/build/
 /front-web/coverage/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+/frontend/coverage/
 
 # Editor and OS noise
 /.idea/

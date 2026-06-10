@@ -10,7 +10,6 @@ authors = [
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
-    "Framework :: FastAPI",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
@@ -34,10 +33,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-api = [
-    "fastapi>=0.115,<1",
-    "uvicorn[standard]>=0.34,<1",
-]
 llm = [
     "langchain-openai>=0.3,<0.4",
     "openai>=1.59,<2",
@@ -52,8 +47,8 @@ worker = [
 ]
 
 [project.scripts]
-werewolf-agent = "werewolf_agent.interface.entrypoint.cui.app:app"
-werewolf-agent-worker = "werewolf_agent.interface.entrypoint.worker.app:app"
+werewolf-agent = "werewolf_agent.entrypoint.cui.app:app"
+werewolf-agent-worker = "werewolf_agent.api.supabase.worker.app:app"
 
 [dependency-groups]
 dev = [

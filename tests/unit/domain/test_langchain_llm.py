@@ -1,5 +1,6 @@
 import pytest
 
+from werewolf_agent.commons.resources import load_llm_definitions
 from werewolf_agent.commons.shared.definitions import (
     FakeDecisionCatalog,
     PromptDefinition,
@@ -21,7 +22,6 @@ from werewolf_agent.domain.llm.service import (
     _compact_observation,
     _decision_format_instructions,
 )
-from werewolf_agent.interface.runtime.resources import load_llm_definitions
 
 
 def players() -> list[VisiblePlayer]:

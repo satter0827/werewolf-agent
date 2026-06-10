@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import message_action_not_available
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     ABILITY_GUARD,
     ABILITY_INSPECT,

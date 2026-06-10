@@ -6,11 +6,11 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_EXPECTED_VOTE_ACTION,
     MESSAGE_SELF_VOTING_DISABLED,
 )
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
     ActionType,

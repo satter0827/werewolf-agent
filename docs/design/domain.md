@@ -1,6 +1,6 @@
 # Domain
 
-この文書は、`domain`、`domain.llm`、`usecase` の境界だけを固定します。
+この文書は、`domain`、`domain.llm`、`usecase` の境界を固定します。
 API 詳細、UI 手順、handoff は別文書に置きます。
 
 ## 目的
@@ -8,7 +8,7 @@ API 詳細、UI 手順、handoff は別文書に置きます。
 - `domain.game` は人狼ゲームの deterministic core として、同じ config、seed、action から同じ snapshot と event を返す
 - `domain.llm` は provider 非依存の observation / decision 契約と LangChain provider を持つ
 - `usecase.internal` が game observation と LLM decision を変換し、両 domain を直接 import させない
-- `interface/runtime` が設定、definition、logging を解決し、`interface/application` から usecase へ値として注入する
+- `commons.configuration` と `commons.resources` が設定、definition、logging を解決し、`api.usecase_bridge` から usecase へ値として注入する
 
 ## 持つもの
 
@@ -33,17 +33,17 @@ API 詳細、UI 手順、handoff は別文書に置きます。
 - `GameService`
 - command / query DTO
 - repository / telemetry port
-- application bridge が必要とする永続化 contract
+- API adapter が必要とする永続化 contract
 
 ## 持たないもの
 
 - `.env` / `get_settings()`
-- FastAPI / Streamlit / Typer
+- Streamlit / Typer
 - Supabase / DB adapter
 - file I/O
 - logging bootstrap
 - API key
-- HTTP wire schema
+- wire schema
 - UI session state
 - 旧形式 fallback / migration
 
@@ -59,17 +59,19 @@ API 詳細、UI 手順、handoff は別文書に置きます。
 | LLM decision graphs | `resources/llm/decision_graphs.toml` | `domain.llm` | agent strategy metadata / graph node |
 | Fake responses | `resources/llm/fake_responses.toml` | `domain.llm` | `FakeListLLM` fixture |
 
-definition path 解決と TOML 読み込みは `interface/runtime` に集約します。`AppSettings` 構築時に definition を検証し、`interface/application` が `GameDefinitions` / `LlmDefinitions` を usecase へ注入します。domain と usecase は source path、packaged default、`.env` を知りません。
+definition path 解決と TOML 読み込みは `commons.resources` に集約します。`AppSettings` 構築時に definition を検証し、`api.usecase_bridge` が `GameDefinitions` / `LlmDefinitions` を usecase へ注入します。domain と usecase は source path、packaged default、`.env` を知りません。
 
 ## 境界
 
 - `domain.game` と `domain.llm` は互いに import しない
 - `usecase.jobs` は domain を import しない
 - domain へ入る code は `usecase/internal` 配下に限定する
-- `usecase/internal` は interface / wire schema に依存しない
-- `interface/api` と `interface/entrypoint/cui` は domain / usecase を直接 import しない
-- interface 層から usecase を呼ぶ場所は `interface/application`、`interface/demo`、`interface/worker`、`interface/shared/setup_options.py` に限定する
-- `interface/application` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
+- `usecase/internal` は API / entrypoint / wire schema に依存しない
+- CLI / Streamlit は domain / usecase を直接 import せず、`contracts` と `GameApi` port だけを使う
+- `api` は `entrypoint` に依存しない
+- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/local_demo/`、`api/supabase/worker/`、`api/telemetry.py` に限定する
+- `api/usecase_bridge.py` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
+- `commons` は `api`、`entrypoint`、`domain`、`usecase` に依存しない
 
 この境界は `tests/unit/architecture/test_architecture_boundaries.py` で固定します。
 
@@ -130,11 +132,7 @@ prompt resource と graph definition は `AgentObservation` の契約だけを�
 - `AgentDecision` を domain `Action` へ変換する
 - repository port に保存する payload を作る
 
-`usecase.jobs.GameService` は interface 向けの最小 facade です。`interface/application` は
-settings と definition を usecase 用の値へ変換し、`interface/demo` と `interface/worker` は
-repository / telemetry / LLM provider 設定を注入して facade を実行します。
-`interface/shared/setup_options.py` は HTTP を介さない CLI / Streamlit の開始画面 metadata だけを
-facade から取得します。
+`usecase.jobs.GameService` は API adapter 向けの最小 facade です。`api.usecase_bridge` は settings と definition を usecase 用の値へ変換し、`api.local_demo` と `api.supabase.worker` は repository / telemetry / LLM provider 設定を注入して facade を実行します。`api.setup_options` は HTTP を介さない CLI / Streamlit の開始画面 metadata だけを facade から取得します。
 
 - `create_game`
 - `get_game`
@@ -156,7 +154,7 @@ game observation:
 - 公開 speech / vote history は見える
 - 他 role、夜行動、private event、debug event は見えない
 
-API は `GameSnapshot` を返しません。`usecase.internal` が public state / public timeline に変換し、interface が HTTP / CLI / 画面向け schema に整えます。
+API は `GameSnapshot` を返しません。`usecase.internal` が public state / public timeline に変換し、`api` と `entrypoint` が CLI / 画面向け schema に整えます。
 
 ## 検証
 

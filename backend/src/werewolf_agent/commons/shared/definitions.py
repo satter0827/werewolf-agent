@@ -145,7 +145,7 @@ class RoleDefinition(StrictModel):
 
 
 class CustomRoleDefinition(StrictModel):
-    """Session-scoped role definition supplied by an interface client."""
+    """Session-scoped role definition supplied by a game API caller."""
 
     id: str
     name: str
@@ -403,7 +403,7 @@ class PlayerProfile(StrictModel):
 
 
 class CustomCharacterDefinition(StrictModel):
-    """Session-scoped character definition supplied by an interface client."""
+    """Session-scoped character definition supplied by a game API caller."""
 
     id: str
     name: str

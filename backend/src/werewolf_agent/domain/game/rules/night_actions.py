@@ -6,6 +6,7 @@ import random
 from collections import Counter
 from collections.abc import Mapping
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE,
     MESSAGE_EXPECTED_NIGHT_ACTION,
@@ -15,7 +16,6 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_UNSUPPORTED_NIGHT_ACTION,
     MESSAGE_WEREWOLVES_CANNOT_ATTACK_WEREWOLF,
 )
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     ABILITY_GUARD,
     ABILITY_INSPECT,

@@ -23,7 +23,6 @@ def test_scripts_directory_keeps_executable_code_batch_only() -> None:
 def test_expected_batch_scripts_exist() -> None:
     for name in (
         "run-cli.cmd",
-        "run-api.cmd",
         "run-worker.cmd",
         "check-all.cmd",
         "rebuild-sphinx-docs.cmd",
@@ -52,7 +51,7 @@ def test_sdist_includes_scripts() -> None:
 def test_rebuild_sphinx_uses_project_environment_for_autodoc() -> None:
     script = _read("scripts/rebuild-sphinx-docs.cmd")
 
-    assert "uv run --group docs --extra api --extra streamlit sphinx-build" in script
+    assert "uv run --group docs --extra streamlit sphinx-build" in script
     assert "uv run --no-project" not in script
 
 
@@ -60,7 +59,7 @@ def test_rebuild_sphinx_uses_project_environment_for_autodoc() -> None:
 def test_batch_help_and_dry_run_commands_do_not_require_project_build() -> None:
     for command in (
         ["cmd", "/c", "scripts\\check-all.cmd", "--help"],
-        ["cmd", "/c", "scripts\\run-api.cmd", "--help"],
+        ["cmd", "/c", "scripts\\run-worker.cmd", "--help"],
         ["cmd", "/c", "scripts\\clean-caches.cmd", "--dry-run"],
     ):
         result = subprocess.run(

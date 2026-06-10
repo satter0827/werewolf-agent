@@ -1,7 +1,6 @@
 @echo off
 setlocal
 
-set "RUN_API_CHECKS=0"
 set "KEEP_GOING=0"
 set "FAILED=0"
 
@@ -9,11 +8,6 @@ set "FAILED=0"
 if "%~1"=="" goto run_checks
 if /I "%~1"=="--help" goto print_help
 if /I "%~1"=="-h" goto print_help
-if /I "%~1"=="--api" (
-    set "RUN_API_CHECKS=1"
-    shift
-    goto parse_args
-)
 if /I "%~1"=="--keep-going" (
     set "KEEP_GOING=1"
     shift
@@ -39,7 +33,7 @@ if not exist "pyproject.toml" (
 set "PYTHON=%CD%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" (
     echo Missing virtual environment: %PYTHON% 1>&2
-    echo Run: uv sync --group dev --group docs --extra api --extra streamlit --link-mode=copy 1>&2
+    echo Run: uv sync --group dev --group docs --extra streamlit --extra worker --link-mode=copy 1>&2
     popd
     exit /b 1
 )
@@ -99,14 +93,6 @@ echo === mypy ===
 call :check_status %ERRORLEVEL%
 if errorlevel 1 goto finish
 
-if not "%RUN_API_CHECKS%"=="1" goto finish
-
-echo.
-echo === pytest tests/integration/api ===
-"%PYTHON%" -m pytest tests/integration/api
-call :check_status %ERRORLEVEL%
-if errorlevel 1 goto finish
-
 :finish
 if "%FAILED%"=="1" (
     popd
@@ -129,11 +115,10 @@ if "%KEEP_GOING%"=="1" (
 exit /b %STATUS%
 
 :print_help
-echo Usage: scripts\check-all.cmd [--api] [--keep-going]
+echo Usage: scripts\check-all.cmd [--keep-going]
 echo.
 echo Runs local validation with .venv\Scripts\python.exe.
 echo Runtime cache defaults to %%TEMP%%\werewolf-agent.
 echo Operational logs default to .werewolf-agent\logs\check-all.jsonl.
-echo   --api         Also run API integration tests.
 echo   --keep-going  Continue after failed checks and exit non-zero at the end.
 exit /b 0

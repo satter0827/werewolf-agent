@@ -15,7 +15,7 @@ if not exist "pyproject.toml" (
 set "PYTHON=%CD%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" (
     echo Missing virtual environment: %PYTHON% 1>&2
-    echo Run: uv sync --group dev --group docs --extra api --extra streamlit --link-mode=copy 1>&2
+    echo Run: uv sync --group dev --group docs --extra streamlit --extra worker --link-mode=copy 1>&2
     popd
     exit /b 1
 )

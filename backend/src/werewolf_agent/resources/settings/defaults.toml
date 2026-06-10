@@ -1,11 +1,10 @@
 app_name = "werewolf-agent"
-api_service_name = "werewolf-agent-api"
 
 generated_dir = ".werewolf-agent"
 
-llm_provider = "lmstudio"
-model = "auto"
-llm_base_url = "http://127.0.0.1:1234/v1"
+llm_provider = "fake"
+model = "fake-list-llm"
+llm_base_url = ""
 llm_timeout_seconds = 12.0
 llm_max_retries = 0
 llm_max_tokens = 96
@@ -62,17 +61,11 @@ streamlit_message_max_chars = 200
 streamlit_page_title = "Werewolf Agent"
 streamlit_service_name = "werewolf-agent-streamlit"
 
-api_title = "Werewolf Agent API"
-api_version = "0.1.0"
-api_debug = false
 reveal_api_enabled = true
 api_game_list_default_limit = 20
 api_game_list_max_limit = 100
 api_timeline_default_limit = 100
 api_timeline_max_limit = 500
-api_cors_allowed_origins = ""
-api_cors_allowed_methods = "GET,POST"
-api_cors_allowed_headers = "*"
 
 game_min_players = 5
 game_max_players = 8

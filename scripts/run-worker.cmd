@@ -37,7 +37,7 @@ if not exist "pyproject.toml" (
 set "PYTHON=%CD%\.venv\Scripts\python.exe"
 if not exist "%PYTHON%" (
     echo Missing virtual environment: %PYTHON% 1>&2
-    echo Run: uv sync --group dev --group docs --extra api --extra streamlit --extra worker --link-mode=copy 1>&2
+    echo Run: uv sync --group dev --group docs --extra streamlit --extra worker --link-mode=copy 1>&2
     popd
     exit /b 1
 )
@@ -51,7 +51,7 @@ if not defined WEREWOLF_LOG_FILE_NAME (
     set "WEREWOLF_LOG_FILE_NAME=worker.jsonl"
 )
 
-"%PYTHON%" -m werewolf_agent.interface.entrypoint.worker.app %MODE%
+"%PYTHON%" -m werewolf_agent.api.supabase.worker.app %MODE%
 set "EXIT_CODE=%ERRORLEVEL%"
 
 popd

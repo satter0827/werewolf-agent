@@ -23,7 +23,7 @@ class TelemetryEvent:
     outcome: str | None = None
 
     def __post_init__(self) -> None:
-        """Normalize event metadata without depending on interface logging."""
+        """Normalize event metadata without depending on entry point logging."""
         object.__setattr__(self, "action", non_blank(self.action, "telemetry action"))
         level = str(self.level).upper()
         if level not in TELEMETRY_LEVELS:

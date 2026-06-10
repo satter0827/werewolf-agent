@@ -15,10 +15,12 @@ def test_docker_workflow_keeps_pr_and_main_push_coverage() -> None:
 def test_docker_workflow_runs_container_build_and_test() -> None:
     workflow = _read(".github/workflows/docker.yml")
 
-    assert "docker compose build api" in workflow
-    assert (
-        "docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api:runtime ."
-    ) in workflow
+    assert "docker compose build worker test" in workflow
+    runtime_build_command = (
+        "docker build --target runtime -f docker/backend.Dockerfile "
+        "-t werewolf-agent-worker:runtime ."
+    )
+    assert runtime_build_command in workflow
     assert "docker compose --profile tools run --rm test" in workflow
     assert "docker compose down -v" in workflow
 
@@ -66,7 +68,8 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
     assert "[dependency-groups]" in pyproject
     assert "dev = [" in pyproject
     assert "[project.optional-dependencies]" in pyproject
-    assert "api = [" in pyproject
+    assert "worker = [" in pyproject
+    assert "streamlit = [" in pyproject
     assert 'testpaths = ["tests"]' in pyproject
 
 

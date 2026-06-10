@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.exceptions import GameError, GamePhaseError
 from werewolf_agent.commons.shared.messages import (
     message_expected_phase,
     message_player_cannot_perform_role_action,
     message_player_not_alive,
     message_unknown_player_id,
 )
-from werewolf_agent.contracts import GameError, GamePhaseError
 from werewolf_agent.domain.game.models import (
     FACTION_VILLAGE,
     FACTION_WEREWOLF,

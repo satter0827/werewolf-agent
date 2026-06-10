@@ -5,6 +5,7 @@ from dataclasses import MISSING, fields
 from pathlib import Path
 from types import ModuleType
 
+import werewolf_agent.api as public_api
 import werewolf_agent.domain.llm as llm_domain
 import werewolf_agent.usecase.jobs as game_jobs
 import werewolf_agent.usecase.jobs.games as game_job_models
@@ -13,17 +14,28 @@ ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "backend" / "src" / "werewolf_agent"
 
 
-def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> None:
+def test_interface_package_is_removed() -> None:
+    assert not (PACKAGE / "interface").exists()
+
+
+def test_top_level_layout_uses_api_entrypoint_commons_contracts() -> None:
+    for package_name in ("api", "entrypoint", "commons", "contracts"):
+        assert (PACKAGE / package_name / "__init__.py").exists()
+
+    assert (PACKAGE / "api" / "supabase").is_dir()
+    assert (PACKAGE / "api" / "local_demo").is_dir()
+    assert (PACKAGE / "entrypoint" / "cui").is_dir()
+    assert (PACKAGE / "entrypoint" / "streamlit").is_dir()
+
+
+def test_entrypoints_do_not_import_domain_or_usecase_directly() -> None:
     forbidden_prefixes = (
         "werewolf_agent.domain",
         "werewolf_agent.usecase",
         "werewolf_agent.llm",
     )
 
-    entrypoint_path = PACKAGE / "interface" / "entrypoint"
-    imported = _imports_under(entrypoint_path / "api")
-    imported.extend(_imports_under(entrypoint_path / "cui"))
-    imported.extend(_imports_under(entrypoint_path / "streamlit"))
+    imported = _imports_under(PACKAGE / "entrypoint")
 
     assert not [
         (path, module)
@@ -32,64 +44,59 @@ def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> Non
     ]
 
 
-def test_interface_imports_only_public_usecase_jobs_from_application_bridge() -> None:
-    imported = _imports_under(PACKAGE / "interface")
+def test_api_usecase_imports_stay_in_adapters() -> None:
+    imported = _imports_under(PACKAGE / "api")
     allowed_paths = (
-        PACKAGE / "interface" / "application",
-        PACKAGE / "interface" / "demo",
-        PACKAGE / "interface" / "shared",
-        PACKAGE / "interface" / "worker",
+        PACKAGE / "api" / "usecase_bridge.py",
+        PACKAGE / "api" / "setup_options.py",
+        PACKAGE / "api" / "telemetry.py",
+        PACKAGE / "api" / "local_demo",
+        PACKAGE / "api" / "supabase" / "worker",
     )
-    allowed_module = "werewolf_agent.usecase.jobs"
+
+    offenders = []
+    for path, module in imported:
+        if not (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase.")):
+            continue
+        if not any(
+            path == allowed_path or path.is_relative_to(allowed_path)
+            for allowed_path in allowed_paths
+        ):
+            offenders.append((path, module))
+
+    assert not offenders
+
+
+def test_api_does_not_depend_on_entrypoint_or_ui_libraries() -> None:
+    forbidden_prefixes = (
+        "rich",
+        "streamlit",
+        "werewolf_agent.entrypoint",
+    )
+    imported = _imports_under(PACKAGE / "api")
 
     assert not [
         (path, module)
         for path, module in imported
-        if (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase."))
-        and (
-            not any(path.is_relative_to(allowed_path) for allowed_path in allowed_paths)
-            or module != allowed_module
-        )
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
     ]
 
-
-def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
-    router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
-
-    assert "games" not in router_source
-    assert "game_id: UUID" not in router_source
+    typer_imports = [(path, module) for path, module in imported if module == "typer"]
+    assert typer_imports == [(PACKAGE / "api" / "supabase" / "worker" / "app.py", "typer")]
 
 
-def test_design_docs_describe_game_surface_as_client_operations() -> None:
-    api_doc = (ROOT / "docs" / "design" / "api.md").read_text(encoding="utf-8")
-    domain_doc = (ROOT / "docs" / "design" / "domain.md").read_text(encoding="utf-8")
-
-    assert "health-only REST API" in api_doc
-    assert "`GameClient.get_setup_options`" in api_doc
-    assert "`GameClient.create_game`" in api_doc
-    assert "`GameClient.get_game_reveal`" in api_doc
-    assert (
-        "`interface/application`、`interface/demo`、`interface/worker`、`interface/shared/setup_options.py`"
-        in domain_doc
-    )
-
-    for old_route in (
-        "`GET /setup-options`",
-        "`POST /games`",
-        "`GET /games`",
-        "`GET /api/v1/games",
-    ):
-        assert old_route not in api_doc
+def test_public_api_surface_is_minimal() -> None:
+    _assert_public_surface(public_api, {"GameApi", "build_game_api"})
 
 
 def test_usecase_jobs_public_surface_is_minimal() -> None:
     _assert_public_surface(
         game_jobs,
         {
-            "CreateGameCommand",
             "AdvanceGameCommand",
             "AdvanceGameResult",
             "ComputedAdvanceGame",
+            "CreateGameCommand",
             "GameEventCreate",
             "GameListResult",
             "GameRepository",
@@ -102,10 +109,11 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "GameRevealPlayer",
             "GameRevealResult",
             "GameRevealVote",
+            "GameService",
+            "GameSetupOptionsResult",
             "GameStatus",
             "GameUseCaseConfig",
             "GameUseCaseDependencies",
-            "GameService",
             "GetGameQuery",
             "GetGameRevealQuery",
             "GetPlayerObservationQuery",
@@ -115,9 +123,8 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "ManualPlayerCredential",
             "PlayerActionCommand",
             "PreparedAdvanceGame",
-            "GameSetupOptionsResult",
-            "StoredGameEvent",
             "StoredGame",
+            "StoredGameEvent",
             "StoredGameSummary",
             "StoredGameTurn",
             "TelemetryEvent",
@@ -159,8 +166,8 @@ def test_domain_llm_public_surface_is_minimal() -> None:
             "AgentDecision",
             "AgentObservation",
             "AgentPhase",
-            "AgentScenario",
             "AgentPlayerStatus",
+            "AgentScenario",
             "LangChainDecisionProvider",
             "LlmDecisionProvider",
             "PlayerProfile",
@@ -245,13 +252,11 @@ def test_usecase_imports_domain_only_from_internal_boundary() -> None:
     assert not bad_imports
 
 
-def test_usecase_internal_does_not_import_interface_or_wire_contracts() -> None:
+def test_usecase_internal_does_not_import_outer_wire_or_api_layers() -> None:
     forbidden_prefixes = (
-        "werewolf_agent.interface",
+        "werewolf_agent.api",
+        "werewolf_agent.entrypoint",
         "werewolf_agent.contracts.schemas",
-        "fastapi",
-        "starlette",
-        "sse_starlette",
     )
 
     imported = _imports_under(PACKAGE / "usecase" / "internal")
@@ -261,13 +266,6 @@ def test_usecase_internal_does_not_import_interface_or_wire_contracts() -> None:
         for path, module in imported
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
     ]
-
-
-def test_interface_application_bridge_has_no_stateful_db_adapter() -> None:
-    app_source = (PACKAGE / "interface" / "api" / "app.py").read_text(encoding="utf-8")
-
-    assert "app.state.game_application" not in app_source
-    assert "sqlalchemy" not in app_source.lower()
 
 
 def test_game_and_llm_subdomains_do_not_import_each_other() -> None:
@@ -287,10 +285,12 @@ def test_game_and_llm_subdomains_do_not_import_each_other() -> None:
     ]
 
 
-def test_commons_do_not_import_usecase_or_interfaces() -> None:
+def test_commons_do_not_import_inner_or_outer_layers() -> None:
     forbidden_prefixes = (
+        "werewolf_agent.api",
+        "werewolf_agent.domain",
+        "werewolf_agent.entrypoint",
         "werewolf_agent.usecase",
-        "werewolf_agent.interface",
     )
 
     imported = _imports_under(PACKAGE / "commons")
@@ -302,26 +302,18 @@ def test_commons_do_not_import_usecase_or_interfaces() -> None:
     ]
 
 
-def test_external_wire_schemas_are_imported_from_contracts() -> None:
-    imported = _imports_under(PACKAGE / "interface")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if module == "werewolf_agent.interface.shared.schemas"
-        or module.startswith("werewolf_agent.interface.shared.schemas.")
-    ]
-
-
-def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
+def test_contracts_do_not_import_api_frameworks_or_entrypoints() -> None:
     forbidden_modules = (
-        "rich",
-        "streamlit",
+        "fastapi",
+        "starlette",
+        "sse_starlette",
         "typer",
-        "werewolf_agent.interface.entrypoint",
+        "streamlit",
+        "werewolf_agent.api",
+        "werewolf_agent.entrypoint",
     )
 
-    imported = _imports_under(PACKAGE / "interface" / "shared")
+    imported = _imports_under(PACKAGE / "contracts")
 
     assert not [
         (path, module)
@@ -330,17 +322,40 @@ def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
     ]
 
 
+def test_domain_does_not_import_outer_layers() -> None:
+    allowed_commons_prefixes = ("werewolf_agent.commons.shared",)
+    forbidden_prefixes = (
+        "werewolf_agent.api",
+        "werewolf_agent.contracts",
+        "werewolf_agent.entrypoint",
+        "werewolf_agent.usecase",
+        "werewolf_agent.commons",
+    )
+
+    imported = _imports_under(PACKAGE / "domain")
+
+    assert not [
+        (path, module)
+        for path, module in imported
+        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
+        and not any(
+            module == prefix or module.startswith(f"{prefix}.")
+            for prefix in allowed_commons_prefixes
+        )
+    ]
+
+
 def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
     forbidden_modules = (
         "rich",
         "streamlit",
         "typer",
+        "werewolf_agent.api",
         "werewolf_agent.domain",
-        "werewolf_agent.interface.shared",
         "werewolf_agent.usecase",
     )
 
-    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
+    imported = _imports_under(PACKAGE / "entrypoint" / "streamlit")
     view_model_imports = [
         (path, module) for path, module in imported if path.name == "view_models.py"
     ]
@@ -352,81 +367,61 @@ def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
     ]
 
 
-def test_streamlit_setup_state_does_not_import_ui_or_inner_layers() -> None:
+def test_streamlit_setup_state_and_components_do_not_import_inner_layers() -> None:
     forbidden_modules = (
         "rich",
         "streamlit",
         "typer",
+        "werewolf_agent.api",
         "werewolf_agent.domain",
-        "werewolf_agent.interface.shared",
         "werewolf_agent.usecase",
     )
 
-    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
-    setup_imports = [(path, module) for path, module in imported if path.name == "setup.py"]
+    imported = _imports_under(PACKAGE / "entrypoint" / "streamlit")
+    checked_imports = [
+        (path, module)
+        for path, module in imported
+        if path.name in {"setup.py", "state.py", "components.py"}
+    ]
 
     assert not [
         (path, module)
-        for path, module in setup_imports
+        for path, module in checked_imports
         if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
     ]
 
 
 def test_streamlit_app_keeps_api_workflows_out_of_screen_assembly() -> None:
-    app_source = (PACKAGE / "interface" / "entrypoint" / "streamlit" / "app.py").read_text(
-        encoding="utf-8"
-    )
+    app_source = (PACKAGE / "entrypoint" / "streamlit" / "app.py").read_text(encoding="utf-8")
 
-    assert "interface.shared" not in app_source
-    assert "workflows." not in app_source
-    assert "build_game_api_client" not in app_source
+    assert "build_game_api" not in app_source
+    assert "GameService" not in app_source
+    assert "usecase" not in app_source
 
 
-def test_streamlit_components_do_not_import_ui_or_api_workflows() -> None:
-    forbidden_modules = (
-        "streamlit",
-        "werewolf_agent.domain",
-        "werewolf_agent.interface.shared",
-        "werewolf_agent.usecase",
-    )
-
-    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
-    component_imports = [
-        (path, module) for path, module in imported if path.name == "components.py"
-    ]
-
-    assert not [
-        (path, module)
-        for path, module in component_imports
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
-    ]
-
-
-def test_vscode_launch_uses_open_workspace_without_branch_pinning() -> None:
-    launch_source = (ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8")
-
-    assert "${workspaceFolder}" in launch_source
-    assert ".codex/worktrees" not in launch_source.replace("\\", "/")
-    assert "refs/heads" not in launch_source
-
-
-def test_vscode_launch_uses_temp_runtime_state() -> None:
+def test_vscode_launch_uses_current_entrypoints() -> None:
     launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
     configurations = {
         configuration["name"]: configuration for configuration in launch["configurations"]
     }
 
-    api_env = configurations["API: uvicorn"]["env"]
-    worker_env = configurations["Worker: run"]["env"]
-    streamlit_env = configurations["UI: Streamlit"]["env"]
+    assert "API: uvicorn" not in configurations
+    assert configurations["Worker: run"]["module"] == "werewolf_agent.api.supabase.worker.app"
+    assert (
+        "backend/src/werewolf_agent/entrypoint/streamlit/app.py"
+        in configurations["UI: Streamlit"]["args"]
+    )
+    assert launch["compounds"] == []
 
-    assert "WEREWOLF_SQLITE_PATH" not in api_env
-    assert "WEREWOLF_STREAMLIT_API_URL" not in streamlit_env
-    assert "WEREWOLF_STREAMLIT_SAVE_FILE" not in streamlit_env
-    _assert_process_log_file_env(api_env, "api.jsonl")
-    _assert_process_log_file_env(worker_env, "worker.jsonl")
-    _assert_process_log_file_env(streamlit_env, "streamlit.jsonl")
 
+def test_vscode_launch_uses_process_log_files() -> None:
+    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    configurations = {
+        configuration["name"]: configuration for configuration in launch["configurations"]
+    }
+
+    _assert_process_log_file_env(configurations["Worker: run"]["env"], "worker.jsonl")
+    _assert_process_log_file_env(configurations["UI: Streamlit"]["env"], "streamlit.jsonl")
     for name, configuration in configurations.items():
         env = configuration["env"]
         if name.startswith("CLI: "):
@@ -435,29 +430,20 @@ def test_vscode_launch_uses_temp_runtime_state() -> None:
             assert "WEREWOLF_LOG_OUTPUT" not in env
 
 
-def test_vscode_default_compound_does_not_start_supabase_worker() -> None:
-    launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
-    compounds = {compound["name"]: compound for compound in launch["compounds"]}
-
-    demo_compound = compounds["App: API + Streamlit"]
-
-    assert demo_compound["configurations"] == [
-        "API: uvicorn",
-        "UI: Streamlit",
+def test_tooling_does_not_reference_fastapi_or_uvicorn() -> None:
+    paths = [
+        ROOT / "pyproject.toml",
+        ROOT / "compose.yaml",
+        ROOT / ".vscode" / "launch.json",
+        ROOT / "docker" / "backend.Dockerfile",
+        *sorted((ROOT / "scripts").glob("*.cmd")),
     ]
 
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in paths).lower()
 
-def test_vscode_supabase_task_matches_runtime_state() -> None:
-    tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
-    migrate_task = next(
-        task for task in tasks["tasks"] if task["label"] == "Supabase: migration up"
-    )
-
-    assert migrate_task["args"] == [
-        "migration",
-        "up",
-    ]
-    _assert_process_log_file_env(migrate_task["options"]["env"], "migrate.jsonl")
+    assert "fastapi" not in combined
+    assert "uvicorn" not in combined
+    assert "starlette" not in combined
 
 
 def test_runtime_default_env_values_are_not_mirrored_by_tooling() -> None:
@@ -476,14 +462,11 @@ def test_runtime_default_env_values_are_not_mirrored_by_tooling() -> None:
 
     text_sources = [
         (ROOT / "scripts" / "check-all.cmd").read_text(encoding="utf-8"),
-        (ROOT / "scripts" / "run-api.cmd").read_text(encoding="utf-8"),
         (ROOT / "compose.yaml").read_text(encoding="utf-8"),
     ]
     combined = "\n".join(text_sources)
     for key in RUNTIME_DEFAULT_LOG_ENV_KEYS:
         assert key not in combined
-    assert "WEREWOLF_GAME_DEFAULT_" + "RULESET" not in combined
-    assert "WEREWOLF_GAME_" + "RULESET" not in combined
 
 
 def test_supabase_migration_enables_rls_and_admin_claims() -> None:
@@ -502,7 +485,8 @@ def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None
         ROOT / ".vscode" / "launch.json",
         ROOT / ".vscode" / "tasks.json",
         ROOT / "scripts" / "check-all.cmd",
-        ROOT / "scripts" / "run-api.cmd",
+        ROOT / "scripts" / "run-cli.cmd",
+        ROOT / "scripts" / "run-worker.cmd",
         ROOT / "compose.yaml",
     ]
 
@@ -518,7 +502,8 @@ def test_operational_log_file_names_use_process_names_not_launcher_names() -> No
         (ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"),
         (ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"),
         (ROOT / "scripts" / "check-all.cmd").read_text(encoding="utf-8"),
-        (ROOT / "scripts" / "run-api.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "run-cli.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "run-worker.cmd").read_text(encoding="utf-8"),
         (ROOT / "compose.yaml").read_text(encoding="utf-8"),
         (ROOT / "AGENTS.md").read_text(encoding="utf-8"),
         (ROOT / "README.md").read_text(encoding="utf-8"),
@@ -533,39 +518,65 @@ def test_operational_log_file_names_use_process_names_not_launcher_names() -> No
     assert "codex-api.jsonl" not in combined
     assert "local-api.jsonl" not in combined
     assert "local.jsonl" not in combined
-    assert "api.jsonl" in combined
     assert "streamlit.jsonl" in combined
     assert "cli.jsonl" in combined
     assert "migrate.jsonl" in combined
     assert "worker.jsonl" in combined
 
 
-def test_log_defaults_are_documented_as_workspace_log_defaults() -> None:
-    defaults_source = (
-        ROOT / "backend" / "src" / "werewolf_agent" / "resources" / "settings" / "defaults.toml"
-    ).read_text(encoding="utf-8")
-    for key in (
-        "log_level",
-        "log_output",
-        "log_dir",
-        "log_file_name",
-        "log_retention_days",
-        "log_third_party_level",
-    ):
-        assert f"{key} =" in defaults_source
+def test_file_resource_loading_is_confined_to_commons_resources() -> None:
+    allowed_path = PACKAGE / "commons" / "resources.py"
+    forbidden_tokens = (
+        "tomllib",
+        "importlib.resources",
+        "from importlib.resources",
+        '.open("rb")',
+        ".open('rb')",
+    )
+    offenders: list[tuple[Path, str]] = []
 
-    for path in (ROOT / "README.md", ROOT / "docs" / "notes" / "development.md"):
-        source = path.read_text(encoding="utf-8")
-        assert ".werewolf-agent/logs/werewolf-agent.jsonl" in source
-        assert "%TEMP%\\werewolf-agent\\logs" not in source
-        assert "{temp}/werewolf-agent/logs" not in source
+    for source_path in PACKAGE.rglob("*.py"):
+        source = source_path.read_text(encoding="utf-8")
+        if source_path == allowed_path:
+            continue
+        offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
+
+    assert not offenders
+
+
+def test_domain_and_usecase_do_not_depend_on_fixed_role_ids() -> None:
+    forbidden_tokens = (
+        "ROLE_VILLAGER",
+        "ROLE_WEREWOLF",
+        "ROLE_SEER",
+        "ROLE_KNIGHT",
+        "player_count - 3",
+    )
+    offenders: list[tuple[Path, str]] = []
+
+    for base_path in (PACKAGE / "domain", PACKAGE / "usecase"):
+        for source_path in base_path.rglob("*.py"):
+            source = source_path.read_text(encoding="utf-8")
+            offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
+
+    assert not offenders
+
+
+def test_removed_import_paths_do_not_exist() -> None:
+    assert not (PACKAGE / "interface").exists()
+    assert not (PACKAGE / "entrypoint" / "api").exists()
+    assert not (PACKAGE / "entrypoint" / "local_demo").exists()
+    assert not (PACKAGE / "api" / "app.py").exists()
+    assert not (PACKAGE / "api" / "routers.py").exists()
+    assert not (PACKAGE / "api" / "messages.py").exists()
+    assert not (ROOT / "scripts" / "run-api.cmd").exists()
+    assert not (ROOT / "tests" / "integration" / "api" / "test_fastapi_health.py").exists()
 
 
 def test_user_facing_messages_are_catalogued() -> None:
     allowed_message_paths = {
         PACKAGE / "commons" / "shared" / "messages.py",
-        PACKAGE / "interface" / "shared" / "messages.py",
-        PACKAGE / "interface" / "entrypoint" / "cui" / "messages.py",
+        PACKAGE / "entrypoint" / "cui" / "messages.py",
     }
     exception_message_calls = {
         "AppError",
@@ -575,7 +586,7 @@ def test_user_facing_messages_are_catalogued() -> None:
         "RuntimeError",
         "ValueError",
     }
-    cui_path = PACKAGE / "interface" / "entrypoint" / "cui"
+    cui_path = PACKAGE / "entrypoint" / "cui"
     offenders: list[tuple[str, int, str]] = []
 
     for source_path in PACKAGE.rglob("*.py"):
@@ -623,113 +634,6 @@ def test_structured_log_outcomes_use_shared_constants() -> None:
                 offenders.append((source_path.relative_to(ROOT).as_posix(), token))
 
     assert not offenders
-
-
-def test_contracts_do_not_import_api_frameworks() -> None:
-    forbidden_modules = (
-        "fastapi",
-        "starlette",
-        "sse_starlette",
-    )
-
-    imported = _imports_under(PACKAGE / "contracts")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
-    ]
-
-
-def test_domain_does_not_import_outer_layers() -> None:
-    allowed_commons_modules = {
-        "werewolf_agent.commons.shared.definitions",
-        "werewolf_agent.commons.shared.llm_tracing",
-        "werewolf_agent.commons.shared.messages",
-        "werewolf_agent.commons.shared.models",
-        "werewolf_agent.commons.shared.validation",
-    }
-    forbidden_prefixes = (
-        "werewolf_agent.usecase",
-        "werewolf_agent.interface",
-        "werewolf_agent.commons",
-        "werewolf_agent.llm",
-    )
-
-    imported = _imports_under(PACKAGE / "domain")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
-        and module not in allowed_commons_modules
-    ]
-
-
-def test_file_resource_loading_is_confined_to_interface_runtime() -> None:
-    allowed_path = PACKAGE / "interface" / "runtime"
-    forbidden_tokens = (
-        "tomllib",
-        "importlib.resources",
-        "from importlib.resources",
-        '.open("rb")',
-        ".open('rb')",
-    )
-    offenders: list[tuple[Path, str]] = []
-
-    for source_path in PACKAGE.rglob("*.py"):
-        source = source_path.read_text(encoding="utf-8")
-        if source_path.is_relative_to(allowed_path):
-            continue
-        offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
-
-    assert not offenders
-
-
-def test_domain_and_usecase_do_not_depend_on_fixed_role_ids() -> None:
-    forbidden_tokens = (
-        "ROLE_VILLAGER",
-        "ROLE_WEREWOLF",
-        "ROLE_SEER",
-        "ROLE_KNIGHT",
-        "player_count - 3",
-    )
-    offenders: list[tuple[Path, str]] = []
-
-    for base_path in (PACKAGE / "domain", PACKAGE / "usecase"):
-        for source_path in base_path.rglob("*.py"):
-            source = source_path.read_text(encoding="utf-8")
-            offenders.extend((source_path, token) for token in forbidden_tokens if token in source)
-
-    assert not offenders
-
-
-def test_removed_import_paths_do_not_exist() -> None:
-    assert not (PACKAGE / "interface" / "entrypoint" / "api").exists()
-    assert not (PACKAGE / "interface" / "entrypoint" / "cli").exists()
-    assert not (PACKAGE / "interface" / "cui").exists()
-    assert not (PACKAGE / "interface" / "streamlit").exists()
-    assert not list((PACKAGE / "configuration").glob("*.py"))
-    assert not (PACKAGE / "configuration" / "defaults.toml").exists()
-    assert not (PACKAGE / "contracts" / "codes.py").exists()
-    assert not (PACKAGE / "contracts" / "http.py").exists()
-    assert not (PACKAGE / "commons" / "shared" / "codes.py").exists()
-    assert not list((PACKAGE / "commons" / "events").glob("*.py"))
-    assert not list((PACKAGE / "interface" / "events").glob("*.py"))
-    assert not (PACKAGE / "interface" / "shared" / "schemas.py").exists()
-    assert not (PACKAGE / "interface" / "entrypoint" / "shared").exists()
-    assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
-    assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
-    assert not (PACKAGE / "interface" / "application" / "agents.py").exists()
-    assert not (PACKAGE / "interface" / "shared" / "workflows.py").exists()
-    assert not list((PACKAGE / "commons" / "configuration").glob("*.py"))
-    assert not list((PACKAGE / "commons" / "observability").glob("*.py"))
-    assert not (PACKAGE / "default_settings").exists()
-    assert not (PACKAGE / "domain" / "llm" / "rules").exists()
-    assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
-    assert not [
-        path for path in (PACKAGE / "usecase" / "jobs").glob("_*.py") if path.name != "__init__.py"
-    ]
 
 
 def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:

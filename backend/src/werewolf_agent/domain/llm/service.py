@@ -21,6 +21,14 @@ from werewolf_agent.commons.shared.definitions import (
     FakeDecisionCatalog,
     PromptDefinition,
 )
+from werewolf_agent.commons.shared.errors import (
+    ERROR_CONTEXT_LLM_BASE_URL,
+    ERROR_CONTEXT_LLM_ERROR_TYPE,
+    ERROR_CONTEXT_LLM_MAX_TOKENS,
+    ERROR_CONTEXT_LLM_MODEL,
+    ERROR_CONTEXT_LLM_PROVIDER,
+    ERROR_CONTEXT_LLM_TIMEOUT_SECONDS,
+)
 from werewolf_agent.commons.shared.llm_tracing import LlmInvocationTrace, LlmTraceSink
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_LLM_DECISION_PLAYER_MISMATCH,
@@ -36,14 +44,6 @@ from werewolf_agent.commons.shared.messages import (
     message_llm_decision_action_unavailable,
     message_llm_decision_target_unavailable,
     message_no_action_for_phase,
-)
-from werewolf_agent.contracts import (
-    ERROR_CONTEXT_LLM_BASE_URL,
-    ERROR_CONTEXT_LLM_ERROR_TYPE,
-    ERROR_CONTEXT_LLM_MAX_TOKENS,
-    ERROR_CONTEXT_LLM_MODEL,
-    ERROR_CONTEXT_LLM_PROVIDER,
-    ERROR_CONTEXT_LLM_TIMEOUT_SECONDS,
 )
 from werewolf_agent.domain.llm.models import (
     AgentActionType,

@@ -10,7 +10,7 @@ Observe では `観戦ログ` を主役にします。
 ## 目的
 
 - 一般ユーザーが Streamlit だけで 1 game を開始し、1 manual player として決着まで遊べる
-- 画面は `GameClient` port だけを使い、ログイン時は Supabase、未ログイン時は demo client に接続する
+- 画面は `GameApi` port だけを使い、ログイン時は Supabase、未ログイン時は demo client に接続する
 - 文言はゲームらしさと分かりやすさのバランスを取り、メタ表現を画面本文に出さない
 - 設定値、表示モデル、API 操作、HTML 部品を分け、画面変更が内側の層へ波及しないようにする
 
@@ -66,14 +66,14 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - `streamlit/icons.py` は icon metadata だけを持ち、label は i18n catalog から取得する
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
 - `app.py` は Streamlit widget と renderer registry だけを担当する
-- game 操作は `streamlit/operations.py` から `GameClient` protocol を直接使う
+- game 操作は `streamlit/operations.py` から `GameApi` protocol を直接使う
 - game 固有の開始設定は `GameSetupDraft` として `streamlit/setup.py` に閉じる
 - 発言・投票送信後は active client の `advance_game` を 1 回だけ呼び、次の手番へ進める
 - `入力待ちまで進める` は Streamlit session state と `st.fragment` で 1 step ずつ進め、`一時停止` で次 step 前に止める
 - 右ペインは `right_command_panel` container を操作盤の外枠とし、手番状態、秘匿観測、操作、観測メモを固定順に並べる
 - domain / usecase の `available_actions` を正とし、画面側だけで多重発言や多重投票を隠す実装にはしない
 - HTML 断片と escape は `streamlit/components.py` に閉じ、`app.py` に重複させない
-- `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`interface/shared` に依存させない
+- `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`api` に依存させない
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
 - 右ペイン最下部の `観測メモ（公開情報）` は public state と public timeline だけから作り、private observation や reveal は混ぜない
 - 発言内容、投票、投票結果、夜明けの犠牲者有無は表示し、夜行動の対象、護衛先、占い結果、role は表示しない

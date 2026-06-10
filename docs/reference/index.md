@@ -8,5 +8,5 @@
 domain
 usecase
 contracts
-interface-runtime
+runtime-configuration
 ```

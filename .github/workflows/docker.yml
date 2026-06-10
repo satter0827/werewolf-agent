@@ -14,11 +14,11 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Build backend image
-        run: docker compose build api
+      - name: Build compose images
+        run: docker compose build worker test
 
-      - name: Build runtime backend image
-        run: docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-api:runtime .
+      - name: Build runtime worker image
+        run: docker build --target runtime -f docker/backend.Dockerfile -t werewolf-agent-worker:runtime .
 
       - name: Run backend checks in container
         run: docker compose --profile tools run --rm test

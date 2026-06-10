@@ -36,32 +36,10 @@
       "justMyCode": true
     },
     {
-      "name": "API: uvicorn",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "uvicorn",
-      "args": [
-        "werewolf_agent.interface.api.app:create_app",
-        "--factory",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8000"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_LOG_FILE_NAME": "api.jsonl"
-      },
-      "justMyCode": true
-    },
-    {
       "name": "Worker: run",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent.interface.entrypoint.worker.app",
+      "module": "werewolf_agent.api.supabase.worker.app",
       "args": [
         "run"
       ],
@@ -81,7 +59,7 @@
       "module": "streamlit",
       "args": [
         "run",
-        "backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py",
+        "backend/src/werewolf_agent/entrypoint/streamlit/app.py",
         "--server.headless=true",
         "--server.port",
         "${input:streamlitPort}",
@@ -315,22 +293,6 @@
       "justMyCode": true
     },
     {
-      "name": "Pytest: API integration",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "pytest",
-      "args": [
-        "tests/integration/api"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
       "name": "Pytest: current file",
       "type": "debugpy",
       "request": "launch",
@@ -347,16 +309,7 @@
       "justMyCode": true
     }
   ],
-  "compounds": [
-    {
-      "name": "App: API + Streamlit",
-      "configurations": [
-        "API: uvicorn",
-        "UI: Streamlit"
-      ],
-      "stopAll": true
-    }
-  ],
+  "compounds": [],
   "inputs": [
     {
       "id": "gameId",

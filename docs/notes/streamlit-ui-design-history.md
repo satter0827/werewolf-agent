@@ -62,5 +62,5 @@
 - Sidebar: 履歴、接続状態、新規作成、再開
 - Main: status bar、ゲーム卓、これまでの流れ
 - Right panel: あなたの手番、役職、見えている情報、行動入力、次の入力待ちまで進行
-- Data access: すべて `interface/shared` の `GameClient` 経由
+- Data access: すべて `api.ports.GameApi` 経由
 - Text: 日本語を既定とし、当時は runtime i18n module を持たない

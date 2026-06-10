@@ -1,1 +1,1 @@
-"""Application use cases connecting interfaces to the deterministic domain."""
+"""Application use cases connecting API adapters to the deterministic domain."""

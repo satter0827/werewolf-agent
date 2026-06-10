@@ -55,18 +55,25 @@ if exist "%PYTHON%" (
 where uv >nul 2>nul
 if errorlevel 1 (
     echo Sphinx is not installed in .venv and uv was not found on PATH. 1>&2
-    echo Run: uv sync --group docs --extra api --extra streamlit 1>&2
+    echo Run: uv sync --group docs --extra streamlit 1>&2
     popd
     exit /b 1
 )
 
-uv run --group docs --extra api --extra streamlit sphinx-build %SPHINX_ARGS%
+uv run --group docs --extra streamlit sphinx-build %SPHINX_ARGS%
 set "EXIT_CODE=%ERRORLEVEL%"
 
 :publish_output
 if not "%EXIT_CODE%"=="0" (
     popd
     exit /b %EXIT_CODE%
+)
+
+if not exist "%SPHINX_BUILD_OUTPUT%\sphinx\index.html" (
+    echo Sphinx build did not produce sphinx\index.html. 1>&2
+    echo Temporary HTML output: %SPHINX_BUILD_OUTPUT% 1>&2
+    popd
+    exit /b 1
 )
 
 xcopy "%SPHINX_BUILD_OUTPUT%\*" "%SPHINX_OUTPUT%\" /E /I /Y >nul

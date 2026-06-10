@@ -6,13 +6,13 @@ import random
 from collections import Counter
 from collections.abc import Sequence
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import (
     MESSAGE_EXPLICIT_ROLES_MUST_MATCH_ROLE_COUNTS,
     MESSAGE_PLAYER_IDS_MUST_BE_UNIQUE,
     MESSAGE_PLAYER_LIST_LENGTH_MUST_MATCH_CONFIG,
     MESSAGE_PLAYER_ROLES_ALL_OR_NONE,
 )
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import GameConfig, GameSnapshot, Phase, Player
 
 

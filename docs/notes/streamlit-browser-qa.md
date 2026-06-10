@@ -12,14 +12,13 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 起動
 
 VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
-VS Code から demo を確認する場合は `App: API + Streamlit` を起動します。Supabase queue worker は `WEREWOLF_SUPABASE_DB_DSN` を設定した場合だけ `Worker: run` で別起動します。
+VS Code から demo を確認する場合は `UI: Streamlit` を起動します。Supabase queue worker は `WEREWOLF_SUPABASE_DB_DSN` を設定した場合だけ `Worker: run` で別起動します。
 運用ログは `.werewolf-agent/logs`、一時 cache と screenshot は `%TEMP%\werewolf-agent` 配下を使います。
 
-別 terminal で API、Streamlit を起動します。Supabase worker を含めて確認する場合だけ、先に migration と worker を起動します。
+別 terminal で Streamlit を起動します。Supabase worker を含めて確認する場合だけ、先に migration と worker を起動します。
 
 ```bash
-uv run --no-sync --group dev --extra api uvicorn werewolf_agent.interface.api.app:create_app --factory --host 127.0.0.1 --port 8765
-uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
+uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
 Supabase worker も確認する場合:
@@ -32,7 +31,7 @@ uv run --no-sync --group dev --extra worker werewolf-agent-worker run
 HTTP smoke:
 
 ```bash
-uv run --no-sync --group dev --extra api --extra streamlit python -c "import httpx; print(httpx.get('http://127.0.0.1:8765/api/v1/health', timeout=5).json()); print(httpx.get('http://127.0.0.1:8766', timeout=5).status_code)"
+uv run --no-sync --group dev --extra streamlit python -c "import httpx; print(httpx.get('http://127.0.0.1:8766', timeout=5).status_code)"
 ```
 
 ## Browser plugin
@@ -143,7 +142,6 @@ QA screenshot は repository 配下の cache に残しません。保存が必�
 ## 今回の確認結果
 
 - 実行日: 2026-05-29
-- API: `http://127.0.0.1:8765/api/v1/health`
 - Streamlit: `http://127.0.0.1:8766`
 - desktop: `新しいゲームを始める` から A案画面まで到達
 - desktop: `ゲーム卓`、`あなたの手番`、`公開タイムライン` を A案構成で確認

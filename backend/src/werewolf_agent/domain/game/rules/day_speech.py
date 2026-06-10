@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+from werewolf_agent.commons.shared.exceptions import GameError
 from werewolf_agent.commons.shared.messages import MESSAGE_EXPECTED_SPEECH_ACTION
-from werewolf_agent.contracts import GameError
 from werewolf_agent.domain.game.models import (
     Action,
     ActionType,

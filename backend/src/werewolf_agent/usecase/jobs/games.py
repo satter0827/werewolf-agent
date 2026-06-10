@@ -91,7 +91,7 @@ class LlmProviderConfig:
     fallback_policy: str
 
     def __post_init__(self) -> None:
-        """Validate provider settings without importing interface settings."""
+        """Validate provider settings without importing application settings."""
         provider = non_blank(self.provider, "llm provider").lower()
         model = non_blank(self.model, "llm model")
         base_url = self.base_url.strip()

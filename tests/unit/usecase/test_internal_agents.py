@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from werewolf_agent.commons.resources import load_llm_definitions
 from werewolf_agent.contracts import (
     ERROR_CONTEXT_LLM_BASE_URL,
     ERROR_CONTEXT_LLM_ERROR_TYPE,
@@ -22,7 +23,6 @@ from werewolf_agent.domain.game.models import (
     VoteResult,
 )
 from werewolf_agent.domain.llm.service import LangChainDecisionProvider
-from werewolf_agent.interface.runtime.resources import load_llm_definitions
 from werewolf_agent.usecase.internal import agents
 from werewolf_agent.usecase.internal.agents import (
     _agent_observation_from_game,
