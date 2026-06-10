@@ -39,13 +39,11 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
         [_summary("game-1")],
         catalog=catalog,
         lang="ja",
-        manual_player_tokens={selection.selection_id: "session-token"},
     )
 
     assert options[0].option_id.startswith("session:")
     assert options[0].mode == "playable"
     assert options[0].manual_player_id == "player-1"
-    assert options[0].manual_token == "session-token"
     assert options[0].agent_strategy_id == "stable_fast"
 
 
@@ -62,7 +60,6 @@ def test_database_history_without_session_token_is_observer_only() -> None:
 
     assert options[0].option_id == "game:game-2"
     assert options[0].mode == "observer"
-    assert options[0].manual_token == ""
 
 
 def _summary(game_id: str) -> PublicGameSummary:

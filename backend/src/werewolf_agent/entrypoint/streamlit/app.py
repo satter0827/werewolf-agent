@@ -8,6 +8,7 @@ import time
 from typing import Any, cast
 from uuid import uuid4
 
+from werewolf_agent.api.auth import ensure_session
 from werewolf_agent.commons.configuration import (
     AppSettings,
     bind_observation_context,
@@ -116,12 +117,10 @@ from werewolf_agent.entrypoint.streamlit.state import (
     clear_advance_job,
     clear_message,
     consume_auto_advance_notice,
-    manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
     remember_active_game_selection,
     remember_advance_job,
-    remember_manual_player_token,
     remember_selected_history,
     start_auto_advance,
     sync_auto_advance_game,
@@ -157,6 +156,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         initial_sidebar_state=settings.streamlit_initial_sidebar_state,
     )
     st.markdown(load_style_tag(settings), unsafe_allow_html=True)
+    ensure_session(settings)
 
     selected_option, view = _render_sidebar(
         st,
@@ -199,7 +199,6 @@ def _render_app(st: Any, settings: AppSettings) -> None:
             settings=settings,
             game_id=selected_option.game_id,
             manual_player_id=selected_option.manual_player_id,
-            manual_token=selected_option.manual_token,
             screen_mode=selected_option.mode,
             catalog=catalog,
             lang=lang,
@@ -375,7 +374,6 @@ def _render_history_selector(
         games,
         catalog=catalog,
         lang=lang,
-        manual_player_tokens=manual_player_tokens_by_slot(st.session_state),
     )
     if not options:
         st.sidebar.caption(catalog.t(lang, "history.empty"))
@@ -408,10 +406,7 @@ def _render_history_screen(
 ) -> None:
     """Render personal game history and compact result analysis."""
     st.header(catalog.t(lang, "history.title"))
-    mode_key = (
-        "settings.mode.supabase" if settings.supabase_client_configured else "settings.mode.demo"
-    )
-    st.caption(catalog.t(lang, mode_key))
+    st.caption(catalog.t(lang, "settings.mode.supabase"))
     try:
         games = list_recent_games(settings=settings)
     except AppError as exc:
@@ -880,10 +875,7 @@ def _render_common_settings(
         remember_preferred_language(st.session_state, str(selected_language))
         st.rerun()
 
-    mode_key = (
-        "settings.mode.supabase" if settings.supabase_client_configured else "settings.mode.demo"
-    )
-    st.caption(catalog.t(lang, mode_key))
+    st.caption(catalog.t(lang, "settings.mode.supabase"))
 
     if st.button(catalog.t(lang, "settings.clear_custom"), use_container_width=True):
         clear_custom_definitions(st.session_state)
@@ -1431,11 +1423,6 @@ def _create_game(
         feedback.error(str(exc))
         return
 
-    manual_token = (
-        created.manual_player.token
-        if created.manual_player is not None and created.manual_player.player_id == manual_player_id
-        else ""
-    )
     selection = create_session_game_selection(
         created,
         manual_player_id=manual_player_id,
@@ -1451,11 +1438,6 @@ def _create_game(
         custom_characters=custom_characters or [],
     )
     remember_active_game_selection(st.session_state, selection)
-    remember_manual_player_token(
-        st.session_state,
-        slot_id=selection.selection_id,
-        manual_token=manual_token,
-    )
     remember_selected_history(st.session_state, f"session:{selection.selection_id}")
     switch_view(st.session_state, VIEW_GAME)
     clear_message(st.session_state)
@@ -1750,7 +1732,6 @@ def _render_action_form(
                 settings=settings,
                 game_id=selected_option.game_id,
                 manual_player_id=manual_player_id,
-                manual_token=selected_option.manual_token,
                 action_type=selected_action.action_type,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
@@ -1965,4 +1946,5 @@ def _streamlit() -> Any:
     return importlib.import_module("streamlit")
 
 
-main()
+if __name__ == "__main__":
+    main()

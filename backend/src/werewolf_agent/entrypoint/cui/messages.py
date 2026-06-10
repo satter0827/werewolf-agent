@@ -23,8 +23,6 @@ HELP_REPLAY_DELAY = "Seconds to wait between items."
 HELP_GAME_STATUS_FILTER = "Optional game status filter."
 HELP_GAME_LIST_LIMIT = "Maximum games to return."
 HELP_GAME_PAGE_OFFSET = "Game page offset."
-HELP_EMAIL = "Supabase account email."
-HELP_PASSWORD = "Supabase account password."
 
 TABLE_TITLE_API_HEALTH = "Data Source Health"
 TABLE_TITLE_GAME_SETUP = "Game Setup"
@@ -62,14 +60,7 @@ ROW_KNOWN_ROLES = "known roles"
 
 EMPTY_VALUE = "-"
 PROMPT_SPEECH = "speech"
-LABEL_MANUAL_TOKEN = "manual token"
 MESSAGE_REPLAY_SOURCE_REQUIRED = "Either --timeline or --game-id is required."
-MESSAGE_LOGIN_SUCCEEDED = "Logged in."
-MESSAGE_LOGOUT_SUCCEEDED = "Logged out."
-MESSAGE_NOT_LOGGED_IN = "Not logged in. Demo mode is active."
-MESSAGE_SUPABASE_LOGIN_CONFIG_REQUIRED = (
-    "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required for login."
-)
 
 
 def table_title_game(game_id: str) -> str:
@@ -85,11 +76,6 @@ def table_title_observation(player_id: str) -> str:
 def message_created_game(game_id: str) -> str:
     """Return the CLI created-game notice."""
     return f"Created game [bold]{game_id}[/bold]"
-
-
-def message_manual_token(player_id: str, token: str) -> str:
-    """Return the CLI manual-token notice."""
-    return f"[yellow]{LABEL_MANUAL_TOKEN}[/yellow] {player_id}: {token}"
 
 
 def message_game_completed(*, winner: str, steps: int) -> str:

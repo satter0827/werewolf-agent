@@ -71,8 +71,6 @@ class GameApi(Protocol):
         self,
         game_id: str,
         player_id: str,
-        *,
-        manual_token: str,
     ) -> PlayerObservationResponse:
         """Fetch private observation visible to a player."""
 
@@ -81,7 +79,5 @@ class GameApi(Protocol):
         game_id: str,
         player_id: str,
         request: PlayerActionRequest,
-        *,
-        manual_token: str,
     ) -> PlayerActionResponse:
         """Submit one manual player action."""

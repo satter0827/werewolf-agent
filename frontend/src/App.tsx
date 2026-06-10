@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { localDemoGameClient } from "./data/LocalDemoGameClient";
+import { gameClient } from "./data/SupabaseGameClient";
 import { VillageLayout } from "./features/village/VillageLayout";
 import { mapGameScreen } from "./gameClient/screenAdapter";
+import { setupPreviewScreen } from "./gameClient/setupOptions";
 import type { SetupDraft, TurnActionSubmit } from "./gameClient/uiTypes";
 import type { CreateGameRequest, GameSetupOptionsResponse } from "./gameClient/wireTypes";
 import { useUiStore } from "./store/uiStore";
@@ -18,23 +19,23 @@ export function App() {
 
   const setupQuery = useQuery({
     queryKey: ["setup-options"],
-    queryFn: () => localDemoGameClient.getSetupOptions(),
+    queryFn: () => gameClient.getSetupOptions(),
   });
   const screenQuery = useQuery({
+    enabled: activeGameId !== null,
     queryKey: ["game-screen", activeGameId, manualPlayerId],
-    queryFn: () => localDemoGameClient.getScreen(activeGameId, manualPlayerId),
+    queryFn: () => gameClient.getScreen(activeGameId, manualPlayerId),
   });
   const revealQuery = useQuery({
-    enabled: activeView === "observe",
+    enabled: activeView === "observe" && activeGameId !== null,
     queryKey: ["game-reveal", activeGameId],
-    queryFn: () => localDemoGameClient.getReveal(activeGameId),
+    queryFn: () => gameClient.getReveal(activeGameId ?? ""),
   });
   const gamesQuery = useQuery({
     queryKey: ["game-list"],
-    queryFn: () => localDemoGameClient.listGames(),
+    queryFn: () => gameClient.listGames(),
   });
   const setupOptions = setupQuery.data;
-  const screenSource = screenQuery.data;
   const gameList = gamesQuery.data;
 
   const createGameMutation = useMutation({
@@ -42,11 +43,11 @@ export function App() {
       if (!setupOptions) {
         throw new Error("setup options are not loaded");
       }
-      return localDemoGameClient.createGame(createGameRequest(draft, setupOptions));
+      return gameClient.createGame(createGameRequest(draft, setupOptions));
     },
-    onSuccess: (response) => {
+    onSuccess: (response, draft) => {
       setActiveGameId(response.game_id);
-      setManualPlayerId(response.manual_player?.player_id ?? "player-1");
+      setManualPlayerId(draft.manualPlayerId);
       setActiveView("play");
       void queryClient.invalidateQueries({ queryKey: ["game-screen"] });
       void queryClient.invalidateQueries({ queryKey: ["game-list"] });
@@ -55,11 +56,14 @@ export function App() {
   });
   const submitActionMutation = useMutation({
     mutationFn: async (action: TurnActionSubmit) => {
+      if (activeGameId === null) {
+        throw new Error("game is not selected");
+      }
       if (action.type === "advance") {
-        await localDemoGameClient.advance({ gameId: activeGameId });
+        await gameClient.advance({ gameId: activeGameId });
         return;
       }
-      await localDemoGameClient.submitAction({
+      await gameClient.submitAction({
         gameId: activeGameId,
         playerId: manualPlayerId,
         action: {
@@ -76,20 +80,20 @@ export function App() {
     },
   });
 
-  if (setupQuery.isLoading || screenQuery.isLoading || gamesQuery.isLoading) {
+  if (setupQuery.isLoading || (activeGameId !== null && screenQuery.isLoading) || gamesQuery.isLoading) {
     return <div className="wa-loading">村の夜明けを準備しています</div>;
   }
 
   if (
     setupQuery.isError ||
-    screenQuery.isError ||
+    (activeGameId !== null && screenQuery.isError) ||
     gamesQuery.isError ||
     !setupOptions ||
-    !screenSource ||
     !gameList
   ) {
     return <div className="wa-loading">村の準備に失敗しました</div>;
   }
+  const screenSource = screenQuery.data ?? setupPreviewScreen(setupOptions);
 
   const screen = mapGameScreen({
     screen: {

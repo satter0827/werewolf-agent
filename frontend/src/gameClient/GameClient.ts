@@ -22,7 +22,7 @@ export interface AdvanceGameCommand {
 export interface GameClient {
   advance(command: AdvanceGameCommand): Promise<GameScreenSource>;
   createGame(request: CreateGameRequest): Promise<GameResponse>;
-  getReveal(gameId: string): Promise<GameRevealResponse>;
+  getReveal(gameId: string): Promise<GameRevealResponse | null>;
   getScreen(gameId: string | null, manualPlayerId: string): Promise<GameScreenSource>;
   getSetupOptions(): Promise<GameSetupOptionsResponse>;
   listGames(): Promise<GameListResponse>;

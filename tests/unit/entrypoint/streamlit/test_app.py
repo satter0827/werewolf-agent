@@ -15,7 +15,13 @@ def test_sidebar_navigation_order_is_play_observe_history_settings(monkeypatch) 
     monkeypatch.setattr(app, "_render_sidebar_brand", lambda *args, **kwargs: None)
     monkeypatch.setattr(app, "_render_history_selector", lambda *args, **kwargs: None)
 
-    app._render_sidebar(streamlit, settings, catalog=catalog, lang="ja", screens=screens)
+    app._render_sidebar(
+        streamlit,
+        settings,
+        catalog=catalog,
+        lang="ja",
+        screens=screens,
+    )
 
     assert streamlit.sidebar.button_labels == ["▶ プレイ", "◉ 観戦", "▣ 履歴", "⚙ 設定"]
 
@@ -32,9 +38,45 @@ def test_sidebar_disabled_element_does_not_call_renderer(monkeypatch) -> None:
         lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("brand renderer called")),
     )
 
-    app._render_sidebar(streamlit, settings, catalog=catalog, lang="ja", screens=screens)
+    app._render_sidebar(
+        streamlit,
+        settings,
+        catalog=catalog,
+        lang="ja",
+        screens=screens,
+    )
 
     assert streamlit.sidebar.button_labels == ["▶ プレイ", "◉ 観戦", "▣ 履歴", "⚙ 設定"]
+
+
+def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> None:
+    settings = AppSettings(_env_file=None)
+    streamlit = _AppStub()
+    rendered: list[str] = []
+
+    monkeypatch.setattr(app, "ensure_session", lambda _settings: object())
+    monkeypatch.setattr(
+        app,
+        "_render_sidebar",
+        lambda *args, **kwargs: (None, app.VIEW_PLAY_SETUP),
+    )
+    monkeypatch.setattr(
+        app,
+        "_render_setup_screen",
+        lambda *args, **kwargs: rendered.append("setup"),
+    )
+    monkeypatch.setattr(app, "_render_history_screen", _fail_renderer("history"))
+
+    app._render_app(streamlit, settings)
+
+    assert rendered == ["setup"]
+
+
+def _fail_renderer(name: str):
+    def fail(*args: object, **kwargs: object) -> None:
+        raise AssertionError(f"{name} renderer called")
+
+    return fail
 
 
 def _sidebar_catalog(*, brand_enabled: bool) -> ScreenCatalog:
@@ -94,3 +136,22 @@ class _StreamlitStub:
 
     def rerun(self) -> None:
         raise AssertionError("rerun should not be called when no button is clicked")
+
+
+class _AppStub(_StreamlitStub):
+    def __init__(self) -> None:
+        super().__init__()
+        self.header_texts: list[str] = []
+        self.info_texts: list[str] = []
+
+    def set_page_config(self, **kwargs: Any) -> None:
+        pass
+
+    def markdown(self, value: str, **kwargs: Any) -> None:
+        pass
+
+    def header(self, value: str) -> None:
+        self.header_texts.append(value)
+
+    def info(self, value: str) -> None:
+        self.info_texts.append(value)

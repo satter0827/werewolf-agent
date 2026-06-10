@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from contextlib import suppress
 from pathlib import Path
 from typing import Annotated, Any, cast
 
@@ -14,7 +13,6 @@ from rich.table import Table
 
 from werewolf_agent.api.factory import build_game_api
 from werewolf_agent.api.ports import GameApi
-from werewolf_agent.api.supabase import SupabaseAuthApi, SupabaseSessionStore
 from werewolf_agent.commons.configuration import AppSettings, get_settings
 from werewolf_agent.commons.diagnostics import build_entrypoint_diagnostics
 from werewolf_agent.commons.shared.constants import (
@@ -52,7 +50,6 @@ from werewolf_agent.entrypoint.cui.messages import (
     COLUMN_CHECK,
     COLUMN_VALUE,
     HELP_AFTER_SEQUENCE,
-    HELP_EMAIL,
     HELP_FOLLOW,
     HELP_GAME_ID_ADVANCE,
     HELP_GAME_ID_INSPECT,
@@ -65,7 +62,6 @@ from werewolf_agent.entrypoint.cui.messages import (
     HELP_MANUAL_PLAYER,
     HELP_MAX_STEPS,
     HELP_OUTPUT_FORMAT,
-    HELP_PASSWORD,
     HELP_POLL_INTERVAL_FOLLOW,
     HELP_POLL_INTERVAL_STEPS,
     HELP_REPLAY_DELAY,
@@ -73,16 +69,11 @@ from werewolf_agent.entrypoint.cui.messages import (
     HELP_SEED,
     HELP_SHOW_TIMELINE,
     HELP_TIMELINE_FILE,
-    MESSAGE_LOGIN_SUCCEEDED,
-    MESSAGE_LOGOUT_SUCCEEDED,
-    MESSAGE_NOT_LOGGED_IN,
     MESSAGE_REPLAY_SOURCE_REQUIRED,
-    MESSAGE_SUPABASE_LOGIN_CONFIG_REQUIRED,
     PROMPT_SPEECH,
     TABLE_TITLE_DOCTOR,
     message_created_game,
     message_game_completed,
-    message_manual_token,
     message_next_offset,
     message_target_prompt,
 )
@@ -103,63 +94,6 @@ from werewolf_agent.entrypoint.requests import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def login(
-    email: Annotated[str, typer.Option(help=HELP_EMAIL, prompt=True)],
-    password: Annotated[str, typer.Option(help=HELP_PASSWORD, prompt=True, hide_input=True)],
-) -> None:
-    """Sign in to Supabase for persistent personal history."""
-    run_app_command(lambda: _login(email=email, password=password))
-
-
-def _login(*, email: str, password: str) -> None:
-    settings = get_settings()
-    if not settings.supabase_client_configured:
-        raise AppError(
-            MESSAGE_SUPABASE_LOGIN_CONFIG_REQUIRED,
-            code=ErrorCode.CONFIG_INVALID_VALUE,
-        )
-    session = SupabaseAuthApi(
-        settings.supabase_url,
-        settings.supabase_publishable_key_value,
-        timeout=settings.supabase_auth_timeout_seconds,
-    ).sign_in_with_password(email=email, password=password)
-    SupabaseSessionStore().save(session)
-    console.print(MESSAGE_LOGIN_SUCCEEDED)
-
-
-def logout() -> None:
-    """Sign out and clear the local Supabase session."""
-    run_app_command(_logout)
-
-
-def _logout() -> None:
-    settings = get_settings()
-    store = SupabaseSessionStore()
-    session = store.load()
-    if session is not None and settings.supabase_client_configured:
-        with suppress(AppError):
-            SupabaseAuthApi(
-                settings.supabase_url,
-                settings.supabase_publishable_key_value,
-                timeout=settings.supabase_auth_timeout_seconds,
-            ).sign_out(session)
-    store.clear()
-    console.print(MESSAGE_LOGOUT_SUCCEEDED)
-
-
-def whoami() -> None:
-    """Print the current CLI auth mode."""
-    run_app_command(_whoami)
-
-
-def _whoami() -> None:
-    session = SupabaseSessionStore().load()
-    if session is None:
-        console.print(MESSAGE_NOT_LOGGED_IN)
-        return
-    console.print(session.email or session.user_id)
 
 
 def doctor(
@@ -183,7 +117,7 @@ def _doctor(*, output: str | None) -> None:
         api_health = health.get("status", HEALTH_STATUS_OK)
     checks = build_entrypoint_diagnostics(
         settings=settings,
-        data_source=health.get("service", "demo") if "health" in locals() else "demo",
+        data_source=health.get("service", "supabase") if "health" in locals() else "supabase",
         api_health=api_health,
     )
 
@@ -235,7 +169,6 @@ def new(
             seed=seed,
             manual_player=manual_player,
             role_count=role_count or [],
-            client=_client(),
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -246,15 +179,16 @@ def _new(
     seed: int | None,
     manual_player: str | None,
     role_count: list[str],
-    client: GameApi,
     output_format: OutputFormat,
+    client: GameApi | None = None,
 ) -> None:
     request = _create_request(
         seed=seed,
         manual_player=manual_player,
         role_count=role_count,
     )
-    created = client.create_game(request)
+    api = client or _client()
+    created = api.create_game(request)
     logger.info(
         LOG_CLI_GAME_CREATED,
         extra={
@@ -269,13 +203,6 @@ def _new(
         return
     console.print(Panel.fit(message_created_game(created.game_id)))
     print_state(created.state)
-    if created.manual_player is not None:
-        console.print(
-            message_manual_token(
-                created.manual_player.player_id,
-                created.manual_player.token,
-            )
-        )
 
 
 def show(
@@ -358,7 +285,6 @@ def play(
                 settings.cli_poll_interval_seconds if poll_interval is None else poll_interval
             ),
             show_timeline=show_timeline,
-            client=_client(),
             output_format=_output_format(output, settings),
         )
     )
@@ -373,8 +299,8 @@ def _play(
     log_jsonl: Path | None,
     poll_interval: float,
     show_timeline: bool,
-    client: GameApi,
     output_format: OutputFormat,
+    client: GameApi | None = None,
 ) -> None:
     if max_steps < MIN_STEP_LIMIT:
         raise AppError(MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE, code=ErrorCode.CONFIG_INVALID_VALUE)
@@ -384,27 +310,22 @@ def _play(
             code=ErrorCode.CONFIG_INVALID_VALUE,
         )
 
-    created = client.create_game(
-        _create_request(
-            seed=seed,
-            manual_player=manual_player,
-            role_count=role_count,
-        )
+    request = _create_request(
+        seed=seed,
+        manual_player=manual_player,
+        role_count=role_count,
     )
+    api = client or _client()
+    created = api.create_game(request)
     state = created.state
     last_sequence = MIN_PAGE_OFFSET
     emitted_items: list[GameTimelineItem] = []
-    manual_token = (
-        created.manual_player.token
-        if created.manual_player is not None and created.manual_player.player_id == manual_player
-        else None
-    )
 
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
         console.print(Panel.fit(message_created_game(created.game_id)))
         print_state(state)
 
-    initial_timeline = client.get_timeline(created.game_id, after=last_sequence)
+    initial_timeline = api.get_timeline(created.game_id, after=last_sequence)
     emitted_items.extend(initial_timeline.items)
     last_sequence = consume_timeline(
         initial_timeline.items,
@@ -416,20 +337,19 @@ def _play(
 
     steps = 0
     while state.status != GAME_STATUS_COMPLETED and steps < max_steps:
-        if manual_player is not None and manual_token is not None:
+        if manual_player is not None:
             _prompt_and_submit_manual_action(
-                client=client,
+                client=api,
                 game_id=created.game_id,
                 player_id=manual_player,
-                manual_token=manual_token,
                 output_format=output_format,
             )
         if poll_interval:
             time.sleep(poll_interval)
-        state = client.advance_game(created.game_id).state
+        state = api.advance_game(created.game_id).state
         steps += 1
 
-        timeline_batch = client.get_timeline(created.game_id, after=last_sequence)
+        timeline_batch = api.get_timeline(created.game_id, after=last_sequence)
         emitted_items.extend(timeline_batch.items)
         last_sequence = consume_timeline(
             timeline_batch.items,
@@ -700,13 +620,11 @@ def _prompt_and_submit_manual_action(
     client: GameApi,
     game_id: str,
     player_id: str,
-    manual_token: str,
     output_format: OutputFormat,
 ) -> None:
     observation = client.get_private_observation(
         game_id,
         player_id,
-        manual_token=manual_token,
     )
     actions = observation.observation.get("available_actions") or []
     if not actions:
@@ -728,7 +646,6 @@ def _prompt_and_submit_manual_action(
             target_id=target_id,
             message=message,
         ),
-        manual_token=manual_token,
     )
     logger.info(
         LOG_CLI_ACTION_SUBMITTED,

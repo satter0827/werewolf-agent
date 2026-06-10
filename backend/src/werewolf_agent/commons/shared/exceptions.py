@@ -73,12 +73,6 @@ class InvalidGameIdError(ValueError):
     """Raised when a game id cannot be parsed as a UUID."""
 
 
-class InvalidManualTokenError(AppError):
-    """Raised when a private player credential is missing or invalid."""
-
-    code = ErrorCode.AUTHORIZATION_FAILED
-
-
 class AgentError(AppError):
     """An agent returned an invalid or unusable response."""
 
@@ -112,7 +106,6 @@ __all__ = [
     "GamePhaseError",
     "InternalError",
     "InvalidGameIdError",
-    "InvalidManualTokenError",
     "LlmProviderError",
     "ObservationError",
     "ResourceNotFoundError",

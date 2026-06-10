@@ -6,7 +6,7 @@
 ## 目的
 
 - LLM 同士の game と 1 人 manual player 混在 game を、`GameApi` port と Supabase queue worker で決着まで進める
-- Supabase ログイン時は Supabase Auth / Data API を正本にし、未ログイン時は local demo API が同じ usecase を同期実行する
+- React / CLI / Streamlit は Supabase Auth / Data API を正本にし、未ログイン時も anonymous sign-in で authenticated session を作る
 - public response、public timeline、operational log に role、night action target、private state、token、API key、raw provider response を出さない
 - 旧 endpoint、旧 field、旧 DTO 名、旧 save format の fallback は持たない
 
@@ -14,45 +14,44 @@
 
 - Supabase Auth / Data API direct access
 - Supabase queue worker
-- local demo API
 - `llm` agent と LangChain provider による自動進行
 - 1 game につき 1 人の manual player
-- admin / demo reveal DTO による observer / demo 表示
+- admin reveal DTO による observer 表示
 - RFC 9457 Problem Details 互換の error payload
-- React UI、複数 manual player は未実装
+- React UI
+- 複数 manual player は未実装
 
 ## 実行モデル
 
-backend game HTTP API は提供しません。CLI / Streamlit は `GameApi` port だけを使います。
+backend game HTTP API は提供しません。React / CLI / Streamlit は Supabase queue と Data API だけを使います。
 
 | mode | 動作 |
 | --- | --- |
-| Supabase login あり | `api.supabase.SupabaseGameApi` が `game_operation_requests` に操作を enqueue し、worker が usecase を実行する |
-| Supabase login なし | `api.local_demo.LocalDemoGameApi` が process-local repository と usecase で同期実行する |
+| 匿名 session | `signInAnonymously()` / `ensure_session()` で authenticated session を作り、`game_operation_requests` に操作を enqueue する |
+| worker | queued operation を claim し、Python usecase と configured LLM provider を実行する |
 
 Supabase mode では worker が `games`、`game_summaries`、`game_public_turns`、`game_player_observations`、`llm_invocations` を更新します。operation request は完了時に `result_payload`、失敗時に Problem Details 互換の `error_payload` を持ちます。LLM provider 呼び出しは UI / CLI process の外、worker transaction の中で trace とともに保存します。
 
 ## Wire Schemas
 
-ここにある schema は `GameApi` port、Supabase operation request、local demo API で共有する外部契約です。
+ここにある schema は `GameApi` port と Supabase operation request で共有する外部契約です。
 
 | Schema | 用途 |
 | --- | --- |
 | `GameSetupOptionsResponse` | client bootstrapping 用の role、scenario、preset、character、default rules |
 | `CreateGameRequest` | game 作成 request |
-| `GameResponse` | 1 game の public state。作成時だけ `manual_player` を含める |
-| `ManualPlayerCredential` | `player_id` と token。作成レスポンスで 1 回だけ返す |
+| `GameResponse` | 1 game の public state |
 | `GameListResponse` | `PublicGameSummary` の page |
 | `AdvanceGameResponse` | 進行後の public state と追加 public timeline |
 | `AdvanceGameJobResponse` | advance job の状態、poll URL、完了時 result、失敗時 Problem Details |
 | `GameTimelineResponse` | `GameTimelineItem` の page |
 | `PlayerObservationResponse` | authenticated manual player の private observation |
 | `PlayerActionRequest` / `PlayerActionResponse` | manual action 入出力 |
-| `GameRevealResponse` | observer / demo 用の専用 reveal DTO |
+| `GameRevealResponse` | admin observer 用の専用 reveal DTO |
 
 ## Create Game
 
-`GameApi.create_game` は Supabase 利用時に `game_operation_requests` へ `operation_type = create_game` を enqueue します。local demo API は同じ request / response schema を process-local repository に対して同期実行します。
+`GameApi.create_game` は `game_operation_requests` へ `operation_type = create_game` を enqueue します。
 
 人数は `role_counts` の合計から導出します。全体人数だけを指定する field は持ちません。
 
@@ -88,8 +87,7 @@ AI strategy 指定付き:
 制約:
 
 - `role_counts`: 必須。合計が configured min / max の範囲内で、人狼側 1 以上、村側 1 以上
-- `manual_player_id`: 任意。生成される `player-1` から `player-N` のいずれか
-- `manual_player`: `GameApi.create_game` の response でだけ返す。`GameApi.get_game` と list には含めない
+- `manual_player_id`: 任意。生成される `player-1` から `player-N` のいずれか。操作権限は response credential ではなく Supabase participant record で決まる
 - `rules`: 任意。省略時は `api.usecase_bridge` が runtime default を注入する
 - `narration_mode`: 任意。省略時は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` の値を注入する
 - `agent_strategy_id`: 任意。省略時は `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` の値を注入し、game config に保存する
@@ -97,7 +95,7 @@ AI strategy 指定付き:
 
 ## Setup Options
 
-`GameApi.get_setup_options` は client の開始画面を作るための metadata だけを返します。Supabase table を読まず、`commons.resources` で解決した definition から組み立てます。
+`GameApi.get_setup_options` と React client は、client の開始画面を作るための metadata だけを返します。公開済みの `definition_items(scope = 'system', kind = 'setup_options', item_key = 'default')` を読み、React / CLI / Streamlit の bootstrapping を同じ Supabase Data API 契約に揃えます。
 
 - `player_count`
 - `roles`
@@ -113,7 +111,7 @@ AI strategy 指定付き:
 - `agent_strategies`
 - `default_agent_strategy_id`
 
-definition path と TOML 読み込みは `commons.resources` に集約します。domain と usecase は source path、packaged default、`.env` を知りません。
+worker / migration で publish する元データは runtime definition から作る `api.setup_options` の projection と同じ wire schema に揃えます。definition path と TOML 読み込みは `commons.resources` に集約します。domain と usecase は source path、packaged default、`.env` を知りません。
 
 ## Pagination
 
@@ -176,7 +174,7 @@ Cursor:
 
 ## Reveal
 
-`GameApi.get_game_reveal` は observer / demo 用の専用 DTO を返します。Supabase 利用時は `game_reveals` view と RLS / admin claim が公開範囲を決めます。local demo API は process-local state から同じ DTO を返します。`WEREWOLF_REVEAL_API_ENABLED=false` の場合、worker は既存 reveal payload を削除し、local demo API は reveal を返しません。
+`GameApi.get_game_reveal` は admin observer 用の専用 DTO を返します。Supabase の `game_reveals` table と RLS / admin claim が公開範囲を決めます。`WEREWOLF_REVEAL_API_ENABLED=false` の場合、worker は既存 reveal payload を削除します。
 
 返すもの:
 
@@ -194,21 +192,12 @@ Cursor:
 
 ## Manual Player
 
-manual player は `GameApi.create_game` の `manual_player_id` で 1 人だけ指定できます。作成 response の `manual_player` は次の形です。
-
-```json
-{
-  "player_id": "player-1",
-  "token": "<one-time-visible-token>"
-}
-```
-
-private observation と manual action は `GameApi.get_private_observation` / `GameApi.submit_player_action` で扱います。Supabase adapter ではログイン session と RLS が観測範囲を制御し、local demo API では作成時 token を process-local repository に照合します。
+manual player は `GameApi.create_game` の `manual_player_id` で 1 人だけ指定できます。Supabase worker は `game_participants` に `auth.uid()` と player id を保存し、以後の private observation / manual action は RLS と participant record で制御します。React / CLI / Streamlit は seat credential を扱いません。
 
 | 状態 | Status | Code |
 | --- | --- | --- |
-| token なし | `401` | `auth.required` |
-| token 不正、または対象 player が manual player ではない | `403` | `auth.forbidden` |
+| Supabase session なし | `401` | `auth.required` |
+| participant record がない player 操作 | `403` | `auth.forbidden` |
 
 manual action:
 
@@ -233,13 +222,13 @@ strategy 詳細は [Agent Strategies](agent-strategies.md) を参照してくだ
 
 ## Errors
 
-Error payload は RFC 9457 Problem Details 互換です。Supabase worker は `game_operation_requests.error_payload` に保存し、local demo API は同じ schema を例外として返します。
+Error payload は RFC 9457 Problem Details 互換です。Supabase worker は `game_operation_requests.error_payload` に保存します。
 
 | Status | Code | 例 |
 | --- | --- | --- |
 | `400` | `request.validation_failed` | body / query validation |
-| `401` | `auth.required` | manual player token または Supabase session がない |
-| `403` | `auth.forbidden` | token 不正、または非 manual player |
+| `401` | `auth.required` | Supabase session がない |
+| `403` | `auth.forbidden` | RLS で許可されない user / game / player |
 | `404` | `resource.not_found` | game が存在しない |
 | `409` | `game.invalid_phase` | manual input 待ち、または終了済み game の進行。advance では job.error に格納する |
 | `422` | `game.invalid_action` | action ルール違反 |
@@ -249,13 +238,12 @@ Error payload は RFC 9457 Problem Details 互換です。Supabase worker は `g
 
 | Path | 責務 |
 | --- | --- |
-| `contracts/schemas.py` | GameApi / Supabase / local demo で共有する wire DTO、Problem Details schema |
+| `contracts/schemas.py` | GameApi / Supabase で共有する wire DTO、Problem Details schema |
 | `contracts/errors.py` | error code metadata |
 | `api/ports.py` | CLI / Streamlit が使う `GameApi` port |
-| `api/factory.py` | Supabase / local demo の選択 |
+| `api/factory.py` | SupabaseGameApi の構築と匿名 session 確保 |
 | `api/usecase_bridge.py` | settings、definition、LLM provider を usecase 用に組み立てる |
-| `api/setup_options.py` | 開始画面 metadata |
-| `api/local_demo/` | 未ログイン用 local demo API |
+| `api/setup_options.py` | runtime definition から開始画面 metadata を作る projection |
 | `api/supabase/` | Supabase Auth / Data API adapter |
 | `api/supabase/worker/` | operation request worker、Postgres repository adapter、LLM trace sink |
 | `entrypoint/requests.py` | CLI / Streamlit 共通 request builder |

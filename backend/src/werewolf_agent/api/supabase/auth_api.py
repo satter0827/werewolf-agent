@@ -19,7 +19,7 @@ from werewolf_agent.contracts.errors import ErrorCode
 
 
 class SupabaseAuthApi:
-    """Small GoTrue client for email/password sessions."""
+    """Small GoTrue client for anonymous sessions."""
 
     def __init__(
         self,
@@ -34,12 +34,12 @@ class SupabaseAuthApi:
         self._publishable_key = publishable_key
         self._client = httpx.Client(timeout=timeout, transport=transport)
 
-    def sign_in_with_password(self, *, email: str, password: str) -> SupabaseSession:
-        """Sign in with Supabase email/password auth."""
+    def sign_in_anonymously(self) -> SupabaseSession:
+        """Create an anonymous Supabase session."""
         payload = self._request_json(
             "POST",
-            "/auth/v1/token?grant_type=password",
-            json_body={"email": email, "password": password},
+            "/auth/v1/signup",
+            json_body={},
         )
         return _session_from_auth_payload(payload)
 
@@ -51,15 +51,6 @@ class SupabaseAuthApi:
             json_body={"refresh_token": session.refresh_token},
         )
         return _session_from_auth_payload(payload)
-
-    def sign_out(self, session: SupabaseSession) -> None:
-        """Invalidate the current session on Supabase best effort."""
-        self._request_json(
-            "POST",
-            "/auth/v1/logout",
-            bearer_token=session.access_token,
-            json_body={},
-        )
 
     def _request_json(
         self,
@@ -114,6 +105,7 @@ def _session_from_auth_payload(payload: dict[str, Any]) -> SupabaseSession:
         expires_at=expires_at,
         user_id=str(user.get("id") or ""),
         email=str(user.get("email") or ""),
+        is_anonymous=bool(user.get("is_anonymous", False)),
     )
 
 

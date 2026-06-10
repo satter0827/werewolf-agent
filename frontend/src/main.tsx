@@ -3,12 +3,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { App } from "./App";
+import { frontendSettings } from "./config";
 import "./skins/dawn-table.css";
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      staleTime: frontendSettings.queryStaleTimeMs,
       retry: false,
     },
   },

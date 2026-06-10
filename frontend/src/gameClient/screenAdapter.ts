@@ -1,7 +1,10 @@
 import type {
+  AvailableAction,
   GamePhase,
   GameScreenSource,
   GameTimelineItem,
+  PlayerActionRequest,
+  PlayerObservationPayload,
   PlayerObservationResponse,
   PublicGameState,
 } from "./wireTypes";
@@ -107,7 +110,9 @@ function mapTurnPanel(
   observation: PlayerObservationResponse | null,
   state: PublicGameState,
 ): TurnPanelModel {
-  if (observation === null || observation.available_actions.length === 0) {
+  const payload = observation?.observation ?? null;
+  const actions = normalizeActions(payload);
+  if (payload === null || actions.length === 0) {
     return {
       title: "村を見守る",
       subtitle:
@@ -129,9 +134,9 @@ function mapTurnPanel(
   return {
     title: "あなたの手番",
     subtitle: "今できる行動を選んでください",
-    roleHint: observation.role ? `あなたは ${friendlyRole(observation.role)}` : "村の一員です",
-    visibleClues: visibleClues(observation, state),
-    actions: observation.available_actions.map((action) => ({
+    roleHint: visibleRole(payload) ? `あなたは ${friendlyRole(visibleRole(payload))}` : "村の一員です",
+    visibleClues: visibleClues(payload, state),
+    actions: actions.map((action) => ({
       type: action.type,
       label: actionLabels[action.type] ?? "行動する",
       description: actionDescriptions[action.type] ?? "この場でできることを選びます",
@@ -145,17 +150,36 @@ function mapTurnPanel(
   };
 }
 
-function visibleClues(
-  observation: PlayerObservationResponse,
-  state: PublicGameState,
-): string[] {
-  const known = Object.entries(observation.known_roles ?? {}).map(
+function visibleClues(payload: PlayerObservationPayload, state: PublicGameState): string[] {
+  const known = Object.entries(payload.known_roles ?? {}).map(
     ([playerId, role]) =>
       `${state.players.find((player) => player.id === playerId)?.name ?? "誰か"} は ${friendlyRole(
         role,
       )} と分かっています`,
   );
   return known.length > 0 ? known : ["公開された発言", "これまでの投票", "今朝の出来事"];
+}
+
+function normalizeActions(payload: PlayerObservationPayload | null): AvailableAction[] {
+  if (payload === null) {
+    return [];
+  }
+  const targetMap = payload.legal_targets ?? {};
+  return (payload.available_actions ?? []).map((action) => {
+    if (typeof action === "string") {
+      const actionType = action as PlayerActionRequest["type"];
+      return {
+        type: actionType,
+        legal_targets: targetMap[actionType] ?? [],
+        message_required: actionType === "speech",
+      };
+    }
+    return action;
+  });
+}
+
+function visibleRole(payload: PlayerObservationPayload): string {
+  return String(payload.me?.role ?? payload.role ?? "");
 }
 
 function mapTimelineItem(

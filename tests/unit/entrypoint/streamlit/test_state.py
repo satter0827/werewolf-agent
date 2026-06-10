@@ -4,38 +4,16 @@ from werewolf_agent.entrypoint.streamlit.state import (
     KEY_AUTO_ADVANCE_NOTICE,
     KEY_AUTO_ADVANCE_RUNNING,
     KEY_AUTO_ADVANCE_STEPS,
-    KEY_MANUAL_PLAYER_TOKENS,
     advance_job_id,
     auto_advance_state,
     clear_advance_job,
     consume_auto_advance_notice,
-    manual_player_tokens_by_slot,
     pause_auto_advance,
     record_auto_advance_step,
     remember_advance_job,
-    remember_manual_player_token,
     start_auto_advance,
     sync_auto_advance_game,
 )
-
-
-def test_manual_player_tokens_are_kept_in_session_state_only() -> None:
-    session: dict[str, object] = {}
-
-    remember_manual_player_token(
-        session,
-        slot_id="slot-1",
-        manual_token="token-secret",
-    )
-
-    assert session[KEY_MANUAL_PLAYER_TOKENS] == {"slot-1": "token-secret"}
-    assert manual_player_tokens_by_slot(session) == {"slot-1": "token-secret"}
-
-
-def test_manual_player_token_session_helper_ignores_empty_or_invalid_values() -> None:
-    session: dict[str, object] = {KEY_MANUAL_PLAYER_TOKENS: "not-a-dict"}
-
-    assert manual_player_tokens_by_slot(session) == {}
 
 
 def test_auto_advance_state_tracks_start_pause_and_step_count() -> None:
@@ -68,11 +46,6 @@ def test_auto_advance_resets_when_visible_game_changes() -> None:
     assert session[KEY_AUTO_ADVANCE_LAST_STEP_AT] == 0.0
     assert auto_advance_state(session, "game-1").running is False
     assert advance_job_id(session, "game-1") == ""
-
-    remember_manual_player_token(session, slot_id="", manual_token="token-secret")
-    remember_manual_player_token(session, slot_id="slot-1", manual_token="")
-
-    assert manual_player_tokens_by_slot(session) == {}
 
 
 def test_advance_job_state_is_scoped_to_visible_game() -> None:

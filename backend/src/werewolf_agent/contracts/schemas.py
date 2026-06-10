@@ -195,27 +195,17 @@ class PublicGameState(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ManualPlayerCredential(BaseModel):
-    """One manual player credential returned only when creating a game."""
-
-    player_id: str
-    token: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
 class GameResponse(BaseModel):
     """Response containing the current public game state."""
 
     game_id: str
     state: PublicGameState
-    manual_player: ManualPlayerCredential | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class AdvanceGameResponse(BaseModel):
-    """Response from advancing a game by one queued or local step."""
+    """Response from advancing a game by one queued worker step."""
 
     game_id: str
     status: GameStatus
@@ -346,7 +336,7 @@ class GameRevealVote(BaseModel):
 
 
 class GameRevealResponse(BaseModel):
-    """Full table information for local observer/demo UI only."""
+    """Full table information for admin observer UI only."""
 
     game_id: str
     status: GameStatus
@@ -681,7 +671,6 @@ __all__ = [
     "GameTimelineQuery",
     "GameTimelineResponse",
     "LocalRulesSettings",
-    "ManualPlayerCredential",
     "NarrationMode",
     "PlayerActionRequest",
     "PlayerActionResponse",

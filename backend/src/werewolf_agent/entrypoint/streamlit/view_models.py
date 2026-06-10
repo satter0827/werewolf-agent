@@ -46,7 +46,6 @@ class SavedGameOptionView:
     game_id: str
     mode: ScreenMode
     manual_player_id: str | None = None
-    manual_token: str = ""
     role_counts: dict[str, int] | None = None
     rules: LocalRulesSettings | None = None
     seed: int | None = None

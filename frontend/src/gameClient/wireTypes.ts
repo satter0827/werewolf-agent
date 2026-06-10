@@ -78,13 +78,26 @@ export interface AvailableAction {
   message_required?: boolean;
 }
 
-export interface PlayerObservationResponse {
-  player_id: string;
-  phase: GamePhase;
-  day: number;
-  role?: string;
+export interface PlayerObservationPayload {
+  available_actions?: Array<AvailableAction | PlayerActionRequest["type"]>;
+  day?: number;
   known_roles?: Record<string, string>;
-  available_actions: AvailableAction[];
+  legal_targets?: Partial<Record<PlayerActionRequest["type"], string[]>>;
+  me?: {
+    id?: string;
+    name?: string;
+    role?: string | null;
+    status?: PlayerStatus;
+  };
+  phase?: GamePhase;
+  role?: string | null;
+  [key: string]: unknown;
+}
+
+export interface PlayerObservationResponse {
+  game_id: string;
+  player_id: string;
+  observation: PlayerObservationPayload;
 }
 
 export interface GameRevealPlayer {
@@ -151,16 +164,31 @@ export interface RoleDefinitionView {
   difficulty: number;
 }
 
-export interface ScenarioDefinitionView {
+export interface AbilityDefinitionView {
+  id: string;
+  name: string;
+  description: string;
+  target_policy: string;
+  difficulty: number;
+}
+
+export interface AgentStrategyDefinitionView {
   id: string;
   name: string;
   description: string;
 }
 
+export interface ScenarioDefinitionView {
+  id: string;
+  name: string;
+  summary: string;
+  recommended_setup_preset?: string | null;
+}
+
 export interface SetupPresetDefinitionView {
   id: string;
   name: string;
-  description: string;
+  scenario_id: string;
   role_counts: Record<string, number>;
 }
 
@@ -194,32 +222,33 @@ export interface CreateGameRequest {
   seed: number | null;
   scenario_id?: string | null;
   setup_preset_id?: string | null;
+  agent_strategy_id?: string | null;
+  narration_mode?: string | null;
   role_counts: Record<string, number>;
   manual_player_id?: string | null;
   rules?: LocalRulesSettings | null;
-}
-
-export interface ManualPlayerCredential {
-  player_id: string;
-  token: string;
+  character_assignments?: Record<string, string>;
+  custom_characters?: unknown[];
+  custom_roles?: unknown[];
 }
 
 export interface GameResponse {
   game_id: string;
   state: PublicGameState;
-  manual_player: ManualPlayerCredential | null;
 }
 
 export interface PlayerActionRequest {
   type: "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "pass";
   message?: string | null;
+  reason?: string;
   target_id?: string | null;
 }
 
 export interface PlayerActionResponse {
-  accepted: boolean;
   game_id: string;
+  player_id: string;
   state: PublicGameState;
+  timeline: GameTimelineItem[];
 }
 
 export interface GameSetupOptionsResponse {
@@ -231,9 +260,11 @@ export interface GameSetupOptionsResponse {
   default_setup_preset_id?: string | null;
   default_narration_mode: string;
   default_agent_strategy_id: string;
+  abilities: AbilityDefinitionView[];
   scenarios: ScenarioDefinitionView[];
   setup_presets: SetupPresetDefinitionView[];
   characters: CharacterDefinitionView[];
+  agent_strategies: AgentStrategyDefinitionView[];
 }
 
 export interface GameScreenSource {

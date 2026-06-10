@@ -1,9 +1,8 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { LocalDemoGameClient } from "../../../data/LocalDemoGameClient";
-import { demoSetupOptions } from "../../../data/localDemoFixtures";
 import { mapGameScreen } from "../../../gameClient/screenAdapter";
+import { sampleScreenSource, sampleSetupOptions } from "../../../test/gameSamples";
 import { RoundTable } from "./RoundTable";
 import { TurnPanel } from "./TurnPanel";
 import { VillageSetup } from "./VillageSetup";
@@ -11,7 +10,7 @@ import { VillageTimeline } from "./VillageTimeline";
 
 describe("village components", () => {
   it("renders setup choices with game-facing labels", async () => {
-    render(<VillageSetup onCreate={() => undefined} setupOptions={demoSetupOptions} />);
+    render(<VillageSetup onCreate={() => undefined} setupOptions={sampleSetupOptions} />);
 
     expect(screen.getByRole("heading", { name: "今夜の舞台を選ぶ" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /この村で始める/ })).toBeInTheDocument();
@@ -19,9 +18,8 @@ describe("village components", () => {
   });
 
   it("renders round table seats and turn panel", async () => {
-    const client = new LocalDemoGameClient();
     const model = mapGameScreen({
-      screen: await client.getScreen("demo-game-1", "player-1"),
+      screen: sampleScreenSource(),
       manualPlayerId: "player-1",
     });
 
@@ -38,9 +36,8 @@ describe("village components", () => {
   });
 
   it("renders the public village timeline", async () => {
-    const client = new LocalDemoGameClient();
     const model = mapGameScreen({
-      screen: await client.getScreen("demo-game-1", "player-1"),
+      screen: sampleScreenSource(),
       manualPlayerId: "player-1",
     });
 

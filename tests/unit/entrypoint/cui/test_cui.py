@@ -19,7 +19,6 @@ from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     GameTimelineItem,
     GameTimelineResponse,
-    ManualPlayerCredential,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
@@ -113,12 +112,7 @@ class FakeGameApi:
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         self.calls.append(("create", request.player_count))
         self.available_sequence = 1
-        manual_player = (
-            ManualPlayerCredential(player_id="player-1", token="token")
-            if request.manual_player_id == "player-1"
-            else None
-        )
-        return GameResponse(game_id="game-1", state=_state(), manual_player=manual_player)
+        return GameResponse(game_id="game-1", state=_state())
 
     def get_game(self, game_id: str) -> GameResponse:
         self.calls.append(("get", game_id))
@@ -126,7 +120,7 @@ class FakeGameApi:
 
     def health(self) -> dict[str, str]:
         self.calls.append(("health", "ok"))
-        return {"status": "ok", "service": "werewolf-agent"}
+        return {"status": "ok", "service": "supabase"}
 
     def get_setup_options(self) -> GameSetupOptionsResponse:
         self.calls.append(("setup_options", "default"))
@@ -242,10 +236,8 @@ class FakeGameApi:
         self,
         game_id: str,
         player_id: str,
-        *,
-        manual_token: str,
     ) -> PlayerObservationResponse:
-        self.calls.append(("observation", (game_id, player_id, manual_token)))
+        self.calls.append(("observation", (game_id, player_id)))
         return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
@@ -264,10 +256,8 @@ class FakeGameApi:
         game_id: str,
         player_id: str,
         request: PlayerActionRequest,
-        *,
-        manual_token: str,
     ) -> PlayerActionResponse:
-        self.calls.append(("action", (game_id, player_id, request.type, manual_token)))
+        self.calls.append(("action", (game_id, player_id, request.type)))
         return PlayerActionResponse(
             game_id=game_id,
             player_id=player_id,
@@ -276,8 +266,10 @@ class FakeGameApi:
         )
 
 
-def test_doctor_command_succeeds() -> None:
+def test_doctor_command_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = CliRunner()
+    fake_client = FakeGameApi()
+    monkeypatch.setattr(cui_commands, "build_game_api", lambda _settings: fake_client)
 
     result = runner.invoke(app, ["doctor"])
 
@@ -287,7 +279,10 @@ def test_doctor_command_succeeds() -> None:
     assert "fake-list-llm" in result.output
 
 
-def test_doctor_json_output_is_machine_readable() -> None:
+def test_doctor_json_output_is_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeGameApi()
+    monkeypatch.setattr(cui_commands, "build_game_api", lambda _settings: fake_client)
+
     result = CliRunner().invoke(app, ["doctor", "--output", "json"])
 
     assert result.exit_code == 0
@@ -295,10 +290,12 @@ def test_doctor_json_output_is_machine_readable() -> None:
     assert payload["provider"] == "fake"
     assert payload["model"] == "fake-list-llm"
     assert payload["prompt file"] == "packaged"
-    assert payload["data source"] == "werewolf-agent-demo"
+    assert payload["data source"] == "supabase"
 
 
-def test_doctor_command_redacts_supabase_worker_dsn() -> None:
+def test_doctor_command_redacts_supabase_worker_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
+    fake_client = FakeGameApi()
+    monkeypatch.setattr(cui_commands, "build_game_api", lambda _settings: fake_client)
     get_settings.cache_clear()
     try:
         result = CliRunner().invoke(
@@ -425,7 +422,7 @@ def test_cli_startup_log_writes_trace_settings(tmp_path: Path) -> None:
     assert startup_payload["log_output"] == "file"
     assert startup_payload["log_file_path"] == str(log_file)
     assert startup_payload["log_third_party_level"] == "INFO"
-    assert "manual_token" not in startup_payload
+    assert "seat_credential" not in startup_payload
 
 
 def test_play_command_uses_public_api_client(
@@ -531,7 +528,7 @@ def test_new_command_can_request_one_manual_player(monkeypatch: pytest.MonkeyPat
     )
 
     assert result.exit_code == 0
-    assert "manual token" in result.output
+    assert "seat credential" not in result.output
     assert fake_client.calls == [("create", 5)]
 
 

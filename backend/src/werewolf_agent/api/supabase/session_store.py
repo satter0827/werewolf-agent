@@ -24,6 +24,7 @@ class SupabaseSession:
     expires_at: datetime
     user_id: str
     email: str
+    is_anonymous: bool = False
 
     @property
     def is_expired(self) -> bool:
@@ -57,6 +58,7 @@ class SupabaseSessionStore:
             "expires_at": session.expires_at.isoformat(),
             "user_id": session.user_id,
             "email": session.email,
+            "is_anonymous": session.is_anonymous,
         }
         self.path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
@@ -93,6 +95,7 @@ def _session_from_payload(payload: Any) -> SupabaseSession | None:
             expires_at=datetime.fromisoformat(str(payload["expires_at"])),
             user_id=str(payload["user_id"]),
             email=str(payload.get("email") or ""),
+            is_anonymous=bool(payload.get("is_anonymous", False)),
         )
     except (KeyError, ValueError, TypeError):
         return None

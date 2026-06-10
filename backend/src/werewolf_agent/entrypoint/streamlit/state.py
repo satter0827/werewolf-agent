@@ -13,7 +13,6 @@ KEY_SELECTED_HISTORY_ID = "werewolf_streamlit_selected_history_id"
 KEY_ACTIVE_GAME_SELECTION = "werewolf_streamlit_active_game_selection"
 KEY_MESSAGE = "werewolf_streamlit_message"
 KEY_STREAMLIT_PREFERENCES = "werewolf_streamlit_preferences"
-KEY_MANUAL_PLAYER_TOKENS = "werewolf_streamlit_manual_player_tokens"
 KEY_AUTO_ADVANCE_GAME_ID = "werewolf_streamlit_auto_advance_game_id"
 KEY_AUTO_ADVANCE_RUNNING = "werewolf_streamlit_auto_advance_running"
 KEY_AUTO_ADVANCE_STEPS = "werewolf_streamlit_auto_advance_steps"
@@ -21,6 +20,18 @@ KEY_AUTO_ADVANCE_LAST_STEP_AT = "werewolf_streamlit_auto_advance_last_step_at"
 KEY_AUTO_ADVANCE_NOTICE = "werewolf_streamlit_auto_advance_notice"
 KEY_ADVANCE_JOB_GAME_ID = "werewolf_streamlit_advance_job_game_id"
 KEY_ADVANCE_JOB_ID = "werewolf_streamlit_advance_job_id"
+USER_SCOPED_KEYS = (
+    KEY_SELECTED_HISTORY_ID,
+    KEY_ACTIVE_GAME_SELECTION,
+    KEY_MESSAGE,
+    KEY_AUTO_ADVANCE_GAME_ID,
+    KEY_AUTO_ADVANCE_RUNNING,
+    KEY_AUTO_ADVANCE_STEPS,
+    KEY_AUTO_ADVANCE_LAST_STEP_AT,
+    KEY_AUTO_ADVANCE_NOTICE,
+    KEY_ADVANCE_JOB_GAME_ID,
+    KEY_ADVANCE_JOB_ID,
+)
 
 
 @dataclass(frozen=True)
@@ -60,37 +71,15 @@ def active_game_selection(session: MutableMapping[str, Any]) -> SessionGameSelec
     return cast("SessionGameSelection", value)
 
 
-def remember_manual_player_token(
-    session: MutableMapping[str, Any],
-    *,
-    slot_id: str,
-    manual_token: str,
-) -> None:
-    """Store one playable token in the current Streamlit session only."""
-    slot_id_text = slot_id.strip()
-    token_text = manual_token.strip()
-    if not slot_id_text or not token_text:
-        return
-    tokens = manual_player_tokens_by_slot(session)
-    tokens[slot_id_text] = token_text
-    session[KEY_MANUAL_PLAYER_TOKENS] = tokens
-
-
-def manual_player_tokens_by_slot(session: MutableMapping[str, Any]) -> dict[str, str]:
-    """Return playable tokens held only by the current Streamlit session."""
-    value = session.get(KEY_MANUAL_PLAYER_TOKENS)
-    if not isinstance(value, dict):
-        return {}
-    return {
-        str(slot_id): str(token)
-        for slot_id, token in value.items()
-        if str(slot_id).strip() and str(token).strip()
-    }
-
-
 def clear_message(session: MutableMapping[str, Any]) -> None:
     """Clear the current action message."""
     session.pop(KEY_MESSAGE, None)
+
+
+def clear_user_scoped_state(session: MutableMapping[str, Any]) -> None:
+    """Clear game and auth-owned state when the signed-in user changes."""
+    for key in USER_SCOPED_KEYS:
+        session.pop(key, None)
 
 
 def sync_auto_advance_game(session: MutableMapping[str, Any], game_id: str) -> None:

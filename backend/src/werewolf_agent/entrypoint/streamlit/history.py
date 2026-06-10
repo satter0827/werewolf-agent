@@ -87,12 +87,10 @@ def build_history_options(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    manual_player_tokens: Mapping[str, str] | None = None,
 ) -> list[SavedGameOptionView]:
     """Return history-selector options without local save-file persistence."""
     options: list[SavedGameOptionView] = []
     games_by_id = {game.game_id: game for game in games}
-    manual_player_tokens_by_selection = manual_player_tokens or {}
     session_game_id = ""
     if session_selection is not None:
         game = games_by_id.get(session_selection.game_id)
@@ -102,8 +100,7 @@ def build_history_options(
             game.player_count if game is not None else sum(session_selection.role_counts.values())
         )
         updated_at = game.updated_at if game is not None else None
-        manual_token = manual_player_tokens_by_selection.get(session_selection.selection_id, "")
-        mode: ScreenMode = "playable" if manual_token else "observer"
+        mode: ScreenMode = "playable" if session_selection.manual_player_id else "observer"
         options.append(
             SavedGameOptionView(
                 option_id=f"session:{session_selection.selection_id}",
@@ -114,15 +111,14 @@ def build_history_options(
                     player_count=player_count,
                     updated_at=updated_at,
                     mode_label=catalog.t(lang, "setup.mode.play")
-                    if manual_token
+                    if session_selection.manual_player_id
                     else catalog.t(lang, "setup.mode.observe"),
                     catalog=catalog,
                     lang=lang,
                 ),
                 game_id=session_selection.game_id,
                 mode=mode,
-                manual_player_id=session_selection.manual_player_id if manual_token else None,
-                manual_token=manual_token,
+                manual_player_id=session_selection.manual_player_id,
                 role_counts=dict(session_selection.role_counts),
                 rules=session_selection.rules,
                 seed=session_selection.seed,

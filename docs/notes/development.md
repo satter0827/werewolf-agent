@@ -6,16 +6,16 @@
 ## 現在地
 
 - deterministic domain core 実装済み
-- CLI / Streamlit は `GameApi` port だけを使い、Supabase ログイン時は Supabase Data API、未ログイン時は local demo API に接続する
+- React / CLI / Streamlit は Supabase anonymous session を確保し、Supabase Data API に接続する
 - `GameService` facade 経由で create / get / advance / list / timeline / reveal / private observation / manual action を扱う
-- CLI `doctor` / `login` / `logout` / `whoami` / `setup-options` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `games` は `GameApi` port だけを使う
-- Streamlit は Play / Observe / History を提供し、ログイン有無と admin 権限で表示を分ける
-- LLM provider の既定は `fake`。外部 API なしで local demo を進められる
+- CLI `doctor` / `setup-options` / `new` / `show` / `advance` / `play` / `timeline` / `replay` / `games` は `GameApi` port だけを使う
+- Streamlit は login gate を持たず、Play / Observe / History を Supabase session 前提で提供する
+- LLM provider の既定は `fake`。外部 API なしでも worker が Python usecase 内で FakeLLM を実行できる
 - Supabase queue worker が game 作成、advance、manual action を処理し、LLM 呼び出しを UI / CLI process から分離する
 - LLM agent strategy は `stable_fast`、`role_basic`、`target_ranker` を選べる。既定は `stable_fast`
 - LLM trace は prompt hash、prompt messages、request payload、raw response、parsed decision、error payload、latency、graph route metadata を永続化する
 - LM Studio と OpenAI provider は設定値で明示的に切り替える
-- 複数 manual player、React UI は未実装
+- 複数 manual player は未実装
 
 ## 最初に実行
 
@@ -47,6 +47,8 @@ supabase migration up
 uv run --extra worker werewolf-agent-worker run
 ```
 
+React / Streamlit / CLI は login form を出さず、Supabase anonymous sign-in で authenticated session を作ります。game 操作は Supabase queue に入り、worker が LLM provider 設定を読んで進行します。
+
 ## Windows / OneDrive / Codex
 
 この repository は OneDrive の reparse point 配下で作業されることがあります。Codex の sandbox から repository 配下へ新規生成物を書くと、`Access is denied`、Ruff cache warning、SQLite `disk I/O error` が出る場合があります。
@@ -65,7 +67,7 @@ worker を個別に起動:
 scripts\run-worker.cmd --once
 ```
 
-`scripts\run-worker.cmd` は `WEREWOLF_SUPABASE_DB_DSN` が設定されている環境でだけ使います。demo 起動では不要です。VS Code の Run and Debug では `UI: Streamlit`、CLI 系 config、`Worker: run` を個別に起動します。運用ログは `.werewolf-agent/logs` 配下へ出し、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
+`scripts\run-worker.cmd` は `WEREWOLF_SUPABASE_DB_DSN` が設定されている環境で使います。React / Streamlit / CLI は Supabase anonymous sign-in で session を作り、worker が queue を処理します。VS Code の Run and Debug では `UI: Streamlit`、CLI 系 config、`Worker: run` を個別に起動します。運用ログは `.werewolf-agent/logs` 配下へ出し、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 ## 配置
 
@@ -77,10 +79,9 @@ scripts\run-worker.cmd --once
 | `backend/src/werewolf_agent/usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/api/` | `GameApi` port、factory、usecase bridge、setup options |
-| `backend/src/werewolf_agent/api/local_demo/` | 未ログイン用 process-local game API |
 | `backend/src/werewolf_agent/api/supabase/` | Supabase Auth / Data API client と session store |
 | `backend/src/werewolf_agent/api/supabase/worker/` | Supabase queue worker、Postgres repository、LLM trace sink |
-| `backend/src/werewolf_agent/entrypoint/cui/` | Typer CLI、Supabase login、API port 経由の操作 |
+| `backend/src/werewolf_agent/entrypoint/cui/` | Typer CLI、匿名 Supabase session、API port 経由の操作 |
 | `backend/src/werewolf_agent/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
 | `backend/src/werewolf_agent/entrypoint/requests.py` | CLI / Streamlit 共通 request builder |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、Problem Details |
@@ -93,7 +94,7 @@ scripts\run-worker.cmd --once
 
 - CLI / Streamlit は `contracts` と `GameApi` port だけを使う
 - `api` は `entrypoint` に依存しない
-- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/local_demo/`、`api/supabase/worker/`、`api/telemetry.py` に限定する
+- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/supabase/worker/`、`api/telemetry.py` に限定する
 - `api/usecase_bridge.py` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `commons` は `api`、`entrypoint`、`domain`、`usecase` に依存しない
 - `usecase/jobs` は domain を import せず、facade、command / query、repository / telemetry port に限定する
@@ -121,7 +122,7 @@ scripts\run-worker.cmd --once
 
 Streamlit CSS は追記ではなく置換方式です。画面定義体は表示要素、表示順、配置、列数だけを制御し、public / private 判定、action availability、API payload、game state 計算は `entrypoint/streamlit/app.py` と表示 model 側に残します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS` / `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` / `WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE` / `WEREWOLF_LLM_VALIDATION_RETRY_COUNT` / `WEREWOLF_LLM_GRAPH_MAX_STEPS` / `WEREWOLF_LLM_FALLBACK_POLICY`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS` / `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` / `WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE` / `WEREWOLF_LLM_VALIDATION_RETRY_COUNT` / `WEREWOLF_LLM_GRAPH_MAX_STEPS` / `WEREWOLF_LLM_FALLBACK_POLICY`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。React は browser に公開してよい値だけを `VITE_*` env から読み、`VITE_WEREWOLF_GAME_LIST_LIMIT` / `VITE_WEREWOLF_TIMELINE_LIMIT` / `VITE_WEREWOLF_OPERATION_POLL_INTERVAL_MS` / `VITE_WEREWOLF_OPERATION_POLL_TIMEOUT_MS` / `VITE_WEREWOLF_QUERY_STALE_TIME_MS` を使います。
 
 ## DB
 
@@ -130,7 +131,7 @@ Streamlit CSS は追記ではなく置換方式です。画面定義体は表示
 - 運用だけで変更する設定値、definition、UI text、CSS、screen 配置は settings / resource file に保存する
 - `public` schema は RLS を有効化し、CLI / Streamlit が Data API から触る最小 table だけを expose する
 - `private` schema は worker 専用で、private state と private event stream を public API / Data API へ出さない
-- manual player token は作成時だけ平文で返し、DB には hash だけを保存する
+- manual player の公開操作は Supabase RLS と `game_participants.auth.uid()` を正とし、UI / CLI へ token を出さない
 - 外部公開の履歴は `game_public_turns` と `game_summaries` に統一する
 
 Migration:
@@ -190,7 +191,7 @@ uv run --group docs --extra streamlit sphinx-build -b html -c docs/sphinx docs d
 
 - 実 provider の長時間 QA と evaluation workflow
 - 複数 manual player
-- React UI
+- React UI の production QA と配布手順
 
 ## Handoff
 

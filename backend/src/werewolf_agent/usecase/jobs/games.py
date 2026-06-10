@@ -356,7 +356,6 @@ class GetPlayerObservationQuery(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    manual_token: str = ""
     trusted_user_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -367,7 +366,6 @@ class PlayerActionCommand(_UseCaseModel):
 
     game_id: str | UUID
     player_id: str
-    manual_token: str = ""
     trusted_user_id: str | None = None
     type: ActionTypeId
     target_id: str | None = None
@@ -417,21 +415,11 @@ class GameSetupOptionsResult(_UseCaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class ManualPlayerCredential(_UseCaseModel):
-    """Plain manual-player credential returned only on game creation."""
-
-    player_id: str
-    token: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
 class GameResult(_UseCaseModel):
     """Current game state returned by use cases."""
 
     game_id: str
     state: dict[str, Any]
-    manual_player: ManualPlayerCredential | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -500,7 +488,7 @@ class GameRevealVote(_UseCaseModel):
 
 
 class GameRevealResult(_UseCaseModel):
-    """Full table information for local observer/demo clients."""
+    """Full table information for admin observer views."""
 
     game_id: str
     status: GameStatus
@@ -712,7 +700,6 @@ class GameRecordCreate(_UseCaseModel):
     public_state: dict[str, Any]
     private_state: dict[str, Any]
     pending_actions: dict[str, Any] = Field(default_factory=dict)
-    manual_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -745,7 +732,6 @@ class StoredGame(_UseCaseModel):
     public_state: dict[str, Any]
     private_state: dict[str, Any]
     pending_actions: dict[str, Any] = Field(default_factory=dict)
-    manual_token_hashes: dict[str, str] = Field(default_factory=dict)
     version: int
     created_at: datetime
     updated_at: datetime

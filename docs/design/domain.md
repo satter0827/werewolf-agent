@@ -69,7 +69,7 @@ definition path 解決と TOML 読み込みは `commons.resources` に集約し�
 - `usecase/internal` は API / entrypoint / wire schema に依存しない
 - CLI / Streamlit は domain / usecase を直接 import せず、`contracts` と `GameApi` port だけを使う
 - `api` は `entrypoint` に依存しない
-- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/local_demo/`、`api/supabase/worker/`、`api/telemetry.py` に限定する
+- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/supabase/worker/`、`api/telemetry.py` に限定する
 - `api/usecase_bridge.py` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
 - `commons` は `api`、`entrypoint`、`domain`、`usecase` に依存しない
 
@@ -132,7 +132,7 @@ prompt resource と graph definition は `AgentObservation` の契約だけを�
 - `AgentDecision` を domain `Action` へ変換する
 - repository port に保存する payload を作る
 
-`usecase.jobs.GameService` は API adapter 向けの最小 facade です。`api.usecase_bridge` は settings と definition を usecase 用の値へ変換し、`api.local_demo` と `api.supabase.worker` は repository / telemetry / LLM provider 設定を注入して facade を実行します。`api.setup_options` は HTTP を介さない CLI / Streamlit の開始画面 metadata だけを facade から取得します。
+`usecase.jobs.GameService` は API adapter 向けの最小 facade です。`api.usecase_bridge` は settings と definition を usecase 用の値へ変換し、`api.supabase.worker` は repository / telemetry / LLM provider 設定を注入して facade を実行します。`api.setup_options` は worker/usecase 側の setup options seed 生成に使い、React / CLI / Streamlit は Supabase の `definition_items(kind = 'setup_options')` を読むことを正とします。
 
 - `create_game`
 - `get_game`

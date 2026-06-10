@@ -23,7 +23,7 @@ def test_top_level_layout_uses_api_entrypoint_commons_contracts() -> None:
         assert (PACKAGE / package_name / "__init__.py").exists()
 
     assert (PACKAGE / "api" / "supabase").is_dir()
-    assert (PACKAGE / "api" / "local_demo").is_dir()
+    assert not (PACKAGE / "api" / "local_demo").exists()
     assert (PACKAGE / "entrypoint" / "cui").is_dir()
     assert (PACKAGE / "entrypoint" / "streamlit").is_dir()
 
@@ -50,7 +50,6 @@ def test_api_usecase_imports_stay_in_adapters() -> None:
         PACKAGE / "api" / "usecase_bridge.py",
         PACKAGE / "api" / "setup_options.py",
         PACKAGE / "api" / "telemetry.py",
-        PACKAGE / "api" / "local_demo",
         PACKAGE / "api" / "supabase" / "worker",
     )
 
@@ -120,7 +119,6 @@ def test_usecase_jobs_public_surface_is_minimal() -> None:
             "ListGamesQuery",
             "ListTimelineQuery",
             "LlmProviderConfig",
-            "ManualPlayerCredential",
             "PlayerActionCommand",
             "PreparedAdvanceGame",
             "StoredGame",
@@ -564,6 +562,7 @@ def test_domain_and_usecase_do_not_depend_on_fixed_role_ids() -> None:
 
 def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "interface").exists()
+    assert not (PACKAGE / "api" / "local_demo").exists()
     assert not (PACKAGE / "entrypoint" / "api").exists()
     assert not (PACKAGE / "entrypoint" / "local_demo").exists()
     assert not (PACKAGE / "api" / "app.py").exists()
@@ -571,6 +570,27 @@ def test_removed_import_paths_do_not_exist() -> None:
     assert not (PACKAGE / "api" / "messages.py").exists()
     assert not (ROOT / "scripts" / "run-api.cmd").exists()
     assert not (ROOT / "tests" / "integration" / "api" / "test_fastapi_health.py").exists()
+
+
+def test_frontend_uses_supabase_queue_without_local_demo_client() -> None:
+    frontend_src = ROOT / "frontend" / "src"
+
+    assert not (frontend_src / "data" / "LocalDemoGameClient.ts").exists()
+    assert not (frontend_src / "data" / "localDemoFixtures.ts").exists()
+
+    offenders: list[tuple[str, str]] = []
+    forbidden_tokens = ("LocalDemoGameClient", "localDemoGameClient", "localDemoFixtures")
+    for source_path in frontend_src.rglob("*"):
+        if source_path.suffix not in {".ts", ".tsx"}:
+            continue
+        source = source_path.read_text(encoding="utf-8")
+        offenders.extend(
+            (source_path.relative_to(ROOT).as_posix(), token)
+            for token in forbidden_tokens
+            if token in source
+        )
+
+    assert not offenders
 
 
 def test_user_facing_messages_are_catalogued() -> None:

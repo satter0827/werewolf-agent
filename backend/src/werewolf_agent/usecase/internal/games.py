@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import random
-import secrets
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import cast
@@ -36,8 +33,8 @@ from werewolf_agent.commons.shared.messages import (
     MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES,
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
-    MESSAGE_INVALID_MANUAL_TOKEN,
     MESSAGE_MANUAL_INPUT_REQUIRED,
+    MESSAGE_PLAYER_AUTHENTICATION_REQUIRED,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
     MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
     message_field_must_be_between,
@@ -55,13 +52,14 @@ from werewolf_agent.commons.shared.validation import (
 )
 from werewolf_agent.contracts import (
     GAME_STATUS_COMPLETED,
+    AppError,
+    ErrorCode,
     GameError,
     GameNotFoundError,
     GamePhase,
     GamePhaseError,
     GameStatus,
     InvalidGameIdError,
-    InvalidManualTokenError,
 )
 from werewolf_agent.domain.game.models import (
     Action,
@@ -116,7 +114,6 @@ from werewolf_agent.usecase.jobs.games import (
     GetPlayerObservationQuery,
     ListGamesQuery,
     ListTimelineQuery,
-    ManualPlayerCredential,
     PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
@@ -158,7 +155,6 @@ def create_game(
         )
         for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
     ]
-    manual_player = _manual_player_credential_for(command)
     config = _domain_config(
         command,
         player_count=len(players),
@@ -209,7 +205,6 @@ def create_game(
             public_state=public_state,
             private_state=snapshot.model_dump(mode="json"),
             pending_actions=PendingActions().model_dump(mode="json"),
-            manual_token_hashes=_manual_token_hashes(manual_player),
             version=1,
         )
     )
@@ -224,7 +219,6 @@ def create_game(
     return GameResult(
         game_id=str(run.id),
         state=public_state_payload_from_game(run),
-        manual_player=manual_player,
     )
 
 
@@ -551,7 +545,6 @@ def get_player_observation(
     _authorize_manual_player(
         run,
         query.player_id,
-        query.manual_token,
         trusted_user_id=query.trusted_user_id,
     )
     snapshot = GameSnapshot.model_validate(run.private_state)
@@ -580,7 +573,6 @@ def submit_player_action(
     _authorize_manual_player(
         run,
         command.player_id,
-        command.manual_token,
         trusted_user_id=command.trusted_user_id,
     )
     snapshot = GameSnapshot.model_validate(run.private_state)
@@ -1031,42 +1023,20 @@ def _requested_player_configs(
     ]
 
 
-def _manual_player_credential_for(command: CreateGameCommand) -> ManualPlayerCredential | None:
-    if command.manual_player_id is None:
-        return None
-    return ManualPlayerCredential(
-        player_id=command.manual_player_id,
-        token=secrets.token_urlsafe(32),
-    )
-
-
-def _manual_token_hashes(credential: ManualPlayerCredential | None) -> dict[str, str]:
-    if credential is None:
-        return {}
-    return {credential.player_id: _hash_manual_token(credential.token)}
-
-
-def _hash_manual_token(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
-
-
 def _authorize_manual_player(
     run: StoredGame,
     player_id: str,
-    manual_token: str,
     *,
     trusted_user_id: str | None = None,
 ) -> None:
     if player_id not in _manual_player_ids(run.config):
-        raise InvalidManualTokenError(MESSAGE_PLAYER_IS_NOT_MANUAL)
-    if trusted_user_id:
+        raise AppError(MESSAGE_PLAYER_IS_NOT_MANUAL, code=ErrorCode.AUTHORIZATION_FAILED)
+    if trusted_user_id is not None and trusted_user_id.strip():
         return
-    expected_hash = run.manual_token_hashes.get(player_id)
-    if expected_hash is None or not hmac.compare_digest(
-        expected_hash,
-        _hash_manual_token(manual_token),
-    ):
-        raise InvalidManualTokenError(MESSAGE_INVALID_MANUAL_TOKEN)
+    raise AppError(
+        MESSAGE_PLAYER_AUTHENTICATION_REQUIRED,
+        code=ErrorCode.AUTHENTICATION_REQUIRED,
+    )
 
 
 def _manual_player_ids(config: Mapping[str, object]) -> set[str]:

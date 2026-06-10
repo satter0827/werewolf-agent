@@ -1,14 +1,13 @@
 import { describe, expect, it } from "vitest";
 
-import { LocalDemoGameClient } from "../data/LocalDemoGameClient";
+import { sampleScreenSource } from "../test/gameSamples";
 import { mapGameScreen } from "./screenAdapter";
 import type { GameScreenSource } from "./wireTypes";
 
 describe("mapGameScreen", () => {
   it("maps backend-shaped data into dawn table view models", async () => {
-    const client = new LocalDemoGameClient();
     const screen = mapGameScreen({
-      screen: await client.getScreen("demo-game-1", "player-1"),
+      screen: sampleScreenSource(),
       manualPlayerId: "player-1",
     });
 

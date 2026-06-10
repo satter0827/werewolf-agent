@@ -10,7 +10,6 @@ from typing import Any, TypeVar
 import httpx
 from pydantic import BaseModel, ValidationError
 
-from werewolf_agent.api.setup_options import get_local_setup_options
 from werewolf_agent.api.supabase.session_store import SupabaseSession
 from werewolf_agent.commons.configuration import AppSettings
 from werewolf_agent.commons.shared.messages import (
@@ -85,8 +84,19 @@ class SupabaseGameApi:
         return {"status": "ok", "service": "supabase"}
 
     def get_setup_options(self) -> GameSetupOptionsResponse:
-        """Return setup options from packaged/configured definitions."""
-        return get_local_setup_options(self._settings)
+        """Return setup options published through Supabase."""
+        row = self._single_row(
+            "definition_items",
+            params={
+                "select": "payload",
+                "scope": "eq.system",
+                "kind": "eq.setup_options",
+                "item_key": "eq.default",
+                "active": "is.true",
+                "limit": "1",
+            },
+        )
+        return _parse_model(GameSetupOptionsResponse, row.get("payload"))
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Queue one game creation request and wait for worker completion."""
@@ -233,11 +243,8 @@ class SupabaseGameApi:
         self,
         game_id: str,
         player_id: str,
-        *,
-        manual_token: str,
     ) -> PlayerObservationResponse:
         """Fetch private observation visible through RLS."""
-        _ = manual_token
         row = self._single_row(
             "game_player_observations",
             params={
@@ -258,11 +265,8 @@ class SupabaseGameApi:
         game_id: str,
         player_id: str,
         request: PlayerActionRequest,
-        *,
-        manual_token: str,
     ) -> PlayerActionResponse:
         """Queue one player action and wait for completion."""
-        _ = manual_token
         row = self._insert_operation(
             operation_type="submit_action",
             game_id=game_id,

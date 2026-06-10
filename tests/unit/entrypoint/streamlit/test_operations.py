@@ -42,7 +42,7 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
         record for record in caplog.records if record.event_action == "streamlit.rerun.started"
     )
     assert record.event_outcome == "success"
-    assert record.data_source == "demo"
+    assert record.data_source == "supabase"
     assert record.log_level == "DEBUG"
     assert record.log_output == "both"
     assert record.log_file_path == str(settings.log_file_path)
@@ -50,7 +50,7 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
     assert record.llm_provider == "fake"
     assert record.llm_model == "fake-list-llm"
     assert record.llm_base_url == "provider default"
-    assert not hasattr(record, "manual_token")
+    assert not hasattr(record, "seat_credential")
 
 
 class FakeStreamlitClient:
@@ -114,10 +114,7 @@ class FakeStreamlitClient:
         self,
         game_id: str,
         player_id: str,
-        *,
-        manual_token: str,
     ) -> PlayerObservationResponse:
-        _ = manual_token
         return PlayerObservationResponse(
             game_id=game_id,
             player_id=player_id,
@@ -191,7 +188,7 @@ def test_advance_one_step_logs_public_step_without_private_context(
         if record.event_action == "streamlit.advance_step.completed"
     )
     assert completed.game_phase == "finished"
-    assert not hasattr(completed, "manual_token")
+    assert not hasattr(completed, "seat_credential")
 
 
 def test_advance_one_step_reuses_existing_trace_context(
@@ -258,7 +255,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
         record for record in caplog.records if record.event_action == "streamlit.game.created"
     )
     assert record.player_count == 2
-    assert not hasattr(record, "manual_token")
+    assert not hasattr(record, "seat_credential")
 
 
 def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -> None:
@@ -271,7 +268,6 @@ def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -
         settings=settings,
         game_id="game-1",
         manual_player_id=None,
-        manual_token="",
         screen_mode="observer",
         catalog=catalog,
         lang="ja",
@@ -297,7 +293,6 @@ def test_observer_screen_allows_public_view_without_admin_reveal(monkeypatch) ->
         settings=settings,
         game_id="game-1",
         manual_player_id=None,
-        manual_token="",
         screen_mode="observer",
         catalog=catalog,
         lang="ja",

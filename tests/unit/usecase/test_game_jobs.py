@@ -87,7 +87,6 @@ class InMemoryGameRepository(GameRepository):
             public_state=game.public_state,
             private_state=game.private_state,
             pending_actions=game.pending_actions,
-            manual_token_hashes=game.manual_token_hashes,
             version=game.version,
             created_at=NOW,
             updated_at=NOW,
@@ -129,7 +128,6 @@ class InMemoryGameRepository(GameRepository):
             public_state=update.public_state,
             private_state=update.private_state,
             pending_actions=update.pending_actions,
-            manual_token_hashes=current.manual_token_hashes,
             version=update.version,
             created_at=current.created_at,
             updated_at=NOW,
@@ -525,16 +523,16 @@ def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     assert not any(str(name).startswith("Player ") for name in first_names)
 
 
-def test_create_game_returns_manual_player_for_requested_manual_seat() -> None:
-    deps, _repository = dependencies()
+def test_create_game_marks_requested_manual_seat_without_public_credential() -> None:
+    deps, repository = dependencies()
 
     result = GameService(deps).create_game(
         create_command(manual_player_id="player-1", seed=42),
     )
+    stored = repository.get(UUID(result.game_id))
 
-    assert result.manual_player is not None
-    assert result.manual_player.player_id == "player-1"
-    assert result.manual_player.token
+    assert stored is not None
+    assert stored.config["player_agent_types"]["player-1"] == "manual"
 
 
 def test_reveal_returns_roles_and_private_resolution_without_changing_public_state() -> None:
@@ -626,13 +624,12 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     created = use_cases.create_game(
         create_command(manual_player_id="player-1", seed=2),
     )
-    manual_token = created.manual_player.token if created.manual_player is not None else ""
     _advance_until_manual_input(use_cases, created.game_id)
     observation = use_cases.get_player_observation(
         GetPlayerObservationQuery(
             game_id=created.game_id,
             player_id="player-1",
-            manual_token=manual_token,
+            trusted_user_id="user-1",
         )
     )
     action_type = str(observation.observation["available_actions"][0])
@@ -647,7 +644,7 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
         PlayerActionCommand(
             game_id=created.game_id,
             player_id="player-1",
-            manual_token=manual_token,
+            trusted_user_id="user-1",
             type=action_type,
             target_id=target_id,
             message=message,
@@ -660,7 +657,8 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     assert event.fields["has_message"] is bool(message)
     assert "player_id" not in event.fields
     assert "game_action_type" not in event.fields
-    assert "manual_token" not in event.fields
+    assert "seat_credential" not in event.fields
+    assert "trusted_user_id" not in event.fields
     assert "message" not in event.fields
 
 
@@ -670,7 +668,6 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     created = use_cases.create_game(
         create_command(manual_player_id="player-1", seed=2),
     )
-    manual_token = created.manual_player.token if created.manual_player is not None else ""
 
     _advance_until_manual_input(use_cases, created.game_id)
     with pytest.raises(GameError):
@@ -680,7 +677,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
         GetPlayerObservationQuery(
             game_id=created.game_id,
             player_id="player-1",
-            manual_token=manual_token,
+            trusted_user_id="user-1",
         )
     )
     action_type = str(observation.observation["available_actions"][0])
@@ -690,7 +687,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     command = PlayerActionCommand(
         game_id=created.game_id,
         player_id="player-1",
-        manual_token=manual_token,
+        trusted_user_id="user-1",
         type=action_type,
         target_id=target_id,
         message="hello" if action_type == "speech" else None,

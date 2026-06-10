@@ -5,19 +5,20 @@ deterministic domain core がゲームの真実を管理し、外側には publi
 
 ## 現在地
 
-- CLI / Streamlit は `GameApi` port 経由で Supabase Data API または local demo API に接続する
-- Supabase ログイン時は game、履歴、個人観測、LLM trace を Supabase に保存する
-- Supabase 未ログイン時は local demo API が usecase を直接実行し、既定の FakeListLLM で 1 game を完走できる
+- React / CLI / Streamlit は Supabase anonymous session を確保し、Supabase Data API に接続する
+- game、履歴、個人観測、LLM trace は Supabase に保存する
 - Supabase queue worker は operation request を処理し、LLM 呼び出しを CLI / Streamlit process から分離する
 - role、rule、scenario、LLM player、prompt、fake response、Streamlit i18n / CSS / screen は runtime definition として読み込む
-- manual player token、API key、Supabase secret、private state は public response、public timeline、運用ログへ出さない
+- manual seat 権限、API key、Supabase secret、private state は public response、public timeline、運用ログへ出さない
 
 ## 起動
 
-local demo:
+Supabase queue:
 
 ```bash
 uv sync --group dev --extra llm --extra streamlit --extra worker
+supabase migration up
+uv run --extra worker werewolf-agent-worker run
 uv run werewolf-agent doctor
 uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
@@ -28,14 +29,7 @@ Streamlit:
 uv run --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py
 ```
 
-Supabase queue worker を使う場合:
-
-```bash
-supabase migration up
-uv run --extra worker werewolf-agent-worker run
-```
-
-`WEREWOLF_SUPABASE_URL` と `WEREWOLF_SUPABASE_PUBLISHABLE_KEY` が未設定、または login session がない場合、CLI / Streamlit は local demo API を使います。demo mode では Supabase queue worker は不要です。
+`WEREWOLF_SUPABASE_URL` と `WEREWOLF_SUPABASE_PUBLISHABLE_KEY` は必須です。未ログイン UX は login form ではなく、Supabase anonymous sign-in で authenticated session を作ります。FakeLLM を使う場合も、LLM provider は worker process が Python usecase 内で接続します。
 
 公開履歴を確認する場合:
 
@@ -82,12 +76,11 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 
 ## API / Data Source
 
-この repository は backend game HTTP API を提供しません。CLI / Streamlit は `GameApi` port だけを使い、実行時に次のいずれかへ接続します。
+この repository は backend game HTTP API を提供しません。React / CLI / Streamlit は Supabase Auth / Data API に直接接続し、`game_operation_requests` へ操作を enqueue します。未ログイン UX はアプリ独自の fallback ではなく、Supabase anonymous sign-in による匿名 authenticated session です。
 
 | 実装 | 用途 |
 | --- | --- |
 | `api.supabase` | Supabase Auth / Data API に直接接続し、operation request を enqueue する |
-| `api.local_demo` | Supabase 未ログイン時に process-local repository と usecase で game を進める |
 
 管理者向けの reveal、LLM trace、audit は Supabase RLS と `app_metadata.role = admin` で公開範囲を分けます。詳細は [docs/design/api.md](docs/design/api.md) を参照してください。
 
@@ -101,10 +94,9 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 | `backend/src/werewolf_agent/usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
 | `backend/src/werewolf_agent/usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
 | `backend/src/werewolf_agent/api/` | `GameApi` port、factory、usecase bridge、setup options |
-| `backend/src/werewolf_agent/api/local_demo/` | 未ログイン用 process-local game API |
 | `backend/src/werewolf_agent/api/supabase/` | Supabase Auth / Data API client と session store |
 | `backend/src/werewolf_agent/api/supabase/worker/` | Supabase queue worker、Postgres repository、LLM trace sink |
-| `backend/src/werewolf_agent/entrypoint/cui/` | Typer CLI、Supabase login、`GameApi` port 経由の操作 |
+| `backend/src/werewolf_agent/entrypoint/cui/` | Typer CLI、匿名 Supabase session、`GameApi` port 経由の操作 |
 | `backend/src/werewolf_agent/entrypoint/streamlit/` | Streamlit 画面、状態、表示 model |
 | `backend/src/werewolf_agent/entrypoint/requests.py` | CLI / Streamlit 共通の request builder |
 | `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、Problem Details |
@@ -117,6 +109,8 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 `commons.configuration` が設定と logging bootstrap を解決し、`commons.resources` が packaged default と外部 TOML を検証します。`api.usecase_bridge` は読み込まれた値だけを usecase へ注入します。domain と usecase は source path、packaged fallback、`.env`、Supabase、logging 設定を知りません。
 
 Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。
+
+React は Vite の公開 env だけを読みます。`VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` に加えて、表示用の `VITE_WEREWOLF_GAME_LIST_LIMIT`、`VITE_WEREWOLF_TIMELINE_LIMIT`、`VITE_WEREWOLF_OPERATION_POLL_INTERVAL_MS`、`VITE_WEREWOLF_OPERATION_POLL_TIMEOUT_MS`、`VITE_WEREWOLF_QUERY_STALE_TIME_MS` を上書きできます。
 
 Streamlit の文言、CSS、画面配置は `resources/streamlit/` の packaged default を使います。`WEREWOLF_STREAMLIT_I18N_FILE`、`WEREWOLF_STREAMLIT_CSS_FILE`、`WEREWOLF_STREAMLIT_SCREENS_FILE` を指定すると外部ファイルで丸ごと差し替えます。
 
@@ -148,7 +142,7 @@ uv run --group docs --extra streamlit sphinx-build -b html -c docs/sphinx docs d
 
 - 実 provider の長時間 QA と evaluation workflow
 - 複数 manual player
-- React UI
+- React UI の production QA と配布手順
 
 ## License
 

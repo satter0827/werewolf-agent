@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_streamlit_client(settings: AppSettings) -> GameApi:
-    """Build the shared Supabase/demo client with Streamlit settings."""
+    """Build the Supabase game client used by Streamlit game operations."""
     return build_game_api(settings)
 
 
@@ -59,7 +59,7 @@ def log_streamlit_rerun_started(settings: AppSettings) -> None:
         extra={
             "event_action": LOG_STREAMLIT_RERUN_STARTED,
             "event_outcome": EVENT_OUTCOME_SUCCESS,
-            "data_source": "supabase" if settings.supabase_client_configured else "demo",
+            "data_source": "supabase",
             "log_level": settings.log_level,
             "log_output": settings.log_output,
             "log_file_path": str(settings.log_file_path),
@@ -133,7 +133,6 @@ def load_game_screen(
     settings: AppSettings,
     game_id: str,
     manual_player_id: str | None,
-    manual_token: str,
     screen_mode: ScreenMode,
     catalog: I18nCatalog,
     lang: Language,
@@ -147,7 +146,6 @@ def load_game_screen(
             client=client,
             game_id=game_id,
             manual_player_id=manual_player_id,
-            manual_token=manual_token,
         )
         if screen_mode == "playable"
         else None
@@ -214,15 +212,13 @@ def load_observation(
     client: GameApi,
     game_id: str,
     manual_player_id: str | None,
-    manual_token: str,
 ) -> PlayerObservationResponse | None:
     """Return private observation only when the screen has enough operation context."""
-    if not game_id or not manual_player_id or not manual_token:
+    if not game_id or not manual_player_id:
         return None
     return client.get_private_observation(
         game_id,
         manual_player_id,
-        manual_token=manual_token,
     )
 
 
@@ -231,7 +227,6 @@ def submit_screen_action(
     settings: AppSettings,
     game_id: str,
     manual_player_id: str,
-    manual_token: str,
     action_type: str,
     target_id: str | None,
     message: str | None,
@@ -246,7 +241,6 @@ def submit_screen_action(
         game_id,
         manual_player_id,
         request,
-        manual_token=manual_token,
     )
     logger.info(
         LOG_STREAMLIT_ACTION_SUBMITTED,

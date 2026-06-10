@@ -1,6 +1,13 @@
 import { Play } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import { frontendSettings } from "../../../config";
+import {
+  generatedSeatOptions,
+  playerCountFromRoles,
+  roleCountsForSetup,
+  roleLabel,
+} from "../../../gameClient/setupOptions";
 import type { GameSetupOptionsResponse } from "../../../gameClient/wireTypes";
 import type { SetupDraft } from "../../../gameClient/uiTypes";
 
@@ -15,13 +22,27 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
     scenarioId: setupOptions.default_scenario_id ?? setupOptions.scenarios[0]?.id ?? "",
     setupPresetId:
       setupOptions.default_setup_preset_id ?? setupOptions.setup_presets[0]?.id ?? "",
-    manualPlayerId: "player-1",
-    seed: "17",
+    manualPlayerId: frontendSettings.defaultManualPlayerId,
+    seed: frontendSettings.defaultSetupSeed,
   });
-  const selectedPreset = useMemo(
-    () => setupOptions.setup_presets.find((preset) => preset.id === draft.setupPresetId),
+  const selectedRoleCounts = useMemo(
+    () => roleCountsForSetup(setupOptions, draft.setupPresetId),
     [draft.setupPresetId, setupOptions.setup_presets],
   );
+  const seatOptions = useMemo(
+    () => generatedSeatOptions(playerCountFromRoles(selectedRoleCounts)),
+    [selectedRoleCounts],
+  );
+
+  useEffect(() => {
+    if (seatOptions.some((seat) => seat.id === draft.manualPlayerId)) {
+      return;
+    }
+    setDraft((current) => ({
+      ...current,
+      manualPlayerId: seatOptions[0]?.id ?? frontendSettings.defaultManualPlayerId,
+    }));
+  }, [draft.manualPlayerId, seatOptions]);
 
   return (
     <section className="wa-setup" aria-label="村を作る">
@@ -41,7 +62,7 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
               type="button"
             >
               <strong>{scenario.name}</strong>
-              <span>{scenario.description}</span>
+              <span>{scenario.summary}</span>
             </button>
           ))}
         </div>
@@ -71,14 +92,11 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
               setDraft((current) => ({ ...current, manualPlayerId: event.target.value }))
             }
           >
-            {Array.from({ length: 6 }, (_, index) => {
-              const playerId = `player-${index + 1}`;
-              return (
-                <option key={playerId} value={playerId}>
-                  {index + 1}番席
-                </option>
-              );
-            })}
+            {seatOptions.map((seat) => (
+              <option key={seat.id} value={seat.id}>
+                {seat.label}
+              </option>
+            ))}
           </select>
         </label>
         <label>
@@ -90,13 +108,11 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
           />
         </label>
         <div className="wa-role-counts">
-          {Object.entries(selectedPreset?.role_counts ?? setupOptions.default_role_counts).map(
-            ([role, count]) => (
-              <span key={role}>
-                {roleLabel(role)} {count}
-              </span>
-            ),
-          )}
+          {Object.entries(selectedRoleCounts).map(([role, count]) => (
+            <span key={role}>
+              {roleLabel(role, setupOptions)} {count}
+            </span>
+          ))}
         </div>
         <button
           className="wa-primary-action"
@@ -110,14 +126,4 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
       </aside>
     </section>
   );
-}
-
-function roleLabel(role: string): string {
-  const labels: Record<string, string> = {
-    villager: "村人",
-    werewolf: "人狼",
-    seer: "占い師",
-    knight: "騎士",
-  };
-  return labels[role] ?? role;
 }

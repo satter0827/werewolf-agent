@@ -73,16 +73,15 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into private.game_snapshots (
-              game_id, config, private_state, pending_actions, manual_token_hashes, updated_at
+              game_id, config, private_state, pending_actions, updated_at
             )
-            values (%s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s)
             """,
             (
                 game.id,
                 Jsonb(game.config),
                 Jsonb(game.private_state),
                 Jsonb(game.pending_actions),
-                Jsonb(game.manual_token_hashes),
                 now,
             ),
         )
@@ -99,7 +98,7 @@ class SupabaseGameRepository(GameRepository):
             select
               g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
-              s.config, s.private_state, s.pending_actions, s.manual_token_hashes
+              s.config, s.private_state, s.pending_actions
             from public.games g
             join private.game_snapshots s on s.game_id = g.game_id
             where g.game_id = %s
@@ -115,7 +114,7 @@ class SupabaseGameRepository(GameRepository):
             select
               g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
-              s.config, s.private_state, s.pending_actions, s.manual_token_hashes
+              s.config, s.private_state, s.pending_actions
             from public.games g
             join private.game_snapshots s on s.game_id = g.game_id
             where g.game_id = %s
@@ -369,7 +368,6 @@ def _stored_game(row: Mapping[str, Any]) -> StoredGame:
             "public_state": _json_object(row.get("public_state")),
             "private_state": _json_object(row.get("private_state")),
             "pending_actions": _json_object(row.get("pending_actions")),
-            "manual_token_hashes": _json_str_mapping(row.get("manual_token_hashes")),
             "version": row["version"],
             "created_at": _ensure_aware(row["created_at"]),
             "updated_at": _ensure_aware(row["updated_at"]),
@@ -439,12 +437,6 @@ def _state_text(state: Mapping[str, Any], key: str) -> str | None:
 
 def _json_object(payload: Any) -> dict[str, Any]:
     return dict(payload) if isinstance(payload, dict) else {}
-
-
-def _json_str_mapping(payload: Any) -> dict[str, str]:
-    if not isinstance(payload, dict):
-        return {}
-    return {str(key): str(value) for key, value in payload.items()}
 
 
 def _ensure_aware(value: Any) -> datetime:

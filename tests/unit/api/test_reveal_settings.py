@@ -3,18 +3,8 @@ from typing import Any
 
 import pytest
 
-from werewolf_agent.api.local_demo.game_api import LocalDemoGameApi
 from werewolf_agent.api.supabase.worker import service as worker_service
 from werewolf_agent.commons.configuration import AppSettings
-from werewolf_agent.contracts import ResourceNotFoundError
-
-
-def test_demo_client_respects_disabled_reveal_setting() -> None:
-    settings = AppSettings(_env_file=None, reveal_api_enabled=False)
-    client = LocalDemoGameApi(settings)
-
-    with pytest.raises(ResourceNotFoundError, match="Reveal is disabled"):
-        client.get_game_reveal("game-1")
 
 
 def test_worker_deletes_reveal_view_when_reveal_is_disabled(

@@ -188,7 +188,6 @@ create table private.game_snapshots (
   config jsonb not null,
   private_state jsonb not null,
   pending_actions jsonb not null default '{}'::jsonb,
-  manual_token_hashes jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default timezone('utc', now())
 );
 

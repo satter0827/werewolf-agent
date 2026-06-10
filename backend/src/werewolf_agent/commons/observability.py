@@ -34,7 +34,6 @@ THIRD_PARTY_LOGGER_NAMES: Final = (
 )
 PRIVATE_GAMEPLAY_LOG_FIELDS: Final = (
     "actor_id",
-    "manual_token_hashes",
     "game.action.type",
     "game_action_type",
     "known_roles",
