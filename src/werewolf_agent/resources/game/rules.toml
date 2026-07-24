@@ -1,0 +1,22 @@
+[local_rules]
+day_speech_limit_per_player = 1
+allow_self_vote = false
+allow_vote_revision = false
+allow_night_action_revision = false
+enable_first_night_attack = true
+enable_no_elimination_on_tie = true
+enable_random_elimination_on_tie = false
+allow_knight_self_guard = true
+allow_knight_repeat_guard = true
+allow_seer_self_inspect = false
+allow_werewolf_friendly_fire = false
+reveal_role_on_death = false
+require_all_actions_before_advance = true
+
+[composition]
+phases = ["night", "day_discussion", "voting"]
+action_policy = "standard"
+resolution_policy = "standard"
+phase_policy = "required_actions"
+victory_policy = "faction_balance"
+visibility_policy = "standard"

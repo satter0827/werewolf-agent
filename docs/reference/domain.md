@@ -1,32 +1,16 @@
-# Domain
+# Domain API
 
-## Game Models
+## 公開面
 
-```{automodule} werewolf_agent.domain.game.models
+```{automodule} werewolf_agent.domain
 :members:
 :undoc-members:
 :show-inheritance:
 ```
 
-## Game Service
+## ポリシー契約
 
-```{automodule} werewolf_agent.domain.game.service
-:members:
-:undoc-members:
-:show-inheritance:
-```
-
-## LLM Models
-
-```{automodule} werewolf_agent.domain.llm.models
-:members:
-:undoc-members:
-:show-inheritance:
-```
-
-## LLM Ports
-
-```{automodule} werewolf_agent.domain.llm.ports
+```{automodule} werewolf_agent.domain.rules.base
 :members:
 :undoc-members:
 :show-inheritance:

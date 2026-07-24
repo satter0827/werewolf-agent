@@ -68,7 +68,7 @@
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
-          "PYTHONPATH": "${workspaceFolder}/backend/src",
+          "PYTHONPATH": "${workspaceFolder}/src",
           "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
           "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
         }

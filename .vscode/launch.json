@@ -8,7 +8,7 @@
       "module": "streamlit",
       "args": [
         "run",
-        "backend/src/werewolf_agent/entrypoint/streamlit/app.py",
+        "src/werewolf_agent/interfaces/streamlit/app.py",
         "--server.address",
         "127.0.0.1",
         "--server.port",
@@ -22,7 +22,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl"
       },
       "presentation": {
@@ -34,7 +34,7 @@
       "name": "Internal: Worker",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent.api.supabase.worker.app",
+      "module": "werewolf_agent.interfaces.worker.app",
       "args": [
         "run"
       ],
@@ -42,7 +42,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
       },
       "presentation": {
@@ -54,7 +54,7 @@
       "name": "Internal: Worker once",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent.api.supabase.worker.app",
+      "module": "werewolf_agent.interfaces.worker.app",
       "args": [
         "once"
       ],
@@ -62,7 +62,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
       },
       "presentation": {
@@ -82,7 +82,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -99,7 +99,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -126,7 +126,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -153,7 +153,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -182,7 +182,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -211,7 +211,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -228,7 +228,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -246,7 +246,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -264,7 +264,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -282,7 +282,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -301,7 +301,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -320,7 +320,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
+        "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "cli.jsonl"
       },
       "justMyCode": true
@@ -339,7 +339,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
       "justMyCode": true
     },
@@ -357,7 +357,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
       "justMyCode": true
     }

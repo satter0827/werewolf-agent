@@ -5,69 +5,98 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from werewolf_agent.commons.resources import (
-    load_llm_definitions as load_runtime_llm_definitions,
-)
-from werewolf_agent.commons.shared.constants import (
+import werewolf_agent.usecase as usecases
+from werewolf_agent.agents.configuration import LlmProviderConfig
+from werewolf_agent.configuration.constants import (
     DEFAULT_GAME_LIST_LIMIT,
     DEFAULT_NARRATION_MODE,
     DEFAULT_TIMELINE_LIMIT,
     MAX_GAME_LIST_LIMIT,
     MAX_TIMELINE_LIMIT,
 )
-from werewolf_agent.commons.shared.definitions import (
+from werewolf_agent.configuration.definitions import (
+    AbilityDefinition,
     FakeDecisionCatalog,
+    GameCatalogDefinitions,
     GameDefinitions,
     GameRoleDefinitions,
     GameRuleDefinitions,
     LlmDefinitions,
     LocalRulesDefinition,
+    NarrationProfileDefinition,
     PlayerProfile,
     PlayerRoster,
     PromptDefinition,
     PromptMessageDefinition,
     RoleDefinition,
+    ScenarioDefinition,
+    SetupPresetDefinition,
 )
-from werewolf_agent.contracts import GameError, GameNotFoundError, InvalidGameIdError
-from werewolf_agent.usecase.jobs import (
+from werewolf_agent.configuration.resources import (
+    load_llm_definitions as load_runtime_llm_definitions,
+)
+from werewolf_agent.contracts import (
+    GameError,
+    GameNotFoundError,
+    GameStatus,
+    InvalidGameIdError,
+)
+from werewolf_agent.usecase import (
     AdvanceGameCommand,
     CreateGameCommand,
-    GameEventCreate,
-    GameRecordCreate,
-    GameRecordUpdate,
-    GameRepository,
-    GameService,
-    GameStatus,
-    GameUseCaseConfig,
-    GameUseCaseDependencies,
     GetGameQuery,
     GetGameRevealQuery,
     GetPlayerObservationQuery,
     ListGamesQuery,
     ListTimelineQuery,
-    LlmProviderConfig,
     PlayerActionCommand,
+    UsecaseContext,
+)
+from werewolf_agent.usecase.models import (
+    GameEventCreate,
+    GameRecordCreate,
+    GameRecordUpdate,
+    GameUseCaseConfig,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,
     StoredGameTurn,
-    TelemetryEvent,
-    TelemetrySink,
 )
-from werewolf_agent.usecase.jobs.telemetry import NullTelemetrySink
+from werewolf_agent.usecase.ports import GameRepository
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 DEFAULT_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
 DEFAULT_AGENT_TYPE = "llm"
 
 
-def test_null_telemetry_sink_accepts_events() -> None:
-    NullTelemetrySink().record(TelemetryEvent("game.phase.advance_started"))
+class UsecaseHarness:
+    """Test helper that binds a context outside the stateless usecase package."""
+
+    def __init__(self, context: UsecaseContext) -> None:
+        self.context = context
+
+    def __getattr__(self, name: str):
+        if name == "advance_game":
+            from werewolf_agent.adapters.agents.game_driver import AgentRuntime, advance_game
+
+            runtime = AgentRuntime(
+                config=_llm_provider_config(),
+                definitions=self.context.llm_definitions,
+            )
+            return lambda value: advance_game(self.context, value, runtime=runtime)
+        operation = getattr(usecases, name)
+        return lambda value: operation(self.context, value)
+
+    @staticmethod
+    def get_setup_options(config, game_definitions, llm_definitions):
+        from werewolf_agent.usecase.setup import default_setup_options
+
+        return default_setup_options(config, game_definitions, llm_definitions)
 
 
 def test_dependencies_require_definition_values() -> None:
     with pytest.raises(TypeError):
-        GameUseCaseDependencies(repository=object())  # type: ignore[arg-type,call-arg]
+        UsecaseContext(repository=object())  # type: ignore[arg-type,call-arg]
 
 
 class InMemoryGameRepository(GameRepository):
@@ -209,42 +238,35 @@ class InMemoryGameRepository(GameRepository):
         )
 
 
-class CollectingTelemetrySink:
-    def __init__(self) -> None:
-        self.events: list[TelemetryEvent] = []
-
-    def record(self, event: TelemetryEvent) -> None:
-        self.events.append(event)
-
-
 def dependencies(
     *,
     config: GameUseCaseConfig | None = None,
-    telemetry: TelemetrySink | None = None,
-) -> tuple[GameUseCaseDependencies, InMemoryGameRepository]:
+) -> tuple[UsecaseContext, InMemoryGameRepository]:
     repository = InMemoryGameRepository()
-    return GameUseCaseDependencies(
+    return UsecaseContext(
         repository=repository,
         game_definitions=game_definitions(),
         llm_definitions=llm_definitions(),
         config=config or usecase_config(),
-        llm_provider_config=LlmProviderConfig(
-            provider="fake",
-            model="fake-list-llm",
-            base_url="",
-            api_key="",
-            timeout_seconds=30.0,
-            max_retries=2,
-            max_tokens=96,
-            temperature=0.7,
-            default_agent_strategy_id="stable_fast",
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=8,
-            fallback_policy="deterministic_legal_action",
-        ),
-        telemetry=telemetry or CollectingTelemetrySink(),
     ), repository
+
+
+def _llm_provider_config() -> LlmProviderConfig:
+    return LlmProviderConfig(
+        provider="fake",
+        model="fake-list-llm",
+        base_url="",
+        api_key="",
+        timeout_seconds=30.0,
+        max_retries=2,
+        max_tokens=96,
+        temperature=0.7,
+        default_agent_strategy_id="stable_fast",
+        structured_output_mode="auto",
+        validation_retry_count=1,
+        graph_max_steps=8,
+        fallback_policy="deterministic_legal_action",
+    )
 
 
 def usecase_config(
@@ -253,14 +275,15 @@ def usecase_config(
     max_players: int = 8,
     default_player_count: int = 5,
     supported_agent_type: str = DEFAULT_AGENT_TYPE,
-    default_setup_id: str = "default",
+    default_setup_preset_id: str = "standard_5",
 ) -> GameUseCaseConfig:
     return GameUseCaseConfig(
         min_players=min_players,
         max_players=max_players,
         default_player_count=default_player_count,
         supported_agent_type=supported_agent_type,
-        default_setup_id=default_setup_id,
+        default_setup_preset_id=default_setup_preset_id,
+        default_agent_strategy_id="stable_fast",
         default_narration_mode=DEFAULT_NARRATION_MODE,
         game_list_default_limit=DEFAULT_GAME_LIST_LIMIT,
         game_list_max_limit=MAX_GAME_LIST_LIMIT,
@@ -300,6 +323,67 @@ def game_definitions() -> GameDefinitions:
                 "knight": RoleDefinition(faction="village", abilities=("guard",)),
             },
             default_role_counts={5: DEFAULT_ROLE_COUNTS},
+        ),
+        catalog=GameCatalogDefinitions(
+            abilities={
+                "night_attack": AbilityDefinition(
+                    phase="night",
+                    action="werewolf_attack",
+                    validation_policy="standard",
+                    resolution_policy="standard",
+                    target_policy="other_alive_non_pack",
+                    start_day=1,
+                    label="Attack",
+                    description="Attack one player.",
+                ),
+                "pack_knowledge": AbilityDefinition(
+                    phase="night",
+                    action="pass",
+                    validation_policy="standard",
+                    resolution_policy="standard",
+                    target_policy="none",
+                    start_day=1,
+                    label="Pack knowledge",
+                    description="Know allied players.",
+                ),
+                "inspect": AbilityDefinition(
+                    phase="night",
+                    action="seer_inspect",
+                    validation_policy="standard",
+                    resolution_policy="standard",
+                    target_policy="other_alive",
+                    start_day=1,
+                    label="Inspect",
+                    description="Inspect one player.",
+                ),
+                "guard": AbilityDefinition(
+                    phase="night",
+                    action="knight_guard",
+                    validation_policy="standard",
+                    resolution_policy="standard",
+                    target_policy="alive",
+                    start_day=1,
+                    label="Guard",
+                    description="Guard one player.",
+                ),
+            },
+            scenarios={
+                "classic": ScenarioDefinition(
+                    label="Classic",
+                    summary="Classic game.",
+                    prompt_premise="A village debates.",
+                    narration_profile="standard",
+                    recommended_setup_preset="standard_5",
+                )
+            },
+            narration_profiles={"standard": NarrationProfileDefinition()},
+            setup_presets={
+                "standard_5": SetupPresetDefinition(
+                    label="Standard 5",
+                    scenario_id="classic",
+                    role_counts=DEFAULT_ROLE_COUNTS,
+                )
+            },
         ),
     )
 
@@ -442,7 +526,7 @@ def _first_target(observation: dict[str, object], *, player_id: str) -> str:
 
 
 def _advance_until_manual_input(
-    use_cases: GameService,
+    use_cases: UsecaseHarness,
     game_id: str,
     *,
     max_steps: int = 8,
@@ -462,10 +546,10 @@ def test_default_setup_options_returns_business_identifiers_only() -> None:
             max_players=10,
             default_player_count=5,
             supported_agent_type=DEFAULT_AGENT_TYPE,
-            default_setup_id="custom",
+            default_setup_preset_id="standard_5",
         )
     )
-    result = GameService.get_setup_options(
+    result = UsecaseHarness.get_setup_options(
         deps.config,
         deps.game_definitions,
         deps.llm_definitions,
@@ -475,14 +559,25 @@ def test_default_setup_options_returns_business_identifiers_only() -> None:
     assert set(result.roles) == {"villager", "werewolf", "seer", "knight"}
     assert result.default_role_counts == DEFAULT_ROLE_COUNTS
     assert result.default_rules == local_rules_definition()
+    assert result.default_setup_preset_id == "standard_5"
+    assert result.default_scenario_id == "classic"
     assert result.default_agent_strategy_id == "stable_fast"
     assert set(result.agent_strategies) == {"stable_fast", "role_basic", "target_ranker"}
+
+
+def test_default_setup_options_rejects_an_unknown_configured_preset() -> None:
+    with pytest.raises(ValueError, match="Unknown setup preset: missing"):
+        UsecaseHarness.get_setup_options(
+            usecase_config(default_setup_preset_id="missing"),
+            game_definitions(),
+            llm_definitions(),
+        )
 
 
 def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
     deps, repository = dependencies()
 
-    result = GameService(deps).create_game(create_command(seed=42))
+    result = UsecaseHarness(deps).create_game(create_command(seed=42))
 
     assert [player["id"] for player in result.state["players"]] == [
         "player-1",
@@ -502,12 +597,12 @@ def test_create_game_rejects_unknown_agent_strategy() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError, match="Unknown agent strategy"):
-        GameService(deps).create_game(create_command(agent_strategy_id="unknown"))
+        UsecaseHarness(deps).create_game(create_command(agent_strategy_id="unknown"))
 
 
 def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
     deps, _repository = dependencies()
-    use_cases = GameService(deps)
+    use_cases = UsecaseHarness(deps)
 
     first = use_cases.create_game(create_command(seed=10))
     second = use_cases.create_game(create_command(seed=10))
@@ -526,7 +621,7 @@ def test_create_game_selects_seeded_roster_names_for_default_players() -> None:
 def test_create_game_marks_requested_manual_seat_without_public_credential() -> None:
     deps, repository = dependencies()
 
-    result = GameService(deps).create_game(
+    result = UsecaseHarness(deps).create_game(
         create_command(manual_player_id="player-1", seed=42),
     )
     stored = repository.get(UUID(result.game_id))
@@ -537,7 +632,7 @@ def test_create_game_marks_requested_manual_seat_without_public_credential() -> 
 
 def test_reveal_returns_roles_and_private_resolution_without_changing_public_state() -> None:
     deps, _repository = dependencies()
-    use_cases = GameService(deps)
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(create_command(seed=1))
     use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 
@@ -555,23 +650,22 @@ def test_create_game_rejects_out_of_range_role_count_total() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(GameError):
-        GameService(deps).create_game(create_command(role_counts={"werewolf": 1, "villager": 3}))
+        UsecaseHarness(deps).create_game(create_command(role_counts={"werewolf": 1, "villager": 3}))
 
 
 def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
     deps, _repository = dependencies()
 
     with pytest.raises(InvalidGameIdError):
-        GameService(deps).get_game(GetGameQuery(game_id="not-a-uuid"))
+        UsecaseHarness(deps).get_game(GetGameQuery(game_id="not-a-uuid"))
 
     with pytest.raises(GameNotFoundError):
-        GameService(deps).get_game(GetGameQuery(game_id=str(uuid4())))
+        UsecaseHarness(deps).get_game(GetGameQuery(game_id=str(uuid4())))
 
 
 def test_advance_game_delegates_core_progression_and_returns_public_payloads() -> None:
-    telemetry = CollectingTelemetrySink()
-    deps, repository = dependencies(telemetry=telemetry)
-    use_cases = GameService(deps)
+    deps, repository = dependencies()
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(create_command(seed=1))
 
     advanced = use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
@@ -588,21 +682,25 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
         for item in timeline.model_dump(mode="json")["items"]
     )
     assert timeline.next_after <= repository.latest_public_turn_sequence(UUID(created.game_id))
-    assert "game.phase.drive_started" in [event.action for event in telemetry.events]
-    assert "game.phase.advance_completed" in [event.action for event in telemetry.events]
-    assert all("private_state" not in event.fields for event in telemetry.events)
-    agent_events = [
-        event for event in telemetry.events if event.action == "game.agent_action.generated"
-    ]
-    assert agent_events
-    assert all("player_id" not in event.fields for event in agent_events)
-    assert all("game_action_type" not in event.fields for event in agent_events)
-    assert all("agent_type" in event.fields for event in agent_events)
+
+
+def test_fake_list_llm_can_complete_a_game() -> None:
+    deps, _repository = dependencies()
+    use_cases = UsecaseHarness(deps)
+    game = use_cases.create_game(create_command(seed=1))
+
+    for _ in range(30):
+        if game.state["status"] == "completed":
+            break
+        game = use_cases.advance_game(AdvanceGameCommand(game_id=game.game_id))
+
+    assert game.state["status"] == "completed"
+    assert game.state["winner"] in {"village", "werewolf"}
 
 
 def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> None:
     deps, _repository = dependencies()
-    use_cases = GameService(deps)
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(create_command(seed=1))
 
     use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
@@ -611,16 +709,15 @@ def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> 
     speech_events = [item for item in advanced.timeline if item["event_type"] == "speech_recorded"]
 
     assert speech_events
-    assert all("hello from" in item["payload"]["message"] for item in speech_events)
+    assert all(item["payload"]["message"] for item in speech_events)
     assert "role_counts" not in serialized
     assert "target_role" not in serialized
     assert "target_faction" not in serialized
 
 
-def test_submit_manual_action_emits_sanitized_telemetry() -> None:
-    telemetry = CollectingTelemetrySink()
-    deps, _repository = dependencies(telemetry=telemetry)
-    use_cases = GameService(deps)
+def test_submit_manual_action_returns_public_safe_result() -> None:
+    deps, _repository = dependencies()
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(
         create_command(manual_player_id="player-1", seed=2),
     )
@@ -640,7 +737,7 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
     else:
         target_id = _first_target(observation.observation, player_id="player-1")
 
-    use_cases.submit_player_action(
+    result = use_cases.submit_player_action(
         PlayerActionCommand(
             game_id=created.game_id,
             player_id="player-1",
@@ -651,20 +748,14 @@ def test_submit_manual_action_emits_sanitized_telemetry() -> None:
         )
     )
 
-    event = next(
-        event for event in telemetry.events if event.action == "game.manual_action.accepted"
-    )
-    assert event.fields["has_message"] is bool(message)
-    assert "player_id" not in event.fields
-    assert "game_action_type" not in event.fields
-    assert "seat_credential" not in event.fields
-    assert "trusted_user_id" not in event.fields
-    assert "message" not in event.fields
+    serialized = result.model_dump_json()
+    assert "seat_credential" not in serialized
+    assert "trusted_user_id" not in serialized
 
 
 def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     deps, _repository = dependencies()
-    use_cases = GameService(deps)
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(
         create_command(manual_player_id="player-1", seed=2),
     )
@@ -700,7 +791,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
 
 def test_list_games_and_turns_return_public_read_models() -> None:
     deps, _repository = dependencies()
-    use_cases = GameService(deps)
+    use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(create_command(seed=1))
     use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 

@@ -1,24 +1,16 @@
-# Usecase
+# Usecase API
 
-## Game Jobs
+## 公開面
 
-```{automodule} werewolf_agent.usecase.jobs
+```{automodule} werewolf_agent.usecase
 :members:
 :undoc-members:
 :show-inheritance:
 ```
 
-## Repository Ports
+## Repository port
 
-```{automodule} werewolf_agent.usecase.jobs.ports
-:members:
-:undoc-members:
-:show-inheritance:
-```
-
-## Telemetry Ports
-
-```{automodule} werewolf_agent.usecase.jobs.telemetry
+```{automodule} werewolf_agent.usecase.ports
 :members:
 :undoc-members:
 :show-inheritance:

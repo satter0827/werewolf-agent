@@ -1,0 +1,201 @@
+"""Runtime configuration constants."""
+
+from __future__ import annotations
+
+from typing import Final, Literal, TypeAlias
+
+MIN_PAGE_LIMIT: Final = 1
+MIN_PAGE_OFFSET: Final = 0
+DEFAULT_GAME_LIST_LIMIT: Final = 20
+MAX_GAME_LIST_LIMIT: Final = 100
+DEFAULT_TIMELINE_LIMIT: Final = 100
+MAX_TIMELINE_LIMIT: Final = 500
+MIN_SEQUENCE: Final = 1
+MIN_VERSION: Final = 1
+MIN_HTTP_STATUS_CODE: Final = 100
+MAX_HTTP_STATUS_CODE: Final = 599
+HTTP_FAILURE_STATUS_MIN: Final = 400
+HTTP_SERVER_ERROR_STATUS_MIN: Final = 500
+SECONDS_TO_MILLISECONDS: Final = 1000
+DURATION_MILLISECONDS_DECIMAL_PLACES: Final = 3
+EVENT_OUTCOME_SUCCESS: Final = "success"
+EVENT_OUTCOME_FAILURE: Final = "failure"
+HEALTH_STATUS_OK: Final = "ok"
+UNKNOWN_VALUE_LABEL: Final = "unknown"
+MIN_TIMEOUT_SECONDS_EXCLUSIVE: Final = 0
+MIN_INTERVAL_SECONDS: Final = 0
+MIN_INTERVAL_SECONDS_EXCLUSIVE: Final = 0
+MIN_RETRY_COUNT: Final = 0
+MIN_RETENTION_DAYS: Final = 0
+MIN_STEP_LIMIT: Final = 1
+MIN_TEXT_MAX_CHARS: Final = 1
+MIN_LLM_MAX_TOKENS: Final = 1
+
+MIN_ROLE_COUNT: Final = 0
+MIN_PLAYER_COUNT: Final = 1
+MIN_DIFFICULTY: Final = 1
+MAX_DIFFICULTY: Final = 5
+MIN_CHARACTER_AGE: Final = 18
+MAX_CHARACTER_AGE: Final = 99
+MIN_DAY_SPEECH_LIMIT_PER_PLAYER: Final = 1
+MAX_DAY_SPEECH_LIMIT_PER_PLAYER: Final = 10
+
+NARRATION_MODE_NONE: Final = "none"
+NARRATION_MODE_STANDARD: Final = "standard"
+NARRATION_MODE_RICH: Final = "rich"
+NARRATION_MODES: Final = (
+    NARRATION_MODE_NONE,
+    NARRATION_MODE_STANDARD,
+    NARRATION_MODE_RICH,
+)
+NARRATION_MODE_CHOICES: Final = frozenset(NARRATION_MODES)
+DEFAULT_NARRATION_MODE: Final[Literal["standard"]] = NARRATION_MODE_STANDARD
+NarrationMode: TypeAlias = Literal["none", "standard", "rich"]
+
+LLM_PROVIDER_FAKE: Final = "fake"
+LLM_PROVIDER_LMSTUDIO: Final = "lmstudio"
+LLM_PROVIDER_OPENAI: Final = "openai"
+LLM_PROVIDER_CHOICES: Final = (
+    LLM_PROVIDER_FAKE,
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_PROVIDER_OPENAI,
+)
+LLM_PROVIDER_CHOICE_SET: Final = frozenset(LLM_PROVIDER_CHOICES)
+LLM_MODEL_AUTO: Final = "auto"
+LLM_STUDIO_API_KEY_PLACEHOLDER: Final = "lm-studio"
+MIN_LLM_TEMPERATURE: Final = 0
+MAX_LLM_TEMPERATURE: Final = 2
+LlmProvider: TypeAlias = Literal["fake", "lmstudio", "openai"]
+
+AGENT_STRATEGY_STABLE_FAST: Final = "stable_fast"
+AGENT_STRATEGY_ROLE_BASIC: Final = "role_basic"
+AGENT_STRATEGY_TARGET_RANKER: Final = "target_ranker"
+AGENT_STRATEGY_CHOICES: Final = (
+    AGENT_STRATEGY_STABLE_FAST,
+    AGENT_STRATEGY_ROLE_BASIC,
+    AGENT_STRATEGY_TARGET_RANKER,
+)
+AGENT_STRATEGY_CHOICE_SET: Final = frozenset(AGENT_STRATEGY_CHOICES)
+DEFAULT_AGENT_STRATEGY_ID: Final = AGENT_STRATEGY_STABLE_FAST
+AgentStrategyId: TypeAlias = Literal["stable_fast", "role_basic", "target_ranker"]
+
+LLM_STRUCTURED_OUTPUT_MODE_AUTO: Final = "auto"
+LLM_STRUCTURED_OUTPUT_MODE_DISABLED: Final = "disabled"
+LLM_STRUCTURED_OUTPUT_MODE_REQUIRED: Final = "required"
+LLM_STRUCTURED_OUTPUT_MODE_CHOICES: Final = (
+    LLM_STRUCTURED_OUTPUT_MODE_AUTO,
+    LLM_STRUCTURED_OUTPUT_MODE_DISABLED,
+    LLM_STRUCTURED_OUTPUT_MODE_REQUIRED,
+)
+LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET: Final = frozenset(LLM_STRUCTURED_OUTPUT_MODE_CHOICES)
+LlmStructuredOutputMode: TypeAlias = Literal["auto", "disabled", "required"]
+
+LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION: Final = "deterministic_legal_action"
+LLM_FALLBACK_POLICY_CHOICES: Final = (LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION,)
+LLM_FALLBACK_POLICY_CHOICE_SET: Final = frozenset(LLM_FALLBACK_POLICY_CHOICES)
+LlmFallbackPolicy: TypeAlias = Literal["deterministic_legal_action"]
+
+DECISION_GRAPH_START: Final = "START"
+DECISION_GRAPH_END: Final = "END"
+DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION: Final = "normalize_observation"
+DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION: Final = "choose_required_action"
+DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT: Final = "build_prompt_context"
+DECISION_GRAPH_NODE_ROLE_HINT: Final = "role_hint"
+DECISION_GRAPH_NODE_RANK_TARGETS: Final = "rank_targets"
+DECISION_GRAPH_NODE_INVOKE_MODEL: Final = "invoke_model"
+DECISION_GRAPH_NODE_VALIDATE_ACTION: Final = "validate_action"
+DECISION_GRAPH_NODE_REPAIR_ONCE: Final = "repair_once"
+DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK: Final = "deterministic_fallback"
+DECISION_GRAPH_NODE_IDS: Final = (
+    DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION,
+    DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION,
+    DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT,
+    DECISION_GRAPH_NODE_ROLE_HINT,
+    DECISION_GRAPH_NODE_RANK_TARGETS,
+    DECISION_GRAPH_NODE_INVOKE_MODEL,
+    DECISION_GRAPH_NODE_VALIDATE_ACTION,
+    DECISION_GRAPH_NODE_REPAIR_ONCE,
+    DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
+)
+DECISION_GRAPH_NODE_ID_SET: Final = frozenset(DECISION_GRAPH_NODE_IDS)
+DecisionGraphNodeId: TypeAlias = Literal[
+    "normalize_observation",
+    "choose_required_action",
+    "build_prompt_context",
+    "role_hint",
+    "rank_targets",
+    "invoke_model",
+    "validate_action",
+    "repair_once",
+    "deterministic_fallback",
+]
+
+LOG_OUTPUT_FILE: Final = "file"
+LOG_OUTPUT_STDERR: Final = "stderr"
+LOG_OUTPUT_STDOUT: Final = "stdout"
+LOG_OUTPUT_BOTH: Final = "both"
+LOG_OUTPUT_NONE: Final = "none"
+LOG_OUTPUT_CHOICES: Final = (
+    LOG_OUTPUT_FILE,
+    LOG_OUTPUT_STDERR,
+    LOG_OUTPUT_STDOUT,
+    LOG_OUTPUT_BOTH,
+    LOG_OUTPUT_NONE,
+)
+LOG_OUTPUT_CHOICE_SET: Final = frozenset(LOG_OUTPUT_CHOICES)
+LogOutput: TypeAlias = Literal["file", "stderr", "stdout", "both", "none"]
+
+CLI_OUTPUT_FORMAT_TABLE: Final = "table"
+CLI_OUTPUT_FORMAT_JSON: Final = "json"
+CLI_OUTPUT_FORMAT_JSONL: Final = "jsonl"
+CLI_OUTPUT_FORMAT_CHOICES: Final = (
+    CLI_OUTPUT_FORMAT_TABLE,
+    CLI_OUTPUT_FORMAT_JSON,
+    CLI_OUTPUT_FORMAT_JSONL,
+)
+CLI_OUTPUT_FORMAT_CHOICE_SET: Final = frozenset(CLI_OUTPUT_FORMAT_CHOICES)
+CliOutputFormat: TypeAlias = Literal["table", "json", "jsonl"]
+
+GENERATED_PLAYER_ID_PREFIX: Final = "player"
+GENERATED_PLAYER_ID_SEPARATOR: Final = "-"
+GENERATED_PLAYER_NAME_PREFIX: Final = "Player"
+GENERATED_PLAYER_NAME_SEPARATOR: Final = " "
+GENERATED_PLAYER_NUMBER_START: Final = 1
+PUBLIC_PLAYER_LABEL_PREFIX: Final = "P"
+
+EVENT_SCHEMA_VERSION: Final = "1.0"
+EVENT_VISIBILITY_PUBLIC: Final = "public"
+EVENT_VISIBILITY_PLAYER_PRIVATE: Final = "player_private"
+EVENT_VISIBILITY_DEBUG: Final = "debug"
+EventVisibility: TypeAlias = Literal["public", "player_private", "debug"]
+DEFAULT_EVENT_VISIBILITY: Final[Literal["public"]] = EVENT_VISIBILITY_PUBLIC
+DEFAULT_ERROR_EVENT_VISIBILITY: Final[Literal["debug"]] = EVENT_VISIBILITY_DEBUG
+ERROR_EVENT_TYPE: Final = "error_occurred"
+GAME_EVENT_FIELD_EVENT_TYPE: Final = "event_type"
+GAME_EVENT_FIELD_DAY: Final = "day"
+MIN_EVENT_DAY: Final = 0
+PYDANTIC_EXTRA_FORBID: Final = "forbid"
+PYDANTIC_JSON_MODE: Final = "json"
+
+JSON_ENCODING: Final = "utf-8"
+JSONL_NEWLINE: Final = "\n"
+JSON_SEPARATORS: Final[tuple[str, str]] = (",", ":")
+FILE_MODE_APPEND: Final = "a"
+FILE_MODE_WRITE: Final = "w"
+
+REDACTED: Final = "[REDACTED]"
+REDACTION_SOURCE_SEPARATOR: Final = "-"
+REDACTION_NORMALIZED_SEPARATOR: Final = "_"
+SENSITIVE_KEY_PARTS: Final = (
+    "secret",
+    "token",
+    "api_key",
+    "apikey",
+    "authorization",
+    "known_roles",
+    "night_action",
+    "password",
+    "private_state",
+    "raw_response",
+    "role",
+)

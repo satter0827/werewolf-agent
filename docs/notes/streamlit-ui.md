@@ -10,7 +10,7 @@ Observe では `観戦ログ` を主役にします。
 ## 目的
 
 - 一般ユーザーが Streamlit だけで 1 game を開始し、1 manual player として決着まで遊べる
-- 画面は `GameApi` port だけを使い、起動時に Supabase anonymous session を確保して Supabase queue / Data API に接続する
+- 画面は `GameClient` port だけを使い、起動時に Supabase anonymous session を確保して Supabase queue / Data API に接続する
 - 文言はゲームらしさと分かりやすさのバランスを取り、メタ表現を画面本文に出さない
 - 設定値、表示モデル、API 操作、HTML 部品を分け、画面変更が内側の層へ波及しないようにする
 
@@ -66,7 +66,7 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - `streamlit/icons.py` は icon metadata だけを持ち、label は i18n catalog から取得する
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
 - `app.py` は Streamlit widget と renderer registry だけを担当する
-- game 操作は `streamlit/operations.py` から `GameApi` protocol を直接使う
+- game 操作は `streamlit/operations.py` から `GameClient` protocol を直接使う
 - game 固有の開始設定は `GameSetupDraft` として `streamlit/setup.py` に閉じる
 - 発言・投票送信後は active client の `advance_game` を 1 回だけ呼び、次の手番へ進める
 - `入力待ちまで進める` は Streamlit session state と `st.fragment` で 1 step ずつ進め、`一時停止` で次 step 前に止める

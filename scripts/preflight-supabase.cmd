@@ -33,9 +33,9 @@ if not exist "%PYTHON%" (
 )
 
 if defined PYTHONPATH (
-    set "PYTHONPATH=%CD%\backend\src;%PYTHONPATH%"
+    set "PYTHONPATH=%CD%\src;%PYTHONPATH%"
 ) else (
-    set "PYTHONPATH=%CD%\backend\src"
+    set "PYTHONPATH=%CD%\src"
 )
 if not defined WEREWOLF_LOG_FILE_NAME (
     set "WEREWOLF_LOG_FILE_NAME=cli.jsonl"

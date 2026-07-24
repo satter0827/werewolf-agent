@@ -1,0 +1,43 @@
+[abilities.night_attack]
+phase = "night"
+action = "werewolf_attack"
+validation_policy = "standard"
+resolution_policy = "standard"
+target_policy = "other_alive_non_pack"
+start_day = 1
+label = "襲撃"
+description = "夜に生存している別陣営のプレイヤーをひとり襲撃します。"
+difficulty = 2
+
+[abilities.pack_knowledge]
+phase = "night"
+action = "pass"
+validation_policy = "standard"
+resolution_policy = "standard"
+target_policy = "none"
+start_day = 1
+label = "仲間認識"
+description = "同じ人狼陣営の仲間を知ることができます。"
+difficulty = 2
+
+[abilities.inspect]
+phase = "night"
+action = "seer_inspect"
+validation_policy = "standard"
+resolution_policy = "standard"
+target_policy = "other_alive"
+start_day = 1
+label = "調査"
+description = "夜に生存している別のプレイヤーをひとり調査します。"
+difficulty = 2
+
+[abilities.guard]
+phase = "night"
+action = "knight_guard"
+validation_policy = "standard"
+resolution_policy = "standard"
+target_policy = "alive"
+start_day = 1
+label = "護衛"
+description = "夜に生存しているプレイヤーをひとり護衛します。"
+difficulty = 2

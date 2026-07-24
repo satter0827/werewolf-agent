@@ -24,7 +24,7 @@ UI には graph 内部ではなく `AI strategy` として表示します。
 
 ## 設定
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。
+運用値の正本は `src/werewolf_agent/resources/settings/defaults.toml` です。
 
 | 設定 | 既定 | 用途 |
 | --- | --- | --- |
@@ -36,13 +36,14 @@ UI には graph 内部ではなく `AI strategy` として表示します。
 | `llm_fallback_policy` | `deterministic_legal_action` | fallback の決定方針 |
 
 `llm_decision_graphs_file` が空の場合は packaged default の
-`backend/src/werewolf_agent/resources/llm/decision_graphs.toml` を使います。
+`src/werewolf_agent/resources/llm/decision_graphs.toml` を使います。
 外部 TOML を指定しても、node は登録済み node id だけを参照できます。
 
 ## Graph Definition
 
 `decision_graphs.toml` は strategy metadata、node、edge、route を持ちます。
 定義体は実行順と条件分岐だけを表します。Python import path、prompt template path、shell command、任意 code は書けません。
+`role_basic`の役職別hintも同じファイルの`role_hints`で管理し、Pythonへ役職名や戦術文を埋め込みません。
 
 登録済み node:
 
@@ -51,7 +52,7 @@ UI には graph 内部ではなく `AI strategy` として表示します。
 | `normalize_observation` | `AgentObservation` から公開観測だけを graph state に正規化する |
 | `choose_required_action` | phase と `available_actions` から action type を固定する |
 | `role_hint` | role ごとの短い tactical hint を追加する |
-| `rank_targets` | 合法 target だけを deterministic に順位化する |
+| `rank_targets` | domainの観測に含まれる合法targetだけをdeterministicに順位化する |
 | `build_prompt_context` | 合法 target、直近 public history、role、profile を短く prompt 化する |
 | `invoke_model` | LangChain model を呼び、structured output 対応時はそれを使う |
 | `validate_action` | `AgentDecision`、action type、target、message 長、phase 整合性を検証する |

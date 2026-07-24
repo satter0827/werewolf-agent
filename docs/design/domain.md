@@ -1,165 +1,163 @@
-# Domain
-
-この文書は、`domain`、`domain.llm`、`usecase` の境界を固定します。
-API 詳細、UI 手順、handoff は別文書に置きます。
+# Domain 設計
 
 ## 目的
 
-- `domain.game` は人狼ゲームの deterministic core として、同じ config、seed、action から同じ snapshot と event を返す
-- `domain.llm` は provider 非依存の observation / decision 契約と LangChain provider を持つ
-- `usecase.internal` が game observation と LLM decision を変換し、両 domain を直接 import させない
-- `commons.configuration` と `commons.resources` が設定、definition、logging を解決し、`api.usecase_bridge` から usecase へ値として注入する
+`domain`は、人狼ゲームの状態遷移を外部サービスなしで実行できるヘッドレスコアです。画面、ID検索、永続化、設定ファイル、ログ、LLMを知りません。同じ初期値、seed、行動列を与えれば、同じ状態とイベント列を返します。
 
-## 持つもの
+`usecase`は利用者の要求をdomainへ接続する層です。ゲームIDから状態を取得し、domainを復元して操作し、結果を保存用DTOへ変換します。フェーズ、役職、対象条件、勝敗を判定しません。
 
-`domain.game`:
+## 責務
 
-- role definition、local rules、phase、player status
-- `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass`
-- observer ごとの observation
-- phase transition、win condition、pending action
-- visibility 付き domain event
+### Domain
 
-`domain.llm`:
+- ゲームの作成、復元、行動受付、フェーズ進行を行う
+- 行動の合法性、必須行動、解決順、勝敗、可視性を判定する
+- 状態変更を型付きイベントとして返す
+- 失敗時に状態を変更せず、`RuleViolation`を返す
 
-- `AgentObservation`
-- `AgentDecision`
-- `PlayerProfile` / `PlayerProfileCatalog`
-- `LlmDecisionProvider` port
-- LangChain prompt / parser / provider adapter
+### Usecase
 
-`usecase.jobs`:
+- ID、revision、ページングなどの利用者要求を検証する
+- repositoryから状態を取得し、domainを復元する
+- domain操作の結果を保存用・公開用DTOへ変換する
+- 外部から注入されたrepositoryと設定済み定義だけを使う
 
-- `GameService`
-- command / query DTO
-- repository / telemetry port
-- API adapter が必要とする永続化 contract
+### Agents
 
-## 持たないもの
+- 公開された観測から候補行動を生成する
+- provider、prompt、graph、retry、fallbackを扱う
+- ゲーム状態や役職の真実を保持せず、合法性を最終判断しない
 
-- `.env` / `get_settings()`
-- Streamlit / Typer
-- Supabase / DB adapter
-- file I/O
-- logging bootstrap
-- API key
-- wire schema
-- UI session state
-- 旧形式 fallback / migration
+## 公開面
 
-## 定義体
+domainの公開面は次に限定します。
 
-| 定義体 | 既定リソース | 渡す先 | 内容 |
-| --- | --- | --- | --- |
-| ルール定義体 | `resources/game/rules.toml` | `domain.game` | local rule |
-| ロール定義体 | `resources/game/roles.toml` | `domain.game` | faction / ability / default role counts |
-| Game catalog | `resources/game/catalog.toml` | `usecase.internal` / `domain.llm` | scenario、narration、setup preset、ability label |
-| LLM players | `resources/llm/players.toml` | `domain.llm` | LLM profile |
-| LLM prompt | `resources/prompts/agent_decision.toml` | `domain.llm` | prompt metadata / messages |
-| LLM decision graphs | `resources/llm/decision_graphs.toml` | `domain.llm` | agent strategy metadata / graph node |
-| Fake responses | `resources/llm/fake_responses.toml` | `domain.llm` | `FakeListLLM` fixture |
-
-definition path 解決と TOML 読み込みは `commons.resources` に集約します。`AppSettings` 構築時に definition を検証し、`api.usecase_bridge` が `GameDefinitions` / `LlmDefinitions` を usecase へ注入します。domain と usecase は source path、packaged default、`.env` を知りません。
-
-## 境界
-
-- `domain.game` と `domain.llm` は互いに import しない
-- `usecase.jobs` は domain を import しない
-- domain へ入る code は `usecase/internal` 配下に限定する
-- `usecase/internal` は API / entrypoint / wire schema に依存しない
-- CLI / Streamlit は domain / usecase を直接 import せず、`contracts` と `GameApi` port だけを使う
-- `api` は `entrypoint` に依存しない
-- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/supabase/worker/`、`api/telemetry.py` に限定する
-- `api/usecase_bridge.py` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
-- `commons` は `api`、`entrypoint`、`domain`、`usecase` に依存しない
-
-この境界は `tests/unit/architecture/test_architecture_boundaries.py` で固定します。
-
-## Game Core
-
-主要型:
-
-| 型 | 意味 |
-| --- | --- |
-| `LocalRules` | game ごとの local rule |
-| `RoleDefinition` / `RoleCatalog` | role ごとの faction / ability |
-| `GameConfig` | player count、role counts、rules、role catalog |
-| `Player` | setup、snapshot、observation で使う player |
-| `Action` | 構造化 game action |
-| `GameSnapshot` | 永続化できる完全状態 |
-| `PendingActions` | phase 解決まで保留する action |
-| `Observation` | 1 player に見せてよい情報 |
-| `GameHistory` | speech、vote、night result の append-only history |
-| `DomainEvent` | 保存・公開・redaction の元になる event |
-
-主要 service:
-
-| 関数 | 意味 |
-| --- | --- |
-| `start_game(config, players, rng)` | 初期 snapshot と開始 event を返す |
-| `observe(snapshot, player_id)` | 1 player の observation を返す |
-| `submit_action(snapshot, pending, action)` | action を検証して反映する |
-| `advance_phase(snapshot, pending, rng)` | phase を 1 つ進める |
-
-local rules は game ごとの deterministic rule だけを持ちます。`day_speech_limit_per_player` は `available_actions` と `submit_action` の両方で使い、UI だけの制御にはしません。
-
-## LLM Core
-
-`AgentObservation` は LLM に渡せる唯一の観測 DTO です。
-
-- `phase`、`day`
-- `me`
-- `role`
-- visible `players`
-- その player だけが知る `known_roles`
-- `available_actions`
-- action ごとの `legal_targets`
-- public `speeches`
-- public `vote_rounds`
-
-`LangChainDecisionProvider` は `agent_strategy_id` に対応する LangGraph `StateGraph` を使い、prompt、LangChain model、Pydantic parser、validation、repair、deterministic fallback を接続します。LLM 出力は `AgentDecision` として検証し、不正 JSON、不正 action、不正 target、provider 呼び出し失敗は保存済み seed と合法 action から deterministic fallback にします。
-
-prompt resource と graph definition は `AgentObservation` の契約だけを参照します。raw prompt、raw response、API key は public response、public timeline、operational log へ出しません。admin-only LLM trace には改善用に prompt message、prompt hash、raw response、parsed decision、graph route metadata を保存します。
-
-## Usecase 接続
-
-`usecase.internal` は次を担当します。
-
-- runtime definition を domain 型へ変換する
-- `GameSnapshot` を public state / public timeline へ projection する
-- manual player の pending input を判定する
-- `AgentObservation` に公開履歴と合法 target を入れて LLM provider へ渡す
-- `AgentDecision` を domain `Action` へ変換する
-- repository port に保存する payload を作る
-
-`usecase.jobs.GameService` は API adapter 向けの最小 facade です。`api.usecase_bridge` は settings と definition を usecase 用の値へ変換し、`api.supabase.worker` は repository / telemetry / LLM provider 設定を注入して facade を実行します。`api.setup_options` は worker/usecase 側の setup options seed 生成に使い、React / CLI / Streamlit は Supabase の `definition_items(kind = 'setup_options')` を読むことを正とします。
-
-- `create_game`
-- `get_game`
-- `advance_game`
-- `list_games`
-- `list_timeline`
-- `get_player_observation`
-- `submit_player_action`
-- `get_game_reveal`
-- `get_setup_options`
-
-## Observation
-
-game observation:
-
-- 自分の role は見える
-- 人狼は仲間の人狼を知る
-- 占い師は自分の検査結果だけを知る
-- 公開 speech / vote history は見える
-- 他 role、夜行動、private event、debug event は見えない
-
-API は `GameSnapshot` を返しません。`usecase.internal` が public state / public timeline に変換し、`api` と `entrypoint` が CLI / 画面向け schema に整えます。
-
-## 検証
-
-```bash
-uv run pytest tests/unit/domain
-uv run pytest tests/unit/usecase
-uv run pytest tests/unit/architecture/test_architecture_boundaries.py
+```python
+from werewolf_agent.domain import (
+    Action,
+    Game,
+    GameEvent,
+    GameSetup,
+    GameState,
+    GameView,
+    RuleRegistry,
+    RuleSet,
+    RuleSetDefinition,
+    RuleViolation,
+)
 ```
+
+基本操作は`Game`集約ルートを経由します。
+
+```python
+rules = registry.build(definition)
+game = Game.create(setup, rules=rules, random=random_source)
+game = Game.restore(state, rules=rules)
+
+events = game.submit(action)
+events += game.advance(random_source)
+
+view = game.view_for(player_id)
+state = game.snapshot()
+```
+
+`GameState`は未解決行動も含む完全かつ不変のスナップショットです。`Game.restore()`はこの状態だけから集約を復元します。`submit()`と`advance()`は遷移全体が成功した場合だけ内部状態を置き換えます。検証失敗時は`RuleViolation`を送出し、状態を変更しません。
+
+## クラス構成
+
+```text
+RuleRegistry --build--> RuleSet <--uses-- Game
+                           |
+                           +-- ActionPolicy
+                           +-- ResolutionPolicy
+                           +-- PhasePolicy
+                           +-- VictoryPolicy
+                           +-- VisibilityPolicy
+
+Game
+  + create(setup, rules, random)
+  + restore(state, rules)
+  + submit(action) -> GameEvent[]
+  + advance(random) -> GameEvent[]
+  + view_for(player_id) -> GameView
+  + snapshot() -> GameState
+```
+
+役職ごとのクラスは作りません。役職は陣営と能力IDの組み合わせで表し、能力は利用フェーズ、対象条件、解決ポリシーなどの値で表します。既存アルゴリズムのパラメーター変更は設定で行い、新しいアルゴリズムだけをポリシー実装として追加します。
+
+## ポリシー
+
+| ポリシー | 判定内容 | 既定実装 |
+| --- | --- | --- |
+| `ActionPolicy` | 行動者、対象、回数、生存条件、利用可能行動、合法対象 | `standard` |
+| `ResolutionPolicy` | 投票、襲撃、護衛、占いの効果 | `standard` |
+| `PhasePolicy` | 必須行動と次フェーズ | `required_actions` |
+| `VictoryPolicy` | 陣営の全滅と人数均衡 | `faction_balance` |
+| `VisibilityPolicy` | プレイヤー別観測と履歴の公開範囲 | `standard` |
+
+`RuleRegistry`はポリシーIDとfactoryを明示登録します。設定ファイルにPythonクラス名、import path、条件DSLは書きません。未知のIDは起動時またはルール構築時に拒否します。
+
+## 設定可能範囲
+
+| 設定だけで変更できること | Python実装が必要なこと |
+| --- | --- |
+| `night`、`day_discussion`、`voting`の順序と必須行動の有無 | フェーズの追加と新しい状態遷移方式 |
+| 行動回数、自己対象、再提出の許可 | 新しい対象判定アルゴリズム |
+| 初夜襲撃、同票時処理の既存選択肢 | 新しい投票集計アルゴリズム |
+| 役職の陣営、能力ID、既定人数、能力の開始日と登録済み対象条件 | 新しい能力効果と利用フェーズ |
+| 登録済みポリシーの組み合わせ | 新しい勝敗・可視性アルゴリズム |
+| 背景、表示名、説明、ナレーション | 新しい外部サービス連携 |
+
+設定の正本は次のとおりです。
+
+| ファイル | 内容 |
+| --- | --- |
+| `resources/game/rules.toml` | ルール値と登録済みポリシー構成 |
+| `resources/game/roles.toml` | 役職、陣営、能力、既定人数 |
+| `resources/game/abilities.toml` | 利用フェーズ、行動、対象、解決、開始日 |
+| `resources/presentation/catalog.toml` | 背景、シナリオ、表示名、説明 |
+| `resources/llm/` | provider以外のplayer、graph、fake応答 |
+| `resources/prompts/` | LLM prompt |
+
+`configuration`がTOMLと環境変数を読み、Pydanticで検証してから値を注入します。役職と能力、シナリオとナレーション、プリセットとシナリオ・役職の参照もロード時に検証します。既定プリセットは`game_default_setup_preset_id`で明示し、定義順には依存しません。domainはファイルパスや環境変数を受け取りません。
+
+## 可視性
+
+- public stateにはフェーズ、日数、生死、公開イベントだけを含める
+- player viewにはそのプレイヤーが知る役職、能力、domainが検証した合法対象だけを含める
+- public timelineには役職、夜行動、秘密の対象、占い結果を含めない
+- 投票提出はplayer private eventとし、投票先と集計は投票解決後の公開結果だけに含める
+- 画面とLLMには`GameView.legal_targets`を変換して渡し、対象条件を再計算させない
+- operational logにはprompt、LLM生出力、認証情報、秘密状態を含めない
+
+## 依存制約
+
+```text
+interfaces --> adapters --> usecase --> domain
+                  |
+                  +-------> agents
+
+interfaces/adapters --> configuration
+interfaces/adapters --> observability
+interfaces/adapters --> security
+```
+
+- `domain`は他の層へ依存しない
+- `usecase`は`agents`、`adapters`、`interfaces`へ依存しない
+- `agents`はdomainとusecaseへ依存しない
+- `adapters/agents/game_driver.py`だけがusecaseとagentsを接続する
+- LangChainとLangGraphは`agents/langchain`以外からimportしない
+- SupabaseとSQLAlchemyは`adapters/supabase`以外からimportしない
+- StreamlitとTyperは`interfaces`以外からimportしない
+- domainとusecaseはlogging、DB、file I/Oを行わない
+
+これらは`tests/unit/architecture/test_architecture_boundaries.py`でimport許可表、モジュール循環、層循環、公開`__all__`、旧パス不在として検査します。
+
+## 完了条件
+
+- domain単体で作成から勝敗確定まで実行できる
+- 必須行動不足と不正行動で状態が変化しない
+- 同じseedと入力から同じイベント列を再現できる
+- usecaseにゲームルールの分岐がない
+- domain、agents、usecaseに相互参照がない
+- 公開状態、履歴、LLM入力、ログへ秘密情報が漏れない

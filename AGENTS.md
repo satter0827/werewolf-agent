@@ -10,8 +10,8 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 現在の状態:
 
-- CLI / Streamlit は `GameApi` port 経由で Supabase Data API または local demo API に接続する
-- Supabase 未ログイン時は local demo API が usecase を直接実行し、既定の FakeListLLM で 1 game を完走できる
+- CLI / Streamlit は `GameClient` port 経由で Supabase Data API に接続する
+- 既定の FakeListLLM は外部 LLM API を使わないが、CLI / Streamlit の実行には Supabase が必要
 - `domain`、`usecase`、CLI、Streamlit、Supabase worker、public timeline、個人履歴、LLM trace は実装済み
 - 実 LLM provider QA、複数 manual player、React UI は未実装
 
@@ -29,36 +29,39 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 | Path | 責務 |
 | --- | --- |
-| `backend/src/werewolf_agent/domain/game/` | ルール、状態、観測、勝敗、game event |
-| `backend/src/werewolf_agent/domain/llm/` | provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider、prompt loader、provider port |
-| `backend/src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
-| `backend/src/werewolf_agent/usecase/jobs/` | API adapter 向けの薄い usecase facade、DTO、repository port |
-| `backend/src/werewolf_agent/usecase/internal/` | usecase workflow、projection、agent adapter、唯一の domain 接点 |
-| `backend/src/werewolf_agent/api/` | `GameApi` port、factory、usecase bridge、setup options |
-| `backend/src/werewolf_agent/api/local_demo/` | 未ログイン用 process-local game API |
-| `backend/src/werewolf_agent/api/supabase/` | Supabase Auth / Data API client、session store |
-| `backend/src/werewolf_agent/api/supabase/worker/` | Supabase queue worker、Postgres repository、LLM trace sink |
-| `backend/src/werewolf_agent/entrypoint/cui/` | Typer CLI、Supabase login、`GameApi` port 経由の操作 |
-| `backend/src/werewolf_agent/entrypoint/streamlit/` | Streamlit 画面、画面状態、表示 model |
-| `backend/src/werewolf_agent/entrypoint/requests.py` | CLI / Streamlit 共通 request builder |
-| `backend/src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
-| `backend/src/werewolf_agent/commons/` | configuration、resources、logging、message catalog、redaction、shared helper |
-| `tests/unit/api/` | API adapter unit test |
-| `tests/unit/entrypoint/` | CLI / Streamlit unit test |
-| `tests/unit/commons/` | configuration、resource、logging unit test |
+| `src/werewolf_agent/domain/` | 集約、状態、イベント、ルールポリシー |
+| `src/werewolf_agent/agents/` | provider 非依存の観測、意思決定、player port |
+| `src/werewolf_agent/agents/langchain/` | LangChain provider、graph、prompt処理、FakeListLLM |
+| `src/werewolf_agent/resources/` | packaged defaults、MLflow-compatible prompt、FakeListLLM response fixture |
+| `src/werewolf_agent/usecase/` | stateless handler、DTO、repository port、projection |
+| `src/werewolf_agent/adapters/` | `GameClient` port、factory、usecase bridge、setup options |
+| `src/werewolf_agent/adapters/agents/` | usecase と agents を接続する game driver |
+| `src/werewolf_agent/adapters/supabase/` | Supabase Auth / Data API client、worker、repository、trace sink |
+| `src/werewolf_agent/interfaces/cli/` | Typer CLI、Supabase login、`GameClient` port 経由の操作 |
+| `src/werewolf_agent/interfaces/streamlit/` | Streamlit 画面、画面状態、表示 model |
+| `src/werewolf_agent/interfaces/requests.py` | CLI / Streamlit 共通 request builder |
+| `src/werewolf_agent/contracts/` | Pydantic 外部契約、error code、safe exception、Problem Details |
+| `src/werewolf_agent/configuration/` | settings、resource、definition、message catalog |
+| `src/werewolf_agent/observability/` | loggingと実行 context |
+| `src/werewolf_agent/security/` | redaction |
+| `tests/unit/adapters/` | 外部サービスadapter unit test |
+| `tests/unit/interfaces/` | CLI / Streamlit unit test |
+| `tests/unit/configuration/` | 設定とresource unit test |
+| `tests/unit/observability/` | loggingと実行contextのunit test |
+| `tests/unit/security/` | redaction unit test |
 
 境界ルール:
 
 - domain は `.env`、Supabase、SQLAlchemy、LLM provider、file I/O、logging 設定に依存させない
-- CLI / Streamlit は domain / usecase を直接 import せず、public wire schema と `GameApi` port だけを使う
-- `api` は `entrypoint` に依存しない
-- `api` から usecase を呼ぶ場所は `api/usecase_bridge.py`、`api/setup_options.py`、`api/local_demo/`、`api/supabase/worker/`、`api/telemetry.py` に限定する
-- `api/usecase_bridge.py` は `werewolf_agent.usecase.jobs` の top-level 公開面だけを import する
-- `usecase/jobs` は domain を import せず、public DTO と stateless facade に限定する
-- usecase から domain を参照する code は `usecase/internal` 配下に限定し、`domain.game.*` と `domain.llm.*` の公開面だけを使う
-- `usecase/internal` は API / entrypoint / wire schema に依存させない
-- `domain.game` と `domain.llm` は互いに import せず、`usecase.internal` が observation / decision / action を変換してつなぐ
-- 業務要件は usecase、コアルールは domain、CLI / 画面向け変換は entrypoint、外部サービス adapter は api に置く
+- CLI / Streamlit は domain / usecase を直接 import せず、public wire schema と `GameClient` port だけを使う
+- `adapters` は `interfaces` に依存しない
+- usecase は stateless handler、command / query / result、repository port に限定する
+- usecase は agents / adapters / interfaces に依存しない
+- agents は domain / usecase に依存しない
+- `adapters/agents/game_driver.py` だけが usecase と agents の observation / decision / action を変換してつなぐ
+- domain は他層へ依存せず、外部層は `werewolf_agent.domain` の公開面を使う
+- IDを含む利用者要求は usecase、コアルールは domain、CLI / 画面向け変換は interfaces、外部サービス接続は adapters に置く
+- usecase はログやテレメトリーを出力せず、interfaces と adapters が外部境界で記録する
 - worker は `private_state` を保存してよいが、公開 DTO や public timeline へ role / night action / secret を出さない
 - LLM に渡す情報は、その player が観測できる情報だけにする
 - LLM 出力は自由文のまま使わず、Pydantic / JSON Schema 相当で検証する
@@ -73,8 +76,8 @@ uv run werewolf-agent doctor
 uv run pytest
 uv run ruff check .
 uv run ruff format --check .
-uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
-uv run mypy backend/src
+uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 src/werewolf_agent
+uv run mypy src
 ```
 
 Supabase worker:
@@ -93,7 +96,7 @@ uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-co
 Streamlit:
 
 ```bash
-uv run --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py
+uv run --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py
 ```
 
 Docker:

@@ -18,7 +18,7 @@ VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ�
 別 terminal で Streamlit を起動します。game 作成と進行まで確認する場合は、先に migration と worker を起動します。手動起動では `scripts\preflight-supabase.cmd` が通ってから `scripts\run-streamlit.cmd` を実行します。
 
 ```bash
-uv run --no-sync --group dev --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
+uv run --no-sync --group dev --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
 Supabase worker:

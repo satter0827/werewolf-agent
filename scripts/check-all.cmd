@@ -39,9 +39,9 @@ if not exist "%PYTHON%" (
 )
 
 if defined PYTHONPATH (
-    set "PYTHONPATH=%CD%\backend\src;%PYTHONPATH%"
+    set "PYTHONPATH=%CD%\src;%PYTHONPATH%"
 ) else (
-    set "PYTHONPATH=%CD%\backend\src"
+    set "PYTHONPATH=%CD%\src"
 )
 if not defined WEREWOLF_LOG_FILE_NAME (
     set "WEREWOLF_LOG_FILE_NAME=check-all.jsonl"
@@ -77,7 +77,7 @@ if errorlevel 1 goto finish
 
 echo.
 echo === ruff docstring check ===
-"%PYTHON%" -m ruff check --no-cache --select D --ignore D100,D104 backend/src/werewolf_agent
+"%PYTHON%" -m ruff check --no-cache --select D --ignore D100,D104 src/werewolf_agent
 call :check_status %ERRORLEVEL%
 if errorlevel 1 goto finish
 
@@ -89,7 +89,7 @@ if errorlevel 1 goto finish
 
 echo.
 echo === mypy ===
-"%PYTHON%" -m mypy --cache-dir "%WEREWOLF_AGENT_RUNTIME_DIR%\cache\mypy" backend/src
+"%PYTHON%" -m mypy --cache-dir "%WEREWOLF_AGENT_RUNTIME_DIR%\cache\mypy" src
 call :check_status %ERRORLEVEL%
 if errorlevel 1 goto finish
 

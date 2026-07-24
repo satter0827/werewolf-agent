@@ -21,9 +21,9 @@ if not exist "%PYTHON%" (
 )
 
 if defined PYTHONPATH (
-    set "PYTHONPATH=%CD%\backend\src;%PYTHONPATH%"
+    set "PYTHONPATH=%CD%\src;%PYTHONPATH%"
 ) else (
-    set "PYTHONPATH=%CD%\backend\src"
+    set "PYTHONPATH=%CD%\src"
 )
 
 "%PYTHON%" -m werewolf_agent %*

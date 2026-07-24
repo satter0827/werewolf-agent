@@ -47,8 +47,8 @@ worker = [
 ]
 
 [project.scripts]
-werewolf-agent = "werewolf_agent.entrypoint.cui.app:app"
-werewolf-agent-worker = "werewolf_agent.api.supabase.worker.app:app"
+werewolf-agent = "werewolf_agent.interfaces.cli.app:app"
+werewolf-agent-worker = "werewolf_agent.interfaces.worker.app:app"
 
 [dependency-groups]
 dev = [
@@ -67,27 +67,28 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["backend/src/werewolf_agent"]
+packages = ["src/werewolf_agent"]
 
 [tool.hatch.build.targets.wheel.force-include]
-"backend/src/werewolf_agent/resources/settings/defaults.toml" = "werewolf_agent/resources/settings/defaults.toml"
-"backend/src/werewolf_agent/resources/game/rules.toml" = "werewolf_agent/resources/game/rules.toml"
-"backend/src/werewolf_agent/resources/game/roles.toml" = "werewolf_agent/resources/game/roles.toml"
-"backend/src/werewolf_agent/resources/game/catalog.toml" = "werewolf_agent/resources/game/catalog.toml"
-"backend/src/werewolf_agent/resources/llm/players.toml" = "werewolf_agent/resources/llm/players.toml"
-"backend/src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
-"backend/src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
-"backend/src/werewolf_agent/resources/llm/decision_graphs.toml" = "werewolf_agent/resources/llm/decision_graphs.toml"
-"backend/src/werewolf_agent/resources/streamlit/i18n.toml" = "werewolf_agent/resources/streamlit/i18n.toml"
-"backend/src/werewolf_agent/resources/streamlit/default.css" = "werewolf_agent/resources/streamlit/default.css"
-"backend/src/werewolf_agent/resources/streamlit/screens.toml" = "werewolf_agent/resources/streamlit/screens.toml"
+"src/werewolf_agent/resources/settings/defaults.toml" = "werewolf_agent/resources/settings/defaults.toml"
+"src/werewolf_agent/resources/game/rules.toml" = "werewolf_agent/resources/game/rules.toml"
+"src/werewolf_agent/resources/game/roles.toml" = "werewolf_agent/resources/game/roles.toml"
+"src/werewolf_agent/resources/game/abilities.toml" = "werewolf_agent/resources/game/abilities.toml"
+"src/werewolf_agent/resources/presentation/catalog.toml" = "werewolf_agent/resources/presentation/catalog.toml"
+"src/werewolf_agent/resources/llm/players.toml" = "werewolf_agent/resources/llm/players.toml"
+"src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
+"src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
+"src/werewolf_agent/resources/llm/decision_graphs.toml" = "werewolf_agent/resources/llm/decision_graphs.toml"
+"src/werewolf_agent/resources/streamlit/i18n.toml" = "werewolf_agent/resources/streamlit/i18n.toml"
+"src/werewolf_agent/resources/streamlit/default.css" = "werewolf_agent/resources/streamlit/default.css"
+"src/werewolf_agent/resources/streamlit/screens.toml" = "werewolf_agent/resources/streamlit/screens.toml"
 
 [tool.hatch.build.targets.sdist]
 only-include = [
     ".env.example",
     "LICENSE",
     "README.md",
-    "backend/src",
+    "src",
     "compose.postgres.yaml",
     "compose.yaml",
     "docker",
@@ -104,14 +105,14 @@ exclude = [
 [tool.pytest.ini_options]
 addopts = "-q"
 cache_dir = ".werewolf-agent/cache/pytest"
-pythonpath = ["backend/src"]
+pythonpath = ["src"]
 testpaths = ["tests"]
 tmp_path_retention_policy = "none"
 
 [tool.ruff]
 cache-dir = ".werewolf-agent/cache/ruff"
 line-length = 100
-src = ["backend/src", "tests"]
+src = ["src", "tests"]
 target-version = "py311"
 
 [tool.ruff.lint]
@@ -123,8 +124,8 @@ quote-style = "double"
 [tool.mypy]
 cache_dir = ".werewolf-agent/cache/mypy"
 check_untyped_defs = true
-files = ["backend/src"]
-mypy_path = "backend/src"
+files = ["src"]
+mypy_path = "src"
 python_version = "3.11"
 show_error_codes = true
 strict = true

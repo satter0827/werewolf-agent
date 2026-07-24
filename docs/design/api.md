@@ -1,260 +1,143 @@
-# API
-
-この文書は、CLI / Streamlit / worker が共有する外部契約を固定します。
-判断履歴や作業メモは `docs/notes/` に置きます。
+# 境界と公開契約
 
 ## 目的
 
-- LLM 同士の game と 1 人 manual player 混在 game を、`GameApi` port と Supabase queue worker で決着まで進める
-- React / CLI / Streamlit は Supabase Auth / Data API を正本にし、未ログイン時も anonymous sign-in で authenticated session を作る
-- public response、public timeline、operational log に role、night action target、private state、token、API key、raw provider response を出さない
-- 旧 endpoint、旧 field、旧 DTO 名、旧 save format の fallback は持たない
+画面、Supabase、LLM、ゲームルールを一方向の依存関係で接続します。外部クライアントは`GameClient`、アプリケーション内部はステートレスなusecase関数、ゲームルールは`Game`集約ルートを利用します。
 
-## 現在地
+DBスキーマ、migration、Supabase Data APIの保存方式は変更しません。アダプターが既存レコードと新しい`GameState`を機械的に変換します。
 
-- Supabase Auth / Data API direct access
-- Supabase queue worker
-- `llm` agent と LangChain provider による自動進行
-- 1 game につき 1 人の manual player
-- admin reveal DTO による observer 表示
-- RFC 9457 Problem Details 互換の error payload
-- React UI
-- 複数 manual player は未実装
+## 責務
 
-## 実行モデル
-
-backend game HTTP API は提供しません。React / CLI / Streamlit は Supabase queue と Data API だけを使います。
-
-| mode | 動作 |
+| 層 | 責務 |
 | --- | --- |
-| 匿名 session | `signInAnonymously()` / `ensure_session()` で authenticated session を作り、`game_operation_requests` に操作を enqueue する |
-| worker | queued operation を claim し、Python usecase と configured LLM provider を実行する |
+| `interfaces` | CLI、Streamlit、workerの入力と表示 |
+| `adapters` | `GameClient`、Supabase、repository、LLM game driver |
+| `usecase` | IDを含む要求、取得、復元、domain呼び出し、DTO変換 |
+| `domain` | ゲームルールと状態遷移 |
+| `agents` | provider非依存の判断契約とLangChain実装 |
+| `configuration` | 環境変数、TOML、packaged defaultの読込と検証 |
+| `observability` | 境界ログ、イベント、実行コンテキスト |
+| `security` | 秘密情報のマスキング |
+| `contracts` | 外部wire schema、error code、Problem Details |
 
-Supabase mode では worker が `games`、`game_summaries`、`game_public_turns`、`game_player_observations`、`llm_invocations` を更新します。operation request は完了時に `result_payload`、失敗時に Problem Details 互換の `error_payload` を持ちます。LLM provider 呼び出しは UI / CLI process の外、worker transaction の中で trace とともに保存します。
+## データフロー
 
-## Wire Schemas
+```text
+interfaces
+  -> GameClient
+  -> adapters
+  -> usecase function
+  -> Game
+  <- state + typed events
+  <- immutable result
+  <- public wire schema
 
-ここにある schema は `GameApi` port と Supabase operation request で共有する外部契約です。
+自動プレイヤー:
+adapters -> PlayerAgent -> AgentDecision -> Game(Action)
+```
 
-| Schema | 用途 |
+自動プレイヤーの接続は`adapters/agents/game_driver.py`に限定します。agentsはdomainが提示した合法対象から候補を返し、domainが提出時に再検証します。LLM失敗時は同じ判断パイプラインのfallbackが合法候補を選びます。
+
+## GameClient
+
+interfacesが参照できるクライアント契約は次だけです。
+
+```python
+from werewolf_agent.adapters import GameClient, build_game_client
+```
+
+`GameClient`は作成、取得、進行、一覧、timeline、player observation、manual action、管理者revealの外部操作を定義します。Supabase実装はoperation requestをenqueueし、Data APIから結果を取得します。
+
+認証前提はSupabase anonymous sessionです。manual playerの権限は`game_participants.auth.uid()`とRLSを正とし、画面固有tokenやseat credentialを作りません。
+
+## Usecase
+
+usecaseの基本公開面はモジュールレベル関数と不変の`UsecaseContext`です。
+
+```python
+create_game(context, command)
+submit_player_action(context, command)
+advance_game(context, command)
+get_game(context, query)
+get_player_observation(context, query)
+```
+
+`UsecaseContext`へrepository、検証済み定義、運用上限を注入します。各関数は共有状態を持たず、ログやテレメトリーも出力しません。呼び出しごとに次を行います。
+
+1. IDと利用者要求を検証する
+2. repositoryから現在状態を取得する
+3. `Game.restore()`でdomainを復元する
+4. domainの公開操作を呼ぶ
+5. revisionを確認して結果を保存する
+6. public DTOまたはprivate DTOへ変換する
+
+usecaseには役職、フェーズ、行動対象、勝敗の条件分岐を置きません。
+LLMのprovider設定とtrace sinkも`UsecaseContext`へ入れず、`adapters/agents/game_driver.py`の`AgentRuntime`が保持します。
+
+## Agents
+
+公開契約は`PlayerAgent`、`AgentObservation`、`AgentDecision`です。ゲームの内部状態を型として共有しません。
+
+LangChainとLangGraphの具体実装は`agents/langchain`に限定します。fake providerも独自クラスを作らず、LangChain標準の`FakeListLLM`を使用します。fakeと実providerは、prompt構築、構造化出力、検証、再試行、fallbackを共有します。
+
+設定で変更できる項目:
+
+- provider種別
+- model名と接続先
+- timeout、retry、temperature、max tokens
+- decision graph
+- prompt
+- fake応答列
+- validation retryとfallback方針
+
+provider固有の新しい通信方式や新しいgraph nodeはPython実装を必要とします。
+
+## 公開情報と秘密情報
+
+| 出力先 | 許可する情報 |
 | --- | --- |
-| `GameSetupOptionsResponse` | client bootstrapping 用の role、scenario、preset、character、default rules |
-| `CreateGameRequest` | game 作成 request |
-| `GameResponse` | 1 game の public state |
-| `GameListResponse` | `PublicGameSummary` の page |
-| `AdvanceGameResponse` | 進行後の public state と追加 public timeline |
-| `AdvanceGameJobResponse` | advance job の状態、poll URL、完了時 result、失敗時 Problem Details |
-| `GameTimelineResponse` | `GameTimelineItem` の page |
-| `PlayerObservationResponse` | authenticated manual player の private observation |
-| `PlayerActionRequest` / `PlayerActionResponse` | manual action 入出力 |
-| `GameRevealResponse` | admin observer 用の専用 reveal DTO |
+| public state | フェーズ、日数、生死、勝者 |
+| public timeline | 公開発言、解決後の投票結果、公開死亡結果 |
+| player observation | 本人が観測できる役職、能力、合法候補 |
+| admin reveal | 管理者専用の完全状態 |
+| LLM trace | 管理者専用のprompt、応答、解析結果 |
+| operational log | ID、処理結果、所要時間、外部障害の分類 |
 
-## Create Game
+public responseとログへ、秘密役職、夜行動対象、占い結果、API key、token、prompt、LLM生出力を出しません。
+各プレイヤーの投票提出と投票先は解決前に公開せず、集計済みの結果だけをpublic timelineへ出します。
 
-`GameApi.create_game` は `game_operation_requests` へ `operation_type = create_game` を enqueue します。
+## ログ
 
-人数は `role_counts` の合計から導出します。全体人数だけを指定する field は持ちません。
+domainとusecaseはログを出しません。interfacesとadaptersが外部境界で一度だけ記録します。
 
-最小:
-
-```json
-{
-  "seed": 42,
-  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
-}
-```
-
-manual player 付き:
-
-```json
-{
-  "seed": 42,
-  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3},
-  "manual_player_id": "player-1"
-}
-```
-
-AI strategy 指定付き:
-
-```json
-{
-  "seed": 42,
-  "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 3},
-  "agent_strategy_id": "stable_fast"
-}
-```
-
-制約:
-
-- `role_counts`: 必須。合計が configured min / max の範囲内で、人狼側 1 以上、村側 1 以上
-- `manual_player_id`: 任意。生成される `player-1` から `player-N` のいずれか。操作権限は response credential ではなく Supabase participant record で決まる
-- `rules`: 任意。省略時は `api.usecase_bridge` が runtime default を注入する
-- `narration_mode`: 任意。省略時は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` の値を注入する
-- `agent_strategy_id`: 任意。省略時は `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` の値を注入し、game config に保存する
-- `character_assignments`、`custom_roles`、`custom_characters`: Streamlit session 内の追加定義を game 作成 request に同梱するための field
-
-## Setup Options
-
-`GameApi.get_setup_options` と React client は、client の開始画面を作るための metadata だけを返します。公開済みの `definition_items(scope = 'system', kind = 'setup_options', item_key = 'default')` を読み、React / CLI / Streamlit の bootstrapping を同じ Supabase Data API 契約に揃えます。
-
-- `player_count`
-- `roles`
-- `abilities`
-- `scenarios`
-- `setup_presets`
-- `characters`
-- `default_role_counts`
-- `default_rules`
-- `default_scenario_id`
-- `default_setup_preset_id`
-- `default_narration_mode`
-- `agent_strategies`
-- `default_agent_strategy_id`
-
-worker / migration で publish する元データは runtime definition から作る `api.setup_options` の projection と同じ wire schema に揃えます。definition path と TOML 読み込みは `commons.resources` に集約します。domain と usecase は source path、packaged default、`.env` を知りません。
-
-## Pagination
-
-`GameApi.list_games` と `GameApi.get_timeline` の `limit` は省略できます。省略時の件数と最大値は runtime settings で管理します。
-
-- game list: `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`
-- timeline: `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`
-
-最大値を超える `limit` は `400 config.invalid_value` を返します。
-
-## Public State
-
-返すもの:
-
-- `game_id`、`status`、`phase`、`day`、`version`、`seed`
-- player id / name / alive / status
-- alive / eliminated player ids
-- `winner`
-- public summary counts
-- `created_at`、`updated_at`
-
-返さないもの:
-
-- role assignment
-- night action detail
-- private observation
-- `private_state`
-- token
-- prompt、API key、raw provider response
-
-## Timeline
-
-`GameTimelineItem` は外部公開履歴の唯一の schema です。
-
-- `sequence`: public timeline sequence
-- `event_sequence`: 元 event stream sequence
-- `version`: 対応する public state version
-- `phase`、`day`
-- `actor_id`: public に出してよい actor id
-- `event_type`
-- `narration`
-- `payload`: public-safe payload
-- `occurred_at`
-
-Cursor:
-
-- request: `after=<last_sequence>&limit=<n>`
-- response: `next_after`
-
-公開 timeline に出さないもの:
-
-- role assignment
-- night action target
-- guard target
-- inspection result
-- private observation
-- `private_state`
-- token、API key、authorization
-- raw prompt / raw provider response
-
-## Reveal
-
-`GameApi.get_game_reveal` は admin observer 用の専用 DTO を返します。Supabase の `game_reveals` table と RLS / admin claim が公開範囲を決めます。`WEREWOLF_REVEAL_API_ENABLED=false` の場合、worker は既存 reveal payload を削除します。
-
-返すもの:
-
-- `role_counts`、local `rules`、`seed`
-- 全 player の role / faction / alive / status
-- pending vote / pending night action
-- 解決済み vote / night record
-- winner、day、phase、version
-
-返さないもの:
-
-- token
-- prompt、API key、raw provider response
-- repository の `private_state` そのもの
-
-## Manual Player
-
-manual player は `GameApi.create_game` の `manual_player_id` で 1 人だけ指定できます。Supabase worker は `game_participants` に `auth.uid()` と player id を保存し、以後の private observation / manual action は RLS と participant record で制御します。React / CLI / Streamlit は seat credential を扱いません。
-
-| 状態 | Status | Code |
-| --- | --- | --- |
-| Supabase session なし | `401` | `auth.required` |
-| participant record がない player 操作 | `403` | `auth.forbidden` |
-
-manual action:
-
-```json
-{"type": "speech", "message": "I am checking the table."}
-```
-
-target が必要な action は `target_id` を指定します。`available_actions` はその player が今送信できる action だけを返します。発言済み、投票済み、夜行動済みの場合は空になります。
-
-## LLM Decision
-
-LLM provider には `AgentObservation` だけを渡します。
-
-- `available_actions`: 送信可能な action
-- `legal_targets`: action ごとの合法 target id
-- `speeches` / `vote_rounds`: public history
-- `known_roles`: その player が観測できる role だけ
-
-provider は選択済み `agent_strategy_id` の LangGraph `StateGraph` を実行し、Pydantic で `AgentDecision` を検証します。不正 JSON、不正 action、不正 target、長すぎる speech、repair 失敗、provider 呼び出し失敗は game を止めず deterministic fallback に落とします。raw prompt、raw response、API key は public response、public timeline、operational log へ出しません。
-
-strategy 詳細は [Agent Strategies](agent-strategies.md) を参照してください。
-
-## Errors
-
-Error payload は RFC 9457 Problem Details 互換です。Supabase worker は `game_operation_requests.error_payload` に保存します。
-
-| Status | Code | 例 |
-| --- | --- | --- |
-| `400` | `request.validation_failed` | body / query validation |
-| `401` | `auth.required` | Supabase session がない |
-| `403` | `auth.forbidden` | RLS で許可されない user / game / player |
-| `404` | `resource.not_found` | game が存在しない |
-| `409` | `game.invalid_phase` | manual input 待ち、または終了済み game の進行。advance では job.error に格納する |
-| `422` | `game.invalid_action` | action ルール違反 |
-| `500` | `internal.unexpected` | 想定外エラー |
-
-## 実装位置
-
-| Path | 責務 |
+| Level | 用途 |
 | --- | --- |
-| `contracts/schemas.py` | GameApi / Supabase で共有する wire DTO、Problem Details schema |
-| `contracts/errors.py` | error code metadata |
-| `api/ports.py` | CLI / Streamlit が使う `GameApi` port |
-| `api/factory.py` | SupabaseGameApi の構築と匿名 session 確保 |
-| `api/usecase_bridge.py` | settings、definition、LLM provider を usecase 用に組み立てる |
-| `api/setup_options.py` | runtime definition から開始画面 metadata を作る projection |
-| `api/supabase/` | Supabase Auth / Data API adapter |
-| `api/supabase/worker/` | operation request worker、Postgres repository adapter、LLM trace sink |
-| `entrypoint/requests.py` | CLI / Streamlit 共通 request builder |
-| `usecase/jobs/` | `GameService` facade、command / query、repository / telemetry port |
-| `usecase/internal/` | workflow、projection、agent adapter、唯一の domain 接点 |
+| `DEBUG` | 状態遷移、設定解決、エージェント判断の安全な要約 |
+| `INFO` | プロセス開始・終了、ゲーム作成、フェーズ完了、ゲーム終了 |
+| `WARNING` | 外部サービスの一時障害、再試行、縮退 |
+| `ERROR` | 継続不能な外部障害、不正設定、予期しない例外 |
 
-## 検証
+入力不備、存在しないID、通常のルール違反は結果として返し、エラーログにしません。ログ名は実行機能に合わせて`worker.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl`とします。
 
-```bash
-uv run pytest tests/unit/api tests/unit/entrypoint tests/unit/commons
-uv run pytest tests/unit/architecture/test_architecture_boundaries.py
-supabase migration up
-uv run --extra worker werewolf-agent-worker run
-```
+## 永続化
+
+- Supabaseを永続化の正本とする
+- public schemaとprivate schemaの既存分離を維持する
+- workerだけがprivate stateとLLM traceを書き込む
+- optimistic revisionを維持し、状態競合を通常の結果として扱う
+- public timelineをdomainの型付きイベントから投影する
+- DBスキーマとmigrationは今回変更しない
+
+## 構造制約
+
+- interfacesはdomainとusecaseを直接importしない
+- adaptersはinterfacesへ依存しない
+- usecaseはadapters、interfaces、agentsへ依存しない
+- agentsはdomainとusecaseへ依存しない
+- domainは他のプロジェクト層へ依存しない
+- 外部層は`werewolf_agent.domain`の公開面を使用する
+- import許可表と循環参照はASTベースの構造テストで検査する
+
+## エラー契約
+
+domainの`RuleViolation`はusecaseが外部エラー契約へ変換します。外部には安全なerror code、利用者向けメッセージ、必要最小限のcontextだけを返します。内部例外、stack trace、認証情報は返しません。

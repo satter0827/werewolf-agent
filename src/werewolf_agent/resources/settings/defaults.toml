@@ -1,0 +1,83 @@
+app_name = "werewolf-agent"
+
+generated_dir = ".werewolf-agent"
+
+llm_provider = "fake"
+model = "fake-list-llm"
+llm_base_url = ""
+llm_timeout_seconds = 12.0
+llm_max_retries = 0
+llm_max_tokens = 96
+llm_temperature = 0.7
+llm_default_agent_strategy_id = "stable_fast"
+llm_decision_graphs_file = ""
+llm_structured_output_mode = "auto"
+llm_validation_retry_count = 1
+llm_graph_max_steps = 8
+llm_fallback_policy = "deterministic_legal_action"
+llm_prompt_file = ""
+llm_fake_responses_file = ""
+llm_players_file = ""
+
+log_level = "INFO"
+log_output = "file"
+log_dir = ".werewolf-agent/logs"
+log_file_name = "werewolf-agent.jsonl"
+log_retention_days = 14
+log_third_party_level = "WARNING"
+
+supabase_url = ""
+supabase_publishable_key = ""
+supabase_db_dsn = ""
+supabase_auth_timeout_seconds = 10.0
+supabase_rest_timeout_seconds = 10.0
+supabase_worker_id = "worker-default"
+supabase_worker_poll_interval_seconds = 1.0
+supabase_worker_batch_size = 5
+supabase_worker_claim_seconds = 60
+llm_trace_retention_days = 30
+
+advance_job_poll_interval_seconds = 0.25
+advance_job_poll_timeout_seconds = 60.0
+cli_max_steps = 64
+cli_poll_interval_seconds = 0.0
+cli_event_limit = 100
+cli_output_format = "table"
+
+streamlit_refresh_interval_seconds = 5.0
+streamlit_turn_limit = 100
+streamlit_run_limit = 20
+streamlit_max_auto_steps = 64
+streamlit_auto_advance_interval_seconds = 1.0
+streamlit_initial_sidebar_state = "expanded"
+streamlit_language = "ja"
+streamlit_i18n_file = ""
+streamlit_css_file = ""
+streamlit_screens_file = ""
+streamlit_default_seed = 1
+streamlit_random_seed_max = 1000000
+streamlit_default_manual_player_id = "player-1"
+streamlit_message_max_chars = 200
+streamlit_page_title = "Werewolf Agent"
+streamlit_service_name = "werewolf-agent-streamlit"
+
+reveal_api_enabled = true
+api_game_list_default_limit = 20
+api_game_list_max_limit = 100
+api_timeline_default_limit = 100
+api_timeline_max_limit = 500
+
+game_min_players = 5
+game_max_players = 8
+game_default_player_count = 6
+game_supported_agent_type = "llm"
+game_supported_agent_name = "LLM Agent"
+game_default_narration_mode = "standard"
+game_default_setup_preset_id = "standard_6"
+game_rules_file = ""
+game_roles_file = ""
+game_catalog_file = ""
+game_abilities_file = ""
+game_setup_description_template = "{min_players}〜{max_players}人向けの最小 API ルールセットです。"
+game_role_names = "villager:村人,werewolf:人狼,seer:占い師,knight:騎士"
+game_phase_names = "night:夜,day_discussion:昼チャット,voting:投票,finished:終了"
