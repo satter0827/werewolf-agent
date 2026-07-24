@@ -402,14 +402,33 @@ def test_vscode_launch_uses_current_entrypoints() -> None:
     configurations = {
         configuration["name"]: configuration for configuration in launch["configurations"]
     }
+    compounds = {compound["name"]: compound for compound in launch["compounds"]}
 
     assert "API: uvicorn" not in configurations
-    assert configurations["Worker: run"]["module"] == "werewolf_agent.api.supabase.worker.app"
-    assert (
-        "backend/src/werewolf_agent/entrypoint/streamlit/app.py"
-        in configurations["UI: Streamlit"]["args"]
+    assert "UI: Streamlit" not in configurations
+    assert "UI: Streamlit (one click)" not in configurations
+    assert "Worker: run" not in configurations
+    assert "Worker: once" not in configurations
+    assert "UI: Streamlit (verified)" not in configurations
+    assert configurations["Internal: Worker"]["module"] == (
+        "werewolf_agent.api.supabase.worker.app"
     )
-    assert launch["compounds"] == []
+    streamlit_configuration = configurations["Internal: Streamlit"]
+    assert (
+        "backend/src/werewolf_agent/entrypoint/streamlit/app.py" in streamlit_configuration["args"]
+    )
+    streamlit_port_index = streamlit_configuration["args"].index("--server.port")
+    assert streamlit_configuration["args"][streamlit_port_index + 1] == "8501"
+    assert streamlit_configuration["presentation"]["hidden"] is True
+    assert configurations["Internal: Worker"]["presentation"]["hidden"] is True
+    assert "${input:streamlitPort}" not in json.dumps(launch)
+    assert "App: Streamlit + Worker" not in compounds
+    assert compounds["UI: Streamlit (verified)"]["configurations"] == [
+        "Internal: Worker",
+        "Internal: Streamlit",
+    ]
+    assert compounds["UI: Streamlit (verified)"]["preLaunchTask"] == "Supabase: preflight"
+    assert compounds["UI: Streamlit (verified)"]["stopAll"] is True
 
 
 def test_vscode_launch_uses_process_log_files() -> None:
@@ -418,8 +437,11 @@ def test_vscode_launch_uses_process_log_files() -> None:
         configuration["name"]: configuration for configuration in launch["configurations"]
     }
 
-    _assert_process_log_file_env(configurations["Worker: run"]["env"], "worker.jsonl")
-    _assert_process_log_file_env(configurations["UI: Streamlit"]["env"], "streamlit.jsonl")
+    _assert_process_log_file_env(configurations["Internal: Worker"]["env"], "worker.jsonl")
+    _assert_process_log_file_env(
+        configurations["Internal: Streamlit"]["env"],
+        "streamlit.jsonl",
+    )
     for name, configuration in configurations.items():
         env = configuration["env"]
         if name.startswith("CLI: "):
@@ -442,6 +464,26 @@ def test_tooling_does_not_reference_fastapi_or_uvicorn() -> None:
     assert "fastapi" not in combined
     assert "uvicorn" not in combined
     assert "starlette" not in combined
+
+
+def test_vscode_tasks_expose_supabase_preflight_and_streamlit_runner() -> None:
+    tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
+    task_by_label = {task["label"]: task for task in tasks["tasks"]}
+
+    assert task_by_label["Supabase: preflight"]["command"] == (
+        "${workspaceFolder}\\scripts\\preflight-supabase.cmd"
+    )
+    assert task_by_label["UI: Streamlit"]["command"] == (
+        "${workspaceFolder}\\scripts\\run-streamlit.cmd"
+    )
+    assert task_by_label["UI: Streamlit"]["dependsOn"] == "Supabase: preflight"
+    assert task_by_label["UI: Streamlit"]["dependsOrder"] == "sequence"
+    assert (
+        task_by_label["Supabase: migration up"]["options"]["env"]["SUPABASE_TELEMETRY_DISABLED"]
+        == "1"
+    )
+    assert task_by_label["Supabase: preflight"]["problemMatcher"] == []
+    assert task_by_label["UI: Streamlit"]["problemMatcher"] == []
 
 
 def test_runtime_default_env_values_are_not_mirrored_by_tooling() -> None:
@@ -483,7 +525,9 @@ def test_execution_helpers_route_operational_logs_to_workspace_log_dir() -> None
         ROOT / ".vscode" / "launch.json",
         ROOT / ".vscode" / "tasks.json",
         ROOT / "scripts" / "check-all.cmd",
+        ROOT / "scripts" / "preflight-supabase.cmd",
         ROOT / "scripts" / "run-cli.cmd",
+        ROOT / "scripts" / "run-streamlit.cmd",
         ROOT / "scripts" / "run-worker.cmd",
         ROOT / "compose.yaml",
     ]
@@ -500,7 +544,9 @@ def test_operational_log_file_names_use_process_names_not_launcher_names() -> No
         (ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"),
         (ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"),
         (ROOT / "scripts" / "check-all.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "preflight-supabase.cmd").read_text(encoding="utf-8"),
         (ROOT / "scripts" / "run-cli.cmd").read_text(encoding="utf-8"),
+        (ROOT / "scripts" / "run-streamlit.cmd").read_text(encoding="utf-8"),
         (ROOT / "scripts" / "run-worker.cmd").read_text(encoding="utf-8"),
         (ROOT / "compose.yaml").read_text(encoding="utf-8"),
         (ROOT / "AGENTS.md").read_text(encoding="utf-8"),
@@ -591,6 +637,29 @@ def test_frontend_uses_supabase_queue_without_local_demo_client() -> None:
         )
 
     assert not offenders
+
+
+def test_supabase_only_settings_do_not_keep_compatibility_aliases() -> None:
+    settings_source = (PACKAGE / "commons" / "configuration" / "settings.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "AliasChoices" not in settings_source
+    assert '"SUPABASE_URL"' not in settings_source
+    assert '"SUPABASE_ANON_KEY"' not in settings_source
+    assert '"SUPABASE_DB_DSN"' not in settings_source
+
+
+def test_supabase_entrypoints_validate_required_env_before_io() -> None:
+    cui_source = (PACKAGE / "entrypoint" / "cui" / "commands.py").read_text(encoding="utf-8")
+    streamlit_source = (PACKAGE / "entrypoint" / "streamlit" / "app.py").read_text(encoding="utf-8")
+    worker_source = (PACKAGE / "api" / "supabase" / "worker" / "app.py").read_text(encoding="utf-8")
+    frontend_app_source = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+
+    assert "require_supabase_client_config(settings)" in cui_source
+    assert "require_supabase_client_config(settings)" in streamlit_source
+    assert "_require_worker_config(settings)" in worker_source
+    assert "supabaseBrowserConfigError()" in frontend_app_source
 
 
 def test_user_facing_messages_are_catalogued() -> None:

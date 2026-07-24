@@ -255,6 +255,12 @@ def _normalize_ecs_fields(
     _move_field(event_dict, "ui_action", "ui.action")
     _move_field(event_dict, "ui_stop_reason", "ui.stop_reason")
     _move_field(event_dict, "error_code", "error.code")
+    _move_field(
+        event_dict,
+        "error_message",
+        "error.message",
+        transform=lambda value: redact_text(str(value)),
+    )
     _move_field(event_dict, "exception", "error.stack_trace")
 
     record = event_dict.get("_record")

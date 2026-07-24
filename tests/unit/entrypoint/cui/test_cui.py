@@ -8,7 +8,11 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from werewolf_agent.commons.configuration import get_settings
+from werewolf_agent.commons.configuration import (
+    AppSettings,
+    configure_entrypoint_logging,
+    get_settings,
+)
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
@@ -35,6 +39,8 @@ from werewolf_agent.entrypoint.cui.errors import run_app_command
 def disable_operational_log_file(monkeypatch: pytest.MonkeyPatch) -> None:
     get_settings.cache_clear()
     monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "http://127.0.0.1:54321")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "publishable-test")
 
 
 def _state(
@@ -568,6 +574,24 @@ def test_setup_options_show_and_advance_commands_use_public_api_client(
     assert ("advance", "game-1") in fake_client.calls
 
 
+def test_setup_options_requires_supabase_client_env_before_building_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_build_game_api(_settings: object) -> FakeGameApi:
+        raise AssertionError("build_game_api should not be called without Supabase env")
+
+    monkeypatch.setattr(cui_commands, "build_game_api", fail_build_game_api)
+    monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "")
+    get_settings.cache_clear()
+
+    result = CliRunner().invoke(app, ["setup-options"])
+
+    assert result.exit_code == 1
+    assert "WEREWOLF_SUPABASE_URL" in result.output
+    assert "WEREWOLF_SUPABASE_PUBLISHABLE_KEY" in result.output
+
+
 def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingGameApi(FakeGameApi):
         def create_game(self, request: CreateGameRequest) -> GameResponse:
@@ -589,6 +613,51 @@ def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.Mon
     assert result.exit_code == 1
     assert "game.invalid_action: The selected action is not allowed." in result.output
     assert "secret" not in result.output
+
+
+def test_run_app_command_logs_sanitized_error_message(caplog) -> None:
+    def fail() -> None:
+        raise AppError(
+            "configuration failed: api_key=secret-value",
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+        )
+
+    with (
+        caplog.at_level(logging.INFO, logger="werewolf_agent.entrypoint.cui.errors"),
+        pytest.raises(typer.Exit),
+    ):
+        run_app_command(fail)
+
+    record = next(
+        item for item in caplog.records if item.event_action == "cli.application_error.handled"
+    )
+    assert record.error_message == "configuration failed: api_key=[REDACTED]"
+    assert "secret-value" not in record.error_message
+
+
+def test_run_app_command_writes_sanitized_error_message_to_json_log(tmp_path: Path) -> None:
+    log_path = tmp_path / "cli.jsonl"
+    configure_entrypoint_logging(
+        AppSettings(
+            _env_file=None,
+            log_dir=tmp_path,
+            log_file_name=log_path.name,
+            log_output="file",
+        )
+    )
+
+    def fail() -> None:
+        raise AppError(
+            "configuration failed: api_key=secret-value",
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+        )
+
+    with pytest.raises(typer.Exit):
+        run_app_command(fail)
+
+    payload = json.loads(log_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert payload["error.message"] == "configuration failed: api_key=[REDACTED]"
+    assert "secret-value" not in payload["error.message"]
 
 
 def test_timeline_replay_and_games_use_public_api_client(

@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Final, Literal, Self, cast
 
 from pydantic import (
-    AliasChoices,
     Field,
     SecretStr,
     ValidationInfo,
@@ -354,7 +353,7 @@ class AppSettings(BaseSettings):
     )
     supabase_db_dsn: SecretStr = Field(
         default=SecretStr(DEFAULT_SUPABASE_DB_DSN),
-        validation_alias=AliasChoices("WEREWOLF_SUPABASE_DB_DSN", "SUPABASE_DB_DSN"),
+        validation_alias="WEREWOLF_SUPABASE_DB_DSN",
     )
     supabase_auth_timeout_seconds: float = Field(
         default=DEFAULT_SUPABASE_AUTH_TIMEOUT_SECONDS,
@@ -586,6 +585,7 @@ class AppSettings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=repository_root() / ".env",
         env_file_encoding="utf-8",
+        env_prefix="WEREWOLF_",
         extra="ignore",
         populate_by_name=True,
     )

@@ -3,6 +3,8 @@
 Windows batch helpers for local development. Run them from the repository root.
 
 ```bat
+scripts\preflight-supabase.cmd
+scripts\run-streamlit.cmd
 scripts\run-cli.cmd doctor --output json
 scripts\run-worker.cmd --once
 scripts\check-all.cmd
@@ -18,7 +20,9 @@ in `.venv`, it falls back to `uv run --group docs --extra streamlit`.
 It builds in `%TEMP%` first and then copies HTML into `docs\sphinx\_build`.
 
 `check-all.cmd` writes pytest / mypy cache under `%TEMP%\werewolf-agent` by
-default. Operational logs always default to `.werewolf-agent\logs`;
-`check-all.cmd` uses `check-all.jsonl` and `run-worker.cmd` uses `worker.jsonl`
-unless environment variables override them. Supabase migrations are handled by
-the Supabase CLI, not by these helper scripts.
+default. `preflight-supabase.cmd` starts the Supabase local stack when needed,
+creates or completes `.env` from `supabase status -o env`, applies migrations,
+and verifies `doctor` and `setup-options` before Streamlit is launched.
+Operational logs always default to `.werewolf-agent\logs`; `check-all.cmd` uses
+`check-all.jsonl`, `run-streamlit.cmd` uses `streamlit.jsonl`, and
+`run-worker.cmd` uses `worker.jsonl` unless environment variables override them.

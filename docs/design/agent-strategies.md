@@ -6,7 +6,7 @@ UI には graph 内部ではなく `AI strategy` として表示します。
 ## 目的
 
 - LLM の出力ゆらぎ、parse 失敗、不正 target、provider 呼び出し失敗で game を止めない
-- game ごとに選んだ `agent_strategy_id` を保存し、demo と worker の advance で同じ strategy を使う
+- game ごとに選んだ `agent_strategy_id` を保存し、worker の advance で同じ strategy を使う
 - graph 定義を TOML と設定値で切り替え、任意 import path や任意 Python 実行を許可しない
 - public response、public timeline、Streamlit UI に raw prompt、raw response、graph state、secret、private night action を出さない
 

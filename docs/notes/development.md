@@ -36,8 +36,9 @@ uv run werewolf-agent timeline <game_id> --follow
 
 Streamlit:
 
-```bash
-uv run --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py
+```bat
+scripts\preflight-supabase.cmd
+scripts\run-streamlit.cmd
 ```
 
 Supabase queue worker を使う場合:
@@ -67,7 +68,7 @@ worker を個別に起動:
 scripts\run-worker.cmd --once
 ```
 
-`scripts\run-worker.cmd` は `WEREWOLF_SUPABASE_DB_DSN` が設定されている環境で使います。React / Streamlit / CLI は Supabase anonymous sign-in で session を作り、worker が queue を処理します。VS Code の Run and Debug では `UI: Streamlit`、CLI 系 config、`Worker: run` を個別に起動します。運用ログは `.werewolf-agent/logs` 配下へ出し、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
+`scripts\preflight-supabase.cmd` は Docker を確認し、Supabase local stack が無ければ `supabase start` を実行します。その後 `supabase status -o env` の実値から `.env` を作成または補完し、migration、`doctor`、`setup-options` まで確認します。`scripts\run-worker.cmd` は `WEREWOLF_SUPABASE_DB_DSN` が必須です。React / Streamlit / CLI は Supabase anonymous sign-in で session を作り、worker が queue を処理します。VS Code の Run and Debug では `UI: Streamlit (verified)` を単体起動、`App: Streamlit + Worker` を一発起動として使います。運用ログは `.werewolf-agent/logs` 配下へ出し、worker は `worker.jsonl`、Streamlit は `streamlit.jsonl`、CLI は `cli.jsonl`、migration は `migrate.jsonl` を使います。
 
 ## 配置
 
@@ -122,7 +123,7 @@ scripts\run-worker.cmd --once
 
 Streamlit CSS は追記ではなく置換方式です。画面定義体は表示要素、表示順、配置、列数だけを制御し、public / private 判定、action availability、API payload、game state 計算は `entrypoint/streamlit/app.py` と表示 model 側に残します。
 
-運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer / demo reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS` / `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` / `WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE` / `WEREWOLF_LLM_VALIDATION_RETRY_COUNT` / `WEREWOLF_LLM_GRAPH_MAX_STEPS` / `WEREWOLF_LLM_FALLBACK_POLICY`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。React は browser に公開してよい値だけを `VITE_*` env から読み、`VITE_WEREWOLF_GAME_LIST_LIMIT` / `VITE_WEREWOLF_TIMELINE_LIMIT` / `VITE_WEREWOLF_OPERATION_POLL_INTERVAL_MS` / `VITE_WEREWOLF_OPERATION_POLL_TIMEOUT_MS` / `VITE_WEREWOLF_QUERY_STALE_TIME_MS` を使います。
+運用値の正本は `backend/src/werewolf_agent/resources/settings/defaults.toml` です。Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で override します。observer reveal の公開は `WEREWOLF_REVEAL_API_ENABLED`、LLM は `WEREWOLF_LLM_TIMEOUT_SECONDS` / `WEREWOLF_LLM_MAX_RETRIES` / `WEREWOLF_LLM_MAX_TOKENS` / `WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID` / `WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE` / `WEREWOLF_LLM_VALIDATION_RETRY_COUNT` / `WEREWOLF_LLM_GRAPH_MAX_STEPS` / `WEREWOLF_LLM_FALLBACK_POLICY`、queue polling は `WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS` / `WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS`、trace retention は `WEREWOLF_LLM_TRACE_RETENTION_DAYS` で制御します。React は browser に公開してよい値だけを `VITE_*` env から読み、`VITE_WEREWOLF_GAME_LIST_LIMIT` / `VITE_WEREWOLF_TIMELINE_LIMIT` / `VITE_WEREWOLF_OPERATION_POLL_INTERVAL_MS` / `VITE_WEREWOLF_OPERATION_POLL_TIMEOUT_MS` / `VITE_WEREWOLF_QUERY_STALE_TIME_MS` を使います。
 
 ## DB
 

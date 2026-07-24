@@ -3,19 +3,29 @@
 from __future__ import annotations
 
 import importlib
+import logging
 import secrets
 import time
 from typing import Any, cast
 from uuid import uuid4
 
-from werewolf_agent.api.auth import ensure_session
+from werewolf_agent.api.auth import ensure_session, require_supabase_client_config
 from werewolf_agent.commons.configuration import (
     AppSettings,
     bind_observation_context,
     configure_entrypoint_logging,
     get_settings,
 )
-from werewolf_agent.commons.shared.constants import DEFAULT_NARRATION_MODE
+from werewolf_agent.commons.log_levels import log_level_number
+from werewolf_agent.commons.security.redaction import redact_text
+from werewolf_agent.commons.shared.constants import (
+    DEFAULT_NARRATION_MODE,
+    EVENT_OUTCOME_FAILURE,
+)
+from werewolf_agent.commons.shared.messages import (
+    LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
+    LOG_STREAMLIT_GAME_CREATE_FAILED,
+)
 from werewolf_agent.contracts import (
     ACTIVE_ADVANCE_JOB_STATUSES,
     ADVANCE_JOB_STATUS_FAILED,
@@ -133,6 +143,8 @@ from werewolf_agent.entrypoint.streamlit.view_models import (
     SavedGameOptionView,
 )
 
+logger = logging.getLogger(__name__)
+
 
 def main() -> None:
     """Render the Streamlit application."""
@@ -156,7 +168,12 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         initial_sidebar_state=settings.streamlit_initial_sidebar_state,
     )
     st.markdown(load_style_tag(settings), unsafe_allow_html=True)
-    ensure_session(settings)
+    try:
+        require_supabase_client_config(settings)
+        ensure_session(settings)
+    except AppError as exc:
+        _handle_app_error(st, exc)
+        return
 
     selected_option, view = _render_sidebar(
         st,
@@ -1420,6 +1437,26 @@ def _create_game(
             custom_characters=custom_characters or [],
         )
     except (AppError, ValueError) as exc:
+        if isinstance(exc, AppError):
+            log_level = log_level_number(exc.spec.log_level)
+            error_extra = exc.log_extra()
+            error_message = exc.detail
+        else:
+            log_level = logging.INFO
+            error_extra = {}
+            error_message = str(exc)
+        logger.log(
+            log_level,
+            LOG_STREAMLIT_GAME_CREATE_FAILED,
+            extra={
+                **error_extra,
+                "error.message": redact_text(error_message),
+                "event_action": LOG_STREAMLIT_GAME_CREATE_FAILED,
+                "event_outcome": EVENT_OUTCOME_FAILURE,
+                "manual_player_id": manual_player_id or "",
+                "screen_mode": screen_mode,
+            },
+        )
         feedback.error(str(exc))
         return
 
@@ -1944,6 +1981,20 @@ def _action_choice_label(action: ActionChoiceView) -> str:
 
 def _streamlit() -> Any:
     return importlib.import_module("streamlit")
+
+
+def _handle_app_error(st: Any, exc: AppError) -> None:
+    logger.log(
+        log_level_number(exc.spec.log_level),
+        LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
+        extra={
+            **exc.log_extra(),
+            "error.message": redact_text(exc.detail),
+            "event_action": LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
+            "event_outcome": EVENT_OUTCOME_FAILURE,
+        },
+    )
+    st.error(exc.detail)
 
 
 if __name__ == "__main__":

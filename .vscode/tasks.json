@@ -2,6 +2,36 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Supabase: preflight",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\preflight-supabase.cmd",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "UI: Streamlit",
+      "type": "shell",
+      "command": "${workspaceFolder}\\scripts\\run-streamlit.cmd",
+      "dependsOn": "Supabase: preflight",
+      "dependsOrder": "sequence",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
       "label": "Supabase: migration up",
       "type": "shell",
       "command": "supabase",
@@ -12,6 +42,7 @@
       "options": {
         "cwd": "${workspaceFolder}",
         "env": {
+          "SUPABASE_TELEMETRY_DISABLED": "1",
           "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
         }
       },

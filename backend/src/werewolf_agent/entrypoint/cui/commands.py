@@ -11,6 +11,7 @@ import typer
 from rich.panel import Panel
 from rich.table import Table
 
+from werewolf_agent.api.auth import require_supabase_client_config
 from werewolf_agent.api.factory import build_game_api
 from werewolf_agent.api.ports import GameApi
 from werewolf_agent.commons.configuration import AppSettings, get_settings
@@ -593,6 +594,7 @@ def _games(
 
 def _client() -> GameApi:
     settings = get_settings()
+    require_supabase_client_config(settings)
     return build_game_api(settings)
 
 

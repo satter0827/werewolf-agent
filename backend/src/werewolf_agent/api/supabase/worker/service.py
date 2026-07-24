@@ -24,7 +24,11 @@ from werewolf_agent.api.usecase_bridge import (
     build_llm_provider_config,
 )
 from werewolf_agent.commons.configuration import AppSettings
+from werewolf_agent.commons.shared.constants import EVENT_OUTCOME_FAILURE, EVENT_OUTCOME_SUCCESS
 from werewolf_agent.commons.shared.messages import (
+    LOG_WORKER_REQUEST_CLAIMED,
+    LOG_WORKER_REQUEST_COMPLETED,
+    LOG_WORKER_REQUEST_FAILED,
     MESSAGE_PLAYER_SEAT_NOT_OWNED,
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
     MESSAGE_WORKER_REQUEST_FAILED,
@@ -65,6 +69,15 @@ def process_worker_batch(settings: AppSettings) -> int:
                 request = _claim_request(connection, settings)
                 if request is None:
                     break
+                logger.info(
+                    LOG_WORKER_REQUEST_CLAIMED,
+                    extra={
+                        **_request_log_extra(request),
+                        "event_action": LOG_WORKER_REQUEST_CLAIMED,
+                        "event_outcome": EVENT_OUTCOME_SUCCESS,
+                        "worker_id": settings.supabase_worker_id,
+                    },
+                )
                 _process_request(connection, settings, request)
                 processed += 1
     return processed
@@ -114,7 +127,14 @@ def _process_request(
             raise AppError(message_unsupported_operation_type(operation_type))
         _complete_request(connection, request, result.model_dump(mode="json"))
     except Exception as exc:
-        logger.exception("worker request failed", extra={"request_id": request.get("request_id")})
+        logger.exception(
+            LOG_WORKER_REQUEST_FAILED,
+            extra={
+                **_request_log_extra(request),
+                "event_action": LOG_WORKER_REQUEST_FAILED,
+                "event_outcome": EVENT_OUTCOME_FAILURE,
+            },
+        )
         _fail_request(connection, request, _problem_from_exception(exc))
 
 
@@ -366,6 +386,15 @@ def _complete_request(
         """,
         (Jsonb(dict(result_payload)), request["request_id"]),
     )
+    logger.info(
+        LOG_WORKER_REQUEST_COMPLETED,
+        extra={
+            **_request_log_extra(request),
+            "game_id": str(result_payload.get("game_id") or request.get("game_id") or ""),
+            "event_action": LOG_WORKER_REQUEST_COMPLETED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
+        },
+    )
 
 
 def _fail_request(
@@ -409,3 +438,12 @@ def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
 
 def _json_object(value: Any) -> dict[str, Any]:
     return dict(value) if isinstance(value, dict) else {}
+
+
+def _request_log_extra(request: Mapping[str, Any]) -> dict[str, object]:
+    return {
+        "request_id": str(request.get("request_id") or ""),
+        "operation_type": str(request.get("operation_type") or ""),
+        "game_id": str(request.get("game_id") or ""),
+        "attempt_count": int(request.get("attempt_count") or 0),
+    }

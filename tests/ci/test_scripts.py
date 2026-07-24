@@ -23,7 +23,9 @@ def test_scripts_directory_keeps_executable_code_batch_only() -> None:
 def test_expected_batch_scripts_exist() -> None:
     for name in (
         "run-cli.cmd",
+        "run-streamlit.cmd",
         "run-worker.cmd",
+        "preflight-supabase.cmd",
         "check-all.cmd",
         "rebuild-sphinx-docs.cmd",
         "clean-caches.cmd",
@@ -55,10 +57,29 @@ def test_rebuild_sphinx_uses_project_environment_for_autodoc() -> None:
     assert "uv run --no-project" not in script
 
 
+def test_supabase_preflight_bootstraps_local_runtime() -> None:
+    script = _read("scripts/preflight-supabase.cmd")
+
+    assert "SUPABASE_TELEMETRY_DISABLED=1" in script
+    assert "supabase start" in script
+    assert "supabase status -o env" in script
+    assert "supabase migration up" in script
+    assert "API_URL" in script
+    assert "PUBLISHABLE_KEY" in script
+    assert "DB_URL" in script
+    assert "WEREWOLF_SUPABASE_URL" in script
+    assert "WEREWOLF_SUPABASE_PUBLISHABLE_KEY" in script
+    assert "VITE_SUPABASE_URL" in script
+    assert "VITE_SUPABASE_PUBLISHABLE_KEY" in script
+    assert "WEREWOLF_SUPABASE_DB_DSN" in script
+
+
 @pytest.mark.skipif(os.name != "nt", reason="batch smoke tests run on Windows")
 def test_batch_help_and_dry_run_commands_do_not_require_project_build() -> None:
     for command in (
         ["cmd", "/c", "scripts\\check-all.cmd", "--help"],
+        ["cmd", "/c", "scripts\\preflight-supabase.cmd", "--help"],
+        ["cmd", "/c", "scripts\\run-streamlit.cmd", "--help"],
         ["cmd", "/c", "scripts\\run-worker.cmd", "--help"],
         ["cmd", "/c", "scripts\\clean-caches.cmd", "--dry-run"],
     ):

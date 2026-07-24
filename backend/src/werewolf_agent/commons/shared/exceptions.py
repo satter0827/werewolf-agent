@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
+from werewolf_agent.commons.security.redaction import redact_text
 from werewolf_agent.commons.shared.errors import ErrorCode, ErrorSpec, get_error_spec
 
 
@@ -32,6 +33,7 @@ class AppError(Exception):
         """Return structured logging fields for this error."""
         extra: dict[str, object] = {
             "error_code": self.code.value,
+            "error_message": redact_text(self.detail),
             "retryable": self.retryable,
         }
         if trace_id is not None:

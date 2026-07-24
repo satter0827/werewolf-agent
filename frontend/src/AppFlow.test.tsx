@@ -1,6 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { useUiStore } from "./store/uiStore";
@@ -32,10 +32,12 @@ function renderApp() {
   );
 }
 
-describe("App demo flow", () => {
+describe("App Supabase flow", () => {
   let currentScreen: GameScreenSource;
 
   beforeEach(() => {
+    vi.stubEnv("VITE_SUPABASE_URL", "http://127.0.0.1:54321");
+    vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "publishable-test");
     currentScreen = sampleScreenSource();
     gameClientMock.getSetupOptions.mockResolvedValue(sampleSetupOptions);
     gameClientMock.getScreen.mockImplementation(async () => currentScreen);
@@ -96,6 +98,10 @@ describe("App demo flow", () => {
         timeline: currentScreen.timeline.items,
       };
     });
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
   });
 
   it("starts a playable Supabase village from setup choices", async () => {

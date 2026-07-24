@@ -60,9 +60,14 @@ LOG_STREAMLIT_ACTION_SUBMITTED = "streamlit.action.submitted"
 LOG_STREAMLIT_ADVANCE_STEP_COMPLETED = "streamlit.advance_step.completed"
 LOG_STREAMLIT_ADVANCE_STEP_STARTED = "streamlit.advance_step.started"
 LOG_STREAMLIT_APPLICATION_ERROR_HANDLED = "streamlit.application_error.handled"
+LOG_STREAMLIT_GAME_CREATE_FAILED = "streamlit.game.create_failed"
 LOG_STREAMLIT_GAME_CREATED = "streamlit.game.created"
 LOG_STREAMLIT_RERUN_STARTED = "streamlit.rerun.started"
 LOG_STREAMLIT_REFRESHED = "streamlit.screen.loaded"
+LOG_WORKER_APPLICATION_STARTED = "worker.application.started"
+LOG_WORKER_REQUEST_CLAIMED = "worker.request.claimed"
+LOG_WORKER_REQUEST_COMPLETED = "worker.request.completed"
+LOG_WORKER_REQUEST_FAILED = "worker.request.failed"
 MESSAGE_GAME_NOT_FOUND = "Game not found."
 MESSAGE_GAME_NOT_FOUND_TEMPLATE = "Game not found: {game_id}"
 MESSAGE_UNSUPPORTED_AGENT_ACTION = "Unsupported agent action."
@@ -223,12 +228,16 @@ MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP = "supabase_url must start with http:/
 MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED = (
     "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY must be set together."
 )
-MESSAGE_SUPABASE_WORKER_DSN_REQUIRED = "WEREWOLF_SUPABASE_DB_DSN is required for the worker."
+MESSAGE_SUPABASE_WORKER_DSN_REQUIRED = (
+    "WEREWOLF_SUPABASE_DB_DSN is required for the Supabase queue worker. "
+    "Create .env from local Supabase values before starting the worker."
+)
 MESSAGE_SUPABASE_AUTH_UNAVAILABLE = "Supabase Auth is unavailable."
 MESSAGE_SUPABASE_AUTH_INVALID_RESPONSE = "Supabase Auth returned an invalid response."
 MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION = "Supabase Auth returned an incomplete session."
 MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED = (
-    "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required."
+    "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required. "
+    "Create .env from local Supabase values before starting CLI or Streamlit."
 )
 MESSAGE_SUPABASE_DATA_API_UNAVAILABLE = "Supabase Data API is unavailable."
 MESSAGE_SUPABASE_DATA_API_NON_LIST_RESPONSE = "Supabase Data API returned a non-list response."

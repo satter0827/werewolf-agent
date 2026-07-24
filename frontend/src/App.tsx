@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { supabaseBrowserConfigError } from "./config";
 import { gameClient } from "./data/SupabaseGameClient";
 import { VillageLayout } from "./features/village/VillageLayout";
 import { mapGameScreen } from "./gameClient/screenAdapter";
@@ -16,22 +17,26 @@ export function App() {
   const setActiveGameId = useUiStore((state) => state.setActiveGameId);
   const setActiveView = useUiStore((state) => state.setActiveView);
   const setManualPlayerId = useUiStore((state) => state.setManualPlayerId);
+  const startupConfigError = supabaseBrowserConfigError();
+  const queriesEnabled = startupConfigError === null;
 
   const setupQuery = useQuery({
+    enabled: queriesEnabled,
     queryKey: ["setup-options"],
     queryFn: () => gameClient.getSetupOptions(),
   });
   const screenQuery = useQuery({
-    enabled: activeGameId !== null,
+    enabled: queriesEnabled && activeGameId !== null,
     queryKey: ["game-screen", activeGameId, manualPlayerId],
     queryFn: () => gameClient.getScreen(activeGameId, manualPlayerId),
   });
   const revealQuery = useQuery({
-    enabled: activeView === "observe" && activeGameId !== null,
+    enabled: queriesEnabled && activeView === "observe" && activeGameId !== null,
     queryKey: ["game-reveal", activeGameId],
     queryFn: () => gameClient.getReveal(activeGameId ?? ""),
   });
   const gamesQuery = useQuery({
+    enabled: queriesEnabled,
     queryKey: ["game-list"],
     queryFn: () => gameClient.listGames(),
   });
@@ -80,7 +85,15 @@ export function App() {
     },
   });
 
-  if (setupQuery.isLoading || (activeGameId !== null && screenQuery.isLoading) || gamesQuery.isLoading) {
+  if (startupConfigError) {
+    return <div className="wa-loading" role="alert">{startupConfigError.message}</div>;
+  }
+
+  if (
+    setupQuery.isLoading ||
+    (activeGameId !== null && screenQuery.isLoading) ||
+    gamesQuery.isLoading
+  ) {
     return <div className="wa-loading">村の夜明けを準備しています</div>;
   }
 

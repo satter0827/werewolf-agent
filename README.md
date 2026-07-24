@@ -17,17 +17,24 @@ Supabase queue:
 
 ```bash
 uv sync --group dev --extra llm --extra streamlit --extra worker
+supabase start
+supabase status -o env
 supabase migration up
 uv run --extra worker werewolf-agent-worker run
 uv run werewolf-agent doctor
 uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
+`.env` は `scripts\preflight-supabase.cmd` が `supabase status -o env` の API URL、anon/publishable key、DB URL から作成または補完します。手動で管理する場合も、`WEREWOLF_SUPABASE_URL`、`WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_PUBLISHABLE_KEY`、`WEREWOLF_SUPABASE_DB_DSN` を使います。コード側は別名、推測 default、local fallback を持ちません。
+
 Streamlit:
 
-```bash
-uv run --extra streamlit streamlit run backend/src/werewolf_agent/entrypoint/streamlit/app.py
+```bat
+scripts\preflight-supabase.cmd
+scripts\run-streamlit.cmd
 ```
+
+`scripts\preflight-supabase.cmd` は Docker を確認し、Supabase local stack が無ければ `supabase start` を実行します。その後 `supabase status -o env` の実値から `.env` を作成または補完し、migration、`doctor`、`setup-options` まで確認します。
 
 `WEREWOLF_SUPABASE_URL` と `WEREWOLF_SUPABASE_PUBLISHABLE_KEY` は必須です。未ログイン UX は login form ではなく、Supabase anonymous sign-in で authenticated session を作ります。FakeLLM を使う場合も、LLM provider は worker process が Python usecase 内で接続します。
 
@@ -40,7 +47,7 @@ uv run werewolf-agent timeline <game_id> --follow
 uv run werewolf-agent replay --timeline .werewolf-agent/logs/game-001.jsonl
 ```
 
-VS Code では `UI: Streamlit`、CLI 系 config、`Worker: run` を個別に起動します。OneDrive / sandbox の権限差分を避けるため、検証用 cache と screenshot は `%TEMP%\werewolf-agent` 配下、運用ログは `.werewolf-agent/logs` 配下へ置きます。
+VS Code では `UI: Streamlit (verified)` が preflight 済みの単体起動、`App: Streamlit + Worker` が Streamlit と worker の一発起動です。OneDrive / sandbox の権限差分を避けるため、検証用 cache と screenshot は `%TEMP%\werewolf-agent` 配下、運用ログは `.werewolf-agent/logs` 配下へ置きます。
 
 ## LLM Provider
 
@@ -106,7 +113,7 @@ LLM には `AgentObservation` だけを渡します。観測には `available_ac
 
 設定 default は `backend/src/werewolf_agent/resources/settings/defaults.toml` が正です。`.env.example` は override 例だけを置きます。
 
-`commons.configuration` が設定と logging bootstrap を解決し、`commons.resources` が packaged default と外部 TOML を検証します。`api.usecase_bridge` は読み込まれた値だけを usecase へ注入します。domain と usecase は source path、packaged fallback、`.env`、Supabase、logging 設定を知りません。
+`commons.configuration` が設定と logging bootstrap を解決し、`commons.resources` が packaged default と外部 TOML を検証します。`api.usecase_bridge` は読み込まれた値だけを usecase へ注入します。domain と usecase は source path、packaged default 解決、`.env`、Supabase、logging 設定を知りません。
 
 Supabase client は `WEREWOLF_SUPABASE_URL` / `WEREWOLF_SUPABASE_PUBLISHABLE_KEY`、worker は `WEREWOLF_SUPABASE_DB_DSN` を使います。API page size は `WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT` / `WEREWOLF_API_GAME_LIST_MAX_LIMIT`、timeline は `WEREWOLF_API_TIMELINE_DEFAULT_LIMIT` / `WEREWOLF_API_TIMELINE_MAX_LIMIT`、既定 narration は `WEREWOLF_GAME_DEFAULT_NARRATION_MODE` で変更できます。
 

@@ -15,7 +15,7 @@ def ensure_session(
     store: SupabaseSessionStore | None = None,
 ) -> SupabaseSession:
     """Return a fresh Supabase session, creating an anonymous user when absent."""
-    _require_supabase_config(settings)
+    require_supabase_client_config(settings)
     auth = _auth_client(settings)
     session_store = store or SupabaseSessionStore()
     session = session_store.load()
@@ -33,7 +33,8 @@ def ensure_session(
     return session
 
 
-def _require_supabase_config(settings: AppSettings) -> None:
+def require_supabase_client_config(settings: AppSettings) -> None:
+    """Raise a clear error when CLI/UI Supabase settings are absent."""
     if settings.supabase_client_configured:
         return
     raise AppError(

@@ -110,6 +110,7 @@ def test_app_error_allows_safe_detail_and_log_extra() -> None:
     assert str(error) == "Player cannot vote during the night."
     assert error.log_extra(trace_id="trace-1") == {
         "error_code": "game.invalid_action",
+        "error_message": "Player cannot vote during the night.",
         "retryable": False,
         "trace_id": "trace-1",
         "error_context": {"player_id": "player-1"},

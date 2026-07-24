@@ -68,7 +68,7 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["streamlit_random_seed_max"] == 1000000
 
 
-def test_supabase_settings_default_to_unconfigured_demo_mode() -> None:
+def test_supabase_settings_default_to_unconfigured() -> None:
     settings = AppSettings(_env_file=None)
 
     assert settings.supabase_url == ""
@@ -99,6 +99,15 @@ def test_supabase_client_settings_must_be_supplied_as_pair() -> None:
     assert settings.supabase_url == "http://127.0.0.1:54321"
     assert settings.supabase_publishable_key_value == "anon-test"
     assert settings.supabase_worker_configured is True
+
+
+def test_supabase_standard_env_aliases_are_not_supported(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("SUPABASE_DB_DSN", "postgresql://postgres:secret@db.test/postgres")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.supabase_db_dsn_value == ""
+    assert settings.supabase_worker_configured is False
 
 
 def test_logging_settings_have_safe_defaults() -> None:
