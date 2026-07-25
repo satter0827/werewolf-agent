@@ -1,234 +1,102 @@
 # Werewolf Agent
 
-LLM agentを人狼ゲームのプレイヤーとして動かすPython backendです。ゲームの真実はdeterministicなヘッドレスコアが管理し、画面、LLM、Supabaseは外側から接続します。
+LLM agent を人狼ゲームの player として動かす Python backend です。決定的な domain
+core がゲームルールと完全状態を管理し、通常の HTTP API を通じて公開状態、public
+timeline、認証した player 本人の observation を提供します。完全状態を返す reveal
+は、設定で有効化した管理者専用 API に分離します。
 
-## 現在地
+React、CLI、Streamlit は同じ API contract を使います。Supabase は Auth、永続化、
+operation queue を担当し、worker が自動進行と LLM provider を実行します。既定の
+FakeListLLM は外部 API と credential を必要としません。
 
-- domain単体でゲーム作成、行動受付、フェーズ進行、勝敗判定を実行できる
-- ルールはステートレスなポリシーと検証済み設定の組み合わせで構成する
-- usecaseは`GameApplication`を最小のPython公開面としてdomainと接続する
-- LLMは独立した`agents`に置き、LangChain標準の`FakeListLLM`で外部APIなしに動作する
-- React、Streamlit、CLIはHTTP APIだけを通してゲームを操作する
-- Supabaseはproduction永続化とAuthを担い、有料LLMの秘密値はworkerだけが保持する
-- 公開状態、公開履歴、LLM入力、運用ログから秘密情報を分離する
+## セットアップ
 
-## 起動
+Python 3.11 以上 3.15 未満、uv、Node.js、Docker、Supabase CLI を使用します。
 
-依存関係を同期します。
-
-```bash
-uv sync --group dev --extra api --extra llm --extra streamlit --extra worker
+```powershell
+uv sync --group dev --group docs --extra api --extra llm --extra streamlit --extra worker
+uv run --no-sync werewolf-agent doctor
 ```
 
-ローカルSupabaseを準備し、外部LLMを使わず`FakeListLLM`で1ゲーム実行します。
+local Supabase を含む事前確認:
 
-```bash
-python -m scripts.preflight_supabase
-uv run --extra worker werewolf-agent-worker run
-uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+```powershell
+uv run --no-sync python -m scripts.preflight_supabase
 ```
 
-環境変数を設定済みの場合は、CLIを直接実行できます。
+## 実行
 
-```bash
-uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+CLI で再現可能な game を実行します。
+
+```powershell
+uv run --no-sync werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
-Streamlitを起動します。
+各 process は console entrypoint または `.vscode/launch.json` から起動できます。
 
-```bash
-python -m scripts.preflight_supabase
-uv run --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py
-```
-
-workerを起動します。
-
-```bash
-uv run --extra worker werewolf-agent-worker run
-```
-
-Supabaseを手動で準備する場合:
-
-```bash
-supabase start
-supabase status -o env
-supabase migration up
-uv run --extra worker werewolf-agent-worker run
-```
-
-Dockerで起動する場合は、host用DSNとcontainer用DSNを分けて`.env`へ設定します。
-ローカルSupabaseの既定portでは、host側を`127.0.0.1:54322`、container側を
-`host.docker.internal:54322`にします。
-
-```dotenv
-WEREWOLF_SUPABASE_DB_DSN=postgresql://postgres:postgres@127.0.0.1:54322/postgres
-WEREWOLF_COMPOSE_SUPABASE_DB_DSN=postgresql://postgres:postgres@host.docker.internal:54322/postgres
-```
-
-```bash
+```powershell
+uv run --no-sync werewolf-agent-worker run
+uv run --no-sync streamlit run src/werewolf_agent/interfaces/streamlit/app.py
 docker compose --profile dev up --build
 ```
 
-## 構成
+React の開発 server は `Frontend: Dev` VS Code task、または frontend package の
+`dev` script から起動します。
+
+## 設計
 
 | Path | 責務 |
 | --- | --- |
-| `src/werewolf_agent/domain/` | ゲーム集約、状態、イベント、ルールポリシー |
-| `src/werewolf_agent/usecase/` | command、query、result、handler、repository port |
-| `src/werewolf_agent/agents/` | player agent契約、観測、意思決定 |
-| `src/werewolf_agent/agents/langchain/` | LangChain、LangGraph、FakeListLLM |
-| `src/werewolf_agent/adapters/` | GameClient、外部サービス、usecase bridge |
-| `src/werewolf_agent/api/` | UIと独立したFastAPIサーバー |
-| `src/werewolf_agent/interfaces/` | CLI、Streamlit、非同期worker |
-| `frontend/` | React本番UI |
-| `src/werewolf_agent/configuration/` | settings、TOML、resource読込 |
-| `src/werewolf_agent/observability/` | loggingと実行context |
-| `src/werewolf_agent/security/` | 秘密情報のredaction |
-| `src/werewolf_agent/contracts/` | 外部wire schemaと安全なerror |
-| `src/werewolf_agent/resources/` | game、presentation、LLM、promptの既定設定 |
+| `src/werewolf_agent/domain` | 集約、状態、イベント、ルール policy |
+| `src/werewolf_agent/usecase` | stateless application、DTO、repository port |
+| `src/werewolf_agent/agents` | 観測、意思決定、player port、provider |
+| `src/werewolf_agent/adapters` | HTTP client、Supabase、agents 接続 |
+| `src/werewolf_agent/api` | FastAPI、認証、認可、composition root |
+| `src/werewolf_agent/interfaces` | CLI、Streamlit、worker |
+| `src/werewolf_agent/contracts` | 外部 wire schema と安全な error |
+| `frontend` | React UI と generated OpenAPI client |
 
-依存方向は外側から内側への一方向です。
+`Game` だけがゲーム状態を変更します。usecase は domain 操作と保存を調整し、画面は
+合法手、フェーズ、勝敗を再計算しません。agents と usecase は互いに依存せず、
+`adapters/agents/game_driver.py` が observation、decision、action を変換します。
 
-```text
-React / Streamlit / CLI -> HTTP API -> GameApplication -> domain
-                                      \-> Supabase / agents
+要件から運用までの説明は [Sphinx 設計書](docs/index.md) を参照してください。
+
+## 文書と構造分析
+
+文書の構造検査と Sphinx build は品質 runner から独立して実行できます。
+
+```powershell
+uv run --no-sync python -m scripts.docs inspect
+uv run --no-sync python -m scripts.docs build
+uv run --no-sync python -m scripts.architecture
 ```
 
-agentsとdomainは互いに参照しません。`adapters/agents/game_driver.py`が観測と行動を変換し、domainが合法性を最終判断します。
-
-## Domain
-
-domainの公開面は次に限定しています。
-
-```python
-from werewolf_agent.domain import (
-    Action,
-    Game,
-    GameEvent,
-    GameSetup,
-    GameState,
-    GameView,
-    RuleRegistry,
-    RuleSet,
-    RuleSetDefinition,
-    RuleViolation,
-)
-```
-
-`Game`だけが状態を変更します。`GameState`は未解決行動を含む完全な不変スナップショットで、不正行動や必須行動不足では状態を変更せず`RuleViolation`を返します。ランダム源は外部から注入するため、同じseedと入力から同じイベント列を再現できます。
-
-詳細は[Domain設計](docs/design/domain.md)を参照してください。
-
-## Usecase
-
-usecaseは`Actor`と`GameApplication`だけを公開します。
-
-```python
-games = GameApplication(context)
-games.create(input)
-games.get(game_id, actor)
-games.submit_action(game_id, actor, action, expected_version)
-games.advance(game_id, actor, expected_version)
-games.verify_replay(game_id, admin)
-```
-
-内部handlerがrepositoryから取得し、domainを復元し、公開操作を呼び、結果をDTOへ変換します。役職、フェーズ、勝敗、対象条件のゲームルールは実装しません。
-LLM provider設定とtrace sinkはusecaseへ持ち込まず、`adapters/agents/game_driver.py`が管理します。
-
-## 設定
-
-| ファイル | 変更できること |
-| --- | --- |
-| `resources/game/rules.toml` | 提出回数、自己対象、再提出、同票処理、ポリシー構成 |
-| `resources/game/roles.toml` | 役職、陣営、能力、既定人数 |
-| `resources/game/abilities.toml` | 利用フェーズ、対象条件、解決ポリシー、開始日 |
-| `resources/presentation/catalog.toml` | 背景、シナリオ、表示名、説明 |
-| `resources/llm/` | player、decision graph、fake応答 |
-| `resources/prompts/` | prompt |
-| `resources/settings/defaults.toml` | provider、timeout、retry、model、運用上限 |
-
-登録済みポリシーの組み合わせとパラメーターは設定だけで変更できます。新しい集計、状態遷移、能力効果、勝敗、可視性アルゴリズムはPython実装と`RuleRegistry`への明示登録が必要です。
-
-既定の画面プリセットは`WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID`で選択します。役職から能力、シナリオからナレーション、プリセットからシナリオと役職への参照は、設定ロード時にまとめて検証します。
-
-外部ファイルで上書きする場合は`.env.example`の`WEREWOLF_*_FILE`を参照してください。関連する定義ファイルは整合する組み合わせで指定します。TOMLと環境変数は`configuration`だけが読み、domainへは検証済みの値だけを渡します。
-
-## LLM
-
-既定providerは外部ネットワークを使わない`fake`です。
-
-```text
-WEREWOLF_LLM_PROVIDER=fake
-WEREWOLF_MODEL=fake-list-llm
-```
-
-LM Studio:
-
-```text
-WEREWOLF_LLM_PROVIDER=lmstudio
-WEREWOLF_MODEL=auto
-WEREWOLF_LLM_BASE_URL=http://127.0.0.1:1234/v1
-```
-
-OpenAI:
-
-```text
-WEREWOLF_LLM_PROVIDER=openai
-WEREWOLF_MODEL=gpt-4.1-mini
-OPENAI_API_KEY=<secret>
-```
-
-fakeと実providerはprompt、構造化出力、検証、再試行、fallbackを共有します。LLMはdomainが提示した合法対象から候補行動を返し、提出時の合法性もdomainが再検証します。
-
-## ログ
-
-domainとusecaseはログを出しません。interfacesとadaptersが外部境界で一度だけ記録します。通常の入力不備、存在しないID、ルール違反はエラーログではなく結果として扱います。
-
-ログはJSON Linesで、APIは`api.jsonl`、workerは`worker.jsonl`、Streamlitは`streamlit.jsonl`、CLIは`cli.jsonl`、migrationは`migrate.jsonl`を使用します。役職、夜行動、対象、秘密状態、prompt、LLM生出力、認証情報は出力しません。投票先も集計完了までは公開履歴へ出しません。
+HTML は `.werewolf-agent/build/docs/index.html`、機械可読な依存 graph、schema、評価、
+SVG は `.werewolf-agent/build/architecture` に生成されます。同じ操作を VS Code の
+`Docs: Inspect`、`Docs: Build`、`Architecture: Analyze` task から実行できます。
 
 ## 検証
 
-日常確認からリリース判定まで、ローカルとCIで同じPython入口を使います。
-
-```bash
-python -m scripts.quality quick
-python -m scripts.quality check
-python -m scripts.quality release
-python -m scripts.quality deep --confirm-deep
-python -m scripts.quality clean
+```powershell
+uv run --no-sync python -m scripts.quality quick
+uv run --no-sync python -m scripts.quality check
+uv run --no-sync python -m scripts.quality release
+uv run --no-sync python -m scripts.quality deep --confirm-deep
 ```
 
-`quick`は通常の静的検査とunit test、`check`はcoverage・文書・配布物、
-`release`はローカルSupabase・API・worker・React／Streamlit E2E・Docker、
-`deep`は競合・障害注入・画面monkeyまで実行します。pytest単体の既定値も
-`quick`であり、重いテストを明示選択しても必要な`--test-level`がなければ実行しません。
+`scripts.quality` は品質 gate 全体の順序、timeout、report を管理します。docs と
+architecture の個別処理は専用 script が所有し、品質 runner はその入口を呼びます。
+結果は `.werewolf-agent/quality` に保存されます。
 
-品質実行中は依存取得、browser download、Docker pull、online audit、外部API呼び出しを
-行いません。初回セットアップで依存、Supabase image、E2E image、Chromium内蔵imageを
-準備してください。LLMは`fake`へ固定され、有料API keyは子processへ渡しません。
+品質 runner の開始後は依存取得、browser download、Docker pull、online audit、
+外部 LLM API 呼び出しを行いません。必要な依存、browser、image は先に準備します。
 
-結果は`.werewolf-agent/quality/latest.json`と
-`.werewolf-agent/quality/runs/<run-id>/`へJSON、JSONL、Markdown、JUnit、coverage、
-benchmark、browser画像として保存されます。
+## 運用境界
 
-構造テストは層ごとのimport許可、モジュール循環、層循環、外部ライブラリ配置、公開`__all__`、旧構造不在を検査します。
-
-## 文書
-
-- [Domain設計](docs/design/domain.md)
-- [境界と公開契約](docs/design/api.md)
-- [品質ゲート](docs/design/quality-gates.md)
-- [Agent strategy](docs/design/agent-strategies.md)
-- [開発メモ](docs/notes/development.md)
-
-## 未実装
-
-- 実providerの長時間QAと評価基盤
-- 複数manual player
-
-Docker上のmigration、API、worker、React、Streamlitを接続するBrowser E2Eと
-visual regressionは実装済みです。実providerのQAには、対象providerのAPI keyと
-課金を伴う明示的な検証環境が必要です。
+repository は設定検証、migration、process 起動、health signal、構造化ログ、品質
+artifact を提供します。本番 deployment、backup、monitoring rule、通知、credential
+rotation は外部運用基盤が管理します。
 
 ## License
 

@@ -1,9 +1,18 @@
-"""Executable architecture constraints for the second-stage system."""
+"""Executable architecture constraints for the application."""
 
 from __future__ import annotations
 
-import ast
 from pathlib import Path
+
+from scripts.architecture import (
+    ALLOWED_IMPORTS,
+    ALLOWED_PATH_IMPORTS,
+    LAYERS,
+    graph_cycles,
+    imports_with_lines,
+    module_name,
+    project_import_edges,
+)
 
 import werewolf_agent.adapters as adapters
 import werewolf_agent.agents as agents
@@ -13,51 +22,6 @@ import werewolf_agent.usecase as usecase
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
 FRONTEND = ROOT / "frontend" / "src"
-
-LAYERS = {
-    "domain",
-    "configuration",
-    "contracts",
-    "security",
-    "observability",
-    "agents",
-    "usecase",
-    "adapters",
-    "api",
-    "interfaces",
-    "resources",
-}
-ALLOWED_IMPORTS = {
-    "domain": {"domain"},
-    "configuration": {"configuration"},
-    "contracts": {"contracts", "configuration", "security"},
-    "security": {"security", "configuration", "contracts"},
-    "observability": {"observability", "configuration", "contracts", "security"},
-    "agents": {"agents", "configuration", "contracts"},
-    "usecase": {"usecase", "domain", "configuration", "contracts"},
-    "adapters": {
-        "adapters",
-        "agents",
-        "configuration",
-        "contracts",
-        "domain",
-        "observability",
-        "security",
-        "usecase",
-    },
-    "api": {"api", "configuration", "contracts", "observability", "security", "usecase"},
-    "interfaces": {
-        "interfaces",
-        "adapters",
-        "agents",
-        "configuration",
-        "contracts",
-        "observability",
-        "security",
-        "usecase",
-    },
-    "resources": {"resources"},
-}
 
 
 def test_top_level_layout_has_independent_runtime_boundaries() -> None:
@@ -108,38 +72,30 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
 
 
 def test_layer_imports_follow_the_allowed_matrix() -> None:
-    offenders: list[tuple[Path, str, str]] = []
-    for path, module in _project_imports():
-        source = path.relative_to(PACKAGE).parts[0]
-        parts = module.split(".")
-        if source not in LAYERS or len(parts) < 2 or parts[0] != "werewolf_agent":
-            continue
-        target = parts[1]
-        if target not in LAYERS or target in ALLOWED_IMPORTS[source]:
-            continue
-        if source == "api" and path.name == "bootstrap.py" and target == "adapters":
-            continue
-        offenders.append((path.relative_to(ROOT), source, target))
+    offenders = [
+        (edge.path, edge.source_layer, edge.target_layer)
+        for edge in project_import_edges()
+        if edge.target_layer not in ALLOWED_IMPORTS[edge.source_layer]
+        and (edge.path, edge.target_layer) not in ALLOWED_PATH_IMPORTS
+    ]
     assert not offenders
 
 
 def test_layer_and_module_graphs_have_no_cycles() -> None:
     layer_graph: dict[str, set[str]] = {layer: set() for layer in LAYERS}
-    for path, module in _project_imports():
-        source = path.relative_to(PACKAGE).parts[0]
-        parts = module.split(".")
-        if source in LAYERS and len(parts) >= 2 and parts[1] in LAYERS and source != parts[1]:
-            layer_graph[source].add(parts[1])
-    assert not _cycles(layer_graph)
+    for edge in project_import_edges():
+        if edge.source_layer != edge.target_layer:
+            layer_graph[edge.source_layer].add(edge.target_layer)
+    assert not graph_cycles(layer_graph)
 
-    modules = {_module_name(path): path for path in PACKAGE.rglob("*.py")}
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
     module_graph = {
         module: {
             imported for imported in _imports(path) if imported in modules and imported != module
         }
         for module, path in modules.items()
     }
-    assert not _cycles(module_graph)
+    assert not graph_cycles(module_graph)
 
 
 def test_frameworks_stay_in_their_runtime_adapters() -> None:
@@ -422,58 +378,5 @@ def test_domain_rules_and_fake_provider_remain_centralized() -> None:
     assert "class Fake" not in service
 
 
-def _project_imports() -> list[tuple[Path, str]]:
-    return [
-        (path, imported)
-        for path in PACKAGE.rglob("*.py")
-        for imported in _imports(path)
-        if imported == "werewolf_agent" or imported.startswith("werewolf_agent.")
-    ]
-
-
 def _imports(path: Path) -> set[str]:
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    imports: set[str] = set()
-
-    class ImportVisitor(ast.NodeVisitor):
-        def visit_If(self, node: ast.If) -> None:
-            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
-                for child in node.orelse:
-                    self.visit(child)
-                return
-            self.generic_visit(node)
-
-        def visit_Import(self, node: ast.Import) -> None:
-            imports.update(alias.name for alias in node.names)
-
-        def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-            if node.module:
-                imports.add(node.module)
-
-    ImportVisitor().visit(tree)
-    return imports
-
-
-def _module_name(path: Path) -> str:
-    relative = path.relative_to(PACKAGE).with_suffix("")
-    parts = list(relative.parts)
-    if parts[-1] == "__init__":
-        parts.pop()
-    return ".".join(("werewolf_agent", *parts))
-
-
-def _cycles(graph: dict[str, set[str]]) -> list[tuple[str, ...]]:
-    found: set[tuple[str, ...]] = set()
-
-    def visit(node: str, path: tuple[str, ...]) -> None:
-        if node in path:
-            cycle = path[path.index(node) :]
-            rotations = [cycle[index:] + cycle[:index] for index in range(len(cycle))]
-            found.add(min(rotations))
-            return
-        for target in graph.get(node, set()):
-            visit(target, (*path, node))
-
-    for node in graph:
-        visit(node, ())
-    return sorted(found)
+    return {imported for imported, _ in imports_with_lines(path, module_name(path))}

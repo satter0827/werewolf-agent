@@ -19,7 +19,9 @@ def test_expected_python_tools_exist() -> None:
     for name in (
         "__init__.py",
         "_support.py",
+        "architecture.py",
         "apply_migrations.py",
+        "docs.py",
         "e2e.py",
         "export_openapi.py",
         "preflight_supabase.py",

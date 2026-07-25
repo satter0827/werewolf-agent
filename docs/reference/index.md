@@ -1,12 +1,12 @@
-# API Reference
-
-公開面と主要境界の autodoc reference です。詳細な設計意図は `docs/design/` を優先します。
+(reference)=
+# リファレンス
 
 ```{toctree}
 :maxdepth: 2
 
-domain
-usecase
-contracts
+python-api
 runtime-configuration
 ```
+
+公開 Python API と実行時設定の参照情報をまとめる。内部 module は設計書と source を
+参照し、公開契約として固定しない。
