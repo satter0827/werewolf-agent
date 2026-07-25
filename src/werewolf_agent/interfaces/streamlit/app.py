@@ -9,7 +9,14 @@ import time
 from typing import Any, cast
 from uuid import uuid4
 
-from werewolf_agent.adapters.auth import ensure_session, require_supabase_client_config
+from werewolf_agent.adapters.auth import (
+    SupabaseSession,
+    bind_session,
+    ensure_session,
+    require_supabase_client_config,
+    sign_in_with_password,
+    sign_out,
+)
 from werewolf_agent.configuration import (
     AppSettings,
     get_settings,
@@ -62,6 +69,7 @@ from werewolf_agent.interfaces.streamlit.operations import (
     list_recent_games,
     load_advance_job,
     load_game_screen,
+    load_runtime_config,
     load_setup_options,
     log_streamlit_rerun_started,
     start_advance_step,
@@ -143,6 +151,24 @@ from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.security.redaction import redact_text
 
 logger = logging.getLogger(__name__)
+STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
+
+
+class _StreamlitSessionStore:
+    """Keep credentials in one server-side Streamlit browser session."""
+
+    def __init__(self, state: Any) -> None:
+        self._state = state
+
+    def load(self) -> SupabaseSession | None:
+        value = self._state.get(STREAMLIT_AUTH_SESSION_KEY)
+        return value if isinstance(value, SupabaseSession) else None
+
+    def save(self, session: SupabaseSession) -> None:
+        self._state[STREAMLIT_AUTH_SESSION_KEY] = session
+
+    def clear(self) -> None:
+        self._state.pop(STREAMLIT_AUTH_SESSION_KEY, None)
 
 
 def main() -> None:
@@ -171,19 +197,42 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         initial_sidebar_state=settings.streamlit_initial_sidebar_state,
     )
     st.markdown(load_style_tag(settings), unsafe_allow_html=True)
+    session_store = _StreamlitSessionStore(st.session_state)
     try:
         require_supabase_client_config(settings)
-        ensure_session(settings)
+        session = ensure_session(settings, store=session_store)
     except AppError as exc:
         _handle_app_error(st, exc)
         return
 
+    with bind_session(session):
+        _render_session_app(
+            st,
+            settings,
+            catalog=catalog,
+            lang=lang,
+            screens=screens,
+            session_store=session_store,
+        )
+
+
+def _render_session_app(
+    st: Any,
+    settings: AppSettings,
+    *,
+    catalog: I18nCatalog,
+    lang: Language,
+    screens: ScreenCatalog,
+    session_store: _StreamlitSessionStore,
+) -> None:
+    """Render authenticated or guest content with a request-scoped HTTP token."""
     selected_option, view = _render_sidebar(
         st,
         settings,
         catalog=catalog,
         lang=lang,
         screens=screens,
+        session_store=session_store,
     )
     if view == VIEW_APP_SETTINGS:
         _render_settings_screen(
@@ -215,6 +264,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
 
     sync_auto_advance_game(st.session_state, selected_option.game_id)
     try:
+        runtime_config = load_runtime_config(settings=settings)
         screen = load_game_screen(
             settings=settings,
             game_id=selected_option.game_id,
@@ -236,6 +286,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         selected_option=selected_option,
         catalog=catalog,
         lang=lang,
+        message_max_chars=runtime_config.limits.message_max_chars,
         screens=screens,
     )
 
@@ -248,6 +299,7 @@ def _render_game_screen(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
+    message_max_chars: int,
     screens: ScreenCatalog,
 ) -> None:
     """Render the active game screen from its screen definition."""
@@ -277,6 +329,7 @@ def _render_game_screen(
             selected_option=selected_option,
             catalog=catalog,
             lang=lang,
+            message_max_chars=message_max_chars,
             screens=screens,
         )
 
@@ -324,12 +377,15 @@ def _render_sidebar(
     catalog: I18nCatalog,
     lang: Language,
     screens: ScreenCatalog,
+    session_store: _StreamlitSessionStore | None = None,
 ) -> tuple[SavedGameOptionView | None, str]:
     selected_option: SavedGameOptionView | None = None
 
     for element in screens.elements("sidebar", "main"):
         if element.id == "brand":
             _render_sidebar_brand(st, catalog=catalog, lang=lang)
+            if session_store is not None:
+                _render_sidebar_auth(st, settings=settings, session_store=session_store)
         elif element.id == "history_selector":
             st.sidebar.divider()
             st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
@@ -344,6 +400,49 @@ def _render_sidebar(
             st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
             _render_sidebar_navigation(st, catalog=catalog, lang=lang)
     return selected_option, current_view(st.session_state)
+
+
+def _render_sidebar_auth(
+    st: Any,
+    *,
+    settings: AppSettings,
+    session_store: _StreamlitSessionStore,
+) -> None:
+    """Render guest/member controls without exposing session credentials."""
+    session = session_store.load()
+    if session is not None and not session.is_anonymous:
+        st.sidebar.caption(session.email or "ログイン中")
+        if st.sidebar.button("ログアウト", use_container_width=True):
+            try:
+                sign_out(settings, store=session_store)
+            except AppError as exc:
+                st.sidebar.error(exc.detail)
+                return
+            st.rerun()
+        return
+
+    st.sidebar.caption("ゲストで利用中")
+    with st.sidebar.expander("ログイン"):
+        with st.form("account_login"):
+            email = st.text_input("メールアドレス", max_chars=254)
+            password = st.text_input(
+                "パスワード",
+                type="password",
+                max_chars=128,
+            )
+            submitted = st.form_submit_button("ログイン", use_container_width=True)
+        if submitted:
+            try:
+                sign_in_with_password(
+                    settings,
+                    email,
+                    password,
+                    store=session_store,
+                )
+            except AppError as exc:
+                st.error(exc.detail)
+                return
+            st.rerun()
 
 
 def _render_sidebar_navigation(st: Any, *, catalog: I18nCatalog, lang: Language) -> None:
@@ -368,7 +467,7 @@ def _render_sidebar_brand(st: Any, *, catalog: I18nCatalog, lang: Language) -> N
         <div class="wa-sidebar-brand">
                 <div class="wa-brand-mark">🐺</div>
                 <div>
-                    <div class="wa-brand-title">Werewolf Agent</div>
+                    <h1 class="wa-brand-title">Werewolf Agent</h1>
                     <div class="wa-brand-mode">{catalog.t(lang, "brand.mode")}</div>
                 </div>
         </div>
@@ -1543,8 +1642,8 @@ def _render_next_actions(
 ) -> None:
     if not screen.is_completed:
         return
-    role_counts_value = selected_option.role_counts or screen.role_counts
-    rules_value = selected_option.rules or screen.rules
+    role_counts_value = selected_option.role_counts
+    rules_value = selected_option.rules
     if not role_counts_value or rules_value is None:
         st.caption(catalog.t(lang, "next_actions.saved_hint"))
         return
@@ -1633,6 +1732,7 @@ def _render_action_panel(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
+    message_max_chars: int,
     screens: ScreenCatalog,
 ) -> None:
     elements = screens.elements("game", "side")
@@ -1687,6 +1787,7 @@ def _render_action_panel(
                     selected_option=selected_option,
                     catalog=catalog,
                     lang=lang,
+                    message_max_chars=message_max_chars,
                 )
             elif (
                 element.id == "auto_advance"
@@ -1715,6 +1816,7 @@ def _render_action_form(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
+    message_max_chars: int,
 ) -> None:
     manual_player_id = selected_option.manual_player_id
     if screen.observation is None or manual_player_id is None:
@@ -1755,7 +1857,7 @@ def _render_action_form(
             catalog.t(lang, "action.message"),
             key=KEY_MESSAGE,
             placeholder=catalog.label(lang, "action", "speech"),
-            max_chars=settings.streamlit_message_max_chars,
+            max_chars=message_max_chars,
         )
 
     missing_target = selected_action.requires_target and not target_id

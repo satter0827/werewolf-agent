@@ -19,7 +19,7 @@ from werewolf_agent.contracts.errors import ErrorCode
 
 
 class SupabaseAuthClient:
-    """Small GoTrue client for anonymous sessions."""
+    """Small GoTrue client for anonymous and password sessions."""
 
     def __init__(
         self,
@@ -42,6 +42,24 @@ class SupabaseAuthClient:
             json_body={},
         )
         return _session_from_auth_payload(payload)
+
+    def sign_in_with_password(self, email: str, password: str) -> SupabaseSession:
+        """Create a non-anonymous session from user credentials."""
+        payload = self._request_json(
+            "POST",
+            "/auth/v1/token?grant_type=password",
+            json_body={"email": email, "password": password},
+        )
+        return _session_from_auth_payload(payload)
+
+    def sign_out(self, session: SupabaseSession) -> None:
+        """Invalidate the current server-side Auth session."""
+        self._request_json(
+            "POST",
+            "/auth/v1/logout",
+            json_body={},
+            bearer_token=session.access_token,
+        )
 
     def refresh(self, session: SupabaseSession) -> SupabaseSession:
         """Refresh an expired access token."""

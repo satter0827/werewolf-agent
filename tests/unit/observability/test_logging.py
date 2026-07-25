@@ -272,6 +272,9 @@ def test_redact_text_masks_common_sensitive_assignments() -> None:
     assert redact_text("api_key=abc token: def safe=value") == (
         "api_key=[REDACTED] token: [REDACTED] safe=value"
     )
+    assert redact_text("postgresql://db_user:db_password@db.example.test/game") == (
+        "postgresql://[REDACTED]@db.example.test/game"
+    )
 
 
 def teardown_module() -> None:

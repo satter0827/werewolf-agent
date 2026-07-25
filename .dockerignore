@@ -2,7 +2,6 @@
 .env.*
 !.env.example
 .git
-.github
 .werewolf-agent
 .venv
 __pycache__
@@ -19,6 +18,7 @@ htmlcov
 docs/_build
 docs/sphinx/_build
 node_modules
+**/node_modules
 front-web/node_modules
 coverage.xml
 .coverage

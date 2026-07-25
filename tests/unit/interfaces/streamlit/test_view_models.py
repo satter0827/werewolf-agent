@@ -2,10 +2,7 @@ from datetime import UTC, datetime
 
 from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts.schemas import (
-    GameRevealPlayer,
-    GameRevealResponse,
     GameTimelineItem,
-    LocalRulesSettings,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -59,85 +56,6 @@ def _turn(event_type: str, payload: dict[str, object]) -> GameTimelineItem:
     )
 
 
-def _rules() -> LocalRulesSettings:
-    return LocalRulesSettings(
-        day_speech_limit_per_player=1,
-        allow_self_vote=False,
-        allow_vote_revision=False,
-        allow_night_action_revision=False,
-        enable_first_night_attack=True,
-        enable_no_elimination_on_tie=True,
-        enable_random_elimination_on_tie=False,
-        allow_knight_self_guard=True,
-        allow_knight_repeat_guard=True,
-        allow_seer_self_inspect=False,
-        allow_werewolf_friendly_fire=False,
-        reveal_role_on_death=False,
-    )
-
-
-def _reveal() -> GameRevealResponse:
-    return GameRevealResponse(
-        game_id="game-1",
-        status="completed",
-        phase="finished",
-        day=2,
-        version=3,
-        seed=1,
-        role_counts={"werewolf": 1, "seer": 1, "villager": 1},
-        rules=_rules(),
-        players=[
-            GameRevealPlayer(
-                id="player-1",
-                name="P1",
-                role="seer",
-                faction="village",
-                alive=True,
-                status="alive",
-            ),
-            GameRevealPlayer(
-                id="player-2",
-                name="P2",
-                role="werewolf",
-                faction="werewolf",
-                alive=True,
-                status="alive",
-            ),
-            GameRevealPlayer(
-                id="player-3",
-                name="P3",
-                role="villager",
-                faction="village",
-                alive=False,
-                status="dead",
-            ),
-        ],
-        alive_player_ids=["player-1", "player-2"],
-        eliminated_player_ids=["player-3"],
-        winner="villagers",
-        pending_votes=[],
-        pending_night_actions=[],
-        votes=[
-            {
-                "day": 2,
-                "votes": {"player-1": "player-2"},
-                "counts": {"player-2": 1},
-                "eliminated_player_id": "player-2",
-                "tie_break_policy": "none",
-            }
-        ],
-        nights=[
-            {
-                "day": 1,
-                "attacked_player_id": "player-3",
-                "protected_player_id": "player-1",
-                "killed_player_id": "player-3",
-                "inspections": [],
-            }
-        ],
-    )
-
-
 def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     catalog = _catalog()
     observation = PlayerObservationResponse(
@@ -154,7 +72,6 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         state=_state(),
         turns=[_turn("unknown_private_event", {"target_id": "player-2", "role": "werewolf"})],
         observation=observation,
-        reveal=None,
         manual_player_id="player-1",
         screen_mode="playable",
         catalog=catalog,
@@ -188,7 +105,6 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
         state=_state(),
         turns=turns,
         observation=None,
-        reveal=None,
         manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
@@ -202,13 +118,12 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
     assert details[3] == "夜が明け、P3 が犠牲になりました。"
 
 
-def test_observer_mode_uses_reveal_without_action_state() -> None:
+def test_observer_mode_uses_only_public_timeline_without_action_state() -> None:
     catalog = _catalog()
     screen = build_game_screen_view(
         state=_state(status="completed", winner="villagers"),
         turns=[_turn("game_finished", {"winner": "villagers"})],
         observation=None,
-        reveal=_reveal(),
         manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
@@ -221,10 +136,12 @@ def test_observer_mode_uses_reveal_without_action_state() -> None:
     assert screen.hand_panel.heading == "観戦モード"
     assert screen.observation is None
     assert screen.observer_log is not None
-    assert "P2: 人狼 / 人狼陣営" in screen.observer_log.role_lines
-    assert screen.seats[1].role_label == "人狼"
+    assert screen.observer_log.entries
+    assert "村人陣営" in screen.observer_log.entries[0]
     assert screen.result_summary is not None
-    assert any("全役職" in fact for fact in screen.result_summary.facts)
+    summary = " ".join(screen.result_summary.facts)
+    assert "全役職" not in summary
+    assert "人狼" not in summary
 
 
 def test_play_result_summary_uses_public_information_only() -> None:
@@ -233,7 +150,6 @@ def test_play_result_summary_uses_public_information_only() -> None:
         state=_state(status="completed", winner="villagers"),
         turns=[_turn("game_finished", {"winner": "villagers"})],
         observation=None,
-        reveal=None,
         manual_player_id=None,
         screen_mode="playable",
         catalog=catalog,
@@ -253,7 +169,6 @@ def test_status_metrics_use_public_game_context_without_ids() -> None:
         state=_state(),
         turns=[],
         observation=None,
-        reveal=None,
         manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,
@@ -320,7 +235,6 @@ def test_observation_memo_uses_public_timeline_sanitization() -> None:
             )
         ],
         observation=None,
-        reveal=None,
         manual_player_id=None,
         screen_mode="observer",
         catalog=catalog,

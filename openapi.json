@@ -1,0 +1,4491 @@
+{
+  "components": {
+    "schemas": {
+      "AbilityDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public ability metadata for setup screens.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "difficulty": {
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Difficulty",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "target_policy": {
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description",
+          "target_policy",
+          "difficulty"
+        ],
+        "title": "AbilityDefinitionView",
+        "type": "object"
+      },
+      "AdminLlmTraceListResponse": {
+        "additionalProperties": false,
+        "description": "Bounded administrator trace page.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminLlmTraceResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AdminLlmTraceListResponse",
+        "type": "object"
+      },
+      "AdminLlmTraceResponse": {
+        "additionalProperties": false,
+        "description": "Administrator-only trace metadata with prompt content excluded.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "invocation_id": {
+            "title": "Invocation Id",
+            "type": "string"
+          },
+          "latency_ms": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latency Ms"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "operation_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Operation Id"
+          },
+          "parsed_decision": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parsed Decision"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Player Id"
+          },
+          "prompt_hash": {
+            "title": "Prompt Hash",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "state_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "State Version"
+          }
+        },
+        "required": [
+          "invocation_id",
+          "game_id",
+          "provider",
+          "model",
+          "prompt_hash",
+          "created_at"
+        ],
+        "title": "AdminLlmTraceResponse",
+        "type": "object"
+      },
+      "AdminLlmUsageResponse": {
+        "additionalProperties": false,
+        "description": "Aggregate administrator-only LLM usage.",
+        "properties": {
+          "cost_micros": {
+            "minimum": 0.0,
+            "title": "Cost Micros",
+            "type": "integer"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "input_tokens": {
+            "minimum": 0.0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "invocation_count": {
+            "minimum": 0.0,
+            "title": "Invocation Count",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "minimum": 0.0,
+            "title": "Output Tokens",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "game_id",
+          "invocation_count",
+          "input_tokens",
+          "output_tokens",
+          "cost_micros"
+        ],
+        "title": "AdminLlmUsageResponse",
+        "type": "object"
+      },
+      "AdminOperationDiagnosticResponse": {
+        "additionalProperties": false,
+        "description": "Administrator-only operation metadata without request or owner data.",
+        "properties": {
+          "attempt_count": {
+            "minimum": 0.0,
+            "title": "Attempt Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "worker_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Worker Id"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "status",
+          "attempt_count",
+          "created_at"
+        ],
+        "title": "AdminOperationDiagnosticResponse",
+        "type": "object"
+      },
+      "AdvanceOperationRequest": {
+        "additionalProperties": false,
+        "description": "Version-checked request for one game advance.",
+        "properties": {
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_version"
+        ],
+        "title": "AdvanceOperationRequest",
+        "type": "object"
+      },
+      "AgentStrategyDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public display metadata for an LLM agent strategy.",
+        "properties": {
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "description"
+        ],
+        "title": "AgentStrategyDefinitionView",
+        "type": "object"
+      },
+      "CharacterDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public character metadata for setup screens.",
+        "properties": {
+          "age": {
+            "maximum": 99.0,
+            "minimum": 18.0,
+            "title": "Age",
+            "type": "integer"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "personality": {
+            "title": "Personality",
+            "type": "string"
+          },
+          "reasoning_style": {
+            "title": "Reasoning Style",
+            "type": "string"
+          },
+          "risk_tolerance": {
+            "title": "Risk Tolerance",
+            "type": "string"
+          },
+          "speaking_style": {
+            "title": "Speaking Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "age",
+          "gender",
+          "personality",
+          "speaking_style",
+          "reasoning_style",
+          "risk_tolerance"
+        ],
+        "title": "CharacterDefinitionView",
+        "type": "object"
+      },
+      "CreateGameRequest": {
+        "additionalProperties": false,
+        "description": "Payload for creating one game.",
+        "properties": {
+          "agent_strategy_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agent Strategy Id"
+          },
+          "character_assignments": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Character Assignments",
+            "type": "object"
+          },
+          "custom_characters": {
+            "items": {
+              "$ref": "#/components/schemas/CustomCharacterDefinitionRequest"
+            },
+            "title": "Custom Characters",
+            "type": "array"
+          },
+          "custom_roles": {
+            "items": {
+              "$ref": "#/components/schemas/CustomRoleDefinitionRequest"
+            },
+            "title": "Custom Roles",
+            "type": "array"
+          },
+          "manual_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Manual Player Id"
+          },
+          "narration_mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "none",
+                  "standard",
+                  "rich"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration Mode"
+          },
+          "role_counts": {
+            "additionalProperties": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "title": "Role Counts",
+            "type": "object"
+          },
+          "rules": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LocalRulesSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "setup_preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setup Preset Id"
+          }
+        },
+        "required": [
+          "role_counts"
+        ],
+        "title": "CreateGameRequest",
+        "type": "object"
+      },
+      "CustomCharacterDefinitionRequest": {
+        "additionalProperties": false,
+        "description": "Session-scoped character definition supplied by a UI client.",
+        "properties": {
+          "age": {
+            "maximum": 99.0,
+            "minimum": 18.0,
+            "title": "Age",
+            "type": "integer"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "personality": {
+            "title": "Personality",
+            "type": "string"
+          },
+          "reasoning_style": {
+            "title": "Reasoning Style",
+            "type": "string"
+          },
+          "risk_tolerance": {
+            "title": "Risk Tolerance",
+            "type": "string"
+          },
+          "speaking_style": {
+            "title": "Speaking Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "age",
+          "gender",
+          "personality",
+          "speaking_style",
+          "reasoning_style",
+          "risk_tolerance"
+        ],
+        "title": "CustomCharacterDefinitionRequest",
+        "type": "object"
+      },
+      "CustomRoleDefinitionRequest": {
+        "additionalProperties": false,
+        "description": "Session-scoped role definition supplied by a UI client.",
+        "properties": {
+          "abilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "difficulty": {
+            "default": 1,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Difficulty",
+            "type": "integer"
+          },
+          "faction": {
+            "title": "Faction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "faction"
+        ],
+        "title": "CustomRoleDefinitionRequest",
+        "type": "object"
+      },
+      "GameListResponse": {
+        "additionalProperties": false,
+        "description": "Public game list response.",
+        "properties": {
+          "games": {
+            "items": {
+              "$ref": "#/components/schemas/PublicGameSummary"
+            },
+            "title": "Games",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "required": [
+          "games"
+        ],
+        "title": "GameListResponse",
+        "type": "object"
+      },
+      "GameResponse": {
+        "additionalProperties": false,
+        "description": "Response containing the current public game state.",
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "state": {
+            "$ref": "#/components/schemas/PublicGameState"
+          }
+        },
+        "required": [
+          "game_id",
+          "state"
+        ],
+        "title": "GameResponse",
+        "type": "object"
+      },
+      "GameRevealAction": {
+        "additionalProperties": false,
+        "description": "Pending action exposed only by the dedicated reveal operation.",
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "type": {
+            "enum": [
+              "speech",
+              "vote",
+              "seer_inspect",
+              "knight_guard",
+              "werewolf_attack",
+              "pass"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "player_id",
+          "type"
+        ],
+        "title": "GameRevealAction",
+        "type": "object"
+      },
+      "GameRevealInspection": {
+        "additionalProperties": false,
+        "description": "Resolved inspection exposed only by the dedicated reveal operation.",
+        "properties": {
+          "seer_id": {
+            "title": "Seer Id",
+            "type": "string"
+          },
+          "target_faction": {
+            "title": "Target Faction",
+            "type": "string"
+          },
+          "target_id": {
+            "title": "Target Id",
+            "type": "string"
+          },
+          "target_role": {
+            "title": "Target Role",
+            "type": "string"
+          }
+        },
+        "required": [
+          "seer_id",
+          "target_id",
+          "target_role",
+          "target_faction"
+        ],
+        "title": "GameRevealInspection",
+        "type": "object"
+      },
+      "GameRevealNight": {
+        "additionalProperties": false,
+        "description": "Resolved night record exposed only by the dedicated reveal operation.",
+        "properties": {
+          "attacked_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attacked Player Id"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "inspections": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealInspection"
+            },
+            "title": "Inspections",
+            "type": "array"
+          },
+          "killed_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed Player Id"
+          },
+          "protected_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protected Player Id"
+          }
+        },
+        "required": [
+          "day"
+        ],
+        "title": "GameRevealNight",
+        "type": "object"
+      },
+      "GameRevealPlayer": {
+        "additionalProperties": false,
+        "description": "Full player state exposed only by the dedicated reveal operation.",
+        "properties": {
+          "alive": {
+            "title": "Alive",
+            "type": "boolean"
+          },
+          "eliminated_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated Day"
+          },
+          "faction": {
+            "title": "Faction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "killed_night": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed Night"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "alive",
+              "dead"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "role",
+          "faction",
+          "alive",
+          "status"
+        ],
+        "title": "GameRevealPlayer",
+        "type": "object"
+      },
+      "GameRevealResponse": {
+        "additionalProperties": false,
+        "description": "Full table information for admin observer UI only.",
+        "properties": {
+          "alive_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alive Player Ids",
+            "type": "array"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "eliminated_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eliminated Player Ids",
+            "type": "array"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "narration_mode": {
+            "default": "standard",
+            "enum": [
+              "none",
+              "standard",
+              "rich"
+            ],
+            "title": "Narration Mode",
+            "type": "string"
+          },
+          "nights": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealNight"
+            },
+            "title": "Nights",
+            "type": "array"
+          },
+          "pending_night_actions": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealAction"
+            },
+            "title": "Pending Night Actions",
+            "type": "array"
+          },
+          "pending_votes": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealAction"
+            },
+            "title": "Pending Votes",
+            "type": "array"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "role_counts": {
+            "additionalProperties": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "title": "Role Counts",
+            "type": "object"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/LocalRulesSettings"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Name"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "votes": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealVote"
+            },
+            "title": "Votes",
+            "type": "array"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          }
+        },
+        "required": [
+          "game_id",
+          "status",
+          "phase",
+          "day",
+          "version",
+          "seed",
+          "role_counts",
+          "rules",
+          "players",
+          "alive_player_ids",
+          "eliminated_player_ids"
+        ],
+        "title": "GameRevealResponse",
+        "type": "object"
+      },
+      "GameRevealVote": {
+        "additionalProperties": false,
+        "description": "Resolved vote record exposed only by the dedicated reveal operation.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "eliminated_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated Player Id"
+          },
+          "missing_voter_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Voter Ids",
+            "type": "array"
+          },
+          "tie_break_policy": {
+            "title": "Tie Break Policy",
+            "type": "string"
+          },
+          "tied_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tied Player Ids",
+            "type": "array"
+          },
+          "votes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Votes",
+            "type": "object"
+          }
+        },
+        "required": [
+          "day",
+          "tie_break_policy"
+        ],
+        "title": "GameRevealVote",
+        "type": "object"
+      },
+      "GameSetupOptionsResponse": {
+        "additionalProperties": false,
+        "description": "Public setup metadata for client bootstrapping.",
+        "properties": {
+          "abilities": {
+            "items": {
+              "$ref": "#/components/schemas/AbilityDefinitionView"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "agent_strategies": {
+            "items": {
+              "$ref": "#/components/schemas/AgentStrategyDefinitionView"
+            },
+            "title": "Agent Strategies",
+            "type": "array"
+          },
+          "characters": {
+            "items": {
+              "$ref": "#/components/schemas/CharacterDefinitionView"
+            },
+            "title": "Characters",
+            "type": "array"
+          },
+          "default_agent_strategy_id": {
+            "title": "Default Agent Strategy Id",
+            "type": "string"
+          },
+          "default_narration_mode": {
+            "default": "standard",
+            "enum": [
+              "none",
+              "standard",
+              "rich"
+            ],
+            "title": "Default Narration Mode",
+            "type": "string"
+          },
+          "default_role_counts": {
+            "additionalProperties": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "title": "Default Role Counts",
+            "type": "object"
+          },
+          "default_rules": {
+            "$ref": "#/components/schemas/LocalRulesSettings"
+          },
+          "default_scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Scenario Id"
+          },
+          "default_setup_preset_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default Setup Preset Id"
+          },
+          "player_count": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Player Count",
+            "type": "object"
+          },
+          "roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleDefinitionView"
+            },
+            "title": "Roles",
+            "type": "array"
+          },
+          "scenarios": {
+            "items": {
+              "$ref": "#/components/schemas/ScenarioDefinitionView"
+            },
+            "title": "Scenarios",
+            "type": "array"
+          },
+          "setup_presets": {
+            "items": {
+              "$ref": "#/components/schemas/SetupPresetDefinitionView"
+            },
+            "title": "Setup Presets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "player_count",
+          "roles",
+          "default_role_counts",
+          "default_rules",
+          "default_agent_strategy_id"
+        ],
+        "title": "GameSetupOptionsResponse",
+        "type": "object"
+      },
+      "GameTimelineItem": {
+        "additionalProperties": false,
+        "description": "Public timeline item shared by API, CLI, replay, and UI.",
+        "properties": {
+          "actor_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actor Id"
+          },
+          "day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Day"
+          },
+          "event_sequence": {
+            "minimum": 1.0,
+            "title": "Event Sequence",
+            "type": "integer"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "narration": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Narration"
+          },
+          "occurred_at": {
+            "format": "date-time",
+            "title": "Occurred At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "enum": [
+                  "night",
+                  "day_discussion",
+                  "voting",
+                  "finished"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "sequence": {
+            "minimum": 1.0,
+            "title": "Sequence",
+            "type": "integer"
+          },
+          "version": {
+            "minimum": 1.0,
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "sequence",
+          "event_sequence",
+          "version",
+          "event_type",
+          "occurred_at"
+        ],
+        "title": "GameTimelineItem",
+        "type": "object"
+      },
+      "GameTimelineResponse": {
+        "additionalProperties": false,
+        "description": "Public game timeline response.",
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/GameTimelineItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_after": {
+            "title": "Next After",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "game_id",
+          "items",
+          "next_after"
+        ],
+        "title": "GameTimelineResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "LocalRulesSettings": {
+        "additionalProperties": false,
+        "description": "Local rule settings accepted when creating a game.",
+        "properties": {
+          "allow_knight_repeat_guard": {
+            "title": "Allow Knight Repeat Guard",
+            "type": "boolean"
+          },
+          "allow_knight_self_guard": {
+            "title": "Allow Knight Self Guard",
+            "type": "boolean"
+          },
+          "allow_night_action_revision": {
+            "title": "Allow Night Action Revision",
+            "type": "boolean"
+          },
+          "allow_seer_self_inspect": {
+            "title": "Allow Seer Self Inspect",
+            "type": "boolean"
+          },
+          "allow_self_vote": {
+            "title": "Allow Self Vote",
+            "type": "boolean"
+          },
+          "allow_vote_revision": {
+            "title": "Allow Vote Revision",
+            "type": "boolean"
+          },
+          "allow_werewolf_friendly_fire": {
+            "title": "Allow Werewolf Friendly Fire",
+            "type": "boolean"
+          },
+          "day_speech_limit_per_player": {
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Day Speech Limit Per Player",
+            "type": "integer"
+          },
+          "enable_first_night_attack": {
+            "title": "Enable First Night Attack",
+            "type": "boolean"
+          },
+          "enable_no_elimination_on_tie": {
+            "title": "Enable No Elimination On Tie",
+            "type": "boolean"
+          },
+          "enable_random_elimination_on_tie": {
+            "title": "Enable Random Elimination On Tie",
+            "type": "boolean"
+          },
+          "require_all_actions_before_advance": {
+            "default": true,
+            "title": "Require All Actions Before Advance",
+            "type": "boolean"
+          },
+          "reveal_role_on_death": {
+            "title": "Reveal Role On Death",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "day_speech_limit_per_player",
+          "allow_self_vote",
+          "allow_vote_revision",
+          "allow_night_action_revision",
+          "enable_first_night_attack",
+          "enable_no_elimination_on_tie",
+          "enable_random_elimination_on_tie",
+          "allow_knight_self_guard",
+          "allow_knight_repeat_guard",
+          "allow_seer_self_inspect",
+          "allow_werewolf_friendly_fire",
+          "reveal_role_on_death"
+        ],
+        "title": "LocalRulesSettings",
+        "type": "object"
+      },
+      "OperationResponse": {
+        "additionalProperties": false,
+        "description": "Public asynchronous operation state.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProblemDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Version"
+          },
+          "game_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Game Id"
+          },
+          "operation_id": {
+            "title": "Operation Id",
+            "type": "string"
+          },
+          "operation_type": {
+            "title": "Operation Type",
+            "type": "string"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Result"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation_id",
+          "operation_type",
+          "status",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "OperationResponse",
+        "type": "object"
+      },
+      "PlayerActionOperationRequest": {
+        "additionalProperties": false,
+        "description": "Version-checked player action submitted to the queue.",
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PlayerActionRequest"
+          },
+          "expected_version": {
+            "minimum": 1.0,
+            "title": "Expected Version",
+            "type": "integer"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "player_id",
+          "expected_version",
+          "action"
+        ],
+        "title": "PlayerActionOperationRequest",
+        "type": "object"
+      },
+      "PlayerActionRequest": {
+        "additionalProperties": false,
+        "description": "One manual player action submitted through the API port.",
+        "properties": {
+          "message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "type": {
+            "enum": [
+              "speech",
+              "vote",
+              "seer_inspect",
+              "knight_guard",
+              "werewolf_attack",
+              "pass"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "PlayerActionRequest",
+        "type": "object"
+      },
+      "PlayerObservationResponse": {
+        "additionalProperties": false,
+        "description": "Private observation visible to one authenticated player.",
+        "properties": {
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "observation": {
+            "additionalProperties": true,
+            "title": "Observation",
+            "type": "object"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "game_id",
+          "player_id",
+          "observation"
+        ],
+        "title": "PlayerObservationResponse",
+        "type": "object"
+      },
+      "ProblemDetails": {
+        "additionalProperties": false,
+        "description": "RFC 9457 Problem Details response body with project extensions.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ProblemIssue"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "instance": {
+            "title": "Instance",
+            "type": "string"
+          },
+          "status": {
+            "maximum": 599.0,
+            "minimum": 100.0,
+            "title": "Status",
+            "type": "integer"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trace_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trace Id"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "code"
+        ],
+        "title": "ProblemDetails",
+        "type": "object"
+      },
+      "ProblemIssue": {
+        "additionalProperties": false,
+        "description": "One validation issue in an RFC 9457 Problem Details response.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "pointer": {
+            "default": "",
+            "title": "Pointer",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "detail"
+        ],
+        "title": "ProblemIssue",
+        "type": "object"
+      },
+      "PublicGameState": {
+        "additionalProperties": false,
+        "description": "Public game state exposed to CLI and UI clients.",
+        "properties": {
+          "alive_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Alive Player Ids",
+            "type": "array"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "eliminated_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eliminated Player Ids",
+            "type": "array"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "narration_mode": {
+            "default": "standard",
+            "enum": [
+              "none",
+              "standard",
+              "rich"
+            ],
+            "title": "Narration Mode",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPlayerState"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Name"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "summary": {
+            "additionalProperties": true,
+            "title": "Summary",
+            "type": "object"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          }
+        },
+        "required": [
+          "game_id",
+          "status",
+          "phase",
+          "day",
+          "version",
+          "seed",
+          "players",
+          "alive_player_ids",
+          "eliminated_player_ids",
+          "summary"
+        ],
+        "title": "PublicGameState",
+        "type": "object"
+      },
+      "PublicGameSummary": {
+        "additionalProperties": false,
+        "description": "Public game summary for CLI and UI lists.",
+        "properties": {
+          "alive_count": {
+            "title": "Alive Count",
+            "type": "integer"
+          },
+          "completed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "day": {
+            "title": "Day",
+            "type": "integer"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "player_count": {
+            "title": "Player Count",
+            "type": "integer"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "completed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step_count": {
+            "title": "Step Count",
+            "type": "integer"
+          },
+          "turn_count": {
+            "title": "Turn Count",
+            "type": "integer"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "winner": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Winner"
+          }
+        },
+        "required": [
+          "game_id",
+          "status",
+          "phase",
+          "day",
+          "version",
+          "seed",
+          "player_count",
+          "alive_count",
+          "step_count",
+          "turn_count",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "PublicGameSummary",
+        "type": "object"
+      },
+      "PublicPlayerState": {
+        "additionalProperties": false,
+        "description": "Public player state exposed to clients.",
+        "properties": {
+          "alive": {
+            "title": "Alive",
+            "type": "boolean"
+          },
+          "eliminated_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated Day"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "killed_night": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed Night"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "alive",
+              "dead"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "alive",
+          "status"
+        ],
+        "title": "PublicPlayerState",
+        "type": "object"
+      },
+      "PublicRuntimeConfig": {
+        "additionalProperties": false,
+        "description": "Public, browser-verifiable runtime configuration.",
+        "properties": {
+          "config_revision": {
+            "title": "Config Revision",
+            "type": "string"
+          },
+          "contract_version": {
+            "title": "Contract Version",
+            "type": "string"
+          },
+          "features": {
+            "$ref": "#/components/schemas/PublicRuntimeFeatures"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/PublicRuntimeLimits"
+          },
+          "setup": {
+            "$ref": "#/components/schemas/GameSetupOptionsResponse"
+          },
+          "ui": {
+            "$ref": "#/components/schemas/PublicUiConfig"
+          }
+        },
+        "required": [
+          "contract_version",
+          "config_revision",
+          "setup",
+          "limits",
+          "features",
+          "ui"
+        ],
+        "title": "PublicRuntimeConfig",
+        "type": "object"
+      },
+      "PublicRuntimeFeatures": {
+        "additionalProperties": false,
+        "description": "Publicly discoverable feature switches.",
+        "properties": {
+          "admin_replay": {
+            "title": "Admin Replay",
+            "type": "boolean"
+          },
+          "admin_reveal": {
+            "title": "Admin Reveal",
+            "type": "boolean"
+          },
+          "authentication": {
+            "title": "Authentication",
+            "type": "boolean"
+          },
+          "paid_llm_for_members": {
+            "title": "Paid Llm For Members",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "authentication",
+          "paid_llm_for_members",
+          "admin_reveal",
+          "admin_replay"
+        ],
+        "title": "PublicRuntimeFeatures",
+        "type": "object"
+      },
+      "PublicRuntimeLimits": {
+        "additionalProperties": false,
+        "description": "Required limits enforced by the HTTP API and rendered by clients.",
+        "properties": {
+          "game_list_page_size": {
+            "minimum": 1.0,
+            "title": "Game List Page Size",
+            "type": "integer"
+          },
+          "game_max_players": {
+            "minimum": 1.0,
+            "title": "Game Max Players",
+            "type": "integer"
+          },
+          "game_min_players": {
+            "minimum": 1.0,
+            "title": "Game Min Players",
+            "type": "integer"
+          },
+          "message_max_chars": {
+            "minimum": 1.0,
+            "title": "Message Max Chars",
+            "type": "integer"
+          },
+          "timeline_page_size": {
+            "minimum": 1.0,
+            "title": "Timeline Page Size",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "game_min_players",
+          "game_max_players",
+          "message_max_chars",
+          "game_list_page_size",
+          "timeline_page_size"
+        ],
+        "title": "PublicRuntimeLimits",
+        "type": "object"
+      },
+      "PublicUiConfig": {
+        "additionalProperties": false,
+        "description": "Browser-verifiable presentation settings.",
+        "properties": {
+          "default_manual_player_id": {
+            "minLength": 1,
+            "title": "Default Manual Player Id",
+            "type": "string"
+          },
+          "default_setup_seed": {
+            "minLength": 1,
+            "title": "Default Setup Seed",
+            "type": "string"
+          },
+          "desktop_breakpoint": {
+            "minimum": 1.0,
+            "title": "Desktop Breakpoint",
+            "type": "integer"
+          },
+          "motion": {
+            "enum": [
+              "system",
+              "reduced"
+            ],
+            "title": "Motion",
+            "type": "string"
+          },
+          "operation_poll_interval_ms": {
+            "minimum": 1.0,
+            "title": "Operation Poll Interval Ms",
+            "type": "integer"
+          },
+          "operation_poll_timeout_ms": {
+            "minimum": 1.0,
+            "title": "Operation Poll Timeout Ms",
+            "type": "integer"
+          },
+          "spacing_unit": {
+            "minimum": 1.0,
+            "title": "Spacing Unit",
+            "type": "integer"
+          },
+          "theme_id": {
+            "minLength": 1,
+            "title": "Theme Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "theme_id",
+          "spacing_unit",
+          "desktop_breakpoint",
+          "motion",
+          "default_manual_player_id",
+          "default_setup_seed",
+          "operation_poll_interval_ms",
+          "operation_poll_timeout_ms"
+        ],
+        "title": "PublicUiConfig",
+        "type": "object"
+      },
+      "ReplayVerificationResponse": {
+        "additionalProperties": false,
+        "description": "Private-payload-free replay verification result.",
+        "properties": {
+          "actual_checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Actual Checksum"
+          },
+          "checked_versions": {
+            "minimum": 0.0,
+            "title": "Checked Versions",
+            "type": "integer"
+          },
+          "expected_checksum": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected Checksum"
+          },
+          "first_mismatch_version": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Mismatch Version"
+          },
+          "game_id": {
+            "title": "Game Id",
+            "type": "string"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "game_id",
+          "valid",
+          "checked_versions"
+        ],
+        "title": "ReplayVerificationResponse",
+        "type": "object"
+      },
+      "RoleDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public role metadata for client bootstrapping.",
+        "properties": {
+          "abilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          },
+          "difficulty": {
+            "default": 1,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Difficulty",
+            "type": "integer"
+          },
+          "faction": {
+            "title": "Faction",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "faction",
+          "abilities"
+        ],
+        "title": "RoleDefinitionView",
+        "type": "object"
+      },
+      "ScenarioDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public scenario metadata for setup screens.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "recommended_setup_preset": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recommended Setup Preset"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "summary"
+        ],
+        "title": "ScenarioDefinitionView",
+        "type": "object"
+      },
+      "SetupPresetDefinitionView": {
+        "additionalProperties": false,
+        "description": "Public setup preset metadata for setup screens.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role_counts": {
+            "additionalProperties": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "title": "Role Counts",
+            "type": "object"
+          },
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "scenario_id",
+          "role_counts"
+        ],
+        "title": "SetupPresetDefinitionView",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Werewolf Agent API",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/admin/games/{game_id}/llm-traces": {
+      "get": {
+        "description": "Return trace metadata without prompt or raw response content.",
+        "operationId": "list_llm_traces_api_v1_admin_games__game_id__llm_traces_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLlmTraceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Llm Traces",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/games/{game_id}/llm-usage": {
+      "get": {
+        "description": "Return aggregate LLM usage without exposing credentials or prompts.",
+        "operationId": "get_llm_usage_api_v1_admin_games__game_id__llm_usage_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminLlmUsageResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Llm Usage",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/games/{game_id}/replay/verify": {
+      "post": {
+        "description": "Verify replay checksums without returning private state or events.",
+        "operationId": "verify_game_replay_api_v1_admin_games__game_id__replay_verify_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayVerificationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Verify Game Replay",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/games/{game_id}/reveal": {
+      "get": {
+        "description": "Return complete game state only to an administrator.",
+        "operationId": "reveal_game_api_v1_admin_games__game_id__reveal_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameRevealResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reveal Game",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/admin/operations/{operation_id}": {
+      "get": {
+        "description": "Return bounded operation diagnostics to administrators.",
+        "operationId": "diagnose_operation_api_v1_admin_operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminOperationDiagnosticResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Diagnose Operation",
+        "tags": [
+          "administration"
+        ]
+      }
+    },
+    "/api/v1/config": {
+      "get": {
+        "description": "Return only values safe to expose to every browser.",
+        "operationId": "get_runtime_config_api_v1_config_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicRuntimeConfig"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "summary": "Get Runtime Config",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/api/v1/games": {
+      "get": {
+        "description": "Return games visible through the caller's application projection.",
+        "operationId": "list_games_api_v1_games_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "running",
+                    "completed"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Games",
+        "tags": [
+          "games"
+        ]
+      },
+      "post": {
+        "description": "Queue one game with a server-selected immutable LLM mode.",
+        "operationId": "create_game_api_v1_games_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGameRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Game",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/games/{game_id}": {
+      "get": {
+        "description": "Return one authorized public game state.",
+        "operationId": "get_game_api_v1_games__game_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Game",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/games/{game_id}/actions": {
+      "post": {
+        "description": "Queue one version-checked player action.",
+        "operationId": "submit_action_api_v1_games__game_id__actions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerActionOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Submit Action",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/games/{game_id}/advance": {
+      "post": {
+        "description": "Queue one authorized version-checked game advance.",
+        "operationId": "advance_game_api_v1_games__game_id__advance_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "maxLength": 200,
+              "minLength": 8,
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdvanceOperationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Advance Game",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/games/{game_id}/observation/{player_id}": {
+      "get": {
+        "description": "Return only the requesting player's private projection.",
+        "operationId": "get_observation_api_v1_games__game_id__observation__player_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "player_id",
+            "required": true,
+            "schema": {
+              "title": "Player Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerObservationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Observation",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/games/{game_id}/timeline": {
+      "get": {
+        "description": "Return authorized public timeline items.",
+        "operationId": "get_timeline_api_v1_games__game_id__timeline_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "game_id",
+            "required": true,
+            "schema": {
+              "title": "Game Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "after",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "After",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GameTimelineResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Timeline",
+        "tags": [
+          "games"
+        ]
+      }
+    },
+    "/api/v1/operations/{operation_id}": {
+      "get": {
+        "description": "Return an operation only to its owner.",
+        "operationId": "get_operation_api_v1_operations__operation_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "operation_id",
+            "required": true,
+            "schema": {
+              "title": "Operation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OperationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Operation",
+        "tags": [
+          "operations"
+        ]
+      }
+    }
+  }
+}

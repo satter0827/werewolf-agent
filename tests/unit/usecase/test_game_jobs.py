@@ -1,3 +1,4 @@
+import inspect
 import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -5,7 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-import werewolf_agent.usecase as usecases
+import werewolf_agent.usecase.handlers as usecases
 from werewolf_agent.agents.configuration import LlmProviderConfig
 from werewolf_agent.configuration.constants import (
     DEFAULT_GAME_LIST_LIMIT,
@@ -36,31 +37,31 @@ from werewolf_agent.configuration.resources import (
     load_llm_definitions as load_runtime_llm_definitions,
 )
 from werewolf_agent.contracts import (
+    CreateGameRequest,
     GameError,
     GameNotFoundError,
     GameStatus,
     InvalidGameIdError,
 )
-from werewolf_agent.usecase import (
+from werewolf_agent.usecase import Actor, GameApplication
+from werewolf_agent.usecase.models import (
     AdvanceGameCommand,
     CreateGameCommand,
+    GameEventCreate,
+    GameRecordCreate,
+    GameRecordUpdate,
+    GameUseCaseConfig,
     GetGameQuery,
     GetGameRevealQuery,
     GetPlayerObservationQuery,
     ListGamesQuery,
     ListTimelineQuery,
     PlayerActionCommand,
-    UsecaseContext,
-)
-from werewolf_agent.usecase.models import (
-    GameEventCreate,
-    GameRecordCreate,
-    GameRecordUpdate,
-    GameUseCaseConfig,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,
     StoredGameTurn,
+    UsecaseContext,
 )
 from werewolf_agent.usecase.ports import GameRepository
 
@@ -85,7 +86,7 @@ class UsecaseHarness:
             )
             return lambda value: advance_game(self.context, value, runtime=runtime)
         operation = getattr(usecases, name)
-        return lambda value: operation(self.context, value)
+        return lambda value: operation(value, dependencies=self.context)
 
     @staticmethod
     def get_setup_options(config, game_definitions, llm_definitions):
@@ -97,6 +98,40 @@ class UsecaseHarness:
 def test_dependencies_require_definition_values() -> None:
     with pytest.raises(TypeError):
         UsecaseContext(repository=object())  # type: ignore[arg-type,call-arg]
+
+
+def test_game_application_accepts_only_public_creation_and_page_inputs() -> None:
+    deps, _repository = dependencies()
+    games = GameApplication(deps)
+    actor = Actor(user_id="user-1")
+
+    created = games.create(
+        CreateGameRequest(
+            seed=1,
+            role_counts=DEFAULT_ROLE_COUNTS,
+        )
+    )
+    page = games.list(actor, limit=10, offset=0)
+
+    assert page.games[0]["game_id"] == created.game_id
+    assert "llm_mode" not in inspect.signature(GameApplication.create).parameters
+
+
+def test_game_application_uses_only_the_dependency_selected_llm_mode() -> None:
+    deps, repository = dependencies()
+    trusted_deps = UsecaseContext(
+        repository=deps.repository,
+        game_definitions=deps.game_definitions,
+        llm_definitions=deps.llm_definitions,
+        config=deps.config,
+        create_llm_mode="paid",
+    )
+
+    created = GameApplication(trusted_deps).create(
+        CreateGameRequest(seed=1, role_counts=DEFAULT_ROLE_COUNTS)
+    )
+
+    assert repository.games[UUID(created.game_id)].config["llm_mode"] == "paid"
 
 
 class InMemoryGameRepository(GameRepository):
@@ -716,7 +751,7 @@ def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> 
 
 
 def test_submit_manual_action_returns_public_safe_result() -> None:
-    deps, _repository = dependencies()
+    deps, repository = dependencies()
     use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(
         create_command(manual_player_id="player-1", seed=2),
@@ -736,6 +771,7 @@ def test_submit_manual_action_returns_public_safe_result() -> None:
         message = "hello"
     else:
         target_id = _first_target(observation.observation, player_id="player-1")
+    version_before_action = repository.games[UUID(created.game_id)].version
 
     result = use_cases.submit_player_action(
         PlayerActionCommand(
@@ -751,6 +787,7 @@ def test_submit_manual_action_returns_public_safe_result() -> None:
     serialized = result.model_dump_json()
     assert "seat_credential" not in serialized
     assert "trusted_user_id" not in serialized
+    assert result.state["version"] == version_before_action + 1
 
 
 def test_manual_input_blocks_advance_and_duplicate_actions() -> None:

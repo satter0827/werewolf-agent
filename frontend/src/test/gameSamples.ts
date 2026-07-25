@@ -74,6 +74,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
     allow_seer_self_inspect: false,
     allow_werewolf_friendly_fire: false,
     reveal_role_on_death: false,
+    require_all_actions_before_advance: true,
   },
   default_scenario_id: "misty-village",
   default_setup_preset_id: "classic-six",
@@ -170,6 +171,5 @@ export function sampleScreenSource(): GameScreenSource {
         legal_targets: { vote: ["player-2"] },
       },
     },
-    reveal: null,
   };
 }

@@ -46,7 +46,6 @@ def build_entrypoint_diagnostics(
         "log file": str(settings.log_file_path),
         "log retention days": str(settings.log_retention_days),
         "log third party level": settings.log_third_party_level,
-        "llm trace retention days": str(settings.llm_trace_retention_days),
     }
 
 

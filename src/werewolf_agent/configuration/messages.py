@@ -6,6 +6,8 @@ from collections.abc import Iterable
 
 TITLE_INVALID_CONFIGURATION = "Invalid Configuration"
 TITLE_REQUEST_VALIDATION_FAILED = "Request Validation Failed"
+TITLE_REQUEST_RATE_LIMITED = "Too Many Requests"
+TITLE_IDEMPOTENCY_CONFLICT = "Idempotency Conflict"
 TITLE_API_UNAVAILABLE = "API Unavailable"
 TITLE_RESOURCE_NOT_FOUND = "Resource Not Found"
 TITLE_METHOD_NOT_ALLOWED = "Method Not Allowed"
@@ -21,6 +23,8 @@ TITLE_UNEXPECTED_INTERNAL_ERROR = "Unexpected Internal Error"
 
 DETAIL_CONFIG_INVALID_VALUE = "The application configuration contains an invalid value."
 DETAIL_REQUEST_VALIDATION_FAILED = "The request body or parameters failed validation."
+DETAIL_REQUEST_RATE_LIMITED = "Wait briefly before trying the request again."
+DETAIL_IDEMPOTENCY_CONFLICT = "The idempotency key was already used for another request."
 DETAIL_API_UNAVAILABLE = "The API server could not be reached."
 DETAIL_RESOURCE_NOT_FOUND = "The requested resource was not found."
 DETAIL_METHOD_NOT_ALLOWED = "The requested HTTP method is not allowed."
@@ -67,6 +71,7 @@ LOG_STREAMLIT_REFRESHED = "streamlit.screen.loaded"
 LOG_WORKER_APPLICATION_STARTED = "worker.application.started"
 LOG_WORKER_REQUEST_CLAIMED = "worker.request.claimed"
 LOG_WORKER_REQUEST_COMPLETED = "worker.request.completed"
+LOG_WORKER_DATABASE_UNAVAILABLE = "worker.database.unavailable"
 LOG_WORKER_REQUEST_FAILED = "worker.request.failed"
 MESSAGE_GAME_NOT_FOUND = "Game not found."
 MESSAGE_GAME_NOT_FOUND_TEMPLATE = "Game not found: {game_id}"
@@ -239,10 +244,7 @@ MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED = (
     "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required. "
     "Create .env from local Supabase values before starting CLI or Streamlit."
 )
-MESSAGE_SUPABASE_DATA_API_UNAVAILABLE = "Supabase Data API is unavailable."
-MESSAGE_SUPABASE_DATA_API_NON_LIST_RESPONSE = "Supabase Data API returned a non-list response."
 MESSAGE_SUPABASE_OPERATION_NOT_RETURNED = "Supabase did not return the queued operation."
-MESSAGE_SUPABASE_GAME_REVEAL_NOT_FOUND = "Game reveal not found."
 MESSAGE_ADVANCE_REQUEST_RESULT_MISSING = "Advance request completed without a result."
 MESSAGE_ADVANCE_REQUEST_FAILED = "Advance request failed."
 MESSAGE_ADVANCE_REQUEST_TIMED_OUT = "Advance request timed out."
@@ -252,6 +254,8 @@ MESSAGE_COMPLETED_OPERATION_RESULT_MISSING = (
     "Completed operation does not contain a result payload."
 )
 MESSAGE_OPERATION_REQUEST_FAILED = "Operation request failed."
+MESSAGE_GAME_PARTICIPATION_REQUIRED = "The current user no longer has access to this game."
+MESSAGE_PAID_LLM_REQUIRES_MEMBER = "Paid LLM access requires a signed-in user."
 MESSAGE_PLAYER_SEAT_NOT_OWNED = "The current user does not own this player seat."
 MESSAGE_WORKER_REQUEST_FAILED = "Worker request failed."
 
@@ -669,11 +673,6 @@ def message_unsupported_operation_type(operation_type: str) -> str:
 def message_supabase_auth_http_error(status_code: int) -> str:
     """Return a Supabase Auth HTTP failure message."""
     return f"Supabase Auth request failed with HTTP {status_code}."
-
-
-def message_supabase_data_api_http_error(status_code: int) -> str:
-    """Return a Supabase Data API HTTP failure message."""
-    return f"Supabase Data API request failed with HTTP {status_code}."
 
 
 def message_supabase_payload_schema_mismatch(model_name: str) -> str:

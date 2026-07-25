@@ -10,14 +10,14 @@ ROOT = Path(__file__).resolve().parents[2]
 SCRIPTS = ROOT / "scripts"
 
 
-def test_scripts_directory_keeps_executable_code_batch_only() -> None:
+def test_scripts_directory_keeps_only_executable_script_formats() -> None:
     paths = [path for path in SCRIPTS.iterdir() if path.is_file()]
 
     assert paths
     for path in paths:
         if path.name == "README.md":
             continue
-        assert path.suffix == ".cmd"
+        assert path.suffix in {".cmd", ".ps1", ".py"}
 
 
 def test_expected_batch_scripts_exist() -> None:
@@ -31,6 +31,9 @@ def test_expected_batch_scripts_exist() -> None:
         "clean-caches.cmd",
     ):
         assert (SCRIPTS / name).is_file()
+    assert (SCRIPTS / "run-e2e.ps1").is_file()
+    assert (SCRIPTS / "apply_migrations.py").is_file()
+    assert (SCRIPTS / "export_openapi.py").is_file()
 
 
 def test_clean_caches_keeps_persistent_artifacts_out_of_remove_targets() -> None:
@@ -44,10 +47,24 @@ def test_clean_caches_keeps_persistent_artifacts_out_of_remove_targets() -> None
     assert 'call :clean_path "docs\\sphinx\\_build"' in script
 
 
-def test_sdist_includes_scripts() -> None:
+def test_sdist_exposes_only_python_build_inputs() -> None:
     pyproject = _read("pyproject.toml")
+    sdist = pyproject.split("[tool.hatch.build.targets.sdist]", maxsplit=1)[1].split(
+        "[tool.pytest.ini_options]",
+        maxsplit=1,
+    )[0]
 
-    assert '"scripts",' in pyproject
+    assert '"src",' in sdist
+    for private_development_surface in (
+        '".env.example",',
+        '"docker",',
+        '"docs",',
+        '"frontend",',
+        '"scripts",',
+        '"supabase",',
+        '"tests",',
+    ):
+        assert private_development_surface not in sdist
 
 
 def test_rebuild_sphinx_uses_project_environment_for_autodoc() -> None:
@@ -71,7 +88,15 @@ def test_supabase_preflight_bootstraps_local_runtime() -> None:
     assert "WEREWOLF_SUPABASE_PUBLISHABLE_KEY" in script
     assert "VITE_SUPABASE_URL" in script
     assert "VITE_SUPABASE_PUBLISHABLE_KEY" in script
-    assert "WEREWOLF_SUPABASE_DB_DSN" in script
+    assert "WEREWOLF_COMPOSE_SUPABASE_DB_DSN" in script
+    assert "host.docker.internal" in script
+
+
+def test_e2e_uses_the_container_database_dsn() -> None:
+    script = _read("scripts/run-e2e.ps1")
+
+    assert "WEREWOLF_COMPOSE_SUPABASE_DB_DSN" in script
+    assert "$env:WEREWOLF_SUPABASE_DB_DSN =" not in script
 
 
 @pytest.mark.skipif(os.name != "nt", reason="batch smoke tests run on Windows")

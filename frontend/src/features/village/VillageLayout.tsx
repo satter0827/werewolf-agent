@@ -1,4 +1,8 @@
+import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
+
 import type { GameSetupOptionsResponse } from "../../gameClient/wireTypes";
+import type { PublicRuntimeConfig } from "../../gameClient/GameClient";
 import type {
   GameScreenModel,
   PublicGameSummary,
@@ -6,9 +10,11 @@ import type {
   TurnActionSubmit,
   ViewId,
 } from "../../gameClient/uiTypes";
+import type { AuthState } from "../../data/AuthClient";
 import { dawnTableSkin } from "../../skins/dawnTableSkin";
 import { useUiStore } from "../../store/uiStore";
 import { ObserverPanel } from "./components/ObserverPanel";
+import { AuthPanel } from "./components/AuthPanel";
 import { RecordsPanel } from "./components/RecordsPanel";
 import { RoundTable } from "./components/RoundTable";
 import { TurnPanel } from "./components/TurnPanel";
@@ -18,33 +24,85 @@ import { VillageTimeline } from "./components/VillageTimeline";
 
 interface VillageLayoutProps {
   activeView: ViewId;
+  auth: AuthState;
   games: PublicGameSummary[];
   isCreatingGame: boolean;
   isSubmittingAction: boolean;
+  isUpdatingAuth: boolean;
+  errorMessage: string | null;
   onCreateGame: (draft: SetupDraft) => void;
   onResumeGame: (gameId: string) => void;
+  onRecover: () => void;
+  onSignIn: (email: string, password: string) => void;
+  onSignOut: () => void;
   onSubmitAction: (action: TurnActionSubmit) => void;
   screen: GameScreenModel;
   setupOptions: GameSetupOptionsResponse;
+  runtimeConfig: PublicRuntimeConfig;
 }
 
 export function VillageLayout({
   activeView,
+  auth,
   games,
   isCreatingGame,
   isSubmittingAction,
+  isUpdatingAuth,
+  errorMessage,
   onCreateGame,
   onResumeGame,
+  onRecover,
+  onSignIn,
+  onSignOut,
   onSubmitAction,
   screen,
   setupOptions,
+  runtimeConfig,
 }: VillageLayoutProps) {
   const setActiveView = useUiStore((state) => state.setActiveView);
+  const desktopBreakpoint = runtimeConfig.ui.desktop_breakpoint;
+  const compactLayout = useCompactLayout(desktopBreakpoint);
+  const runtimeStyle = {
+    "--wa-space": `${runtimeConfig.ui.spacing_unit}px`,
+    "--wa-desktop-breakpoint": `${desktopBreakpoint}px`,
+  } as CSSProperties;
 
   return (
-    <div className="wa-app" data-skin={dawnTableSkin.id}>
+    <div
+      className="wa-app"
+      data-compact-layout={compactLayout}
+      data-config-revision={runtimeConfig.config_revision}
+      data-contract-version={runtimeConfig.contract_version}
+      data-game-version={screen.version}
+      data-message-max-chars={runtimeConfig.limits.message_max_chars}
+      data-motion={runtimeConfig.ui.motion}
+      data-operation-status={
+        errorMessage ? "failed" : isCreatingGame || isSubmittingAction ? "running" : "succeeded"
+      }
+      data-skin={dawnTableSkin.id}
+      data-theme-id={runtimeConfig.ui.theme_id}
+      data-view-mode={activeView}
+      style={runtimeStyle}
+    >
       <VillageNav activeView={activeView} onNavigate={setActiveView} />
       <main className="wa-main-shell">
+        <AuthPanel
+          auth={auth}
+          isPending={isUpdatingAuth}
+          onSignIn={onSignIn}
+          onSignOut={onSignOut}
+        />
+        {errorMessage ? (
+          <section className="wa-error-banner" role="alert">
+            <div>
+              <strong>操作を完了できませんでした</strong>
+              <p>{errorMessage}</p>
+            </div>
+            <button type="button" onClick={onRecover}>
+              最新状態を読み込む
+            </button>
+          </section>
+        ) : null}
         <section className="wa-hero-status" aria-label="村の状態">
           <div>
             <p className="wa-kicker">{dawnTableSkin.name}</p>
@@ -63,6 +121,7 @@ export function VillageLayout({
             isCreating={isCreatingGame}
             onCreate={onCreateGame}
             setupOptions={setupOptions}
+            uiSettings={runtimeConfig.ui}
           />
         ) : (
           <div className="wa-game-grid">
@@ -82,6 +141,7 @@ export function VillageLayout({
               ) : (
                 <TurnPanel
                   isSubmitting={isSubmittingAction}
+                  messageMaxChars={runtimeConfig.limits.message_max_chars}
                   onSubmit={onSubmitAction}
                   panel={screen.turnPanel}
                 />
@@ -96,4 +156,17 @@ export function VillageLayout({
       </main>
     </div>
   );
+}
+
+function useCompactLayout(breakpoint: number): boolean {
+  const [compact, setCompact] = useState(() => window.innerWidth <= breakpoint);
+
+  useEffect(() => {
+    const update = () => setCompact(window.innerWidth <= breakpoint);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [breakpoint]);
+
+  return compact;
 }

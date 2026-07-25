@@ -102,7 +102,9 @@ advance 時は session state ではなく保存済み config から strategy を
 - 死亡 player、終了済み game、合法 action なし、manual player 待ちは LLM 呼び出し前に usecase 側で止める
 - public timeline と public response には graph state、raw prompt、raw response、secret、private night action を出さない
 
-LLM trace には、provider 改善用の admin-only record として prompt message、prompt hash、raw response、parsed decision を保存します。
+LLM trace には、provider改善用のprivate recordとしてprompt message、prompt hash、
+raw response、parsed decisionを保存します。管理APIはpromptとraw responseを返さず、
+allowlist済みmetadata、hash、parsed decision、errorだけを返します。
 request payload には `agent_strategy_id`、`decision_graph_id`、`graph_node`、`route`、`validation_status`、`fallback_reason` を入れます。
 `latency_ms` は trace record の top-level field として保存します。
 

@@ -55,8 +55,9 @@ export function mapGameScreen({
   const actorNames = new Map(state.players.map((player) => [player.id, player.name]));
   const seats = mapSeats(state, screen.timeline.items, manualPlayerId);
   const timeline = screen.timeline.items.map((item) => mapTimelineItem(item, actorNames));
-  const observerRecord = screen.reveal ? mapObserverRecord(screen.reveal.players) : null;
+  const observerRecord = mapObserverRecord(timeline);
   return {
+    version: state.version,
     status: state.status,
     phase: state.phase,
     phaseLabel: phaseLabels[state.phase],
@@ -200,17 +201,10 @@ function mapTimelineItem(
   };
 }
 
-function mapObserverRecord(
-  players: Array<{ name: string; role: string; faction: string; alive: boolean }>,
-): ObserverRecord {
+function mapObserverRecord(timeline: TimelineEntry[]): ObserverRecord {
   return {
-    title: "語り部の記録",
-    lines: players.map(
-      (player) =>
-        `${player.name}: ${friendlyRole(player.role)} / ${factionLabel(player.faction)} / ${
-          player.alive ? "生存" : "退場"
-        }`,
-    ),
+    title: "公開された記録",
+    lines: timeline.slice(-8).map((entry) => `${entry.dayLabel} ${entry.label}: ${entry.detail}`),
   };
 }
 
@@ -241,12 +235,4 @@ function friendlyRole(role: string): string {
     knight: "騎士",
   };
   return labels[role] ?? role;
-}
-
-function factionLabel(faction: string): string {
-  const labels: Record<string, string> = {
-    villagers: "村人陣営",
-    werewolves: "人狼陣営",
-  };
-  return labels[faction] ?? faction;
 }

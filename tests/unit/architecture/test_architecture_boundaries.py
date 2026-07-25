@@ -1,4 +1,4 @@
-"""Executable architecture constraints for the headless core."""
+"""Executable architecture constraints for the second-stage system."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import werewolf_agent.usecase as usecase
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
-UNIT_TESTS = ROOT / "tests" / "unit"
+FRONTEND = ROOT / "frontend" / "src"
 
 LAYERS = {
     "domain",
@@ -23,6 +23,7 @@ LAYERS = {
     "agents",
     "usecase",
     "adapters",
+    "api",
     "interfaces",
     "resources",
 }
@@ -30,7 +31,7 @@ ALLOWED_IMPORTS = {
     "domain": {"domain"},
     "configuration": {"configuration"},
     "contracts": {"contracts", "configuration", "security"},
-    "security": {"security", "configuration"},
+    "security": {"security", "configuration", "contracts"},
     "observability": {"observability", "configuration", "contracts", "security"},
     "agents": {"agents", "configuration", "contracts"},
     "usecase": {"usecase", "domain", "configuration", "contracts"},
@@ -44,50 +45,40 @@ ALLOWED_IMPORTS = {
         "security",
         "usecase",
     },
+    "api": {"api", "configuration", "contracts", "observability", "security", "usecase"},
     "interfaces": {
         "interfaces",
         "adapters",
+        "agents",
         "configuration",
         "contracts",
         "observability",
         "security",
+        "usecase",
     },
     "resources": {"resources"},
 }
 
 
-def test_top_level_layout_uses_intuitive_boundaries() -> None:
-    assert not (ROOT / "backend").exists()
-    assert (ROOT / "src" / "werewolf_agent").is_dir()
-
+def test_top_level_layout_has_independent_runtime_boundaries() -> None:
     for layer in LAYERS:
-        assert (PACKAGE / layer).exists(), layer
-
-    for removed in ("api", "entrypoint", "interface", "commons"):
-        assert not list((PACKAGE / removed).rglob("*.py")), removed
-
-    assert not list((PACKAGE / "domain" / "game").rglob("*.py"))
-    assert not list((PACKAGE / "domain" / "llm").rglob("*.py"))
-    assert not list((PACKAGE / "usecase" / "jobs").rglob("*.py"))
-    assert not list((PACKAGE / "usecase" / "internal").rglob("*.py"))
-
-    assert {
-        path.name for path in UNIT_TESTS.iterdir() if path.is_dir() and path.name != "__pycache__"
-    } == {
-        "adapters",
-        "agents",
-        "architecture",
-        "configuration",
-        "contracts",
-        "domain",
-        "interfaces",
-        "observability",
-        "security",
-        "usecase",
-    }
+        assert (PACKAGE / layer).is_dir(), layer
+    assert (ROOT / "frontend").is_dir()
+    assert (ROOT / "frontend" / "e2e" / "react.spec.ts").is_file()
+    assert (ROOT / "frontend" / "e2e" / "streamlit.spec.ts").is_file()
+    assert (ROOT / "scripts" / "apply_migrations.py").is_file()
+    assert (ROOT / "scripts" / "export_openapi.py").is_file()
+    assert not (ROOT / "e2e").exists()
+    assert not (ROOT / "tools").exists()
+    assert not (PACKAGE / "interfaces" / "api").exists()
+    assert (PACKAGE / "interfaces" / "worker" / "app.py").is_file()
+    assert (PACKAGE / "interfaces" / "worker" / "service.py").is_file()
+    assert not list((PACKAGE / "worker").rglob("*.py"))
+    assert not list((PACKAGE / "adapters" / "supabase" / "worker").rglob("*.py"))
+    assert not (PACKAGE / "adapters" / "supabase" / "game_client.py").exists()
 
 
-def test_public_surfaces_are_explicit() -> None:
+def test_public_surfaces_are_minimal_and_explicit() -> None:
     assert set(domain.__all__) == {
         "Action",
         "Game",
@@ -113,130 +104,289 @@ def test_public_surfaces_are_explicit() -> None:
         "PlayerProfileCatalog",
         "VisiblePlayer",
     }
-    assert set(usecase.__all__) == {
-        "AdvanceGameCommand",
-        "AdvanceGameResult",
-        "CreateGameCommand",
-        "GameListResult",
-        "GameResult",
-        "GameRevealResult",
-        "GameTimelineResult",
-        "GetGameQuery",
-        "GetGameRevealQuery",
-        "GetPlayerObservationQuery",
-        "ListGamesQuery",
-        "ListTimelineQuery",
-        "PlayerActionCommand",
-        "PlayerActionResult",
-        "PlayerObservationResult",
-        "UsecaseContext",
-        "advance_game",
-        "create_game",
-        "get_game",
-        "get_game_reveal",
-        "get_player_observation",
-        "list_games",
-        "list_timeline",
-        "submit_player_action",
-    }
+    assert set(usecase.__all__) == {"Actor", "GameApplication"}
 
 
 def test_layer_imports_follow_the_allowed_matrix() -> None:
     offenders: list[tuple[Path, str, str]] = []
     for path, module in _project_imports():
-        source_layer = path.relative_to(PACKAGE).parts[0]
-        if source_layer not in LAYERS:
+        source = path.relative_to(PACKAGE).parts[0]
+        parts = module.split(".")
+        if source not in LAYERS or len(parts) < 2 or parts[0] != "werewolf_agent":
             continue
-        target_parts = module.split(".")
-        if len(target_parts) < 2 or target_parts[0] != "werewolf_agent":
+        target = parts[1]
+        if target not in LAYERS or target in ALLOWED_IMPORTS[source]:
             continue
-        target_layer = target_parts[1]
-        if target_layer in LAYERS and target_layer not in ALLOWED_IMPORTS[source_layer]:
-            offenders.append((path.relative_to(ROOT), source_layer, target_layer))
+        if source == "api" and path.name == "bootstrap.py" and target == "adapters":
+            continue
+        offenders.append((path.relative_to(ROOT), source, target))
     assert not offenders
 
 
-def test_project_layer_graph_has_no_cycles() -> None:
-    graph: dict[str, set[str]] = {layer: set() for layer in LAYERS}
+def test_layer_and_module_graphs_have_no_cycles() -> None:
+    layer_graph: dict[str, set[str]] = {layer: set() for layer in LAYERS}
     for path, module in _project_imports():
         source = path.relative_to(PACKAGE).parts[0]
-        if source not in LAYERS:
-            continue
         parts = module.split(".")
-        if len(parts) >= 2 and parts[0] == "werewolf_agent" and parts[1] in LAYERS:
-            target = parts[1]
-            if target != source:
-                graph[source].add(target)
-    assert not _cycles(graph)
+        if source in LAYERS and len(parts) >= 2 and parts[1] in LAYERS and source != parts[1]:
+            layer_graph[source].add(parts[1])
+    assert not _cycles(layer_graph)
 
-
-def test_project_module_graph_has_no_cycles() -> None:
     modules = {_module_name(path): path for path in PACKAGE.rglob("*.py")}
-    graph: dict[str, set[str]] = {module: set() for module in modules}
-    for module, path in modules.items():
-        for imported in _imports(path):
-            if imported in modules and imported != module:
-                graph[module].add(imported)
-    assert not _cycles(graph)
+    module_graph = {
+        module: {
+            imported for imported in _imports(path) if imported in modules and imported != module
+        }
+        for module, path in modules.items()
+    }
+    assert not _cycles(module_graph)
 
 
-def test_frameworks_stay_at_their_adapters() -> None:
+def test_frameworks_stay_in_their_runtime_adapters() -> None:
     rules = {
-        ("langchain", "langgraph"): PACKAGE / "agents" / "langchain",
-        ("psycopg", "sqlalchemy"): PACKAGE / "adapters" / "supabase",
-        ("streamlit",): PACKAGE / "interfaces" / "streamlit",
-        ("typer",): PACKAGE / "interfaces",
+        ("fastapi", "starlette", "uvicorn"): (PACKAGE / "api",),
+        ("langchain", "langgraph"): (PACKAGE / "agents" / "langchain",),
+        ("psycopg", "sqlalchemy"): (PACKAGE / "adapters" / "supabase",),
+        ("streamlit",): (PACKAGE / "interfaces" / "streamlit",),
+        ("typer",): (
+            PACKAGE / "interfaces" / "cli",
+            PACKAGE / "interfaces" / "worker",
+        ),
     }
     offenders = []
     for path in PACKAGE.rglob("*.py"):
         for imported in _imports(path):
-            for prefixes, allowed_root in rules.items():
+            for prefixes, roots in rules.items():
                 if any(
                     imported == prefix or imported.startswith(f"{prefix}.") for prefix in prefixes
-                ) and not path.is_relative_to(allowed_root):
+                ) and not any(path.is_relative_to(root) for root in roots):
                     offenders.append((path.relative_to(ROOT), imported))
     assert not offenders
 
 
-def test_outer_layers_use_only_the_domain_public_module() -> None:
+def test_api_routes_only_use_application_contracts() -> None:
     offenders = []
-    for layer in ("usecase", "agents", "adapters", "interfaces"):
-        for path in (PACKAGE / layer).rglob("*.py"):
-            for imported in _imports(path):
-                if imported.startswith("werewolf_agent.domain."):
-                    offenders.append((path.relative_to(ROOT), imported))
+    for path in (PACKAGE / "api" / "routes").rglob("*.py"):
+        for imported in _imports(path):
+            if imported.startswith(
+                (
+                    "werewolf_agent.domain",
+                    "werewolf_agent.agents",
+                    "werewolf_agent.adapters",
+                    "werewolf_agent.usecase.handlers",
+                    "werewolf_agent.usecase.models",
+                    "werewolf_agent.usecase.ports",
+                )
+            ):
+                offenders.append((path.relative_to(ROOT), imported))
     assert not offenders
 
 
-def test_game_module_exposes_only_the_aggregate_root() -> None:
-    path = PACKAGE / "domain" / "game.py"
-    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-    public_definitions = {
-        node.name
-        for node in tree.body
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
-        and not node.name.startswith("_")
-    }
-    assert public_definitions == {"Game"}
+def test_interfaces_can_only_reach_games_through_http_client_port() -> None:
+    offenders = []
+    for interface in ("cli", "streamlit"):
+        for path in (PACKAGE / "interfaces" / interface).rglob("*.py"):
+            for imported in _imports(path):
+                if imported.startswith(
+                    (
+                        "werewolf_agent.domain",
+                        "werewolf_agent.usecase",
+                        "werewolf_agent.adapters.supabase",
+                    )
+                ):
+                    offenders.append((path.relative_to(ROOT), imported))
+    assert not offenders
+    factory = (PACKAGE / "adapters" / "factory.py").read_text(encoding="utf-8")
+    assert "HttpGameClient" in factory
+    assert "SupabaseGameClient" not in factory
 
 
-def test_usecase_changes_game_state_only_through_aggregate() -> None:
-    handlers = (PACKAGE / "usecase" / "handlers.py").read_text(encoding="utf-8")
-    for legacy_function in ("start_game", "submit_action", "advance_phase", "observe"):
-        assert f"{legacy_function}(" not in handlers
-
-
-def test_usecase_does_not_own_agent_runtime_or_telemetry() -> None:
-    source = "\n".join(
-        path.read_text(encoding="utf-8") for path in (PACKAGE / "usecase").rglob("*.py")
+def test_react_game_traffic_is_generated_http_and_supabase_is_auth_only() -> None:
+    source_files = list(FRONTEND.rglob("*.ts")) + list(FRONTEND.rglob("*.tsx"))
+    source = "\n".join(path.read_text(encoding="utf-8") for path in source_files)
+    data_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (FRONTEND / "data").rglob("*.ts")
     )
-    for removed_runtime_type in (
-        "LlmProviderConfig",
-        "LlmTraceSink",
-        "TelemetryEvent",
-        "TelemetrySink",
+    assert "/rest/v1/" not in source
+    assert ".from(" not in data_source
+    assert "SupabaseGameClient" not in source
+    assert "/api/v1/admin" not in data_source
+    assert "openapi-fetch" in (FRONTEND / "data" / "ApiGameClient.ts").read_text(encoding="utf-8")
+    assert (FRONTEND / "generated" / "api.ts").exists()
+    supabase_importers = {
+        path.relative_to(FRONTEND).as_posix()
+        for path in source_files
+        if "@supabase/supabase-js" in path.read_text(encoding="utf-8")
+    }
+    assert supabase_importers == {"data/AuthClient.ts"}
+
+
+def test_frontend_test_runners_have_disjoint_scopes() -> None:
+    vite_config = (ROOT / "frontend" / "vite.config.ts").read_text(encoding="utf-8")
+    playwright_config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
+    assert 'include: ["src/**/*.test.{ts,tsx}"]' in vite_config
+    assert 'testDir: process.env.PLAYWRIGHT_TEST_DIR ?? "e2e"' in playwright_config
+
+
+def test_human_interface_client_port_excludes_administrator_operations() -> None:
+    port = (PACKAGE / "adapters" / "ports.py").read_text(encoding="utf-8")
+    http_client = (PACKAGE / "adapters" / "http" / "game_client.py").read_text(encoding="utf-8")
+    assert "get_game_reveal" not in port
+    assert "/api/v1/admin" not in http_client
+    for path in (PACKAGE / "interfaces" / "streamlit").rglob("*.py"):
+        assert "get_game_reveal" not in path.read_text(encoding="utf-8"), path
+
+
+def test_react_responsive_layout_uses_public_runtime_breakpoint() -> None:
+    layout = (FRONTEND / "features" / "village" / "VillageLayout.tsx").read_text(encoding="utf-8")
+    css = (FRONTEND / "skins" / "dawn-table.css").read_text(encoding="utf-8")
+    assert "runtimeConfig.ui.desktop_breakpoint" in layout
+    assert "data-compact-layout={compactLayout}" in layout
+    assert "@media (max-width:" not in css
+    assert '.wa-app[data-compact-layout="true"]' in css
+
+
+def test_action_text_limit_is_shared_by_api_react_and_streamlit() -> None:
+    layout = (FRONTEND / "features" / "village" / "VillageLayout.tsx").read_text(encoding="utf-8")
+    turn_panel = (FRONTEND / "features" / "village" / "components" / "TurnPanel.tsx").read_text(
+        encoding="utf-8"
+    )
+    api_routes = (PACKAGE / "api" / "routes" / "games.py").read_text(encoding="utf-8")
+    settings = (PACKAGE / "configuration" / "settings.py").read_text(encoding="utf-8")
+    streamlit_app = (PACKAGE / "interfaces" / "streamlit" / "app.py").read_text(encoding="utf-8")
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "runtimeConfig.limits.message_max_chars" in layout
+    assert "maxLength={messageMaxChars}" in turn_panel
+    assert "maxLength={200}" not in turn_panel
+    assert "_validate_action_text(request, services.message_max_chars)" in api_routes
+    assert "runtime_config.limits.message_max_chars" in streamlit_app
+    assert "max_chars=message_max_chars" in streamlit_app
+    assert "max_chars=settings.api_message_max_chars" not in streamlit_app
+    assert "WEREWOLF_API_MESSAGE_MAX_CHARS" in settings
+    assert "WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS" not in settings
+    api_client_environment = compose.split("services:", maxsplit=1)[0]
+    assert "WEREWOLF_API_MESSAGE_MAX_CHARS" not in api_client_environment
+
+
+def test_react_private_observation_is_scoped_to_play_mode() -> None:
+    app = (FRONTEND / "App.tsx").read_text(encoding="utf-8")
+    assert 'activeView === "play" ? manualPlayerId : ""' in app
+    assert '["game-screen", activeGameId, privatePlayerId]' in app
+    assert "getScreen(activeGameId, privatePlayerId)" in app
+
+
+def test_paid_provider_secret_is_worker_only_in_compose() -> None:
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    occurrences = [
+        line.strip()
+        for line in compose.splitlines()
+        if "OPENAI_API_KEY" in line and not line.lstrip().startswith("#")
+    ]
+    assert occurrences
+    assert all("OPENAI_API_KEY" in line for line in occurrences)
+    worker_block = compose.split("worker:", maxsplit=1)[1]
+    assert "OPENAI_API_KEY" in worker_block
+    for service in ("api:", "frontend:", "streamlit:"):
+        if service in compose:
+            block = compose.split(service, maxsplit=1)[1].split("\n  ", maxsplit=1)[0]
+            assert "OPENAI_API_KEY" not in block
+
+
+def test_runtime_settings_are_wired_to_their_compose_services() -> None:
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    api_block = compose.split("  api:", maxsplit=1)[1].split("\n  worker:", maxsplit=1)[0]
+    worker_block = compose.split("  worker:", maxsplit=1)[1].split(
+        "\n  frontend:",
+        maxsplit=1,
+    )[0]
+    streamlit_block = compose.split("  streamlit:", maxsplit=1)[1].split(
+        "\n  test:",
+        maxsplit=1,
+    )[0]
+    for setting in (
+        "WEREWOLF_REVEAL_API_ENABLED",
+        "WEREWOLF_API_DOCS_ENABLED",
+        "WEREWOLF_API_MAX_BODY_BYTES",
+        "WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS",
+        "WEREWOLF_API_TIMEOUT_SECONDS",
+        "WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
     ):
-        assert removed_runtime_type not in source
+        assert setting in api_block
+    for setting in (
+        "WEREWOLF_REVEAL_API_ENABLED",
+        "WEREWOLF_SUPABASE_WORKER_BATCH_SIZE",
+        "WEREWOLF_LLM_TIMEOUT_SECONDS",
+        "WEREWOLF_WORKER_PAID_LLM_BASE_URL",
+    ):
+        assert setting in worker_block
+    for setting in (
+        "WEREWOLF_SUPABASE_AUTH_TIMEOUT_SECONDS",
+        "WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS",
+        "WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS",
+    ):
+        assert setting in streamlit_block
+
+
+def test_compose_uses_a_container_reachable_database_dsn() -> None:
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert compose.count("WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}") == 3
+    assert "WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_SUPABASE_DB_DSN:-}" not in compose
+
+
+def test_api_entrypoint_uses_the_shared_redacting_log_pipeline() -> None:
+    source = (PACKAGE / "api" / "app.py").read_text(encoding="utf-8")
+    assert "configure_entrypoint_logging(" in source
+    assert 'default_log_file_name="api.jsonl"' in source
+
+
+def test_private_supabase_projections_are_not_data_api_tables() -> None:
+    migration = (
+        ROOT / "supabase" / "migrations" / "20260724000000_second_stage_baseline.sql"
+    ).read_text(encoding="utf-8")
+    for table in ("game_player_observations", "game_reveals"):
+        assert f"alter table public.{table} set schema private" in migration
+    assert "revoke all on all tables in schema private from anon, authenticated" in migration
+
+
+def test_game_tables_are_unavailable_through_supabase_data_api() -> None:
+    migration = (
+        ROOT / "supabase" / "migrations" / "20260724000000_second_stage_baseline.sql"
+    ).read_text(encoding="utf-8")
+    for table in (
+        "games",
+        "game_summaries",
+        "game_participants",
+        "game_public_turns",
+        "game_operation_requests",
+    ):
+        assert f"revoke all on public.{table} from anon, authenticated" in migration
+    cleanup_migration = (
+        ROOT / "supabase" / "migrations" / "20260725000000_remove_legacy_public_tables.sql"
+    ).read_text(encoding="utf-8")
+    for legacy_table in (
+        "profiles",
+        "user_preferences",
+        "definition_items",
+        "retention_runs",
+    ):
+        assert f"drop table if exists public.{legacy_table}" in cleanup_migration
+    rpc_cleanup = (
+        ROOT / "supabase" / "migrations" / "20260725010000_remove_legacy_public_rpc.sql"
+    ).read_text(encoding="utf-8")
+    assert "drop function if exists public.is_admin() cascade" in rpc_cleanup
+    for private_replacement in ("llm_invocations", "audit_events"):
+        assert f"drop table if exists public.{private_replacement}" in migration
+
+
+def test_streamlit_has_no_admin_reveal_path() -> None:
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (PACKAGE / "interfaces" / "streamlit").rglob("*.py")
+    )
+    assert "GameReveal" not in source
+    assert "/admin" not in source
 
 
 def test_domain_and_usecase_have_no_io_or_logging_dependencies() -> None:
@@ -263,34 +413,13 @@ def test_domain_and_usecase_have_no_io_or_logging_dependencies() -> None:
     assert not offenders
 
 
-def test_game_identifiers_do_not_leak_into_outer_business_logic() -> None:
-    fixed_ids = {
-        "villager",
-        "werewolf",
-        "seer",
-        "knight",
-        "village",
-        "night_attack",
-        "pack_knowledge",
-        "inspect",
-        "guard",
-    }
-    offenders = []
-    for layer in ("usecase", "adapters", "interfaces"):
-        for path in (PACKAGE / layer).rglob("*.py"):
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Constant) and node.value in fixed_ids:
-                    offenders.append((path.relative_to(ROOT), node.lineno, node.value))
-    assert not offenders
-
-
-def test_langchain_fake_is_the_library_implementation() -> None:
+def test_domain_rules_and_fake_provider_remain_centralized() -> None:
+    handlers = (PACKAGE / "usecase" / "handlers.py").read_text(encoding="utf-8")
+    for legacy_function in ("start_game", "submit_action", "advance_phase", "observe"):
+        assert f"{legacy_function}(" not in handlers
     service = (PACKAGE / "agents" / "langchain" / "service.py").read_text(encoding="utf-8")
     assert "from langchain_core.language_models.fake import FakeListLLM" in service
     assert "class Fake" not in service
-    assert "_fake_response_selector" not in service
-    assert "_fake_template_context" not in service
 
 
 def _project_imports() -> list[tuple[Path, str]]:

@@ -10,7 +10,8 @@ Observe では `観戦ログ` を主役にします。
 ## 目的
 
 - 一般ユーザーが Streamlit だけで 1 game を開始し、1 manual player として決着まで遊べる
-- 画面は `GameClient` port だけを使い、起動時に Supabase anonymous session を確保して Supabase queue / Data API に接続する
+- 画面は `GameClient` portだけを使い、Supabase Authで取得したaccess tokenを添えて
+  FastAPIへ接続する。ゲームデータのData API、RPC、Realtimeは利用しない
 - 文言はゲームらしさと分かりやすさのバランスを取り、メタ表現を画面本文に出さない
 - 設定値、表示モデル、API 操作、HTML 部品を分け、画面変更が内側の層へ波及しないようにする
 
@@ -25,14 +26,14 @@ A案を実装の基準にします。中央の `ゲーム卓` にプレイヤー
 
 - メイン初期画面: `ゲーム開始設定`。初回表示と sidebar の `プレイ` は常に開始設定へ戻す
 - 左サイドバー: 状態の一言表示、`履歴`、`プレイ`、`観戦`、`設定`
-- `履歴`: Supabase 上の個人 game summary を選び、操作用キーは画面に出さない
+- `履歴`: HTTP APIが返す閲覧可能なgame summaryを選び、内部IDや操作用キーは画面に出さない
 - `ゲーム開始設定` / `観戦開始設定`: シナリオ、設定プリセット、ナレーション、seed、役職人数、キャラクター割当、local rules を編集する。全体人数の直接入力は置かず、役職人数から導出する
-- `プレイ`: 操作席を選ぶ。`観戦` は操作席を持たず reveal 専用で開始する
+- `プレイ`: 操作席を選ぶ。`観戦` は操作席を持たず、公開状態と公開タイムラインだけを表示する
 - `設定`: 言語、データソース状態、役職定義、キャラクター定義、追加定義のクリアだけを扱う。game 固有の設定は置かない
 - 上部ステータス: フェーズ、日数、生存人数、経過ターン、現在の手番、状態、勝敗
 - 中央: `ゲーム卓`
 - 右側: Play では `あなたの手番`、`あなたの役職`、`見えている情報`、`できる行動`
-- 右側: Observe では操作 UI を出さず、全役職と投票・夜行動の reveal 情報を `観戦ログ` にまとめる
+- 右側: Observe では操作 UI を出さず、公開タイムラインの直近イベントを `観戦ログ` にまとめる
 - 中央下: `公開タイムライン`。completed 時は末尾に `結果サマリー` と次の選択を表示する
 
 mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` の順で縦積みします。
@@ -77,7 +78,8 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
 - 右ペイン最下部の `観測メモ（公開情報）` は public state と public timeline だけから作り、private observation や reveal は混ぜない
 - 発言内容、投票、投票結果、夜明けの犠牲者有無は表示し、夜行動の対象、護衛先、占い結果、role は表示しない
-- Observe は admin / demo が取得できる reveal DTO だけから秘匿情報を読み、Play の表示 model へは混ぜない
+- Observe は public state と public timeline だけを使い、private observation、admin reveal、
+  LLM trace へ到達しない
 - 操作用キーは Streamlit session state のみに保持し、保存スロット、画面、ログには出さない
 - history selection は現在 version だけを読み、旧 save fallback は持たない
 

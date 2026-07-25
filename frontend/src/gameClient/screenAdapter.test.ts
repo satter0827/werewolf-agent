@@ -23,6 +23,8 @@ describe("mapGameScreen", () => {
     expect(screen.turnPanel.actions[0]?.label).toBe("発言する");
     expect(screen.turnPanel.actions[0]?.requiresMessage).toBe(true);
     expect(screen.timeline[screen.timeline.length - 1]?.detail).toContain("温度差");
+    expect(screen.observerRecord?.title).toBe("公開された記録");
+    expect(screen.observerRecord?.lines.join(" ")).toContain("温度差");
   });
 
   it("does not put internal or secret fields into play timeline details", () => {
@@ -68,7 +70,6 @@ describe("mapGameScreen", () => {
         ],
       },
       observation: null,
-      reveal: null,
     };
 
     const screen = mapGameScreen({ screen: source, manualPlayerId: "player-1" });

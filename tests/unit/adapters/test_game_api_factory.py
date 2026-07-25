@@ -3,7 +3,8 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from werewolf_agent.adapters import factory
-from werewolf_agent.adapters.supabase import SupabaseGameClient, SupabaseSession
+from werewolf_agent.adapters.http import HttpGameClient
+from werewolf_agent.adapters.supabase import SupabaseSession
 from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts import AppError
 
@@ -13,7 +14,7 @@ def test_build_game_client_requires_supabase_settings() -> None:
         factory.build_game_client(AppSettings(_env_file=None))
 
 
-def test_build_game_client_always_returns_supabase_client(
+def test_build_game_client_always_returns_http_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = SupabaseSession(
@@ -34,4 +35,4 @@ def test_build_game_client_always_returns_supabase_client(
         )
     )
 
-    assert isinstance(api, SupabaseGameClient)
+    assert isinstance(api, HttpGameClient)

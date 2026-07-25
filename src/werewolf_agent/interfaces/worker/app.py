@@ -8,7 +8,6 @@ from typing import TypeVar
 
 import typer
 
-from werewolf_agent.adapters.supabase.worker.service import process_worker_batch, run_worker_forever
 from werewolf_agent.configuration import (
     AppSettings,
     get_settings,
@@ -22,6 +21,7 @@ from werewolf_agent.configuration.messages import (
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.interfaces.worker.service import process_worker_batch, run_worker_forever
 from werewolf_agent.observability import configure_entrypoint_logging
 from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.security.redaction import redact_text

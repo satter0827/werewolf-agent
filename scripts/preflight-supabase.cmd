@@ -64,6 +64,7 @@ call :write_env_from_supabase_status
 call :require_env_line WEREWOLF_SUPABASE_URL
 call :require_env_line WEREWOLF_SUPABASE_PUBLISHABLE_KEY
 call :require_env_line WEREWOLF_SUPABASE_DB_DSN
+call :require_env_line WEREWOLF_COMPOSE_SUPABASE_DB_DSN
 if "%FAILED%"=="1" (
     popd
     exit /b 1
@@ -128,6 +129,9 @@ call :ensure_env_value WEREWOLF_SUPABASE_PUBLISHABLE_KEY "%STATUS_SUPABASE_PUBLI
 call :ensure_env_value VITE_SUPABASE_URL "%STATUS_SUPABASE_URL%"
 call :ensure_env_value VITE_SUPABASE_PUBLISHABLE_KEY "%STATUS_SUPABASE_PUBLISHABLE_KEY%"
 call :ensure_env_value WEREWOLF_SUPABASE_DB_DSN "%STATUS_SUPABASE_DB_URL%"
+set "STATUS_COMPOSE_DB_URL=%STATUS_SUPABASE_DB_URL:127.0.0.1=host.docker.internal%"
+set "STATUS_COMPOSE_DB_URL=%STATUS_COMPOSE_DB_URL:localhost=host.docker.internal%"
+call :ensure_env_value WEREWOLF_COMPOSE_SUPABASE_DB_DSN "%STATUS_COMPOSE_DB_URL%"
 exit /b 0
 
 :ensure_env_value
@@ -155,6 +159,7 @@ echo Required .env keys:
 echo   WEREWOLF_SUPABASE_URL
 echo   WEREWOLF_SUPABASE_PUBLISHABLE_KEY
 echo   WEREWOLF_SUPABASE_DB_DSN
+echo   WEREWOLF_COMPOSE_SUPABASE_DB_DSN
 echo.
 echo Also checks Docker, migrations, doctor, and setup-options.
 exit /b 0

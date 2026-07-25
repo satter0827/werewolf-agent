@@ -2,22 +2,54 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from werewolf_agent.adapters.supabase import SupabaseGameClient, SupabaseSession
+from werewolf_agent.adapters.http import HttpGameClient
+from werewolf_agent.adapters.supabase import SupabaseSession
 from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts.schemas import GameSetupOptionsResponse
 
 
-def test_get_setup_options_reads_supabase_definition_item_payload() -> None:
+def test_get_setup_options_uses_public_api_config_not_supabase_data_api() -> None:
     requests: list[httpx.Request] = []
 
     def handler(request: httpx.Request) -> httpx.Response:
         requests.append(request)
-        return httpx.Response(200, json=[{"payload": _setup_payload()}])
+        return httpx.Response(
+            200,
+            json={
+                "contract_version": "v1",
+                "config_revision": "test",
+                "setup": _setup_payload(),
+                "limits": {
+                    "game_min_players": 5,
+                    "game_max_players": 8,
+                    "message_max_chars": 120,
+                    "game_list_page_size": 20,
+                    "timeline_page_size": 100,
+                },
+                "features": {
+                    "authentication": True,
+                    "paid_llm_for_members": True,
+                    "admin_reveal": True,
+                    "admin_replay": True,
+                },
+                "ui": {
+                    "theme_id": "dawn-table",
+                    "spacing_unit": 4,
+                    "desktop_breakpoint": 980,
+                    "motion": "system",
+                    "default_manual_player_id": "player-1",
+                    "default_setup_seed": "1",
+                    "operation_poll_interval_ms": 250,
+                    "operation_poll_timeout_ms": 60_000,
+                },
+            },
+        )
 
-    api = SupabaseGameClient(
+    client = HttpGameClient(
         AppSettings(
             _env_file=None,
-            supabase_url="http://127.0.0.1:54321",
+            api_base_url="http://api.test",
+            supabase_url="http://auth.test",
             supabase_publishable_key="anon-test",
         ),
         SupabaseSession(
@@ -31,11 +63,13 @@ def test_get_setup_options_reads_supabase_definition_item_payload() -> None:
         transport=httpx.MockTransport(handler),
     )
 
-    response = api.get_setup_options()
+    runtime = client.get_runtime_config()
+    response = client.get_setup_options()
 
+    assert runtime.limits.message_max_chars == 120
     assert response.default_setup_preset_id == "classic-six"
-    assert requests[0].url.path == "/rest/v1/definition_items"
-    assert "kind=eq.setup_options" in str(requests[0].url)
+    assert requests[0].url.path == "/api/v1/config"
+    assert "/rest/v1/" not in str(requests[0].url)
 
 
 def _setup_payload() -> dict[str, object]:

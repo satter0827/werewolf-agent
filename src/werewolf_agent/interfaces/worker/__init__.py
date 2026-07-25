@@ -1,1 +1,1 @@
-"""Worker process interface."""
+"""Asynchronous game operation worker interface."""

@@ -1,10 +1,52 @@
-# 境界と公開契約
+# HTTP API
 
 ## 目的
 
-画面、Supabase、LLM、ゲームルールを一方向の依存関係で接続します。外部クライアントは`GameClient`、アプリケーション内部はステートレスなusecase関数、ゲームルールは`Game`集約ルートを利用します。
+React、Streamlit、CLIが共通利用するHTTP契約を定義します。ゲームルールは
+`GameApplication`の内側でのみ実行し、画面はSupabase Data APIへゲームデータを
+直接送受信しません。
 
-DBスキーマ、migration、Supabase Data APIの保存方式は変更しません。アダプターが既存レコードと新しい`GameState`を機械的に変換します。
+API versionは`v1`、契約形式はJSONです。失敗はRFC 9457 Problem Detailsで返します。
+
+## 一般利用者向けendpoint
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v1/config` | 公開可能なruntime設定 |
+| `POST` | `/api/v1/games` | game作成operation |
+| `GET` | `/api/v1/games` | 閲覧可能なgame一覧 |
+| `GET` | `/api/v1/games/{game_id}` | public state |
+| `GET` | `/api/v1/games/{game_id}/timeline` | public timeline |
+| `POST` | `/api/v1/games/{game_id}/actions` | player action operation |
+| `POST` | `/api/v1/games/{game_id}/advance` | advance operation |
+| `GET` | `/api/v1/operations/{operation_id}` | operation状態 |
+
+管理者向けendpointは`/api/v1/admin`へ隔離します。
+
+command requestは`Idempotency-Key` headerを必須とし、対象gameがある場合は
+`expected_version`を必須にします。受理時は`202 Accepted`とoperation IDを返します。
+operation statusは`queued`、`running`、`succeeded`、`failed`だけを使用します。
+同じkeyと同じrequestの再送は同じoperationを返し、異なるrequestでのkey再利用は
+`409 Conflict`として拒否します。
+timelineの`limit`はHTTP、`GameApplication`、repositoryまで同じ値を渡し、server側で
+上限を検証します。未宣言のqueryを黙って無視しません。
+
+OpenAPIは実際の例外境界と同じ`application/problem+json`の`ProblemDetails`を公開します。
+FastAPI既定の`422 HTTPValidationError`は外部契約へ残さず、入力不備は実装と契約の両方で
+`400 Bad Request`へ統一します。
+Swagger UIとOpenAPI endpointは管理APIの存在を列挙できるため、既定では公開しません。
+ローカル開発で必要な場合だけ`WEREWOLF_API_DOCS_ENABLED=true`を指定します。
+契約生成はHTTP endpointではなく`create_app().openapi()`を直接使用します。
+
+管理者向けendpoint:
+
+| Method | Path | 用途 |
+| --- | --- | --- |
+| `GET` | `/api/v1/admin/games/{game_id}/reveal` | 完全状態 |
+| `POST` | `/api/v1/admin/games/{game_id}/replay/verify` | replay検証 |
+| `GET` | `/api/v1/admin/operations/{operation_id}` | operation診断 |
+| `GET` | `/api/v1/admin/games/{game_id}/llm-traces` | prompt本文を除くtrace |
+| `GET` | `/api/v1/admin/games/{game_id}/llm-usage` | 利用量集計 |
 
 ## 責務
 
@@ -23,46 +65,43 @@ DBスキーマ、migration、Supabase Data APIの保存方式は変更しませ�
 ## データフロー
 
 ```text
-interfaces
-  -> GameClient
-  -> adapters
-  -> usecase function
-  -> Game
-  <- state + typed events
-  <- immutable result
-  <- public wire schema
+React      -> generated HTTP client --+
+Streamlit  -> HttpGameClient ---------+-> FastAPI -> GameApplication -> Game
+CLI        -> HttpGameClient ---------+
+
+Python利用者 ----------------------------> GameApplication -> Game
 
 自動プレイヤー:
-adapters -> PlayerAgent -> AgentDecision -> Game(Action)
+interfaces/worker -> adapters/agents -> PlayerAgent -> AgentDecision -> Game(Action)
 ```
 
 自動プレイヤーの接続は`adapters/agents/game_driver.py`に限定します。agentsはdomainが提示した合法対象から候補を返し、domainが提出時に再検証します。LLM失敗時は同じ判断パイプラインのfallbackが合法候補を選びます。
 
-## GameClient
+## HTTP client
 
-interfacesが参照できるクライアント契約は次だけです。
+CLIとStreamlitが参照できるゲームクライアントはHTTP実装だけです。
 
 ```python
-from werewolf_agent.adapters import GameClient, build_game_client
+from werewolf_agent.adapters.http import HttpGameClient
 ```
 
-`GameClient`は作成、取得、進行、一覧、timeline、player observation、manual action、管理者revealの外部操作を定義します。Supabase実装はoperation requestをenqueueし、Data APIから結果を取得します。
-
-認証前提はSupabase anonymous sessionです。manual playerの権限は`game_participants.auth.uid()`とRLSを正とし、画面固有tokenやseat credentialを作りません。
+ReactはOpenAPIから生成したTypeScript clientを使用します。UIからSupabaseへ直接接続
+できるのはAuthだけです。ゲームデータのData API、RPC、Realtime利用は禁止します。
 
 ## Usecase
 
-usecaseの基本公開面はモジュールレベル関数と不変の`UsecaseContext`です。
+Python利用者向けの公開面は`Actor`と`GameApplication`だけです。
 
 ```python
-create_game(context, command)
-submit_player_action(context, command)
-advance_game(context, command)
-get_game(context, query)
-get_player_observation(context, query)
+games = GameApplication(context)
+games.create(input)
+games.get(game_id, actor)
+games.submit_action(game_id, actor, action, expected_version)
+games.advance(game_id, actor, expected_version)
 ```
 
-`UsecaseContext`へrepository、検証済み定義、運用上限を注入します。各関数は共有状態を持たず、ログやテレメトリーも出力しません。呼び出しごとに次を行います。
+`GameApplication`は検証済み依存関係だけを保持し、game状態やsessionを保持しません。
+handler、command/query分類、repository DTOは内部実装です。
 
 1. IDと利用者要求を検証する
 2. repositoryから現在状態を取得する
@@ -100,7 +139,7 @@ provider固有の新しい通信方式や新しいgraph nodeはPython実装を�
 | public timeline | 公開発言、解決後の投票結果、公開死亡結果 |
 | player observation | 本人が観測できる役職、能力、合法候補 |
 | admin reveal | 管理者専用の完全状態 |
-| LLM trace | 管理者専用のprompt、応答、解析結果 |
+| LLM trace | private schemaと管理API。管理APIはprompt本文と生応答を返さない |
 | operational log | ID、処理結果、所要時間、外部障害の分類 |
 
 public responseとログへ、秘密役職、夜行動対象、占い結果、API key、token、prompt、LLM生出力を出しません。
@@ -117,20 +156,21 @@ domainとusecaseはログを出しません。interfacesとadaptersが外部境�
 | `WARNING` | 外部サービスの一時障害、再試行、縮退 |
 | `ERROR` | 継続不能な外部障害、不正設定、予期しない例外 |
 
-入力不備、存在しないID、通常のルール違反は結果として返し、エラーログにしません。ログ名は実行機能に合わせて`worker.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl`とします。
+入力不備、存在しないID、通常のルール違反は結果として返し、エラーログにしません。ログ名は実行機能に合わせて`api.jsonl`、`worker.jsonl`、`streamlit.jsonl`、`cli.jsonl`、`migrate.jsonl`とします。
 
 ## 永続化
 
 - Supabaseを永続化の正本とする
 - public schemaとprivate schemaの既存分離を維持する
-- workerだけがprivate stateとLLM traceを書き込む
+- APIとworkerだけがtransaction内でprivate stateへ接続する
 - optimistic revisionを維持し、状態競合を通常の結果として扱う
 - public timelineをdomainの型付きイベントから投影する
-- DBスキーマとmigrationは今回変更しない
+- baseline migrationでcommand、state event、snapshot、projection、trace、利用量を定義する
 
 ## 構造制約
 
-- interfacesはdomainとusecaseを直接importしない
+- CLIとStreamlitはdomainとusecaseを直接importしない
+- `interfaces/worker`だけが実行interfaceとしてusecaseとagentsを接続する
 - adaptersはinterfacesへ依存しない
 - usecaseはadapters、interfaces、agentsへ依存しない
 - agentsはdomainとusecaseへ依存しない

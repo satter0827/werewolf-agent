@@ -114,6 +114,7 @@ class UsecaseContext:
     game_definitions: GameDefinitions
     llm_definitions: LlmDefinitions
     config: GameUseCaseConfig
+    create_llm_mode: Literal["fake", "paid"] = "fake"
 
 
 class _UseCaseModel(StrictModel):
@@ -134,6 +135,7 @@ class CreateGameCommand(_UseCaseModel):
     character_assignments: dict[str, str] = Field(default_factory=dict)
     custom_roles: list[CustomRoleDefinition] = Field(default_factory=list)
     custom_characters: list[CustomCharacterDefinition] = Field(default_factory=list)
+    llm_mode: Literal["fake", "paid"] = "fake"
 
     @field_validator("role_counts")
     @classmethod
@@ -220,6 +222,7 @@ class AdvanceGameCommand(_UseCaseModel):
     """Command for advancing one game by one business step."""
 
     game_id: str | UUID
+    expected_version: int | None = Field(default=None, ge=MIN_VERSION)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -273,6 +276,7 @@ class PlayerActionCommand(_UseCaseModel):
     target_id: str | None = None
     message: str | None = None
     reason: str = ""
+    expected_version: int | None = Field(default=None, ge=MIN_VERSION)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -462,6 +466,19 @@ class GameListResult(_UseCaseModel):
 
     games: list[dict[str, Any]]
     next_offset: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ReplayVerificationResult(_UseCaseModel):
+    """Private-payload-free replay integrity result."""
+
+    game_id: str
+    valid: bool
+    checked_versions: int = Field(ge=0)
+    first_mismatch_version: int | None = Field(default=None, ge=MIN_VERSION)
+    expected_checksum: str | None = None
+    actual_checksum: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

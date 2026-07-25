@@ -17,9 +17,6 @@ from werewolf_agent.contracts.schemas import (
     GAME_STATUS_RUNNING,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
-    GameRevealAction,
-    GameRevealPlayer,
-    GameRevealResponse,
     GameTimelineItem,
     LocalRulesSettings,
     PlayerObservationResponse,
@@ -70,8 +67,6 @@ class PlayerSeatView:
     is_alive: bool
     is_manual: bool
     is_current: bool
-    role_label: str | None = None
-    faction_label: str | None = None
 
 
 @dataclass(frozen=True)
@@ -145,12 +140,11 @@ class ObservationView:
 
 @dataclass(frozen=True)
 class ObserverLogView:
-    """Observer-only reveal summary."""
+    """Observer-only summary built from the public timeline."""
 
     title: str
-    role_title: str
-    role_lines: list[str]
-    action_lines: list[str]
+    entries_title: str
+    entries: list[str]
     empty_text: str
 
 
@@ -190,8 +184,6 @@ class GameScreenView:
     winner_label: str
     player_count: int
     alive_count: int
-    role_counts: dict[str, int]
-    rules: LocalRulesSettings | None
     seed: int | None
     status_metrics: list[StatusMetricView]
     table_legend: list[TableLegendItemView]
@@ -213,14 +205,13 @@ def build_game_screen_view(
     state: PublicGameState,
     turns: list[GameTimelineItem],
     observation: PlayerObservationResponse | None,
-    reveal: GameRevealResponse | None,
     manual_player_id: str | None,
     screen_mode: ScreenMode | None = None,
     catalog: I18nCatalog,
     lang: Language,
     refresh_interval_seconds: float = 0,
 ) -> GameScreenView:
-    """Build a complete display model from public state and optional private/reveal data."""
+    """Build a display model from public data and an optional player observation."""
     effective_mode: ScreenMode = screen_mode or (
         "playable" if observation is not None else "observer"
     )
@@ -251,7 +242,6 @@ def build_game_screen_view(
         lang,
     )
     updated_label = _optional_time_text(state.updated_at, catalog, lang)
-    role_counts = dict(reveal.role_counts) if reveal is not None else {}
     public_timeline = timeline_items(turns, players=state.players, catalog=catalog, lang=lang)
     return GameScreenView(
         game_id=state.game_id,
@@ -270,9 +260,7 @@ def build_game_screen_view(
         winner_label=catalog.label(lang, "winner", state.winner),
         player_count=len(state.players),
         alive_count=len(state.alive_player_ids),
-        role_counts=role_counts,
-        rules=reveal.rules if reveal is not None else None,
-        seed=reveal.seed if reveal is not None else state.seed,
+        seed=state.seed,
         status_metrics=status_metrics(
             state,
             current_turn=current_title,
@@ -288,7 +276,6 @@ def build_game_screen_view(
             state.players,
             turns=turns,
             observation=observation_view,
-            reveal=reveal,
             manual_player_id=manual_player_id if effective_mode == "playable" else None,
             catalog=catalog,
             lang=lang,
@@ -296,13 +283,12 @@ def build_game_screen_view(
         timeline=public_timeline,
         hand_panel=hand_panel_view(state, observation_view, effective_mode, catalog, lang),
         observation=observation_view,
-        observer_log=(
-            observer_log_view(reveal, catalog, lang) if effective_mode == "observer" else None
-        ),
+        observer_log=observer_log_view(public_timeline, catalog, lang)
+        if effective_mode == "observer"
+        else None,
         result_summary=result_summary_view(
             state,
             turns=turns,
-            reveal=reveal if effective_mode == "observer" else None,
             catalog=catalog,
             lang=lang,
         ),
@@ -389,7 +375,6 @@ def player_seats(
     *,
     turns: list[GameTimelineItem],
     observation: ObservationView | None,
-    reveal: GameRevealResponse | None,
     manual_player_id: str | None,
     catalog: I18nCatalog,
     lang: Language,
@@ -397,7 +382,6 @@ def player_seats(
     """Return compact game-table player seats."""
     last_speaker = _last_actor(turns, event_type="speech_recorded")
     active_player_id = manual_player_id if _has_available_actions(observation) else last_speaker
-    reveal_players = {player.id: player for player in reveal.players} if reveal is not None else {}
     seats: list[PlayerSeatView] = []
     for player in players:
         is_manual = player.id == manual_player_id
@@ -417,7 +401,6 @@ def player_seats(
         else:
             activity = catalog.label(lang, "activity", "idle")
             activity_tone = "muted"
-        reveal_player = reveal_players.get(player.id)
         seats.append(
             PlayerSeatView(
                 player_id=player.id,
@@ -432,12 +415,6 @@ def player_seats(
                 is_alive=player.alive,
                 is_manual=is_manual,
                 is_current=is_current,
-                role_label=catalog.label(lang, "role", reveal_player.role)
-                if reveal_player is not None
-                else None,
-                faction_label=catalog.label(lang, "faction", reveal_player.faction)
-                if reveal_player is not None
-                else None,
             )
         )
     return seats
@@ -611,62 +588,15 @@ def hand_panel_view(
 
 
 def observer_log_view(
-    reveal: GameRevealResponse | None,
+    timeline: list[TimelineItemView],
     catalog: I18nCatalog,
     lang: Language,
 ) -> ObserverLogView:
-    """Return observer-only reveal log lines."""
-    if reveal is None:
-        return ObserverLogView(
-            title=catalog.t(lang, "game.observer.log.title"),
-            role_title=catalog.t(lang, "game.observer.log.roles"),
-            role_lines=[],
-            action_lines=[],
-            empty_text=catalog.t(lang, "game.observer.log.empty"),
-        )
-    player_names = _reveal_player_name_map(reveal.players)
-    role_lines = [
-        f"{_display_player_name(player.name, fallback=player.id)}: "
-        f"{catalog.label(lang, 'role', player.role)} / "
-        f"{catalog.label(lang, 'faction', player.faction)}"
-        for player in reveal.players
-    ]
-    action_lines = [
-        *[_action_line(action, player_names, catalog, lang) for action in reveal.pending_votes],
-        *[
-            _action_line(action, player_names, catalog, lang)
-            for action in reveal.pending_night_actions
-        ],
-    ]
-    if reveal.votes:
-        latest = reveal.votes[-1]
-        action_lines.append(
-            catalog.t(
-                lang,
-                "result.fact.last_vote",
-                player=_player_label(latest.eliminated_player_id, player_names)
-                or catalog.t(lang, "common.none"),
-            )
-        )
-    if reveal.nights:
-        latest_night = reveal.nights[-1]
-        action_lines.append(
-            catalog.t(
-                lang,
-                "result.fact.last_night",
-                attacked=_player_label(latest_night.attacked_player_id, player_names)
-                or catalog.t(lang, "common.none"),
-                guarded=_player_label(latest_night.protected_player_id, player_names)
-                or catalog.t(lang, "common.none"),
-                killed=_player_label(latest_night.killed_player_id, player_names)
-                or catalog.t(lang, "common.none"),
-            )
-        )
+    """Return observer-only lines from the allowlisted public timeline."""
     return ObserverLogView(
         title=catalog.t(lang, "game.observer.log.title"),
-        role_title=catalog.t(lang, "game.observer.log.roles"),
-        role_lines=role_lines,
-        action_lines=action_lines,
+        entries_title=catalog.t(lang, "game.observer.log.events"),
+        entries=[f"{item.day_label} {item.title}: {item.detail}" for item in timeline[-8:]],
         empty_text=catalog.t(lang, "game.observer.log.empty"),
     )
 
@@ -675,7 +605,6 @@ def result_summary_view(
     state: PublicGameState,
     *,
     turns: list[GameTimelineItem],
-    reveal: GameRevealResponse | None,
     catalog: I18nCatalog,
     lang: Language,
 ) -> ResultSummaryView | None:
@@ -713,40 +642,11 @@ def result_summary_view(
                 ),
             )
         )
-    detail = catalog.t(lang, "result.detail_play")
-    if reveal is not None:
-        reveal_names = _reveal_player_name_map(reveal.players)
-        role_lines = [
-            f"{_display_player_name(player.name, fallback=player.id)}="
-            f"{catalog.label(lang, 'role', player.role)}"
-            for player in reveal.players
-        ]
-        facts.append(catalog.t(lang, "result.fact.roles", roles=", ".join(role_lines)))
-        if reveal.votes:
-            facts.append(
-                catalog.t(
-                    lang,
-                    "result.fact.last_vote",
-                    player=_player_label(reveal.votes[-1].eliminated_player_id, reveal_names)
-                    or catalog.t(lang, "common.none"),
-                )
-            )
-        if reveal.nights:
-            latest_night = reveal.nights[-1]
-            facts.append(
-                catalog.t(
-                    lang,
-                    "result.fact.last_night",
-                    attacked=_player_label(latest_night.attacked_player_id, reveal_names)
-                    or catalog.t(lang, "common.none"),
-                    guarded=_player_label(latest_night.protected_player_id, reveal_names)
-                    or catalog.t(lang, "common.none"),
-                    killed=_player_label(latest_night.killed_player_id, reveal_names)
-                    or catalog.t(lang, "common.none"),
-                )
-            )
-        detail = catalog.t(lang, "result.detail_observer")
-    return ResultSummaryView(title=catalog.t(lang, "result.title"), detail=detail, facts=facts)
+    return ResultSummaryView(
+        title=catalog.t(lang, "result.title"),
+        detail=catalog.t(lang, "result.detail_play"),
+        facts=facts,
+    )
 
 
 def observation_memo_view(
@@ -956,17 +856,6 @@ def _event_detail(
     return catalog.t(lang, "event_detail.unknown")
 
 
-def _action_line(
-    action: GameRevealAction,
-    player_names: Mapping[str, str],
-    catalog: I18nCatalog,
-    lang: Language,
-) -> str:
-    actor = _player_label(action.player_id, player_names)
-    target = _player_label(action.target_id, player_names) or catalog.t(lang, "common.none")
-    return f"{actor}: {catalog.label(lang, 'action', action.type)} -> {target}"
-
-
 def _last_actor(turns: list[GameTimelineItem], *, event_type: str) -> str | None:
     for turn in reversed(turns):
         if turn.event_type == event_type:
@@ -984,10 +873,6 @@ def _has_available_actions(observation: ObservationView | None) -> bool:
 
 
 def _player_name_map(players: list[PublicPlayerState]) -> dict[str, str]:
-    return {player.id: _display_player_name(player.name, fallback=player.id) for player in players}
-
-
-def _reveal_player_name_map(players: list[GameRevealPlayer]) -> dict[str, str]:
     return {player.id: _display_player_name(player.name, fallback=player.id) for player in players}
 
 
@@ -1024,10 +909,10 @@ def _day_label(value: int, catalog: I18nCatalog, lang: Language) -> str:
     return catalog.t(lang, "time.day", day=value)
 
 
-def _seconds_label(value: float, catalog: I18nCatalog, lang: Language) -> str:
+def _seconds_label(value: int | float, catalog: I18nCatalog, lang: Language) -> str:
     if value <= 0:
         return catalog.t(lang, "time.manual")
-    seconds: int | str = int(value) if value.is_integer() else f"{value:.1f}"
+    seconds: int | str = int(value) if float(value).is_integer() else f"{value:.1f}"
     return catalog.t(lang, "time.seconds", seconds=seconds)
 
 

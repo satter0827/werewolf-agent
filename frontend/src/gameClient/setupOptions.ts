@@ -69,7 +69,6 @@ export function setupPreviewScreen(setupOptions: GameSetupOptionsResponse): Game
     },
     timeline: { game_id: "", items: [], next_after: 0 },
     observation: null,
-    reveal: null,
   };
 }
 

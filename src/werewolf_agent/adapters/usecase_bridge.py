@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from werewolf_agent.agents.configuration import LlmProviderConfig
 from werewolf_agent.configuration import AppSettings, get_settings
 from werewolf_agent.configuration.constants import (
@@ -69,6 +71,32 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         graph_max_steps=app_settings.llm_graph_max_steps,
         fallback_policy=app_settings.llm_fallback_policy,
     )
+
+
+def build_worker_llm_provider_config(
+    llm_mode: str,
+    settings: AppSettings | None = None,
+) -> LlmProviderConfig:
+    """Return a worker-only provider config for an immutable game LLM mode."""
+    app_settings = settings or get_settings()
+    base = build_llm_provider_config(app_settings)
+    if llm_mode == "fake":
+        return replace(
+            base,
+            provider="fake",
+            model="fake-list-llm",
+            base_url="",
+            api_key="",
+        )
+    if llm_mode == "paid":
+        return replace(
+            base,
+            provider=app_settings.worker_paid_llm_provider,
+            model=app_settings.worker_paid_llm_model,
+            base_url=app_settings.worker_paid_llm_base_url,
+            api_key=app_settings.configured_openai_api_key,
+        )
+    raise ValueError("llm_mode must be fake or paid.")
 
 
 def build_game_definitions(settings: AppSettings | None = None) -> GameDefinitions:

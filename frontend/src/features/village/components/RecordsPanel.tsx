@@ -23,17 +23,13 @@ export function RecordsPanel({ games, onResumeGame }: RecordsPanelProps) {
                   ? "人狼陣営の勝利"
                 : "勝負中"}
             </p>
-            {game.status === "running" ? (
-              <button
-                className="wa-record-resume"
-                onClick={() => onResumeGame(game.game_id)}
-                type="button"
-              >
-                続きから
-              </button>
-            ) : (
-              <span className="wa-record-complete">読み終わり</span>
-            )}
+            <button
+              className="wa-record-resume"
+              onClick={() => onResumeGame(game.game_id)}
+              type="button"
+            >
+              {game.status === "running" ? "続きから" : "結果を見る"}
+            </button>
           </article>
         ))}
       </div>

@@ -148,12 +148,11 @@ def hand_panel_html(hand: HandPanelView) -> str:
 
 
 def observer_log_html(log: ObserverLogView) -> str:
-    """Return observer-only role/action reveal markup."""
-    role_lines = "".join(f"<li>{escape(line)}</li>" for line in log.role_lines)
-    action_lines = "".join(f"<li>{escape(line)}</li>" for line in log.action_lines)
-    action_body = (
-        f"<ul>{action_lines}</ul>"
-        if action_lines
+    """Return observer-only public timeline markup."""
+    entries = "".join(f"<li>{escape(line)}</li>" for line in log.entries)
+    entries_body = (
+        f"<ul>{entries}</ul>"
+        if entries
         else f'<div class="wa-private-empty">{escape(log.empty_text)}</div>'
     )
     return html(
@@ -163,11 +162,8 @@ def observer_log_html(log: ObserverLogView) -> str:
                 <h3>{escape(log.title)}</h3>
             </div>
             <div class="wa-private-block">
-                <h3>{escape(log.role_title)}</h3>
-                <ul>{role_lines}</ul>
-            </div>
-            <div class="wa-private-block">
-                {action_body}
+                <h3>{escape(log.entries_title)}</h3>
+                {entries_body}
             </div>
         </section>
         """
@@ -265,23 +261,11 @@ def _seat_html(seat: PlayerSeatView) -> str:
     if not seat.is_alive:
         classes.append("wa-seat-dead")
     status_class = "wa-chip" if seat.is_alive else "wa-chip wa-chip-muted"
-    role_html = (
-        f'<div class="wa-role-chip">{escape(seat.role_label)}</div>'
-        if seat.role_label is not None
-        else ""
-    )
-    faction_html = (
-        f'<div class="wa-faction-note">{escape(seat.faction_label)}</div>'
-        if seat.faction_label is not None
-        else ""
-    )
     return html(
         f"""
         <article class="{" ".join(classes)}">
             <div class="wa-seat-avatar">👤</div>
             <b>{escape(seat.name)}</b>
-            {role_html}
-            {faction_html}
             <div class="{status_class}">{escape(seat.status)}</div>
             <div class="wa-activity">{escape(seat.activity)}</div>
         </article>

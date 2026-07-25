@@ -1,7 +1,6 @@
 import { Play } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { frontendSettings } from "../../../config";
 import {
   generatedSeatOptions,
   playerCountFromRoles,
@@ -10,20 +9,32 @@ import {
 } from "../../../gameClient/setupOptions";
 import type { GameSetupOptionsResponse } from "../../../gameClient/wireTypes";
 import type { SetupDraft } from "../../../gameClient/uiTypes";
+import type { PublicRuntimeConfig } from "../../../gameClient/GameClient";
 
 interface VillageSetupProps {
   isCreating?: boolean;
   onCreate: (draft: SetupDraft) => void;
   setupOptions: GameSetupOptionsResponse;
+  uiSettings: Pick<
+    PublicRuntimeConfig["ui"],
+    "default_manual_player_id" | "default_setup_seed"
+  >;
 }
 
-export function VillageSetup({ isCreating = false, onCreate, setupOptions }: VillageSetupProps) {
+export function VillageSetup({
+  isCreating = false,
+  onCreate,
+  setupOptions,
+  uiSettings,
+}: VillageSetupProps) {
+  const defaultPlayerId = uiSettings.default_manual_player_id;
+  const defaultSeed = uiSettings.default_setup_seed;
   const [draft, setDraft] = useState<SetupDraft>({
     scenarioId: setupOptions.default_scenario_id ?? setupOptions.scenarios[0]?.id ?? "",
     setupPresetId:
       setupOptions.default_setup_preset_id ?? setupOptions.setup_presets[0]?.id ?? "",
-    manualPlayerId: frontendSettings.defaultManualPlayerId,
-    seed: frontendSettings.defaultSetupSeed,
+    manualPlayerId: defaultPlayerId,
+    seed: defaultSeed,
   });
   const selectedRoleCounts = useMemo(
     () => roleCountsForSetup(setupOptions, draft.setupPresetId),
@@ -35,14 +46,14 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
   );
 
   useEffect(() => {
-    if (seatOptions.some((seat) => seat.id === draft.manualPlayerId)) {
+    if (!draft.manualPlayerId || seatOptions.some((seat) => seat.id === draft.manualPlayerId)) {
       return;
     }
     setDraft((current) => ({
       ...current,
-      manualPlayerId: seatOptions[0]?.id ?? frontendSettings.defaultManualPlayerId,
+      manualPlayerId: seatOptions[0]?.id ?? defaultPlayerId,
     }));
-  }, [draft.manualPlayerId, seatOptions]);
+  }, [defaultPlayerId, draft.manualPlayerId, seatOptions]);
 
   return (
     <section className="wa-setup" aria-label="村を作る">
@@ -85,13 +96,14 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
           </select>
         </label>
         <label>
-          あなたの席
+          参加方法
           <select
             value={draft.manualPlayerId}
             onChange={(event) =>
               setDraft((current) => ({ ...current, manualPlayerId: event.target.value }))
             }
           >
+            <option value="">観戦する</option>
             {seatOptions.map((seat) => (
               <option key={seat.id} value={seat.id}>
                 {seat.label}
@@ -121,7 +133,11 @@ export function VillageSetup({ isCreating = false, onCreate, setupOptions }: Vil
           type="button"
         >
           <Play size={18} aria-hidden="true" />
-          {isCreating ? "村を準備中" : "この村で始める"}
+          {isCreating
+            ? "村を準備中"
+            : draft.manualPlayerId
+              ? "この村で始める"
+              : "観戦を始める"}
         </button>
       </aside>
     </section>

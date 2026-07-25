@@ -13,10 +13,18 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
+COPY scripts ./scripts
+COPY supabase ./supabase
 
 FROM base AS dev
 
-RUN uv sync --frozen --group dev --extra llm --extra streamlit --extra worker
+COPY .github ./.github
+COPY docker ./docker
+COPY docs ./docs
+COPY frontend ./frontend
+COPY tests ./tests
+COPY .env.example AGENTS.md compose.postgres.yaml compose.yaml openapi.json ./
+RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker
 
 CMD ["pytest"]
 
@@ -28,7 +36,7 @@ ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs \
     WEREWOLF_LOG_RETENTION_DAYS=14 \
     WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 
-RUN uv sync --frozen --no-dev --extra llm --extra worker
+RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && chown -R app:app /app

@@ -395,8 +395,12 @@ def test_doctor_command_reports_invalid_configuration_safely() -> None:
     assert "log_level must be one of" in result.output
 
 
-def test_cli_startup_log_writes_trace_settings(tmp_path: Path) -> None:
+def test_cli_startup_log_writes_trace_settings(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     get_settings.cache_clear()
+    monkeypatch.setattr(cui_commands, "build_game_client", lambda _settings: FakeGameClient())
     log_file = tmp_path / "cli.jsonl"
     try:
         result = CliRunner().invoke(
@@ -413,7 +417,7 @@ def test_cli_startup_log_writes_trace_settings(tmp_path: Path) -> None:
     finally:
         get_settings.cache_clear()
 
-    assert result.exit_code == 0
+    assert result.exit_code == 0, (result.output, repr(result.exception))
     for handler in logging.getLogger().handlers:
         handler.flush()
     payloads = [

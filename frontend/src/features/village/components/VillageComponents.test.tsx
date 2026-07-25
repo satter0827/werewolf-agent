@@ -1,20 +1,75 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { mapGameScreen } from "../../../gameClient/screenAdapter";
 import { sampleScreenSource, sampleSetupOptions } from "../../../test/gameSamples";
 import { RoundTable } from "./RoundTable";
+import { AuthPanel } from "./AuthPanel";
+import { RecordsPanel } from "./RecordsPanel";
 import { TurnPanel } from "./TurnPanel";
 import { VillageSetup } from "./VillageSetup";
 import { VillageTimeline } from "./VillageTimeline";
 
 describe("village components", () => {
   it("renders setup choices with game-facing labels", async () => {
-    render(<VillageSetup onCreate={() => undefined} setupOptions={sampleSetupOptions} />);
+    render(
+      <VillageSetup
+        onCreate={() => undefined}
+        setupOptions={sampleSetupOptions}
+        uiSettings={{ default_manual_player_id: "player-1", default_setup_seed: "1" }}
+      />,
+    );
 
     expect(screen.getByRole("heading", { name: "今夜の舞台を選ぶ" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /この村で始める/ })).toBeInTheDocument();
     expect(screen.queryByText(/provider|model|API|token|game_id/i)).not.toBeInTheDocument();
+  });
+
+  it("creates an observer game without assigning a private player seat", () => {
+    const onCreate = vi.fn();
+    render(
+      <VillageSetup
+        onCreate={onCreate}
+        setupOptions={sampleSetupOptions}
+        uiSettings={{ default_manual_player_id: "player-1", default_setup_seed: "1" }}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("参加方法"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "観戦を始める" }));
+
+    expect(onCreate).toHaveBeenCalledWith(expect.objectContaining({ manualPlayerId: "" }));
+  });
+
+  it("opens completed games from the records screen", () => {
+    const onResumeGame = vi.fn();
+    render(
+      <RecordsPanel
+        games={[
+          {
+            alive_count: 3,
+            completed_at: "2026-07-24T00:10:00Z",
+            created_at: "2026-07-24T00:00:00Z",
+            day: 2,
+            game_id: "completed-game",
+            phase: "finished",
+            player_count: 5,
+            seed: 1,
+            status: "completed",
+            step_count: 6,
+            turn_count: 12,
+            updated_at: "2026-07-24T00:10:00Z",
+            version: 7,
+            winner: "villagers",
+          },
+        ]}
+        onResumeGame={onResumeGame}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "結果を見る" }));
+
+    expect(onResumeGame).toHaveBeenCalledWith("completed-game");
   });
 
   it("renders round table seats and turn panel", async () => {
@@ -45,5 +100,21 @@ describe("village components", () => {
 
     expect(screen.getByRole("heading", { name: "公開された出来事" })).toBeInTheDocument();
     expect(screen.getByText(/初日は発言の温度差/)).toBeInTheDocument();
+  });
+
+  it("offers constrained login fields to a guest", () => {
+    render(
+      <AuthPanel
+        auth={{ email: null, isAnonymous: true, isAuthenticated: false }}
+        isPending={false}
+        onSignIn={() => undefined}
+        onSignOut={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "ログイン" }));
+
+    expect(screen.getByLabelText("メールアドレス")).toHaveAttribute("maxlength", "254");
+    expect(screen.getByLabelText("パスワード")).toHaveAttribute("minlength", "8");
   });
 });

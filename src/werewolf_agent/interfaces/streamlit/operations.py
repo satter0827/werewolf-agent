@@ -20,13 +20,12 @@ from werewolf_agent.configuration.messages import (
     LOG_STREAMLIT_REFRESHED,
     LOG_STREAMLIT_RERUN_STARTED,
 )
-from werewolf_agent.contracts import ResourceNotFoundError
+from werewolf_agent.contracts.api import PublicRuntimeConfig
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     GameResponse,
-    GameRevealResponse,
     GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
@@ -47,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 
 def build_streamlit_client(settings: AppSettings) -> GameClient:
-    """Build the Supabase game client used by Streamlit game operations."""
+    """Build the shared HTTP game client used by Streamlit."""
     return build_game_client(settings)
 
 
@@ -79,6 +78,11 @@ def list_recent_games(*, settings: AppSettings) -> list[PublicGameSummary]:
 def load_setup_options(*, settings: AppSettings) -> GameSetupOptionsResponse:
     """Return setup metadata from the active data source."""
     return build_streamlit_client(settings).get_setup_options()
+
+
+def load_runtime_config(*, settings: AppSettings) -> PublicRuntimeConfig:
+    """Return public limits and presentation settings owned by the API."""
+    return build_streamlit_client(settings).get_runtime_config()
 
 
 def create_game_from_setup(
@@ -149,12 +153,10 @@ def load_game_screen(
         if screen_mode == "playable"
         else None
     )
-    reveal = _load_optional_reveal(client=client, game_id=game_id, screen_mode=screen_mode)
     screen = build_game_screen_view(
         state=state,
         turns=timeline,
         observation=observation,
-        reveal=reveal,
         manual_player_id=manual_player_id,
         screen_mode=screen_mode,
         catalog=catalog,
@@ -180,30 +182,6 @@ def load_game_screen(
         },
     )
     return screen
-
-
-def load_reveal(
-    *,
-    client: GameClient,
-    game_id: str,
-) -> GameRevealResponse:
-    """Return full observer information through the dedicated reveal operation."""
-    return client.get_game_reveal(game_id)
-
-
-def _load_optional_reveal(
-    *,
-    client: GameClient,
-    game_id: str,
-    screen_mode: ScreenMode,
-) -> GameRevealResponse | None:
-    """Return reveal data only when the active user is allowed to see it."""
-    if screen_mode != "observer":
-        return None
-    try:
-        return client.get_game_reveal(game_id)
-    except ResourceNotFoundError:
-        return None
 
 
 def load_observation(

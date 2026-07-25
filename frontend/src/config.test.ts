@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { readSupabaseBrowserConfig, supabaseBrowserConfigError } from "./config";
+import { browserConfigError, readBrowserConfig } from "./config";
 
 describe("frontend Supabase configuration", () => {
   afterEach(() => {
@@ -11,21 +11,24 @@ describe("frontend Supabase configuration", () => {
     vi.stubEnv("VITE_SUPABASE_URL", "");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "");
 
-    const error = supabaseBrowserConfigError();
+    vi.stubEnv("VITE_WEREWOLF_API_URL", "");
+    const error = browserConfigError();
 
     expect(error?.message).toContain("VITE_SUPABASE_URL");
     expect(error?.message).toContain("VITE_SUPABASE_PUBLISHABLE_KEY");
-    expect(() => readSupabaseBrowserConfig()).toThrow("VITE_SUPABASE_URL");
+    expect(() => readBrowserConfig()).toThrow("VITE_WEREWOLF_API_URL");
   });
 
   it("reads required Vite Supabase env without fallback aliases", () => {
     vi.stubEnv("VITE_SUPABASE_URL", "http://127.0.0.1:54321");
     vi.stubEnv("VITE_SUPABASE_PUBLISHABLE_KEY", "publishable-test");
+    vi.stubEnv("VITE_WEREWOLF_API_URL", "http://127.0.0.1:8000");
 
-    expect(supabaseBrowserConfigError()).toBeNull();
-    expect(readSupabaseBrowserConfig()).toEqual({
-      publishableKey: "publishable-test",
-      url: "http://127.0.0.1:54321",
+    expect(browserConfigError()).toBeNull();
+    expect(readBrowserConfig()).toEqual({
+      apiUrl: "http://127.0.0.1:8000",
+      supabasePublishableKey: "publishable-test",
+      supabaseUrl: "http://127.0.0.1:54321",
     });
   });
 });

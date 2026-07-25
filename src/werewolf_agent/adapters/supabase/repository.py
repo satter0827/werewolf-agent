@@ -1,4 +1,4 @@
-"""Postgres repository for game use cases."""
+"""Supabase PostgreSQL implementation of the game repository port."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from werewolf_agent.configuration.messages import (
     message_game_not_found,
 )
 from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
+from werewolf_agent.usecase._replay import checksum_payload
 from werewolf_agent.usecase.models import (
     GameEventCreate,
     GameRecordCreate,
@@ -49,9 +50,13 @@ class SupabaseGameRepository(GameRepository):
             insert into public.games (
               game_id, owner_user_id, status, phase, day, version, seed,
               scenario_id, scenario_name, narration_mode, public_state,
+              definition_snapshot, engine_version, llm_mode, state_checksum,
               created_at, updated_at, completed_at
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s
+            )
             """,
             (
                 game.id,
@@ -65,6 +70,10 @@ class SupabaseGameRepository(GameRepository):
                 _state_text(game.public_state, "scenario_name"),
                 str(game.public_state.get("narration_mode") or "standard"),
                 Jsonb(game.public_state),
+                Jsonb(_json_object(game.config.get("definition_snapshot"))),
+                str(game.config.get("engine_version") or "0.1.0"),
+                str(game.config.get("llm_mode") or "fake"),
+                _state_checksum(game.version, game.private_state, game.public_state),
                 now,
                 now,
                 now if game.status == GAME_STATUS_COMPLETED else None,
@@ -73,17 +82,32 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into private.game_snapshots (
-              game_id, config, private_state, pending_actions, updated_at
+              game_id, config, private_state, pending_actions, checksum, updated_at
             )
-            values (%s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s)
             """,
             (
                 game.id,
                 Jsonb(game.config),
                 Jsonb(game.private_state),
                 Jsonb(game.pending_actions),
+                checksum_payload(game.private_state),
                 now,
             ),
+        )
+        self._insert_state_version(
+            game.id,
+            version=game.version,
+            private_state=game.private_state,
+            public_state=game.public_state,
+        )
+        self._append_state_event(
+            game.id,
+            version=game.version,
+            phase=game.phase,
+            day=game.day,
+            private_state=game.private_state,
+            public_state=game.public_state,
         )
         stored = self.get(game.id)
         if stored is None:
@@ -133,10 +157,22 @@ class SupabaseGameRepository(GameRepository):
     ) -> list[StoredGameSummary]:
         """Return game summaries."""
         params: list[object] = []
-        where = ""
+        clauses: list[str] = []
+        if self._owner_user_id is not None:
+            clauses.append(
+                """
+                exists (
+                  select 1 from public.game_participants participant
+                  where participant.game_id = game_summaries.game_id
+                    and participant.user_id = %s
+                )
+                """
+            )
+            params.append(_uuid_or_none(self._owner_user_id))
         if status is not None:
-            where = "where status = %s"
+            clauses.append("status = %s")
             params.append(status)
+        where = f"where {' and '.join(clauses)}" if clauses else ""
         params.extend([limit, offset])
         rows = self._connection.execute(
             f"""
@@ -161,6 +197,7 @@ class SupabaseGameRepository(GameRepository):
                 day = %s,
                 version = %s,
                 public_state = %s,
+                state_checksum = %s,
                 scenario_id = %s,
                 scenario_name = %s,
                 narration_mode = %s,
@@ -174,6 +211,7 @@ class SupabaseGameRepository(GameRepository):
                 update.day,
                 update.version,
                 Jsonb(update.public_state),
+                _state_checksum(update.version, update.private_state, update.public_state),
                 _state_text(update.public_state, "scenario_id"),
                 _state_text(update.public_state, "scenario_name"),
                 str(update.public_state.get("narration_mode") or "standard"),
@@ -190,10 +228,31 @@ class SupabaseGameRepository(GameRepository):
             update private.game_snapshots
             set private_state = %s,
                 pending_actions = %s,
+                checksum = %s,
                 updated_at = %s
             where game_id = %s
             """,
-            (Jsonb(update.private_state), Jsonb(update.pending_actions), now, update.id),
+            (
+                Jsonb(update.private_state),
+                Jsonb(update.pending_actions),
+                checksum_payload(update.private_state),
+                now,
+                update.id,
+            ),
+        )
+        self._insert_state_version(
+            update.id,
+            version=update.version,
+            private_state=update.private_state,
+            public_state=update.public_state,
+        )
+        self._append_state_event(
+            update.id,
+            version=update.version,
+            phase=update.phase,
+            day=update.day,
+            private_state=update.private_state,
+            public_state=update.public_state,
         )
         stored = self.get(update.id)
         if stored is None:
@@ -221,9 +280,10 @@ class SupabaseGameRepository(GameRepository):
             row = self._connection.execute(
                 """
                 insert into private.game_events (
-                  game_id, sequence, visibility, phase, day, actor_id, event_type, payload
+                  game_id, sequence, visibility, phase, day, actor_id, event_type,
+                  payload, version, checksum
                 )
-                values (%s, %s, %s, %s, %s, %s, %s, %s)
+                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 returning *
                 """,
                 (
@@ -235,6 +295,8 @@ class SupabaseGameRepository(GameRepository):
                     event.actor_id,
                     event.event_type,
                     Jsonb(event.payload),
+                    self._current_version(game_id),
+                    checksum_payload(event.payload),
                 ),
             ).fetchone()
             if row is None:
@@ -350,10 +412,135 @@ class SupabaseGameRepository(GameRepository):
             ),
         )
 
+    def replay_records(self, game_id: str) -> Mapping[str, Sequence[Mapping[str, Any]]]:
+        """Return private checksum records for administrator replay verification."""
+        commands = self._connection.execute(
+            """
+            select version, command_type, payload, checksum
+            from private.accepted_commands
+            where game_id = %s
+            order by version, accepted_at
+            """,
+            (game_id,),
+        ).fetchall()
+        events = self._connection.execute(
+            """
+            select version, sequence, event_type, payload, checksum
+            from private.game_events
+            where game_id = %s
+            order by sequence
+            """,
+            (game_id,),
+        ).fetchall()
+        states = self._connection.execute(
+            """
+            select version,
+                   jsonb_build_object(
+                     'version', version,
+                     'private_state', private_state,
+                     'public_state', public_state
+                   ) as payload,
+                   checksum
+            from private.game_state_versions
+            where game_id = %s
+            order by version
+            """,
+            (game_id,),
+        ).fetchall()
+        return {"commands": commands, "events": events, "states": states}
+
+    def _current_version(self, game_id: UUID) -> int:
+        row = self._connection.execute(
+            "select version from public.games where game_id = %s",
+            (game_id,),
+        ).fetchone()
+        if row is None:
+            raise KeyError(message_game_not_found(game_id))
+        return int(row["version"])
+
+    def _insert_state_version(
+        self,
+        game_id: UUID,
+        *,
+        version: int,
+        private_state: Mapping[str, Any],
+        public_state: Mapping[str, Any],
+    ) -> None:
+        payload = {
+            "version": version,
+            "private_state": dict(private_state),
+            "public_state": dict(public_state),
+        }
+        self._connection.execute(
+            """
+            insert into private.game_state_versions (
+              game_id, version, private_state, public_state, checksum
+            )
+            values (%s, %s, %s, %s, %s)
+            on conflict (game_id, version) do update set
+              private_state = excluded.private_state,
+              public_state = excluded.public_state,
+              checksum = excluded.checksum
+            """,
+            (
+                game_id,
+                version,
+                Jsonb(dict(private_state)),
+                Jsonb(dict(public_state)),
+                checksum_payload(payload),
+            ),
+        )
+
+    def _append_state_event(
+        self,
+        game_id: UUID,
+        *,
+        version: int,
+        phase: str,
+        day: int,
+        private_state: Mapping[str, Any],
+        public_state: Mapping[str, Any],
+    ) -> None:
+        payload = {
+            "version": version,
+            "private_state": dict(private_state),
+            "public_state": dict(public_state),
+        }
+        self._connection.execute(
+            """
+            insert into private.game_events (
+              game_id, sequence, visibility, phase, day, actor_id,
+              event_type, payload, version, checksum
+            )
+            select %s, coalesce(max(sequence), 0) + 1, 'private', %s, %s, null,
+                   'state_committed', %s, %s, %s
+            from private.game_events
+            where game_id = %s
+            """,
+            (
+                game_id,
+                phase,
+                day,
+                Jsonb(payload),
+                version,
+                checksum_payload(payload),
+                game_id,
+            ),
+        )
+
+
+class SupabaseDatabaseUnavailableError(RuntimeError):
+    """Indicate that a worker database connection cannot be established."""
+
 
 def connect_worker_database(dsn: str) -> psycopg.Connection[Any]:
     """Open a worker DB connection with dict rows."""
-    return psycopg.connect(dsn, row_factory=dict_row)
+    try:
+        return psycopg.connect(dsn, row_factory=dict_row)
+    except psycopg.OperationalError:
+        # Do not propagate a driver exception which may include connection
+        # details across the adapter boundary.
+        raise SupabaseDatabaseUnavailableError from None
 
 
 def _stored_game(row: Mapping[str, Any]) -> StoredGame:
@@ -453,3 +640,17 @@ def _uuid_or_none(value: str | None) -> UUID | None:
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
+
+
+def _state_checksum(
+    version: int,
+    private_state: Mapping[str, Any],
+    public_state: Mapping[str, Any],
+) -> str:
+    return checksum_payload(
+        {
+            "version": version,
+            "private_state": dict(private_state),
+            "public_state": dict(public_state),
+        }
+    )

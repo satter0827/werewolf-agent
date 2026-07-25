@@ -5,11 +5,17 @@ import type { TurnActionSubmit, TurnPanelModel } from "../../../gameClient/uiTyp
 
 interface TurnPanelProps {
   isSubmitting?: boolean;
+  messageMaxChars?: number;
   onSubmit: (action: TurnActionSubmit) => void;
   panel: TurnPanelModel;
 }
 
-export function TurnPanel({ isSubmitting = false, onSubmit, panel }: TurnPanelProps) {
+export function TurnPanel({
+  isSubmitting = false,
+  messageMaxChars = 200,
+  onSubmit,
+  panel,
+}: TurnPanelProps) {
   const [selectedType, setSelectedType] = useState(panel.actions[0]?.type ?? "advance");
   const [message, setMessage] = useState("");
   const selectedAction = useMemo(
@@ -88,7 +94,7 @@ export function TurnPanel({ isSubmitting = false, onSubmit, panel }: TurnPanelPr
             <label>
               ひとこと
               <textarea
-                maxLength={200}
+                maxLength={messageMaxChars}
                 onChange={(event) => setMessage(event.target.value)}
                 placeholder="村のみんなに伝えること"
                 value={message}

@@ -67,6 +67,25 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["streamlit_css_file"] == ""
     assert PACKAGED_DEFAULTS["streamlit_screens_file"] == ""
     assert PACKAGED_DEFAULTS["streamlit_random_seed_max"] == 1000000
+    assert PACKAGED_DEFAULTS["ui_theme_id"] == "dawn-table"
+    assert PACKAGED_DEFAULTS["ui_desktop_breakpoint"] == 980
+
+
+def test_browser_ui_settings_are_validated_runtime_values() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        ui_theme_id="test-theme",
+        ui_spacing_unit=6,
+        ui_desktop_breakpoint=1024,
+        ui_operation_poll_interval_ms=500,
+        ui_operation_poll_timeout_ms=90_000,
+    )
+
+    assert settings.ui_theme_id == "test-theme"
+    assert settings.ui_spacing_unit == 6
+    assert settings.ui_desktop_breakpoint == 1024
+    assert settings.ui_operation_poll_interval_ms == 500
+    assert settings.ui_operation_poll_timeout_ms == 90_000
 
 
 def test_supabase_settings_default_to_unconfigured() -> None:
@@ -83,7 +102,6 @@ def test_supabase_settings_default_to_unconfigured() -> None:
     assert settings.supabase_worker_poll_interval_seconds == 1.0
     assert settings.supabase_worker_batch_size == 5
     assert settings.supabase_worker_claim_seconds == 60
-    assert settings.llm_trace_retention_days == 30
 
 
 def test_supabase_client_settings_must_be_supplied_as_pair() -> None:
@@ -136,7 +154,7 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_run_limit == 20
     assert settings.streamlit_max_auto_steps == 64
     assert settings.streamlit_auto_advance_interval_seconds == 1.0
-    assert settings.streamlit_initial_sidebar_state == "expanded"
+    assert settings.streamlit_initial_sidebar_state == "auto"
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_i18n_file == ""
     assert settings.streamlit_i18n_path is None
@@ -148,13 +166,14 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_default_seed == 1
     assert settings.streamlit_random_seed_max == DEFAULT_STREAMLIT_RANDOM_SEED_MAX
     assert settings.streamlit_default_manual_player_id == "player-1"
-    assert settings.streamlit_message_max_chars == 200
+    assert settings.api_message_max_chars == 200
     assert settings.streamlit_service_name == "werewolf-agent-streamlit"
     assert settings.reveal_api_enabled is True
     assert settings.api_game_list_default_limit == 20
     assert settings.api_game_list_max_limit == 100
     assert settings.api_timeline_default_limit == 100
     assert settings.api_timeline_max_limit == 500
+    assert settings.api_docs_enabled is False
     assert settings.llm_provider == "fake"
     assert settings.model == "fake-list-llm"
     assert settings.llm_base_url == ""
@@ -360,7 +379,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SCREENS_FILE", "tmp/streamlit/screens.toml")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_RANDOM_SEED_MAX", "999")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID", "player-2")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS", "120")
+    monkeypatch.setenv("WEREWOLF_API_MESSAGE_MAX_CHARS", "120")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_SERVICE_NAME", "test-streamlit")
     monkeypatch.setenv("WEREWOLF_REVEAL_API_ENABLED", "false")
     monkeypatch.setenv("WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT", "7")
@@ -375,7 +394,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "postgresql://postgres:secret@127.0.0.1:54322/postgres",
     )
     monkeypatch.setenv("WEREWOLF_SUPABASE_WORKER_ID", "worker-1")
-    monkeypatch.setenv("WEREWOLF_LLM_TRACE_RETENTION_DAYS", "45")
 
     settings = AppSettings(_env_file=None)
 
@@ -441,7 +459,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_default_seed == 33
     assert settings.streamlit_random_seed_max == 999
     assert settings.streamlit_default_manual_player_id == "player-2"
-    assert settings.streamlit_message_max_chars == 120
+    assert settings.api_message_max_chars == 120
     assert settings.streamlit_service_name == "test-streamlit"
     assert settings.reveal_api_enabled is False
     assert settings.api_game_list_default_limit == 7
@@ -453,7 +471,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.supabase_publishable_key_value == "anon-test"
     assert settings.supabase_worker_configured is True
     assert settings.supabase_worker_id == "worker-1"
-    assert settings.llm_trace_retention_days == 45
 
 
 def test_definition_values_load_through_runtime_settings(tmp_path: Path) -> None:

@@ -1,7 +1,9 @@
+import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { supabaseBrowserConfigError } from "./config";
-import { gameClient } from "./data/SupabaseGameClient";
+import { browserConfigError } from "./config";
+import { gameClient } from "./data/ApiGameClient";
+import { authClient } from "./data/AuthClient";
 import { VillageLayout } from "./features/village/VillageLayout";
 import { mapGameScreen } from "./gameClient/screenAdapter";
 import { setupPreviewScreen } from "./gameClient/setupOptions";
@@ -17,23 +19,29 @@ export function App() {
   const setActiveGameId = useUiStore((state) => state.setActiveGameId);
   const setActiveView = useUiStore((state) => state.setActiveView);
   const setManualPlayerId = useUiStore((state) => state.setManualPlayerId);
-  const startupConfigError = supabaseBrowserConfigError();
+  const startupConfigError = browserConfigError();
   const queriesEnabled = startupConfigError === null;
+  const privatePlayerId = activeView === "play" ? manualPlayerId : "";
 
   const setupQuery = useQuery({
     enabled: queriesEnabled,
     queryKey: ["setup-options"],
     queryFn: () => gameClient.getSetupOptions(),
   });
+  const authQuery = useQuery({
+    enabled: queriesEnabled,
+    queryKey: ["auth"],
+    queryFn: () => authClient.current(),
+  });
+  const runtimeConfigQuery = useQuery({
+    enabled: queriesEnabled,
+    queryKey: ["runtime-config"],
+    queryFn: () => gameClient.getRuntimeConfig(),
+  });
   const screenQuery = useQuery({
     enabled: queriesEnabled && activeGameId !== null,
-    queryKey: ["game-screen", activeGameId, manualPlayerId],
-    queryFn: () => gameClient.getScreen(activeGameId, manualPlayerId),
-  });
-  const revealQuery = useQuery({
-    enabled: queriesEnabled && activeView === "observe" && activeGameId !== null,
-    queryKey: ["game-reveal", activeGameId],
-    queryFn: () => gameClient.getReveal(activeGameId ?? ""),
+    queryKey: ["game-screen", activeGameId, privatePlayerId],
+    queryFn: () => gameClient.getScreen(activeGameId, privatePlayerId),
   });
   const gamesQuery = useQuery({
     enabled: queriesEnabled,
@@ -41,7 +49,15 @@ export function App() {
     queryFn: () => gameClient.listGames(),
   });
   const setupOptions = setupQuery.data;
+  const runtimeConfig = runtimeConfigQuery.data;
   const gameList = gamesQuery.data;
+
+  useEffect(() => {
+    const configured = runtimeConfig?.ui.default_manual_player_id;
+    if (!manualPlayerId && typeof configured === "string" && configured) {
+      setManualPlayerId(configured);
+    }
+  }, [manualPlayerId, runtimeConfig, setManualPlayerId]);
 
   const createGameMutation = useMutation({
     mutationFn: (draft: SetupDraft) => {
@@ -53,10 +69,9 @@ export function App() {
     onSuccess: (response, draft) => {
       setActiveGameId(response.game_id);
       setManualPlayerId(draft.manualPlayerId);
-      setActiveView("play");
+      setActiveView(draft.manualPlayerId ? "play" : "observe");
       void queryClient.invalidateQueries({ queryKey: ["game-screen"] });
       void queryClient.invalidateQueries({ queryKey: ["game-list"] });
-      void queryClient.invalidateQueries({ queryKey: ["game-reveal"] });
     },
   });
   const submitActionMutation = useMutation({
@@ -81,7 +96,21 @@ export function App() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["game-screen"] });
       void queryClient.invalidateQueries({ queryKey: ["game-list"] });
-      void queryClient.invalidateQueries({ queryKey: ["game-reveal"] });
+    },
+  });
+  const signInMutation = useMutation({
+    mutationFn: ({ email, password }: { email: string; password: string }) =>
+      authClient.signIn(email, password),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries();
+    },
+  });
+  const signOutMutation = useMutation({
+    mutationFn: () => authClient.signOut(),
+    onSuccess: async () => {
+      setActiveGameId(null);
+      setActiveView("setup");
+      await queryClient.invalidateQueries();
     },
   });
 
@@ -91,6 +120,8 @@ export function App() {
 
   if (
     setupQuery.isLoading ||
+    authQuery.isLoading ||
+    runtimeConfigQuery.isLoading ||
     (activeGameId !== null && screenQuery.isLoading) ||
     gamesQuery.isLoading
   ) {
@@ -99,39 +130,67 @@ export function App() {
 
   if (
     setupQuery.isError ||
+    authQuery.isError ||
+    runtimeConfigQuery.isError ||
     (activeGameId !== null && screenQuery.isError) ||
     gamesQuery.isError ||
     !setupOptions ||
+    !authQuery.data ||
+    !runtimeConfig ||
     !gameList
   ) {
-    return <div className="wa-loading">村の準備に失敗しました</div>;
+    return (
+      <div className="wa-loading" role="alert">
+        <p>村の準備に失敗しました。</p>
+        <button type="button" onClick={() => void queryClient.invalidateQueries()}>
+          もう一度読み込む
+        </button>
+      </div>
+    );
   }
   const screenSource = screenQuery.data ?? setupPreviewScreen(setupOptions);
 
-  const screen = mapGameScreen({
-    screen: {
-      ...screenSource,
-      reveal: activeView === "observe" ? revealQuery.data ?? null : null,
-    },
-    manualPlayerId,
-  });
+  const screen = mapGameScreen({ screen: screenSource, manualPlayerId });
 
   return (
     <VillageLayout
       activeView={activeView}
+      auth={authQuery.data}
       games={gameList.games}
       isCreatingGame={createGameMutation.isPending}
       isSubmittingAction={submitActionMutation.isPending}
+      isUpdatingAuth={signInMutation.isPending || signOutMutation.isPending}
+      errorMessage={mutationError(
+        createGameMutation.error,
+        submitActionMutation.error,
+        signInMutation.error,
+        signOutMutation.error,
+      )}
       onCreateGame={(draft) => createGameMutation.mutate(draft)}
       onResumeGame={(gameId) => {
         setActiveGameId(gameId);
-        setActiveView("play");
+        const game = gameList.games.find((item) => item.game_id === gameId);
+        setActiveView(game?.status === "completed" ? "observe" : "play");
+      }}
+      onSignIn={(email, password) => signInMutation.mutate({ email, password })}
+      onSignOut={() => signOutMutation.mutate()}
+      onRecover={() => {
+        createGameMutation.reset();
+        submitActionMutation.reset();
+        signInMutation.reset();
+        signOutMutation.reset();
+        void queryClient.invalidateQueries();
       }}
       onSubmitAction={(action) => submitActionMutation.mutate(action)}
       screen={screen}
       setupOptions={setupOptions}
+      runtimeConfig={runtimeConfig}
     />
   );
+}
+
+function mutationError(...errors: Array<Error | null>): string | null {
+  return errors.find((error) => error !== null)?.message ?? null;
 }
 
 function createGameRequest(
@@ -146,7 +205,7 @@ function createGameRequest(
     scenario_id: draft.scenarioId,
     setup_preset_id: draft.setupPresetId,
     role_counts: selectedPreset?.role_counts ?? setupOptions.default_role_counts,
-    manual_player_id: draft.manualPlayerId,
+    manual_player_id: draft.manualPlayerId || null,
     rules: setupOptions.default_rules,
   };
 }

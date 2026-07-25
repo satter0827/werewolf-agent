@@ -63,7 +63,7 @@ def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> Non
     rendered: list[str] = []
 
     monkeypatch.setattr(app, "require_supabase_client_config", lambda _settings: None)
-    monkeypatch.setattr(app, "ensure_session", lambda _settings: object())
+    monkeypatch.setattr(app, "ensure_session", lambda _settings, **_kwargs: object())
     monkeypatch.setattr(
         app,
         "_render_sidebar",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import stat
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -51,7 +52,9 @@ class SupabaseSessionStore:
 
     def save(self, session: SupabaseSession) -> None:
         """Save a session in the OS user profile."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        directory = self.path.parent
+        directory.mkdir(parents=True, exist_ok=True)
+        _restrict_to_owner(directory, stat.S_IRWXU)
         payload = {
             "access_token": session.access_token,
             "refresh_token": session.refresh_token,
@@ -60,10 +63,14 @@ class SupabaseSessionStore:
             "email": session.email,
             "is_anonymous": session.is_anonymous,
         }
-        self.path.write_text(
+        temporary_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
+        temporary_path.write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding=JSON_ENCODING,
         )
+        _restrict_to_owner(temporary_path, stat.S_IRUSR | stat.S_IWUSR)
+        temporary_path.replace(self.path)
+        _restrict_to_owner(self.path, stat.S_IRUSR | stat.S_IWUSR)
 
     def clear(self) -> None:
         """Remove a saved session if it exists."""
@@ -99,3 +106,8 @@ def _session_from_payload(payload: Any) -> SupabaseSession | None:
         )
     except (KeyError, ValueError, TypeError):
         return None
+
+
+def _restrict_to_owner(path: Path, mode: int) -> None:
+    if os.name != "nt":
+        path.chmod(mode)

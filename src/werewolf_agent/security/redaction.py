@@ -17,6 +17,7 @@ _SENSITIVE_ASSIGNMENT_PATTERN: Final = re.compile(
     r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password)"
     r"(\s*[:=]\s*)((?:Bearer\s+)?[^,\s;]+)"
 )
+_URI_CREDENTIALS_PATTERN: Final = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@")
 
 
 def redact_mapping(mapping: Mapping[str, object]) -> dict[str, object]:
@@ -42,7 +43,8 @@ def redact_value(key: str | None, value: object) -> object:
 
 def redact_text(value: str) -> str:
     """Mask common sensitive key assignments inside free-form log strings."""
-    return _SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
+    redacted = _SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
+    return _URI_CREDENTIALS_PATTERN.sub(r"\1[REDACTED]@", redacted)
 
 
 def is_sensitive_key(key: str) -> bool:

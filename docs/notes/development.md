@@ -6,6 +6,48 @@
 
 ## 現在地
 
+- 第二段階は`develope`の`c5427403`から分離worktreeで開始した
+- React、Streamlit、CLIのゲーム通信をHTTP APIへ統一した
+- `api`を独立させ、workerは実行interfaceとして`interfaces/worker`へ配置した
+- Pythonのusecase公開面を`GameApplication`へ集約した
+- Supabaseへcommand、event、snapshot、projection、checksumを保存するbaselineを追加した
+- anonymous gameをFakeListLLM、ログインgameを有料providerへ作成時固定した
+- React本番UIとStreamlit MOCへゲスト、ログイン、ログアウト導線を追加した
+- JWT、認可、rate limit、body size、timeout、同時実行数、idempotency、version競合をAPI境界へ追加した
+- idempotency keyの異なるrequestへの再利用をrequest hashで拒否するようにした
+- 手動操作を含む全状態変更でversionを進め、履歴上書きを防止した
+- `state_committed` eventからsnapshotとpublic projectionを検証できるようにした
+- operation診断、LLM trace、利用量を管理APIへ隔離した
+- 通常UIの`GameClient`からadmin revealを除去し、観戦表示をpublic timelineだけで
+  構築するようにした
+- Reactのprivate observation取得をプレイ画面だけへ限定し、観戦、履歴、設定では
+  ブラウザへ秘匿データを渡さないようにした
+- API rate limitを認証前のIPとJWT検証後の利用者・gameへ分離し、token refreshや
+  game IDの変更による上限回避、未検証claimの悪用、任意キーによるbucketの
+  無制限増加とactive bucketの追い出しを防止した
+- Playwright testを`frontend/e2e`、migration・OpenAPI補助処理を`scripts`へ統合し、
+  トップ階層の`e2e`と`tools`が再作成されないよう構造テストで固定した
+- frontend開発依存を更新してnpm auditを0件にし、CIへ依存監査、生成client差分、
+  unit test、lint、buildを追加した
+- Dockerのtest imageへtestsを含め、test serviceをmigrationから独立させた。
+  CIとローカルのunit testはSupabase未起動でも実際に収集・実行される
+- Reactへ観戦専用game作成と完了結果を開く導線を追加し、Streamlitとの機能差を解消した
+- 文章上限をAPIの型付き公開設定へ集約し、ReactとStreamlitが
+  `limits.message_max_chars`を取得して同じ受理条件を使うようにした
+- 既存gameのoperationは保存済みLLM modeをqueueで再解決し、途中ログインによって
+  監査値や冪等性hashが変化しないようにした
+- worker実行時にもgame参加権限とplayer seat所有を再検証し、queue待機中の権限失効を
+  commandへ反映するようにした
+- Supabase Data APIからゲーム関連tableへ到達できない境界を`anon`と
+  `authenticated`の両roleに対する明示revokeで固定した
+- CLIの認証sessionを原子的に保存し、POSIXのdirectoryとtoken fileを所有者限定権限へ
+  固定した
+- rate limit bucketの更新を原子的にし、並行要求でも設定上限を超えないようにした
+- axeから色コントラスト除外とsidebar全体除外を取り除き、framework所有要素だけを
+  最小限の例外として扱うようにした
+
+## 第一段階から維持する判断
+
 - `Game`を唯一の集約ルートとし、`submit()`と`advance()`へ状態変更を限定した
 - `GameState`を不変スナップショット、遷移結果を型付きイベントへ統一した
 - 未解決行動を`GameState`へ含め、`Game.restore(state, rules=...)`だけで復元できるようにした
@@ -25,20 +67,23 @@
 - 既定プリセットを定義順から選ぶ処理を廃止し、`game_default_setup_preset_id`から解決するようにした
 - 役職、能力、シナリオ、ナレーション、プリセット間の参照を設定ロード時に検証するようにした
 - 投票提出を非公開イベントに変更し、公開履歴には解決後の投票結果だけを残した
-- DBスキーマ、migration、Supabase保存方式は変更していない
+- 第一段階ではDBスキーマ、migration、Supabase保存方式を変更しなかった。第二段階では
+  完全リプレイとAPI境界に必要なbaseline migrationへ置き換えた
 
 ## 配置
 
 | Path | 責務 |
 | --- | --- |
 | `src/werewolf_agent/domain/` | 集約、状態、イベント、ポリシー、公開ゲームAPI |
-| `src/werewolf_agent/usecase/` | command、query、result、handler、repository port |
+| `src/werewolf_agent/usecase/` | `GameApplication`、内部handler、repository port |
 | `src/werewolf_agent/agents/` | provider非依存の観測、意思決定、player port |
 | `src/werewolf_agent/agents/langchain/` | LangChain、LangGraph、FakeListLLM |
 | `src/werewolf_agent/adapters/` | GameClient、usecase bridge、外部サービスadapter |
 | `src/werewolf_agent/adapters/agents/` | agentsとusecaseを接続するgame driver |
-| `src/werewolf_agent/adapters/supabase/` | Auth、Data API、worker、repository、trace sink |
-| `src/werewolf_agent/interfaces/` | CLI、Streamlit、worker |
+| `src/werewolf_agent/adapters/supabase/` | Auth、repository、operation、private trace sink |
+| `src/werewolf_agent/api/` | FastAPIとHTTP composition root |
+| `src/werewolf_agent/interfaces/` | CLI、Streamlit、非同期worker |
+| `frontend/` | generated clientを使うReact本番UI |
 | `src/werewolf_agent/configuration/` | settings、TOML、resource検証 |
 | `src/werewolf_agent/observability/` | loggingと実行context |
 | `src/werewolf_agent/security/` | redaction |
@@ -116,20 +161,27 @@ uv run --no-sync mypy --no-incremental src
 uv run --group docs --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
 ```
 
-## 検証結果
+## 直近の検証結果
 
-- pytest: 232件成功
+- pytest（host）: 296件成功
+- pytest（Docker test image）: 295件成功、Windows専用1件skip
 - Ruff lint: 成功
 - Ruff docstring lint: 成功
 - Ruff format check: 成功
 - mypy: 成功
 - Sphinx warning-as-error build: 成功
+- npm audit: 脆弱性0件
+- React unit test: 21件成功
+- React boundary lint、TypeScript、production build: 成功
+- Docker E2E: 厳格なaxe、React／Streamlit観戦時のprivate／管理API非到達検証、
+  desktop／mobileのvisual regressionを含む15件成功、desktop対象外のmobile専用1件をskip
+- Python source distribution: 15.5MBから184KBへ縮小し、Python build inputだけを同梱
 
 pytestでは、LangGraph内部の`BaseCache`が既定serializerを生成する際に
 `LangChainPendingDeprecationWarning`が1件発生します。プロジェクト側の
 serializer生成箇所ではないため、警告を隠す設定は追加していません。
 
-## 削除した構造
+## 第一段階で削除した構造
 
 - `domain/game`
 - `domain/llm`
@@ -149,11 +201,26 @@ serializer生成箇所ではないため、警告を隠す設定は追加して�
 
 - 実providerの長時間QAと評価基盤
 - 複数manual player
-- React UIのproduction QA
+- private LLM traceの自動retention cleanup
 - 登録済み以外の新しい集計、勝敗、可視性アルゴリズム
+
+実providerのAPI keyを使わない通常検証でも、workerがSupabase Authの利用者区分を
+再検証すること、fake gameが有料provider設定とsecretを継承しないこと、
+失敗したcommandをrollbackしてから安全なProblem Detailsだけを保存することは
+unit testで固定しています。
+
+今回のゼロベースレビューでは、観戦専用game作成、完了gameの結果表示、文章上限の
+API／DOM共通化、timelineの`limit`伝播、OpenAPIと実際のProblem Detailsの一致、
+rate limiterのatomicity、axeの除外範囲、visual baseline更新手順、既存gameの
+LLM mode固定、Supabase Data API権限、認証session保存、観戦画面のadmin reveal除去、
+Docker testの独立性、API文書の既定非公開化、API応答のcache抑止、queue受理時の
+LLM mode不変化、未使用public tableと旧public RPCの削除、host／Compose用DB DSNの
+分離を追加で修正しました。
+並列E2Eだけは同一Docker gateway IPを共有するためrate limitを1000へ上書きし、
+production既定値120は変更していません。
 
 ## 次の一手
 
 1. 実providerごとの契約テストを追加する
 2. 設定組み合わせのproperty-based testを拡充する
-3. Game集約の公開APIだけを使うシミュレーション例を追加する
+3. 複数manual playerの権限モデルを設計する

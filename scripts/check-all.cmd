@@ -93,6 +93,53 @@ echo === mypy ===
 call :check_status %ERRORLEVEL%
 if errorlevel 1 goto finish
 
+echo.
+echo === import boundaries ===
+"%CD%\.venv\Scripts\lint-imports.exe"
+call :check_status %ERRORLEVEL%
+if errorlevel 1 goto finish
+
+echo.
+echo === documentation ===
+"%PYTHON%" -m sphinx -W -b html -c docs\sphinx docs "%WEREWOLF_AGENT_RUNTIME_DIR%\sphinx-html"
+call :check_status %ERRORLEVEL%
+if errorlevel 1 goto finish
+
+where npm >nul 2>nul
+if errorlevel 1 goto npm_missing
+
+echo.
+echo === frontend test ===
+pushd frontend
+call npm test
+set "FRONTEND_STATUS=%ERRORLEVEL%"
+popd
+call :check_status %FRONTEND_STATUS%
+if errorlevel 1 goto finish
+
+echo.
+echo === frontend lint ===
+pushd frontend
+call npm run lint
+set "FRONTEND_STATUS=%ERRORLEVEL%"
+popd
+call :check_status %FRONTEND_STATUS%
+if errorlevel 1 goto finish
+
+echo.
+echo === frontend build ===
+pushd frontend
+call npm run build
+set "FRONTEND_STATUS=%ERRORLEVEL%"
+popd
+call :check_status %FRONTEND_STATUS%
+if errorlevel 1 goto finish
+goto finish
+
+:npm_missing
+echo npm is required for frontend validation. 1>&2
+call :check_status 1
+
 :finish
 if "%FAILED%"=="1" (
     popd
@@ -117,7 +164,7 @@ exit /b %STATUS%
 :print_help
 echo Usage: scripts\check-all.cmd [--keep-going]
 echo.
-echo Runs local validation with .venv\Scripts\python.exe.
+echo Runs Python, architecture, documentation, and frontend validation.
 echo Runtime cache defaults to %%TEMP%%\werewolf-agent.
 echo Operational logs default to .werewolf-agent\logs\check-all.jsonl.
 echo   --keep-going  Continue after failed checks and exit non-zero at the end.

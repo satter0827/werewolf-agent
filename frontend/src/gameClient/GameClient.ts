@@ -2,12 +2,14 @@ import type {
   CreateGameRequest,
   GameListResponse,
   GameResponse,
-  GameRevealResponse,
   GameScreenSource,
   GameSetupOptionsResponse,
   PlayerActionRequest,
   PlayerActionResponse,
 } from "./wireTypes";
+import type { components } from "../generated/api";
+
+export type PublicRuntimeConfig = components["schemas"]["PublicRuntimeConfig"];
 
 export interface SubmitPlayerActionCommand {
   action: PlayerActionRequest;
@@ -22,7 +24,7 @@ export interface AdvanceGameCommand {
 export interface GameClient {
   advance(command: AdvanceGameCommand): Promise<GameScreenSource>;
   createGame(request: CreateGameRequest): Promise<GameResponse>;
-  getReveal(gameId: string): Promise<GameRevealResponse | null>;
+  getRuntimeConfig(): Promise<PublicRuntimeConfig>;
   getScreen(gameId: string | null, manualPlayerId: string): Promise<GameScreenSource>;
   getSetupOptions(): Promise<GameSetupOptionsResponse>;
   listGames(): Promise<GameListResponse>;

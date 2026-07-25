@@ -9,6 +9,11 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 
 /design/domain
 /design/api
+/design/second-stage-architecture
+/design/security-and-persistence
+/design/ui-and-browser-qa
+/design/runtime-and-docker
+/design/python-api
 /design/agent-strategies
 ```
 
@@ -32,6 +37,10 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 ## 読む順番
 
 1. [Domain](../design/domain.md): domain core と境界
-2. [API](../design/api.md): 公開 API 契約
-3. [Agent Strategies](../design/agent-strategies.md): LLM agent の strategy graph
-4. [Development](../notes/development.md): 再開メモと実行コマンド
+2. [第二段階Architecture](../design/second-stage-architecture.md): 層と依存方向
+3. [API](../design/api.md): 公開 API 契約
+4. [SecurityとPersistence](../design/security-and-persistence.md): 認証、秘匿、再現性
+5. [UIとBrowser QA](../design/ui-and-browser-qa.md): React、Streamlit、画面検証
+6. [RuntimeとDocker](../design/runtime-and-docker.md): 設定と起動
+7. [Python API](../design/python-api.md): `GameApplication`
+8. [Development](../notes/development.md): 再開メモと実行コマンド

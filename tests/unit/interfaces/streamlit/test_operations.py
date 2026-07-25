@@ -2,13 +2,11 @@ import logging
 from datetime import UTC, datetime
 
 from werewolf_agent.configuration import AppSettings
-from werewolf_agent.contracts import ResourceNotFoundError
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameResponse,
-    GameRevealResponse,
     GameTimelineResponse,
     LocalRulesSettings,
     PlayerObservationResponse,
@@ -67,38 +65,6 @@ class FakeStreamlitClient:
         phase = "finished" if self.stepped else "day_discussion"
         status = "completed" if self.stepped else "running"
         return GameResponse(game_id=game_id, state=_state(status=status, phase=phase))
-
-    def get_game_reveal(self, game_id: str) -> GameRevealResponse:
-        return GameRevealResponse(
-            game_id=game_id,
-            status="completed" if self.stepped else "running",
-            phase="finished" if self.stepped else "day_discussion",
-            day=1,
-            version=2,
-            seed=1,
-            role_counts={"werewolf": 1, "villager": 1},
-            rules=_rules(),
-            players=[
-                {
-                    "id": "player-1",
-                    "name": "Player 1",
-                    "role": "villager",
-                    "faction": "village",
-                    "alive": True,
-                    "status": "alive",
-                },
-                {
-                    "id": "player-2",
-                    "name": "Player 2",
-                    "role": "werewolf",
-                    "faction": "werewolf",
-                    "alive": True,
-                    "status": "alive",
-                },
-            ],
-            alive_player_ids=["player-1", "player-2"],
-            eliminated_player_ids=[],
-        )
 
     def get_timeline(
         self,
@@ -258,7 +224,7 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
     assert not hasattr(record, "seat_credential")
 
 
-def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -> None:
+def test_observer_screen_uses_public_data_without_private_observation(monkeypatch) -> None:
     client = FakeStreamlitClient()
     monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
     settings = AppSettings(_env_file=None)
@@ -276,33 +242,7 @@ def test_observer_screen_loads_reveal_without_private_observation(monkeypatch) -
     assert screen.screen_mode == "observer"
     assert screen.observation is None
     assert screen.observer_log is not None
-    assert screen.seats[1].role_label == "人狼"
-
-
-def test_observer_screen_allows_public_view_without_admin_reveal(monkeypatch) -> None:
-    class PublicOnlyClient(FakeStreamlitClient):
-        def get_game_reveal(self, game_id: str) -> GameRevealResponse:
-            raise ResourceNotFoundError("Game reveal not found.")
-
-    client = PublicOnlyClient()
-    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
-    settings = AppSettings(_env_file=None)
-    catalog = load_i18n(settings)
-
-    screen = operations.load_game_screen(
-        settings=settings,
-        game_id="game-1",
-        manual_player_id=None,
-        screen_mode="observer",
-        catalog=catalog,
-        lang="ja",
-    )
-
-    assert screen.screen_mode == "observer"
-    assert screen.observation is None
-    assert screen.observer_log is not None
-    assert screen.observer_log.role_lines == []
-    assert screen.observer_log.action_lines == []
+    assert screen.observer_log.entries == []
 
 
 def _state(*, status: str, phase: str) -> PublicGameState:

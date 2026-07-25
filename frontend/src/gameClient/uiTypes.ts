@@ -64,6 +64,7 @@ export interface ObserverRecord {
 }
 
 export interface GameScreenModel {
+  version: number;
   status: GameStatus;
   phase: GamePhase;
   phaseLabel: string;

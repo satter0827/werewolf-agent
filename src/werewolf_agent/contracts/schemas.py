@@ -59,7 +59,14 @@ ACTIVE_ADVANCE_JOB_STATUSES: Final[frozenset[AdvanceJobStatus]] = frozenset(
     {ADVANCE_JOB_STATUS_QUEUED, ADVANCE_JOB_STATUS_RUNNING}
 )
 PlayerStatus = Literal["alive", "dead"]
-ActionType = str
+ActionType = Literal[
+    "speech",
+    "vote",
+    "seer_inspect",
+    "knight_guard",
+    "werewolf_attack",
+    "pass",
+]
 RoleId = str
 Winner = str
 RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]

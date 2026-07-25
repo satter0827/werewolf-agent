@@ -176,6 +176,9 @@ def create_game(
         **scenario_config,
         "narration_mode": command.narration_mode,
         "agent_strategy_id": agent_strategy_id,
+        "llm_mode": command.llm_mode,
+        "engine_version": "0.1.0",
+        "definition_snapshot": game_definitions.model_dump(mode="json"),
         "rule_composition": rule_composition,
         "custom_roles": [definition.model_dump(mode="json") for definition in command.custom_roles],
         "custom_characters": [
@@ -375,6 +378,8 @@ def prepare_advance_game(
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
+    if command.expected_version is not None and run.version != command.expected_version:
+        raise GamePhaseError(MESSAGE_ADVANCE_JOB_STATE_CHANGED)
     if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
@@ -517,6 +522,8 @@ def submit_player_action(
     run = dependencies.repository.get_for_update(game_id)
     if run is None:
         raise GameNotFoundError(str(game_id))
+    if command.expected_version is not None and run.version != command.expected_version:
+        raise GamePhaseError(MESSAGE_ADVANCE_JOB_STATE_CHANGED)
     if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
@@ -536,7 +543,7 @@ def submit_player_action(
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
         game_id=str(run.id),
-        version=run.version,
+        version=run.version + 1,
         seed=run.seed,
         created_at=run.created_at,
         scenario_id=_config_text(run.config, "scenario_id"),
@@ -552,7 +559,7 @@ def submit_player_action(
             public_state=next_public_state,
             private_state=next_snapshot.model_dump(mode="json"),
             pending_actions=next_pending_actions.model_dump(mode="json"),
-            version=run.version,
+            version=run.version + 1,
         )
     )
     latest_turn_sequence = dependencies.repository.latest_public_turn_sequence(updated_run.id)

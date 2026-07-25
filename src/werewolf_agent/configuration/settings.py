@@ -133,6 +133,9 @@ DEFAULT_LLM_FALLBACK_POLICY: Final = _string_default("llm_fallback_policy")
 DEFAULT_LLM_PROMPT_FILE: Final = _string_default("llm_prompt_file")
 DEFAULT_LLM_FAKE_RESPONSES_FILE: Final = _string_default("llm_fake_responses_file")
 DEFAULT_LLM_PLAYERS_FILE: Final = _string_default("llm_players_file")
+DEFAULT_WORKER_PAID_LLM_PROVIDER: Final = _string_default("worker_paid_llm_provider")
+DEFAULT_WORKER_PAID_LLM_MODEL: Final = _string_default("worker_paid_llm_model")
+DEFAULT_WORKER_PAID_LLM_BASE_URL: Final = _string_default("worker_paid_llm_base_url")
 DEFAULT_LOG_LEVEL: Final = _string_default("log_level")
 DEFAULT_LOG_OUTPUT: Final = _string_default("log_output")
 DEFAULT_LOG_DIR: Final = _path_default("log_dir")
@@ -150,7 +153,6 @@ DEFAULT_SUPABASE_WORKER_POLL_INTERVAL_SECONDS: Final = _float_default(
 )
 DEFAULT_SUPABASE_WORKER_BATCH_SIZE: Final = _integer_default("supabase_worker_batch_size")
 DEFAULT_SUPABASE_WORKER_CLAIM_SECONDS: Final = _integer_default("supabase_worker_claim_seconds")
-DEFAULT_LLM_TRACE_RETENTION_DAYS: Final = _integer_default("llm_trace_retention_days")
 DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS: Final = _float_default(
     "advance_job_poll_interval_seconds"
 )
@@ -178,7 +180,6 @@ DEFAULT_STREAMLIT_RANDOM_SEED_MAX: Final = _integer_default("streamlit_random_se
 DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID: Final = _string_default(
     "streamlit_default_manual_player_id"
 )
-DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS: Final = _integer_default("streamlit_message_max_chars")
 DEFAULT_STREAMLIT_PAGE_TITLE: Final = _string_default("streamlit_page_title")
 DEFAULT_STREAMLIT_SERVICE_NAME: Final = _string_default("streamlit_service_name")
 DEFAULT_REVEAL_API_ENABLED: Final = _bool_default("reveal_api_enabled")
@@ -186,6 +187,30 @@ DEFAULT_API_GAME_LIST_DEFAULT_LIMIT: Final = _integer_default("api_game_list_def
 DEFAULT_API_GAME_LIST_MAX_LIMIT: Final = _integer_default("api_game_list_max_limit")
 DEFAULT_API_TIMELINE_DEFAULT_LIMIT: Final = _integer_default("api_timeline_default_limit")
 DEFAULT_API_TIMELINE_MAX_LIMIT: Final = _integer_default("api_timeline_max_limit")
+DEFAULT_API_HOST: Final = _string_default("api_host")
+DEFAULT_API_PORT: Final = _integer_default("api_port")
+DEFAULT_API_BASE_URL: Final = _string_default("api_base_url")
+DEFAULT_API_CONTRACT_VERSION: Final = _string_default("api_contract_version")
+DEFAULT_API_CONFIG_REVISION: Final = _string_default("api_config_revision")
+DEFAULT_API_DOCS_ENABLED: Final = _bool_default("api_docs_enabled")
+DEFAULT_API_CORS_ORIGINS: Final = _string_default("api_cors_origins")
+DEFAULT_API_MAX_BODY_BYTES: Final = _integer_default("api_max_body_bytes")
+DEFAULT_API_MESSAGE_MAX_CHARS: Final = _integer_default("api_message_max_chars")
+DEFAULT_API_RATE_LIMIT_REQUESTS: Final = _integer_default("api_rate_limit_requests")
+DEFAULT_API_RATE_LIMIT_WINDOW_SECONDS: Final = _integer_default("api_rate_limit_window_seconds")
+DEFAULT_API_TIMEOUT_SECONDS: Final = _float_default("api_timeout_seconds")
+DEFAULT_API_MAX_CONCURRENT_REQUESTS: Final = _integer_default("api_max_concurrent_requests")
+DEFAULT_UI_THEME_ID: Final = _string_default("ui_theme_id")
+DEFAULT_UI_SPACING_UNIT: Final = _integer_default("ui_spacing_unit")
+DEFAULT_UI_DESKTOP_BREAKPOINT: Final = _integer_default("ui_desktop_breakpoint")
+DEFAULT_UI_MOTION: Final = _string_default("ui_motion")
+DEFAULT_UI_DEFAULT_MANUAL_PLAYER_ID: Final = _string_default("ui_default_manual_player_id")
+DEFAULT_UI_DEFAULT_SETUP_SEED: Final = _string_default("ui_default_setup_seed")
+DEFAULT_UI_OPERATION_POLL_INTERVAL_MS: Final = _integer_default("ui_operation_poll_interval_ms")
+DEFAULT_UI_OPERATION_POLL_TIMEOUT_MS: Final = _integer_default("ui_operation_poll_timeout_ms")
+DEFAULT_SUPABASE_JWT_AUDIENCE: Final = _string_default("supabase_jwt_audience")
+DEFAULT_SUPABASE_JWT_ISSUER: Final = _string_default("supabase_jwt_issuer")
+DEFAULT_SUPABASE_JWKS_URL: Final = _string_default("supabase_jwks_url")
 DEFAULT_GAME_MIN_PLAYERS: Final = _integer_default("game_min_players")
 DEFAULT_GAME_MAX_PLAYERS: Final = _integer_default("game_max_players")
 DEFAULT_GAME_DEFAULT_PLAYER_COUNT: Final = _integer_default("game_default_player_count")
@@ -213,6 +238,7 @@ SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({DEFAULT_GAME_SUPPORTED_AGENT_TYPE
 
 StreamlitLanguage = Literal["ja", "en"]
 StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]
+UiMotion = Literal["system", "reduced"]
 
 
 @lru_cache(maxsize=1)
@@ -325,6 +351,18 @@ class AppSettings(BaseSettings):
         default=DEFAULT_LLM_PLAYERS_FILE,
         validation_alias="WEREWOLF_LLM_PLAYERS_FILE",
     )
+    worker_paid_llm_provider: str = Field(
+        default=DEFAULT_WORKER_PAID_LLM_PROVIDER,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_PROVIDER",
+    )
+    worker_paid_llm_model: str = Field(
+        default=DEFAULT_WORKER_PAID_LLM_MODEL,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_MODEL",
+    )
+    worker_paid_llm_base_url: str = Field(
+        default=DEFAULT_WORKER_PAID_LLM_BASE_URL,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_BASE_URL",
+    )
     log_level: str = Field(default=DEFAULT_LOG_LEVEL, validation_alias="WEREWOLF_LOG_LEVEL")
     log_output: SharedLogOutput = Field(
         default=cast(SharedLogOutput, DEFAULT_LOG_OUTPUT),
@@ -384,11 +422,6 @@ class AppSettings(BaseSettings):
         default=DEFAULT_SUPABASE_WORKER_CLAIM_SECONDS,
         ge=1,
         validation_alias="WEREWOLF_SUPABASE_WORKER_CLAIM_SECONDS",
-    )
-    llm_trace_retention_days: int = Field(
-        default=DEFAULT_LLM_TRACE_RETENTION_DAYS,
-        ge=MIN_RETENTION_DAYS,
-        validation_alias="WEREWOLF_LLM_TRACE_RETENTION_DAYS",
     )
     advance_job_poll_interval_seconds: float = Field(
         default=DEFAULT_ADVANCE_JOB_POLL_INTERVAL_SECONDS,
@@ -484,11 +517,6 @@ class AppSettings(BaseSettings):
         default=DEFAULT_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID,
         validation_alias="WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID",
     )
-    streamlit_message_max_chars: int = Field(
-        default=DEFAULT_STREAMLIT_MESSAGE_MAX_CHARS,
-        ge=MIN_TEXT_MAX_CHARS,
-        validation_alias="WEREWOLF_STREAMLIT_MESSAGE_MAX_CHARS",
-    )
     streamlit_service_name: str = Field(
         default=DEFAULT_STREAMLIT_SERVICE_NAME,
         validation_alias="WEREWOLF_STREAMLIT_SERVICE_NAME",
@@ -578,6 +606,121 @@ class AppSettings(BaseSettings):
         ge=MIN_PAGE_LIMIT,
         validation_alias="WEREWOLF_API_TIMELINE_MAX_LIMIT",
     )
+    api_host: str = Field(
+        default=DEFAULT_API_HOST,
+        validation_alias="WEREWOLF_API_HOST",
+    )
+    api_port: int = Field(
+        default=DEFAULT_API_PORT,
+        ge=1,
+        le=65535,
+        validation_alias="WEREWOLF_API_PORT",
+    )
+    api_base_url: str = Field(
+        default=DEFAULT_API_BASE_URL,
+        validation_alias="WEREWOLF_API_BASE_URL",
+    )
+    api_contract_version: str = Field(
+        default=DEFAULT_API_CONTRACT_VERSION,
+        validation_alias="WEREWOLF_API_CONTRACT_VERSION",
+    )
+    api_config_revision: str = Field(
+        default=DEFAULT_API_CONFIG_REVISION,
+        validation_alias="WEREWOLF_API_CONFIG_REVISION",
+    )
+    api_docs_enabled: bool = Field(
+        default=DEFAULT_API_DOCS_ENABLED,
+        validation_alias="WEREWOLF_API_DOCS_ENABLED",
+    )
+    api_cors_origins: str = Field(
+        default=DEFAULT_API_CORS_ORIGINS,
+        validation_alias="WEREWOLF_API_CORS_ORIGINS",
+    )
+    api_max_body_bytes: int = Field(
+        default=DEFAULT_API_MAX_BODY_BYTES,
+        ge=1024,
+        validation_alias="WEREWOLF_API_MAX_BODY_BYTES",
+    )
+    api_message_max_chars: int = Field(
+        default=DEFAULT_API_MESSAGE_MAX_CHARS,
+        ge=MIN_TEXT_MAX_CHARS,
+        validation_alias="WEREWOLF_API_MESSAGE_MAX_CHARS",
+    )
+    api_rate_limit_requests: int = Field(
+        default=DEFAULT_API_RATE_LIMIT_REQUESTS,
+        ge=1,
+        validation_alias="WEREWOLF_API_RATE_LIMIT_REQUESTS",
+    )
+    api_rate_limit_window_seconds: int = Field(
+        default=DEFAULT_API_RATE_LIMIT_WINDOW_SECONDS,
+        ge=1,
+        validation_alias="WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS",
+    )
+    api_timeout_seconds: float = Field(
+        default=DEFAULT_API_TIMEOUT_SECONDS,
+        gt=0,
+        validation_alias="WEREWOLF_API_TIMEOUT_SECONDS",
+    )
+    api_max_concurrent_requests: int = Field(
+        default=DEFAULT_API_MAX_CONCURRENT_REQUESTS,
+        ge=1,
+        validation_alias="WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
+    )
+    ui_theme_id: str = Field(
+        default=DEFAULT_UI_THEME_ID,
+        min_length=1,
+        validation_alias="WEREWOLF_UI_THEME_ID",
+    )
+    ui_spacing_unit: int = Field(
+        default=DEFAULT_UI_SPACING_UNIT,
+        ge=1,
+        le=16,
+        validation_alias="WEREWOLF_UI_SPACING_UNIT",
+    )
+    ui_desktop_breakpoint: int = Field(
+        default=DEFAULT_UI_DESKTOP_BREAKPOINT,
+        ge=640,
+        le=1920,
+        validation_alias="WEREWOLF_UI_DESKTOP_BREAKPOINT",
+    )
+    ui_motion: UiMotion = Field(
+        default=cast(UiMotion, DEFAULT_UI_MOTION),
+        validation_alias="WEREWOLF_UI_MOTION",
+    )
+    ui_default_manual_player_id: str = Field(
+        default=DEFAULT_UI_DEFAULT_MANUAL_PLAYER_ID,
+        min_length=1,
+        validation_alias="WEREWOLF_UI_DEFAULT_MANUAL_PLAYER_ID",
+    )
+    ui_default_setup_seed: str = Field(
+        default=DEFAULT_UI_DEFAULT_SETUP_SEED,
+        min_length=1,
+        validation_alias="WEREWOLF_UI_DEFAULT_SETUP_SEED",
+    )
+    ui_operation_poll_interval_ms: int = Field(
+        default=DEFAULT_UI_OPERATION_POLL_INTERVAL_MS,
+        ge=50,
+        le=10_000,
+        validation_alias="WEREWOLF_UI_OPERATION_POLL_INTERVAL_MS",
+    )
+    ui_operation_poll_timeout_ms: int = Field(
+        default=DEFAULT_UI_OPERATION_POLL_TIMEOUT_MS,
+        ge=1_000,
+        le=600_000,
+        validation_alias="WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS",
+    )
+    supabase_jwt_audience: str = Field(
+        default=DEFAULT_SUPABASE_JWT_AUDIENCE,
+        validation_alias="WEREWOLF_SUPABASE_JWT_AUDIENCE",
+    )
+    supabase_jwt_issuer: str = Field(
+        default=DEFAULT_SUPABASE_JWT_ISSUER,
+        validation_alias="WEREWOLF_SUPABASE_JWT_ISSUER",
+    )
+    supabase_jwks_url: str = Field(
+        default=DEFAULT_SUPABASE_JWKS_URL,
+        validation_alias="WEREWOLF_SUPABASE_JWKS_URL",
+    )
     openai_api_key: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="OPENAI_API_KEY",
@@ -610,6 +753,23 @@ class AppSettings(BaseSettings):
     def supabase_worker_configured(self) -> bool:
         """Return whether the worker can connect to Supabase Postgres."""
         return bool(self.supabase_db_dsn_value)
+
+    @property
+    def api_cors_origin_values(self) -> list[str]:
+        """Return configured browser origins."""
+        return split_csv(self.api_cors_origins)
+
+    @property
+    def resolved_supabase_jwt_issuer(self) -> str:
+        """Return the expected Supabase JWT issuer."""
+        configured = self.supabase_jwt_issuer.strip()
+        return configured or f"{self.supabase_url.rstrip('/')}/auth/v1"
+
+    @property
+    def resolved_supabase_jwks_url(self) -> str:
+        """Return the Supabase JWKS endpoint used for key rotation."""
+        configured = self.supabase_jwks_url.strip()
+        return configured or f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
 
     @property
     def game_role_name_map(self) -> dict[str, str]:

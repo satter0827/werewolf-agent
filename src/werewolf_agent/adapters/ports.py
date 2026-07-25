@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from werewolf_agent.contracts.api import PublicRuntimeConfig
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameListResponse,
     GameResponse,
-    GameRevealResponse,
     GameSetupOptionsResponse,
     GameTimelineResponse,
     PlayerActionRequest,
@@ -25,6 +25,9 @@ class GameClient(Protocol):
     def health(self) -> dict[str, str]:
         """Return backing service health."""
 
+    def get_runtime_config(self) -> PublicRuntimeConfig:
+        """Return the API-owned public runtime configuration."""
+
     def get_setup_options(self) -> GameSetupOptionsResponse:
         """Return game setup options."""
 
@@ -33,9 +36,6 @@ class GameClient(Protocol):
 
     def get_game(self, game_id: str) -> GameResponse:
         """Fetch one game."""
-
-    def get_game_reveal(self, game_id: str) -> GameRevealResponse:
-        """Fetch admin-only reveal information."""
 
     def list_games(
         self,
