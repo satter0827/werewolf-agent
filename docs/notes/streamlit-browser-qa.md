@@ -12,10 +12,12 @@ Streamlit 画面を後から AI が再検証するための handoff です。
 ## 起動
 
 VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ名や worktree の絶対 path は指定しません。VS Code で開いている checkout の現在ブランチがそのまま起動対象です。
-`UI: Streamlit (verified)`、または `App: Streamlit + Worker` を起動します。preflight が Docker、Supabase local stack、`.env`、migration、`doctor`、`setup-options` を確認します。
-運用ログは `.werewolf-agent/logs`、一時 cache と screenshot は `%TEMP%\werewolf-agent` 配下を使います。
+`App: Streamlit, API, and Worker`を起動します。preflightがDocker、Supabase local stack、
+migration、`doctor`を確認し、起動後のE2Eが`setup-options`を確認します。運用ログは`.werewolf-agent/logs`、
+品質browser成果物は`.werewolf-agent/quality`配下を使います。
 
-別 terminal で Streamlit を起動します。game 作成と進行まで確認する場合は、先に migration と worker を起動します。手動起動では `scripts\preflight-supabase.cmd` が通ってから `scripts\run-streamlit.cmd` を実行します。
+別terminalで手動起動する場合は、先に`python -m scripts.preflight_supabase`を実行し、
+API、worker、Streamlitを各console entrypointから起動します。
 
 ```bash
 uv run --no-sync --group dev --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true

@@ -1,8 +1,4 @@
-import type {
-  GameScreenSource,
-  GameSetupOptionsResponse,
-  PublicPlayerState,
-} from "./wireTypes";
+import type { GameScreenSource, GameSetupOptionsResponse, PublicPlayerState } from "./wireTypes";
 
 const FALLBACK_SCENARIO_NAME = "霧の村";
 const GENERATED_PLAYER_ID_PREFIX = "player-";

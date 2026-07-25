@@ -104,9 +104,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
       risk_tolerance: "medium",
     },
   ],
-  agent_strategies: [
-    { id: "stable_fast", name: "標準", description: "標準的な進行" },
-  ],
+  agent_strategies: [{ id: "stable_fast", name: "標準", description: "標準的な進行" }],
 };
 
 export function sampleScreenSource(): GameScreenSource {

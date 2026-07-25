@@ -115,7 +115,11 @@ export function App() {
   });
 
   if (startupConfigError) {
-    return <div className="wa-loading" role="alert">{startupConfigError.message}</div>;
+    return (
+      <div className="wa-loading" role="alert">
+        {startupConfigError.message}
+      </div>
+    );
   }
 
   if (

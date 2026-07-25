@@ -138,6 +138,32 @@ services:
       timeout: 3s
       retries: 20
 
+  frontend-e2e:
+    build:
+      context: .
+      dockerfile: docker/e2e.Dockerfile
+    profiles: ["e2e"]
+    working_dir: /workspace/frontend
+    environment:
+      VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
+      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
+      VITE_WEREWOLF_API_URL: http://api:8000
+    command: npm run dev -- --host 0.0.0.0 --port 8080
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:8080').then(r => { if (!r.ok) process.exit(1) })",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
   streamlit:
     build: *python-build
     profiles: ["dev", "e2e"]
@@ -159,6 +185,7 @@ services:
         "src/werewolf_agent/interfaces/streamlit/app.py",
         "--server.address=0.0.0.0",
         "--server.port=8501",
+        "--browser.gatherUsageStats=false",
       ]
     ports:
       - "8501:8501"
@@ -192,14 +219,14 @@ services:
     profiles: ["e2e"]
     working_dir: /workspace/frontend
     environment:
-      PLAYWRIGHT_BASE_URL: http://frontend:8080
+      PLAYWRIGHT_BASE_URL: http://frontend-e2e:8080
       PLAYWRIGHT_API_URL: http://api:8000
       PLAYWRIGHT_OUTPUT_DIR: /tmp/werewolf-agent/playwright
       PLAYWRIGHT_STREAMLIT_URL: http://streamlit:8501
       PLAYWRIGHT_VISUAL_REGRESSION: ${PLAYWRIGHT_VISUAL_REGRESSION:-0}
     command: npm run test:e2e
     depends_on:
-      frontend:
+      frontend-e2e:
         condition: service_healthy
       streamlit:
         condition: service_healthy

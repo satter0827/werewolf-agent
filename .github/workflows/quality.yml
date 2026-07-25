@@ -1,0 +1,137 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QUALITY_RUNTIME_IMAGE: werewolf-agent-quality-runtime:latest
+
+jobs:
+  check:
+    if: github.event_name == 'pull_request'
+    name: Check / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm audit --audit-level=low
+        working-directory: frontend
+      - run: uv run --no-sync python -m scripts.quality check
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-check-python-${{ matrix.python-version }}
+          path: |
+            .werewolf-agent/quality
+            .werewolf-agent/build
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  release:
+    if: github.event_name == 'push'
+    name: Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.104.0
+      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm audit --audit-level=low
+        working-directory: frontend
+      - name: Prepare offline release dependencies
+        run: |
+          supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,storage,studio,vector
+          supabase stop --no-backup
+          docker compose --profile e2e build --pull=false api worker frontend frontend-e2e streamlit e2e migrate
+          docker build --pull=false --target runtime -f docker/backend.Dockerfile -t "$QUALITY_RUNTIME_IMAGE" .
+      - run: uv run --no-sync python -m scripts.quality release
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-release
+          path: |
+            .werewolf-agent/quality
+            .werewolf-agent/build
+          if-no-files-found: warn
+          include-hidden-files: true
+      - if: always()
+        run: supabase stop --no-backup
+
+  deep:
+    if: github.event_name == 'workflow_dispatch'
+    name: Deep
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.104.0
+      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: npm ci --ignore-scripts
+        working-directory: frontend
+      - run: npm audit --audit-level=low
+        working-directory: frontend
+      - name: Prepare offline deep dependencies
+        run: |
+          supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,storage,studio,vector
+          supabase stop --no-backup
+          docker compose --profile e2e build --pull=false api worker frontend frontend-e2e streamlit e2e migrate
+          docker build --pull=false --target runtime -f docker/backend.Dockerfile -t "$QUALITY_RUNTIME_IMAGE" .
+      - run: uv run --no-sync python -m scripts.quality deep --confirm-deep
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-deep
+          path: |
+            .werewolf-agent/quality
+            .werewolf-agent/build
+          if-no-files-found: warn
+          include-hidden-files: true
+      - if: always()
+        run: supabase stop --no-backup

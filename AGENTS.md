@@ -115,10 +115,12 @@ docker compose run --rm test
 Windows / OneDrive / Codex での実行:
 
 - この checkout は OneDrive の reparse point 配下に置かれることがある。Codex の sandbox から PowerShell で repository 内へ新規生成物を書くと、`Access is denied` や Ruff cache warning が起きる場合がある
-- AI は検証用の cache と browser QA screenshot を repository 配下へ直接書かず、`%TEMP%\werewolf-agent` 配下を使う
+- 再利用しないtool cacheは`%TEMP%\werewolf-agent`、共有する品質reportとbrowser QA成果物は`.werewolf-agent`配下を使う
 - 依存関係がすでに同期済みなら、AI は `uv run --no-sync ...` を優先する。Ruff は `--no-cache`、mypy は `--no-incremental` または `%TEMP%` の cache を使う
-- まとめて検証する場合は `scripts\check-all.cmd` を使う。この script は pytest / mypy cache を `%TEMP%\werewolf-agent` に置く
-- worker の手動 QA は `scripts\run-worker.cmd` を使う
+- まとめて検証する場合は`python -m scripts.quality quick|check|release|deep`を使う
+- Release/Deepの依存、Supabase image、Docker imageは品質runner開始前に準備する
+- 品質runner中は依存取得、browser download、Docker pull、online audit、外部API呼び出しを行わない
+- worker、API、Streamlitはconsole entrypointまたはVS Codeのlaunch構成から直接起動する
 - VS Code の `launch.json` / `tasks.json` から起動する場合も、この方針を維持する
 
 ## Working Rules

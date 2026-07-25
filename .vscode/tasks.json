@@ -2,83 +2,32 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Supabase: preflight",
-      "type": "shell",
-      "command": "${workspaceFolder}\\scripts\\preflight-supabase.cmd",
+      "label": "Supabase: Preflight",
+      "type": "process",
+      "command": "${command:python.interpreterPath}",
+      "args": ["-m", "scripts.preflight_supabase"],
       "options": {
         "cwd": "${workspaceFolder}"
       },
+      "problemMatcher": [],
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
         "clear": true
-      },
-      "problemMatcher": []
+      }
     },
     {
-      "label": "UI: Streamlit",
-      "type": "shell",
-      "command": "${workspaceFolder}\\scripts\\run-streamlit.cmd",
-      "dependsOn": "Supabase: preflight",
-      "dependsOrder": "sequence",
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
+      "label": "Frontend: Dev",
+      "type": "npm",
+      "script": "dev",
+      "path": "frontend",
+      "isBackground": true,
+      "problemMatcher": [],
       "presentation": {
         "reveal": "always",
         "panel": "dedicated",
         "clear": true
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Supabase: migration up",
-      "type": "shell",
-      "command": "supabase",
-      "args": [
-        "migration",
-        "up"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "SUPABASE_TELEMETRY_DISABLED": "1",
-          "WEREWOLF_LOG_FILE_NAME": "migrate.jsonl"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      },
-      "problemMatcher": []
-    },
-    {
-      "label": "Worker: once",
-      "type": "shell",
-      "command": "uv",
-      "args": [
-        "run",
-        "--no-sync",
-        "--extra",
-        "worker",
-        "werewolf-agent-worker",
-        "once"
-      ],
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "PYTHONPATH": "${workspaceFolder}/src",
-          "UV_CACHE_DIR": "${env:TEMP}\\werewolf-agent\\cache\\uv",
-          "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      },
-      "problemMatcher": []
+      }
     }
   ]
 }

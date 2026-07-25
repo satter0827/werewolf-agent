@@ -21,7 +21,7 @@ export function RecordsPanel({ games, onResumeGame }: RecordsPanelProps) {
                 ? "村人陣営の勝利"
                 : game.winner === "werewolves"
                   ? "人狼陣営の勝利"
-                : "勝負中"}
+                  : "勝負中"}
             </p>
             <button
               className="wa-record-resume"

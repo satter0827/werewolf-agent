@@ -6,13 +6,17 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
+    "build:quality": "tsc --noEmit && vite build --outDir ../.werewolf-agent/build/frontend --emptyOutDir",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "preview": "vite preview --host 127.0.0.1",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config playwright.config.ts",
     "generate:api": "openapi-typescript ../openapi.json -o src/generated/api.ts",
     "lint": "npm run lint:boundaries",
-    "lint:boundaries": "eslint src e2e playwright.config.ts vite.config.ts --max-warnings=0"
+    "lint:boundaries": "eslint src e2e playwright.config.ts vite.config.ts --max-warnings=0",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.1",
@@ -36,6 +40,7 @@
     "jsdom": "^29.1.1",
     "msw": "^2.11.2",
     "openapi-typescript": "^7.13.0",
+    "prettier": "^3.9.6",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.1.5",

@@ -14,11 +14,9 @@ export function ObserverPanel({ screen }: ObserverPanelProps) {
         {(screen.observerRecord?.lines.length
           ? screen.observerRecord.lines
           : ["この村ではまだ公開された記録がありません"]
-        ).map(
-          (line) => (
-            <span key={line}>{line}</span>
-          ),
-        )}
+        ).map((line) => (
+          <span key={line}>{line}</span>
+        ))}
       </div>
     </div>
   );

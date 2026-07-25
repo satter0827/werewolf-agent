@@ -1,28 +1,79 @@
-# Scripts
+# 品質管理スクリプト
 
-Windows batch helpers for local development. Run them from the repository root.
+## 目的
 
-```bat
-scripts\preflight-supabase.cmd
-scripts\run-streamlit.cmd
-scripts\run-cli.cmd doctor --output json
-scripts\run-worker.cmd --once
-scripts\check-all.cmd
-scripts\rebuild-sphinx-docs.cmd
-scripts\clean-caches.cmd --dry-run
-scripts\clean-caches.cmd --apply
+`scripts`はローカルとCIで共有するPython製の品質実行基盤です。テスト実装は
+`tests`へ置き、scriptsからはpytestのCLIだけを呼び出します。
+
+## 実行方法
+
+```bash
+python -m scripts.quality quick
+python -m scripts.quality check
+python -m scripts.quality release
+python -m scripts.quality deep --confirm-deep
+python -m scripts.quality clean
+python -m scripts.preflight_supabase
 ```
 
-Project commands use `.venv\Scripts\python.exe` directly to avoid editable-build
-cache permission failures from `uv run`. The Sphinx script uses the project
-environment because autodoc imports package modules; if Sphinx is not installed
-in `.venv`, it falls back to `uv run --group docs --extra streamlit`.
-It builds in `%TEMP%` first and then copies HTML into `docs\sphinx\_build`.
+- `quick`: 日常の静的検査とunit test
+- `check`: branch coverage、docs、frontend build、配布物契約、monkey、benchmark
+- `release`: local Supabase、integration、React／Streamlit E2E、Docker smoke
+- `deep`: 拡張探索、障害系、画面操作
+- `clean`: 再生成可能なbuild、品質用一時cache、coverage、期限切れrun
 
-`check-all.cmd` writes pytest / mypy cache under `%TEMP%\werewolf-agent` by
-default. `preflight-supabase.cmd` starts the Supabase local stack when needed,
-creates or completes `.env` from `supabase status -o env`, applies migrations,
-and verifies `doctor` and `setup-options` before Streamlit is launched.
-Operational logs always default to `.werewolf-agent\logs`; `check-all.cmd` uses
-`check-all.jsonl`, `run-streamlit.cmd` uses `streamlit.jsonl`, and
-`run-worker.cmd` uses `worker.jsonl` unless environment variables override them.
+`--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
+CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
+`--retention-days`は0以上だけを受け付けます。
+既定worker上限、保持日数、profile別timeout、benchmark反復下限、平均時間上限、
+branch coverage下限は`pyproject.toml`の`tool.werewolf-quality`から読みます。
+総合coverage下限は`tool.coverage.report.fail_under`と共有します。
+
+Release/Deepの初回実行前にChromium内蔵E2E image、Supabase image、runtime imageを準備します。
+品質コマンドは不足物を取得せず`blocked`にします。
+
+## 判定
+
+状態は`passed`、`failed`、`error`、`blocked`、`skipped`です。終了値は成功が0、
+品質違反が1、環境不備または実行基盤の異常が2です。`blocked`はDockerやSupabase
+CLIなど、選択profileに必要なローカル環境が不足した場合に使います。timeoutは
+品質違反にせず`error`として終了します。
+
+## 成果物
+
+`.werewolf-agent/quality/runs/<run-id>/`へJSON report、JSONL event、Markdown
+summary、gate別log、JUnit XML、coverage、benchmark JSON、browser画像を保存し、
+`.werewolf-agent/quality/latest.json`から最新runを参照できます。未実行gateも
+`skipped`として残るため、AIと人間が同じreportから調査を開始できます。Git状態の
+初期確認失敗やrunner中断も、実行済み・未完了・cleanupを含むreportを生成します。
+`report.json`の`metrics`にはtest件数、総合・line・branch coverage、benchmark、
+browser成果物を収録します。成果物が壊れている場合もreport生成を止めず、
+`artifact_issues`へ解析理由を残し、`artifact-validation`を`error`としてCLI終了値へ
+反映します。
+profileごとのJUnit、coverage、benchmark、docs、frontend、package、browser成果物も
+必須契約として検証するため、コマンドの0終了だけでは合格になりません。
+必須成果物はrun開始後に更新されたことも検証します。docs、frontend、packageは
+各ゲートで既存出力を除去してから再構築し、前回runの成果物を受理しません。
+
+## 制約
+
+品質実行は依存install、browser download、Docker pull、外部API呼び出しを行いません。
+子processからprovider用の秘密情報と外部base URLを除外し、`WEREWOLF_LLM_PROVIDER`
+を`fake`へ固定してtelemetryを無効化します。外部向けproxyは到達不能なloopbackへ
+固定し、`NO_PROXY`はlocalhostだけに限定します。Playwrightは外部requestの試行も
+失敗にし、Chromiumの背景通信と更新確認を無効化します。E2Eは既存のReact／Streamlit
+Playwright suiteをcontainer内で共有し、子processの出力と画像をrun固有領域へ保存して
+終了時に伏せ字化します。
+`preflight_supabase`は`.env`を変更せず、取得した接続情報をmigrationと`doctor`へだけ
+渡します。API起動が必要な`setup-options`はE2Eで確認します。
+品質runごとの一時`SUPABASE_HOME`を使い、通常開発用の認証profileや更新cacheを
+読みません。
+Supabase CLIの出力からは公開キー、URL、DB接続先だけを許可し、service-role値は
+引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageが
+ローカルにない場合はダウンロードせず環境不備として終了します。
+Release/Deepは固有project IDと未使用portの隔離DBを使い、
+品質用session、container、volume、project設定を終了時に削除します。Docker buildは
+runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、
+品質用Supabaseと一時Docker imageのcleanupを試みます。OneDrive上の再生成可能な
+ディレクトリ削除は、一時的な競合に限って短時間再試行します。`latest.json`が
+読み取れない場合も実際の最新runを保護します。

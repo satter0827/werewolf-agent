@@ -1,7 +1,11 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
 
-test("runtime config, DOM attributes, and computed theme agree", async ({ page, request }) => {
+import { expect, test } from "./fixtures";
+
+test("runtime config, DOM attributes, and computed theme agree", async ({
+  page,
+  request,
+}, testInfo) => {
   const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://127.0.0.1:8000";
   const configResponse = await request.get(`${apiUrl}/api/v1/config`);
   expect(configResponse.ok()).toBeTruthy();
@@ -31,6 +35,10 @@ test("runtime config, DOM attributes, and computed theme agree", async ({ page, 
   expect(styles.color).not.toBe("");
   expect(styles.breakpoint).toBe(`${runtime.ui.desktop_breakpoint}px`);
   expect(styles.spacing).toBe(`${runtime.ui.spacing_unit}px`);
+  await page.screenshot({
+    path: testInfo.outputPath(`${testInfo.project.name}.png`),
+    fullPage: true,
+  });
 });
 
 test("setup and keyboard flow have no serious accessibility violations", async ({ page }) => {
