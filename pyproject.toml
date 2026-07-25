@@ -61,7 +61,6 @@ werewolf-agent-worker = "werewolf_agent.interfaces.worker.app:app"
 dev = [
     "build>=1.2,<2",
     "hatchling>=1.27,<2",
-    "import-linter>=2.1,<3",
     "jsonschema>=4.23,<5",
     "mypy>=1.14,<2",
     "pytest-benchmark>=5,<6",
@@ -82,20 +81,6 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/werewolf_agent"]
 
-[tool.hatch.build.targets.wheel.force-include]
-"src/werewolf_agent/resources/settings/defaults.toml" = "werewolf_agent/resources/settings/defaults.toml"
-"src/werewolf_agent/resources/game/rules.toml" = "werewolf_agent/resources/game/rules.toml"
-"src/werewolf_agent/resources/game/roles.toml" = "werewolf_agent/resources/game/roles.toml"
-"src/werewolf_agent/resources/game/abilities.toml" = "werewolf_agent/resources/game/abilities.toml"
-"src/werewolf_agent/resources/presentation/catalog.toml" = "werewolf_agent/resources/presentation/catalog.toml"
-"src/werewolf_agent/resources/llm/players.toml" = "werewolf_agent/resources/llm/players.toml"
-"src/werewolf_agent/resources/prompts/agent_decision.toml" = "werewolf_agent/resources/prompts/agent_decision.toml"
-"src/werewolf_agent/resources/llm/fake_responses.toml" = "werewolf_agent/resources/llm/fake_responses.toml"
-"src/werewolf_agent/resources/llm/decision_graphs.toml" = "werewolf_agent/resources/llm/decision_graphs.toml"
-"src/werewolf_agent/resources/streamlit/i18n.toml" = "werewolf_agent/resources/streamlit/i18n.toml"
-"src/werewolf_agent/resources/streamlit/default.css" = "werewolf_agent/resources/streamlit/default.css"
-"src/werewolf_agent/resources/streamlit/screens.toml" = "werewolf_agent/resources/streamlit/screens.toml"
-
 [tool.hatch.build.targets.sdist]
 only-include = [
     "LICENSE",
@@ -105,7 +90,7 @@ only-include = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q --strict-markers -p no:cacheprovider"
+addopts = "-q --strict-markers -p no:cacheprovider --benchmark-storage=file://.werewolf-agent/quality/manual/benchmark"
 markers = [
     "unit: 外部serviceを使わないunit test",
     "integration: local integration test",
@@ -123,60 +108,14 @@ benchmark_max_mean_ms = 10
 benchmark_min_rounds = 5
 branch_coverage_fail_under = 48
 max_jobs = 4
-retention_days = 14
+failure_runs_per_selector = 3
+failure_run_max_mib = 100
 
 [tool.werewolf-quality.timeouts]
 quick = 60
 check = 180
 release = 900
 deep = 1200
-
-[tool.importlinter]
-root_packages = ["werewolf_agent"]
-
-[[tool.importlinter.contracts]]
-name = "domain is independent"
-type = "forbidden"
-source_modules = ["werewolf_agent.domain"]
-forbidden_modules = [
-    "werewolf_agent.adapters",
-    "werewolf_agent.agents",
-    "werewolf_agent.api",
-    "werewolf_agent.configuration",
-    "werewolf_agent.contracts",
-    "werewolf_agent.interfaces",
-    "werewolf_agent.observability",
-    "werewolf_agent.security",
-    "werewolf_agent.usecase",
-]
-
-[[tool.importlinter.contracts]]
-name = "usecase avoids infrastructure and delivery layers"
-type = "forbidden"
-source_modules = ["werewolf_agent.usecase"]
-allow_indirect_imports = true
-forbidden_modules = [
-    "werewolf_agent.adapters",
-    "werewolf_agent.agents",
-    "werewolf_agent.api",
-    "werewolf_agent.interfaces",
-    "werewolf_agent.observability",
-    "werewolf_agent.security",
-]
-
-[[tool.importlinter.contracts]]
-name = "interfaces use no game internals"
-type = "forbidden"
-source_modules = [
-    "werewolf_agent.interfaces.cli",
-    "werewolf_agent.interfaces.streamlit",
-]
-forbidden_modules = [
-    "werewolf_agent.domain",
-    "werewolf_agent.usecase",
-    "werewolf_agent.adapters.supabase.repository",
-    "werewolf_agent.adapters.supabase.operations",
-]
 
 [tool.ruff]
 cache-dir = ".werewolf-agent/cache/ruff"

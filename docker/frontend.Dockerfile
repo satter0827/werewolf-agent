@@ -13,7 +13,7 @@ ENV VITE_WEREWOLF_API_URL=$VITE_WEREWOLF_API_URL \
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend ./
-RUN npm run build
+RUN npm run build:container
 
 FROM nginxinc/nginx-unprivileged:1.27-alpine AS runtime
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf

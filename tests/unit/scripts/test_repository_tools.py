@@ -14,20 +14,28 @@ def test_scripts_directory_keeps_only_python_modules() -> None:
     assert all(path.name == "README.md" or path.suffix == ".py" for path in paths)
 
 
-def test_expected_python_tools_exist() -> None:
-    """開発と品質管理に必要なmoduleを明示する。"""
+def test_public_tool_packages_expose_module_entrypoints() -> None:
+    """公開tool packageが共通のmodule実行形式を持つ。"""
+    for name in ("architecture", "browser", "contracts", "docs", "quality", "supabase"):
+        package = SCRIPTS / name
+        assert (package / "__init__.py").is_file()
+        assert (package / "__main__.py").is_file()
+
+
+def test_generated_artifacts_stay_out_of_repository_root() -> None:
+    """代表的なローカル成果物をrepository直下へ生成しない。"""
     for name in (
-        "__init__.py",
-        "_support.py",
-        "architecture.py",
-        "apply_migrations.py",
-        "docs.py",
-        "e2e.py",
-        "export_openapi.py",
-        "preflight_supabase.py",
-        "quality.py",
+        ".benchmarks",
+        ".coverage",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        "build",
+        "coverage.xml",
+        "dist",
+        "htmlcov",
     ):
-        assert (SCRIPTS / name).is_file()
+        assert not (ROOT / name).exists()
 
 
 def test_sdist_exposes_only_python_build_inputs() -> None:

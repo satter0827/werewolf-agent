@@ -3,10 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
-    "build:quality": "tsc --noEmit && vite build --outDir ../.werewolf-agent/build/frontend --emptyOutDir",
+    "build:local": "npm run build -- --outDir ../.werewolf-agent/build/frontend --emptyOutDir",
+    "build:container": "tsc --noEmit && vite build --outDir dist --emptyOutDir",
+    "build:quality": "tsc --noEmit && vite build",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "preview": "vite preview --host 127.0.0.1",

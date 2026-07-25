@@ -24,7 +24,7 @@ services:
     profiles: ["dev", "test", "e2e", "production"]
     environment:
       WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
-    command: python scripts/apply_migrations.py
+    command: python -m scripts.supabase migrate
     restart: "no"
 
   api:

@@ -2,49 +2,10 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Quality: Quick",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.quality",
-      "args": ["quick"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": false
-    },
-    {
-      "name": "Quality: Check",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.quality",
-      "args": ["check"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": false
-    },
-    {
-      "name": "Quality: Release",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.quality",
-      "args": ["release"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": false
-    },
-    {
-      "name": "Quality: Deep (Confirmation Required)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.quality",
-      "args": ["deep", "--confirm-deep"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": false
-    },
-    {
       "name": "Tests: Current File (Quick)",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "pytest",
       "args": ["--test-level=quick", "-n", "0", "${file}"],
       "cwd": "${workspaceFolder}",
@@ -55,6 +16,7 @@
       "name": "Service: API",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
@@ -69,6 +31,7 @@
       "name": "Service: Streamlit",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "streamlit",
       "args": [
         "run",
@@ -92,6 +55,7 @@
       "name": "Service: Worker",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "werewolf_agent.interfaces.worker.app",
       "args": ["run"],
       "cwd": "${workspaceFolder}",
@@ -106,6 +70,7 @@
       "name": "CLI: Doctor",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "werewolf_agent",
       "args": ["doctor"],
       "cwd": "${workspaceFolder}",
@@ -116,6 +81,7 @@
       "name": "CLI: Play",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "werewolf_agent",
       "args": [
         "play",
@@ -138,6 +104,7 @@
       "name": "CLI: Play as Manual Player",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Environment: Check",
       "module": "werewolf_agent",
       "args": [
         "play",

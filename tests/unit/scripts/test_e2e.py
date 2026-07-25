@@ -3,8 +3,8 @@
 from pathlib import Path
 
 import pytest
-from scripts import e2e
-from scripts._support import EnvironmentBlockedError
+from scripts._infra.process import EnvironmentBlockedError
+from scripts.browser import e2e
 
 
 def _environment() -> dict[str, str]:

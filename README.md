@@ -14,14 +14,14 @@ FakeListLLM は外部 API と credential を必要としません。
 Python 3.11 以上 3.15 未満、uv、Node.js、Docker、Supabase CLI を使用します。
 
 ```powershell
-uv sync --group dev --group docs --extra api --extra llm --extra streamlit --extra worker
+uv sync --frozen --all-groups --all-extras
 uv run --no-sync werewolf-agent doctor
 ```
 
 local Supabase を含む事前確認:
 
 ```powershell
-uv run --no-sync python -m scripts.preflight_supabase
+uv run --no-sync python -m scripts.supabase preflight
 ```
 
 ## 実行
@@ -83,6 +83,8 @@ uv run --no-sync python -m scripts.quality quick
 uv run --no-sync python -m scripts.quality check
 uv run --no-sync python -m scripts.quality release
 uv run --no-sync python -m scripts.quality deep --confirm-deep
+uv run --no-sync python -m scripts.quality gate python-static
+uv run --no-sync python -m scripts.quality list
 ```
 
 `scripts.quality` は品質 gate 全体の順序、timeout、report を管理します。docs と

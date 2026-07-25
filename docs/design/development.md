@@ -17,7 +17,7 @@
 ## 環境構築
 
 ```powershell
-uv sync --group dev --group docs --extra api --extra llm --extra streamlit --extra worker
+uv sync --frozen --all-groups --all-extras
 uv run --no-sync werewolf-agent doctor
 ```
 

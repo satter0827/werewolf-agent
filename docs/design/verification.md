@@ -29,6 +29,8 @@ docstring は Ruff の Google convention と、公開 API の構造検査で保�
 ```powershell
 uv run --no-sync python -m scripts.quality quick
 uv run --no-sync python -m scripts.quality check
+uv run --no-sync python -m scripts.quality gate python-static
+uv run --no-sync python -m scripts.quality list
 ```
 
 quality runner は gate の順序、timeout、report、artifact freshness を管理する。

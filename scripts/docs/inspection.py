@@ -1,37 +1,19 @@
-"""Inspect and build the Sphinx documentation independently from quality orchestration."""
+"""Sphinx文書構造と公開API契約の独立検査。"""
 
 from __future__ import annotations
 
-import argparse
 import fnmatch
-import importlib.util
-import json
-import os
 import posixpath
 import re
-import shutil
-import sys
-import time
 import tomllib
-from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from scripts._support import (
-    ARTIFACT_ROOT,
-    REPOSITORY_ROOT,
-    TEMPORARY_ROOT,
-    remove_managed_path,
-    remove_temporary_path,
-    run_command,
-)
-from scripts.architecture import OUTPUT_ROOT as ARCHITECTURE_OUTPUT_ROOT
-from scripts.architecture import PUBLIC_MODULES, write_outputs
+from scripts._infra.process import REPOSITORY_ROOT
+from scripts.architecture import PUBLIC_MODULES
 
 DOCS_ROOT = REPOSITORY_ROOT / "docs"
 PYPROJECT_PATH = REPOSITORY_ROOT / "pyproject.toml"
-OUTPUT_ROOT = ARTIFACT_ROOT / "build" / "docs"
-INSPECTION_PATH = ARTIFACT_ROOT / "build" / "docs-inspection.json"
 REQUIRED_LABELS = frozenset(
     {
         "build-release",
@@ -44,10 +26,7 @@ REQUIRED_LABELS = frozenset(
 )
 PUBLIC_API_MODULES = frozenset(module.__name__ for module in PUBLIC_MODULES)
 _LABEL_PATTERN = re.compile(r"^\((?P<label>[a-z0-9][a-z0-9-]*)\)=$", re.MULTILINE)
-_TOCTREE_PATTERN = re.compile(
-    r"```\{toctree\}\s*\n(?P<body>.*?)```",
-    re.DOTALL,
-)
+_TOCTREE_PATTERN = re.compile(r"```\{toctree\}\s*\n(?P<body>.*?)```", re.DOTALL)
 _AUTOMODULE_PATTERN = re.compile(r"```\{automodule\}\s+([a-zA-Z0-9_.]+)")
 _DOCSTRING_SUPPRESSION_PATTERN = re.compile(
     r"#\s*(?:(?:ruff|flake8):\s*)?noqa"
@@ -193,136 +172,6 @@ def inspect_documentation() -> dict[str, object]:
     }
 
 
-def build_documentation() -> tuple[int, Path]:
-    """Build fresh Sphinx HTML and a machine-readable documentation report."""
-    if OUTPUT_ROOT.exists():
-        remove_managed_path(OUTPUT_ROOT)
-    inspection = inspect_documentation()
-    if inspection["status"] != "passed":
-        _write_json(INSPECTION_PATH, inspection)
-        return 1, INSPECTION_PATH
-    if importlib.util.find_spec("sphinx") is None:
-        report = {
-            **inspection,
-            "status": "blocked",
-            "findings": [
-                {
-                    "rule_id": "DOC-ENVIRONMENT-001",
-                    "message": "The Sphinx dependency group is not installed.",
-                    "path": "pyproject.toml",
-                }
-            ],
-        }
-        _write_json(INSPECTION_PATH, report)
-        return 2, INSPECTION_PATH
-
-    architecture = write_outputs()
-    if architecture["status"] != "passed":
-        report = {
-            **inspection,
-            "status": "failed",
-            "findings": architecture["findings"],
-        }
-        _write_json(INSPECTION_PATH, report)
-        return 1, INSPECTION_PATH
-
-    stage_root = TEMPORARY_ROOT / "docs" / f"{os.getpid()}-{time.time_ns()}"
-    doctree_root = TEMPORARY_ROOT / "sphinx" / stage_root.name
-    try:
-        shutil.copytree(DOCS_ROOT, stage_root)
-        generated = stage_root / "_generated" / "architecture"
-        shutil.copytree(ARCHITECTURE_OUTPUT_ROOT, generated)
-        command = (
-            sys.executable,
-            "-m",
-            "sphinx",
-            "-W",
-            "--keep-going",
-            "-n",
-            "-b",
-            "html",
-            "-d",
-            str(doctree_root),
-            "-c",
-            str(DOCS_ROOT),
-            str(stage_root),
-            str(OUTPUT_ROOT),
-        )
-        result = run_command(
-            command,
-            timeout_seconds=180,
-            environment=dict(os.environ),
-        )
-        findings: list[dict[str, str]] = []
-        if result.returncode != 0:
-            findings.append(
-                {
-                    "rule_id": "DOC-BUILD-001",
-                    "message": result.output[-4000:],
-                    "path": "docs",
-                }
-            )
-        index_path = OUTPUT_ROOT / "index.html"
-        if result.returncode == 0 and not index_path.is_file():
-            findings.append(
-                {
-                    "rule_id": "DOC-ARTIFACT-001",
-                    "message": "Sphinx completed without the root HTML artifact.",
-                    "path": index_path.relative_to(REPOSITORY_ROOT).as_posix(),
-                }
-            )
-        report = {
-            **inspection,
-            "status": "failed" if findings else "passed",
-            "artifacts": _artifact_list(OUTPUT_ROOT),
-            "findings": findings,
-        }
-        report_path = OUTPUT_ROOT / "report.json"
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        _write_json(report_path, report)
-        return (1 if findings else 0), report_path
-    finally:
-        if stage_root.exists():
-            remove_temporary_path(stage_root)
-        if doctree_root.exists():
-            remove_temporary_path(doctree_root)
-
-
-def clean_documentation() -> list[Path]:
-    """Remove only documentation-owned generated artifacts."""
-    removed: list[Path] = []
-    for path in (OUTPUT_ROOT, INSPECTION_PATH):
-        if not path.exists():
-            continue
-        remove_managed_path(path)
-        removed.append(path)
-    return removed
-
-
-def build_parser() -> argparse.ArgumentParser:
-    """Build the standalone documentation command-line parser."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("build", "clean", "inspect"))
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    """Run one standalone documentation operation."""
-    command = build_parser().parse_args(argv).command
-    if command == "clean":
-        for path in clean_documentation():
-            print(path)
-        return 0
-    if command == "inspect":
-        inspection = inspect_documentation()
-        _write_json(INSPECTION_PATH, inspection)
-        print(INSPECTION_PATH)
-        return 0 if inspection["status"] == "passed" else 1
-    state, report_path = build_documentation()
-    print(report_path)
-    return state
-
-
 def _toctree_targets(path: Path, text: str) -> set[str]:
     targets: set[str] = set()
     for match in _TOCTREE_PATTERN.finditer(text):
@@ -423,23 +272,4 @@ def _pattern_targets_package(pattern: str) -> bool:
     return any(fnmatch.fnmatch(path, normalized) for path in samples)
 
 
-def _artifact_list(root: Path) -> list[str]:
-    if not root.exists():
-        return []
-    return [
-        path.relative_to(REPOSITORY_ROOT).as_posix()
-        for path in sorted(root.rglob("*"))
-        if path.is_file()
-    ]
-
-
-def _write_json(path: Path, value: object) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+__all__ = ["DocumentationFinding", "inspect_documentation"]

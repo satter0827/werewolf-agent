@@ -1,14 +1,7 @@
-import importlib.util
 from pathlib import Path
 
 import pytest
-
-MODULE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "apply_migrations.py"
-SPEC = importlib.util.spec_from_file_location("apply_migrations", MODULE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
-_migration_identity = MODULE._migration_identity
+from scripts.supabase.migrations import _migration_identity
 
 
 def test_migration_identity_uses_supabase_version_and_name() -> None:

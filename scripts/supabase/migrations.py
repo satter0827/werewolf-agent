@@ -1,4 +1,4 @@
-"""Apply repository Supabase migrations reproducibly to a configured database."""
+"""RepositoryのSupabase migrationを再現可能に適用する。"""
 
 from __future__ import annotations
 

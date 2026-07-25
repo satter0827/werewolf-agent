@@ -6,7 +6,8 @@ import json
 from pathlib import Path
 
 from jsonschema import Draft202012Validator
-from scripts import architecture
+from scripts.architecture import analysis as architecture
+from scripts.architecture import rendering
 
 
 def test_architecture_analysis_passes_and_exposes_evidence() -> None:
@@ -20,7 +21,7 @@ def test_architecture_analysis_passes_and_exposes_evidence() -> None:
     assert document["import_evidence"]
     assert document["dependency_exceptions"] == [
         {
-            "path": "src/werewolf_agent/api/bootstrap.py",
+            "source_module": "werewolf_agent.api.bootstrap",
             "target_layer": "adapters",
             "reason": "HTTP composition root が adapter 実装を構築する。",
         }
@@ -66,13 +67,13 @@ def test_architecture_outputs_are_complete_and_deterministic(tmp_path: Path) -> 
 
 def test_diagram_edges_end_at_node_boundaries() -> None:
     """矢印の向きがnode背面に隠れないよう接続点を外周へ置く。"""
-    horizontal = architecture._edge_endpoints(
+    horizontal = rendering._edge_endpoints(
         (0, 0),
         (300, 0),
         box_width=180,
         box_height=64,
     )
-    diagonal = architecture._edge_endpoints(
+    diagonal = rendering._edge_endpoints(
         (0, 0),
         (300, 150),
         box_width=180,

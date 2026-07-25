@@ -10,7 +10,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from scripts._support import (
+from scripts._infra.process import (
     ARTIFACT_ROOT,
     CommandResult,
     EnvironmentBlockedError,

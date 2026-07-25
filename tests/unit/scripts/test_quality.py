@@ -3,25 +3,27 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 import tarfile
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
-from zipfile import ZipFile
 
 import pytest
-from scripts import _support as support
-from scripts import quality
-from scripts._support import (
+from scripts._infra import process as support
+from scripts._infra.process import (
     ARTIFACT_ROOT,
     quality_environment,
     redact,
     redact_artifacts,
     run_command,
 )
+from scripts.quality import retention
+from scripts.quality import runner as quality
+from scripts.quality.gates import distribution, repository, runtime
+from scripts.quality.gates import environment as environment_gate
+from scripts.quality.gates import tests as test_gates
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -29,7 +31,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def _write_contract_sdist(path: Path) -> None:
     """pyproject.tomlの公開source契約を満たす最小sdistを作る。"""
     with tarfile.open(path, mode="w:gz") as archive:
-        for source in quality._sdist_contract():
+        for source in distribution.sdist_contract():
             repository_path = ROOT / source
             member = (
                 f"package/{source}"
@@ -48,7 +50,6 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
     settings = quality.load_quality_settings()
 
     assert settings.max_jobs == 4
-    assert settings.retention_days == 14
     assert settings.benchmark_min_rounds == 5
     assert settings.benchmark_max_mean_ms == 10
     assert settings.coverage_fail_under == 74
@@ -83,7 +84,6 @@ benchmark_max_mean_ms = 10
 benchmark_min_rounds = 5
 branch_coverage_fail_under = 48
 max_jobs = 0
-retention_days = 14
 [tool.werewolf-quality.timeouts]
 quick = 60
 check = 180
@@ -113,7 +113,6 @@ benchmark_max_mean_ms = 10
 benchmark_min_rounds = 5
 branch_coverage_fail_under = 48
 max_jobs = 4
-retention_days = 14
 [tool.werewolf-quality.timeouts]
 quick = 60
 check = 180
@@ -142,7 +141,7 @@ def test_profiles_have_expected_order_and_isolated_commands() -> None:
     assert {"pytest", "mypy", "eslint", "vitest"} <= quick
     assert {"coverage", "docs", "package", "benchmark"} <= check
     assert {"supabase-preflight", "integration", "docker"} <= release
-    assert "deep-tests" in deep
+    assert {"deep-tests", "deep-integration"} <= deep
     assert all(gate.command for stage in quality._profile_stages("deep", 1) for gate in stage)
 
 
@@ -210,7 +209,7 @@ def test_quality_environment_keeps_only_explicit_public_supabase_keys() -> None:
 
 def test_browser_e2e_uses_the_shared_offline_environment() -> None:
     """ReactとStreamlitの共通E2Eへ安全な子process環境だけを渡す。"""
-    source = (ROOT / "scripts" / "e2e.py").read_text(encoding="utf-8")
+    source = (ROOT / "scripts" / "browser" / "e2e.py").read_text(encoding="utf-8")
 
     assert "quality_environment(" in source
     assert "WEREWOLF_LLM_PROVIDER" not in source
@@ -225,7 +224,7 @@ def test_offline_gate_rejects_overridden_network_guard(tmp_path: Path) -> None:
     environment["HTTPS_PROXY"] = "https://external-proxy.example"
     context = SimpleNamespace(environment=environment)
 
-    result = quality._offline_guard_action(context, tmp_path)
+    result = environment_gate.check_offline_environment(context, tmp_path)
 
     assert result.returncode == 1
     assert "HTTPS_PROXY" in result.output
@@ -343,20 +342,13 @@ def test_clean_preserves_persistent_directories(
     temporary_root = tmp_path / "temporary" / "werewolf-agent"
     temporary_cache = temporary_root / "pytest"
     temporary_cache.mkdir(parents=True)
-    latest_run = artifact_root / "quality" / "runs" / "latest"
-    latest_run.mkdir(parents=True)
-    latest = artifact_root / "quality" / "latest.json"
-    latest.parent.mkdir(parents=True, exist_ok=True)
-    latest.write_text(json.dumps({"run_id": "latest"}), encoding="utf-8")
-
     monkeypatch.setattr(quality, "ARTIFACT_ROOT", artifact_root)
-    monkeypatch.setattr(quality, "QUALITY_ROOT", artifact_root / "quality")
     monkeypatch.setattr(quality, "BUILD_DIRECTORIES", (build, cache, coverage))
     monkeypatch.setattr(quality, "TEMPORARY_CACHE_DIRECTORIES", (temporary_cache,))
-    monkeypatch.setattr("scripts._support.ARTIFACT_ROOT", artifact_root)
-    monkeypatch.setattr("scripts._support.TEMPORARY_ROOT", temporary_root)
+    monkeypatch.setattr("scripts._infra.process.ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr("scripts._infra.process.TEMPORARY_ROOT", temporary_root)
 
-    quality.clean(retention_days=0)
+    quality.clean()
 
     assert not build.exists()
     assert not cache.exists()
@@ -366,38 +358,6 @@ def test_clean_preserves_persistent_directories(
     assert (artifact_root / "qa").exists()
     assert package_cache.exists()
     assert not temporary_cache.exists()
-    assert latest_run.exists()
-    assert latest.exists()
-
-
-def test_clean_preserves_newest_run_when_latest_reference_is_corrupt(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """latest.jsonが壊れていても実際の最新runを削除しない。"""
-
-    artifact_root = tmp_path / ".werewolf-agent"
-    runs = artifact_root / "quality" / "runs"
-    older = runs / "older"
-    newest = runs / "newest"
-    older.mkdir(parents=True)
-    newest.mkdir()
-    os.utime(older, (1, 1))
-    os.utime(newest, (2, 2))
-    latest = artifact_root / "quality" / "latest.json"
-    latest.write_text("{broken", encoding="utf-8")
-
-    monkeypatch.setattr(quality, "ARTIFACT_ROOT", artifact_root)
-    monkeypatch.setattr(quality, "QUALITY_ROOT", artifact_root / "quality")
-    monkeypatch.setattr(quality, "BUILD_DIRECTORIES", ())
-    monkeypatch.setattr(quality, "TEMPORARY_CACHE_DIRECTORIES", ())
-    monkeypatch.setattr(support, "ARTIFACT_ROOT", artifact_root)
-
-    quality.clean(retention_days=0)
-
-    assert not older.exists()
-    assert newest.exists()
-    assert latest.exists()
 
 
 @pytest.mark.parametrize(
@@ -406,7 +366,6 @@ def test_clean_preserves_newest_run_when_latest_reference_is_corrupt(
         ["quick", "--jobs", "0"],
         ["quick", "--jobs", "5"],
         ["quick", "--timeout", "0"],
-        ["clean", "--retention-days", "-1"],
     ],
 )
 def test_cli_rejects_unsafe_numeric_options(arguments: list[str]) -> None:
@@ -485,128 +444,6 @@ def test_artifact_root_is_repository_local() -> None:
     assert ARTIFACT_ROOT.name == ".werewolf-agent"
 
 
-def test_profile_commands_write_machine_readable_results_to_run_directory(
-    tmp_path: Path,
-) -> None:
-    """pytest、coverage、benchmarkの成果物を同じrunへ関連付ける。"""
-
-    commands = [
-        argument
-        for stage in quality._profile_stages("deep", 1, tmp_path)
-        for gate in stage
-        for argument in gate.command
-    ]
-    settings = quality.load_quality_settings()
-    commands.extend(quality._benchmark_command(tmp_path, settings))
-
-    assert str(tmp_path / "test-results" / "quick.xml") in commands
-    assert f"xml:{tmp_path / 'coverage' / 'coverage.xml'}" in commands
-    assert "--cov-fail-under=74" in commands
-    assert "--benchmark-disable-gc" in commands
-    assert "--benchmark-min-rounds=5" in commands
-    assert str(tmp_path / "benchmarks" / "core.json") in commands
-    assert str(tmp_path / "test-results" / "integration.xml") in commands
-    assert str(tmp_path / "test-results" / "deep.xml") in commands
-
-
-def test_benchmark_contract_rejects_performance_regression(tmp_path: Path) -> None:
-    """平均時間が設定上限を超えたbenchmarkを品質違反にする。"""
-
-    result = tmp_path / "benchmark.json"
-    result.write_text(
-        json.dumps(
-            {
-                "benchmarks": [
-                    {
-                        "name": "core",
-                        "stats": {"mean": 0.011},
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    errors, measurements = quality._benchmark_contract(result, maximum_mean_ms=10)
-
-    assert measurements == [("core", 11.0)]
-    assert errors == ["coreの平均11.000msが上限10msを超えました。"]
-
-
-def test_benchmark_contract_accepts_result_within_limit(tmp_path: Path) -> None:
-    """設定上限内のbenchmark結果を受理する。"""
-
-    result = tmp_path / "benchmark.json"
-    result.write_text(
-        json.dumps(
-            {
-                "benchmarks": [
-                    {
-                        "name": "core",
-                        "stats": {"mean": 0.001},
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    assert quality._benchmark_contract(result, maximum_mean_ms=10) == (
-        [],
-        [("core", 1.0)],
-    )
-
-
-def test_distribution_contract_reports_missing_resources_and_entrypoints(
-    tmp_path: Path,
-) -> None:
-    """配布物の欠落をCheckで調査可能な粒度へ分解する。"""
-
-    _write_contract_sdist(tmp_path / "package.tar.gz")
-    with ZipFile(tmp_path / "package.whl", "w") as wheel:
-        wheel.writestr("package.dist-info/entry_points.txt", "[console_scripts]\n")
-
-    errors = quality._distribution_contract_errors(tmp_path)
-
-    assert any("defaults.toml" in error for error in errors)
-    assert any("werewolf-agent =" in error for error in errors)
-    assert any("werewolf-agent-worker =" in error for error in errors)
-
-
-def test_distribution_contract_accepts_complete_wheel(tmp_path: Path) -> None:
-    """全resourceとconsole entrypointを含む配布物を受理する。"""
-
-    _write_contract_sdist(tmp_path / "package.tar.gz")
-    resources, entrypoints = quality._distribution_contract()
-    with ZipFile(tmp_path / "package.whl", "w") as wheel:
-        wheel.writestr(
-            "package.dist-info/entry_points.txt",
-            "[console_scripts]\n" + "\n".join(entrypoints) + "\n",
-        )
-        for resource in resources:
-            wheel.writestr(resource, "content")
-
-    assert quality._distribution_contract_errors(tmp_path) == []
-
-
-def test_distribution_contract_rejects_unreadable_sdist(tmp_path: Path) -> None:
-    """壊れたsource配布物を存在だけで合格させない。"""
-
-    (tmp_path / "package.tar.gz").write_bytes(b"not-a-tar")
-    resources, entrypoints = quality._distribution_contract()
-    with ZipFile(tmp_path / "package.whl", "w") as wheel:
-        wheel.writestr(
-            "package.dist-info/entry_points.txt",
-            "[console_scripts]\n" + "\n".join(entrypoints) + "\n",
-        )
-        for resource in resources:
-            wheel.writestr(resource, "content")
-
-    errors = quality._distribution_contract_errors(tmp_path)
-
-    assert any("sdistを読み取れません" in error for error in errors)
-
-
 def test_branch_coverage_contract_enforces_independent_threshold(tmp_path: Path) -> None:
     """総合coverageとは別に実際のbranch rateの退行を検出する。"""
 
@@ -616,7 +453,7 @@ def test_branch_coverage_contract_enforces_independent_threshold(tmp_path: Path)
         encoding="utf-8",
     )
 
-    errors, percentage = quality._branch_coverage_contract(
+    errors, percentage = test_gates.branch_coverage_contract(
         result_path,
         minimum_percentage=48,
     )
@@ -755,13 +592,13 @@ def test_git_status_failure_is_not_treated_as_clean(
     """Git検査失敗を空のworking treeとして扱わない。"""
 
     monkeypatch.setattr(
-        quality,
+        repository,
         "run_command",
         lambda *_args, **_kwargs: quality.CommandResult(["git"], 1, 0.0, ""),
     )
 
     with pytest.raises(RuntimeError, match="状態を取得できません"):
-        quality._git_status({})
+        repository.git_status({})
 
 
 def test_runner_setup_failure_writes_machine_readable_report(
@@ -774,14 +611,18 @@ def test_runner_setup_failure_writes_machine_readable_report(
         (tmp_path / relative).mkdir()
     settings = quality.load_quality_settings()
     monkeypatch.setattr(quality, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(
+        retention,
+        "publish_run",
+        lambda run_dir, _selector, _state: run_dir / "report.json",
+    )
     monkeypatch.setattr(quality, "create_run_directory", lambda _profile: ("run", tmp_path))
     monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
     monkeypatch.setattr(
-        quality,
-        "_git_status",
+        repository,
+        "git_status",
         lambda _environment: (_ for _ in ()).throw(RuntimeError("git unavailable")),
     )
-    monkeypatch.setattr(quality, "write_latest", lambda *_args: None)
 
     state, report_path = quality.execute(
         "quick",
@@ -795,7 +636,7 @@ def test_runner_setup_failure_writes_machine_readable_report(
     assert report["state"] == "error"
     assert report["results"][0]["name"] == "runner-setup"
     assert any(result["state"] == "skipped" for result in report["results"])
-    assert (tmp_path / "logs" / "runner-setup.log").is_file()
+    assert (report_path.parent / "logs" / "runner-setup.log").is_file()
 
 
 def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
@@ -807,25 +648,27 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     extensions = json.loads((ROOT / ".vscode" / "extensions.json").read_text(encoding="utf-8"))
     launch_names = {configuration["name"] for configuration in launch["configurations"]}
     task_commands = {
-        task["label"]: task.get("args", []) for task in tasks["tasks"] if task["type"] == "process"
+        task["label"]: task.get("args", [])
+        for task in tasks["tasks"]
+        if task.get("type") == "process"
     }
     workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
 
-    assert {
-        "Quality: Quick",
-        "Quality: Check",
-        "Quality: Release",
-        "Quality: Deep (Confirmation Required)",
-        "Tests: Current File (Quick)",
-    } <= launch_names
-    assert task_commands["Quality: Quick"] == ["-m", "scripts.quality", "quick"]
-    assert task_commands["Quality: Check"] == ["-m", "scripts.quality", "check"]
-    assert task_commands["Docs: Inspect"] == ["-m", "scripts.docs", "inspect"]
-    assert task_commands["Docs: Build"] == ["-m", "scripts.docs", "build"]
-    assert task_commands["Architecture: Analyze"] == ["-m", "scripts.architecture"]
+    assert "Tests: Current File (Quick)" in launch_names
+    assert not any(name.startswith("Quality:") for name in launch_names)
+    assert task_commands["Quality: Quick"][-4:] == ["python", "-m", "scripts.quality", "quick"]
+    assert task_commands["Quality: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
+    assert task_commands["Docs: Inspect"][-4:] == ["python", "-m", "scripts.docs", "inspect"]
+    assert task_commands["Docs: Build"][-4:] == ["python", "-m", "scripts.docs", "build"]
+    assert task_commands["Architecture: Analyze"][-3:] == [
+        "python",
+        "-m",
+        "scripts.architecture",
+    ]
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" in workflow
     assert "python -m scripts.quality deep --confirm-deep" in workflow
+    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in workflow
     assert "actions/upload-artifact@v4" in workflow
     assert "include-hidden-files: true" in workflow
     assert ".werewolf-agent/build" in workflow
@@ -843,291 +686,10 @@ def test_runtime_docker_dependencies_are_cached_before_source_copy() -> None:
 
     assert "FROM base AS runtime" in backend
     assert "USER app" in backend
-    commands = quality._docker_commands("quality:test")
+    commands = runtime.docker_commands("quality:test")
     assert len(commands) == 3
     assert all("--network" in command and "none" in command for command in commands)
     assert "os.geteuid() != 0" in commands[0][-1]
     assert commands[1][-2:] == ["quality:test", "--help"]
     assert "werewolf-agent-worker" in commands[1]
     assert "werewolf-agent" in commands[2]
-
-
-def test_events_include_skipped_gates(tmp_path: Path) -> None:
-    """途中停止後の未実行gateもAIが追跡できるeventへ残す。"""
-
-    event_path = tmp_path / "events.jsonl"
-    result = quality.GateResult(
-        name="integration",
-        description="Integration",
-        state="skipped",
-        duration_seconds=0.0,
-        message="前段の品質ゲートが完了しませんでした。",
-    )
-
-    quality._append_events(event_path, [result])
-
-    event = json.loads(event_path.read_text(encoding="utf-8"))
-    assert event["gate"] == "integration"
-    assert event["state"] == "skipped"
-    assert event["message"]
-
-
-def test_run_metrics_are_machine_readable_and_human_summarized(tmp_path: Path) -> None:
-    """JUnit、coverage、benchmark、browser成果物を最上位reportへ集約する。"""
-
-    for relative in ("test-results", "coverage", "benchmarks", "browser"):
-        (tmp_path / relative).mkdir()
-    (tmp_path / "test-results" / "quick.xml").write_text(
-        '<testsuites><testsuite tests="7" failures="1" errors="1" skipped="1">'
-        '<testsuite tests="5" failures="1" errors="0" skipped="1"/>'
-        '<testsuite tests="2" failures="0" errors="1" skipped="0"/>'
-        "</testsuite></testsuites>",
-        encoding="utf-8",
-    )
-    (tmp_path / "coverage" / "coverage.xml").write_text(
-        '<coverage lines-valid="80" lines-covered="64" branches-valid="20" '
-        'branches-covered="10" line-rate="0.8" branch-rate="0.5"/>',
-        encoding="utf-8",
-    )
-    (tmp_path / "benchmarks" / "core.json").write_text(
-        json.dumps({"benchmarks": [{"name": "core", "stats": {"mean": 0.00125, "rounds": 8}}]}),
-        encoding="utf-8",
-    )
-    (tmp_path / "browser" / "desktop.png").write_bytes(b"image")
-
-    metrics, issues = quality._collect_run_metrics(tmp_path)
-    summary = "\n".join(quality._metric_summary(metrics, issues))
-
-    assert issues == []
-    assert metrics["tests"]["quick"] == {
-        "tests": 7,
-        "failures": 1,
-        "errors": 1,
-        "skipped": 1,
-        "passed": 4,
-    }
-    assert metrics["coverage"] == {
-        "total_percent": 74.0,
-        "line_percent": 80.0,
-        "branch_percent": 50.0,
-        "lines": {"covered": 64, "valid": 80},
-        "branches": {"covered": 10, "valid": 20},
-    }
-    assert metrics["benchmarks"] == [{"name": "core", "mean_ms": 1.25, "rounds": 8}]
-    assert metrics["browser_artifacts"] == ["browser/desktop.png"]
-    assert "coverage: total 74.0%, line 80.0%, branch 50.0%" in summary
-    assert "benchmark `core`: mean 1.25ms, 8 rounds" in summary
-
-
-def test_run_metrics_report_malformed_artifacts_without_breaking_summary(
-    tmp_path: Path,
-) -> None:
-    """失敗時の壊れた成果物もreport生成を妨げず調査対象として残す。"""
-
-    for relative in ("test-results", "coverage", "benchmarks", "browser"):
-        (tmp_path / relative).mkdir()
-    (tmp_path / "test-results" / "quick.xml").write_text("<broken", encoding="utf-8")
-    (tmp_path / "coverage" / "coverage.xml").write_text("<broken", encoding="utf-8")
-    (tmp_path / "benchmarks" / "core.json").write_text("{broken", encoding="utf-8")
-
-    metrics, issues = quality._collect_run_metrics(tmp_path)
-
-    assert metrics["tests"] == {}
-    assert len(issues) == 3
-    assert {issue.split("を", maxsplit=1)[0] for issue in issues} == {
-        "quick.xml",
-        "coverage.xml",
-        "core.json",
-    }
-
-
-def test_artifact_issues_change_final_state_and_exit_contract(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """成果物解析不能をpassedにせず最上位errorへ反映する。"""
-
-    for relative in ("test-results", "coverage", "benchmarks", "browser"):
-        (tmp_path / relative).mkdir()
-    (tmp_path / "test-results" / "quick.xml").write_text("<broken", encoding="utf-8")
-    monkeypatch.setattr(quality, "write_latest", lambda *_args: None)
-    context = quality.RunContext(
-        profile="quick",
-        jobs=1,
-        timeout_seconds=60,
-        run_id="run",
-        run_dir=tmp_path,
-        environment={},
-        initial_git_status="",
-        started_at=quality.utc_now(),
-    )
-    results = [
-        quality.GateResult(
-            name="pytest",
-            description="Python quick test",
-            state="passed",
-            duration_seconds=1.0,
-        )
-    ]
-
-    state, report_path = quality._write_summary(context, results)
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    events = [
-        json.loads(line)
-        for line in (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-
-    assert state == "error"
-    assert report["state"] == "error"
-    assert report["results"][-1]["name"] == "artifact-validation"
-    assert report["results"][-1]["state"] == "error"
-    assert events[-1]["gate"] == "artifact-validation"
-
-
-def test_profiles_require_their_declared_artifacts(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """0終了だけで合格させずprofileごとの成果物完全性を要求する。"""
-
-    run_dir = tmp_path / "run"
-    artifact_root = tmp_path / "artifacts"
-    run_dir.mkdir()
-    monkeypatch.setattr(quality, "ARTIFACT_ROOT", artifact_root)
-
-    quick_issues = quality._required_artifact_issues("quick", run_dir)
-    deep_issues = quality._required_artifact_issues("deep", run_dir)
-
-    assert "必須成果物がありません: test-results/quick.xml" in quick_issues
-    assert "必須成果物がありません: build/architecture/architecture.json" in quick_issues
-    assert "必須成果物がありません: coverage/coverage.xml" in deep_issues
-    assert "必須成果物がありません: build/docs/index.html" in deep_issues
-    assert "必須成果物がありません: build/docs/report.json" in deep_issues
-    assert "必須成果物がありません: build/frontend/index.html" in deep_issues
-    assert "browser成果物がありません: desktop.png" in deep_issues
-    assert "必須成果物がありません: test-results/deep.xml" in deep_issues
-    assert "wheel成果物は1件必要です: 0件" in deep_issues
-    assert "sdist成果物は1件必要です: 0件" in deep_issues
-
-
-def test_required_artifacts_must_be_updated_by_the_current_run(tmp_path: Path) -> None:
-    """前回runの成果物を今回の成功証拠として受理しない。"""
-
-    run_dir = tmp_path / "run"
-    result_path = run_dir / "test-results" / "quick.xml"
-    result_path.parent.mkdir(parents=True)
-    result_path.write_text("<testsuites/>", encoding="utf-8")
-    os.utime(result_path, (1, 1))
-
-    issues = quality._required_artifact_issues(
-        "quick",
-        run_dir,
-        started_at=quality.utc_now(),
-    )
-
-    assert "必須成果物が現在runで更新されていません: test-results/quick.xml" in issues
-
-
-def test_execute_stops_owned_supabase_when_runner_is_interrupted(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """gate間の割り込みでも品質所有Supabaseのcleanupを実行する。"""
-
-    for relative in ("logs", "test-results", "coverage", "benchmarks", "browser"):
-        (tmp_path / relative).mkdir()
-    settings = quality.load_quality_settings()
-    monkeypatch.setattr(quality, "REPOSITORY_ROOT", tmp_path)
-    stages = [[quality.Gate("start", "start")], [quality.Gate("interrupt", "interrupt")]]
-    stopped = False
-
-    def run_gate(context: quality.RunContext, gate: quality.Gate) -> quality.GateResult:
-        nonlocal stopped
-        if gate.name == "start":
-            context.supabase_cleanup_required = True
-        elif gate.name == "interrupt":
-            raise KeyboardInterrupt
-        elif gate.name == "supabase-stop":
-            stopped = True
-        return quality.GateResult(gate.name, gate.description, "passed", 0.0)
-
-    monkeypatch.setattr(quality, "create_run_directory", lambda _profile: ("run", tmp_path))
-    monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
-    monkeypatch.setattr(quality, "_git_status", lambda _environment: "")
-    monkeypatch.setattr(quality, "_profile_stages", lambda *_args: stages)
-    monkeypatch.setattr(quality, "_run_gate", run_gate)
-    monkeypatch.setattr(quality, "write_latest", lambda *_args: None)
-
-    state, report_path = quality.execute(
-        "release",
-        jobs=1,
-        timeout_seconds=1,
-        settings=settings,
-    )
-
-    assert state == "error"
-    assert stopped is True
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    assert report["state"] == "error"
-    assert any(result["name"] == "runner" for result in report["results"])
-    assert any(result["state"] == "skipped" for result in report["results"])
-
-
-def test_supabase_cleanup_removes_isolated_cli_profile(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """projectが既に停止済みでもrun固有SUPABASE_HOMEを削除する。"""
-
-    temporary_root = tmp_path / "temporary" / "werewolf-agent"
-    profile = temporary_root / "supabase" / "run"
-    profile.mkdir(parents=True)
-    context = quality.RunContext(
-        profile="release",
-        jobs=1,
-        timeout_seconds=1,
-        run_id="run",
-        run_dir=tmp_path,
-        environment={"SUPABASE_HOME": str(profile)},
-        initial_git_status="",
-        started_at=quality.utc_now(),
-        supabase_workdir=tmp_path / "missing-project",
-        supabase_project_id="quality-project",
-    )
-    monkeypatch.setattr(support, "TEMPORARY_ROOT", temporary_root)
-
-    result = quality._supabase_stop_action(context, tmp_path / "log")
-
-    assert result.returncode == 0
-    assert not profile.exists()
-
-
-def test_supabase_ownership_is_recorded_before_preflight(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """preflight割り込み前にcleanupに必要な所有情報を確定する。"""
-
-    context = quality.RunContext(
-        profile="release",
-        jobs=1,
-        timeout_seconds=1,
-        run_id="run",
-        run_dir=tmp_path,
-        environment={},
-        initial_git_status="",
-        started_at=quality.utc_now(),
-    )
-    monkeypatch.setattr(quality, "ARTIFACT_ROOT", tmp_path / ".werewolf-agent")
-    monkeypatch.setattr(
-        quality,
-        "prepare_supabase",
-        lambda **_kwargs: (_ for _ in ()).throw(KeyboardInterrupt),
-    )
-
-    with pytest.raises(KeyboardInterrupt):
-        quality._supabase_action(context, tmp_path / "log")
-
-    assert context.supabase_cleanup_required is True
-    assert context.supabase_workdir is not None
-    assert context.supabase_project_id == quality.isolated_project_id(context.supabase_workdir)

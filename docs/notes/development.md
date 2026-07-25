@@ -126,7 +126,7 @@ uv sync --group dev --extra worker --extra streamlit --extra llm
 ローカルSupabaseとfake provider:
 
 ```bash
-python -m scripts.preflight_supabase
+python -m scripts.supabase preflight
 uv run --extra worker werewolf-agent-worker run
 uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
@@ -134,7 +134,7 @@ uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-co
 Supabase worker:
 
 ```bash
-python -m scripts.preflight_supabase
+python -m scripts.supabase preflight
 uv run --extra worker werewolf-agent-worker run
 ```
 
@@ -156,7 +156,8 @@ python -m scripts.quality clean
 
 pytest単体の既定levelは`quick`です。integration、monkey、benchmark、deepを意図せず
 選択した場合は必要な`--test-level`を表示して実行を拒否します。品質reportは
-`.werewolf-agent/quality/runs/<run-id>`へ保存し、`latest.json`から最新runを参照します。
+成功結果は`.werewolf-agent/quality/latest`、非成功結果は
+`.werewolf-agent/quality/failures`へ保存します。
 品質runnerはFake LLMと事前取得済み依存だけを使用し、外部APIへ接続しません。
 
 ## 直近の検証結果
@@ -171,11 +172,11 @@ pytest単体の既定levelは`quick`です。integration、monkey、benchmark、
 - Browser E2E: 15件成功、desktop対象外のmobile専用1件skip
 - Coverage: 総合74.26%、line 79.32%、branch 49.03%
 - Core benchmark: 平均0.236ms
-- Ruff lint・format・docstring、mypy、import-linter、Prettier、TypeScript: 成功
+- Ruff lint・format・docstring、mypy、Architecture、Prettier、TypeScript: 成功
 - OpenAPI JSON・TypeScript生成型、Sphinx warning-as-error、wheel・sdist: 成功
 - 隔離Supabase、API、worker、RLS、nonroot Docker runtime、外部通信遮断: 成功
 
-最新値は`.werewolf-agent/quality/latest.json`と`summary.md`を正とします。
+最新値は`.werewolf-agent/quality/latest`の`report.json`と`summary.md`を正とします。
 
 pytestでは、LangGraph内部の`BaseCache`が既定serializerを生成する際に
 `LangChainPendingDeprecationWarning`が1件発生します。プロジェクト側の

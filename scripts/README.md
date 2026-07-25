@@ -12,8 +12,11 @@ python -m scripts.quality quick
 python -m scripts.quality check
 python -m scripts.quality release
 python -m scripts.quality deep --confirm-deep
+python -m scripts.quality gate python-static
+python -m scripts.quality gate ruff mypy
+python -m scripts.quality list
 python -m scripts.quality clean
-python -m scripts.preflight_supabase
+python -m scripts.supabase preflight
 ```
 
 - `quick`: 日常の静的検査とunit test
@@ -24,7 +27,6 @@ python -m scripts.preflight_supabase
 
 `--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
 CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
-`--retention-days`は0以上だけを受け付けます。
 既定worker上限、保持日数、profile別timeout、benchmark反復下限、平均時間上限、
 branch coverage下限は`pyproject.toml`の`tool.werewolf-quality`から読みます。
 総合coverage下限は`tool.coverage.report.fail_under`と共有します。
@@ -41,10 +43,11 @@ CLIなど、選択profileに必要なローカル環境が不足した場合に�
 
 ## 成果物
 
-`.werewolf-agent/quality/runs/<run-id>/`へJSON report、JSONL event、Markdown
-summary、gate別log、JUnit XML、coverage、benchmark JSON、browser画像を保存し、
-`.werewolf-agent/quality/latest.json`から最新runを参照できます。未実行gateも
-`skipped`として残るため、AIと人間が同じreportから調査を開始できます。Git状態の
+成功結果は`.werewolf-agent/quality/latest/profiles/<profile>/`、個別gateは
+`.werewolf-agent/quality/latest/gates/<selector>/`へ保存します。成功履歴は増やさず、
+最新のJSON reportとMarkdown summaryだけを置き換えます。非成功結果は
+`.werewolf-agent/quality/failures/<selector>/`へ直近3件だけ保存します。未実行gateも
+`skipped`として残すため、AIと人間が同じreportから調査を開始できます。Git状態の
 初期確認失敗やrunner中断も、実行済み・未完了・cleanupを含むreportを生成します。
 `report.json`の`metrics`にはtest件数、総合・line・branch coverage、benchmark、
 browser成果物を収録します。成果物が壊れている場合もreport生成を止めず、
@@ -75,5 +78,5 @@ Release/Deepは固有project IDと未使用portの隔離DBを使い、
 品質用session、container、volume、project設定を終了時に削除します。Docker buildは
 runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、
 品質用Supabaseと一時Docker imageのcleanupを試みます。OneDrive上の再生成可能な
-ディレクトリ削除は、一時的な競合に限って短時間再試行します。`latest.json`が
-読み取れない場合も実際の最新runを保護します。
+ディレクトリ削除は、一時的な競合に限って短時間再試行します。成功結果の置換と
+非成功結果の整理はrun確定時に実行します。

@@ -1,4 +1,4 @@
-"""品質管理スクリプトで共有する小さな実行基盤。"""
+"""開発スクリプトで共有するprocess実行と安全なfile操作。"""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, TextIO
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = REPOSITORY_ROOT / ".werewolf-agent"
 QUALITY_ROOT = ARTIFACT_ROOT / "quality"
 TEMPORARY_ROOT = Path(tempfile.gettempdir()) / "werewolf-agent"
@@ -108,9 +108,9 @@ def utc_now() -> datetime:
 
 
 def create_run_directory(profile: str) -> tuple[str, Path]:
-    """一意なrun IDと成果物ディレクトリを作成する。"""
+    """OS一時領域に一意なrun IDとscratch directoryを作成する。"""
     run_id = f"{utc_now():%Y%m%dT%H%M%SZ}-{profile}-{os.getpid()}"
-    run_dir = QUALITY_ROOT / "runs" / run_id
+    run_dir = TEMPORARY_ROOT / "quality" / "runs" / run_id
     for relative in (
         "logs",
         "test-results",
@@ -305,19 +305,6 @@ def write_json(path: Path, value: object) -> None:
         encoding="utf-8",
     )
     temporary.replace(path)
-
-
-def write_latest(run_id: str, profile: str, state: str, report_path: Path) -> None:
-    """最新runへの参照だけを固定位置へ保存する。"""
-    write_json(
-        QUALITY_ROOT / "latest.json",
-        {
-            "run_id": run_id,
-            "profile": profile,
-            "state": state,
-            "report": str(report_path.relative_to(REPOSITORY_ROOT)),
-        },
-    )
 
 
 def command_result_dict(result: CommandResult) -> dict[str, object]:

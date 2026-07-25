@@ -7,7 +7,8 @@ import tomllib
 from pathlib import Path
 
 import pytest
-from scripts import docs, quality
+from scripts.docs import inspection as docs
+from scripts.quality import runner as quality
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -24,7 +25,7 @@ def test_documentation_structure_passes_without_constraining_prose() -> None:
 
 def test_documentation_runner_is_independent_from_quality_orchestration() -> None:
     """文書runnerから全体品質runnerへの依存を禁止する。"""
-    path = ROOT / "scripts" / "docs.py"
+    path = ROOT / "scripts" / "docs" / "building.py"
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imported = {
         alias.name

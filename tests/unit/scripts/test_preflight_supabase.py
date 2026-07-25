@@ -4,8 +4,8 @@ import re
 from pathlib import Path
 
 import pytest
-from scripts import preflight_supabase
-from scripts.preflight_supabase import (
+from scripts.supabase import preflight as preflight_supabase
+from scripts.supabase.preflight import (
     is_supported_supabase_version,
     parse_status_environment,
     select_status_environment,
@@ -72,7 +72,7 @@ def test_isolated_project_uses_distinct_project_id_and_ports(
     artifact_root = repository / ".werewolf-agent"
     isolated_root = artifact_root / "db" / "quality" / "run-1"
     monkeypatch.setattr(preflight_supabase, "REPOSITORY_ROOT", repository)
-    monkeypatch.setattr("scripts._support.ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr("scripts._infra.process.ARTIFACT_ROOT", artifact_root)
 
     workdir, project_id = preflight_supabase._prepare_isolated_project(isolated_root)
 

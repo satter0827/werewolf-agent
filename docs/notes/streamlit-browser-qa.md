@@ -16,7 +16,7 @@ VS Code の `launch.json` は `${workspaceFolder}` 起点です。ブランチ�
 migration、`doctor`を確認し、起動後のE2Eが`setup-options`を確認します。運用ログは`.werewolf-agent/logs`、
 品質browser成果物は`.werewolf-agent/quality`配下を使います。
 
-別terminalで手動起動する場合は、先に`python -m scripts.preflight_supabase`を実行し、
+別terminalで手動起動する場合は、先に`python -m scripts.supabase preflight`を実行し、
 API、worker、Streamlitを各console entrypointから起動します。
 
 ```bash

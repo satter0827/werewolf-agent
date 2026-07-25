@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.14"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -34,7 +34,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: uv sync --frozen --all-groups --all-extras
       - run: npm ci --ignore-scripts
         working-directory: frontend
       - run: npm audit --audit-level=low
@@ -69,7 +69,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.104.0
-      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: uv sync --frozen --all-groups --all-extras
       - run: npm ci --ignore-scripts
         working-directory: frontend
       - run: npm audit --audit-level=low
@@ -112,7 +112,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.104.0
-      - run: uv sync --frozen --group dev --group docs --extra api --extra worker --extra streamlit --extra llm
+      - run: uv sync --frozen --all-groups --all-extras
       - run: npm ci --ignore-scripts
         working-directory: frontend
       - run: npm audit --audit-level=low

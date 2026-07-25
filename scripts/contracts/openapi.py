@@ -1,4 +1,4 @@
-"""Export the FastAPI contract used for TypeScript client generation."""
+"""TypeScript client生成に使用するFastAPI contractを出力する。"""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parents[1] / "openapi.json",
+        default=Path(__file__).resolve().parents[2] / "openapi.json",
     )
     return parser
 

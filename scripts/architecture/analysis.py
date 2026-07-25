@@ -1,4 +1,4 @@
-"""Analyze and visualize repository architecture without executing external services."""
+"""外部serviceを実行せずrepository architectureを解析・可視化する。"""
 
 from __future__ import annotations
 
@@ -6,85 +6,26 @@ import argparse
 import ast
 import inspect
 import json
-import math
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
-from html import escape
 from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-import werewolf_agent.adapters as adapters
-import werewolf_agent.agents as agents
-import werewolf_agent.contracts as contracts
-import werewolf_agent.domain as domain
-import werewolf_agent.usecase as usecase
-from scripts._support import ARTIFACT_ROOT, REPOSITORY_ROOT, remove_managed_path
+from scripts._infra.artifacts import publish_directory, staged_directory
+from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
+from scripts.architecture.definition import (
+    ALLOWED_IMPORTS,
+    ALLOWED_MODULE_IMPORTS,
+    DEPENDENCY_EXCEPTION_REASONS,
+    LAYERS,
+    PUBLIC_MODULES,
+)
+from scripts.architecture.rendering import write_diagrams
 
 PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "werewolf_agent"
 OUTPUT_ROOT = ARTIFACT_ROOT / "build" / "architecture"
 SCHEMA_VERSION = 1
-
-LAYERS = frozenset(
-    {
-        "adapters",
-        "agents",
-        "api",
-        "configuration",
-        "contracts",
-        "domain",
-        "interfaces",
-        "observability",
-        "resources",
-        "security",
-        "usecase",
-    }
-)
-
-ALLOWED_IMPORTS: dict[str, frozenset[str]] = {
-    "domain": frozenset({"domain"}),
-    "configuration": frozenset({"configuration"}),
-    "contracts": frozenset({"configuration", "contracts", "security"}),
-    "security": frozenset({"configuration", "contracts", "security"}),
-    "observability": frozenset({"configuration", "contracts", "observability", "security"}),
-    "agents": frozenset({"agents", "configuration", "contracts"}),
-    "usecase": frozenset({"configuration", "contracts", "domain", "usecase"}),
-    "adapters": frozenset(
-        {
-            "adapters",
-            "agents",
-            "configuration",
-            "contracts",
-            "domain",
-            "observability",
-            "security",
-            "usecase",
-        }
-    ),
-    "api": frozenset({"api", "configuration", "contracts", "observability", "security", "usecase"}),
-    "interfaces": frozenset(
-        {
-            "adapters",
-            "agents",
-            "configuration",
-            "contracts",
-            "interfaces",
-            "observability",
-            "security",
-            "usecase",
-        }
-    ),
-    "resources": frozenset({"resources"}),
-}
-
-DEPENDENCY_EXCEPTION_REASONS = {
-    ("src/werewolf_agent/api/bootstrap.py", "adapters"): (
-        "HTTP composition root が adapter 実装を構築する。"
-    ),
-}
-ALLOWED_PATH_IMPORTS = frozenset(DEPENDENCY_EXCEPTION_REASONS)
-
-PUBLIC_MODULES: tuple[ModuleType, ...] = (domain, usecase, contracts, agents, adapters)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,104 +48,6 @@ class Finding:
     severity: str
     message: str
     evidence: dict[str, object]
-
-
-@dataclass(frozen=True, slots=True)
-class DiagramNode:
-    """One node in a generated architecture diagram."""
-
-    node_id: str
-    label: str
-    group: str
-
-
-@dataclass(frozen=True, slots=True)
-class DiagramEdge:
-    """One directed relation in a generated architecture diagram."""
-
-    source: str
-    target: str
-    label: str = ""
-
-
-SYSTEM_NODES = (
-    DiagramNode("react", "React", "interface"),
-    DiagramNode("streamlit", "Streamlit", "interface"),
-    DiagramNode("cli", "CLI", "interface"),
-    DiagramNode("administrator", "Administrator", "interface"),
-    DiagramNode("api", "HTTP API", "application"),
-    DiagramNode("worker", "Worker", "application"),
-    DiagramNode("usecase", "GameApplication", "core"),
-    DiagramNode("domain", "Domain", "core"),
-    DiagramNode("agents", "Agents", "core"),
-    DiagramNode("supabase", "Supabase", "external"),
-    DiagramNode("llm", "LLM Provider", "external"),
-)
-SYSTEM_EDGES = (
-    DiagramEdge("react", "api", "HTTP"),
-    DiagramEdge("streamlit", "api", "HTTP"),
-    DiagramEdge("cli", "api", "HTTP"),
-    DiagramEdge("administrator", "api", "Privileged HTTP"),
-    DiagramEdge("api", "usecase"),
-    DiagramEdge("api", "supabase", "Auth / DB"),
-    DiagramEdge("worker", "usecase"),
-    DiagramEdge("worker", "supabase", "Queue / DB"),
-    DiagramEdge("worker", "agents"),
-    DiagramEdge("agents", "llm"),
-    DiagramEdge("usecase", "domain"),
-)
-SYSTEM_POSITIONS = {
-    "react": (50, 50),
-    "streamlit": (50, 144),
-    "cli": (50, 238),
-    "administrator": (50, 332),
-    "api": (320, 144),
-    "worker": (320, 332),
-    "usecase": (590, 238),
-    "domain": (860, 238),
-    "agents": (590, 426),
-    "supabase": (860, 50),
-    "llm": (860, 426),
-}
-
-DOMAIN_NODES = (
-    DiagramNode("game", "Game", "aggregate"),
-    DiagramNode("state", "GameState", "value"),
-    DiagramNode("events", "GameEvent", "value"),
-    DiagramNode("ruleset", "RuleSet", "policy"),
-    DiagramNode("registry", "RuleRegistry", "policy"),
-    DiagramNode("definition", "RuleSetDefinition", "configuration"),
-    DiagramNode("action", "ActionPolicy", "policy"),
-    DiagramNode("resolution", "ResolutionPolicy", "policy"),
-    DiagramNode("phase", "PhasePolicy", "policy"),
-    DiagramNode("victory", "VictoryPolicy", "policy"),
-    DiagramNode("visibility", "VisibilityPolicy", "policy"),
-)
-DOMAIN_EDGES = (
-    DiagramEdge("game", "state", "owns"),
-    DiagramEdge("game", "events", "emits"),
-    DiagramEdge("game", "ruleset", "uses"),
-    DiagramEdge("registry", "definition", "validates"),
-    DiagramEdge("registry", "ruleset", "builds"),
-    DiagramEdge("ruleset", "action"),
-    DiagramEdge("ruleset", "resolution"),
-    DiagramEdge("ruleset", "phase"),
-    DiagramEdge("ruleset", "victory"),
-    DiagramEdge("ruleset", "visibility"),
-)
-DOMAIN_POSITIONS = {
-    "game": (50, 50),
-    "registry": (860, 50),
-    "state": (50, 194),
-    "events": (320, 194),
-    "ruleset": (590, 194),
-    "definition": (860, 194),
-    "action": (50, 338),
-    "resolution": (260, 338),
-    "phase": (470, 338),
-    "victory": (680, 338),
-    "visibility": (890, 338),
-}
 
 
 def module_name(path: Path) -> str:
@@ -328,10 +171,10 @@ def analyze() -> dict[str, object]:
             layer_graph[edge.source_layer].add(edge.target_layer)
         if edge.target_module in module_graph and edge.source_module != edge.target_module:
             module_graph[edge.source_module].add(edge.target_module)
-        path_import = (edge.path, edge.target_layer)
+        module_import = (edge.source_module, edge.target_layer)
         if (
             edge.target_layer not in ALLOWED_IMPORTS[edge.source_layer]
-            and path_import not in ALLOWED_PATH_IMPORTS
+            and module_import not in ALLOWED_MODULE_IMPORTS
         ):
             findings.append(
                 Finding(
@@ -394,11 +237,11 @@ def analyze() -> dict[str, object]:
         ],
         "dependency_exceptions": [
             {
-                "path": path,
+                "source_module": source_module,
                 "target_layer": target_layer,
-                "reason": DEPENDENCY_EXCEPTION_REASONS[(path, target_layer)],
+                "reason": DEPENDENCY_EXCEPTION_REASONS[(source_module, target_layer)],
             }
-            for path, target_layer in sorted(ALLOWED_PATH_IMPORTS)
+            for source_module, target_layer in sorted(ALLOWED_MODULE_IMPORTS)
         ],
         "modules": [
             {
@@ -414,7 +257,7 @@ def analyze() -> dict[str, object]:
             "layer_count": len(LAYERS),
             "module_count": len(modules),
             "cross_layer_edge_count": sum(len(targets) for targets in layer_graph.values()),
-            "dependency_exception_count": len(ALLOWED_PATH_IMPORTS),
+            "dependency_exception_count": len(ALLOWED_MODULE_IMPORTS),
             "finding_count": len(findings),
         },
         "findings": [asdict(finding) for finding in findings],
@@ -424,8 +267,17 @@ def analyze() -> dict[str, object]:
 
 def write_outputs(output_root: Path = OUTPUT_ROOT) -> dict[str, object]:
     """Generate architecture data, assessment, and diagrams."""
-    if output_root == OUTPUT_ROOT and output_root.exists():
-        remove_managed_path(output_root)
+    if output_root != OUTPUT_ROOT:
+        return _write_outputs(output_root)
+    with staged_directory("architecture") as staging:
+        document = _write_outputs(staging)
+        if document["status"] == "passed":
+            publish_directory(staging, output_root)
+        return document
+
+
+def _write_outputs(output_root: Path) -> dict[str, object]:
+    """指定directoryへArchitecture成果物一式を書き出す。"""
     output_root.mkdir(parents=True, exist_ok=True)
     document = analyze()
     _write_json(output_root / "architecture.json", document)
@@ -434,36 +286,7 @@ def write_outputs(output_root: Path = OUTPUT_ROOT) -> dict[str, object]:
         _assessment(document),
         encoding="utf-8",
     )
-    _write_svg(
-        output_root / "system-context.svg",
-        "System context",
-        SYSTEM_NODES,
-        SYSTEM_EDGES,
-        positions=SYSTEM_POSITIONS,
-    )
-    layer_nodes = tuple(DiagramNode(layer, layer, "layer") for layer in sorted(LAYERS))
-    raw_layer_edges = document.get("layer_edges")
-    if not isinstance(raw_layer_edges, list):
-        raise TypeError("Architecture analysis did not return layer_edges.")
-    layer_edges = tuple(
-        DiagramEdge(str(edge["source"]), str(edge["target"]))
-        for edge in raw_layer_edges
-        if isinstance(edge, dict)
-    )
-    _write_svg(
-        output_root / "layer-dependencies.svg",
-        "Python layer dependencies",
-        layer_nodes,
-        layer_edges,
-        positions=_circular_positions(layer_nodes),
-    )
-    _write_svg(
-        output_root / "domain-structure.svg",
-        "Domain structure",
-        DOMAIN_NODES,
-        DOMAIN_EDGES,
-        positions=DOMAIN_POSITIONS,
-    )
+    write_diagrams(output_root, LAYERS, document.get("layer_edges"))
     return document
 
 
@@ -572,9 +395,9 @@ def architecture_schema() -> dict[str, object]:
             },
             "dependency_exception": {
                 "type": "object",
-                "required": ["path", "target_layer", "reason"],
+                "required": ["source_module", "target_layer", "reason"],
                 "properties": {
-                    "path": {"type": "string", "minLength": 1},
+                    "source_module": {"type": "string", "minLength": 1},
                     "target_layer": {"type": "string", "minLength": 1},
                     "reason": {"type": "string", "minLength": 1},
                 },
@@ -785,7 +608,7 @@ def _assessment(document: dict[str, object]) -> str:
         f"- layer: `{metrics['layer_count']}`",
         f"- module: `{metrics['module_count']}`",
         f"- layer 間の依存: `{metrics['cross_layer_edge_count']}`",
-        f"- path 単位の依存例外: `{metrics['dependency_exception_count']}`",
+        f"- module 単位の依存例外: `{metrics['dependency_exception_count']}`",
         f"- 検出事項: `{len(findings)}`",
         "",
         "必須 layer、許可された依存方向、循環、公開 API、docstring を判定対象とする。",
@@ -816,7 +639,8 @@ def _assessment(document: dict[str, object]) -> str:
         for exception in dependency_exceptions:
             assert isinstance(exception, dict)
             lines.append(
-                f"- `{exception['path']}` → `{exception['target_layer']}`: {exception['reason']}"
+                f"- `{exception['source_module']}` → "
+                f"`{exception['target_layer']}`: {exception['reason']}"
             )
     else:
         lines.append("path 単位の依存例外はない。")
@@ -839,134 +663,6 @@ def _write_json(path: Path, value: object) -> None:
     path.write_text(
         json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
-    )
-
-
-def _write_svg(
-    path: Path,
-    title: str,
-    nodes: tuple[DiagramNode, ...],
-    edges: tuple[DiagramEdge, ...],
-    *,
-    positions: dict[str, tuple[int, int]] | None = None,
-) -> None:
-    columns = max(2, math.ceil(math.sqrt(len(nodes))))
-    box_width = 180
-    box_height = 64
-    gap_x = 90
-    gap_y = 80
-    margin = 50
-    if positions is None:
-        positions = {}
-        for index, node in enumerate(nodes):
-            row, column = divmod(index, columns)
-            positions[node.node_id] = (
-                margin + column * (box_width + gap_x),
-                margin + row * (box_height + gap_y),
-            )
-    node_ids = {node.node_id for node in nodes}
-    if positions.keys() != node_ids:
-        raise ValueError("Diagram positions must match diagram nodes.")
-    width = max(x for x, _ in positions.values()) + box_width + margin
-    height = max(y for _, y in positions.values()) + box_height + margin
-    parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
-        f'role="img" aria-labelledby="title desc">',
-        f'<title id="title">{escape(title)}</title>',
-        (
-            f'<desc id="desc">{escape(title)} generated from the repository '
-            "architecture model.</desc>"
-        ),
-        '<defs><marker id="arrow" markerWidth="10" markerHeight="7" '
-        'refX="9" refY="3.5" orient="auto">'
-        '<polygon points="0 0, 10 3.5, 0 7" fill="#52606d"/>'
-        "</marker></defs>",
-    ]
-    for edge in edges:
-        if edge.source not in positions or edge.target not in positions:
-            continue
-        x1, y1, x2, y2 = _edge_endpoints(
-            positions[edge.source],
-            positions[edge.target],
-            box_width=box_width,
-            box_height=box_height,
-        )
-        parts.append(
-            f'<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" '
-            'stroke="#52606d" stroke-width="1.5" marker-end="url(#arrow)"/>'
-        )
-        if edge.label:
-            parts.append(
-                f'<text x="{(x1 + x2) / 2}" y="{(y1 + y2) / 2 - 5}" '
-                'font-family="sans-serif" font-size="11" text-anchor="middle" '
-                f'fill="#334e68">{escape(edge.label)}</text>'
-            )
-    colors = {
-        "aggregate": "#d9eafd",
-        "application": "#e6f6ff",
-        "configuration": "#fff3c4",
-        "core": "#d9eafd",
-        "external": "#f5e1f7",
-        "interface": "#e3f9e5",
-        "layer": "#e6f6ff",
-        "policy": "#fff3c4",
-        "value": "#f0f4f8",
-    }
-    for node in nodes:
-        x, y = positions[node.node_id]
-        fill = colors.get(node.group, "#f0f4f8")
-        parts.extend(
-            [
-                f'<rect x="{x}" y="{y}" width="{box_width}" height="{box_height}" '
-                f'rx="8" fill="{fill}" stroke="#334e68" stroke-width="1.5"/>',
-                f'<text x="{x + box_width / 2}" y="{y + box_height / 2 + 5}" '
-                'font-family="sans-serif" font-size="14" font-weight="600" '
-                f'text-anchor="middle" fill="#102a43">{escape(node.label)}</text>',
-            ]
-        )
-    parts.append("</svg>")
-    path.write_text("\n".join(parts) + "\n", encoding="utf-8")
-
-
-def _circular_positions(nodes: tuple[DiagramNode, ...]) -> dict[str, tuple[int, int]]:
-    center_x = 430
-    center_y = 350
-    radius_x = 340
-    radius_y = 270
-    positions: dict[str, tuple[int, int]] = {}
-    for index, node in enumerate(nodes):
-        angle = -math.pi / 2 + 2 * math.pi * index / len(nodes)
-        positions[node.node_id] = (
-            round(center_x + radius_x * math.cos(angle) - 90),
-            round(center_y + radius_y * math.sin(angle) - 32),
-        )
-    return positions
-
-
-def _edge_endpoints(
-    source: tuple[int, int],
-    target: tuple[int, int],
-    *,
-    box_width: int,
-    box_height: int,
-) -> tuple[float, float, float, float]:
-    source_center = (source[0] + box_width / 2, source[1] + box_height / 2)
-    target_center = (target[0] + box_width / 2, target[1] + box_height / 2)
-    delta_x = target_center[0] - source_center[0]
-    delta_y = target_center[1] - source_center[1]
-    if delta_x == 0 and delta_y == 0:
-        return (*source_center, *target_center)
-    scale = 1 / max(
-        abs(delta_x) / (box_width / 2),
-        abs(delta_y) / (box_height / 2),
-    )
-    offset_x = delta_x * scale
-    offset_y = delta_y * scale
-    return (
-        source_center[0] + offset_x,
-        source_center[1] + offset_y,
-        target_center[0] - offset_x,
-        target_center[1] - offset_y,
     )
 
 

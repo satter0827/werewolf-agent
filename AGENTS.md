@@ -48,7 +48,7 @@ reveal は設定で有効化した管理者専用 API に隔離します。
 - public state、timeline、LLM observation に閲覧者が知り得ない情報を含めない。
 - LLM 出力は schema で検証してから action へ変換する。
 
-境界定義は `scripts/architecture.py` を唯一の機械可読な source とし、構造テスト、
+境界定義は `scripts/architecture/definition.py` を唯一の機械可読な source とし、構造テスト、
 JSON、schema、評価文書、SVG から共用します。
 
 ## 作業
@@ -69,7 +69,7 @@ JSON、schema、評価文書、SVG から共用します。
 ## コマンド
 
 ```powershell
-uv sync --group dev --group docs --extra api --extra llm --extra streamlit --extra worker
+uv sync --frozen --all-groups --all-extras
 uv run --no-sync werewolf-agent doctor
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check --no-cache .

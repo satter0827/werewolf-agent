@@ -2,115 +2,215 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Environment: Setup Python",
+      "type": "process",
+      "command": "uv",
+      "args": ["sync", "--frozen", "--all-groups", "--all-extras"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Setup Frontend",
+      "type": "process",
+      "command": "npm",
+      "args": ["ci", "--ignore-scripts"],
+      "options": { "cwd": "${workspaceFolder}/frontend" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Setup",
+      "dependsOn": ["Environment: Setup Python", "Environment: Setup Frontend"],
+      "dependsOrder": "parallel",
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Check",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.quality",
+        "gate",
+        "environment"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Clear Python",
+      "type": "process",
+      "command": "uv",
+      "args": ["venv", "--clear", ".venv"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Recreate Python",
+      "dependsOn": ["Environment: Clear Python", "Environment: Setup Python"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Recreate Frontend",
+      "dependsOn": ["Environment: Setup Frontend"],
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: List",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "list"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Gate",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.quality",
+        "gate",
+        "${input:qualityGate}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
       "label": "Quality: Quick",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.quality", "quick"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": {
-        "kind": "test",
-        "isDefault": true
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "quick"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
     },
     {
       "label": "Quality: Check",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.quality", "check"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "check"],
+      "options": { "cwd": "${workspaceFolder}" },
       "group": "test",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Release",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.quality",
+        "release"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Quality: Deep",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.quality",
+        "deep",
+        "--confirm-deep"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": "test",
+      "problemMatcher": []
     },
     {
       "label": "Docs: Inspect",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.docs", "inspect"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "group": "test",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.docs", "inspect"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
     },
     {
       "label": "Docs: Build",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.docs", "build"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.docs", "build"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
       "group": "build",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "problemMatcher": []
     },
     {
       "label": "Architecture: Analyze",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.architecture"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.architecture"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
       "group": "build",
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "problemMatcher": []
     },
     {
       "label": "Supabase: Preflight",
       "type": "process",
-      "command": "${command:python.interpreterPath}",
-      "args": ["-m", "scripts.preflight_supabase"],
-      "options": {
-        "cwd": "${workspaceFolder}"
-      },
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-sync",
+        "python",
+        "-m",
+        "scripts.supabase",
+        "preflight"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: Build",
+      "type": "npm",
+      "script": "build:local",
+      "path": "frontend",
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
+      "group": "build",
+      "problemMatcher": []
     },
     {
       "label": "Frontend: Dev",
       "type": "npm",
       "script": "dev",
       "path": "frontend",
+      "dependsOn": ["Environment: Check"],
+      "dependsOrder": "sequence",
       "isBackground": true,
-      "problemMatcher": [],
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      }
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "qualityGate",
+      "type": "promptString",
+      "description": "Quality: Listに表示されるgate IDまたは意味単位",
+      "default": "python-static"
     }
   ]
 }
