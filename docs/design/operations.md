@@ -1,0 +1,49 @@
+(operations)=
+# 運用
+
+repository 内では起動前検証、migration、worker 実行、品質確認、調査用成果物の生成を
+コード化する。配置、backup、監視通知、権限管理は外部運用基盤の責務とし、その入力と
+確認条件を application の設定と health signal に接続する。
+
+## 起動
+
+1. 実行基盤が revision、設定、credential を配置する。
+2. migration job が schema を確認して必要な migration を適用する。
+3. API と worker が設定と packaged resource を検証して起動する。
+4. `/health` が API process の稼働を確認する。
+5. frontend が対応する API contract を使って公開される。
+
+各 process と `doctor` は同じ `AppSettings` と resource loader を使う。VS Code、
+Docker、配布基盤で別の設定 validation を作らない。
+
+`/health` は liveness signal であり、database や queue の readiness を保証しない。
+schema と接続の確認は migration と環境別 preflight が担当する。外部運用基盤は
+liveness、migration 結果、worker の operation signal を別々に監視する。
+
+## 定常運用
+
+API request、worker operation、LLM provider call を correlation ID で追跡する。
+error code、latency、queue 滞留、再試行、provider 使用量を外部監視基盤へ渡す。
+ログ本文に private state と credential を含めない。
+
+worker の lease 中断は `running` operation の再取得で回復し、`attempt_count` に残す。
+worker が捕捉した失敗は safe Problem Details とともに `failed` へ確定し、自動
+requeue しない。再実行が必要な場合は、原因を解消して新しい operation として要求する。
+
+## 問題調査
+
+1. 利用者向け error code と発生時刻から request または operation を特定する。
+2. 構造化ログと queue 状態で失敗した境界を絞る。
+3. 公開 state と認可された完全 state の不整合を確認する。
+4. 同じ設定と fixture で再現テストを作る。
+5. 修正後に対象 test と品質 profile を実行する。
+
+architecture の `architecture.json` と品質 report は、AI と人が同じ構造と検証結果を
+参照する調査入力になる。
+
+## 外部運用境界
+
+本番の deployment、database backup と restore、monitoring rule、on-call 通知、
+credential rotation は配布基盤で管理する。repository は health endpoint、構造化
+signal、migration command、設定契約を提供し、外部基盤固有の手順を application
+code へ埋め込まない。

@@ -802,9 +802,13 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     """利用場所ごとに独自の品質判定経路を作らない。"""
 
     launch = json.loads((ROOT / ".vscode" / "launch.json").read_text(encoding="utf-8"))
+    tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
     settings = json.loads((ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))
     extensions = json.loads((ROOT / ".vscode" / "extensions.json").read_text(encoding="utf-8"))
     launch_names = {configuration["name"] for configuration in launch["configurations"]}
+    task_commands = {
+        task["label"]: task.get("args", []) for task in tasks["tasks"] if task["type"] == "process"
+    }
     workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
 
     assert {
@@ -814,6 +818,11 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         "Quality: Deep (Confirmation Required)",
         "Tests: Current File (Quick)",
     } <= launch_names
+    assert task_commands["Quality: Quick"] == ["-m", "scripts.quality", "quick"]
+    assert task_commands["Quality: Check"] == ["-m", "scripts.quality", "check"]
+    assert task_commands["Docs: Inspect"] == ["-m", "scripts.docs", "inspect"]
+    assert task_commands["Docs: Build"] == ["-m", "scripts.docs", "build"]
+    assert task_commands["Architecture: Analyze"] == ["-m", "scripts.architecture"]
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" in workflow
     assert "python -m scripts.quality deep --confirm-deep" in workflow
@@ -989,9 +998,11 @@ def test_profiles_require_their_declared_artifacts(
     quick_issues = quality._required_artifact_issues("quick", run_dir)
     deep_issues = quality._required_artifact_issues("deep", run_dir)
 
-    assert quick_issues == ["必須成果物がありません: test-results/quick.xml"]
+    assert "必須成果物がありません: test-results/quick.xml" in quick_issues
+    assert "必須成果物がありません: build/architecture/architecture.json" in quick_issues
     assert "必須成果物がありません: coverage/coverage.xml" in deep_issues
-    assert "必須成果物がありません: build/docs/sphinx/index.html" in deep_issues
+    assert "必須成果物がありません: build/docs/index.html" in deep_issues
+    assert "必須成果物がありません: build/docs/report.json" in deep_issues
     assert "必須成果物がありません: build/frontend/index.html" in deep_issues
     assert "browser成果物がありません: desktop.png" in deep_issues
     assert "必須成果物がありません: test-results/deep.xml" in deep_issues
@@ -1014,7 +1025,7 @@ def test_required_artifacts_must_be_updated_by_the_current_run(tmp_path: Path) -
         started_at=quality.utc_now(),
     )
 
-    assert issues == ["必須成果物が現在runで更新されていません: test-results/quick.xml"]
+    assert "必須成果物が現在runで更新されていません: test-results/quick.xml" in issues
 
 
 def test_execute_stops_owned_supabase_when_runner_is_interrupted(

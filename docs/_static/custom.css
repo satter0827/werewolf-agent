@@ -1,0 +1,15 @@
+body {
+  color: #243b53;
+}
+
+div.document {
+  max-width: 74rem;
+}
+
+table.docutils {
+  width: 100%;
+}
+
+code {
+  overflow-wrap: anywhere;
+}

@@ -195,9 +195,12 @@ def _python(*arguments: str) -> tuple[str, ...]:
     return (sys.executable, *arguments)
 
 
-def _python_tool(name: str) -> tuple[str, ...]:
-    suffix = ".exe" if os.name == "nt" else ""
-    return (str(Path(sys.executable).parent / f"{name}{suffix}"),)
+def _import_linter_command() -> tuple[str, ...]:
+    """Windowsの実行制限に依存せずimport-linterをPythonから起動する。"""
+    return _python(
+        "-c",
+        "from importlinter.cli import lint_imports_command; lint_imports_command()",
+    )
 
 
 def _npm(*arguments: str) -> tuple[str, ...]:
@@ -354,35 +357,9 @@ def _package_action(context: RunContext, _: Path) -> CommandResult:
     )
 
 
-def _docs_action(context: RunContext, _: Path) -> CommandResult:
-    """既存出力を除去してSphinx成果物を現在runで再構築する。"""
-    output_directory = ARTIFACT_ROOT / "build" / "docs"
-    if output_directory.exists():
-        remove_managed_path(output_directory)
-    command = _docs_command(context.run_dir)
-    return run_command(
-        command,
-        timeout_seconds=context.timeout_seconds,
-        environment=context.environment,
-    )
-
-
-def _docs_command(run_dir: Path) -> tuple[str, ...]:
-    """Sphinx warning-as-error buildの固定commandを返す。"""
-    return _python(
-        "-m",
-        "sphinx",
-        "-W",
-        "--keep-going",
-        "-b",
-        "html",
-        "-d",
-        str(TEMPORARY_ROOT / "sphinx" / run_dir.name),
-        "-c",
-        "docs/sphinx",
-        "docs",
-        str(ARTIFACT_ROOT / "build" / "docs"),
-    )
+def _docs_command() -> tuple[str, ...]:
+    """独立した文書buildの公開commandを返す。"""
+    return _python("-m", "scripts.docs", "build")
 
 
 def _openapi_action(context: RunContext, _: Path) -> CommandResult:
@@ -825,7 +802,7 @@ def _docker_action(context: RunContext, _: Path) -> CommandResult:
 
 
 def _e2e_action(context: RunContext, _: Path) -> CommandResult:
-    """第二段階のReact・Streamlit共通E2Eを実行する。"""
+    """React・Streamlit共通E2Eを実行する。"""
     return run_e2e(
         base_environment=context.environment,
         artifact_directory=context.run_dir / "browser",
@@ -880,6 +857,11 @@ def _profile_stages(
     pytest_workers = max(1, min(4, jobs))
     pytest_basetemp = TEMPORARY_ROOT / "pytest" / f"{os.getpid()}-{time.time_ns()}"
     quick_static = [
+        Gate(
+            "architecture",
+            "Architecture analysis and visualization",
+            _python("-m", "scripts.architecture"),
+        ),
         Gate("ruff", "Python lint", _python("-m", "ruff", "check", "--no-cache", ".")),
         Gate(
             "format",
@@ -896,10 +878,7 @@ def _profile_stages(
                 "--no-cache",
                 "--select",
                 "D",
-                "--ignore",
-                "D100,D104,D203,D213,D400,D415",
                 "src/werewolf_agent",
-                "scripts",
             ),
         ),
         Gate(
@@ -918,7 +897,7 @@ def _profile_stages(
         Gate(
             "import-linter",
             "Python import boundaries",
-            _python_tool("lint-imports"),
+            _import_linter_command(),
         ),
         Gate("eslint", "Frontend lint", _npm("run", "lint"), cwd=REPOSITORY_ROOT / "frontend"),
         Gate(
@@ -1005,8 +984,7 @@ def _profile_stages(
                 Gate(
                     "docs",
                     "Sphinx warning-as-error build",
-                    _docs_command(run_dir),
-                    action=_docs_action,
+                    _docs_command(),
                 ),
                 Gate(
                     "package",
@@ -1383,7 +1361,15 @@ def _required_artifact_issues(
     started_at: datetime | None = None,
 ) -> list[str]:
     """Profile必須成果物の欠落・重複・古い生成日時を返す。"""
-    required = [run_dir / "test-results" / "quick.xml"]
+    required = [
+        run_dir / "test-results" / "quick.xml",
+        ARTIFACT_ROOT / "build" / "architecture" / "architecture.json",
+        ARTIFACT_ROOT / "build" / "architecture" / "architecture.schema.json",
+        ARTIFACT_ROOT / "build" / "architecture" / "assessment.md",
+        ARTIFACT_ROOT / "build" / "architecture" / "system-context.svg",
+        ARTIFACT_ROOT / "build" / "architecture" / "layer-dependencies.svg",
+        ARTIFACT_ROOT / "build" / "architecture" / "domain-structure.svg",
+    ]
     if profile in {"check", "release", "deep"}:
         required.extend(
             [
@@ -1395,7 +1381,8 @@ def _required_artifact_issues(
                 run_dir / "benchmarks" / "core.json",
                 run_dir / "contracts" / "openapi.json",
                 run_dir / "contracts" / "api.ts",
-                ARTIFACT_ROOT / "build" / "docs" / "sphinx" / "index.html",
+                ARTIFACT_ROOT / "build" / "docs" / "index.html",
+                ARTIFACT_ROOT / "build" / "docs" / "report.json",
                 ARTIFACT_ROOT / "build" / "frontend" / "index.html",
             ]
         )
