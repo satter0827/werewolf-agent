@@ -1,40 +1,44 @@
 (development)=
 # 開発
 
-変更は要求、設計境界、実装、検証、文書を一つの単位として扱う。人が判断するのは
-要求の優先順位、外部サービスの権限、公開判断であり、再現可能な作業は repository
-内のコマンドへ実装する。
+## 目的
 
-## 開発の流れ
+要求、設計境界、実装、検証、文書を一つの変更単位として扱う。再現可能な操作は
+repository内のcommandへ実装し、VS Code、CI、AIから同じ入口を使用する。
 
-1. README、対象設計書、近い実装とテストを読み、要求を外部挙動と制約に分ける。
-2. 変更する責務と依存方向を決め、大きな境界変更は設計書へ先に反映する。
-3. 再現テストまたは契約テストを用意し、最小の責務へ実装する。
-4. formatter、lint、型、対象テストを実行する。
-5. 文書、設定例、generated contract、不要な旧構造を同じ変更で整える。
-6. 品質 profile を実行し、生成された report で結果を確認する。
+## 責務
 
-## 環境構築
+1. 対象のdesign文書、実装、テスト、設定を確認する。
+2. 原因を所有責務と依存方向まで絞る。
+3. 境界変更をdesign文書とarchitecture manifestへ反映する。
+4. 再現テストを追加し、所有moduleへ実装する。
+5. generated contract、設定例、不要な旧構造を同じ変更で整える。
+6. 対象gateと品質profileを実行する。
+
+## 境界
+
+- domain ruleはdomain、利用者要求の調整はapplicationに置く。
+- 外部技術はadapters、HTTP deliveryはapi、queue実行はworkerに置く。
+- CLIとStreamlitはclientsに置き、HTTP contractだけを使用する。
+- 可変値はsettingsまたは所有機能のresourceへ置く。
+- 互換fallback、未使用path、横断的なconstants/messages moduleを残さない。
+
+## 環境
 
 ```powershell
-uv sync --frozen --all-groups --all-extras
+uv run --no-project python -m scripts.environment setup check
 uv run --no-sync werewolf-agent doctor
 ```
 
-依存が同期済みの環境では `uv run --no-sync` を使う。品質 runner は依存取得や
-browser download を行わないため、必要な image と browser は実行前に準備する。
+`ensure`はlockとtool versionのfingerprintを確認し、不足または変更時だけ同期する。
+registry、browser配布元、image registryへの接続は環境準備で許可する。
 
-## 実装規則
+VS Codeでは`Project: Setup`、`Verify: Quick`、`Verify: Check`を日常操作に使用する。
+個別gateは`python -m scripts.quality gate <selector>`から実行する。
+`React Stack`と`Streamlit Stack`はローカルSupabaseを含むprocessを所有し、debug
+sessionの終了時にまとめて停止する。
 
-- domain rule は domain、ID を含む利用者要求は usecase に置く。
-- 外部サービス接続は adapters、起動と入出力は interfaces に置く。
-- 可変値は設定へ寄せ、設定名と検証を一か所で定義する。
-- 後方互換用の fallback を残さず、不要な path と処理を削除する。
-- 失敗を再現できる test を先に追加し、乱数 seed と fixture を固定する。
-- public Python API には Google style の docstring を記述する。
+## 検証
 
-## 文書の更新
-
-完成した仕様と構造は `docs/design`、断片的な調査と引き継ぎは `docs/notes` に置く。
-Sphinx の公開面は `docs/index.md` から到達できるようにする。構造、API docstring、
-参照切れは `uv run --no-sync python -m scripts.docs inspect` と Sphinx build で検査する。
+formatter、lint、型、対象テストを先に実行し、変更範囲に応じてQuick、Check、
+Release、Deepへ広げる。完成した仕様は`docs/design`、調査と引継ぎは`docs/notes`に置く。

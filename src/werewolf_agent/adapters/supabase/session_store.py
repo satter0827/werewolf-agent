@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 
-from werewolf_agent.configuration.constants import JSON_ENCODING
+from werewolf_agent.adapters.supabase.constants import JSON_ENCODING
 
 SESSION_FILE_NAME: Final = "session.json"
 APP_DIR_NAME: Final = "werewolf-agent"

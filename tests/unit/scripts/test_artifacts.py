@@ -3,7 +3,21 @@
 from pathlib import Path
 
 import pytest
-from scripts._infra.artifacts import publish_directory
+from scripts._infra.artifacts import publish_directory, staged_directory
+
+
+def test_staged_directory_uses_repository_runtime_and_cleans_up(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Scratch directoryを指定runtime内に作り、終了時に削除する。"""
+    monkeypatch.setattr("scripts._infra.artifacts.TEMPORARY_ROOT", tmp_path)
+
+    with staged_directory("docs") as staging:
+        assert staging.parent == tmp_path / "build"
+        (staging / "index.html").write_text("ok", encoding="utf-8")
+
+    assert not staging.exists()
 
 
 def test_publish_directory_replaces_validated_build(tmp_path: Path) -> None:

@@ -14,6 +14,7 @@ from werewolf_agent.api.presenters import (
     operation_response,
     timeline_response,
 )
+from werewolf_agent.application import Actor
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     AdvanceOperationRequest,
@@ -28,7 +29,6 @@ from werewolf_agent.contracts.schemas import (
     GameTimelineResponse,
     PlayerObservationResponse,
 )
-from werewolf_agent.usecase import Actor
 
 router = APIRouter(tags=["games"])
 IdempotencyKey = Annotated[str, Header(alias="Idempotency-Key", min_length=8, max_length=200)]

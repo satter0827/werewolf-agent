@@ -1,12 +1,22 @@
 import pytest
 
-from werewolf_agent.agents.langchain.service import (
+from werewolf_agent.adapters.llm.langchain.constants import (
     LLM_SPEECH_MESSAGE_MAX_CHARS,
     PROMPT_RECENT_SPEECH_LIMIT,
     PROMPT_RECENT_VOTE_ROUND_LIMIT,
-    LangChainDecisionProvider,
+)
+from werewolf_agent.adapters.llm.langchain.prompting import (
     _compact_observation,
     _decision_format_instructions,
+)
+from werewolf_agent.adapters.llm.langchain.service import (
+    LangChainDecisionProvider,
+)
+from werewolf_agent.adapters.resources import load_llm_definitions
+from werewolf_agent.agents.definitions import (
+    FakeDecisionCatalog,
+    PromptDefinition,
+    PromptMessageDefinition,
 )
 from werewolf_agent.agents.models import (
     AgentActionType,
@@ -16,12 +26,6 @@ from werewolf_agent.agents.models import (
     VisiblePlayer,
 )
 from werewolf_agent.agents.tracing import LlmInvocationTrace
-from werewolf_agent.configuration.definitions import (
-    FakeDecisionCatalog,
-    PromptDefinition,
-    PromptMessageDefinition,
-)
-from werewolf_agent.configuration.resources import load_llm_definitions
 
 
 def players() -> list[VisiblePlayer]:

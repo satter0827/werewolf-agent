@@ -5,8 +5,8 @@ from __future__ import annotations
 import uvicorn
 
 from werewolf_agent.api.bootstrap import create_app
-from werewolf_agent.configuration import get_settings
 from werewolf_agent.observability import configure_entrypoint_logging
+from werewolf_agent.settings import get_settings
 
 app = create_app()
 

@@ -1,4 +1,4 @@
-"""Minimal client protocol shared by user interfaces."""
+"""Minimal protocol shared by user clients."""
 
 from __future__ import annotations
 

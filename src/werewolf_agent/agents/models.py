@@ -5,10 +5,10 @@ from __future__ import annotations
 from enum import StrEnum
 from typing import Any, ClassVar, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.configuration.definitions import PlayerProfile as PlayerProfileDefinition
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.agents.definitions import PlayerProfile as PlayerProfileDefinition
+from werewolf_agent.agents.messages import (
     MESSAGE_AGENT_PROFILES_REQUIRED,
     MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
     MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
@@ -17,8 +17,7 @@ from werewolf_agent.configuration.messages import (
     message_target_required,
     message_unsupported_type,
 )
-from werewolf_agent.configuration.models import StrictModel
-from werewolf_agent.configuration.validation import non_blank, optional_non_blank
+from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
 
 class AgentPhase(StrEnum):
@@ -49,8 +48,10 @@ class AgentActionType(StrEnum):
     PASS = "pass"
 
 
-class _LlmModel(StrictModel):
+class _LlmModel(BaseModel):
     """Base model for LLM domain values."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class VisiblePlayer(_LlmModel):

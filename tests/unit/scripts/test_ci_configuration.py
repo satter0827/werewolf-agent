@@ -17,18 +17,18 @@ def test_quality_workflow_keeps_pr_main_and_manual_coverage() -> None:
     assert "python -m scripts.quality deep --confirm-deep" in workflow
 
 
-def test_quality_workflow_prepares_dependencies_before_offline_runner() -> None:
-    """取得を伴う準備をrunnerの外へ分離する。"""
+def test_quality_workflow_uses_the_repository_environment_command() -> None:
+    """取得を伴う準備をrepository内のenvironment commandへ分離する。"""
     workflow = _read(".github/workflows/quality.yml")
 
     for command in (
-        "npm ci",
-        "npm audit --audit-level=low",
-        "docker compose --profile e2e build --pull=false",
-        "docker build --pull=false --target runtime",
+        "python -m scripts.environment setup check",
+        "python -m scripts.environment setup release",
+        "python -m scripts.environment setup deep",
     ):
         assert command in workflow
-    assert "playwright install" not in workflow
+    assert "npm audit" not in workflow
+    assert "--pull=false" not in workflow
 
 
 def test_backend_dev_image_contains_the_test_suite() -> None:
@@ -38,7 +38,7 @@ def test_backend_dev_image_contains_the_test_suite() -> None:
     dev = dockerfile.split("FROM base AS dev", 1)[1].split("FROM base AS runtime", 1)[0]
     for copied_path in (".github", "docker", "docs", "frontend", "tests"):
         assert f"COPY {copied_path}" in dev
-    assert "openapi.json" in dev
+    assert "contracts/openapi.json" in dev
 
 
 def test_compose_exposes_isolated_runtime_and_test_services() -> None:

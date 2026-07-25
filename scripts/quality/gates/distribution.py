@@ -194,13 +194,13 @@ def distribution_contract() -> tuple[tuple[str, ...], tuple[str, ...]]:
     scripts = required_table(project, "scripts", "project.scripts")
     if not all(isinstance(name, str) and isinstance(value, str) for name, value in scripts.items()):
         raise ValueError("project.scriptsは文字列の名前と参照先で指定してください。")
-    source_path = REPOSITORY_ROOT / "src" / "werewolf_agent" / "resources"
+    source_path = REPOSITORY_ROOT / "src" / "werewolf_agent"
     resources = [
-        (Path("werewolf_agent/resources") / path.relative_to(source_path)).as_posix()
+        (Path("werewolf_agent") / path.relative_to(source_path)).as_posix()
         for path in source_path.rglob("*")
         if path.is_file()
         and "__pycache__" not in path.parts
-        and path.suffix not in {".pyc", ".pyo"}
+        and path.suffix not in {".py", ".pyc", ".pyo"}
     ]
     entrypoints = tuple(sorted(f"{name} = {value}" for name, value in scripts.items()))
     return tuple(sorted(resources)), entrypoints

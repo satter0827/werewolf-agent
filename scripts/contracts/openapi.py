@@ -16,7 +16,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).resolve().parents[2] / "openapi.json",
+        default=Path(__file__).resolve().parents[2] / "contracts" / "openapi.json",
     )
     return parser
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from werewolf_agent.application.operations import QueuedOperation
 from werewolf_agent.contracts.api import OperationResponse
 from werewolf_agent.contracts.schemas import (
     GameListResponse,
@@ -13,7 +14,6 @@ from werewolf_agent.contracts.schemas import (
     PlayerObservationResponse,
     ProblemDetails,
 )
-from werewolf_agent.usecase.operations import QueuedOperation
 
 
 def wire(model_type: type[BaseModel], source: BaseModel) -> BaseModel:

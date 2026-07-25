@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import os
 from concurrent.futures import ThreadPoolExecutor
-from types import SimpleNamespace
-from typing import cast
 from uuid import UUID, uuid4
 
 import psycopg
@@ -14,11 +12,9 @@ from psycopg.errors import InsufficientPrivilege, LockNotAvailable
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from werewolf_agent.configuration import AppSettings
-from werewolf_agent.interfaces.worker.service import (
-    _claim_request,
-    process_worker_batch,
-)
+from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
+from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker.service import process_worker_batch
 
 INSTANCE_ID = UUID(int=0)
 
@@ -282,18 +278,14 @@ def test_concurrent_workers_claim_a_request_once() -> None:
         setup.commit()
 
         def claim(worker_id: str) -> UUID | None:
-            settings = cast(
-                AppSettings,
-                SimpleNamespace(
-                    supabase_worker_id=worker_id,
-                    supabase_worker_claim_seconds=30,
-                ),
-            )
             with (
                 psycopg.connect(dsn, row_factory=dict_row) as connection,
                 connection.transaction(),
             ):
-                row = _claim_request(connection, settings)
+                row = SupabaseWorkerStore(connection).claim_request(
+                    worker_id=worker_id,
+                    claim_seconds=30,
+                )
                 return row["request_id"] if row else None
 
         with ThreadPoolExecutor(max_workers=2) as executor:
@@ -335,21 +327,18 @@ def test_request_returns_to_queue_when_worker_stops_before_commit() -> None:
         assert request_row is not None
         request_id = request_row[0]
         setup.commit()
-        settings = cast(
-            AppSettings,
-            SimpleNamespace(
-                supabase_worker_id="stopped-worker",
-                supabase_worker_claim_seconds=30,
-            ),
+        claimed = SupabaseWorkerStore(first).claim_request(
+            worker_id="stopped-worker",
+            claim_seconds=30,
         )
-
-        claimed = _claim_request(first, settings)
         assert claimed is not None
         assert claimed["request_id"] == request_id
         first.rollback()
 
-        settings.supabase_worker_id = "replacement-worker"
-        reclaimed = _claim_request(second, settings)
+        reclaimed = SupabaseWorkerStore(second).claim_request(
+            worker_id="replacement-worker",
+            claim_seconds=30,
+        )
 
         assert reclaimed is not None
         assert reclaimed["request_id"] == request_id

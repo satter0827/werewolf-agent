@@ -1,7 +1,7 @@
 (runtime-configuration-reference)=
 # 実行時設定
 
-設定は `werewolf_agent.configuration` が起動時に読み込み、型、範囲、相互参照を検証
+設定は `werewolf_agent.settings` が起動時に読み込み、型、範囲、相互参照を検証
 する。具体的な環境変数名と default は `.env.example` と settings model を正とする。
 
 ## 設定領域

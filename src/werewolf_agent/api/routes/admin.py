@@ -8,6 +8,7 @@ from werewolf_agent.api.dependencies import (
     ServicesDependency,
 )
 from werewolf_agent.api.presenters import reveal_response
+from werewolf_agent.application import Actor
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     AdminLlmTraceListResponse,
@@ -17,7 +18,6 @@ from werewolf_agent.contracts.api import (
     ReplayVerificationResponse,
 )
 from werewolf_agent.contracts.schemas import GameRevealResponse
-from werewolf_agent.usecase import Actor
 
 router = APIRouter(prefix="/admin", tags=["administration"])
 
@@ -30,7 +30,7 @@ def reveal_game(
 ) -> GameRevealResponse:
     """Return complete game state only to an administrator."""
     _require_admin(principal.is_admin)
-    if not services.admin_reveal_enabled:
+    if not services.reveal_api_enabled:
         raise AppError(
             "完全状態の取得は無効です。",
             code=ErrorCode.API_UNAVAILABLE,

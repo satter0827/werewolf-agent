@@ -14,7 +14,7 @@ from typing import Any, Final, TextIO, cast
 import structlog
 from structlog.typing import EventDict
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.observability.constants import (
     JSON_ENCODING,
     JSON_SEPARATORS,
     LOG_OUTPUT_BOTH,
@@ -23,8 +23,9 @@ from werewolf_agent.configuration.constants import (
     LOG_OUTPUT_STDERR,
     LOG_OUTPUT_STDOUT,
 )
-from werewolf_agent.configuration.settings import APP_NAME, AppSettings
 from werewolf_agent.security.redaction import redact_mapping, redact_text
+from werewolf_agent.settings.defaults import APP_NAME
+from werewolf_agent.settings.settings import AppSettings
 
 THIRD_PARTY_LOGGER_NAMES: Final = (
     "httpcore",

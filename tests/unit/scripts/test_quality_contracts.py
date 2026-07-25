@@ -16,7 +16,12 @@ def test_contract_comparison_ignores_platform_newline_difference(
     """同じ生成内容をWindows改行だけで品質違反にしない。"""
     frontend = tmp_path / "frontend"
     (frontend / "src" / "generated").mkdir(parents=True)
-    (tmp_path / "openapi.json").write_text("{\n}\n", encoding="utf-8", newline="\r\n")
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts" / "openapi.json").write_text(
+        "{\n}\n",
+        encoding="utf-8",
+        newline="\r\n",
+    )
     (frontend / "src" / "generated" / "api.ts").write_text(
         "export {};\n",
         encoding="utf-8",
@@ -62,4 +67,4 @@ def test_contract_cli_defaults_to_tracked_repository_contract() -> None:
     """公開moduleの既定出力をscripts配下ではなくGit管理契約へ向ける。"""
     output = openapi.build_parser().parse_args([]).output
 
-    assert output == Path(__file__).resolve().parents[3] / "openapi.json"
+    assert output == Path(__file__).resolve().parents[3] / "contracts" / "openapi.json"

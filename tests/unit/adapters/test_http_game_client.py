@@ -4,8 +4,8 @@ import httpx
 
 from werewolf_agent.adapters.http import HttpGameClient
 from werewolf_agent.adapters.supabase import SupabaseSession
-from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts.schemas import GameSetupOptionsResponse
+from werewolf_agent.settings import AppSettings
 
 
 def test_get_setup_options_uses_public_api_config_not_supabase_data_api() -> None:

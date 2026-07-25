@@ -182,7 +182,7 @@ services:
       [
         "streamlit",
         "run",
-        "src/werewolf_agent/interfaces/streamlit/app.py",
+        "src/werewolf_agent/clients/streamlit/app.py",
         "--server.address=0.0.0.0",
         "--server.port=8501",
         "--browser.gatherUsageStats=false",

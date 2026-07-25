@@ -10,7 +10,6 @@ import signal
 import stat
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
@@ -22,7 +21,8 @@ from typing import Any, TextIO
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = REPOSITORY_ROOT / ".werewolf-agent"
 QUALITY_ROOT = ARTIFACT_ROOT / "quality"
-TEMPORARY_ROOT = Path(tempfile.gettempdir()) / "werewolf-agent"
+QUALITY_COMPOSE_PROJECT_NAME = "werewolf-agent-quality"
+TEMPORARY_ROOT = ARTIFACT_ROOT / "runtime" / "tmp"
 TEMPORARY_CACHE_DIRECTORIES = (
     TEMPORARY_ROOT / "cache" / "mypy",
     TEMPORARY_ROOT / "cache" / "pytest",
@@ -67,23 +67,13 @@ _URL_CREDENTIAL_PATTERN = re.compile(r"(?i)([a-z][a-z0-9+.-]*://[^\s:/@]+:)([^\s
 _TEXT_ARTIFACT_SUFFIXES = frozenset({".json", ".jsonl", ".log", ".md", ".txt", ".xml"})
 _REMOVE_ATTEMPTS = 5
 _REMOVE_RETRY_SECONDS = 0.2
-_BLOCKED_NETWORK_PROXY = "http://127.0.0.1:9"
-_LOOPBACK_NO_PROXY = "127.0.0.1,localhost,::1"
-OFFLINE_GUARD_ENVIRONMENT = {
-    "ALL_PROXY": _BLOCKED_NETWORK_PROXY,
+ISOLATION_ENVIRONMENT = {
     "ANONYMIZED_TELEMETRY": "false",
     "DO_NOT_TRACK": "1",
-    "HTTP_PROXY": _BLOCKED_NETWORK_PROXY,
-    "HTTPS_PROXY": _BLOCKED_NETWORK_PROXY,
     "LANGCHAIN_TRACING_V2": "false",
-    "NO_PROXY": _LOOPBACK_NO_PROXY,
     "OTEL_SDK_DISABLED": "true",
     "SUPABASE_TELEMETRY_DISABLED": "true",
     "WEREWOLF_LLM_PROVIDER": "fake",
-    "all_proxy": _BLOCKED_NETWORK_PROXY,
-    "http_proxy": _BLOCKED_NETWORK_PROXY,
-    "https_proxy": _BLOCKED_NETWORK_PROXY,
-    "no_proxy": _LOOPBACK_NO_PROXY,
 }
 
 
@@ -108,7 +98,7 @@ def utc_now() -> datetime:
 
 
 def create_run_directory(profile: str) -> tuple[str, Path]:
-    """OS一時領域に一意なrun IDとscratch directoryを作成する。"""
+    """Repository管理領域に一意なrun IDとscratch directoryを作成する。"""
     run_id = f"{utc_now():%Y%m%dT%H%M%SZ}-{profile}-{os.getpid()}"
     run_dir = TEMPORARY_ROOT / "quality" / "runs" / run_id
     for relative in (
@@ -170,7 +160,7 @@ def quality_environment(
             "PYTHONUTF8": "1",
         }
     )
-    environment.update(OFFLINE_GUARD_ENVIRONMENT)
+    environment.update(ISOLATION_ENVIRONMENT)
     if run_dir is not None:
         prepare_temporary_directories()
         temporary_cache = TEMPORARY_ROOT / "cache"

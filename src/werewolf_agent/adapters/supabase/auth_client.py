@@ -7,13 +7,13 @@ from typing import Any
 
 import httpx
 
-from werewolf_agent.adapters.supabase.session_store import SupabaseSession
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.adapters.supabase.messages import (
     MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION,
     MESSAGE_SUPABASE_AUTH_INVALID_RESPONSE,
     MESSAGE_SUPABASE_AUTH_UNAVAILABLE,
     message_supabase_auth_http_error,
 )
+from werewolf_agent.adapters.supabase.session_store import SupabaseSession
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 

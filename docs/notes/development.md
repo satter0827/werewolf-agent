@@ -54,7 +54,7 @@
 - 行動、解決、フェーズ、勝敗、可視性をステートレスなポリシーへ分離した
 - `domain/game`を`domain`直下へ展開し、`domain/llm`を削除した
 - `usecase/jobs`と`usecase/internal`を廃止し、公開関数、DTO、portへ整理した
-- LLMを`agents`、LangChain実装を`agents/langchain`へ分離した
+- LLMを`agents`、LangChain実装を`adapters/llm/langchain`へ分離した
 - fake providerをLangChain標準`FakeListLLM`へ統一した
 - `api`を`adapters`、`entrypoint`を`interfaces`へ変更した
 - `commons`を`configuration`、`observability`、`security`へ分割した
@@ -75,16 +75,16 @@
 | Path | 責務 |
 | --- | --- |
 | `src/werewolf_agent/domain/` | 集約、状態、イベント、ポリシー、公開ゲームAPI |
-| `src/werewolf_agent/usecase/` | `GameApplication`、内部handler、repository port |
+| `src/werewolf_agent/application/` | `GameApplication`、内部handler、repository port |
 | `src/werewolf_agent/agents/` | provider非依存の観測、意思決定、player port |
-| `src/werewolf_agent/agents/langchain/` | LangChain、LangGraph、FakeListLLM |
+| `src/werewolf_agent/adapters/llm/langchain/` | LangChain、LangGraph、FakeListLLM |
 | `src/werewolf_agent/adapters/` | GameClient、usecase bridge、外部サービスadapter |
 | `src/werewolf_agent/adapters/agents/` | agentsとusecaseを接続するgame driver |
 | `src/werewolf_agent/adapters/supabase/` | Auth、repository、operation、private trace sink |
 | `src/werewolf_agent/api/` | FastAPIとHTTP composition root |
-| `src/werewolf_agent/interfaces/` | CLI、Streamlit、非同期worker |
+| `src/werewolf_agent/clients/` | CLI、Streamlit、非同期worker |
 | `frontend/` | generated clientを使うReact本番UI |
-| `src/werewolf_agent/configuration/` | settings、TOML、resource検証 |
+| `src/werewolf_agent/settings/` | settings、TOML、resource検証 |
 | `src/werewolf_agent/observability/` | loggingと実行context |
 | `src/werewolf_agent/security/` | redaction |
 | `src/werewolf_agent/contracts/` | 外部wire schemaと安全なerror |
@@ -93,17 +93,17 @@
 
 | 定義 | 既定ファイル | override |
 | --- | --- | --- |
-| ルールとポリシー構成 | `resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` |
-| 役職と陣営 | `resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` |
-| 能力 | `resources/game/abilities.toml` | `WEREWOLF_GAME_ABILITIES_FILE` |
-| 背景、表示名、説明 | `resources/presentation/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` |
-| 既定プリセット | `resources/settings/defaults.toml` | `WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID` |
-| LLM players | `resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` |
-| decision graph | `resources/llm/decision_graphs.toml` | `WEREWOLF_LLM_DECISION_GRAPHS_FILE` |
-| fake応答 | `resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
-| prompt | `resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
+| ルールとポリシー構成 | `application/resources/game/rules.toml` | `WEREWOLF_GAME_RULES_FILE` |
+| 役職と陣営 | `application/resources/game/roles.toml` | `WEREWOLF_GAME_ROLES_FILE` |
+| 能力 | `application/resources/game/abilities.toml` | `WEREWOLF_GAME_ABILITIES_FILE` |
+| 背景、表示名、説明 | `application/resources/presentation/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` |
+| 既定プリセット | `settings/resources/defaults.toml` | `WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID` |
+| LLM players | `agents/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` |
+| decision graph | `agents/resources/llm/decision_graphs.toml` | `WEREWOLF_LLM_DECISION_GRAPHS_FILE` |
+| fake応答 | `agents/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
+| prompt | `agents/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
 
-TOMLと環境変数は`configuration`だけが読みます。domainへは`RuleSetDefinition`、usecaseへは不変の`UsecaseContext`を注入します。
+TOMLと環境変数は`configuration`だけが読みます。domainへは`RuleSetDefinition`、usecaseへは不変の`ApplicationContext`を注入します。
 
 ## 依存制約
 
@@ -141,7 +141,7 @@ uv run --extra worker werewolf-agent-worker run
 Streamlit:
 
 ```bash
-uv run --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py
+uv run --extra streamlit streamlit run src/werewolf_agent/clients/streamlit/app.py
 ```
 
 全検証:

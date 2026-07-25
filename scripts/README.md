@@ -8,6 +8,7 @@
 ## 実行方法
 
 ```bash
+python -m scripts.environment ensure check
 python -m scripts.quality quick
 python -m scripts.quality check
 python -m scripts.quality release
@@ -31,8 +32,9 @@ CPU数と設定上限の小さい方です。worker数は設定上限以下、ti
 branch coverage下限は`pyproject.toml`の`tool.werewolf-quality`から読みます。
 総合coverage下限は`tool.coverage.report.fail_under`と共有します。
 
-Release/Deepの初回実行前にChromium内蔵E2E image、Supabase image、runtime imageを準備します。
-品質コマンドは不足物を取得せず`blocked`にします。
+`scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython、
+Node、Supabase image、E2E image、runtime imageを準備します。品質commandは不足物を
+取得せず`blocked`にします。
 
 ## 判定
 
@@ -62,8 +64,8 @@ profileごとのJUnit、coverage、benchmark、docs、frontend、package、brows
 
 品質実行は依存install、browser download、Docker pull、外部API呼び出しを行いません。
 子processからprovider用の秘密情報と外部base URLを除外し、`WEREWOLF_LLM_PROVIDER`
-を`fake`へ固定してtelemetryを無効化します。外部向けproxyは到達不能なloopbackへ
-固定し、`NO_PROXY`はlocalhostだけに限定します。Playwrightは外部requestの試行も
+を`fake`へ固定してtelemetryを無効化します。package registryとimage registryは
+環境準備で使用できます。Playwrightは外部requestの試行も
 失敗にし、Chromiumの背景通信と更新確認を無効化します。E2Eは既存のReact／Streamlit
 Playwright suiteをcontainer内で共有し、子processの出力と画像をrun固有領域へ保存して
 終了時に伏せ字化します。
@@ -72,8 +74,8 @@ Playwright suiteをcontainer内で共有し、子processの出力と画像をrun
 品質runごとの一時`SUPABASE_HOME`を使い、通常開発用の認証profileや更新cacheを
 読みません。
 Supabase CLIの出力からは公開キー、URL、DB接続先だけを許可し、service-role値は
-引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageが
-ローカルにない場合はダウンロードせず環境不備として終了します。
+引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageは
+environment準備で取得します。
 Release/Deepは固有project IDと未使用portの隔離DBを使い、
 品質用session、container、volume、project設定を終了時に削除します。Docker buildは
 runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、

@@ -16,14 +16,14 @@ JSON Schema 相当で検証し、利用可能な action と対象を確認して
 ## Provider 境界
 
 `werewolf_agent.agents` は観測、意思決定、player port を定義する。
-`agents.langchain` は LangChain graph、prompt、provider、FakeListLLM を実装する。
+`adapters.llm.langchain`はLangChain graph、prompt、provider、FakeListLLMを実装する。
 外部 API を使わない再現可能な fixture を通常のテスト経路とする。
 
 ## Game driver
 
-`adapters/agents/game_driver.py` が usecase と agents を接続する唯一の変換点である。
+`adapters/agents/game_driver.py`がapplicationとagentsを接続する唯一の変換点である。
 公開状態を observation に変換し、decision を application action に変換する。
-agents は domain と usecase に依存せず、usecase も agents に依存しない。
+agentsはdomainとapplicationに依存せず、applicationもagentsに依存しない。
 
 ## Worker
 

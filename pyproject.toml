@@ -53,9 +53,9 @@ worker = [
 ]
 
 [project.scripts]
-werewolf-agent = "werewolf_agent.interfaces.cli.app:app"
+werewolf-agent = "werewolf_agent.clients.cli.app:app"
 werewolf-agent-api = "werewolf_agent.api.app:run"
-werewolf-agent-worker = "werewolf_agent.interfaces.worker.app:app"
+werewolf-agent-worker = "werewolf_agent.worker.app:app"
 
 [dependency-groups]
 dev = [

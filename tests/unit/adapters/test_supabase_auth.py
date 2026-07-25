@@ -4,8 +4,8 @@ import pytest
 
 from werewolf_agent.adapters import auth
 from werewolf_agent.adapters.supabase import SupabaseSession, session_store
-from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts import AppError
+from werewolf_agent.settings import AppSettings
 
 
 def test_ensure_session_requires_supabase_client_settings() -> None:

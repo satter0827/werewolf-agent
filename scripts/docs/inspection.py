@@ -49,7 +49,9 @@ def inspect_documentation() -> dict[str, object]:
     findings: list[DocumentationFinding] = []
     markdown_paths = sorted(DOCS_ROOT.rglob("*.md"))
     source_paths = [
-        path for path in markdown_paths if "_generated" not in path.relative_to(DOCS_ROOT).parts
+        path
+        for path in markdown_paths
+        if "_generated" not in path.relative_to(DOCS_ROOT).parts and path.name != "AGENTS.md"
     ]
     relative_sources = {
         path.relative_to(DOCS_ROOT).with_suffix("").as_posix(): path for path in source_paths

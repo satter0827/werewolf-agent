@@ -14,7 +14,7 @@ FakeListLLM は外部 API と credential を必要としません。
 Python 3.11 以上 3.15 未満、uv、Node.js、Docker、Supabase CLI を使用します。
 
 ```powershell
-uv sync --frozen --all-groups --all-extras
+uv run --no-project python -m scripts.environment setup check
 uv run --no-sync werewolf-agent doctor
 ```
 
@@ -36,28 +36,31 @@ uv run --no-sync werewolf-agent play --role-count werewolf=1 --role-count seer=1
 
 ```powershell
 uv run --no-sync werewolf-agent-worker run
-uv run --no-sync streamlit run src/werewolf_agent/interfaces/streamlit/app.py
+uv run --no-sync streamlit run src/werewolf_agent/clients/streamlit/app.py
 docker compose --profile dev up --build
 ```
 
-React の開発 server は `Frontend: Dev` VS Code task、または frontend package の
-`dev` script から起動します。
+React、API、worker、Supabaseは`React Stack`、Streamlit、API、worker、Supabaseは
+`Streamlit Stack`からまとめて起動できます。Stackを停止すると、Stackが使用した
+ローカルSupabaseも停止します。
 
 ## 設計
 
 | Path | 責務 |
 | --- | --- |
 | `src/werewolf_agent/domain` | 集約、状態、イベント、ルール policy |
-| `src/werewolf_agent/usecase` | stateless application、DTO、repository port |
-| `src/werewolf_agent/agents` | 観測、意思決定、player port、provider |
-| `src/werewolf_agent/adapters` | HTTP client、Supabase、agents 接続 |
+| `src/werewolf_agent/application` | stateless application、DTO、repository port |
+| `src/werewolf_agent/agents` | provider非依存の観測、意思決定、player port |
+| `src/werewolf_agent/adapters` | HTTP client、Supabase、LangChain、agent接続 |
 | `src/werewolf_agent/api` | FastAPI、認証、認可、composition root |
-| `src/werewolf_agent/interfaces` | CLI、Streamlit、worker |
+| `src/werewolf_agent/worker` | operation queue、自動進行、LLM実行 |
+| `src/werewolf_agent/clients` | CLI、Streamlit |
 | `src/werewolf_agent/contracts` | 外部 wire schema と安全な error |
+| `src/werewolf_agent/settings` | runtime設定、定義resourceの検証 |
 | `frontend` | React UI と generated OpenAPI client |
 
-`Game` だけがゲーム状態を変更します。usecase は domain 操作と保存を調整し、画面は
-合法手、フェーズ、勝敗を再計算しません。agents と usecase は互いに依存せず、
+`Game`だけがゲーム状態を変更します。applicationはdomain操作と保存を調整し、画面は
+合法手、フェーズ、勝敗を再計算しません。agentsとapplicationは互いに依存せず、
 `adapters/agents/game_driver.py` が observation、decision、action を変換します。
 
 要件から運用までの説明は [Sphinx 設計書](docs/index.md) を参照してください。
@@ -72,9 +75,9 @@ uv run --no-sync python -m scripts.docs build
 uv run --no-sync python -m scripts.architecture
 ```
 
-HTML は `.werewolf-agent/build/docs/index.html`、機械可読な依存 graph、schema、評価、
-SVG は `.werewolf-agent/build/architecture` に生成されます。同じ操作を VS Code の
-`Docs: Inspect`、`Docs: Build`、`Architecture: Analyze` task から実行できます。
+HTMLは`.werewolf-agent/build/docs/index.html`、機械可読な依存graph、schema、評価、
+SVGは`.werewolf-agent/build/architecture`に生成されます。同じ操作をVS Codeの
+`Docs: Build`、`Architecture: Analyze` taskから実行できます。
 
 ## 検証
 
@@ -91,8 +94,10 @@ uv run --no-sync python -m scripts.quality list
 architecture の個別処理は専用 script が所有し、品質 runner はその入口を呼びます。
 結果は `.werewolf-agent/quality` に保存されます。
 
-品質 runner の開始後は依存取得、browser download、Docker pull、online audit、
-外部 LLM API 呼び出しを行いません。必要な依存、browser、image は先に準備します。
+`Project: Setup`と各`Verify` taskは、不足時だけlockに従って依存、browser、imageを
+準備します。品質判定はfake、fixture、localhost、Compose内serviceだけを使用し、
+有料LLM providerや任意の外部APIへ依存しません。online auditは
+`Dependencies: Audit`から明示的に実行します。
 
 ## 運用境界
 

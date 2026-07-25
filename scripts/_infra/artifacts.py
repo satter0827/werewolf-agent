@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import shutil
-import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from uuid import uuid4
 
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT, TEMPORARY_ROOT
 
@@ -49,10 +49,11 @@ LAYOUT = ArtifactLayout()
 
 @contextmanager
 def staged_directory(name: str) -> Iterator[Path]:
-    """OS一時領域にbuild用scratch directoryを作成して必ず破棄する。"""
+    """Repository内にbuild用scratch directoryを作成して必ず破棄する。"""
     root = TEMPORARY_ROOT / "build"
     root.mkdir(parents=True, exist_ok=True)
-    path = Path(tempfile.mkdtemp(prefix=f"{name}-", dir=root))
+    path = root / f"{name}-{uuid4().hex}"
+    path.mkdir()
     try:
         yield path
     finally:

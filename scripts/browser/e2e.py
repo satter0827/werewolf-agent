@@ -12,13 +12,13 @@ from urllib.parse import urlsplit, urlunsplit
 
 from scripts._infra.process import (
     ARTIFACT_ROOT,
+    QUALITY_COMPOSE_PROJECT_NAME,
     CommandResult,
     EnvironmentBlockedError,
     quality_environment,
     run_command,
 )
 
-_COMPOSE_PROJECT_NAME = "werewolf-agent-quality"
 _REQUIRED_ENVIRONMENT = (
     "WEREWOLF_SUPABASE_DB_DSN",
     "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
@@ -100,7 +100,7 @@ def _compose_environment(
     container_api_url = _replace_host(api_url, "host.docker.internal")
     container_database_dsn = _replace_host(database_dsn, "host.docker.internal")
     extra = {
-        "COMPOSE_PROJECT_NAME": _COMPOSE_PROJECT_NAME,
+        "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME,
         "PLAYWRIGHT_VISUAL_REGRESSION": "1" if visual_regression else "0",
         "VITE_SUPABASE_PUBLISHABLE_KEY": str(base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]),
         "VITE_SUPABASE_URL": container_api_url,

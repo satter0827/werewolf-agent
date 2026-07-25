@@ -1,4 +1,4 @@
-"""Public wire schemas shared by game clients and user interfaces."""
+"""Public wire schemas shared by game clients."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from typing import Annotated, Any, Final, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.contracts.constants import (
     DEFAULT_NARRATION_MODE,
     MAX_CHARACTER_AGE,
     MAX_DIFFICULTY,
@@ -22,12 +22,12 @@ from werewolf_agent.configuration.constants import (
     MIN_VERSION,
     NarrationMode,
 )
-from werewolf_agent.configuration.definitions import (
+from werewolf_agent.contracts.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
     LocalRulesDefinition,
 )
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.contracts.messages import (
     MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
     MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE,
     MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE,
@@ -35,7 +35,7 @@ from werewolf_agent.configuration.messages import (
     MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS,
     MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
 )
-from werewolf_agent.configuration.validation import (
+from werewolf_agent.contracts.validation import (
     generated_player_ids,
     non_blank,
     optional_non_blank,

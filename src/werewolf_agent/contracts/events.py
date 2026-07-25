@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.contracts.constants import (
     DEFAULT_EVENT_VISIBILITY,
     EVENT_SCHEMA_VERSION,
     GAME_EVENT_FIELD_DAY,
@@ -20,7 +20,7 @@ from werewolf_agent.configuration.constants import (
     PYDANTIC_JSON_MODE,
     EventVisibility,
 )
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.contracts.messages import (
     MESSAGE_DAY_MUST_BE_NON_NEGATIVE,
     MESSAGE_EVENT_TYPE_MUST_NOT_BE_BLANK,
 )

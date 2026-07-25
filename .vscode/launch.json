@@ -2,21 +2,21 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Tests: Current File (Quick)",
+      "name": "Internal: Supabase Stack",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Environment: Check",
-      "module": "pytest",
-      "args": ["--test-level=quick", "-n", "0", "${file}"],
+      "module": "scripts.supabase",
+      "args": ["serve", "--stop-on-exit"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "justMyCode": false
+      "postDebugTask": "Internal: Supabase Stop",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "Service: API",
+      "name": "API",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Environment: Check",
+      "preLaunchTask": "Internal: Ensure Check",
       "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
@@ -28,14 +28,37 @@
       "justMyCode": true
     },
     {
-      "name": "Service: Streamlit",
+      "name": "Worker",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Environment: Check",
+      "preLaunchTask": "Internal: Ensure Check",
+      "module": "werewolf_agent.worker.app",
+      "args": ["run"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src",
+        "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "React",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "preLaunchTask": "Internal: Frontend Dev",
+      "url": "http://127.0.0.1:5173",
+      "webRoot": "${workspaceFolder}/frontend/src"
+    },
+    {
+      "name": "Streamlit",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Ensure Check",
       "module": "streamlit",
       "args": [
         "run",
-        "src/werewolf_agent/interfaces/streamlit/app.py",
+        "src/werewolf_agent/clients/streamlit/app.py",
         "--server.address",
         "127.0.0.1",
         "--server.headless",
@@ -52,25 +75,10 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Service: Worker",
+      "name": "CLI Doctor",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Environment: Check",
-      "module": "werewolf_agent.interfaces.worker.app",
-      "args": ["run"],
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src",
-        "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
-      },
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "CLI: Doctor",
-      "type": "debugpy",
-      "request": "launch",
-      "preLaunchTask": "Environment: Check",
+      "preLaunchTask": "Internal: Ensure Check",
       "module": "werewolf_agent",
       "args": ["doctor"],
       "cwd": "${workspaceFolder}",
@@ -78,10 +86,10 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "CLI: Play",
+      "name": "CLI Play",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Environment: Check",
+      "preLaunchTask": "Internal: Ensure Check",
       "module": "werewolf_agent",
       "args": [
         "play",
@@ -99,38 +107,19 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"
-    },
-    {
-      "name": "CLI: Play as Manual Player",
-      "type": "debugpy",
-      "request": "launch",
-      "preLaunchTask": "Environment: Check",
-      "module": "werewolf_agent",
-      "args": [
-        "play",
-        "--role-count",
-        "werewolf=1",
-        "--role-count",
-        "seer=1",
-        "--role-count",
-        "knight=1",
-        "--role-count",
-        "villager=3",
-        "--seed",
-        "1",
-        "--manual-player",
-        "player-1"
-      ],
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "console": "integratedTerminal"
     }
   ],
   "compounds": [
     {
-      "name": "App: Streamlit, API, and Worker",
-      "configurations": ["Service: API", "Service: Worker", "Service: Streamlit"],
-      "preLaunchTask": "Supabase: Preflight",
+      "name": "React Stack",
+      "configurations": ["Internal: Supabase Stack", "API", "Worker", "React"],
+      "preLaunchTask": "Internal: Supabase Preflight",
+      "stopAll": true
+    },
+    {
+      "name": "Streamlit Stack",
+      "configurations": ["Internal: Supabase Stack", "API", "Worker", "Streamlit"],
+      "preLaunchTask": "Internal: Supabase Preflight",
       "stopAll": true
     }
   ]

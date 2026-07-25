@@ -1,59 +1,63 @@
 (system-architecture)=
 # システムアーキテクチャ
 
-## システム境界
+## 目的
 
-React、CLI、Streamlit は HTTP API だけを通じてゲームを操作する。API と worker が
-`GameApplication` を呼び、domain が状態遷移を決定する。Supabase は認証、永続化、
-operation queue を担い、worker だけが有料 LLM provider の秘密値を使用する。
-通常の利用者境界は公開状態と認証した player 本人の observation だけを返し、完全
-状態は設定で有効化した管理者専用 reveal に隔離する。
+ゲームの決定性と秘匿情報をdomainに閉じ、HTTP、worker、画面、database、LLMを
+交換可能な境界として接続する。
 
-```{image} ../_generated/architecture/system-context.svg
-:alt: UI、API、worker、domain、Supabase、LLM provider の接続関係
-:width: 100%
-```
-
-## Layer
+## 責務
 
 | Layer | 責務 |
 | --- | --- |
 | `domain` | aggregate、state、event、rule policy |
-| `usecase` | ID、authorization、transaction、projection |
-| `agents` | observation、decision、provider 非依存 port |
-| `adapters` | HTTP client、Supabase、agent driver |
-| `api` | HTTP、認証・認可、composition root |
-| `interfaces` | CLI、Streamlit、worker |
+| `application` | authorization、transaction、DTO、port、projection |
+| `agents` | provider非依存のobservation、decision、player port |
+| `adapters` | HTTP client、Supabase、LangChain、外部I/O |
 | `contracts` | wire schema、error、Problem Details |
-| `configuration` | settings、resource、definition validation |
+| `settings` | runtime設定と環境変数の検証 |
 | `security` | principal、redaction |
-| `observability` | entrypoint log、context、event sink |
-| `resources` | packaged TOML、prompt、fixture |
+| `observability` | log、context、event sink |
+| `api` | HTTP processとcomposition root |
+| `worker` | queue consumerとapplication・agentの接続 |
+| `clients` | CLIとStreamlit |
 
-```{image} ../_generated/architecture/layer-dependencies.svg
-:alt: Python layer 間の実 import 依存
+```{image} ../_generated/architecture/system-context.svg
+:alt: UI、API、worker、domain、Supabase、LLM providerの接続関係
 :width: 100%
 ```
 
-## 依存規則
+```{image} ../_generated/architecture/layer-dependencies.svg
+:alt: Python layer間の実import依存
+:width: 100%
+```
 
-- domain は他 layer を参照しない。
-- usecase は外部 service、delivery、agents を参照しない。
-- agents は domain と usecase を参照しない。
-- API route は注入された application contract だけを呼ぶ。
-- API composition root だけが adapter を構築できる。
-- CLI と Streamlit は domain、usecase、Supabase repository を参照しない。
+## 境界
 
-`api/bootstrap.py` から `adapters` への依存だけを path 単位の例外として登録する。
-API route へ同じ依存を広げず、例外の path と理由を構造分析 JSON に出力する。
+- domainは他layerを参照しない。
+- applicationは外部service、delivery、agentsを参照しない。
+- agentsはdomainとapplicationを参照しない。
+- LangChainはadapter、workerは独立processとして扱う。
+- package resourceと外部定義fileのI/Oおよび相互参照検証はadapterに置く。
+- API routeはapplicationの公開contractだけを呼ぶ。
+- CLIとStreamlitはdomain、application、Supabaseを参照しない。
+- React、CLI、StreamlitはHTTP APIを通じてゲームを操作する。
 
-これらは実 source の AST から評価する。詳細は
-{download}`architecture.json <../_generated/architecture/architecture.json>`と
-{download}`architecture.schema.json <../_generated/architecture/architecture.schema.json>`、
-{download}`assessment.md <../_generated/architecture/assessment.md>`で確認できる。
+`api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
+構造規則の正本は`scripts/architecture/rules.toml`とする。
 
 ## 公開面
 
-Python 利用者向け application 入口は `Actor` と `GameApplication` である。domain、
-agents、contracts、adapters は各 package の `__all__` を公開面とし、内部 module を
-契約に含めない。
+Pythonの公開moduleは`werewolf_agent.domain`と`werewolf_agent.application`に限定する。
+applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
+公開する。HTTPの正本は`contracts/openapi.json`とする。
+
+application内部はゲーム参照、進行、player action、timelineを独立したhandlerにする。
+DTOはruntime context、request、result、persistence recordのlifecycleで分ける。
+
+## 検証
+
+実sourceのASTからlayer、module、import元行、cycle、公開面を評価する。結果は
+{download}`architecture.json <../_generated/architecture/architecture.json>`、
+{download}`architecture.schema.json <../_generated/architecture/architecture.schema.json>`、
+{download}`assessment.md <../_generated/architecture/assessment.md>`で確認できる。

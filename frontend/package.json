@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "engines": {
-    "node": "22.x"
+    "node": ">=22"
   },
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -18,7 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test --config playwright.config.ts",
-    "generate:api": "openapi-typescript ../openapi.json -o src/generated/api.ts",
+    "generate:api": "openapi-typescript ../contracts/openapi.json -o src/generated/api.ts",
     "lint": "npm run lint:boundaries",
     "lint:boundaries": "eslint src e2e playwright.config.ts vite.config.ts --max-warnings=0",
     "typecheck": "tsc --noEmit"

@@ -1,0 +1,211 @@
+"""actions projections for the Streamlit game screen."""
+
+from __future__ import annotations
+
+from typing import Any
+
+from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
+from werewolf_agent.clients.streamlit.icons import action_icon
+from werewolf_agent.clients.streamlit.view_models.formatting import (
+    _nested_text,
+    _player_name,
+)
+from werewolf_agent.clients.streamlit.view_models.types import (
+    ActionChoiceView,
+    HandPanelView,
+    ObservationView,
+    ScreenMode,
+)
+from werewolf_agent.contracts.schemas import (
+    GAME_STATUS_COMPLETED,
+    PlayerObservationResponse,
+    PublicGameState,
+)
+
+
+def observation_view_from_response(
+    response: PlayerObservationResponse,
+    *,
+    state: PublicGameState,
+    manual_player_id: str | None,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> ObservationView:
+    """Return private observation display data."""
+    observation = response.observation
+    role = _nested_text(observation, "me", "role")
+    actions = [str(item) for item in observation.get("available_actions", [])]
+    known_roles = observation.get("known_roles")
+    known_role_lines = (
+        [
+            f"{_player_name(state.players, player_id)}: {catalog.label(lang, 'role', role_id)}"
+            for player_id, role_id in sorted(known_roles.items())
+        ]
+        if isinstance(known_roles, dict)
+        else []
+    )
+    target_candidates = {
+        action: target_candidates_for_action(
+            action,
+            state=state,
+            observation=observation,
+            manual_player_id=manual_player_id,
+        )
+        for action in actions
+    }
+    return ObservationView(
+        role=catalog.label(lang, "role", role),
+        available_actions=actions,
+        action_choices=[
+            action_choice(
+                action,
+                catalog,
+                lang,
+                requires_target=bool(target_candidates[action]),
+            )
+            for action in actions
+        ],
+        known_role_lines=known_role_lines,
+        target_candidates=target_candidates,
+    )
+
+
+def action_choice(
+    action_type: str,
+    catalog: I18nCatalog,
+    lang: Language,
+    *,
+    requires_target: bool,
+) -> ActionChoiceView:
+    """Return display metadata for one action."""
+    return ActionChoiceView(
+        action_type=action_type,
+        icon=action_icon(action_type).symbol,
+        label=catalog.label(lang, "action", action_type),
+        requires_target=requires_target,
+        requires_message=action_type == "speech",
+    )
+
+
+def target_candidates_for_action(
+    action_type: str,
+    *,
+    state: PublicGameState,
+    observation: dict[str, Any],
+    manual_player_id: str | None,
+) -> list[str]:
+    """Return visible player ids that can be offered as target candidates."""
+    _ = state, manual_player_id
+    legal_targets = observation.get("legal_targets")
+    if not isinstance(legal_targets, dict):
+        return []
+    candidates = legal_targets.get(action_type)
+    if not isinstance(candidates, list):
+        return []
+    return [str(player_id) for player_id in candidates]
+
+
+def hand_panel_view(
+    state: PublicGameState,
+    observation: ObservationView | None,
+    screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> HandPanelView:
+    """Return the right-side hand panel state."""
+    heading = (
+        catalog.t(lang, "game.observer.title")
+        if screen_mode == "observer"
+        else catalog.t(lang, "game.hand.heading")
+    )
+    if state.status == GAME_STATUS_COMPLETED:
+        return HandPanelView(
+            heading=heading,
+            title=catalog.t(lang, "game.completed.title"),
+            detail=catalog.t(
+                lang,
+                "result.fact.winner",
+                winner=catalog.label(lang, "winner", state.winner),
+            ),
+            tone="safe",
+            advance_title=catalog.t(lang, "game.completed.title"),
+            advance_detail=catalog.t(lang, "game.completed.detail"),
+            can_advance=False,
+        )
+    if screen_mode == "observer":
+        return HandPanelView(
+            heading=catalog.t(lang, "game.observer.title"),
+            title=catalog.t(lang, "game.observer.title"),
+            detail=catalog.t(lang, "game.observer.detail"),
+            tone="neutral",
+            advance_title=catalog.t(lang, "game.observer.title"),
+            advance_detail=catalog.t(lang, "game.observer.detail"),
+            can_advance=False,
+        )
+    if observation is not None and observation.available_actions:
+        labels = " / ".join(
+            catalog.label(lang, "action", action) for action in observation.available_actions
+        )
+        return HandPanelView(
+            heading=heading,
+            title=catalog.t(lang, "game.current.playable"),
+            detail=f"{labels}",
+            tone="danger",
+            advance_title=catalog.t(lang, "action.send"),
+            advance_detail=catalog.t(lang, "game.current.playable"),
+            can_advance=False,
+        )
+    return HandPanelView(
+        heading=heading,
+        title=catalog.t(lang, "game.play.waiting.title"),
+        detail=catalog.t(lang, "game.play.waiting.detail"),
+        tone="day",
+        advance_title=catalog.t(lang, "game.advance.title"),
+        advance_detail=catalog.t(lang, "game.advance.detail"),
+        can_advance=True,
+    )
+
+
+def current_turn_title(
+    state: PublicGameState,
+    observation: ObservationView | None,
+    screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    """Return the current hand title."""
+    if state.status == GAME_STATUS_COMPLETED:
+        return catalog.t(lang, "game.completed.title")
+    if screen_mode == "observer":
+        return catalog.t(lang, "game.current.observer")
+    if observation is not None and observation.available_actions:
+        return catalog.t(lang, "game.current.playable")
+    return catalog.t(lang, "game.play.waiting.title")
+
+
+def current_turn_detail(
+    state: PublicGameState,
+    observation: ObservationView | None,
+    screen_mode: ScreenMode,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    """Return the current hand detail text."""
+    if state.status == GAME_STATUS_COMPLETED:
+        return catalog.t(
+            lang,
+            "result.fact.winner",
+            winner=catalog.label(lang, "winner", state.winner),
+        )
+    if screen_mode == "observer":
+        return catalog.t(lang, "game.observer.detail")
+    if observation is not None and observation.available_actions:
+        labels = " / ".join(
+            catalog.label(lang, "action", action) for action in observation.available_actions
+        )
+        return labels
+    return catalog.t(lang, "game.play.waiting.detail")
+
+
+def _has_available_actions(observation: ObservationView | None) -> bool:
+    return observation is not None and bool(observation.available_actions)

@@ -1,15 +1,16 @@
-"""Setup-option projection for user interfaces."""
+"""Setup-option projection for user clients."""
 
 from __future__ import annotations
 
 from typing import cast
 
-from werewolf_agent.adapters.usecase_bridge import (
+from werewolf_agent.adapters.application_bridge import (
+    build_game_application_config,
     build_game_definitions,
-    build_game_usecase_config,
-    build_llm_definitions,
+    build_player_setup_definitions,
 )
-from werewolf_agent.configuration import AppSettings
+from werewolf_agent.application.models import GameSetupOptionsResult
+from werewolf_agent.application.setup_options import default_setup_options
 from werewolf_agent.contracts.schemas import (
     AbilityDefinitionView,
     AgentStrategyDefinitionView,
@@ -20,16 +21,15 @@ from werewolf_agent.contracts.schemas import (
     ScenarioDefinitionView,
     SetupPresetDefinitionView,
 )
-from werewolf_agent.usecase.models import GameSetupOptionsResult
-from werewolf_agent.usecase.setup import default_setup_options
+from werewolf_agent.settings import AppSettings
 
 
 def get_local_setup_options(settings: AppSettings) -> GameSetupOptionsResponse:
     """Return setup metadata from packaged/configured definitions."""
     options = default_setup_options(
-        build_game_usecase_config(settings),
+        build_game_application_config(settings),
         build_game_definitions(settings),
-        build_llm_definitions(settings),
+        build_player_setup_definitions(settings),
     )
     return setup_options_response(options, settings)
 
@@ -38,7 +38,7 @@ def setup_options_response(
     options: GameSetupOptionsResult,
     settings: AppSettings,
 ) -> GameSetupOptionsResponse:
-    """Convert use case setup metadata into the public wire schema."""
+    """Convert application setup metadata into the public wire schema."""
     role_names = settings.game_role_name_map
     return GameSetupOptionsResponse(
         player_count=options.player_count,

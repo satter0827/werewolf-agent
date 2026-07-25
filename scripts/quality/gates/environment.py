@@ -6,18 +6,18 @@ import time
 from pathlib import Path
 
 from scripts._infra.process import (
-    OFFLINE_GUARD_ENVIRONMENT,
+    ISOLATION_ENVIRONMENT,
     REPOSITORY_ROOT,
     CommandResult,
     run_command,
 )
 from scripts.quality.models import Gate, RunContext
 
-GATES = ("environment", "offline")
+GATES = ("environment", "isolation")
 
 
 def build() -> list[Gate]:
-    """依存環境とoffline制約のgateを返す。"""
+    """依存環境と外部service隔離のgateを返す。"""
     return [
         Gate(
             "environment",
@@ -27,22 +27,31 @@ def build() -> list[Gate]:
             nonzero_state="blocked",
         ),
         Gate(
-            "offline",
-            "Offline environment",
-            ("offline-environment-check",),
-            action=check_offline_environment,
+            "isolation",
+            "External service isolation",
+            ("isolation-environment-check",),
+            action=check_isolation_environment,
         ),
     ]
 
 
 def check_environment(context: RunContext, _: Path) -> CommandResult:
-    """Lock fileに対するPython・Frontend依存の同期状態を検査する。"""
+    """Python・Frontendの実行能力を外部接続なしで検査する。"""
     started = time.monotonic()
     npm = shutil.which("npm") or "npm"
     node = shutil.which("node") or "node"
     commands = (
-        ("uv", "sync", "--check", "--frozen", "--all-groups", "--all-extras"),
+        (sys.executable, "-c", "import werewolf_agent"),
         (node, "--version"),
+        (
+            node,
+            "-e",
+            (
+                "const {spawnSync}=require('node:child_process');"
+                "const r=spawnSync(process.execPath,['--version']);"
+                "process.exit(r.error ? 2 : (r.status ?? 2));"
+            ),
+        ),
         (npm, "ls", "--depth=0", "--ignore-scripts"),
     )
     output = [f"Python {sys.version.split()[0]}\n"]
@@ -71,12 +80,12 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
                 "".join(output),
                 result.timed_out,
             )
-        if index == 1 and not result.output.strip().lstrip("v").startswith("22."):
+        if index == 1 and int(result.output.strip().lstrip("v").split(".", 1)[0]) < 22:
             return CommandResult(
                 list(command),
                 1,
                 time.monotonic() - started,
-                "".join(output) + "Node.js 22が必要です。\n",
+                "".join(output) + "Node.js 22以上が必要です。\n",
             )
     return CommandResult(
         ["environment-check"],
@@ -86,8 +95,8 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
     )
 
 
-def check_offline_environment(context: RunContext, _: Path) -> CommandResult:
-    """秘密情報と外部通信防止設定が子process環境に残らないことを検査する。"""
+def check_isolation_environment(context: RunContext, _: Path) -> CommandResult:
+    """秘密情報と外部provider設定が子process環境に残らないことを検査する。"""
     started = time.monotonic()
     forbidden = [
         key
@@ -97,29 +106,29 @@ def check_offline_environment(context: RunContext, _: Path) -> CommandResult:
     ]
     if forbidden:
         return CommandResult(
-            ["offline-environment-check"],
+            ["isolation-environment-check"],
             1,
             time.monotonic() - started,
             "秘密情報を含む環境変数が子processへ残っています: " + ", ".join(sorted(forbidden)),
         )
     mismatched = [
         key
-        for key, expected in OFFLINE_GUARD_ENVIRONMENT.items()
+        for key, expected in ISOLATION_ENVIRONMENT.items()
         if context.environment.get(key) != expected
     ]
     if mismatched:
         return CommandResult(
-            ["offline-environment-check"],
+            ["isolation-environment-check"],
             1,
             time.monotonic() - started,
-            "外部通信防止設定が一致しません: " + ", ".join(sorted(mismatched)),
+            "外部service隔離設定が一致しません: " + ", ".join(sorted(mismatched)),
         )
     return CommandResult(
-        ["offline-environment-check"],
+        ["isolation-environment-check"],
         0,
         time.monotonic() - started,
         "外部provider用の秘密情報とtelemetryを無効化しました。\n",
     )
 
 
-__all__ = ["GATES", "build", "check_environment", "check_offline_environment"]
+__all__ = ["GATES", "build", "check_environment", "check_isolation_environment"]

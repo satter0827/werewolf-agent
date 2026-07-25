@@ -5,8 +5,6 @@ from pathlib import Path
 
 import structlog
 
-from werewolf_agent.configuration import AppSettings
-from werewolf_agent.configuration.settings import DEFAULT_LOG_FILE_NAME
 from werewolf_agent.observability import (
     bind_observation_context,
     configure_entrypoint_logging,
@@ -14,6 +12,8 @@ from werewolf_agent.observability import (
     get_observation_context,
 )
 from werewolf_agent.security.redaction import redact_mapping, redact_text
+from werewolf_agent.settings import AppSettings
+from werewolf_agent.settings.defaults import DEFAULT_LOG_FILE_NAME
 
 
 def _settings(tmp_path: Path, **overrides: object) -> AppSettings:

@@ -22,10 +22,7 @@ Werewolf Agent は、LLM agent を人狼ゲームのプレイヤーとして動�
 :maxdepth: 1
 :caption: Notes
 
-/notes/development
-/notes/streamlit-ui
-/notes/streamlit-ui-design-history
-/notes/streamlit-browser-qa
+/notes/index
 ```
 
 ## 読み方

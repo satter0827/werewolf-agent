@@ -20,7 +20,7 @@ migration、`doctor`を確認し、起動後のE2Eが`setup-options`を確認し
 API、worker、Streamlitを各console entrypointから起動します。
 
 ```bash
-uv run --no-sync --group dev --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
+uv run --no-sync --group dev --extra streamlit streamlit run src/werewolf_agent/clients/streamlit/app.py --server.address 127.0.0.1 --server.port 8766 --server.headless true
 ```
 
 Supabase worker:

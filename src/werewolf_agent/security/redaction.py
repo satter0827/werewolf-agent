@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from typing import Final
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.security.constants import (
     REDACTED,
     REDACTION_NORMALIZED_SEPARATOR,
     REDACTION_SOURCE_SEPARATOR,

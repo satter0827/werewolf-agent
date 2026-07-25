@@ -1,17 +1,17 @@
 (application-api)=
 # アプリケーションと API
 
-usecase は利用者の要求を domain 操作へ変換し、保存と公開 DTO の生成を調整する。
+applicationは利用者の要求をdomain操作へ変換し、保存と公開DTOの生成を調整する。
 HTTP API は認証、認可、wire schema、エラー応答を受け持つ。
 
 ## アプリケーション境界
 
 Python 利用者向けの公開面は stateless な `GameApplication` と `Actor` である。
 handler は repository port から集約を読み、domain の操作を呼び、結果を保存して
-公開 DTO へ射影する。usecase 自身はログやテレメトリーを出力しない。
+公開DTOへ射影する。application自身はログやtelemetryを出力しない。
 
 repository port は保存先の技術を規定しない。in-memory 実装と Supabase 実装は同じ
-契約に従い、usecase から database SDK や SQL を隠す。
+契約に従い、applicationからdatabase SDKやSQLを隠す。
 
 ## HTTP API
 
@@ -25,7 +25,7 @@ FastAPI は application composition root として、設定、repository、認�
 - stack trace と token を応答へ含めず、private state を通常応答へ含めない。
 
 完全状態を返す reveal は通常の game route と `GameClient` port から分離する。管理者
-認可と `admin_reveal_enabled` の両方を満たす専用 route だけが reveal DTO を返す。
+認可と `reveal_api_enabled` の両方を満たす専用 route だけが reveal DTO を返す。
 整合性、operation、LLM 利用量の診断 API は private payload を返さない。
 
 ## 操作の流れ
@@ -40,8 +40,16 @@ FastAPI は application composition root として、設定、repository、認�
 同一操作の再送、競合、存在しない game、許可されない操作は、domain エラーと
 infrastructure エラーを混同せず、安定した error code で表す。
 
+## Worker
+
+worker は queue 取得、operation dispatch、transaction lifecycle、完了時の観測だけを
+調整する。queue claim、参加者確認、完了・失敗記録、private view materialize の
+SQLは`SupabaseWorkerStore`が所有する。Supabase rowからapplication recordへの変換は
+専用mapping moduleが所有し、worker processとrepository本体へ混在させない。
+
 ## 契約の管理
 
-外部契約は `werewolf_agent.contracts` に置く。React client は OpenAPI から生成し、
+外部契約は`werewolf_agent.contracts`に置き、`contracts/openapi.json`を正本とする。
+React clientはOpenAPIから生成し、
 手書きの HTTP 型を並行して管理しない。CLI と Streamlit は `GameClient` port と
 public wire schema を使い、domain や repository を直接 import しない。

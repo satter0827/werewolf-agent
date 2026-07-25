@@ -59,7 +59,7 @@ def check_openapi_contract(context: RunContext, _: Path) -> CommandResult:
     )
     if type_result.returncode != 0:
         return type_result
-    expected = REPOSITORY_ROOT / "openapi.json"
+    expected = REPOSITORY_ROOT / "contracts" / "openapi.json"
     expected_types = REPOSITORY_ROOT / "frontend" / "src" / "generated" / "api.ts"
     matches = (
         expected.is_file()

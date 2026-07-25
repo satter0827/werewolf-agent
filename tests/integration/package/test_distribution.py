@@ -23,5 +23,5 @@ def test_wheel_contains_entrypoints_and_packaged_resources() -> None:
     assert "werewolf-agent =" in metadata
     assert "werewolf-agent-api =" in metadata
     assert "werewolf-agent-worker =" in metadata
-    assert "werewolf_agent/resources/settings/defaults.toml" in names
-    assert "werewolf_agent/resources/prompts/agent_decision.toml" in names
+    assert "werewolf_agent/settings/resources/defaults.toml" in names
+    assert "werewolf_agent/agents/resources/prompts/agent_decision.toml" in names

@@ -1,50 +1,46 @@
 (verification)=
 # 検証
 
-検証は速い局所確認から、外部依存を含む release 確認へ段階化する。すべての品質
-profile は `scripts.quality` が調整し、個々の検査は独立したコマンドとしても動く。
+## 目的
 
-## 基本検証
+製品の合否をrepository内のsource、test、fixture、local process、Compose serviceから
+判定する。package取得先や有料providerの可用性を製品品質と混同しない。
 
-```powershell
-uv run --no-sync ruff format --check .
-uv run --no-sync ruff check --no-cache .
-uv run --no-sync mypy --no-incremental src
-uv run --no-sync pytest
-```
+## 品質profile
 
-docstring は Ruff の Google convention と、公開 API の構造検査で保証する。
-短い関数へ定型文を強制せず、公開される module、class、function、method の説明と
-引数、戻り値、例外の実態をコードと一致させる。
-
-## 品質 profile
-
-| profile | 用途 | 主な検査 |
-| --- | --- | --- |
-| `quick` | 編集中の高速確認 | architecture、静的検査、主要 unit test |
-| `check` | 通常の変更確認 | 全 unit test、型、docs、frontend |
-| `release` | 配布前確認 | build、migration、container、契約 |
-| `deep` | 定期的な広範囲確認 | release に加えて長時間 QA と監査 |
+| Profile | 責務 |
+| --- | --- |
+| `quick` | architecture、静的検査、unit |
+| `check` | 決定的な全検査、docs、contract、build |
+| `release` | Supabase、API、worker、browser、container |
+| `deep` | 長時間test、fault injection、benchmark |
 
 ```powershell
 uv run --no-sync python -m scripts.quality quick
 uv run --no-sync python -m scripts.quality check
+uv run --no-sync python -m scripts.quality release
+uv run --no-sync python -m scripts.quality deep --confirm-deep
 uv run --no-sync python -m scripts.quality gate python-static
 uv run --no-sync python -m scripts.quality list
+uv run --no-sync python -m scripts.quality clean
 ```
 
-quality runner は gate の順序、timeout、report、artifact freshness を管理する。
-docs 固有の検査や Sphinx 呼び出しは `scripts.docs` が所有し、quality runner は
-その公開コマンドを呼ぶだけにする。
+## 外部接続境界
 
-## 構造検証
+品質processからprovider credentialと外部base URLを除去し、fake providerとtelemetry
+無効化を強制する。Python test、Playwright、E2E containerは非loopback通信を拒否する。
+依存取得は`scripts.environment`、外部情報を使う監査は`Dependencies: Audit`へ分離する。
 
-architecture test は layer 間の import、cycle、例外 path を検査する。
-`scripts.architecture` は同じ規則から JSON、schema、評価文書、SVG を生成する。
-docs test は必須 lifecycle、toctree 到達性、公開 automodule、禁止した docstring
-抑制だけを検査し、章数や文章量を固定しない。
+## 判定
 
-## 成果物
+- `passed`: 検査を満たす。
+- `failed`: assertion、lint、型、契約に違反する。
+- `blocked`: tool、権限、Docker、local serviceなどの実行条件が不足する。
+- `error`: runnerまたは検査基盤が異常終了する。
+- `skipped`: 依存gateが完了していない。
 
-共有する検証結果は `.werewolf-agent` に置く。cache と配布物を source tree に
-混在させず、report から実行コマンド、終了状態、所要時間、artifact path を追跡する。
+## 構造と成果物
+
+architecture testは`scripts/architecture/rules.toml`からroot、layer、path規則、framework、
+公開面を検査する。report、log、coverage、browser成果物は`.werewolf-agent`へ保存し、
+scratchは`.werewolf-agent/runtime/tmp`へ置く。

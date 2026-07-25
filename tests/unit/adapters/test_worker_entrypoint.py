@@ -2,22 +2,30 @@ import logging
 
 from typer.testing import CliRunner
 
-from werewolf_agent.configuration import AppSettings
-from werewolf_agent.interfaces.worker import app as worker_app
+from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker import app as worker_app
 
 
-def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch) -> None:
+def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -> None:
     def fail_process(_settings: object) -> int:
         raise AssertionError("worker should not poll without WEREWOLF_SUPABASE_DB_DSN")
 
     monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
     monkeypatch.setattr(worker_app, "get_settings", lambda: AppSettings(_env_file=None))
+    monkeypatch.setattr(worker_app, "configure_entrypoint_logging", lambda *args, **kwargs: None)
     monkeypatch.setattr(worker_app, "process_worker_batch", fail_process)
 
-    result = CliRunner().invoke(worker_app.app, ["once"])
+    with caplog.at_level(logging.INFO, logger=worker_app.__name__):
+        result = CliRunner().invoke(worker_app.app, ["once"])
 
     assert result.exit_code == 1
     assert "WEREWOLF_SUPABASE_DB_DSN" in result.output
+    records = [
+        record
+        for record in caplog.records
+        if record.event_action == "worker.application_error.handled"
+    ]
+    assert len(records) == 1
 
 
 def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.agents.constants import (
     LLM_FALLBACK_POLICY_CHOICE_SET,
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
@@ -16,7 +16,7 @@ from werewolf_agent.configuration.constants import (
     MIN_STEP_LIMIT,
     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
 )
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.agents.messages import (
     message_field_must_be_at_least,
     message_field_must_be_between,
     message_field_must_be_greater_than,
@@ -24,7 +24,7 @@ from werewolf_agent.configuration.messages import (
     message_llm_base_url_required,
     message_openai_api_key_required,
 )
-from werewolf_agent.configuration.validation import non_blank
+from werewolf_agent.agents.validation import non_blank
 
 
 @dataclass(frozen=True)

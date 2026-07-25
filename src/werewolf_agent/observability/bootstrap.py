@@ -1,8 +1,8 @@
 """Observability startup helpers for application processes."""
 
-from werewolf_agent.configuration import AppSettings, load_app_settings
-from werewolf_agent.configuration.settings import DEFAULT_LOG_FILE_NAME
 from werewolf_agent.observability.logging import configure_observability
+from werewolf_agent.settings import AppSettings, load_app_settings
+from werewolf_agent.settings.defaults import DEFAULT_LOG_FILE_NAME
 
 
 def configure_entrypoint_logging(

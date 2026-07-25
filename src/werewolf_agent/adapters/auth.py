@@ -7,6 +7,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Protocol
 
+from werewolf_agent.adapters.messages import MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED
 from werewolf_agent.adapters.supabase import (
     SupabaseAuthClient,
     SupabaseSessionStore,
@@ -14,10 +15,9 @@ from werewolf_agent.adapters.supabase import (
 from werewolf_agent.adapters.supabase import (
     SupabaseSession as SupabaseSession,
 )
-from werewolf_agent.configuration import AppSettings
-from werewolf_agent.configuration.messages import MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.settings import AppSettings
 
 _bound_session: ContextVar[SupabaseSession | None] = ContextVar(
     "werewolf_agent_bound_session",

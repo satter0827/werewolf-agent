@@ -6,6 +6,7 @@ create function public.is_admin()
 returns boolean
 language sql
 stable
+set search_path = ''
 as $$
   select coalesce(auth.jwt() -> 'app_metadata' ->> 'role', '') = 'admin'
 $$;
@@ -13,6 +14,7 @@ $$;
 create function private.set_updated_at()
 returns trigger
 language plpgsql
+set search_path = ''
 as $$
 begin
   new.updated_at = timezone('utc', now());
@@ -249,114 +251,114 @@ alter table public.retention_runs enable row level security;
 
 create policy profiles_select_own_or_admin on public.profiles
 for select to authenticated
-using (user_id = auth.uid() or public.is_admin());
+using (user_id = (select auth.uid()) or (select public.is_admin()));
 
 create policy profiles_insert_own on public.profiles
 for insert to authenticated
-with check (user_id = auth.uid());
+with check (user_id = (select auth.uid()));
 
 create policy profiles_update_own on public.profiles
 for update to authenticated
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
+using (user_id = (select auth.uid()))
+with check (user_id = (select auth.uid()));
 
 create policy user_preferences_own on public.user_preferences
 for all to authenticated
-using (user_id = auth.uid())
-with check (user_id = auth.uid());
+using (user_id = (select auth.uid()))
+with check (user_id = (select auth.uid()));
 
 create policy definition_items_select_visible on public.definition_items
 for select to authenticated
 using (
-  public.is_admin()
+  (select public.is_admin())
   or (active and scope = 'system')
-  or (active and scope = 'user' and owner_user_id = auth.uid())
+  or (active and scope = 'user' and owner_user_id = (select auth.uid()))
 );
 
 create policy definition_items_insert_user on public.definition_items
 for insert to authenticated
 with check (
-  (scope = 'user' and owner_user_id = auth.uid())
-  or public.is_admin()
+  (scope = 'user' and owner_user_id = (select auth.uid()))
+  or (select public.is_admin())
 );
 
 create policy definition_items_update_user on public.definition_items
 for update to authenticated
 using (
-  (scope = 'user' and owner_user_id = auth.uid())
-  or public.is_admin()
+  (scope = 'user' and owner_user_id = (select auth.uid()))
+  or (select public.is_admin())
 )
 with check (
-  (scope = 'user' and owner_user_id = auth.uid())
-  or public.is_admin()
+  (scope = 'user' and owner_user_id = (select auth.uid()))
+  or (select public.is_admin())
 );
 
 create policy games_select_participant_or_admin on public.games
 for select to authenticated
 using (
-  owner_user_id = auth.uid()
-  or public.is_admin()
+  owner_user_id = (select auth.uid())
+  or (select public.is_admin())
   or exists (
     select 1 from public.game_participants gp
     where gp.game_id = games.game_id
-      and gp.user_id = auth.uid()
+      and gp.user_id = (select auth.uid())
   )
 );
 
 create policy game_summaries_select_participant_or_admin on public.game_summaries
 for select to authenticated
 using (
-  owner_user_id = auth.uid()
-  or public.is_admin()
+  owner_user_id = (select auth.uid())
+  or (select public.is_admin())
   or exists (
     select 1 from public.game_participants gp
     where gp.game_id = game_summaries.game_id
-      and gp.user_id = auth.uid()
+      and gp.user_id = (select auth.uid())
   )
 );
 
 create policy game_participants_select_self_or_admin on public.game_participants
 for select to authenticated
-using (user_id = auth.uid() or public.is_admin());
+using (user_id = (select auth.uid()) or (select public.is_admin()));
 
 create policy game_public_turns_select_participant_or_admin on public.game_public_turns
 for select to authenticated
 using (
-  public.is_admin()
+  (select public.is_admin())
   or exists (
     select 1 from public.game_participants gp
     where gp.game_id = game_public_turns.game_id
-      and gp.user_id = auth.uid()
+      and gp.user_id = (select auth.uid())
   )
 );
 
 create policy game_player_observations_select_self_or_admin on public.game_player_observations
 for select to authenticated
-using (user_id = auth.uid() or public.is_admin());
+using (user_id = (select auth.uid()) or (select public.is_admin()));
 
 create policy game_reveals_admin_only on public.game_reveals
 for select to authenticated
-using (public.is_admin());
+using ((select public.is_admin()));
 
 create policy game_operation_requests_insert_own on public.game_operation_requests
 for insert to authenticated
-with check (owner_user_id = auth.uid());
+with check (owner_user_id = (select auth.uid()));
 
 create policy game_operation_requests_select_own_or_admin on public.game_operation_requests
 for select to authenticated
-using (owner_user_id = auth.uid() or public.is_admin());
+using (owner_user_id = (select auth.uid()) or (select public.is_admin()));
 
 create policy llm_invocations_admin_only on public.llm_invocations
 for select to authenticated
-using (public.is_admin());
+using ((select public.is_admin()));
 
 create policy audit_events_admin_only on public.audit_events
 for select to authenticated
-using (public.is_admin());
+using ((select public.is_admin()));
 
 create policy retention_runs_admin_only on public.retention_runs
 for select to authenticated
-using (public.is_admin());
+using ((select public.is_admin()));
 
 grant usage on schema public to authenticated;
 grant select, insert, update on public.profiles to authenticated;

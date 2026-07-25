@@ -11,10 +11,10 @@ from fastapi.testclient import TestClient
 
 from werewolf_agent.api.bootstrap import create_app
 from werewolf_agent.api.dependencies import RequestServices, get_services
-from werewolf_agent.configuration import AppSettings
+from werewolf_agent.application.operations import QueuedOperation
 from werewolf_agent.contracts import ErrorCode
 from werewolf_agent.security.principal import Principal
-from werewolf_agent.usecase.operations import QueuedOperation
+from werewolf_agent.settings import AppSettings
 
 NOW = datetime(2026, 7, 24, tzinfo=UTC)
 
@@ -222,7 +222,7 @@ def test_admin_reveal_feature_flag_matches_runtime_behavior() -> None:
         access=services.access,
         message_max_chars=services.message_max_chars,
         diagnostics=services.diagnostics,
-        admin_reveal_enabled=False,
+        reveal_api_enabled=False,
     )
 
     response = client.get(
@@ -373,7 +373,9 @@ def test_openapi_contains_no_secret_contract_fields() -> None:
 
 def test_checked_in_openapi_matches_the_runtime_contract() -> None:
     checked_in = json.loads(
-        (Path(__file__).resolve().parents[3] / "openapi.json").read_text(encoding="utf-8")
+        (Path(__file__).resolve().parents[3] / "contracts" / "openapi.json").read_text(
+            encoding="utf-8"
+        )
     )
 
     assert checked_in == create_app().openapi()

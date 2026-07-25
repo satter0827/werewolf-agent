@@ -73,7 +73,7 @@ def build_profile(
         *PYTHON_STATIC_GATES,
         *FRONTEND_STATIC_GATES,
         *UNIT_GATES,
-        "offline",
+        "isolation",
     }
     check = {
         *quick,

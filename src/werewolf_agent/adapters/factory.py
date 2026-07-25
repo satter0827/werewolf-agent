@@ -9,7 +9,7 @@ from werewolf_agent.adapters.auth import (
 )
 from werewolf_agent.adapters.http import HttpGameClient
 from werewolf_agent.adapters.ports import GameClient
-from werewolf_agent.configuration import AppSettings
+from werewolf_agent.settings import AppSettings
 
 
 def build_game_client(settings: AppSettings) -> GameClient:

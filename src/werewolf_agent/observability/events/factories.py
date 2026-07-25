@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from werewolf_agent.configuration.constants import (
+from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.events import GameEvent
+from werewolf_agent.observability.constants import (
     DEFAULT_ERROR_EVENT_VISIBILITY,
     ERROR_EVENT_TYPE,
     EventVisibility,
 )
-from werewolf_agent.contracts import AppError
-from werewolf_agent.contracts.events import GameEvent
 
 
 def error_event(

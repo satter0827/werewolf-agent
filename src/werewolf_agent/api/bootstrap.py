@@ -9,6 +9,11 @@ from typing import Annotated
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from werewolf_agent.adapters.application_bridge import (
+    build_game_application_config,
+    build_game_definitions,
+    build_player_setup_definitions,
+)
 from werewolf_agent.adapters.setup_options import get_local_setup_options
 from werewolf_agent.adapters.supabase.diagnostics import SupabaseAdminDiagnostics
 from werewolf_agent.adapters.supabase.operations import (
@@ -18,11 +23,6 @@ from werewolf_agent.adapters.supabase.operations import (
 from werewolf_agent.adapters.supabase.repository import (
     SupabaseGameRepository,
     connect_worker_database,
-)
-from werewolf_agent.adapters.usecase_bridge import (
-    build_game_definitions,
-    build_game_usecase_config,
-    build_llm_definitions,
 )
 from werewolf_agent.api.dependencies import (
     RequestServices,
@@ -37,7 +37,8 @@ from werewolf_agent.api.errors import (
 from werewolf_agent.api.middleware.limits import PrincipalRateLimiter, RequestLimitsMiddleware
 from werewolf_agent.api.middleware.security_headers import ApiSecurityHeadersMiddleware
 from werewolf_agent.api.routes import admin, config, games, operations
-from werewolf_agent.configuration import AppSettings, get_settings
+from werewolf_agent.application import GameApplication
+from werewolf_agent.application.models import ApplicationContext
 from werewolf_agent.contracts.api import (
     PublicRuntimeConfig,
     PublicRuntimeFeatures,
@@ -45,8 +46,7 @@ from werewolf_agent.contracts.api import (
     PublicUiConfig,
 )
 from werewolf_agent.security.principal import Principal, SupabaseJwtAuthenticator
-from werewolf_agent.usecase import GameApplication
-from werewolf_agent.usecase.models import UsecaseContext
+from werewolf_agent.settings import AppSettings, get_settings
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -112,14 +112,14 @@ def _service_dependency(
             connect_worker_database(runtime.supabase_db_dsn_value) as connection,
             connection.transaction(),
         ):
-            context = UsecaseContext(
+            context = ApplicationContext(
                 repository=SupabaseGameRepository(
                     connection,
                     owner_user_id=principal.user_id,
                 ),
-                config=build_game_usecase_config(runtime),
+                config=build_game_application_config(runtime),
                 game_definitions=build_game_definitions(runtime),
-                llm_definitions=build_llm_definitions(runtime),
+                player_definitions=build_player_setup_definitions(runtime),
             )
             yield RequestServices(
                 games=GameApplication(context),
@@ -127,7 +127,7 @@ def _service_dependency(
                 access=SupabaseAccessPolicy(connection),
                 message_max_chars=runtime.api_message_max_chars,
                 diagnostics=SupabaseAdminDiagnostics(connection),
-                admin_reveal_enabled=runtime.reveal_api_enabled,
+                reveal_api_enabled=runtime.reveal_api_enabled,
             )
 
     return dependency

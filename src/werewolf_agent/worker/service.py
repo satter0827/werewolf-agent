@@ -1,0 +1,391 @@
+"""Process asynchronous game operations through application handlers."""
+
+from __future__ import annotations
+
+import logging
+import time
+from collections.abc import Mapping
+from typing import Any, Literal, TypeVar
+
+from pydantic import BaseModel
+
+from werewolf_agent.adapters.agents.game_driver import (
+    AgentRuntime,
+)
+from werewolf_agent.adapters.agents.game_driver import (
+    advance_game as advance_agent_game,
+)
+from werewolf_agent.adapters.application_bridge import (
+    build_game_application_config,
+    build_game_definitions,
+    build_llm_definitions,
+    build_player_setup_definitions,
+    build_worker_llm_provider_config,
+)
+from werewolf_agent.adapters.supabase.llm_trace import SupabaseLlmTraceSink
+from werewolf_agent.adapters.supabase.repository import (
+    SupabaseDatabaseUnavailableError,
+    SupabaseGameRepository,
+    connect_worker_database,
+)
+from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
+from werewolf_agent.application import Actor, GameApplication
+from werewolf_agent.application import handlers as application_handlers
+from werewolf_agent.application.models import (
+    AdvanceGameCommand,
+    ApplicationContext,
+    GetGameQuery,
+)
+from werewolf_agent.contracts import (
+    AppError,
+    GameNotFoundError,
+    InvalidGameIdError,
+    problem_details_from_error,
+    problem_details_from_spec,
+)
+from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.contracts.schemas import (
+    AdvanceGameResponse,
+    CreateGameRequest,
+    GameResponse,
+    GameRevealResponse,
+    PlayerActionRequest,
+    PlayerActionResponse,
+    ProblemDetails,
+)
+from werewolf_agent.observability.constants import (
+    EVENT_OUTCOME_FAILURE,
+    EVENT_OUTCOME_SUCCESS,
+)
+from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker.events import (
+    LOG_WORKER_DATABASE_UNAVAILABLE,
+    LOG_WORKER_REQUEST_CLAIMED,
+    LOG_WORKER_REQUEST_COMPLETED,
+    LOG_WORKER_REQUEST_FAILED,
+)
+from werewolf_agent.worker.messages import (
+    MESSAGE_GAME_PARTICIPATION_REQUIRED,
+    MESSAGE_PLAYER_SEAT_NOT_OWNED,
+    MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
+    MESSAGE_WORKER_REQUEST_FAILED,
+    message_unsupported_operation_type,
+)
+
+logger = logging.getLogger(__name__)
+TModel = TypeVar("TModel", bound=BaseModel)
+
+
+def run_worker_forever(settings: AppSettings) -> None:
+    """Run the queue worker until the process is interrupted."""
+    while True:
+        try:
+            processed = process_worker_batch(settings)
+        except SupabaseDatabaseUnavailableError:
+            logger.warning(
+                LOG_WORKER_DATABASE_UNAVAILABLE,
+                extra={
+                    "event_action": LOG_WORKER_DATABASE_UNAVAILABLE,
+                    "event_outcome": EVENT_OUTCOME_FAILURE,
+                },
+            )
+            processed = 0
+        if processed == 0:
+            time.sleep(settings.supabase_worker_poll_interval_seconds)
+
+
+def process_worker_batch(settings: AppSettings) -> int:
+    """Claim and process at most one configured batch of requests."""
+    if not settings.supabase_worker_configured:
+        raise AppError(MESSAGE_SUPABASE_WORKER_DSN_REQUIRED)
+    processed = 0
+    with connect_worker_database(settings.supabase_db_dsn_value) as connection:
+        store = SupabaseWorkerStore(connection)
+        for _ in range(settings.supabase_worker_batch_size):
+            with connection.transaction():
+                request = store.claim_request(
+                    worker_id=settings.supabase_worker_id,
+                    claim_seconds=settings.supabase_worker_claim_seconds,
+                )
+            if request is None:
+                break
+            logger.info(
+                LOG_WORKER_REQUEST_CLAIMED,
+                extra={
+                    **_request_log_extra(request),
+                    "event_action": LOG_WORKER_REQUEST_CLAIMED,
+                    "event_outcome": EVENT_OUTCOME_SUCCESS,
+                    "worker_id": settings.supabase_worker_id,
+                },
+            )
+            _process_request(connection, store, settings, request)
+            processed += 1
+    return processed
+
+
+def _process_request(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> None:
+    try:
+        with connection.transaction():
+            _execute_request(connection, store, settings, request)
+    except Exception as exc:
+        logger.exception(
+            LOG_WORKER_REQUEST_FAILED,
+            extra={
+                **_request_log_extra(request),
+                "event_action": LOG_WORKER_REQUEST_FAILED,
+                "event_outcome": EVENT_OUTCOME_FAILURE,
+            },
+        )
+        with connection.transaction():
+            store.fail_request(request, _problem_from_exception(exc))
+
+
+def _execute_request(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> None:
+    """Execute one claimed command inside a rollback-only savepoint."""
+    operation_type = str(request["operation_type"])
+    result: BaseModel
+    if operation_type == "create_game":
+        result = _create_game(connection, store, settings, request)
+    elif operation_type == "advance_game":
+        result = _advance_game(connection, store, settings, request)
+    elif operation_type == "submit_action":
+        result = _submit_action(connection, store, settings, request)
+    else:
+        raise AppError(message_unsupported_operation_type(operation_type))
+    result_payload = result.model_dump(mode="json")
+    store.record_accepted_command(request, result_payload)
+    store.complete_request(request, result_payload)
+    logger.info(
+        LOG_WORKER_REQUEST_COMPLETED,
+        extra={
+            **_request_log_extra(request),
+            "game_id": str(result_payload.get("game_id") or request.get("game_id") or ""),
+            "event_action": LOG_WORKER_REQUEST_COMPLETED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
+        },
+    )
+
+
+def _create_game(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> GameResponse:
+    payload = _json_object(request.get("request_payload"))
+    create_request = CreateGameRequest.model_validate(payload)
+    owner_user_id = str(request["owner_user_id"])
+    llm_mode = store.verify_creation_llm_mode(
+        owner_user_id=owner_user_id,
+        requested_mode=str(request["llm_mode"]),
+    )
+    service = _service(
+        connection,
+        settings,
+        owner_user_id=owner_user_id,
+        create_llm_mode=llm_mode,
+    )
+    result = GameApplication(service).create(create_request)
+    response = _wire_model(GameResponse, result)
+    participant_player_id = create_request.manual_player_id or "observer"
+    store.add_participant(
+        game_id=response.game_id,
+        user_id=owner_user_id,
+        player_id=participant_player_id,
+        role="owner" if create_request.manual_player_id is None else "player",
+    )
+    _materialize_private_views(connection, store, settings, response.game_id)
+    return response
+
+
+def _advance_game(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> AdvanceGameResponse:
+    game_id = str(request.get("game_id") or "")
+    user_id = str(request["owner_user_id"])
+    if not store.participates(game_id=game_id, user_id=user_id):
+        raise AppError(
+            MESSAGE_GAME_PARTICIPATION_REQUIRED,
+            code=ErrorCode.AUTHORIZATION_FAILED,
+        )
+    service = _service(connection, settings)
+    runtime = AgentRuntime(
+        config=build_worker_llm_provider_config(
+            store.game_llm_mode(game_id),
+            settings,
+        ),
+        definitions=build_llm_definitions(settings),
+        trace_sink=SupabaseLlmTraceSink(
+            connection,
+            game_id=game_id,
+            request_id=str(request["request_id"]),
+            state_version=_expected_version(request),
+        ),
+    )
+    result = advance_agent_game(
+        service,
+        AdvanceGameCommand(
+            game_id=game_id,
+            expected_version=_expected_version(request),
+        ),
+        runtime=runtime,
+    )
+    response = _wire_model(AdvanceGameResponse, result)
+    _materialize_private_views(connection, store, settings, response.game_id)
+    return response
+
+
+def _submit_action(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> PlayerActionResponse:
+    game_id = str(request.get("game_id") or "")
+    player_id = str(request.get("player_id") or "")
+    user_id = str(request["owner_user_id"])
+    if not store.owns_player(game_id=game_id, player_id=player_id, user_id=user_id):
+        raise AppError(
+            MESSAGE_PLAYER_SEAT_NOT_OWNED,
+            code=ErrorCode.AUTHORIZATION_FAILED,
+        )
+    action_request = PlayerActionRequest.model_validate(
+        _json_object(request.get("request_payload"))
+    )
+    service = _service(connection, settings)
+    application = GameApplication(service)
+    result = application.submit_action(
+        game_id,
+        Actor(user_id=user_id),
+        action_request,
+        _expected_version(request),
+        player_id=player_id,
+    )
+    response = _wire_model(PlayerActionResponse, result)
+    _materialize_private_views(connection, store, settings, response.game_id)
+    return response
+
+
+def _materialize_private_views(
+    connection: Any,
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    game_id: str,
+) -> None:
+    service = _service(connection, settings)
+    state_version = _materialize_reveal_view(store, settings, service, game_id)
+    for participant in store.player_participants(game_id):
+        observation = GameApplication(service).observation(
+            game_id,
+            Actor(user_id=participant.user_id),
+            participant.player_id,
+        )
+        store.save_observation(
+            game_id=game_id,
+            participant=participant,
+            state_version=state_version,
+            observation=observation.observation,
+        )
+
+
+def _materialize_reveal_view(
+    store: SupabaseWorkerStore,
+    settings: AppSettings,
+    service: ApplicationContext,
+    game_id: str,
+) -> int:
+    if not settings.reveal_api_enabled:
+        store.delete_reveal(game_id)
+        return _current_game_version(service, game_id)
+
+    reveal = GameApplication(service).reveal(
+        game_id,
+        Actor(user_id="worker", is_admin=True),
+    )
+    reveal_response = _wire_model(GameRevealResponse, reveal)
+    store.save_reveal(
+        game_id=game_id,
+        payload=reveal_response.model_dump(mode="json"),
+        version=reveal_response.version,
+    )
+    return reveal_response.version
+
+
+def _current_game_version(service: ApplicationContext, game_id: str) -> int:
+    game = application_handlers.get_game(GetGameQuery(game_id=game_id), dependencies=service)
+    return int(game.state["version"])
+
+
+def _service(
+    connection: Any,
+    settings: AppSettings,
+    *,
+    owner_user_id: str | None = None,
+    create_llm_mode: Literal["fake", "paid"] = "fake",
+) -> ApplicationContext:
+    return ApplicationContext(
+        repository=SupabaseGameRepository(connection, owner_user_id=owner_user_id),
+        config=build_game_application_config(settings),
+        game_definitions=build_game_definitions(settings),
+        player_definitions=build_player_setup_definitions(settings),
+        create_llm_mode=create_llm_mode,
+    )
+
+
+def _expected_version(request: Mapping[str, Any]) -> int:
+    value = request.get("expected_version")
+    if value is None:
+        payload = _json_object(request.get("request_payload"))
+        value = payload.get("expected_version")
+    if value is None:
+        raise AppError(
+            "expected_version is required.",
+            code=ErrorCode.REQUEST_VALIDATION_FAILED,
+        )
+    return int(value)
+
+
+def _problem_from_exception(exc: Exception) -> ProblemDetails:
+    if isinstance(exc, AppError):
+        return problem_details_from_error(exc, instance="supabase-worker")
+    if isinstance(exc, GameNotFoundError):
+        code = ErrorCode.RESOURCE_NOT_FOUND
+    elif isinstance(exc, InvalidGameIdError):
+        code = ErrorCode.REQUEST_VALIDATION_FAILED
+    else:
+        code = ErrorCode.INTERNAL_UNEXPECTED
+    return problem_details_from_spec(
+        code,
+        instance="supabase-worker",
+        detail=MESSAGE_WORKER_REQUEST_FAILED if code is ErrorCode.INTERNAL_UNEXPECTED else None,
+    )
+
+
+def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
+    return model_type.model_validate(source.model_dump(mode="json"))
+
+
+def _json_object(value: Any) -> dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def _request_log_extra(request: Mapping[str, Any]) -> dict[str, object]:
+    return {
+        "request_id": str(request.get("request_id") or ""),
+        "operation_type": str(request.get("operation_type") or ""),
+        "game_id": str(request.get("game_id") or ""),
+        "attempt_count": int(request.get("attempt_count") or 0),
+    }

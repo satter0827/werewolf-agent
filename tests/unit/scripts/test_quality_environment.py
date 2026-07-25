@@ -28,8 +28,15 @@ def test_environment_gate_checks_frozen_dependencies_and_runtime_versions(
 
     assert result.returncode == 0
     assert commands == [
-        ("uv", "sync", "--check", "--frozen", "--all-groups", "--all-extras"),
+        (environment.sys.executable, "-c", "import werewolf_agent"),
         ("node", "--version"),
+        (
+            "node",
+            "-e",
+            "const {spawnSync}=require('node:child_process');"
+            "const r=spawnSync(process.execPath,['--version']);"
+            "process.exit(r.error ? 2 : (r.status ?? 2));",
+        ),
         ("npm", "ls", "--depth=0", "--ignore-scripts"),
     ]
 
@@ -51,4 +58,4 @@ def test_environment_gate_rejects_unsupported_node_version(
     result = environment.check_environment(context, tmp_path)
 
     assert result.returncode == 1
-    assert "Node.js 22" in result.output
+    assert "Node.js 22以上" in result.output

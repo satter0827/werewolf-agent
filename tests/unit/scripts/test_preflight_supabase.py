@@ -4,8 +4,10 @@ import re
 from pathlib import Path
 
 import pytest
+from scripts._infra.process import CommandResult
 from scripts.supabase import preflight as preflight_supabase
 from scripts.supabase.preflight import (
+    SupabasePreflight,
     is_supported_supabase_version,
     parse_status_environment,
     select_status_environment,
@@ -87,3 +89,23 @@ def test_isolated_project_uses_distinct_project_id_and_ports(
     second_root = artifact_root / "db" / "quality" / "run-2"
     _, second_project_id = preflight_supabase._prepare_isolated_project(second_root)
     assert second_project_id != project_id
+
+
+def test_stack_supervisor_stops_existing_local_supabase_when_forced(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stackが事前起動済みSupabaseも終了時に回収する。"""
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> CommandResult:
+        commands.append(command)
+        return CommandResult(command, 0, 0.0, "")
+
+    monkeypatch.setattr(preflight_supabase, "run_command", fake_run)
+    prepared = SupabasePreflight(environment={}, started_by_process=False)
+
+    preflight_supabase.stop_supabase(prepared)
+    assert commands == []
+
+    preflight_supabase.stop_supabase(prepared, force=True)
+    assert commands == [["supabase", "stop", "--no-backup"]]

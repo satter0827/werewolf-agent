@@ -1,4 +1,4 @@
-"""HTTP-only game client for Python user interfaces."""
+"""HTTP-only game client for Python clients."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import httpx
 from pydantic import BaseModel, ConfigDict, ValidationError
 
 from werewolf_agent.adapters.supabase.session_store import SupabaseSession
-from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts import AppError, ErrorCode, ResourceNotFoundError
 from werewolf_agent.contracts.api import (
     OperationResponse,
@@ -31,6 +30,7 @@ from werewolf_agent.contracts.schemas import (
     PlayerObservationResponse,
     ProblemDetails,
 )
+from werewolf_agent.settings import AppSettings
 
 TModel = TypeVar("TModel", bound=BaseModel)
 

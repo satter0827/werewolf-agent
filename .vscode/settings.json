@@ -6,6 +6,14 @@
   "python.testing.pytestArgs": ["--test-level=quick", "tests"],
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
+  "files.exclude": {
+    "**/.mypy_cache": true,
+    "**/.pytest_cache": true,
+    "**/__pycache__": true,
+    ".venv": true,
+    ".werewolf-agent/cache": true,
+    ".werewolf-agent/runtime": true
+  },
   "[python]": {
     "editor.defaultFormatter": "charliermarsh.ruff",
     "editor.codeActionsOnSave": {

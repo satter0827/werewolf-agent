@@ -23,15 +23,12 @@ def test_architecture_analysis_passes_and_exposes_evidence() -> None:
         {
             "source_module": "werewolf_agent.api.bootstrap",
             "target_layer": "adapters",
-            "reason": "HTTP composition root が adapter 実装を構築する。",
+            "reason": "HTTP composition rootがadapter実装を構築する。",
         }
     ]
     assert set(document["public_symbols"]) == {
-        "werewolf_agent.adapters",
-        "werewolf_agent.agents",
-        "werewolf_agent.contracts",
+        "werewolf_agent.application",
         "werewolf_agent.domain",
-        "werewolf_agent.usecase",
     }
     assert all(edge["line"] > 0 for edge in document["import_evidence"])
 
@@ -94,7 +91,7 @@ def test_import_analysis_resolves_relative_and_package_imports(tmp_path: Path) -
                 "from ..contracts import ProblemDetails",
                 "from werewolf_agent import domain",
                 "if TYPE_CHECKING:",
-                "    from ..interfaces import cli",
+                "    from ..clients import cli",
             ]
         ),
         encoding="utf-8",
@@ -107,4 +104,4 @@ def test_import_analysis_resolves_relative_and_package_imports(tmp_path: Path) -
 
     assert ("werewolf_agent.contracts", 2) in imports
     assert ("werewolf_agent.domain", 3) in imports
-    assert not any(name.startswith("werewolf_agent.interfaces") for name, _ in imports)
+    assert not any(name.startswith("werewolf_agent.clients") for name, _ in imports)

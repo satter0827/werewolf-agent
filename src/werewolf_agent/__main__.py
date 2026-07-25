@@ -1,6 +1,6 @@
 """Module execution entry point for ``python -m werewolf_agent``."""
 
-from werewolf_agent.interfaces.cli.app import app
+from werewolf_agent.clients.cli.app import app
 
 
 def main() -> None:

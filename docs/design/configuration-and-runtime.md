@@ -11,12 +11,20 @@
 テストや限定された組み立てに使う。CLI の game 操作 option は request 値であり、
 application settings の暗黙 override として扱わない。
 
+設定fieldはAPI、worker、client、database、LLM、logging、gameのsection modelが
+所有する。`AppSettings`はsectionを合成して環境変数を一度だけ解決するcomposition
+modelであり、個別fieldを直接定義しない。sectionの一覧はarchitecture manifestを
+正本とし、fieldの重複と未所属を構造テストで禁止する。applicationとagentsへは
+`GameApplicationConfig`と`LlmProviderConfig`へ縮小して渡す。
+
 同じ値に複数の名前や暗黙 fallback を設けない。秘密値は version 管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
 
-packaged resource にはゲーム定義、message catalog、prompt、FakeListLLM fixture を
-置く。resource は `importlib.resources` 相当の package API から読み、作業
-directory に依存しない。
+packaged resourceは所有機能へ配置する。applicationはゲーム定義、agentsはpromptと
+FakeListLLM fixture、Streamlit clientはi18n、CSS、screen定義、settingsはruntime
+defaultを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと
+定義間の相互参照検証はadapterがcomposition時に行う。resourceはpackage APIから
+読み、作業directoryに依存しない。
 
 ## 実行プロセス
 
@@ -38,7 +46,7 @@ directory に依存しない。
 機能名で分ける。起動ツールや作業者の名前を含めない。
 
 時刻、level、event、context、error code を安定した field とし、秘密情報を
-redaction してから sink へ渡す。domain と usecase は logging 設定に依存しない。
+redactionしてからsinkへ渡す。domainとapplicationはlogging設定に依存しない。
 
 ## 実行前検証
 

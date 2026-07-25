@@ -8,9 +8,9 @@ from werewolf_agent.adapters.agents.game_driver import (
     _agent_observation_from_game,
     langchain_agent_factory,
 )
+from werewolf_agent.adapters.llm.langchain.service import LangChainDecisionProvider
+from werewolf_agent.adapters.resources import load_llm_definitions
 from werewolf_agent.agents.configuration import LlmProviderConfig
-from werewolf_agent.agents.langchain.service import LangChainDecisionProvider
-from werewolf_agent.configuration.resources import load_llm_definitions
 from werewolf_agent.contracts import (
     ERROR_CONTEXT_LLM_BASE_URL,
     ERROR_CONTEXT_LLM_ERROR_TYPE,

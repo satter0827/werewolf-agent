@@ -23,7 +23,8 @@ COPY docker ./docker
 COPY docs ./docs
 COPY frontend ./frontend
 COPY tests ./tests
-COPY .env.example AGENTS.md compose.postgres.yaml compose.yaml openapi.json ./
+COPY .env.example AGENTS.md compose.yaml ./
+COPY contracts/openapi.json ./contracts/openapi.json
 RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker
 
 CMD ["pytest"]

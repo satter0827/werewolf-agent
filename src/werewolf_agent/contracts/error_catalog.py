@@ -9,7 +9,7 @@ from typing import Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.contracts.messages import (
     DETAIL_AGENT_INVALID_RESPONSE,
     DETAIL_API_UNAVAILABLE,
     DETAIL_AUTHENTICATION_REQUIRED,

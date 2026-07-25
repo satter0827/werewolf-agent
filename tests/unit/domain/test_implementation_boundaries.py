@@ -10,9 +10,14 @@ FRONTEND = ROOT / "frontend" / "src"
 
 
 def test_domain_rules_and_fake_provider_remain_centralized() -> None:
-    handlers = (PACKAGE / "usecase" / "handlers.py").read_text(encoding="utf-8")
+    handlers = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (PACKAGE / "application" / "handlers").glob("*.py")
+    )
     for legacy_function in ("start_game", "submit_action", "advance_phase", "observe"):
         assert f"{legacy_function}(" not in handlers
-    service = (PACKAGE / "agents" / "langchain" / "service.py").read_text(encoding="utf-8")
+    service = (PACKAGE / "adapters" / "llm" / "langchain" / "service.py").read_text(
+        encoding="utf-8"
+    )
     assert "from langchain_core.language_models.fake import FakeListLLM" in service
     assert "class Fake" not in service

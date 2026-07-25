@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from werewolf_agent.configuration import AppSettings
+from werewolf_agent.settings import AppSettings
 
 
 class AuthenticationError(Exception):

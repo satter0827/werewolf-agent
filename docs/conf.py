@@ -23,7 +23,7 @@ extensions = [
 
 source_suffix = {".md": "markdown"}
 root_doc = "index"
-exclude_patterns = ["_generated/**"]
+exclude_patterns = ["_generated/**", "AGENTS.md"]
 nitpicky = True
 
 autodoc_typehints = "description"

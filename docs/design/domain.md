@@ -8,7 +8,7 @@
 
 `Game` がゲーム状態を変更できる唯一の集約である。参加者、役職、フェーズ、投票、
 夜行動、勝敗を一貫した単位として検証し、成功した操作をイベントとして記録する。
-usecase やインターフェースは合法手や勝敗を再計算しない。
+applicationやclientは合法手や勝敗を再計算しない。
 
 ```{image} ../_generated/architecture/domain-structure.svg
 :alt: Game 集約とルール、状態、イベントの関係

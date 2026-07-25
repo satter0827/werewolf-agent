@@ -13,7 +13,7 @@ domain
 application-and-api
 agents
 data-and-security
-interfaces
+clients
 configuration-and-runtime
 development
 verification

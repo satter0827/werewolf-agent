@@ -34,11 +34,7 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: uv sync --frozen --all-groups --all-extras
-      - run: npm ci --ignore-scripts
-        working-directory: frontend
-      - run: npm audit --audit-level=low
-        working-directory: frontend
+      - run: uv run --no-project python -m scripts.environment setup check
       - run: uv run --no-sync python -m scripts.quality check
       - if: always()
         uses: actions/upload-artifact@v4
@@ -69,17 +65,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.104.0
-      - run: uv sync --frozen --all-groups --all-extras
-      - run: npm ci --ignore-scripts
-        working-directory: frontend
-      - run: npm audit --audit-level=low
-        working-directory: frontend
-      - name: Prepare offline release dependencies
-        run: |
-          supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,storage,studio,vector
-          supabase stop --no-backup
-          docker compose --profile e2e build --pull=false api worker frontend frontend-e2e streamlit e2e migrate
-          docker build --pull=false --target runtime -f docker/backend.Dockerfile -t "$QUALITY_RUNTIME_IMAGE" .
+      - run: uv run --no-project python -m scripts.environment setup release
       - run: uv run --no-sync python -m scripts.quality release
       - if: always()
         uses: actions/upload-artifact@v4
@@ -112,17 +98,7 @@ jobs:
       - uses: supabase/setup-cli@v1
         with:
           version: 2.104.0
-      - run: uv sync --frozen --all-groups --all-extras
-      - run: npm ci --ignore-scripts
-        working-directory: frontend
-      - run: npm audit --audit-level=low
-        working-directory: frontend
-      - name: Prepare offline deep dependencies
-        run: |
-          supabase start --exclude analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,storage,studio,vector
-          supabase stop --no-backup
-          docker compose --profile e2e build --pull=false api worker frontend frontend-e2e streamlit e2e migrate
-          docker build --pull=false --target runtime -f docker/backend.Dockerfile -t "$QUALITY_RUNTIME_IMAGE" .
+      - run: uv run --no-project python -m scripts.environment setup deep
       - run: uv run --no-sync python -m scripts.quality deep --confirm-deep
       - if: always()
         uses: actions/upload-artifact@v4

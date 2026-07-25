@@ -11,30 +11,9 @@
 :show-inheritance:
 ```
 
-## Usecase
+## Application
 
-```{automodule} werewolf_agent.usecase
-:members:
-:show-inheritance:
-```
-
-## Contracts
-
-```{automodule} werewolf_agent.contracts
-:members:
-:show-inheritance:
-```
-
-## Agents
-
-```{automodule} werewolf_agent.agents
-:members:
-:show-inheritance:
-```
-
-## Adapters
-
-```{automodule} werewolf_agent.adapters
+```{automodule} werewolf_agent.application
 :members:
 :show-inheritance:
 ```

@@ -9,11 +9,11 @@ from typing import Annotated, Any, Protocol, cast
 from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from werewolf_agent.configuration.messages import DETAIL_REQUEST_RATE_LIMITED
+from werewolf_agent.api.messages import DETAIL_REQUEST_RATE_LIMITED
+from werewolf_agent.application import GameApplication
+from werewolf_agent.application.operations import AccessPolicy, OperationQueue
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.security.principal import AuthenticationError, Principal
-from werewolf_agent.usecase import GameApplication
-from werewolf_agent.usecase.operations import AccessPolicy, OperationQueue
 
 _bearer = HTTPBearer(auto_error=False)
 
@@ -41,7 +41,7 @@ class RequestServices:
     access: AccessPolicy
     message_max_chars: int
     diagnostics: AdminDiagnostics | None = None
-    admin_reveal_enabled: bool = True
+    reveal_api_enabled: bool = True
 
 
 def get_services() -> RequestServices:

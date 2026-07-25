@@ -5,8 +5,8 @@ import pytest
 from werewolf_agent.adapters import factory
 from werewolf_agent.adapters.http import HttpGameClient
 from werewolf_agent.adapters.supabase import SupabaseSession
-from werewolf_agent.configuration import AppSettings
 from werewolf_agent.contracts import AppError
+from werewolf_agent.settings import AppSettings
 
 
 def test_build_game_client_requires_supabase_settings() -> None:

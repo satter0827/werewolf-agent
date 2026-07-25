@@ -171,13 +171,11 @@ def test_quality_environment_removes_secrets_and_disables_telemetry(
     assert "WEREWOLF_TOKEN" not in environment
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
     assert environment["OTEL_SDK_DISABLED"] == "true"
-    assert environment["HTTPS_PROXY"] == "http://127.0.0.1:9"
-    assert environment["https_proxy"] == "http://127.0.0.1:9"
-    assert environment["NO_PROXY"] == "127.0.0.1,localhost,::1"
+    assert environment["HTTPS_PROXY"] == "https://external-proxy.example"
 
 
-def test_quality_environment_cannot_override_offline_invariants() -> None:
-    """追加する接続情報からもsecretを除き、安全設定を最後に強制する。"""
+def test_quality_environment_cannot_override_isolation_invariants() -> None:
+    """追加する接続情報からもsecretを除き、provider隔離を最後に強制する。"""
 
     environment = quality_environment(
         extra={
@@ -188,7 +186,7 @@ def test_quality_environment_cannot_override_offline_invariants() -> None:
     )
 
     assert "OPENAI_API_KEY" not in environment
-    assert environment["HTTPS_PROXY"] == "http://127.0.0.1:9"
+    assert environment["HTTPS_PROXY"] == "https://external-proxy.example"
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
 
 
@@ -207,7 +205,7 @@ def test_quality_environment_keeps_only_explicit_public_supabase_keys() -> None:
     assert environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"] == "local-public-key"
 
 
-def test_browser_e2e_uses_the_shared_offline_environment() -> None:
+def test_browser_e2e_uses_the_shared_isolated_environment() -> None:
     """ReactとStreamlitの共通E2Eへ安全な子process環境だけを渡す。"""
     source = (ROOT / "scripts" / "browser" / "e2e.py").read_text(encoding="utf-8")
 
@@ -217,17 +215,17 @@ def test_browser_e2e_uses_the_shared_offline_environment() -> None:
     assert '"never"' in source
 
 
-def test_offline_gate_rejects_overridden_network_guard(tmp_path: Path) -> None:
-    """子process環境の遮断設定が上書きされた実行を拒否する。"""
+def test_isolation_gate_rejects_overridden_provider_policy(tmp_path: Path) -> None:
+    """子process環境のprovider隔離設定が上書きされた実行を拒否する。"""
 
     environment = quality_environment()
-    environment["HTTPS_PROXY"] = "https://external-proxy.example"
+    environment["WEREWOLF_LLM_PROVIDER"] = "openai"
     context = SimpleNamespace(environment=environment)
 
-    result = environment_gate.check_offline_environment(context, tmp_path)
+    result = environment_gate.check_isolation_environment(context, tmp_path)
 
     assert result.returncode == 1
-    assert "HTTPS_PROXY" in result.output
+    assert "WEREWOLF_LLM_PROVIDER" in result.output
 
 
 def test_redact_masks_secret_values() -> None:
@@ -442,6 +440,7 @@ def test_artifact_root_is_repository_local() -> None:
     """生成物の既定位置を単一の管理領域へ固定する。"""
 
     assert ARTIFACT_ROOT.name == ".werewolf-agent"
+    assert support.TEMPORARY_ROOT == ARTIFACT_ROOT / "runtime" / "tmp"
 
 
 def test_branch_coverage_contract_enforces_independent_threshold(tmp_path: Path) -> None:
@@ -646,7 +645,12 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     tasks = json.loads((ROOT / ".vscode" / "tasks.json").read_text(encoding="utf-8"))
     settings = json.loads((ROOT / ".vscode" / "settings.json").read_text(encoding="utf-8"))
     extensions = json.loads((ROOT / ".vscode" / "extensions.json").read_text(encoding="utf-8"))
-    launch_names = {configuration["name"] for configuration in launch["configurations"]}
+    visible_launch_names = {
+        configuration["name"]
+        for configuration in launch["configurations"]
+        if not configuration.get("presentation", {}).get("hidden", False)
+    }
+    visible_task_names = {task["label"] for task in tasks["tasks"] if not task.get("hide", False)}
     task_commands = {
         task["label"]: task.get("args", [])
         for task in tasks["tasks"]
@@ -654,11 +658,44 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     }
     workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
 
-    assert "Tests: Current File (Quick)" in launch_names
-    assert not any(name.startswith("Quality:") for name in launch_names)
-    assert task_commands["Quality: Quick"][-4:] == ["python", "-m", "scripts.quality", "quick"]
-    assert task_commands["Quality: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
-    assert task_commands["Docs: Inspect"][-4:] == ["python", "-m", "scripts.docs", "inspect"]
+    assert visible_launch_names == {
+        "API",
+        "Worker",
+        "React",
+        "Streamlit",
+        "CLI Doctor",
+        "CLI Play",
+    }
+    assert visible_task_names == {
+        "Project: Setup",
+        "Verify: Quick",
+        "Verify: Check",
+        "Verify: Release",
+        "Verify: Deep",
+        "Docs: Build",
+        "Architecture: Analyze",
+        "Dependencies: Audit",
+        "Advanced: Quality Gate",
+    }
+    compounds = {compound["name"]: compound for compound in launch["compounds"]}
+    assert set(compounds) == {"React Stack", "Streamlit Stack"}
+    assert all(
+        "Internal: Supabase Stack" in compound["configurations"] and compound["stopAll"] is True
+        for compound in compounds.values()
+    )
+    supabase_launch = next(
+        configuration
+        for configuration in launch["configurations"]
+        if configuration["name"] == "Internal: Supabase Stack"
+    )
+    assert supabase_launch["postDebugTask"] == "Internal: Supabase Stop"
+    frontend_task = next(
+        task for task in tasks["tasks"] if task["label"] == "Internal: Frontend Dev"
+    )
+    assert frontend_task["isBackground"] is True
+    assert frontend_task["problemMatcher"][0]["background"]["endsPattern"]
+    assert task_commands["Verify: Quick"][-4:] == ["python", "-m", "scripts.quality", "quick"]
+    assert task_commands["Verify: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
     assert task_commands["Docs: Build"][-4:] == ["python", "-m", "scripts.docs", "build"]
     assert task_commands["Architecture: Analyze"][-3:] == [
         "python",
@@ -677,6 +714,8 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert "flake8.enabled" not in settings
     assert "isort.serverEnabled" not in settings
     assert "ms-python.mypy-type-checker" in extensions["recommendations"]
+    assert "dbaeumer.vscode-eslint" in extensions["recommendations"]
+    assert "esbenp.prettier-vscode" in extensions["recommendations"]
 
 
 def test_runtime_docker_dependencies_are_cached_before_source_copy() -> None:

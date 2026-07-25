@@ -8,7 +8,9 @@ import re
 import shutil
 import socket
 import sys
+import threading
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from scripts._infra.process import (
     remove_managed_path,
     run_command,
 )
+from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 _ENV_LINE = re.compile(r'^([A-Z][A-Z0-9_]*)="?(.*?)"?$')
 _ALLOWED_STATUS_KEYS = frozenset({"ANON_KEY", "API_URL", "DB_URL", "PUBLISHABLE_KEY"})
@@ -135,7 +138,7 @@ def prepare_supabase(
                 [
                     "start",
                     "--exclude",
-                    "analytics,edge-runtime,functions,imgproxy,inbucket,meta,realtime,storage,studio,vector",
+                    LOCAL_EXCLUDED_SERVICES_CSV,
                 ],
                 workdir,
             ),
@@ -291,6 +294,48 @@ def _stop_isolated_project(
     )
     if stopped.returncode == 0 and workdir.exists():
         remove_managed_path(workdir)
+
+
+def stop_supabase(
+    preflight: SupabasePreflight,
+    *,
+    force: bool = False,
+    base_environment: Mapping[str, str] | None = None,
+) -> None:
+    """このprocessが管理するローカルSupabaseを停止する。"""
+    environment = dict(base_environment) if base_environment is not None else quality_environment()
+    if preflight.workdir is not None and preflight.project_id is not None:
+        _stop_isolated_project(preflight.workdir, preflight.project_id, environment)
+        return
+    if not preflight.started_by_process and not force:
+        return
+    stopped = run_command(
+        ["supabase", "stop", "--no-backup"],
+        timeout_seconds=60,
+        environment=environment,
+    )
+    if stopped.returncode != 0:
+        raise EnvironmentBlockedError(
+            _failure_message("ローカルSupabaseを停止できませんでした。", stopped)
+        )
+
+
+def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) -> int:
+    """VS Code stackの生存期間に合わせてローカルSupabaseを管理する。"""
+    try:
+        prepared = prepare_supabase(timeout_seconds=timeout_seconds)
+    except EnvironmentBlockedError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    print("ローカルSupabaseの準備が完了しました。停止するにはCtrl+Cを押してください。", flush=True)
+    with suppress(KeyboardInterrupt):
+        threading.Event().wait()
+    try:
+        stop_supabase(prepared, force=stop_on_exit)
+    except EnvironmentBlockedError as error:
+        print(str(error), file=sys.stderr)
+        return 2
+    return 0
 
 
 def _failure_message(message: str, result: CommandResult) -> str:

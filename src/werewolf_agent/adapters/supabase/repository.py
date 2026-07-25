@@ -11,13 +11,17 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
-from werewolf_agent.configuration.messages import (
+from werewolf_agent.adapters.supabase.mapping import (
+    stored_event,
+    stored_game,
+    stored_summary,
+    stored_turn,
+)
+from werewolf_agent.adapters.supabase.messages import (
     MESSAGE_WORKER_REQUEST_FAILED,
     message_game_not_found,
 )
-from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
-from werewolf_agent.usecase._replay import checksum_payload
-from werewolf_agent.usecase.models import (
+from werewolf_agent.application.models import (
     GameEventCreate,
     GameRecordCreate,
     GameRecordUpdate,
@@ -26,11 +30,13 @@ from werewolf_agent.usecase.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.usecase.ports import GameRepository
+from werewolf_agent.application.ports import GameRepository
+from werewolf_agent.application.replay import checksum_payload
+from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
 
 
 class SupabaseGameRepository(GameRepository):
-    """Supabase Postgres implementation of the use case repository port."""
+    """Supabase Postgres implementation of the application repository port."""
 
     def __init__(
         self,
@@ -129,7 +135,7 @@ class SupabaseGameRepository(GameRepository):
             """,
             (game_id,),
         ).fetchone()
-        return _stored_game(row) if row is not None else None
+        return stored_game(row) if row is not None else None
 
     def get_for_update(self, game_id: UUID) -> StoredGame | None:
         """Return a game locked for update if it exists."""
@@ -146,7 +152,7 @@ class SupabaseGameRepository(GameRepository):
             """,
             (game_id,),
         ).fetchone()
-        return _stored_game(row) if row is not None else None
+        return stored_game(row) if row is not None else None
 
     def list_game_summaries(
         self,
@@ -184,7 +190,7 @@ class SupabaseGameRepository(GameRepository):
             """,
             params,
         ).fetchall()
-        return [_stored_summary(row) for row in rows]
+        return [stored_summary(row) for row in rows]
 
     def save(self, update: GameRecordUpdate) -> StoredGame:
         """Persist mutable game fields."""
@@ -301,7 +307,7 @@ class SupabaseGameRepository(GameRepository):
             ).fetchone()
             if row is None:
                 raise RuntimeError(MESSAGE_WORKER_REQUEST_FAILED)
-            stored = _stored_event(row)
+            stored = stored_event(row)
             stored_events.append(stored)
             if event.visibility == "public":
                 self._append_public_turn(game_id, stored)
@@ -338,7 +344,7 @@ class SupabaseGameRepository(GameRepository):
             """,
             (game_id, after, limit),
         ).fetchall()
-        return [_stored_turn(row) for row in rows]
+        return [stored_turn(row) for row in rows]
 
     def _append_public_turn(self, game_id: UUID, event: StoredGameEvent) -> None:
         game = self.get(game_id)
@@ -543,80 +549,6 @@ def connect_worker_database(dsn: str) -> psycopg.Connection[Any]:
         raise SupabaseDatabaseUnavailableError from None
 
 
-def _stored_game(row: Mapping[str, Any]) -> StoredGame:
-    return StoredGame.model_validate(
-        {
-            "id": row["game_id"],
-            "status": row["status"],
-            "phase": row["phase"],
-            "day": row["day"],
-            "seed": row.get("seed"),
-            "config": _json_object(row.get("config")),
-            "public_state": _json_object(row.get("public_state")),
-            "private_state": _json_object(row.get("private_state")),
-            "pending_actions": _json_object(row.get("pending_actions")),
-            "version": row["version"],
-            "created_at": _ensure_aware(row["created_at"]),
-            "updated_at": _ensure_aware(row["updated_at"]),
-        }
-    )
-
-
-def _stored_event(row: Mapping[str, Any]) -> StoredGameEvent:
-    return StoredGameEvent.model_validate(
-        {
-            "sequence": row["sequence"],
-            "event_id": row["event_id"],
-            "visibility": row["visibility"],
-            "phase": row.get("phase"),
-            "day": row.get("day"),
-            "actor_id": row.get("actor_id"),
-            "event_type": row["event_type"],
-            "payload": _json_object(row.get("payload")),
-            "occurred_at": _ensure_aware(row["occurred_at"]),
-        }
-    )
-
-
-def _stored_summary(row: Mapping[str, Any]) -> StoredGameSummary:
-    return StoredGameSummary.model_validate(
-        {
-            "game_id": row["game_id"],
-            "status": row["status"],
-            "phase": row["phase"],
-            "day": row["day"],
-            "version": row["version"],
-            "seed": row.get("seed"),
-            "player_count": row["player_count"],
-            "alive_count": row["alive_count"],
-            "winner": row.get("winner"),
-            "step_count": row["step_count"],
-            "turn_count": row["turn_count"],
-            "created_at": _ensure_aware(row["created_at"]),
-            "updated_at": _ensure_aware(row["updated_at"]),
-            "completed_at": _ensure_aware(row["completed_at"])
-            if row.get("completed_at") is not None
-            else None,
-        }
-    )
-
-
-def _stored_turn(row: Mapping[str, Any]) -> StoredGameTurn:
-    return StoredGameTurn.model_validate(
-        {
-            "sequence": row["sequence"],
-            "event_sequence": row["event_sequence"],
-            "version": row["version"],
-            "phase": row.get("phase"),
-            "day": row.get("day"),
-            "actor_id": row.get("actor_id"),
-            "event_type": row["event_type"],
-            "payload": _json_object(row.get("payload")),
-            "occurred_at": _ensure_aware(row["occurred_at"]),
-        }
-    )
-
-
 def _state_text(state: Mapping[str, Any], key: str) -> str | None:
     value = state.get(key)
     return str(value) if value is not None else None
@@ -624,14 +556,6 @@ def _state_text(state: Mapping[str, Any], key: str) -> str | None:
 
 def _json_object(payload: Any) -> dict[str, Any]:
     return dict(payload) if isinstance(payload, dict) else {}
-
-
-def _ensure_aware(value: Any) -> datetime:
-    if isinstance(value, datetime):
-        if value.tzinfo is None:
-            return value.replace(tzinfo=UTC)
-        return value
-    return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
 
 
 def _uuid_or_none(value: str | None) -> UUID | None:

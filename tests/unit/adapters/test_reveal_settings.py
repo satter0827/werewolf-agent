@@ -5,9 +5,10 @@ import psycopg
 import pytest
 
 from werewolf_agent.adapters.supabase import repository
-from werewolf_agent.configuration import AppSettings
+from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.contracts import AppError, ErrorCode, GameNotFoundError
-from werewolf_agent.interfaces.worker import service as worker_service
+from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker import service as worker_service
 
 
 def test_worker_database_adapter_hides_driver_connection_error(
@@ -59,14 +60,11 @@ def test_worker_rolls_back_business_savepoint_before_recording_failure(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(worker_service, "_execute_request", fail_execution)
-    monkeypatch.setattr(
-        worker_service,
-        "_fail_request",
-        lambda *_args: events.append("failed"),
-    )
+    store = SimpleNamespace(fail_request=lambda *_args: events.append("failed"))
 
     worker_service._process_request(
         connection,
+        store,
         AppSettings(_env_file=None),
         {"request_id": "operation-1", "operation_type": "advance_game"},
     )
@@ -77,7 +75,7 @@ def test_worker_rolls_back_business_savepoint_before_recording_failure(
 def test_worker_claim_recovers_expired_running_operations() -> None:
     connection = RecordingConnection()
 
-    worker_service._claim_request(connection, AppSettings(_env_file=None))
+    SupabaseWorkerStore(connection).claim_request(worker_id="worker-1", claim_seconds=30)
 
     claim_sql = connection.calls[0][0].lower()
     assert "status = 'queued'" in claim_sql
@@ -94,8 +92,7 @@ def test_worker_completion_is_fenced_by_claim_attempt_and_worker() -> None:
         "operation_type": "advance_game",
     }
 
-    worker_service._complete_request(
-        connection,
+    SupabaseWorkerStore(connection).complete_request(
         request,
         {"game_id": "game-1"},
     )
@@ -132,13 +129,14 @@ def test_worker_deletes_reveal_view_when_reveal_is_disabled(
     monkeypatch.setattr(worker_service, "_service", lambda *_args, **_kwargs: service)
     monkeypatch.setattr(worker_service, "_current_game_version", lambda *_args: 1)
     monkeypatch.setattr(
-        worker_service.usecases,
+        worker_service.application_handlers,
         "get_player_observation",
         lambda *_args, **_kwargs: SimpleNamespace(observation={"visible": True}),
     )
 
     worker_service._materialize_private_views(
         connection,
+        SupabaseWorkerStore(connection),
         settings,
         "00000000-0000-0000-0000-000000000001",
     )

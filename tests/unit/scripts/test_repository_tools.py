@@ -11,12 +11,20 @@ def test_scripts_directory_keeps_only_python_modules() -> None:
     paths = [path for path in SCRIPTS.iterdir() if path.is_file()]
 
     assert paths
-    assert all(path.name == "README.md" or path.suffix == ".py" for path in paths)
+    assert all(path.name in {"AGENTS.md", "README.md"} or path.suffix == ".py" for path in paths)
 
 
 def test_public_tool_packages_expose_module_entrypoints() -> None:
     """公開tool packageが共通のmodule実行形式を持つ。"""
-    for name in ("architecture", "browser", "contracts", "docs", "quality", "supabase"):
+    for name in (
+        "architecture",
+        "browser",
+        "contracts",
+        "docs",
+        "environment",
+        "quality",
+        "supabase",
+    ):
         package = SCRIPTS / name
         assert (package / "__init__.py").is_file()
         assert (package / "__main__.py").is_file()

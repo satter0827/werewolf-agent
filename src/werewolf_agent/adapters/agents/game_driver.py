@@ -1,4 +1,4 @@
-"""Automated-player driver connecting agents and game use cases."""
+"""Automated-player driver connecting agents and application operations."""
 
 from __future__ import annotations
 
@@ -9,12 +9,29 @@ from typing import Any, Protocol
 
 import httpx
 
-from werewolf_agent.agents.configuration import LlmProviderConfig
-from werewolf_agent.agents.langchain.service import (
+from werewolf_agent.adapters.agents.constants import (
+    LLM_MODEL_AUTO,
+    LLM_PROVIDER_FAKE,
+    LLM_PROVIDER_LMSTUDIO,
+    LLM_PROVIDER_OPENAI,
+    LLM_STUDIO_API_KEY_PLACEHOLDER,
+)
+from werewolf_agent.adapters.agents.mapping import to_player_profiles
+from werewolf_agent.adapters.agents.messages import (
+    MESSAGE_MISSING_ATTACK_TARGET,
+    MESSAGE_MISSING_GUARD_TARGET,
+    MESSAGE_MISSING_INSPECT_TARGET,
+    MESSAGE_MISSING_SPEECH_MESSAGE,
+    MESSAGE_MISSING_VOTE_TARGET,
+    message_langchain_openai_required,
+    message_unsupported_llm_provider,
+)
+from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
     LlmModelInvocationError,
 )
-from werewolf_agent.agents.mapping import to_player_profiles
+from werewolf_agent.adapters.resources import LlmDefinitions
+from werewolf_agent.agents.configuration import LlmProviderConfig
 from werewolf_agent.agents.models import (
     AgentActionType,
     AgentDecision,
@@ -27,22 +44,16 @@ from werewolf_agent.agents.models import (
 )
 from werewolf_agent.agents.ports import PlayerAgent as DecisionProvider
 from werewolf_agent.agents.tracing import LlmTraceSink, NullLlmTraceSink
-from werewolf_agent.configuration.constants import (
-    LLM_MODEL_AUTO,
-    LLM_PROVIDER_FAKE,
-    LLM_PROVIDER_LMSTUDIO,
-    LLM_PROVIDER_OPENAI,
-    LLM_STUDIO_API_KEY_PLACEHOLDER,
+from werewolf_agent.application.handlers import (
+    commit_prepared_advance,
+    prepare_advance_game,
+    run_prepared_advance,
 )
-from werewolf_agent.configuration.definitions import LlmDefinitions
-from werewolf_agent.configuration.messages import (
-    MESSAGE_MISSING_ATTACK_TARGET,
-    MESSAGE_MISSING_GUARD_TARGET,
-    MESSAGE_MISSING_INSPECT_TARGET,
-    MESSAGE_MISSING_SPEECH_MESSAGE,
-    MESSAGE_MISSING_VOTE_TARGET,
-    message_langchain_openai_required,
-    message_unsupported_llm_provider,
+from werewolf_agent.application.models import (
+    AdvanceGameCommand,
+    AdvanceGameResult,
+    ApplicationContext,
+    PreparedAdvanceGame,
 )
 from werewolf_agent.contracts import (
     ERROR_CONTEXT_LLM_BASE_URL,
@@ -54,17 +65,6 @@ from werewolf_agent.contracts import (
     LlmProviderError,
 )
 from werewolf_agent.domain import Action, GameView
-from werewolf_agent.usecase.handlers import (
-    commit_prepared_advance,
-    prepare_advance_game,
-    run_prepared_advance,
-)
-from werewolf_agent.usecase.models import (
-    AdvanceGameCommand,
-    AdvanceGameResult,
-    PreparedAdvanceGame,
-    UsecaseContext,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +140,7 @@ class LlmAgentFactory:
 
 
 def advance_game(
-    context: UsecaseContext,
+    context: ApplicationContext,
     command: AdvanceGameCommand,
     *,
     runtime: AgentRuntime,
@@ -155,10 +155,10 @@ def advance_game(
 def drive_prepared_game(
     prepared: PreparedAdvanceGame,
     *,
-    context: UsecaseContext,
+    context: ApplicationContext,
     runtime: AgentRuntime,
 ) -> PreparedAdvanceGame:
-    """Generate automated actions without placing agent logic in usecase."""
+    """Generate automated actions without placing agent logic in application."""
     game = prepared.game
     snapshot = game.snapshot()
     manual_player_ids = {
@@ -224,7 +224,7 @@ def langchain_agent_factory(
     scenario: AgentScenario | None = None,
     trace_sink: LlmTraceSink | None = None,
 ) -> LlmAgentFactory:
-    """Return a LangChain-backed agent factory from use case settings."""
+    """Return a LangChain-backed agent factory from application settings."""
     profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
         provider=_decision_provider(
