@@ -13,10 +13,7 @@ export function RoundTable({ screen }: RoundTableProps) {
         <p>{screen.winnerLabel ?? "まだ勝負は続いています"}</p>
       </div>
       {screen.seats.map((seat, index) => (
-        <article
-          className={`wa-seat wa-seat-${index + 1} wa-seat-${seat.seatTone}`}
-          key={seat.id}
-        >
+        <article className={`wa-seat wa-seat-${index + 1} wa-seat-${seat.seatTone}`} key={seat.id}>
           <div className={`wa-portrait ${seat.portraitKey}`} aria-hidden="true" />
           <div className="wa-seat-copy">
             <div>

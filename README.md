@@ -22,10 +22,10 @@ uv sync --group dev --extra api --extra llm --extra streamlit --extra worker
 
 ローカルSupabaseを準備し、外部LLMを使わず`FakeListLLM`で1ゲーム実行します。
 
-```bat
-scripts\preflight-supabase.cmd
-scripts\run-worker.cmd
-scripts\run-cli.cmd play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+```bash
+python -m scripts.preflight_supabase
+uv run --extra worker werewolf-agent-worker run
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 環境変数を設定済みの場合は、CLIを直接実行できます。
@@ -36,15 +36,15 @@ uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-co
 
 Streamlitを起動します。
 
-```bat
-scripts\preflight-supabase.cmd
-scripts\run-streamlit.cmd
+```bash
+python -m scripts.preflight_supabase
+uv run --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py
 ```
 
 workerを起動します。
 
-```bat
-scripts\run-worker.cmd
+```bash
+uv run --extra worker werewolf-agent-worker run
 ```
 
 Supabaseを手動で準備する場合:
@@ -188,21 +188,28 @@ domainとusecaseはログを出しません。interfacesとadaptersが外部境�
 
 ## 検証
 
-```bat
-scripts\check-all.cmd --keep-going
-```
-
-個別に実行する場合:
+日常確認からリリース判定まで、ローカルとCIで同じPython入口を使います。
 
 ```bash
-uv run --no-sync pytest
-uv run --no-sync ruff check --no-cache .
-uv run --no-sync ruff format --check .
-uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 src/werewolf_agent
-uv run --no-sync mypy --no-incremental src
-uv run --group docs --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
-powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1
+python -m scripts.quality quick
+python -m scripts.quality check
+python -m scripts.quality release
+python -m scripts.quality deep --confirm-deep
+python -m scripts.quality clean
 ```
+
+`quick`は通常の静的検査とunit test、`check`はcoverage・文書・配布物、
+`release`はローカルSupabase・API・worker・React／Streamlit E2E・Docker、
+`deep`は競合・障害注入・画面monkeyまで実行します。pytest単体の既定値も
+`quick`であり、重いテストを明示選択しても必要な`--test-level`がなければ実行しません。
+
+品質実行中は依存取得、browser download、Docker pull、online audit、外部API呼び出しを
+行いません。初回セットアップで依存、Supabase image、E2E image、Chromium内蔵imageを
+準備してください。LLMは`fake`へ固定され、有料API keyは子processへ渡しません。
+
+結果は`.werewolf-agent/quality/latest.json`と
+`.werewolf-agent/quality/runs/<run-id>/`へJSON、JSONL、Markdown、JUnit、coverage、
+benchmark、browser画像として保存されます。
 
 構造テストは層ごとのimport許可、モジュール循環、層循環、外部ライブラリ配置、公開`__all__`、旧構造不在を検査します。
 
@@ -210,6 +217,7 @@ powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1
 
 - [Domain設計](docs/design/domain.md)
 - [境界と公開契約](docs/design/api.md)
+- [品質ゲート](docs/design/quality-gates.md)
 - [Agent strategy](docs/design/agent-strategies.md)
 - [開発メモ](docs/notes/development.md)
 

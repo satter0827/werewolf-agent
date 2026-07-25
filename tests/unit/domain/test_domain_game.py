@@ -170,8 +170,9 @@ def rule_set_for(config: GameConfig):
 def start_fixed_run(
     *,
     random_tie: bool = False,
+    seed: int = 7,
 ) -> HeadlessRun:
-    rng = random.Random(7)
+    rng = random.Random(seed)
     game = Game.create(
         GameSetup(players=tuple(fixed_players())),
         rules=rule_set_for(mvp_config(random_tie=random_tie)),
@@ -182,6 +183,75 @@ def start_fixed_run(
         rng=rng,
         events=list(game.creation_events),
     )
+
+
+def play_random_legal_game(seed: int) -> HeadlessRun:
+    """公開された合法手だけをseed固定で選び、ゲームを終了まで進める。"""
+    run = start_fixed_run(random_tie=bool(seed % 2), seed=seed)
+    for _step in range(64):
+        if run.snapshot.is_finished:
+            return run
+        player_ids = list(run.snapshot.players)
+        run.rng.shuffle(player_ids)
+        for player_id in player_ids:
+            observation = run.observe(player_id)
+            if not observation.available_actions:
+                continue
+            action_type = run.rng.choice(observation.available_actions)
+            if action_type is ActionType.SPEECH:
+                action = Action.speech(player_id, f"seed-{seed}")
+            else:
+                targets = observation.legal_targets[action_type]
+                target_id = run.rng.choice(targets)
+                action = {
+                    ActionType.VOTE: Action.vote,
+                    ActionType.WEREWOLF_ATTACK: Action.attack,
+                    ActionType.SEER_INSPECT: Action.inspect,
+                    ActionType.KNIGHT_GUARD: Action.guard,
+                }[action_type](player_id, target_id)
+            run.submit(action)
+        run.advance()
+        assert set(run.snapshot.players) == set(player_ids)
+        assert run.snapshot.day >= 1
+    pytest.fail(f"seed={seed}のゲームが64 phase以内に終了しませんでした。")
+
+
+@pytest.mark.monkey
+def test_domain_state_transitions_are_stable_for_64_seeded_runs() -> None:
+    """合法手をランダム選択する64ゲームを再現可能に完走する。"""
+    for seed in range(64):
+        run = play_random_legal_game(seed)
+        assert run.snapshot.phase is Phase.FINISHED
+        assert run.snapshot.win_result is not None
+        assert run.events
+
+
+@pytest.mark.benchmark
+def test_core_game_creation_benchmark(benchmark) -> None:
+    """domain coreの生成性能を継続観測する。"""
+    result = benchmark(start_fixed_run)
+
+    assert result.snapshot.phase is Phase.NIGHT
+
+
+@pytest.mark.monkey
+@pytest.mark.deep
+def test_domain_state_transitions_are_stable_for_256_seeded_runs() -> None:
+    """deepでは256ゲームを完走し、異なる終局へ到達する。"""
+    outcomes: set[tuple[str | None, tuple[str, ...]]] = set()
+    for seed in range(256):
+        run = play_random_legal_game(seed)
+        outcomes.add(
+            (
+                run.snapshot.winner_id,
+                tuple(
+                    player.id
+                    for player in run.snapshot.players.values()
+                    if player.status is PlayerStatus.DEAD
+                ),
+            )
+        )
+    assert len(outcomes) >= 2
 
 
 def advance_to_voting(run: HeadlessRun) -> None:

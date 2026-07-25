@@ -135,7 +135,9 @@ function mapTurnPanel(
   return {
     title: "あなたの手番",
     subtitle: "今できる行動を選んでください",
-    roleHint: visibleRole(payload) ? `あなたは ${friendlyRole(visibleRole(payload))}` : "村の一員です",
+    roleHint: visibleRole(payload)
+      ? `あなたは ${friendlyRole(visibleRole(payload))}`
+      : "村の一員です",
     visibleClues: visibleClues(payload, state),
     actions: actions.map((action) => ({
       type: action.type,
@@ -183,10 +185,7 @@ function visibleRole(payload: PlayerObservationPayload): string {
   return String(payload.me?.role ?? payload.role ?? "");
 }
 
-function mapTimelineItem(
-  item: GameTimelineItem,
-  actorNames: Map<string, string>,
-): TimelineEntry {
+function mapTimelineItem(item: GameTimelineItem, actorNames: Map<string, string>): TimelineEntry {
   const publicPayload = Object.entries(item.payload)
     .filter(([key]) => !SECRET_FIELD_PATTERN.test(key))
     .map(([, value]) => String(value))
@@ -195,7 +194,7 @@ function mapTimelineItem(
     sequence: item.sequence,
     label: eventLabel(item.event_type),
     dayLabel: item.day ? `${item.day}日目` : "序章",
-    actorName: item.actor_id ? actorNames.get(item.actor_id) ?? "村人" : "語り部",
+    actorName: item.actor_id ? (actorNames.get(item.actor_id) ?? "村人") : "語り部",
     detail: item.narration ?? publicPayload.join(" / ") ?? "村に静かな変化がありました",
     tone: timelineTone(item.event_type),
   };

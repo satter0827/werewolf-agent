@@ -29,7 +29,7 @@ UI serviceへ重複注入せず、必須fieldを持つ型付き契約として�
 supabase start
 docker compose --profile dev up --build
 docker compose --profile test run --rm test
-powershell -ExecutionPolicy Bypass -File scripts/run-e2e.ps1
+python -m scripts.e2e
 ```
 
 Supabase local stackはSupabase CLIがDocker上へ構築します。host実行には

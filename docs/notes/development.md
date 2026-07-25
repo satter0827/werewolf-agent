@@ -125,57 +125,57 @@ uv sync --group dev --extra worker --extra streamlit --extra llm
 
 ローカルSupabaseとfake provider:
 
-```bat
-scripts\preflight-supabase.cmd
-scripts\run-worker.cmd
-scripts\run-cli.cmd play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+```bash
+python -m scripts.preflight_supabase
+uv run --extra worker werewolf-agent-worker run
+uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 Supabase worker:
 
-```bat
-scripts\preflight-supabase.cmd
-scripts\run-worker.cmd
+```bash
+python -m scripts.preflight_supabase
+uv run --extra worker werewolf-agent-worker run
 ```
 
 Streamlit:
 
-```bat
-scripts\run-streamlit.cmd
+```bash
+uv run --extra streamlit streamlit run src/werewolf_agent/interfaces/streamlit/app.py
 ```
 
 全検証:
 
-```bat
-scripts\check-all.cmd --keep-going
-```
-
-個別検証:
-
 ```bash
-uv run --no-sync pytest
-uv run --no-sync ruff check --no-cache .
-uv run --no-sync ruff format --check .
-uv run --no-sync ruff check --no-cache --select D --ignore D100,D104 src/werewolf_agent
-uv run --no-sync mypy --no-incremental src
-uv run --group docs --extra streamlit sphinx-build -b html -c docs/sphinx docs docs/sphinx/_build/html
+python -m scripts.quality quick
+python -m scripts.quality check
+python -m scripts.quality release
+python -m scripts.quality deep --confirm-deep
+python -m scripts.quality clean
 ```
+
+pytest単体の既定levelは`quick`です。integration、monkey、benchmark、deepを意図せず
+選択した場合は必要な`--test-level`を表示して実行を拒否します。品質reportは
+`.werewolf-agent/quality/runs/<run-id>`へ保存し、`latest.json`から最新runを参照します。
+品質runnerはFake LLMと事前取得済み依存だけを使用し、外部APIへ接続しません。
 
 ## 直近の検証結果
 
-- pytest（host）: 296件成功
-- pytest（Docker test image）: 295件成功、Windows専用1件skip
-- Ruff lint: 成功
-- Ruff docstring lint: 成功
-- Ruff format check: 成功
-- mypy: 成功
-- Sphinx warning-as-error build: 成功
-- npm audit: 脆弱性0件
+2026-07-25のDeep実測:
+
+- Quick対象: 358件成功、level制限による12件skip
+- Coverage対象: 359件成功、環境条件による1件skip
+- Integration: 6件成功
+- Deep: 4件成功
 - React unit test: 21件成功
-- React boundary lint、TypeScript、production build: 成功
-- Docker E2E: 厳格なaxe、React／Streamlit観戦時のprivate／管理API非到達検証、
-  desktop／mobileのvisual regressionを含む15件成功、desktop対象外のmobile専用1件をskip
-- Python source distribution: 15.5MBから184KBへ縮小し、Python build inputだけを同梱
+- Browser E2E: 15件成功、desktop対象外のmobile専用1件skip
+- Coverage: 総合74.26%、line 79.32%、branch 49.03%
+- Core benchmark: 平均0.236ms
+- Ruff lint・format・docstring、mypy、import-linter、Prettier、TypeScript: 成功
+- OpenAPI JSON・TypeScript生成型、Sphinx warning-as-error、wheel・sdist: 成功
+- 隔離Supabase、API、worker、RLS、nonroot Docker runtime、外部通信遮断: 成功
+
+最新値は`.werewolf-agent/quality/latest.json`と`summary.md`を正とします。
 
 pytestでは、LangGraph内部の`BaseCache`が既定serializerを生成する際に
 `LangChainPendingDeprecationWarning`が1件発生します。プロジェクト側の

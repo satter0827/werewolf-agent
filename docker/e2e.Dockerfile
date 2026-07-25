@@ -7,7 +7,6 @@ WORKDIR /workspace/frontend
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 
-COPY frontend/playwright.config.ts ./
-COPY frontend/e2e ./e2e
+COPY frontend ./
 
 CMD ["npm", "run", "test:e2e"]

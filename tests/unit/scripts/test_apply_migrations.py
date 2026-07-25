@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-MODULE_PATH = Path(__file__).resolve().parents[2] / "scripts" / "apply_migrations.py"
+MODULE_PATH = Path(__file__).resolve().parents[3] / "scripts" / "apply_migrations.py"
 SPEC = importlib.util.spec_from_file_location("apply_migrations", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = importlib.util.module_from_spec(SPEC)

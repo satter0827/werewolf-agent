@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+
+import { expect, test } from "./fixtures";
 
 test.use({ baseURL: process.env.PLAYWRIGHT_STREAMLIT_URL ?? "http://streamlit:8501" });
 

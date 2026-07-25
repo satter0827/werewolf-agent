@@ -15,10 +15,7 @@ interface VillageSetupProps {
   isCreating?: boolean;
   onCreate: (draft: SetupDraft) => void;
   setupOptions: GameSetupOptionsResponse;
-  uiSettings: Pick<
-    PublicRuntimeConfig["ui"],
-    "default_manual_player_id" | "default_setup_seed"
-  >;
+  uiSettings: Pick<PublicRuntimeConfig["ui"], "default_manual_player_id" | "default_setup_seed">;
 }
 
 export function VillageSetup({
@@ -31,8 +28,7 @@ export function VillageSetup({
   const defaultSeed = uiSettings.default_setup_seed;
   const [draft, setDraft] = useState<SetupDraft>({
     scenarioId: setupOptions.default_scenario_id ?? setupOptions.scenarios[0]?.id ?? "",
-    setupPresetId:
-      setupOptions.default_setup_preset_id ?? setupOptions.setup_presets[0]?.id ?? "",
+    setupPresetId: setupOptions.default_setup_preset_id ?? setupOptions.setup_presets[0]?.id ?? "",
     manualPlayerId: defaultPlayerId,
     seed: defaultSeed,
   });
@@ -133,11 +129,7 @@ export function VillageSetup({
           type="button"
         >
           <Play size={18} aria-hidden="true" />
-          {isCreating
-            ? "村を準備中"
-            : draft.manualPlayerId
-              ? "この村で始める"
-              : "観戦を始める"}
+          {isCreating ? "村を準備中" : draft.manualPlayerId ? "この村で始める" : "観戦を始める"}
         </button>
       </aside>
     </section>

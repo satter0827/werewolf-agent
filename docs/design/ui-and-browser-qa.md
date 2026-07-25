@@ -69,7 +69,8 @@ Streamlitのaxe検証では、Streamlit自身がsidebarの`section`へ付与す�
 sidebar全体は除外せず、配下のログイン、履歴、入力、操作も検査します。この例外は
 Reactへ適用しません。
 
-review済み環境でvisual baselineを比較する場合は`PLAYWRIGHT_VISUAL_REGRESSION=1`を設定します。
-意図した画面変更を目視確認した後だけ、`scripts\run-e2e.ps1 -UpdateSnapshots`でDocker内と
-同じLinuxブラウザ環境のbaselineを更新します。通常の機能E2Eでは環境差による誤検知を
-避けるためvisual testだけをskipします。
+review済み環境でvisual baselineを比較する場合は
+`python -m scripts.e2e --visual-regression`を使います。baseline更新は通常の品質判定から
+分離し、意図した画面変更を目視確認した後だけE2E container内のPlaywrightへ
+`--update-snapshots`を明示します。通常の機能E2Eでは環境差による誤検知を避けるため
+visual testだけをskipします。

@@ -66,9 +66,7 @@ describe("createIdempotencyKey", () => {
       randomUUID,
     } as unknown as Crypto;
 
-    expect(createIdempotencyKey(source)).toBe(
-      "00000000-0000-4000-8000-000000000001",
-    );
+    expect(createIdempotencyKey(source)).toBe("00000000-0000-4000-8000-000000000001");
     expect(randomUUID).toHaveBeenCalledOnce();
     expect(source.getRandomValues).not.toHaveBeenCalled();
   });
@@ -78,8 +76,6 @@ describe("createIdempotencyKey", () => {
       getRandomValues: (values: Uint8Array) => values,
     } as unknown as Crypto;
 
-    expect(createIdempotencyKey(source)).toBe(
-      "00000000-0000-4000-8000-000000000000",
-    );
+    expect(createIdempotencyKey(source)).toBe("00000000-0000-4000-8000-000000000000");
   });
 });

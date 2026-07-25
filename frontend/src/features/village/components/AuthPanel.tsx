@@ -51,14 +51,18 @@ export function AuthPanel({ auth, isPending, onSignIn, onSignOut }: AuthPanelPro
             />
           </label>
           <div className="wa-auth-actions">
-            <button type="submit" disabled={isPending}>ログイン</button>
+            <button type="submit" disabled={isPending}>
+              ログイン
+            </button>
             <button type="button" disabled={isPending} onClick={() => setExpanded(false)}>
               閉じる
             </button>
           </div>
         </form>
       ) : (
-        <button type="button" onClick={() => setExpanded(true)}>ログイン</button>
+        <button type="button" onClick={() => setExpanded(true)}>
+          ログイン
+        </button>
       )}
     </div>
   );

@@ -206,10 +206,7 @@ export const gameClient: GameClient = {
 function getDefaultClient(): ApiGameClient {
   if (!defaultClient) {
     const config = readBrowserConfig();
-    defaultClient = new ApiGameClient(
-      createClient<paths>({ baseUrl: config.apiUrl }),
-      authClient,
-    );
+    defaultClient = new ApiGameClient(createClient<paths>({ baseUrl: config.apiUrl }), authClient);
   }
   return defaultClient;
 }
@@ -222,7 +219,9 @@ function requireData<T>(data: T | undefined, error: unknown): T {
   throw new Error(problem?.detail ?? "API要求に失敗しました。");
 }
 
-function normalizeSetup(value: components["schemas"]["GameSetupOptionsResponse"]): GameSetupOptionsResponse {
+function normalizeSetup(
+  value: components["schemas"]["GameSetupOptionsResponse"],
+): GameSetupOptionsResponse {
   return {
     ...value,
     abilities: value.abilities ?? [],
@@ -237,12 +236,9 @@ function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
-type IdempotencyCrypto = Pick<Crypto, "getRandomValues"> &
-  Partial<Pick<Crypto, "randomUUID">>;
+type IdempotencyCrypto = Pick<Crypto, "getRandomValues"> & Partial<Pick<Crypto, "randomUUID">>;
 
-export function createIdempotencyKey(
-  source: IdempotencyCrypto = globalThis.crypto,
-): string {
+export function createIdempotencyKey(source: IdempotencyCrypto = globalThis.crypto): string {
   if (typeof source.randomUUID === "function") {
     return source.randomUUID();
   }

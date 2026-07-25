@@ -25,12 +25,7 @@ export type GameTimelineResponse = Omit<Schema<"GameTimelineResponse">, "items">
 };
 
 export type AvailableActionType =
-  | "speech"
-  | "vote"
-  | "seer_inspect"
-  | "knight_guard"
-  | "werewolf_attack"
-  | "pass";
+  "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "pass";
 
 export interface AvailableAction {
   type: AvailableActionType;

@@ -1,4 +1,10 @@
-import type { GamePhase, GameStatus, PlayerActionRequest, PublicGameSummary, Winner } from "./wireTypes";
+import type {
+  GamePhase,
+  GameStatus,
+  PlayerActionRequest,
+  PublicGameSummary,
+  Winner,
+} from "./wireTypes";
 
 export type ViewId = "setup" | "play" | "observe" | "records";
 export type SkinId = "dawn_table";
