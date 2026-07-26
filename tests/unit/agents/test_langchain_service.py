@@ -9,6 +9,7 @@ from werewolf_agent.adapters.llm.langchain.constants import (
 from werewolf_agent.adapters.llm.langchain.prompting import (
     _compact_observation,
     _decision_format_instructions,
+    _prompt_inputs,
 )
 from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
@@ -21,6 +22,7 @@ from werewolf_agent.agents.definitions import (
 )
 from werewolf_agent.agents.models import (
     AgentActionType,
+    AgentGameContext,
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
@@ -399,6 +401,36 @@ def test_standard_graph_adds_role_hint_to_prompt_context() -> None:
     assert decision.type is AgentActionType.WEREWOLF_ATTACK
     assert trace_sink.records
     assert "role_hint:" in str(trace_sink.records[-1].prompt_messages)
+
+
+def test_prompt_uses_theme_terms_for_visible_role_and_phase() -> None:
+    themed_context = AgentGameContext(
+        theme_id="starship",
+        theme_name="宇宙船",
+        premise="航行中の宇宙船です。",
+        role_id="werewolf",
+        role_name="擬態生命体",
+        identity_faction="werewolf",
+        identity_faction_name="擬態生命体側",
+        victory_team="werewolf",
+        victory_team_name="擬態生命体側",
+        objective="乗組員に擬態して生き残ります。",
+        phase_names={"night": "休眠時間"},
+        setup_checksum="setup",
+        mechanics_checksum="mechanics",
+    )
+    themed_observation = observation().model_copy(update={"game_context": themed_context})
+
+    inputs = _prompt_inputs(
+        "p1",
+        themed_observation,
+        selected_action=AgentActionType.WEREWOLF_ATTACK,
+        parser=None,  # type: ignore[arg-type]
+    )
+
+    assert inputs["role"] == "擬態生命体"
+    assert inputs["phase"] == "休眠時間"
+    assert "乗組員に擬態" in inputs["game_context_json"]
 
 
 def test_standard_graph_ranks_only_legal_targets() -> None:

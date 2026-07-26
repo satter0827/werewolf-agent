@@ -17,6 +17,7 @@ from werewolf_agent.application.handlers.common import (
     _parse_game_id,
     _restore_game,
     _runtime_seed,
+    _setup_theme,
 )
 from werewolf_agent.application.messages import (
     MESSAGE_ADVANCE_JOB_STATE_CHANGED,
@@ -127,6 +128,7 @@ def compute_prepared_advance(
         scenario_id=_config_text(prepared.config, "scenario_id"),
         scenario_name=_config_text(prepared.config, "scenario_name"),
         narration_mode=_narration_mode(prepared.config),
+        theme=_setup_theme(prepared.config),
     )
     return ComputedAdvanceGame(
         game_id=prepared.game_id,
@@ -141,6 +143,7 @@ def compute_prepared_advance(
             [*action_events, *phase_events],
             narration_profile=_narration_profile(prepared.config, game_definitions),
             narration_mode=_narration_mode(prepared.config),
+            theme=_setup_theme(prepared.config),
         ),
     )
 

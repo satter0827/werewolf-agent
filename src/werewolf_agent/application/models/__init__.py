@@ -44,6 +44,7 @@ from werewolf_agent.application.models.results import (
     PublicGameSummary,
     PublicPlayerState,
     ReplayVerificationResult,
+    SetupValidationResult,
 )
 
 __all__ = [
@@ -80,6 +81,7 @@ __all__ = [
     "PublicGameSummary",
     "PublicPlayerState",
     "ReplayVerificationResult",
+    "SetupValidationResult",
     "StoredGame",
     "StoredGameEvent",
     "StoredGameSummary",

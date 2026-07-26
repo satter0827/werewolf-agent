@@ -10,6 +10,4 @@ NARRATION_MODE_NONE: Final = "none"
 
 NARRATION_MODE_STANDARD: Final = "standard"
 
-NARRATION_MODE_RICH: Final = "rich"
-
 DEFAULT_NARRATION_MODE: Final[Literal["standard"]] = NARRATION_MODE_STANDARD

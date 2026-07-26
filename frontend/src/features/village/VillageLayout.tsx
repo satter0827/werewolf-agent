@@ -80,11 +80,17 @@ export function VillageLayout({
         errorMessage ? "failed" : isCreatingGame || isSubmittingAction ? "running" : "succeeded"
       }
       data-skin={dawnTableSkin.id}
+      data-story-theme-id={screen.storyThemeId ?? "setup"}
       data-theme-id={runtimeConfig.ui.theme_id}
       data-view-mode={activeView}
       style={runtimeStyle}
     >
-      <VillageNav activeView={activeView} onNavigate={setActiveView} />
+      <VillageNav
+        activeView={activeView}
+        storyPremise={screen.tableSubtitle}
+        storyTitle={screen.tableTitle}
+        onNavigate={setActiveView}
+      />
       <main className="wa-main-shell">
         <AuthPanel
           auth={auth}
@@ -103,7 +109,7 @@ export function VillageLayout({
             </button>
           </section>
         ) : null}
-        <section className="wa-hero-status" aria-label="村の状態">
+        <section className="wa-hero-status" aria-label="ゲームの状態">
           <div>
             <p className="wa-kicker">{dawnTableSkin.name}</p>
             <h1>{screen.tableTitle}</h1>
@@ -148,7 +154,7 @@ export function VillageLayout({
               )}
             </aside>
 
-            <section className="wa-story-zone" aria-label="村の記録">
+            <section className="wa-story-zone" aria-label="ゲームの記録">
               <VillageTimeline entries={screen.timeline} />
             </section>
           </div>

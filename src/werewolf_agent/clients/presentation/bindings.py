@@ -3,6 +3,8 @@
 CLI_COMMAND_FEATURES: dict[str, tuple[str, ...]] = {
     "system status": ("runtime_status_get",),
     "setup show": ("runtime_config_get",),
+    "setup validate": ("setup_validate",),
+    "setup inspect": ("setup_validate",),
     "game create": ("game_create",),
     "game list": ("game_list",),
     "game show": ("game_get", "game_observation_get"),

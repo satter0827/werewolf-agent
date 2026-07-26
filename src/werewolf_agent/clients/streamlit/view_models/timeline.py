@@ -8,6 +8,7 @@ from typing import Any
 from werewolf_agent.clients.streamlit.constants import UNKNOWN_VALUE_LABEL
 from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.clients.streamlit.icons import event_icon
+from werewolf_agent.clients.streamlit.view_models.actions import _theme_term, _winner_label
 from werewolf_agent.clients.streamlit.view_models.formatting import (
     _day_label,
     _player_label,
@@ -24,27 +25,32 @@ from werewolf_agent.contracts.schemas import (
     GAME_STATUS_COMPLETED,
     GameTimelineItem,
     PublicGameState,
-    PublicPlayerState,
 )
 
 
 def timeline_items(
     turns: list[GameTimelineItem],
     *,
-    players: list[PublicPlayerState],
+    state: PublicGameState,
     catalog: I18nCatalog,
     lang: Language,
 ) -> list[TimelineItemView]:
     """Return public timeline rows without exposing raw payloads."""
-    player_names = _player_name_map(players)
+    player_names = _player_name_map(state.players)
     return [
         TimelineItemView(
             sequence=turn.sequence,
             icon=event_icon(turn.event_type).symbol,
             tone=event_icon(turn.event_type).tone,
-            title=_event_title(turn, catalog, lang),
+            title=_event_title(turn, state, catalog, lang),
             detail=turn.narration
-            or _event_detail(turn, player_names=player_names, catalog=catalog, lang=lang),
+            or _event_detail(
+                turn,
+                state=state,
+                player_names=player_names,
+                catalog=catalog,
+                lang=lang,
+            ),
             time_text=_time_text(turn.occurred_at),
             day_label=_day_label(turn.day, catalog, lang) if turn.day is not None else "-",
         )
@@ -78,7 +84,7 @@ def result_summary_view(
         return None
     public_names = _player_name_map(state.players)
     facts = [
-        catalog.t(lang, "result.fact.winner", winner=catalog.label(lang, "winner", state.winner)),
+        catalog.t(lang, "result.fact.winner", winner=_winner_label(state, catalog, lang)),
         catalog.t(lang, "result.fact.finish_day", day=state.day),
         catalog.t(
             lang,
@@ -101,6 +107,7 @@ def result_summary_view(
                 "result.fact.last_event",
                 detail=_event_detail(
                     last_turn,
+                    state=state,
                     player_names=public_names,
                     catalog=catalog,
                     lang=lang,
@@ -114,11 +121,29 @@ def result_summary_view(
     )
 
 
-def _event_title(turn: GameTimelineItem, catalog: I18nCatalog, lang: Language) -> str:
+def _event_title(
+    turn: GameTimelineItem,
+    state: PublicGameState,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
     if turn.event_type == "phase_started":
         phase = str(turn.payload.get("phase", turn.phase or ""))
         return (
-            f"{catalog.label(lang, 'phase', phase)} {catalog.label(lang, 'event', 'phase_started')}"
+            f"{_theme_term(state, 'phase_names', phase, catalog.label(lang, 'phase', phase))} "
+            f"{catalog.label(lang, 'event', 'phase_started')}"
+        )
+    if "vote" in turn.event_type:
+        return _theme_term(
+            state, "action_names", "vote", catalog.label(lang, "event", turn.event_type)
+        )
+    if "night" in turn.event_type:
+        return _theme_term(
+            state, "phase_names", "night", catalog.label(lang, "event", turn.event_type)
+        )
+    if turn.event_type == "speech_recorded":
+        return _theme_term(
+            state, "action_names", "speech", catalog.label(lang, "event", turn.event_type)
         )
     return catalog.label(lang, "event", turn.event_type if turn.event_type else UNKNOWN_VALUE_LABEL)
 
@@ -126,6 +151,7 @@ def _event_title(turn: GameTimelineItem, catalog: I18nCatalog, lang: Language) -
 def _event_detail(
     turn: GameTimelineItem,
     *,
+    state: PublicGameState,
     player_names: Mapping[str, str],
     catalog: I18nCatalog,
     lang: Language,
@@ -192,7 +218,7 @@ def _event_detail(
             return catalog.t(
                 lang,
                 "event_detail.game_finished_winner",
-                winner=catalog.label(lang, "winner", winner),
+                winner=_winner_label(state, catalog, lang),
             )
         return catalog.t(lang, "event_detail.game_finished")
     if turn.event_type == "phase_started":

@@ -51,12 +51,3 @@ class GameSettings(BaseModel):
     game_abilities_file: str = Field(
         validation_alias="WEREWOLF_GAME_ABILITIES_FILE",
     )
-    game_setup_description_template: str = Field(
-        validation_alias="WEREWOLF_GAME_SETUP_DESCRIPTION_TEMPLATE",
-    )
-    game_role_names: str = Field(
-        validation_alias="WEREWOLF_GAME_ROLE_NAMES",
-    )
-    game_phase_names: str = Field(
-        validation_alias="WEREWOLF_GAME_PHASE_NAMES",
-    )

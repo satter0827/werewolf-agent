@@ -4,14 +4,13 @@ from __future__ import annotations
 
 from collections.abc import Mapping, MutableMapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from werewolf_agent.clients.streamlit.constants import (
     NARRATION_MODE_NONE,
-    NARRATION_MODE_RICH,
     NARRATION_MODE_STANDARD,
 )
 from werewolf_agent.clients.streamlit.i18n import (
@@ -63,7 +62,6 @@ VIEWS = frozenset(
 CUSTOM_ROLE_NO_ABILITIES_TEXT = "none"
 NARRATION_MODES: tuple[NarrationMode, ...] = (
     NARRATION_MODE_STANDARD,
-    NARRATION_MODE_RICH,
     NARRATION_MODE_NONE,
 )
 
@@ -224,7 +222,9 @@ def setup_options_with_session_customs(
         RoleDefinitionView(
             id=definition.id,
             name=definition.name,
-            faction=definition.faction,
+            identity_faction=definition.identity_faction,
+            victory_team=definition.victory_team,
+            objective=definition.objective,
             abilities=list(definition.abilities),
             description=definition.description,
             difficulty=definition.difficulty,
@@ -455,7 +455,9 @@ def add_custom_role(
     session: MutableMapping[str, Any],
     *,
     name: str,
-    faction: str,
+    identity_faction: str,
+    victory_team: str,
+    objective: str,
     abilities: list[str],
     difficulty: int,
 ) -> None:
@@ -463,9 +465,11 @@ def add_custom_role(
     definition = CustomRoleDefinitionRequest(
         id=f"custom_role_{uuid4().hex[:10]}",
         name=name,
-        faction=faction,
+        identity_faction=cast(Any, identity_faction),
+        victory_team=cast(Any, victory_team),
+        objective=objective,
         abilities=abilities,
-        description=_custom_role_description(faction, abilities),
+        description=_custom_role_description(identity_faction, abilities),
         difficulty=difficulty,
     )
     session[KEY_CUSTOM_ROLE_DEFINITIONS] = [
@@ -573,8 +577,10 @@ def setup_summary(
     tie_rule = catalog.t(
         lang,
         "setup.summary.tie.no_elimination"
-        if rules.enable_no_elimination_on_tie
-        else "setup.summary.tie.random_elimination",
+        if rules.vote_tie_resolution == "no_elimination"
+        else "setup.summary.tie.random_elimination"
+        if rules.vote_tie_resolution == "random_elimination"
+        else "setup.summary.tie.revote",
     )
     first_night = catalog.t(
         lang,

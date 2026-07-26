@@ -45,6 +45,8 @@ class AgentActionType(StrEnum):
     WEREWOLF_ATTACK = "werewolf_attack"
     SEER_INSPECT = "seer_inspect"
     KNIGHT_GUARD = "knight_guard"
+    APOTHECARY_HEAL = "apothecary_heal"
+    APOTHECARY_POISON = "apothecary_poison"
     PASS = "pass"
 
 
@@ -128,6 +130,37 @@ class AgentScenario(_LlmModel):
         return non_blank(value, str(info.field_name))
 
 
+class AgentAbilityContext(_LlmModel):
+    """One ability and its remaining limited uses visible to its owner."""
+
+    id: str
+    name: str
+    action: str
+    effect: str
+    remaining_uses: int | None = Field(default=None, ge=0)
+
+
+class AgentGameContext(_LlmModel):
+    """Authorized, normalized setup facts used for one agent decision."""
+
+    theme_id: str
+    theme_name: str
+    premise: str
+    role_id: str
+    role_name: str
+    identity_faction: str
+    identity_faction_name: str
+    victory_team: str
+    victory_team_name: str
+    objective: str
+    abilities: tuple[AgentAbilityContext, ...] = ()
+    relevant_rules: dict[str, str | bool | int] = Field(default_factory=dict)
+    action_names: dict[str, str] = Field(default_factory=dict)
+    phase_names: dict[str, str] = Field(default_factory=dict)
+    setup_checksum: str
+    mechanics_checksum: str
+
+
 class AgentObservation(_LlmModel):
     """Provider-independent observation for one player decision."""
 
@@ -137,8 +170,10 @@ class AgentObservation(_LlmModel):
     role: str | None = None
     profile: PlayerProfile | None = None
     scenario: AgentScenario | None = None
+    game_context: AgentGameContext | None = None
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
+    known_factions: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentActionType] = Field(default_factory=list)
     legal_targets: dict[AgentActionType, list[str]] = Field(default_factory=dict)
     speeches: list[_AgentSpeech] = Field(default_factory=list)
@@ -150,7 +185,7 @@ class AgentObservation(_LlmModel):
         """Return a trimmed optional role id."""
         return optional_non_blank(value, "role")
 
-    @field_validator("known_roles")
+    @field_validator("known_roles", "known_factions")
     @classmethod
     def validate_known_roles(cls, value: dict[str, str]) -> dict[str, str]:
         """Return known role ids keyed by player id."""
@@ -215,6 +250,8 @@ class AgentDecision(_LlmModel):
             AgentActionType.WEREWOLF_ATTACK,
             AgentActionType.SEER_INSPECT,
             AgentActionType.KNIGHT_GUARD,
+            AgentActionType.APOTHECARY_HEAL,
+            AgentActionType.APOTHECARY_POISON,
         }
     )
 
@@ -306,8 +343,10 @@ class AgentDecision(_LlmModel):
 
 
 __all__ = [
+    "AgentAbilityContext",
     "AgentActionType",
     "AgentDecision",
+    "AgentGameContext",
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",

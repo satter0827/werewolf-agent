@@ -2,7 +2,8 @@ from typing import Any
 
 from werewolf_agent.clients.streamlit import setup
 from werewolf_agent.clients.streamlit.i18n import load_i18n
-from werewolf_agent.clients.streamlit.views.setup import _select_policy
+from werewolf_agent.clients.streamlit.screens import load_screen_catalog
+from werewolf_agent.clients.streamlit.views.setup import SETUP_STEP_BY_ELEMENT, _select_policy
 from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     LocalRulesSettings,
@@ -123,6 +124,15 @@ def test_phase_order_selector_matches_default_by_phase_sequence() -> None:
     assert streamlit.selected_index == 1
 
 
+def test_every_configured_setup_main_element_is_assigned_to_a_step() -> None:
+    screens = load_screen_catalog(AppSettings(_env_file=None))
+    configured = {
+        element.id for element in screens.elements("setup", "main") if element.id != "header"
+    }
+
+    assert configured == set(SETUP_STEP_BY_ELEMENT)
+
+
 class _PolicySelectorStub:
     selected_index = -1
 
@@ -138,8 +148,22 @@ def _setup_options() -> GameSetupOptionsResponse:
     return GameSetupOptionsResponse(
         player_count={"min": 5, "max": 8},
         roles=[
-            {"id": "werewolf", "name": "人狼", "faction": "werewolf", "abilities": []},
-            {"id": "villager", "name": "村人", "faction": "village", "abilities": []},
+            {
+                "id": "werewolf",
+                "name": "人狼",
+                "identity_faction": "werewolf",
+                "victory_team": "werewolf",
+                "objective": "村側と同数になります",
+                "abilities": [],
+            },
+            {
+                "id": "villager",
+                "name": "村人",
+                "identity_faction": "village",
+                "victory_team": "village",
+                "objective": "人狼を排除します",
+                "abilities": [],
+            },
         ],
         default_role_counts={"werewolf": 1, "villager": 4},
         default_rules=_rules(),
@@ -153,8 +177,11 @@ def _rules() -> LocalRulesSettings:
         allow_vote_revision=False,
         allow_night_action_revision=False,
         enable_first_night_attack=True,
-        enable_no_elimination_on_tie=True,
-        enable_random_elimination_on_tie=False,
+        vote_tie_resolution="no_elimination",
+        wolf_attack_tie_resolution="random_target",
+        seer_result_detail="faction",
+        medium_result_detail="faction",
+        starting_phase="night",
         allow_knight_self_guard=True,
         allow_knight_repeat_guard=True,
         allow_seer_self_inspect=False,

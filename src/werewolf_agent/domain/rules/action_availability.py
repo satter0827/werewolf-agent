@@ -48,6 +48,9 @@ def available_actions(
             ability = snapshot.config.abilities[ability_id]
             if ability.phase is not snapshot.phase or snapshot.day < ability.start_day:
                 continue
+            used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
+            if ability.max_uses is not None and used >= ability.max_uses:
+                continue
             if ability.action is ActionType.PASS:
                 continue
             if (
@@ -73,9 +76,14 @@ def legal_targets(
     targets: dict[ActionType, list[str]] = {}
     for action_type in actions:
         if action_type is ActionType.VOTE:
+            candidate_ids = (
+                list(pending_actions.revote_candidates)
+                if pending_actions.revote_candidates
+                else alive_ids
+            )
             targets[action_type] = [
                 target_id
-                for target_id in alive_ids
+                for target_id in candidate_ids
                 if snapshot.config.rules.allow_self_vote or target_id != player_id
             ]
             continue
@@ -83,6 +91,8 @@ def legal_targets(
             ActionType.WEREWOLF_ATTACK,
             ActionType.SEER_INSPECT,
             ActionType.KNIGHT_GUARD,
+            ActionType.APOTHECARY_HEAL,
+            ActionType.APOTHECARY_POISON,
         }:
             continue
         targets[action_type] = _night_targets(snapshot, player_id, action_type, alive_ids)
@@ -122,7 +132,7 @@ def _night_targets(
         and action_type is ActionType.WEREWOLF_ATTACK
         and not snapshot.config.rules.allow_werewolf_friendly_fire
     ):
-        actor_faction = role.faction
+        actor_faction = role.identity_faction
         targets = [
             target_id
             for target_id in targets

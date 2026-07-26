@@ -112,6 +112,8 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
         "PlayerObservationResult",
         "PreparedAdvanceGame",
         "ReplayVerificationResult",
+        "SetupValidationResult",
+        "validate_setup_document",
     }
 
 

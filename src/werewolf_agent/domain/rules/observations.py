@@ -5,6 +5,7 @@ from __future__ import annotations
 from werewolf_agent.domain.rules.action_availability import available_actions, legal_targets
 from werewolf_agent.domain.rules.player_rules import player_by_id
 from werewolf_agent.domain.state import (
+    ABILITY_MEDIUM_KNOWLEDGE,
     ABILITY_PACK_KNOWLEDGE,
     FACTION_WEREWOLF,
     GameHistory,
@@ -23,6 +24,7 @@ def build_player_observation(
     """Return the information visible to one player."""
     observer = player_by_id(snapshot, player_id)
     known_roles = _known_roles(snapshot, player_id)
+    known_factions = _known_factions(snapshot, player_id, known_roles)
     observed_players = [
         Player(
             id=player.id,
@@ -47,6 +49,7 @@ def build_player_observation(
         ),
         players=tuple(observed_players),
         known_roles=known_roles,
+        known_factions=known_factions,
         available_actions=tuple(available_actions(snapshot, pending_actions, player_id)),
         legal_targets={
             action_type: tuple(targets)
@@ -76,6 +79,45 @@ def _known_roles(snapshot: GameState, player_id: str) -> dict[str, str]:
 
     for night_result in snapshot.history.nights:
         for inspection in night_result.inspections:
-            if inspection.seer_id == player_id:
+            if (
+                inspection.seer_id == player_id
+                and snapshot.config.rules.seer_result_detail == "role"
+            ):
                 known_roles[inspection.target_id] = inspection.target_role
+    if snapshot.config.roles.role_has_ability(observer.role, ABILITY_MEDIUM_KNOWLEDGE):
+        for vote in snapshot.history.votes:
+            if vote.eliminated_player_id is None:
+                continue
+            target = snapshot.players[vote.eliminated_player_id]
+            if target.role is not None and snapshot.config.rules.medium_result_detail == "role":
+                known_roles[target.id] = target.role
+    if snapshot.config.rules.reveal_role_on_death:
+        for player in snapshot.players.values():
+            if not player.is_alive and player.role is not None:
+                known_roles[player.id] = player.role
     return known_roles
+
+
+def _known_factions(
+    snapshot: GameState,
+    player_id: str,
+    known_roles: dict[str, str],
+) -> dict[str, str]:
+    """Return private and public faction knowledge without inventing role detail."""
+    known = {
+        target_id: snapshot.config.roles.faction_for_role(role)
+        for target_id, role in known_roles.items()
+    }
+    observer = player_by_id(snapshot, player_id)
+    for night_result in snapshot.history.nights:
+        for inspection in night_result.inspections:
+            if inspection.seer_id == player_id:
+                known[inspection.target_id] = inspection.target_faction
+    if snapshot.config.roles.role_has_ability(observer.role, ABILITY_MEDIUM_KNOWLEDGE):
+        for vote in snapshot.history.votes:
+            if vote.eliminated_player_id is None:
+                continue
+            target = snapshot.players[vote.eliminated_player_id]
+            if target.role is not None:
+                known[target.id] = snapshot.config.roles.faction_for_role(target.role)
+    return known

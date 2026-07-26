@@ -328,18 +328,17 @@ class SupabaseWorkerStore:
             players = _object(private_state.get("players"))
             effective_seed = state.get("seed")
             normalized_request["seed"] = effective_seed
+            stored_config = _object(snapshot_row["config"])
             payload["replay"] = {
-                "format_version": 1,
+                "format_version": 2,
                 "seed": effective_seed,
-                "config": _object(private_state.get("config")),
+                "setup_document": _object(stored_config.get("setup_document")),
+                "setup_checksum": stored_config.get("setup_checksum"),
+                "mechanics_checksum": stored_config.get("mechanics_checksum"),
                 "players": [
                     {"id": str(player["id"]), "name": str(player["name"])}
                     for player in map(_object, players.values())
                 ],
-                "rule_composition": _object(snapshot_row["config"]).get(
-                    "rule_composition",
-                    {},
-                ),
             }
         self._connection.execute(
             """

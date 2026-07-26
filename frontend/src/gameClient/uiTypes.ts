@@ -77,6 +77,7 @@ export interface GameScreenModel {
   dayLabel: string;
   tableTitle: string;
   tableSubtitle: string;
+  storyThemeId: string | null;
   aliveCount: number;
   playerCount: number;
   winnerLabel: string | null;
@@ -87,7 +88,6 @@ export interface GameScreenModel {
 }
 
 export interface SetupDraft {
-  scenarioId: string;
   setupPresetId: string;
   manualPlayerId: string;
   seed: string;

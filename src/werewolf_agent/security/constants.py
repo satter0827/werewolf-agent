@@ -17,6 +17,7 @@ SENSITIVE_KEY_PARTS: Final = (
     "apikey",
     "authorization",
     "known_roles",
+    "known_factions",
     "night_action",
     "password",
     "private_state",

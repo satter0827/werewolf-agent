@@ -12,6 +12,7 @@ from werewolf_agent.contracts.api import (
     ReplayVerificationResponse,
     RuntimeStatusResponse,
     SessionResponse,
+    SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
@@ -20,6 +21,7 @@ from werewolf_agent.contracts.schemas import (
     GameListResponse,
     GameResponse,
     GameRevealResponse,
+    GameSetupDocumentRequest,
     GameTimelineResponse,
     PlayerActionRequest,
     PlayerActionResponse,
@@ -40,6 +42,10 @@ class PublicClient(Protocol):
 
     def get_runtime_status(self) -> RuntimeStatusResponse:
         """Return safe dependency availability."""
+        ...
+
+    def validate_setup(self, setup: GameSetupDocumentRequest) -> SetupValidationResponse:
+        """Validate a complete setup without creating a game."""
         ...
 
 

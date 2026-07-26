@@ -43,6 +43,9 @@ class StoredGameSummary(ApplicationModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    theme: dict[str, Any] | None = None
     player_count: int
     alive_count: int
     winner: Winner | None = None

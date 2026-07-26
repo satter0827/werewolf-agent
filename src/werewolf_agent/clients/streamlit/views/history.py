@@ -65,7 +65,7 @@ def _render_history_screen(
     except AppError as exc:
         render_app_error(st, exc, lang=lang)
         return
-    timeline = timeline_items(turns, players=state.players, catalog=catalog, lang=lang)
+    timeline = timeline_items(turns, state=state, catalog=catalog, lang=lang)
     st.markdown(
         timeline_section_html(
             timeline,

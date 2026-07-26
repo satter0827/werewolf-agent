@@ -10,7 +10,7 @@ export function VillageTimeline({ compact = false, entries }: VillageTimelinePro
   return (
     <div className={compact ? "wa-timeline wa-timeline-compact" : "wa-timeline"}>
       <div className="wa-section-heading">
-        <p className="wa-kicker">村の記録</p>
+        <p className="wa-kicker">ゲームの記録</p>
         <h2>{compact ? "直近の出来事" : "公開された出来事"}</h2>
       </div>
       <ol>

@@ -1,6 +1,6 @@
 import type { GameScreenSource, GameSetupOptionsResponse, PublicPlayerState } from "./wireTypes";
 
-const FALLBACK_SCENARIO_NAME = "霧の村";
+const FALLBACK_SCENARIO_NAME = "ゲーム";
 const GENERATED_PLAYER_ID_PREFIX = "player-";
 const SETUP_PREVIEW_DAY = 1;
 const SETUP_PREVIEW_PHASE = "day_discussion";

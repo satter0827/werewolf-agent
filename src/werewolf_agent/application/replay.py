@@ -11,7 +11,6 @@ from typing import Any, Protocol, cast
 from werewolf_agent.application.domain_codec import (
     action_from_data,
     domain_to_data,
-    game_config_from_data,
     game_setup_from_data,
     game_state_from_data,
 )
@@ -21,7 +20,9 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
 )
 from werewolf_agent.application.randomness import runtime_seed
-from werewolf_agent.domain import Game, RuleRegistry, RuleSetDefinition
+from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.domain import Game, RuleRegistry
 
 
 class ReplayRepository(Protocol):
@@ -249,7 +250,7 @@ def _verify_execution(
             game_id,
             checked_versions,
             1,
-            expected="replay format version 1 create command",
+            expected="replay format version 2 create command",
             actual="unsupported replay format",
         )
     try:
@@ -259,29 +260,36 @@ def _verify_execution(
     except (TypeError, ValueError):
         format_version = 0
         genesis = {}
-    if format_version != 1:
+    if format_version != 2:
         return _structural_mismatch(
             game_id,
             checked_versions,
             1,
-            expected="replay format version 1",
+            expected="replay format version 2",
             actual="unsupported replay format",
         )
     try:
-        config = game_config_from_data(_mapping(genesis["config"]))
-        composition = _mapping(genesis.get("rule_composition", {}))
-        definition = RuleSetDefinition(
-            player_count=config.player_count,
-            role_counts=config.role_counts,
-            rules=config.rules,
-            roles=config.roles,
-            abilities=config.abilities,
-            phases=tuple(phase.value for phase in config.phase_order),
-            action_policy=str(composition.get("action_policy", "standard")),
-            resolution_policy=str(composition.get("resolution_policy", "standard")),
-            phase_policy=str(composition.get("phase_policy", "required_actions")),
-            victory_policy=str(composition.get("victory_policy", "faction_balance")),
-            visibility_policy=str(composition.get("visibility_policy", "standard")),
+        setup_document = GameSetupDocument.model_validate(genesis["setup_document"])
+        setup_payload = setup_document.model_dump(mode="json")
+        if checksum_payload(setup_payload) != str(genesis["setup_checksum"]):
+            raise ValueError("setup checksum mismatch")
+        mechanics = setup_document.mechanics
+        if checksum_payload(mechanics.model_dump(mode="json")) != str(
+            genesis["mechanics_checksum"]
+        ):
+            raise ValueError("mechanics checksum mismatch")
+        definition = rule_definition_from_values(
+            player_count=sum(mechanics.role_counts.values()),
+            role_counts=mechanics.role_counts,
+            rules=mechanics.rules.model_dump(mode="json"),
+            roles={
+                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
+            },
+            abilities={
+                ability_id: ability.model_dump(mode="json")
+                for ability_id, ability in mechanics.abilities.items()
+            },
+            composition=mechanics.composition.model_dump(mode="json"),
         )
         rules = RuleRegistry.standard().build(definition)
         setup = game_setup_from_data({"players": genesis["players"]})
@@ -392,6 +400,7 @@ def _compare_replayed_version(
         scenario_id=_optional_text(expected_public.get("scenario_id")),
         scenario_name=_optional_text(expected_public.get("scenario_name")),
         narration_mode=str(expected_public.get("narration_mode") or "standard"),
+        theme=_mapping(expected_public["theme"]) if expected_public.get("theme") else None,
     )
     if checksum_payload(expected_public) != checksum_payload(actual_public):
         return ReplayVerificationResult(
@@ -490,6 +499,7 @@ def _verify_public_projection(
             scenario_id=_optional_text(public_state.get("scenario_id")),
             scenario_name=_optional_text(public_state.get("scenario_name")),
             narration_mode=str(public_state.get("narration_mode") or "standard"),
+            theme=_mapping(public_state["theme"]) if public_state.get("theme") else None,
         )
     except (TypeError, ValueError):
         return _structural_mismatch(

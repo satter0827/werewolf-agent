@@ -9,23 +9,24 @@ from uuid import uuid4
 
 from werewolf_agent.application.definitions import (
     LocalRulesDefinition,
+    PlayerProfile,
+    PlayerRoster,
+    PlayerSetupDefinitions,
 )
 from werewolf_agent.application.domain_codec import domain_to_data, game_setup_from_data
 from werewolf_agent.application.errors import GameNotFoundError
 from werewolf_agent.application.handlers.common import (
     _config_text,
-    _game_definitions_for,
     _narration_mode,
     _narration_profile,
     _page_limit,
     _parse_game_id,
-    _player_definitions_for,
     _player_faction,
     _requested_player_configs,
     _restore_game,
     _reveal_action,
-    _scenario_config,
     _select_player_profiles,
+    _setup_theme,
 )
 from werewolf_agent.application.models import (
     ApplicationContext,
@@ -53,6 +54,7 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
+from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.types import (
     Faction,
@@ -74,13 +76,29 @@ def create_game(
     game_id = uuid4()
     seed = command.seed if command.seed is not None else secrets.randbits(63)
     requested_players = _requested_player_configs(command, dependencies.config)
-    game_definitions = _game_definitions_for(command, dependencies.game_definitions)
-    player_definitions = _player_definitions_for(command, dependencies.player_definitions)
+    setup = command.setup
+    mechanics = setup.mechanics
+    player_definitions = PlayerSetupDefinitions(
+        players=PlayerRoster(
+            players={
+                character_id: PlayerProfile(
+                    name=character.name,
+                    age=character.age,
+                    gender=character.gender,
+                    personality=character.personality,
+                    speaking_style=character.speaking_style,
+                    reasoning_style=character.reasoning_style,
+                    risk_tolerance=character.risk_tolerance,
+                )
+                for character_id, character in setup.roster.characters.items()
+            }
+        )
+    )
     selected_profiles = _select_player_profiles(
         player_definitions.players,
         player_count=len(requested_players),
         seed=seed,
-        character_assignments=command.character_assignments,
+        character_assignments=setup.roster.assignments,
     )
     players = [
         {
@@ -89,34 +107,36 @@ def create_game(
         }
         for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
     ]
-    rule_composition = command.rule_composition.model_dump(mode="json")
+    rule_composition = mechanics.composition.model_dump(mode="json")
     definition = rule_definition_from_values(
         player_count=len(players),
-        role_counts=command.role_counts,
-        rules=command.rules.model_dump(mode="json"),
-        roles={
-            role_id: role.model_dump(mode="json")
-            for role_id, role in game_definitions.roles.roles.items()
-        },
+        role_counts=mechanics.role_counts,
+        rules=mechanics.rules.model_dump(mode="json"),
+        roles={role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()},
         abilities={
             ability_id: ability.model_dump(mode="json")
-            for ability_id, ability in game_definitions.catalog.abilities.items()
+            for ability_id, ability in mechanics.abilities.items()
         },
         composition=rule_composition,
     )
     rules = RuleRegistry.standard().build(definition)
-    scenario_config = _scenario_config(command, game_definitions)
+    setup_payload = setup.model_dump(mode="json")
+    scenario_config = {
+        "scenario_id": setup.theme.id,
+        "scenario_name": setup.theme.name,
+        "scenario_prompt_premise": setup.theme.premise,
+        "setup_preset_id": "",
+    }
     run_config = {
         **scenario_config,
         "narration_mode": command.narration_mode,
         "llm_mode": command.llm_mode,
-        "engine_version": "0.1.0",
-        "definition_snapshot": game_definitions.model_dump(mode="json"),
+        "engine_schema_version": setup.schema_version,
+        "definition_snapshot": setup_payload,
+        "setup_document": setup_payload,
+        "setup_checksum": checksum_payload(setup_payload),
+        "mechanics_checksum": checksum_payload(mechanics.model_dump(mode="json")),
         "rule_composition": rule_composition,
-        "custom_roles": [definition.model_dump(mode="json") for definition in command.custom_roles],
-        "custom_characters": [
-            definition.model_dump(mode="json") for definition in command.custom_characters
-        ],
         "player_agent_types": {
             str(player["id"]): requested_player.agent_type
             for player, requested_player in zip(players, requested_players, strict=True)
@@ -141,6 +161,7 @@ def create_game(
         scenario_id=_config_text(scenario_config, "scenario_id"),
         scenario_name=_config_text(scenario_config, "scenario_name"),
         narration_mode=command.narration_mode,
+        theme=_setup_theme(run_config),
     )
     run = dependencies.repository.create(
         GameRecordCreate(
@@ -160,8 +181,9 @@ def create_game(
         run.id,
         events_to_create(
             events,
-            narration_profile=_narration_profile(run_config, game_definitions),
+            narration_profile=_narration_profile(run_config, dependencies.game_definitions),
             narration_mode=command.narration_mode,
+            theme=_setup_theme(run_config),
         ),
     )
     return GameResult(
@@ -201,6 +223,7 @@ def get_game_reveal(
     eliminated_player_ids = [
         player.id for player in snapshot.players.values() if not player.is_alive
     ]
+    setup_theme = _setup_theme(run.config)
     return GameRevealResult(
         game_id=str(run.id),
         status=run.status,
@@ -211,6 +234,7 @@ def get_game_reveal(
         scenario_id=_config_text(run.config, "scenario_id"),
         scenario_name=_config_text(run.config, "scenario_name"),
         narration_mode=_narration_mode(run.config),
+        theme=dict(setup_theme) if setup_theme is not None else None,
         role_counts=dict(snapshot.config.role_counts),
         rules=LocalRulesDefinition.model_validate(domain_to_data(snapshot.config.rules)),
         players=[

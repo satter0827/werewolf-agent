@@ -3,7 +3,7 @@ import { BookOpen, CircleDot, Eye, ScrollText, type LucideIcon } from "lucide-re
 import type { ViewId } from "../../../gameClient/uiTypes";
 
 const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
-  { id: "setup", label: "村を作る", icon: CircleDot },
+  { id: "setup", label: "ゲームを作る", icon: CircleDot },
   { id: "play", label: "プレイ", icon: ScrollText },
   { id: "observe", label: "観戦", icon: Eye },
   { id: "records", label: "記録", icon: BookOpen },
@@ -11,12 +11,14 @@ const navItems: Array<{ id: ViewId; label: string; icon: LucideIcon }> = [
 
 interface VillageNavProps {
   activeView: ViewId;
+  storyPremise: string;
+  storyTitle: string;
   onNavigate: (view: ViewId) => void;
 }
 
-export function VillageNav({ activeView, onNavigate }: VillageNavProps) {
+export function VillageNav({ activeView, storyPremise, storyTitle, onNavigate }: VillageNavProps) {
   return (
-    <aside className="wa-nav" aria-label="村の案内">
+    <aside className="wa-nav" aria-label="ゲームの案内">
       <div className="wa-brand">
         <div className="wa-brand-mark">W</div>
         <div>
@@ -41,9 +43,9 @@ export function VillageNav({ activeView, onNavigate }: VillageNavProps) {
         })}
       </nav>
       <div className="wa-nav-note">
-        <span>今夜の村</span>
-        <strong>霧の村</strong>
-        <p>公開された出来事だけを手がかりに、朝まで生き残りましょう。</p>
+        <span>選択中の物語</span>
+        <strong>{storyTitle}</strong>
+        <p>{storyPremise}</p>
       </div>
     </aside>
   );

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from typing import Annotated, Any, Self
+from typing import Annotated, Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -22,7 +22,6 @@ from werewolf_agent.application.messages import (
     MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE,
     MESSAGE_DEFAULT_ROLE_COUNT_KEYS_POSITIVE,
     MESSAGE_DEFAULT_ROLE_COUNTS_REQUIRED,
-    MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE,
     MESSAGE_NARRATION_TEMPLATES_REQUIRED,
     MESSAGE_PLAYER_PROFILE_NAMES_MUST_BE_UNIQUE,
     MESSAGE_PLAYERS_REQUIRED,
@@ -56,25 +55,17 @@ class LocalRulesDefinition(_DefinitionModel):
     allow_vote_revision: bool
     allow_night_action_revision: bool
     enable_first_night_attack: bool
-    enable_no_elimination_on_tie: bool
-    enable_random_elimination_on_tie: bool
+    vote_tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    wolf_attack_tie_resolution: Literal["random_target", "no_attack"]
+    seer_result_detail: Literal["faction", "role"]
+    medium_result_detail: Literal["faction", "role"]
+    starting_phase: Literal["night", "day_discussion"]
     allow_knight_self_guard: bool
     allow_knight_repeat_guard: bool
     allow_seer_self_inspect: bool
     allow_werewolf_friendly_fire: bool
     reveal_role_on_death: bool
     require_all_actions_before_advance: bool = True
-
-    @model_validator(mode="after")
-    def validate_tie_resolution(self) -> Self:
-        """Ensure one tie-resolution behavior is active."""
-        enabled = [
-            self.enable_no_elimination_on_tie,
-            self.enable_random_elimination_on_tie,
-        ]
-        if enabled.count(True) != 1:
-            raise ValueError(MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE)
-        return self
 
 
 class AbilityDefinition(_DefinitionModel):
@@ -88,6 +79,20 @@ class AbilityDefinition(_DefinitionModel):
     label: str
     description: str
     target_policy: str
+    effect: Literal[
+        "attack",
+        "inspection",
+        "protection",
+        "poison",
+        "knowledge",
+        "reaction",
+        "immunity",
+        "vulnerability",
+        "pass",
+    ]
+    max_uses: int | None = Field(default=None, ge=1)
+    result_visibility: Literal["private", "public", "none"] = "private"
+    resolution_priority: int = Field(default=100, ge=0, le=1000)
     difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
     @field_validator(
@@ -108,17 +113,19 @@ class AbilityDefinition(_DefinitionModel):
 class RoleDefinition(_DefinitionModel):
     """Role faction and abilities."""
 
-    faction: str
+    identity_faction: Literal["village", "werewolf", "fox"]
+    victory_team: Literal["village", "werewolf", "fox"]
+    objective: str
     abilities: tuple[str, ...] = ()
     label: str | None = None
     description: str | None = None
     difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
-    @field_validator("faction")
+    @field_validator("objective")
     @classmethod
-    def validate_faction(cls, value: str) -> str:
-        """Return a normalized faction id."""
-        return non_blank(value, "faction")
+    def validate_objective(cls, value: str) -> str:
+        """Return a normalized role objective."""
+        return non_blank(value, "objective")
 
     @field_validator("label", "description")
     @classmethod
@@ -143,12 +150,14 @@ class CustomRoleDefinition(_DefinitionModel):
 
     id: str
     name: str
-    faction: str
+    identity_faction: Literal["village", "werewolf", "fox"]
+    victory_team: Literal["village", "werewolf", "fox"]
+    objective: str
     abilities: list[str] = Field(default_factory=list)
     description: str = ""
     difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
-    @field_validator("id", "name", "faction")
+    @field_validator("id", "name", "objective")
     @classmethod
     def validate_non_blank_text(cls, value: str, info: Any) -> str:
         """Return normalized custom role text."""
@@ -201,7 +210,7 @@ class NarrationProfileDefinition(_DefinitionModel):
 
 
 class ScenarioDefinition(_DefinitionModel):
-    """Scenario background used for setup display, narration, and LLM premise."""
+    """Presentation-only story theme used by setup, clients, and agents."""
 
     label: str
     summary: str
@@ -209,6 +218,12 @@ class ScenarioDefinition(_DefinitionModel):
     narration_profile: str
     recommended_setup_preset: str | None = None
     allowed_roles: tuple[str, ...] = ()
+    role_names: dict[str, str] = Field(default_factory=dict)
+    role_objectives: dict[str, str] = Field(default_factory=dict)
+    faction_names: dict[str, str] = Field(default_factory=dict)
+    ability_names: dict[str, str] = Field(default_factory=dict)
+    action_names: dict[str, str] = Field(default_factory=dict)
+    phase_names: dict[str, str] = Field(default_factory=dict)
 
     @field_validator("label", "summary", "prompt_premise", "narration_profile")
     @classmethod
@@ -432,6 +447,41 @@ class GameDefinitions(_DefinitionModel):
                 source=f"scenario {scenario_id}",
                 target="roles",
             )
+            themed_roles = set(scenario.allowed_roles) or role_ids
+            themed_abilities = {
+                ability_id
+                for role_id in themed_roles
+                for ability_id in self.roles.roles[role_id].abilities
+            }
+            themed_factions = {
+                str(faction)
+                for role_id in themed_roles
+                for faction in (
+                    self.roles.roles[role_id].identity_faction,
+                    self.roles.roles[role_id].victory_team,
+                )
+            }
+            themed_actions = {
+                str(self.catalog.abilities[ability_id].action) for ability_id in themed_abilities
+            } | {"speech", "vote", "pass"}
+            for required, provided, target in (
+                (themed_roles, set(scenario.role_names), "theme role names"),
+                (themed_roles, set(scenario.role_objectives), "theme role objectives"),
+                (themed_abilities, set(scenario.ability_names), "theme ability names"),
+                (themed_factions, set(scenario.faction_names), "theme faction names"),
+                (themed_actions, set(scenario.action_names), "theme action names"),
+                (
+                    {"night", "day_discussion", "voting", "finished"},
+                    set(scenario.phase_names),
+                    "theme phase names",
+                ),
+            ):
+                self._require_known(
+                    required,
+                    provided,
+                    source=f"scenario {scenario_id}",
+                    target=target,
+                )
             if scenario.recommended_setup_preset is not None:
                 self._require_known(
                     {scenario.recommended_setup_preset},

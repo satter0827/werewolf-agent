@@ -30,11 +30,18 @@ from werewolf_agent.domain._model import freeze_value, frozen_mapping, non_blank
 
 FACTION_VILLAGE = "village"
 FACTION_WEREWOLF = "werewolf"
+FACTION_FOX = "fox"
 ABILITY_NIGHT_ATTACK = "night_attack"
 ABILITY_PACK_KNOWLEDGE = "pack_knowledge"
 ABILITY_INSPECT = "inspect"
 ABILITY_GUARD = "guard"
-SUPPORTED_FACTIONS = frozenset({FACTION_VILLAGE, FACTION_WEREWOLF})
+ABILITY_MEDIUM_KNOWLEDGE = "medium_knowledge"
+ABILITY_HEAL = "heal"
+ABILITY_POISON = "poison"
+ABILITY_DEATH_SHOT = "death_shot"
+ABILITY_ATTACK_IMMUNITY = "attack_immunity"
+ABILITY_INSPECTION_VULNERABILITY = "inspection_vulnerability"
+SUPPORTED_FACTIONS = frozenset({FACTION_VILLAGE, FACTION_WEREWOLF, FACTION_FOX})
 
 
 class Phase(StrEnum):
@@ -62,6 +69,8 @@ class ActionType(StrEnum):
     WEREWOLF_ATTACK = "werewolf_attack"
     SEER_INSPECT = "seer_inspect"
     KNIGHT_GUARD = "knight_guard"
+    APOTHECARY_HEAL = "apothecary_heal"
+    APOTHECARY_POISON = "apothecary_poison"
     PASS = "pass"
 
 
@@ -83,12 +92,16 @@ class AbilityDefinition:
     resolution_policy: str
     target_policy: str
     start_day: int
+    effect: str
+    max_uses: int | None = None
+    result_visibility: str = "private"
+    resolution_priority: int = 100
 
     def __post_init__(self) -> None:
         """Normalize policy IDs and reject unsupported ability combinations."""
         object.__setattr__(self, "phase", Phase(self.phase))
         object.__setattr__(self, "action", ActionType(self.action))
-        for name in ("validation_policy", "resolution_policy", "target_policy"):
+        for name in ("validation_policy", "resolution_policy", "target_policy", "effect"):
             object.__setattr__(self, name, non_blank(getattr(self, name), name))
         if self.start_day < 1:
             raise ValueError("start_day must be at least 1.")
@@ -98,16 +111,37 @@ class AbilityDefinition:
             raise ValueError(f"Unknown ability resolution policy: {self.resolution_policy}")
         if self.target_policy not in {"none", "alive", "other_alive", "other_alive_non_pack"}:
             raise ValueError(f"Unknown ability target policy: {self.target_policy}")
+        if self.effect not in {
+            "attack",
+            "inspection",
+            "protection",
+            "poison",
+            "knowledge",
+            "reaction",
+            "immunity",
+            "vulnerability",
+            "pass",
+        }:
+            raise ValueError(f"Unknown ability effect: {self.effect}")
+        if self.max_uses is not None and self.max_uses < 1:
+            raise ValueError("max_uses must be at least 1 when configured.")
+        if self.result_visibility not in {"private", "public", "none"}:
+            raise ValueError(f"Unknown result visibility: {self.result_visibility}")
+        if not 0 <= self.resolution_priority <= 1000:
+            raise ValueError("resolution_priority must be between 0 and 1000.")
         night_actions = {
             ActionType.WEREWOLF_ATTACK,
             ActionType.SEER_INSPECT,
             ActionType.KNIGHT_GUARD,
+            ActionType.APOTHECARY_HEAL,
+            ActionType.APOTHECARY_POISON,
         }
-        if self.action not in night_actions | {ActionType.PASS}:
+        targeted_actions = night_actions
+        if self.action not in targeted_actions | {ActionType.PASS}:
             raise ValueError(f"Action {self.action.value} is not implemented as a role ability.")
         if self.action in night_actions and self.phase is not Phase.NIGHT:
             raise ValueError(f"Action {self.action.value} is only implemented for the night phase.")
-        if self.action in night_actions and self.target_policy == "none":
+        if self.action in targeted_actions and self.target_policy == "none":
             raise ValueError(f"Action {self.action.value} requires a target policy.")
         if self.action is ActionType.PASS and self.target_policy != "none":
             raise ValueError("Pass abilities cannot define a target policy.")
@@ -158,8 +192,11 @@ class LocalRules:
     allow_vote_revision: bool
     allow_night_action_revision: bool
     enable_first_night_attack: bool
-    enable_no_elimination_on_tie: bool
-    enable_random_elimination_on_tie: bool
+    vote_tie_resolution: str
+    wolf_attack_tie_resolution: str
+    seer_result_detail: str
+    medium_result_detail: str
+    starting_phase: str
     allow_knight_self_guard: bool
     allow_knight_repeat_guard: bool
     allow_seer_self_inspect: bool
@@ -171,28 +208,45 @@ class LocalRules:
         """Validate mutually dependent local rule values."""
         if not 0 <= self.day_speech_limit_per_player <= 100:
             raise ValueError("day_speech_limit_per_player must be between 0 and 100.")
-        if (self.enable_no_elimination_on_tie, self.enable_random_elimination_on_tie).count(
-            True
-        ) != 1:
-            raise ValueError("Exactly one tie-resolution policy must be enabled.")
+        if self.vote_tie_resolution not in {
+            "no_elimination",
+            "random_elimination",
+            "revote",
+        }:
+            raise ValueError(f"Unknown vote tie resolution: {self.vote_tie_resolution}")
+        if self.wolf_attack_tie_resolution not in {"random_target", "no_attack"}:
+            raise ValueError(
+                f"Unknown wolf attack tie resolution: {self.wolf_attack_tie_resolution}"
+            )
+        if self.seer_result_detail not in {"faction", "role"}:
+            raise ValueError(f"Unknown seer result detail: {self.seer_result_detail}")
+        if self.medium_result_detail not in {"faction", "role"}:
+            raise ValueError(f"Unknown medium result detail: {self.medium_result_detail}")
+        if self.starting_phase not in {"night", "day_discussion"}:
+            raise ValueError(f"Unknown starting phase: {self.starting_phase}")
 
 
 @dataclass(frozen=True)
 class RoleDefinition:
     """Immutable faction and ability membership for one role."""
 
-    faction: str
+    identity_faction: str
+    victory_team: str
     abilities: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Normalize the faction and unique ability IDs."""
-        faction = non_blank(self.faction, "faction")
-        if faction not in SUPPORTED_FACTIONS:
-            raise ValueError(message_unsupported_faction(faction))
+        identity_faction = non_blank(self.identity_faction, "identity_faction")
+        victory_team = non_blank(self.victory_team, "victory_team")
+        if identity_faction not in SUPPORTED_FACTIONS:
+            raise ValueError(message_unsupported_faction(identity_faction))
+        if victory_team not in SUPPORTED_FACTIONS:
+            raise ValueError(message_unsupported_faction(victory_team))
         abilities = tuple(non_blank(item, "ability") for item in self.abilities)
         if len(set(abilities)) != len(abilities):
             raise ValueError(MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE)
-        object.__setattr__(self, "faction", faction)
+        object.__setattr__(self, "identity_faction", identity_faction)
+        object.__setattr__(self, "victory_team", victory_team)
         object.__setattr__(self, "abilities", abilities)
 
     def has_ability(self, ability: str) -> bool:
@@ -219,7 +273,11 @@ class RoleCatalog:
 
     def faction_for_role(self, role: str) -> str:
         """Return the canonical faction ID for one role."""
-        return self.require_role(role).faction
+        return self.require_role(role).identity_faction
+
+    def victory_team_for_role(self, role: str) -> str:
+        """Return the team that wins with one role."""
+        return self.require_role(role).victory_team
 
     def role_has_ability(self, role: str | None, ability: str) -> bool:
         """Return whether an assigned role owns an ability."""
@@ -248,7 +306,12 @@ class GameConfig:
         }
         object.__setattr__(self, "role_counts", frozen_mapping(role_counts))
         object.__setattr__(self, "abilities", frozen_mapping(abilities))
-        object.__setattr__(self, "phase_order", tuple(self.phase_order))
+        phase_order = (
+            (Phase.NIGHT, Phase.DAY_DISCUSSION, Phase.VOTING)
+            if self.rules.starting_phase == "night"
+            else (Phase.DAY_DISCUSSION, Phase.VOTING, Phase.NIGHT)
+        )
+        object.__setattr__(self, "phase_order", phase_order)
         if self.player_count < 1:
             raise ValueError(MESSAGE_PLAYER_COUNT_AT_LEAST_ONE)
         for role, count in role_counts.items():
@@ -303,10 +366,18 @@ class Action:
             ActionType.WEREWOLF_ATTACK,
             ActionType.SEER_INSPECT,
             ActionType.KNIGHT_GUARD,
+            ActionType.APOTHECARY_HEAL,
+            ActionType.APOTHECARY_POISON,
         }
     )
     NIGHT_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
-        {ActionType.WEREWOLF_ATTACK, ActionType.SEER_INSPECT, ActionType.KNIGHT_GUARD}
+        {
+            ActionType.WEREWOLF_ATTACK,
+            ActionType.SEER_INSPECT,
+            ActionType.KNIGHT_GUARD,
+            ActionType.APOTHECARY_HEAL,
+            ActionType.APOTHECARY_POISON,
+        }
     )
 
     def __post_init__(self) -> None:
@@ -379,6 +450,8 @@ class VoteResult:
     tied_player_ids: tuple[str, ...] = ()
     missing_voter_ids: tuple[str, ...] = ()
     eliminated_player_id: str | None = None
+    round: int = 1
+    requires_revote: bool = False
 
     def __post_init__(self) -> None:
         """Freeze vote mappings and ordered identifier collections."""
@@ -407,11 +480,16 @@ class NightResult:
     attacked_player_id: str | None = None
     protected_player_id: str | None = None
     killed_player_id: str | None = None
+    killed_player_ids: tuple[str, ...] = ()
     inspections: tuple[InspectionResult, ...] = ()
 
     def __post_init__(self) -> None:
         """Freeze inspection results."""
         object.__setattr__(self, "inspections", tuple(self.inspections))
+        killed_ids = tuple(self.killed_player_ids)
+        if self.killed_player_id is not None and not killed_ids:
+            killed_ids = (self.killed_player_id,)
+        object.__setattr__(self, "killed_player_ids", killed_ids)
 
 
 @dataclass(frozen=True)
@@ -477,11 +555,18 @@ class PendingActions:
 
     votes: Mapping[str, Action] = field(default_factory=dict)
     night_actions: Mapping[str, Action] = field(default_factory=dict)
+    vote_round: int = 1
+    revote_candidates: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Freeze unresolved vote and night action mappings."""
         object.__setattr__(self, "votes", frozen_mapping(self.votes))
         object.__setattr__(self, "night_actions", frozen_mapping(self.night_actions))
+        object.__setattr__(self, "revote_candidates", tuple(self.revote_candidates))
+        if self.vote_round not in {1, 2}:
+            raise ValueError("vote_round must be 1 or 2.")
+        if self.vote_round == 1 and self.revote_candidates:
+            raise ValueError("first vote round cannot have revote candidates.")
 
 
 @dataclass(frozen=True)
@@ -494,6 +579,7 @@ class GameState:
     players: Mapping[str, Player]
     history: GameHistory = field(default_factory=GameHistory)
     pending_actions: PendingActions = field(default_factory=PendingActions)
+    ability_uses: Mapping[str, Mapping[str, int]] = field(default_factory=dict)
     win_result: WinResult | None = None
 
     def __post_init__(self) -> None:
@@ -519,7 +605,7 @@ class GameState:
                 player.id
                 for player in players.values()
                 if player.role is not None
-                and self.config.roles.faction_for_role(player.role) == self.win_result.winner
+                and self.config.roles.victory_team_for_role(player.role) == self.win_result.winner
             }
             if set(self.win_result.winning_player_ids) != expected_winners:
                 raise ValueError("winning player ids must match the winning faction.")
@@ -532,6 +618,20 @@ class GameState:
                 raise ValueError("pending action keys must identify a game player.")
         object.__setattr__(self, "phase", phase)
         object.__setattr__(self, "players", frozen_mapping(players))
+        ability_uses = {
+            non_blank(player_id, "ability use player id"): frozen_mapping(
+                {
+                    non_blank(ability_id, "ability use id"): int(count)
+                    for ability_id, count in uses.items()
+                }
+            )
+            for player_id, uses in self.ability_uses.items()
+        }
+        if set(ability_uses) - set(players):
+            raise ValueError("ability use player ids must belong to the game.")
+        if any(count < 0 for uses in ability_uses.values() for count in uses.values()):
+            raise ValueError("ability use counts cannot be negative.")
+        object.__setattr__(self, "ability_uses", frozen_mapping(ability_uses))
 
     @property
     def is_finished(self) -> bool:
@@ -553,6 +653,7 @@ class GameView:
     me: Player
     players: tuple[Player, ...]
     known_roles: Mapping[str, str] = field(default_factory=dict)
+    known_factions: Mapping[str, str] = field(default_factory=dict)
     available_actions: tuple[ActionType, ...] = ()
     legal_targets: Mapping[ActionType, tuple[str, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
@@ -562,6 +663,7 @@ class GameView:
         """Freeze visible collections and legal targets."""
         object.__setattr__(self, "players", tuple(self.players))
         object.__setattr__(self, "known_roles", frozen_mapping(self.known_roles))
+        object.__setattr__(self, "known_factions", frozen_mapping(self.known_factions))
         object.__setattr__(self, "available_actions", tuple(self.available_actions))
         object.__setattr__(
             self,

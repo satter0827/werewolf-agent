@@ -10,6 +10,7 @@
 requirements
 architecture
 domain
+game-setup
 application-and-api
 agents
 data-and-security

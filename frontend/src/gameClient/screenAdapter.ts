@@ -19,14 +19,14 @@ import type {
 
 const SECRET_FIELD_PATTERN = /(role|target|token|provider|model|trace|game_id|api|secret)/i;
 
-const phaseLabels: Record<GamePhase, string> = {
+const fallbackPhaseLabels: Record<GamePhase, string> = {
   night: "夜の時間",
   day_discussion: "昼の議論",
   voting: "投票の時間",
   finished: "終幕",
 };
 
-const actionLabels: Record<string, string> = {
+const fallbackActionLabels: Record<string, string> = {
   speech: "発言する",
   vote: "投票する",
   seer_inspect: "占う",
@@ -36,11 +36,11 @@ const actionLabels: Record<string, string> = {
 };
 
 const actionDescriptions: Record<string, string> = {
-  speech: "村のみんなに考えを伝えます",
-  vote: "怪しいと思う相手を選びます",
+  speech: "参加者へ考えを伝えます",
+  vote: "対象をひとり選びます",
   seer_inspect: "夜にひとりを調べます",
-  knight_guard: "夜にひとりを守ります",
-  werewolf_attack: "夜の行き先を選びます",
+  knight_guard: "ひとりを守ります",
+  werewolf_attack: "夜の対象を選びます",
   pass: "今は行動を見送ります",
 };
 
@@ -54,19 +54,21 @@ export function mapGameScreen({
   const state = screen.state;
   const actorNames = new Map(state.players.map((player) => [player.id, player.name]));
   const seats = mapSeats(state, screen.timeline.items, manualPlayerId);
-  const timeline = screen.timeline.items.map((item) => mapTimelineItem(item, actorNames));
+  const timeline = screen.timeline.items.map((item) => mapTimelineItem(item, actorNames, state));
   const observerRecord = mapObserverRecord(timeline);
+  const phaseLabel = themeTerm(state, "phase_names", state.phase, fallbackPhaseLabels[state.phase]);
   return {
     version: state.version,
     status: state.status,
     phase: state.phase,
-    phaseLabel: phaseLabels[state.phase],
-    dayLabel: state.phase === "night" ? `${state.day}日目の夜` : `${state.day}日目`,
-    tableTitle: state.scenario_name ?? "霧の村",
-    tableSubtitle: "朝焼けの広場で、村人たちが静かに向き合っています。",
+    phaseLabel,
+    dayLabel: `${state.day}日目・${phaseLabel}`,
+    tableTitle: state.scenario_name ?? "ゲーム",
+    tableSubtitle: state.theme?.premise ?? "公開情報を手がかりに、隠れた脅威を探します。",
+    storyThemeId: state.theme?.id ?? null,
     aliveCount: state.alive_player_ids.length,
     playerCount: state.players.length,
-    winnerLabel: state.winner ? winnerLabel(state.winner) : null,
+    winnerLabel: state.winner ? winnerLabel(state, state.winner) : null,
     seats,
     turnPanel: mapTurnPanel(screen.observation, state),
     timeline,
@@ -115,24 +117,24 @@ function mapTurnPanel(
   const actions = normalizeActions(payload);
   if (state.phase === "finished") {
     return {
-      title: "村を見守る",
-      subtitle: "この村の物語は終わりました",
+      title: "ゲームを振り返る",
+      subtitle: "この物語は終わりました",
       roleHint: "公開された記録から結末を振り返ります",
-      visibleClues: ["公開された発言", "投票の流れ", "夜明けの結果"],
+      visibleClues: defaultClues(state),
       actions: [],
     };
   }
   if (payload === null || actions.length === 0) {
     return {
-      title: "村を見守る",
+      title: "ゲームを見守る",
       subtitle: "次の動きを待っています",
       roleHint: "見えている情報だけで推理します",
-      visibleClues: ["公開された発言", "投票の流れ", "夜明けの結果"],
+      visibleClues: defaultClues(state),
       actions: [
         {
           type: "advance",
-          label: "夜明けを待つ",
-          description: "村の動きを進めます",
+          label: "進行を待つ",
+          description: "ゲームを次の状態へ進めます",
           enabled: true,
           requiresMessage: false,
           targetOptions: [],
@@ -144,18 +146,25 @@ function mapTurnPanel(
     title: "あなたの手番",
     subtitle: "今できる行動を選んでください",
     roleHint: visibleRole(payload)
-      ? `あなたは ${friendlyRole(visibleRole(payload))}`
-      : "村の一員です",
+      ? `あなたは ${friendlyRole(state, visibleRole(payload))}`
+      : "あなたも参加者のひとりです",
     visibleClues: visibleClues(payload, state),
     actions: actions.map((action) => ({
       type: action.type,
-      label: actionLabels[action.type] ?? "行動する",
-      description: actionDescriptions[action.type] ?? "この場でできることを選びます",
+      label: themeTerm(
+        state,
+        "action_names",
+        action.type,
+        fallbackActionLabels[action.type] ?? "行動する",
+      ),
+      description:
+        actionDescriptions[action.type] ??
+        `${themeTerm(state, "action_names", action.type, "行動")}を実行します`,
       enabled: true,
       requiresMessage: Boolean(action.message_required),
       targetOptions: (action.legal_targets ?? []).map((targetId) => ({
         id: targetId,
-        label: state.players.find((player) => player.id === targetId)?.name ?? "村人",
+        label: state.players.find((player) => player.id === targetId)?.name ?? "参加者",
       })),
     })),
   };
@@ -164,11 +173,17 @@ function mapTurnPanel(
 function visibleClues(payload: PlayerObservationPayload, state: PublicGameState): string[] {
   const known = Object.entries(payload.known_roles ?? {}).map(
     ([playerId, role]) =>
-      `${state.players.find((player) => player.id === playerId)?.name ?? "誰か"} は ${friendlyRole(
-        role,
-      )} と分かっています`,
+      `${state.players.find((player) => player.id === playerId)?.name ?? "誰か"} は ${friendlyRole(state, role)} と分かっています`,
   );
-  return known.length > 0 ? known : ["公開された発言", "これまでの投票", "今朝の出来事"];
+  return known.length > 0 ? known : defaultClues(state);
+}
+
+function defaultClues(state: PublicGameState): string[] {
+  return [
+    `公開された${themeTerm(state, "action_names", "speech", "発言")}`,
+    `これまでの${themeTerm(state, "action_names", "vote", "投票")}`,
+    `${themeTerm(state, "phase_names", "night", "夜")}の結果`,
+  ];
 }
 
 function normalizeActions(payload: PlayerObservationPayload | null): AvailableAction[] {
@@ -193,17 +208,21 @@ function visibleRole(payload: PlayerObservationPayload): string {
   return String(payload.me?.role ?? payload.role ?? "");
 }
 
-function mapTimelineItem(item: GameTimelineItem, actorNames: Map<string, string>): TimelineEntry {
+function mapTimelineItem(
+  item: GameTimelineItem,
+  actorNames: Map<string, string>,
+  state: PublicGameState,
+): TimelineEntry {
   const publicPayload = Object.entries(item.payload)
     .filter(([key]) => !SECRET_FIELD_PATTERN.test(key))
     .map(([, value]) => String(value))
     .filter(Boolean);
   return {
     sequence: item.sequence,
-    label: eventLabel(item.event_type),
+    label: eventLabel(item.event_type, state),
     dayLabel: item.day ? `${item.day}日目` : "序章",
-    actorName: item.actor_id ? (actorNames.get(item.actor_id) ?? "村人") : "語り部",
-    detail: item.narration ?? publicPayload.join(" / ") ?? "村に静かな変化がありました",
+    actorName: item.actor_id ? (actorNames.get(item.actor_id) ?? "参加者") : "記録",
+    detail: item.narration ?? publicPayload.join(" / ") ?? "状況に変化がありました",
     tone: timelineTone(item.event_type),
   };
 }
@@ -215,10 +234,12 @@ function mapObserverRecord(timeline: TimelineEntry[]): ObserverRecord {
   };
 }
 
-function eventLabel(eventType: string): string {
-  if (eventType.includes("vote")) return "投票";
-  if (eventType.includes("night")) return "夜明け";
-  if (eventType === "speech") return "発言";
+function eventLabel(eventType: string, state: PublicGameState): string {
+  if (eventType.includes("vote")) return themeTerm(state, "action_names", "vote", "投票");
+  if (eventType.includes("night")) return themeTerm(state, "phase_names", "night", "夜");
+  if (eventType === "speech" || eventType === "speech_recorded") {
+    return themeTerm(state, "action_names", "speech", "発言");
+  }
   if (eventType.includes("created")) return "開幕";
   return "出来事";
 }
@@ -230,16 +251,25 @@ function timelineTone(eventType: string): TimelineEntry["tone"] {
   return "day";
 }
 
-function winnerLabel(winner: string): string {
-  return winner === "village" ? "村人陣営の勝利" : "人狼陣営の勝利";
+function winnerLabel(state: PublicGameState, winner: string): string {
+  return `${themeTerm(state, "faction_names", winner, winner)}の勝利`;
 }
 
-function friendlyRole(role: string): string {
-  const labels: Record<string, string> = {
+function friendlyRole(state: PublicGameState, role: string): string {
+  const fallbackLabels: Record<string, string> = {
     villager: "村人",
     werewolf: "人狼",
     seer: "占い師",
     knight: "騎士",
   };
-  return labels[role] ?? role;
+  return themeTerm(state, "role_names", role, fallbackLabels[role] ?? role);
+}
+
+function themeTerm(
+  state: PublicGameState,
+  field: "role_names" | "faction_names" | "action_names" | "phase_names",
+  conceptId: string,
+  fallback: string,
+): string {
+  return state.theme?.[field]?.[conceptId] ?? fallback;
 }

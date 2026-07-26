@@ -9,7 +9,7 @@ GAME_STATUS_COMPLETED: Final = "completed"
 
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
-Faction = Literal["village", "werewolf"]
+Faction = Literal["village", "werewolf", "fox"]
 Winner = Faction
 RoleId = str
 RoleCount = Annotated[int, Field(ge=0)]

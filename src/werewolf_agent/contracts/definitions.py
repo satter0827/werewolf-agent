@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from werewolf_agent.contracts.constants import (
     MAX_CHARACTER_AGE,
@@ -16,7 +16,6 @@ from werewolf_agent.contracts.constants import (
 )
 from werewolf_agent.contracts.messages import (
     MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE,
-    MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE,
 )
 from werewolf_agent.contracts.validation import non_blank
 
@@ -38,8 +37,11 @@ class LocalRulesDefinition(_DefinitionModel):
     allow_vote_revision: bool
     allow_night_action_revision: bool
     enable_first_night_attack: bool
-    enable_no_elimination_on_tie: bool
-    enable_random_elimination_on_tie: bool
+    vote_tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    wolf_attack_tie_resolution: Literal["random_target", "no_attack"]
+    seer_result_detail: Literal["faction", "role"]
+    medium_result_detail: Literal["faction", "role"]
+    starting_phase: Literal["night", "day_discussion"]
     allow_knight_self_guard: bool
     allow_knight_repeat_guard: bool
     allow_seer_self_inspect: bool
@@ -47,29 +49,20 @@ class LocalRulesDefinition(_DefinitionModel):
     reveal_role_on_death: bool
     require_all_actions_before_advance: bool = True
 
-    @model_validator(mode="after")
-    def validate_tie_resolution(self) -> Self:
-        """Ensure one tie-resolution behavior is active."""
-        enabled = [
-            self.enable_no_elimination_on_tie,
-            self.enable_random_elimination_on_tie,
-        ]
-        if enabled.count(True) != 1:
-            raise ValueError(MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE)
-        return self
-
 
 class CustomRoleDefinition(_DefinitionModel):
     """Session-scoped role definition supplied by a game API caller."""
 
     id: str
     name: str
-    faction: str
+    identity_faction: Literal["village", "werewolf", "fox"]
+    victory_team: Literal["village", "werewolf", "fox"]
+    objective: str
     abilities: list[str] = Field(default_factory=list)
     description: str = ""
     difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
 
-    @field_validator("id", "name", "faction")
+    @field_validator("id", "name", "objective")
     @classmethod
     def validate_non_blank_text(cls, value: str, info: Any) -> str:
         """Return normalized custom role text."""

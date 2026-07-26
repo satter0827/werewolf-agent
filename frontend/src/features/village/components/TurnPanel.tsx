@@ -96,7 +96,7 @@ export function TurnPanel({
               <textarea
                 maxLength={messageMaxChars}
                 onChange={(event) => setMessage(event.target.value)}
-                placeholder="村のみんなに伝えること"
+                placeholder="参加者へ伝えること"
                 value={message}
               />
             </label>

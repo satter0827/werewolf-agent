@@ -1,5 +1,5 @@
 name = "werewolf-agent-decision"
-version = 1
+version = 2
 alias = "local"
 input_variables = [
     "player_id",
@@ -9,6 +9,7 @@ input_variables = [
     "scenario_name",
     "scenario_premise",
     "character_profile",
+    "game_context_json",
     "available_actions",
     "selected_action",
     "role_hint",
@@ -31,19 +32,26 @@ schema = "AgentDecision"
 instructions_variable = "format_instructions"
 
 [role_hints]
-werewolf = "Avoid attacking known werewolves and move suspicion away from allies."
+werewolf = "Avoid attacking known allies and move suspicion away from them."
 seer = "Use inspections to separate hard information from public suspicion."
-knight = "Guard likely village power roles or confirmed villagers."
+knight = "Guard likely allied power roles or confirmed allies."
 villager = "Compare speeches and votes, then pressure inconsistent players."
+medium = "Use the latest execution result to separate evidence from suspicion."
+apothecary = "Preserve both limited medicines until their expected value is clear."
+hunter = "Keep a short list of reliable retaliation targets in case you die."
+madman = "Create plausible doubt that helps your victory team without revealing your objective."
+fox = "Avoid becoming the safest inspection target and survive until either main team would win."
 
 [[messages]]
 role = "system"
 content = """
-You choose one visible Werewolf game action for a single player.
-Use only the compact observation JSON, available actions, and legal target ids.
+You choose one visible social-deduction game action for a single player.
+Use only the normalized game context, compact observation JSON, available actions, and legal target ids.
 The selected_action field is authoritative; use it as the returned type.
 When an action requires target_id, choose it from legal_targets_json for that action.
 Use the scenario and character profile only to make short speech natural.
+Stable role, faction, action, and phase ids are internal mechanics identifiers. In a speech message,
+use only the corresponding names and objective from game_context_json, and stay consistent with its premise.
 Do not infer role, faction, trustworthiness, or ability from age or gender.
 Do not use age or gender for insulting, discriminatory, or sexualized wording.
 Return only one compact JSON object. Do not use Markdown.
@@ -59,6 +67,7 @@ role: {{role}}
 scenario_name: {{scenario_name}}
 scenario_premise: {{scenario_premise}}
 character_profile: {{character_profile}}
+game_context_json: {{game_context_json}}
 available_actions: {{available_actions}}
 selected_action: {{selected_action}}
 role_hint: {{role_hint}}

@@ -5,6 +5,7 @@ import pytest
 
 from werewolf_agent.adapters.agents import game_driver as agents
 from werewolf_agent.adapters.agents.game_driver import (
+    _agent_game_contexts,
     _agent_observation_from_game,
     langchain_agent_factory,
 )
@@ -87,6 +88,61 @@ def test_agent_observation_from_game_carries_public_history_only() -> None:
     assert agent_observation.vote_rounds[0].votes == {"p1": "p2"}
     assert agent_observation.vote_rounds[0].counts == {"p2": 1}
     assert agent_observation.known_roles == {"p1": "seer"}
+
+
+def test_agent_game_context_uses_theme_language_for_identity_and_objective() -> None:
+    prepared = SimpleNamespace(
+        config={
+            "setup_document": {
+                "mechanics": {
+                    "roles": {
+                        "werewolf": {
+                            "identity_faction": "werewolf",
+                            "victory_team": "werewolf",
+                            "objective": "Reach parity with villagers.",
+                            "abilities": ["night_attack"],
+                        }
+                    },
+                    "abilities": {
+                        "night_attack": {
+                            "action": "werewolf_attack",
+                            "effect": "attack",
+                            "max_uses": None,
+                        }
+                    },
+                    "rules": {"allow_night_action_revision": False},
+                },
+                "theme": {
+                    "id": "starship",
+                    "name": "宇宙船",
+                    "premise": "航行中の宇宙船で擬態生命体を探します。",
+                    "role_names": {"werewolf": "擬態生命体"},
+                    "role_objectives": {
+                        "werewolf": "擬態を保って乗組員を減らし、擬態生命体側を勝利させます。"
+                    },
+                    "faction_names": {"werewolf": "擬態生命体側"},
+                    "ability_names": {"night_attack": "船内排除"},
+                    "action_names": {"werewolf_attack": "排除"},
+                    "phase_names": {"night": "休眠時間"},
+                },
+            },
+            "setup_checksum": "setup-checksum",
+            "mechanics_checksum": "mechanics-checksum",
+        }
+    )
+    snapshot = SimpleNamespace(
+        players={"p1": Player(id="p1", name="Alice", role="werewolf")},
+        ability_uses={},
+        phase=Phase.NIGHT,
+    )
+
+    context = _agent_game_contexts(prepared, snapshot)["p1"]
+
+    assert context.role_name == "擬態生命体"
+    assert context.identity_faction_name == "擬態生命体側"
+    assert context.victory_team_name == "擬態生命体側"
+    assert context.objective == "擬態を保って乗組員を減らし、擬態生命体側を勝利させます。"
+    assert context.abilities[0].name == "船内排除"
 
 
 def test_langchain_agent_factory_uses_fake_decision_fixture() -> None:

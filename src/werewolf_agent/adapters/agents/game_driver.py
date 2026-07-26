@@ -33,8 +33,10 @@ from werewolf_agent.adapters.llm.langchain.service import (
 )
 from werewolf_agent.adapters.resources import LlmDefinitions
 from werewolf_agent.agents.models import (
+    AgentAbilityContext,
     AgentActionType,
     AgentDecision,
+    AgentGameContext,
     AgentObservation,
     AgentPhase,
     AgentPlayerStatus,
@@ -100,6 +102,7 @@ class LlmAgent:
     provider: DecisionProvider
     profile: PlayerProfile
     scenario: AgentScenario | None = None
+    game_context: AgentGameContext | None = None
 
     def act(self, observation: GameView) -> Action:
         """Return one structured action for the current observation."""
@@ -107,6 +110,7 @@ class LlmAgent:
             observation,
             profile=self.profile,
             scenario=self.scenario,
+            game_context=self.game_context,
         )
         try:
             decision = self.provider.choose_decision(self.player_id, agent_observation)
@@ -123,6 +127,7 @@ class LlmAgentFactory:
     profiles: dict[str, PlayerProfile]
     profile_ids_by_player: dict[str, str]
     scenario: AgentScenario | None = None
+    game_contexts: dict[str, AgentGameContext] = field(default_factory=dict)
 
     def create(self, player_id: str, *, seed: int) -> LlmAgent:
         """Create one LLM agent for a deterministic game step."""
@@ -136,6 +141,7 @@ class LlmAgentFactory:
             provider=self.provider,
             profile=profile,
             scenario=self.scenario,
+            game_context=self.game_contexts.get(player_id),
         )
 
 
@@ -181,11 +187,13 @@ def drive_prepared_game(
         if scenario_name and scenario_premise
         else None
     )
+    game_contexts = _agent_game_contexts(prepared, snapshot)
     factory = langchain_agent_factory(
         runtime.config,
         definitions=runtime.definitions,
         profile_ids_by_player=profile_ids,
         scenario=scenario,
+        game_contexts=game_contexts,
         trace_sink=runtime.trace_sink,
     )
     events = []
@@ -221,6 +229,7 @@ def langchain_agent_factory(
     definitions: LlmDefinitions,
     profile_ids_by_player: dict[str, str] | None = None,
     scenario: AgentScenario | None = None,
+    game_contexts: dict[str, AgentGameContext] | None = None,
     trace_sink: LlmTraceSink | None = None,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from application settings."""
@@ -234,6 +243,7 @@ def langchain_agent_factory(
         profiles=profiles.profiles,
         profile_ids_by_player=profile_ids_by_player or {},
         scenario=scenario,
+        game_contexts=game_contexts or {},
     )
 
 
@@ -361,6 +371,7 @@ def _agent_observation_from_game(
     *,
     profile: PlayerProfile | None = None,
     scenario: AgentScenario | None = None,
+    game_context: AgentGameContext | None = None,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
         {
@@ -370,8 +381,10 @@ def _agent_observation_from_game(
             "role": observation.me.role if observation.me.role is not None else None,
             "profile": profile,
             "scenario": scenario,
+            "game_context": game_context,
             "players": [_visible_player_from_game(player) for player in observation.players],
             "known_roles": dict(observation.known_roles),
+            "known_factions": dict(observation.known_factions),
             "available_actions": [
                 AgentActionType(action_type.value) for action_type in observation.available_actions
             ],
@@ -395,6 +408,106 @@ def _agent_observation_from_game(
             ],
         }
     )
+
+
+def _agent_game_contexts(
+    prepared: PreparedAdvanceGame,
+    snapshot: Any,
+) -> dict[str, AgentGameContext]:
+    """Build player-private setup facts without exposing another role or pending action."""
+    setup = prepared.config.get("setup_document")
+    if not isinstance(setup, dict):
+        return {}
+    mechanics = setup.get("mechanics")
+    theme = setup.get("theme")
+    if not isinstance(mechanics, dict) or not isinstance(theme, dict):
+        return {}
+    roles = mechanics.get("roles")
+    abilities = mechanics.get("abilities")
+    rules = mechanics.get("rules")
+    if (
+        not isinstance(roles, dict)
+        or not isinstance(abilities, dict)
+        or not isinstance(rules, dict)
+    ):
+        return {}
+    role_names_value = theme.get("role_names")
+    role_names = role_names_value if isinstance(role_names_value, dict) else {}
+    role_objectives_value = theme.get("role_objectives")
+    role_objectives = role_objectives_value if isinstance(role_objectives_value, dict) else {}
+    faction_names_value = theme.get("faction_names")
+    faction_names = faction_names_value if isinstance(faction_names_value, dict) else {}
+    ability_names_value = theme.get("ability_names")
+    ability_names = ability_names_value if isinstance(ability_names_value, dict) else {}
+    contexts: dict[str, AgentGameContext] = {}
+    for player in snapshot.players.values():
+        if player.role is None:
+            continue
+        role = roles.get(player.role)
+        if not isinstance(role, dict):
+            continue
+        ability_contexts: list[AgentAbilityContext] = []
+        for ability_id in role.get("abilities") or []:
+            ability = abilities.get(str(ability_id))
+            if not isinstance(ability, dict):
+                continue
+            max_uses = ability.get("max_uses")
+            used = snapshot.ability_uses.get(player.id, {}).get(str(ability_id), 0)
+            remaining = None if max_uses is None else max(0, int(max_uses) - used)
+            ability_contexts.append(
+                AgentAbilityContext(
+                    id=str(ability_id),
+                    name=str(
+                        ability_names.get(str(ability_id)) or ability.get("label") or ability_id
+                    ),
+                    action=str(ability.get("action") or "pass"),
+                    effect=str(ability.get("effect") or "pass"),
+                    remaining_uses=remaining,
+                )
+            )
+        relevant_keys = {
+            "day_speech_limit_per_player",
+            "allow_self_vote",
+            "allow_vote_revision",
+            "vote_tie_resolution",
+        }
+        if snapshot.phase.value == "night":
+            relevant_keys = {
+                "allow_night_action_revision",
+                "enable_first_night_attack",
+                "wolf_attack_tie_resolution",
+                "seer_result_detail",
+                "medium_result_detail",
+                "allow_knight_self_guard",
+                "allow_knight_repeat_guard",
+                "allow_seer_self_inspect",
+                "allow_werewolf_friendly_fire",
+            }
+        identity_faction = str(role.get("identity_faction") or "")
+        victory_team = str(role.get("victory_team") or "")
+        contexts[player.id] = AgentGameContext(
+            theme_id=str(theme.get("id") or ""),
+            theme_name=str(theme.get("name") or ""),
+            premise=str(theme.get("premise") or ""),
+            role_id=player.role,
+            role_name=str(role_names.get(player.role) or role.get("label") or player.role),
+            identity_faction=identity_faction,
+            identity_faction_name=str(faction_names.get(identity_faction) or identity_faction),
+            victory_team=victory_team,
+            victory_team_name=str(faction_names.get(victory_team) or victory_team),
+            objective=str(role_objectives.get(player.role) or role.get("objective") or ""),
+            abilities=tuple(ability_contexts),
+            relevant_rules={key: rules[key] for key in sorted(relevant_keys) if key in rules},
+            action_names={
+                str(key): str(value) for key, value in dict(theme.get("action_names") or {}).items()
+            },
+            phase_names={
+                str(key): str(value) for key, value in dict(theme.get("phase_names") or {}).items()
+            },
+            setup_checksum=str(prepared.config.get("setup_checksum") or ""),
+            mechanics_checksum=str(prepared.config.get("mechanics_checksum") or ""),
+        )
+    return contexts
 
 
 def _visible_player_from_game(player: Any) -> VisiblePlayer:

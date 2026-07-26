@@ -191,6 +191,13 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
     client = FakeStreamlitClient()
     monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
     settings = AppSettings(_env_file=None)
+    from werewolf_agent.adapters.setup_options import get_local_setup_options
+
+    monkeypatch.setattr(
+        operations,
+        "load_setup_options",
+        lambda **_kwargs: get_local_setup_options(settings),
+    )
     rules = _rules()
 
     with caplog.at_level(logging.INFO, logger=operations.__name__):
@@ -210,11 +217,16 @@ def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -
 
     assert created.game_id == "game-1"
     assert client.created_request is not None
-    assert client.created_request.role_counts == {"werewolf": 1, "villager": 4}
+    assert client.created_request.setup.mode == "custom"
+    assert client.created_request.setup.setup.mechanics.role_counts == {
+        "werewolf": 1,
+        "villager": 4,
+    }
     assert client.created_request.manual_player_id == "player-1"
     assert client.created_request.seed == 7
-    assert client.created_request.rules == rules
-    assert client.created_request.scenario_id == "classic_village"
+    assert client.created_request.narration_mode == "standard"
+    assert client.created_request.setup.setup.mechanics.rules == rules
+    assert client.created_request.setup.setup.theme.id == "classic_village"
     record = next(
         record for record in caplog.records if record.event_action == "streamlit.game.created"
     )
@@ -273,8 +285,11 @@ def _rules() -> LocalRulesSettings:
         allow_vote_revision=False,
         allow_night_action_revision=False,
         enable_first_night_attack=True,
-        enable_no_elimination_on_tie=True,
-        enable_random_elimination_on_tie=False,
+        vote_tie_resolution="no_elimination",
+        wolf_attack_tie_resolution="random_target",
+        seer_result_detail="faction",
+        medium_result_detail="faction",
+        starting_phase="night",
         allow_knight_self_guard=True,
         allow_knight_repeat_guard=True,
         allow_seer_self_inspect=False,

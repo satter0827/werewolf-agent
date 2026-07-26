@@ -119,7 +119,9 @@ class FakeGameClient:
         ]
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
-        self.calls.append(("create", request.player_count))
+        selection = request.setup
+        value = selection.preset_id if selection.mode == "preset" else request.player_count
+        self.calls.append(("create", value))
         self.available_sequence = 1
         return GameResponse(game_id="game-1", state=_state())
 
@@ -136,8 +138,22 @@ class FakeGameClient:
         return GameSetupOptionsResponse(
             player_count={"min": 5, "max": 8},
             roles=[
-                {"id": "villager", "name": "Villager", "faction": "village", "abilities": []},
-                {"id": "werewolf", "name": "Werewolf", "faction": "werewolf", "abilities": []},
+                {
+                    "id": "villager",
+                    "name": "Villager",
+                    "identity_faction": "village",
+                    "victory_team": "village",
+                    "objective": "Find the werewolf",
+                    "abilities": [],
+                },
+                {
+                    "id": "werewolf",
+                    "name": "Werewolf",
+                    "identity_faction": "werewolf",
+                    "victory_team": "werewolf",
+                    "objective": "Reach parity",
+                    "abilities": [],
+                },
             ],
             default_role_counts={"werewolf": 1, "villager": 4},
             default_rules={
@@ -146,8 +162,11 @@ class FakeGameClient:
                 "allow_vote_revision": False,
                 "allow_night_action_revision": False,
                 "enable_first_night_attack": False,
-                "enable_no_elimination_on_tie": True,
-                "enable_random_elimination_on_tie": False,
+                "vote_tie_resolution": "no_elimination",
+                "wolf_attack_tie_resolution": "random_target",
+                "seer_result_detail": "faction",
+                "medium_result_detail": "faction",
+                "starting_phase": "night",
                 "allow_knight_self_guard": True,
                 "allow_knight_repeat_guard": True,
                 "allow_seer_self_inspect": False,
@@ -438,14 +457,8 @@ def test_play_command_uses_public_api_client(
         [
             "game",
             "play",
-            "--role-count",
-            "werewolf=1",
-            "--role-count",
-            "seer=1",
-            "--role-count",
-            "knight=1",
-            "--role-count",
-            "villager=3",
+            "--preset",
+            "standard_6",
             "--seed",
             "1",
             "--max-steps",
@@ -459,7 +472,7 @@ def test_play_command_uses_public_api_client(
     assert result.exit_code == 0
     assert "ゲームが終了しました" in result.output
     assert fake_client.calls == [
-        ("create", 6),
+        ("create", "standard_6"),
         ("timeline", 0),
         ("advance", "game-1"),
         ("timeline", 1),
@@ -485,14 +498,8 @@ def test_play_json_output_is_single_machine_readable_document(
             [
                 "game",
                 "play",
-                "--role-count",
-                "werewolf=1",
-                "--role-count",
-                "seer=1",
-                "--role-count",
-                "knight=1",
-                "--role-count",
-                "villager=3",
+                "--preset",
+                "standard_6",
                 "--seed",
                 "1",
                 "--max-steps",
@@ -523,73 +530,50 @@ def test_new_command_can_request_one_manual_player(monkeypatch: pytest.MonkeyPat
             "create",
             "--manual-player",
             "player-1",
-            "--role-count",
-            "werewolf=1",
-            "--role-count",
-            "villager=4",
+            "--preset",
+            "standard_6",
         ],
     )
 
     assert result.exit_code == 0
     assert "seat credential" not in result.output
-    assert fake_client.calls == [("create", 5)]
+    assert fake_client.calls == [("create", "standard_6")]
 
 
-def test_new_command_rejects_unknown_manual_player() -> None:
+def test_new_command_forwards_manual_player_for_preset_validation() -> None:
     result = CliRunner().invoke(
         app,
         [
             "game",
             "create",
-            "--role-count",
-            "werewolf=1",
-            "--role-count",
-            "villager=4",
+            "--preset",
+            "standard_6",
             "--manual-player",
             "player-9",
         ],
     )
 
     assert result.exit_code == 1
-    assert "設定に不備があります。" in result.output
 
 
-def test_create_command_accepts_rule_composition_toml(
+def test_create_command_accepts_setup_preset(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     fake_client = FakeGameClient()
     monkeypatch.setattr(command_common, "build_game_client", lambda _settings: fake_client)
-    composition_file = tmp_path / "composition.toml"
-    composition_file.write_text(
-        """
-[rule_composition]
-phases = ["day_discussion", "voting", "night"]
-action_policy = "standard"
-resolution_policy = "standard"
-phase_policy = "required_actions"
-victory_policy = "faction_balance"
-visibility_policy = "standard"
-""".strip(),
-        encoding="utf-8",
-    )
-
     result = CliRunner().invoke(
         app,
         [
             "game",
             "create",
-            "--role-count",
-            "werewolf=1",
-            "--role-count",
-            "villager=4",
-            "--rule-composition",
-            str(composition_file),
+            "--preset",
+            "standard_6",
         ],
     )
 
     assert result.exit_code == 0
-    assert fake_client.calls == [("create", 5)]
+    assert fake_client.calls == [("create", "standard_6")]
 
 
 def test_setup_options_show_and_advance_commands_use_public_api_client(

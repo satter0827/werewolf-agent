@@ -6,6 +6,7 @@ from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.clients.streamlit.icons import status_icon
 from werewolf_agent.clients.streamlit.view_models.actions import (
     _has_available_actions,
+    _winner_label,
     current_turn_detail,
     current_turn_title,
     hand_panel_view,
@@ -88,13 +89,17 @@ def build_game_screen_view(
         lang,
     )
     updated_label = _optional_time_text(state.updated_at, catalog, lang)
-    public_timeline = timeline_items(turns, players=state.players, catalog=catalog, lang=lang)
+    public_timeline = timeline_items(turns, state=state, catalog=catalog, lang=lang)
     return GameScreenView(
         game_id=state.game_id,
         screen_mode=effective_mode,
         status=state.status,
         phase=state.phase,
-        phase_label=catalog.label(lang, "phase", state.phase),
+        phase_label=(
+            state.theme.phase_names.get(state.phase, catalog.label(lang, "phase", state.phase))
+            if state.theme is not None
+            else catalog.label(lang, "phase", state.phase)
+        ),
         day_label=_day_label(state.day, catalog, lang),
         status_label=catalog.t(lang, "status.running")
         if state.status == GAME_STATUS_RUNNING
@@ -103,7 +108,7 @@ def build_game_screen_view(
         turn_label=f"{state.version}",
         player_label=manual_label,
         updated_label=updated_label,
-        winner_label=catalog.label(lang, "winner", state.winner),
+        winner_label=_winner_label(state, catalog, lang),
         player_count=len(state.players),
         alive_count=len(state.alive_player_ids),
         seed=state.seed,
@@ -295,7 +300,7 @@ def observation_memo_view(
             catalog.t(
                 lang,
                 "observation_memo.completed",
-                winner=catalog.label(lang, "winner", state.winner),
+                winner=_winner_label(state, catalog, lang),
             )
         )
     elif screen_mode == "observer":

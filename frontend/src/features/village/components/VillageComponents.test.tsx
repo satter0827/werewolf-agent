@@ -20,8 +20,8 @@ describe("village components", () => {
       />,
     );
 
-    expect(screen.getByRole("heading", { name: "今夜の舞台を選ぶ" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /この村で始める/ })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "遊び方を選ぶ" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /この設定で始める/ })).toBeInTheDocument();
     expect(screen.queryByText(/provider|model|API|token|game_id/i)).not.toBeInTheDocument();
   });
 
@@ -87,7 +87,7 @@ describe("village components", () => {
 
     expect(screen.getByText("アオイ")).toBeInTheDocument();
     expect(screen.getByText("あなた")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /発言する/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /発言/ })).toBeInTheDocument();
   });
 
   it("renders the public village timeline", async () => {

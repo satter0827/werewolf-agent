@@ -37,16 +37,14 @@ from werewolf_agent.adapters.supabase.repository import (
 )
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.application import Actor, GameApplication
-from werewolf_agent.application.definitions import (
-    CustomCharacterDefinition,
-    CustomRoleDefinition,
-    LocalRulesDefinition,
-    RuleCompositionDefinition,
-)
 from werewolf_agent.application.models import (
     ApplicationContext,
     CreateGameCommand,
     PlayerActionCommand,
+)
+from werewolf_agent.application.setup_document import (
+    GameSetupDocument,
+    setup_document_from_preset,
 )
 from werewolf_agent.contracts import (
     AppError,
@@ -355,36 +353,21 @@ def _create_command(
     service: ApplicationContext,
 ) -> CreateGameCommand:
     """Translate the HTTP wire request into the application contract."""
-    config = service.config
+    setup = (
+        setup_document_from_preset(
+            request.setup.preset_id,
+            service.game_definitions,
+            service.player_definitions,
+        )
+        if request.setup.mode == "preset"
+        else GameSetupDocument.model_validate(request.setup.setup.model_dump(mode="json"))
+    )
     return CreateGameCommand(
         seed=request.seed,
-        role_counts=request.role_counts,
+        setup=setup,
         manual_player_id=request.manual_player_id,
-        rules=(
-            LocalRulesDefinition.model_validate(request.rules.model_dump(mode="json"))
-            if request.rules is not None
-            else service.game_definitions.rules.local_rules
-        ),
-        scenario_id=request.scenario_id,
-        setup_preset_id=request.setup_preset_id,
-        narration_mode=request.narration_mode or config.default_narration_mode,
-        character_assignments=request.character_assignments,
-        custom_roles=[
-            CustomRoleDefinition.model_validate(role.model_dump(mode="json"))
-            for role in request.custom_roles
-        ],
-        custom_characters=[
-            CustomCharacterDefinition.model_validate(character.model_dump(mode="json"))
-            for character in request.custom_characters
-        ],
-        rule_composition=(
-            RuleCompositionDefinition.model_validate(
-                request.rule_composition.model_dump(mode="json")
-            )
-            if request.rule_composition is not None
-            else service.game_definitions.rules.composition
-        ),
         llm_mode=service.create_llm_mode,
+        narration_mode=request.narration_mode,
     )
 
 

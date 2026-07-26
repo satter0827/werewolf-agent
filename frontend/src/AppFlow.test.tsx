@@ -87,9 +87,12 @@ describe("App HTTP API flow", () => {
     gameClientMock.createGame.mockImplementation(async (request) => {
       currentScreen = sampleScreenSource();
       currentScreen.state.game_id = "created-game";
-      currentScreen.state.scenario_id = request.scenario_id;
+      const selectedPreset = sampleSetupOptions.setup_presets.find(
+        (preset) => preset.id === request.setup.preset_id,
+      );
+      currentScreen.state.scenario_id = selectedPreset?.scenario_id ?? "misty-village";
       currentScreen.state.scenario_name =
-        request.scenario_id === "moon-plaza" ? "月明かりの広場" : "霧の村";
+        selectedPreset?.scenario_id === "moon-plaza" ? "月明かりの広場" : "霧の村";
       return {
         game_id: "created-game",
         state: currentScreen.state,
@@ -152,11 +155,17 @@ describe("App HTTP API flow", () => {
     });
     renderApp();
 
-    fireEvent.click(await screen.findByRole("button", { name: /月明かりの広場/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /月夜の6人村/ }));
     fireEvent.change(screen.getByLabelText("参加方法"), { target: { value: "player-3" } });
-    fireEvent.click(screen.getByRole("button", { name: /この村で始める/ }));
+    fireEvent.click(screen.getByRole("button", { name: /この設定で始める/ }));
 
     await waitFor(() => {
+      expect(gameClientMock.createGame).toHaveBeenCalledWith(
+        expect.objectContaining({
+          narration_mode: sampleSetupOptions.default_narration_mode,
+          setup: { mode: "preset", preset_id: "moon-six" },
+        }),
+      );
       expect(screen.getByRole("heading", { name: "月明かりの広場" })).toBeInTheDocument();
     });
     expect(screen.getByText("あなた")).toBeInTheDocument();
@@ -191,13 +200,13 @@ describe("App HTTP API flow", () => {
     });
     renderApp();
 
-    fireEvent.change(await screen.findByPlaceholderText("村のみんなに伝えること"), {
+    fireEvent.change(await screen.findByPlaceholderText("参加者へ伝えること"), {
       target: { value: "今日はレンの投票理由を聞きたいです。" },
     });
     fireEvent.click(screen.getByRole("button", { name: "決定する" }));
 
     await waitFor(() => {
-      expect(screen.getAllByText("投票の時間").length).toBeGreaterThan(0);
+      expect(screen.getAllByText("投票").length).toBeGreaterThan(0);
     });
     expect(screen.getAllByText("今日はレンの投票理由を聞きたいです。").length).toBeGreaterThan(0);
 
@@ -215,7 +224,7 @@ describe("App HTTP API flow", () => {
     });
     renderApp();
 
-    expect(await screen.findByPlaceholderText("村のみんなに伝えること")).toHaveAttribute(
+    expect(await screen.findByPlaceholderText("参加者へ伝えること")).toHaveAttribute(
       "maxlength",
       "120",
     );
@@ -231,7 +240,7 @@ describe("App HTTP API flow", () => {
     gameClientMock.submitAction.mockRejectedValueOnce(new Error("送信に失敗しました。"));
     renderApp();
 
-    fireEvent.change(await screen.findByPlaceholderText("村のみんなに伝えること"), {
+    fireEvent.change(await screen.findByPlaceholderText("参加者へ伝えること"), {
       target: { value: "確認します。" },
     });
     fireEvent.click(screen.getByRole("button", { name: "決定する" }));

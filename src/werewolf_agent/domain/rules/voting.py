@@ -17,6 +17,7 @@ from werewolf_agent.domain.rules.player_rules import (
     mark_dead,
     require_alive,
     require_phase,
+    resolve_death_reactions,
 )
 from werewolf_agent.domain.state import (
     Action,
@@ -33,12 +34,19 @@ def record_vote(
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     action: Action,
+    *,
+    candidates: tuple[str, ...] = (),
 ) -> dict[str, Action]:
     """Validate and return pending votes with one vote recorded."""
     require_phase(snapshot, Phase.VOTING)
     require_alive(snapshot, action.player_id)
     target_id = _vote_target(action)
     require_alive(snapshot, target_id)
+    if candidates and target_id not in candidates:
+        raise GameError(
+            "Vote target is not a revote candidate.",
+            context={"target_id": target_id, "candidate_ids": candidates},
+        )
     if not config.rules.allow_self_vote and action.player_id == target_id:
         raise GameError(
             MESSAGE_SELF_VOTING_DISABLED,
@@ -55,6 +63,8 @@ def resolve_votes(
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     rng: random.Random,
+    *,
+    vote_round: int = 1,
 ) -> tuple[GameState, VoteResult]:
     """Resolve all currently pending votes."""
     require_phase(snapshot, Phase.VOTING)
@@ -75,8 +85,15 @@ def resolve_votes(
         )
         if len(tied_player_ids) == 1:
             eliminated_player_id = tied_player_ids[0]
-        elif config.rules.enable_random_elimination_on_tie:
+        elif config.rules.vote_tie_resolution == "random_elimination":
             eliminated_player_id = rng.choice(tied_player_ids)
+
+    requires_revote = bool(
+        counts
+        and len(tied_player_ids) > 1
+        and config.rules.vote_tie_resolution == "revote"
+        and vote_round == 1
+    )
 
     updated_snapshot = snapshot
     if eliminated_player_id is not None:
@@ -84,6 +101,12 @@ def resolve_votes(
             snapshot,
             eliminated_player_id,
             eliminated_day=snapshot.day,
+        )
+        updated_snapshot, _reaction_deaths = resolve_death_reactions(
+            updated_snapshot,
+            [eliminated_player_id],
+            rng,
+            during_night=False,
         )
 
     result = VoteResult(
@@ -93,11 +116,9 @@ def resolve_votes(
         tied_player_ids=tuple(tied_player_ids),
         missing_voter_ids=tuple(missing_voter_ids),
         eliminated_player_id=eliminated_player_id,
-        tie_break_policy=(
-            "random_elimination"
-            if config.rules.enable_random_elimination_on_tie
-            else "no_elimination"
-        ),
+        tie_break_policy=(config.rules.vote_tie_resolution),
+        round=vote_round,
+        requires_revote=requires_revote,
     )
     history = replace(updated_snapshot.history, votes=(*updated_snapshot.history.votes, result))
     return replace(updated_snapshot, history=history), result

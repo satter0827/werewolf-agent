@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -498,6 +500,25 @@ class LangChainDecisionProvider:
                 day=observation.day,
                 prompt_messages=prompt_messages,
                 prompt_hash=_prompt_hash(prompt_messages),
+                prompt_version=self.prompt.version,
+                setup_checksum=(
+                    observation.game_context.setup_checksum
+                    if observation.game_context is not None
+                    else ""
+                ),
+                mechanics_checksum=(
+                    observation.game_context.mechanics_checksum
+                    if observation.game_context is not None
+                    else ""
+                ),
+                observation_checksum=hashlib.sha256(
+                    json.dumps(
+                        observation.model_dump(mode="json"),
+                        ensure_ascii=False,
+                        separators=(",", ":"),
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest(),
                 request_payload=request_payload,
                 raw_response=raw_response,
                 parsed_decision=parsed_decision,

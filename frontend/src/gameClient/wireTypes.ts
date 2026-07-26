@@ -5,7 +5,7 @@ type Schema<Name extends keyof components["schemas"]> = components["schemas"][Na
 export type GamePhase = Schema<"PublicGameState">["phase"];
 export type GameStatus = Schema<"PublicGameState">["status"];
 export type PlayerStatus = Schema<"PublicPlayerState">["status"];
-export type Winner = "village" | "werewolf";
+export type Winner = "village" | "werewolf" | "fox";
 
 export type PublicPlayerState = Schema<"PublicPlayerState">;
 export type PublicGameState = Omit<Schema<"PublicGameState">, "winner"> & {
@@ -24,8 +24,7 @@ export type GameTimelineResponse = Omit<Schema<"GameTimelineResponse">, "items">
   items: GameTimelineItem[];
 };
 
-export type AvailableActionType =
-  "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "pass";
+export type AvailableActionType = Schema<"PlayerActionRequest">["type"];
 
 export interface AvailableAction {
   type: AvailableActionType;
@@ -37,6 +36,7 @@ export interface PlayerObservationPayload {
   available_actions?: Array<AvailableAction | AvailableActionType>;
   day?: number;
   known_roles?: Record<string, string>;
+  known_factions?: Record<string, string>;
   legal_targets?: Partial<Record<AvailableActionType, string[]>>;
   me?: {
     id?: string;

@@ -9,9 +9,14 @@ from typing import Any
 
 from fastapi.testclient import TestClient
 
+from werewolf_agent.adapters.application_bridge import (
+    build_game_definitions,
+    build_player_setup_definitions,
+)
 from werewolf_agent.api.bootstrap import create_app
 from werewolf_agent.api.dependencies import RequestServices, get_services
 from werewolf_agent.application.operations import QueuedOperation
+from werewolf_agent.application.setup_document import setup_document_from_preset
 from werewolf_agent.contracts import ErrorCode
 from werewolf_agent.security.principal import Principal
 from werewolf_agent.settings import AppSettings
@@ -192,6 +197,40 @@ def test_public_config_contains_verifiable_values_without_secrets() -> None:
         assert forbidden not in serialized
 
 
+def test_setup_validation_uses_the_canonical_application_contract() -> None:
+    client, _ = _client()
+    settings = AppSettings(_env_file=None)
+    setup = setup_document_from_preset(
+        "standard_6",
+        build_game_definitions(settings),
+        build_player_setup_definitions(settings),
+    )
+
+    response = client.post("/api/v1/setups/validate", json=setup.model_dump(mode="json"))
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["player_count"] == 6
+    assert payload["theme_id"] == "classic_village"
+    assert len(payload["setup_checksum"]) == 64
+
+
+def test_setup_validation_rejects_semantically_unused_definitions() -> None:
+    client, _ = _client()
+    settings = AppSettings(_env_file=None)
+    setup = setup_document_from_preset(
+        "standard_6",
+        build_game_definitions(settings),
+        build_player_setup_definitions(settings),
+    ).model_dump(mode="json")
+    setup["mechanics"]["roles"]["unused"] = setup["mechanics"]["roles"]["villager"]
+
+    response = client.post("/api/v1/setups/validate", json=setup)
+
+    assert response.status_code == 400
+    assert response.json()["code"] == "config.invalid_value"
+
+
 def test_api_responses_are_not_cached_or_embedded() -> None:
     client, _ = _client()
 
@@ -277,7 +316,7 @@ def test_guest_creation_is_forced_to_fake_llm_mode() -> None:
         },
         json={
             "seed": 1,
-            "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
+            "setup": {"mode": "preset", "preset_id": "standard_6"},
         },
     )
 
@@ -298,7 +337,7 @@ def test_member_creation_is_forced_to_paid_llm_mode() -> None:
         },
         json={
             "seed": 1,
-            "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
+            "setup": {"mode": "preset", "preset_id": "standard_6"},
         },
     )
 
@@ -331,7 +370,7 @@ def test_command_requires_idempotency_key() -> None:
         headers={"Authorization": "Bearer member"},
         json={
             "seed": 1,
-            "role_counts": {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2},
+            "setup": {"mode": "preset", "preset_id": "standard_6"},
         },
     )
 

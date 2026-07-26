@@ -16,12 +16,9 @@ from werewolf_agent.application.constants import (
 )
 from werewolf_agent.application.definitions import (
     GameDefinitions,
-    GameRoleDefinitions,
+    NarrationEventDefinition,
     NarrationProfileDefinition,
-    PlayerProfile,
     PlayerRoster,
-    PlayerSetupDefinitions,
-    RoleDefinition,
 )
 from werewolf_agent.application.domain_codec import action_from_data, game_state_from_data
 from werewolf_agent.application.errors import (
@@ -33,18 +30,12 @@ from werewolf_agent.application.errors import (
 from werewolf_agent.application.messages import (
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS,
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS,
-    MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS,
-    MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER,
-    MESSAGE_CUSTOM_ROLES_CONFLICT_WITH_DEFAULT_ROLE_IDS,
-    MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES,
     MESSAGE_GAME_ID_MUST_BE_VALID_UUID,
     MESSAGE_PLAYER_AUTHENTICATION_REQUIRED,
     MESSAGE_PLAYER_IS_NOT_MANUAL,
     MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
     message_field_must_be_between,
     message_player_count_between,
-    message_unknown_scenario,
-    message_unknown_setup_preset,
     message_unsupported_action_type,
 )
 from werewolf_agent.application.models import (
@@ -96,103 +87,6 @@ def _page_limit(
             context={field_name: limit, "max_limit": maximum},
         )
     return limit
-
-
-def _game_definitions_for(
-    command: CreateGameCommand,
-    definitions: GameDefinitions,
-) -> GameDefinitions:
-    if not command.custom_roles:
-        return definitions
-
-    custom_role_ids = {definition.id for definition in command.custom_roles}
-    conflicts = sorted(custom_role_ids & set(definitions.roles.roles))
-    if conflicts:
-        raise GameError(
-            MESSAGE_CUSTOM_ROLES_CONFLICT_WITH_DEFAULT_ROLE_IDS,
-            context={"role_ids": conflicts},
-        )
-
-    known_abilities = set(definitions.catalog.abilities)
-    unknown_abilities = sorted(
-        {
-            ability
-            for definition in command.custom_roles
-            for ability in definition.abilities
-            if ability not in known_abilities
-        }
-    )
-    if unknown_abilities:
-        raise GameError(
-            MESSAGE_CUSTOM_ROLES_CONTAIN_UNKNOWN_ABILITIES,
-            context={"abilities": unknown_abilities},
-        )
-
-    roles = dict(definitions.roles.roles)
-    roles.update(
-        {
-            definition.id: RoleDefinition(
-                faction=definition.faction,
-                abilities=tuple(definition.abilities),
-                label=definition.name,
-                description=definition.description or None,
-                difficulty=definition.difficulty,
-            )
-            for definition in command.custom_roles
-        }
-    )
-    return definitions.model_copy(
-        update={
-            "roles": GameRoleDefinitions(
-                roles=roles,
-                default_role_counts=definitions.roles.default_role_counts,
-            )
-        }
-    )
-
-
-def _player_definitions_for(
-    command: CreateGameCommand,
-    definitions: PlayerSetupDefinitions,
-) -> PlayerSetupDefinitions:
-    if not command.custom_characters:
-        return definitions
-
-    custom_character_ids = {definition.id for definition in command.custom_characters}
-    conflicts = sorted(custom_character_ids & set(definitions.players.players))
-    if conflicts:
-        raise GameError(
-            MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_DEFAULT_CHARACTER_IDS,
-            context={"character_ids": conflicts},
-        )
-
-    players = dict(definitions.players.players)
-    players.update(
-        {
-            definition.id: PlayerProfile(
-                name=definition.name,
-                age=definition.age,
-                gender=definition.gender,
-                personality=definition.personality,
-                speaking_style=definition.speaking_style,
-                reasoning_style=definition.reasoning_style,
-                risk_tolerance=definition.risk_tolerance,
-            )
-            for definition in command.custom_characters
-        }
-    )
-    return _player_definitions_with_players(definitions, players)
-
-
-def _player_definitions_with_players(
-    definitions: PlayerSetupDefinitions,
-    players: dict[str, PlayerProfile],
-) -> PlayerSetupDefinitions:
-    try:
-        roster = PlayerRoster(players=players)
-    except ValueError as exc:
-        raise GameError(MESSAGE_CUSTOM_CHARACTERS_CONFLICT_WITH_PLAYER_ROSTER) from exc
-    return definitions.model_copy(update={"players": roster})
 
 
 def _select_player_profiles(
@@ -260,35 +154,25 @@ def _select_player_profiles(
     return selected
 
 
-def _scenario_config(command: CreateGameCommand, definitions: GameDefinitions) -> dict[str, str]:
-    preset_id = command.setup_preset_id
-    if preset_id is not None and preset_id not in definitions.catalog.setup_presets:
-        raise GameError(
-            message_unknown_setup_preset(preset_id),
-            context={"setup_preset_id": preset_id},
-        )
-    preset = definitions.catalog.setup_presets.get(preset_id or "")
-    scenario_id = command.scenario_id or (preset.scenario_id if preset is not None else None)
-    if scenario_id is None:
-        scenario_id = next(iter(definitions.catalog.scenarios), "")
-    if not scenario_id:
-        return {}
-    scenario = definitions.catalog.scenarios.get(scenario_id)
-    if scenario is None:
-        raise GameError(message_unknown_scenario(scenario_id), context={"scenario_id": scenario_id})
-    return {
-        "scenario_id": scenario_id,
-        "scenario_name": scenario.label,
-        "scenario_prompt_premise": scenario.prompt_premise,
-        "narration_profile": scenario.narration_profile,
-        "setup_preset_id": preset_id or scenario.recommended_setup_preset or "",
-    }
-
-
 def _narration_profile(
     config: Mapping[str, object],
     definitions: GameDefinitions,
 ) -> NarrationProfileDefinition | None:
+    setup_value = config.get("setup_document")
+    if isinstance(setup_value, Mapping):
+        theme_value = setup_value.get("theme")
+        if isinstance(theme_value, Mapping):
+            narration_value = theme_value.get("narration")
+            if isinstance(narration_value, Mapping):
+                return NarrationProfileDefinition(
+                    events={
+                        str(event_type): NarrationEventDefinition(
+                            templates=tuple(str(item) for item in templates)
+                        )
+                        for event_type, templates in narration_value.items()
+                        if isinstance(templates, (list, tuple))
+                    }
+                )
     profile_id = _config_text(config, "narration_profile")
     if profile_id is None:
         return None
@@ -301,6 +185,15 @@ def _config_text(config: Mapping[str, object], key: str) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _setup_theme(config: Mapping[str, object]) -> Mapping[str, object] | None:
+    """Return the persisted public theme projection for one game."""
+    setup = config.get("setup_document")
+    if not isinstance(setup, Mapping):
+        return None
+    theme = setup.get("theme")
+    return theme if isinstance(theme, Mapping) else None
 
 
 def _narration_mode(config: Mapping[str, object]) -> NarrationMode:
@@ -353,6 +246,11 @@ def _action_from_command(command: PlayerActionCommand) -> Action:
 
 
 def _restore_game(run: StoredGame) -> Game:
+    if run.config.get("engine_schema_version") != 1:
+        raise GameError(
+            "このゲームは現在の設定形式に対応していません。新しいゲームを作成してください。",
+            context={"engine_schema_version": run.config.get("engine_schema_version")},
+        )
     state = game_state_from_data({**run.private_state, "pending_actions": run.pending_actions})
     composition_value = run.config.get("rule_composition")
     composition = composition_value if isinstance(composition_value, Mapping) else {}

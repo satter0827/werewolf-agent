@@ -69,6 +69,21 @@ class PublicRuntimeConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class SetupValidationResponse(BaseModel):
+    """Normalized summary returned after semantic setup validation."""
+
+    schema_version: int
+    player_count: int = Field(ge=1)
+    theme_id: str
+    theme_name: str
+    role_ids: tuple[str, ...]
+    ability_ids: tuple[str, ...]
+    setup_checksum: str
+    mechanics_checksum: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class RuntimeComponentStatus(BaseModel):
     """Sanitized availability for one runtime dependency."""
 

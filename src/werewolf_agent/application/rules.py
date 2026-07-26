@@ -33,7 +33,8 @@ def rule_definition_from_values(
         roles=RoleCatalog(
             roles={
                 role_id: RoleDefinition(
-                    faction=str(value.get("faction")),
+                    identity_faction=str(value.get("identity_faction")),
+                    victory_team=str(value.get("victory_team")),
                     abilities=tuple(str(item) for item in _sequence_value(value.get("abilities"))),
                 )
                 for role_id, value in roles.items()
@@ -47,6 +48,14 @@ def rule_definition_from_values(
                 resolution_policy=str(value.get("resolution_policy")),
                 target_policy=str(value.get("target_policy")),
                 start_day=_integer_value(value.get("start_day"), default=1),
+                effect=str(value.get("effect")),
+                max_uses=(
+                    None
+                    if value.get("max_uses") is None
+                    else _integer_value(value.get("max_uses"), default=1)
+                ),
+                result_visibility=str(value.get("result_visibility") or "private"),
+                resolution_priority=_integer_value(value.get("resolution_priority"), default=100),
             )
             for ability_id, value in abilities.items()
         },

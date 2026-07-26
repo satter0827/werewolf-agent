@@ -129,7 +129,7 @@ export function App() {
     (activeGameId !== null && screenQuery.isLoading) ||
     gamesQuery.isLoading
   ) {
-    return <div className="wa-loading">村の夜明けを準備しています</div>;
+    return <div className="wa-loading">ゲームを準備しています</div>;
   }
 
   if (
@@ -145,7 +145,7 @@ export function App() {
   ) {
     return (
       <div className="wa-loading" role="alert">
-        <p>村の準備に失敗しました。</p>
+        <p>ゲームの準備に失敗しました。</p>
         <button type="button" onClick={() => void queryClient.invalidateQueries()}>
           もう一度読み込む
         </button>
@@ -201,15 +201,13 @@ function createGameRequest(
   draft: SetupDraft,
   setupOptions: GameSetupOptionsResponse,
 ): CreateGameRequest {
-  const selectedPreset = setupOptions.setup_presets.find(
-    (preset) => preset.id === draft.setupPresetId,
-  );
   return {
     seed: draft.seed.trim() ? Number(draft.seed) : null,
-    scenario_id: draft.scenarioId,
-    setup_preset_id: draft.setupPresetId,
-    role_counts: selectedPreset?.role_counts ?? setupOptions.default_role_counts,
     manual_player_id: draft.manualPlayerId || null,
-    rules: setupOptions.default_rules,
+    narration_mode: setupOptions.default_narration_mode,
+    setup: {
+      mode: "preset",
+      preset_id: draft.setupPresetId || setupOptions.default_setup_preset_id || "standard_6",
+    },
   };
 }

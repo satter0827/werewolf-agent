@@ -36,7 +36,6 @@ from werewolf_agent.clients.cli.messages import (
     HELP_MAX_STEPS,
     HELP_OUTPUT_FORMAT,
     HELP_POLL_INTERVAL_STEPS,
-    HELP_ROLE_COUNT,
     HELP_SEED,
     HELP_SHOW_TIMELINE,
     MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE,
@@ -99,10 +98,11 @@ def play(
         typer.Option("--manual-player", help=HELP_MANUAL_PLAYER),
     ] = None,
     max_steps: Annotated[int | None, typer.Option(help=HELP_MAX_STEPS)] = None,
-    role_count: Annotated[
-        list[str] | None,
-        typer.Option("--role-count", help=HELP_ROLE_COUNT),
+    setup_file: Annotated[
+        Path | None,
+        typer.Option("--setup-file", help="完全なgame setupを記述したTOML file"),
     ] = None,
+    preset: Annotated[str | None, typer.Option("--preset", help="setup preset ID")] = None,
     log_jsonl: Annotated[Path | None, typer.Option(help=HELP_LOG_JSONL)] = None,
     poll_interval: Annotated[
         float | None,
@@ -123,7 +123,8 @@ def play(
         lambda: _play(
             seed=seed,
             manual_player=manual_player,
-            role_count=role_count or [],
+            setup_file=setup_file,
+            preset_id=preset,
             max_steps=max_steps or settings.cli_max_steps,
             log_jsonl=log_jsonl,
             poll_interval=(
@@ -139,7 +140,8 @@ def _play(
     *,
     seed: int | None,
     manual_player: str | None,
-    role_count: list[str],
+    setup_file: Path | None,
+    preset_id: str | None,
     max_steps: int,
     log_jsonl: Path | None,
     poll_interval: float,
@@ -158,7 +160,8 @@ def _play(
     request = _create_request(
         seed=seed,
         manual_player=manual_player,
-        role_count=role_count,
+        setup_file=setup_file,
+        preset_id=preset_id,
     )
     api = client or _client()
     created = api.create_game(request)

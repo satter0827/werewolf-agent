@@ -226,7 +226,8 @@ def _render_role_definition_settings(
         ]
         ability_text = ", ".join(abilities) if abilities else catalog.t(lang, "common.none")
         st.markdown(
-            f"**{role.name}** / {catalog.label(lang, 'faction', role.faction)} / {ability_text}"
+            f"**{role.name}** / "
+            f"{catalog.label(lang, 'faction', role.identity_faction)} / {ability_text}"
         )
     _render_custom_role_form(st, setup_options=setup_options, catalog=catalog, lang=lang)
 
@@ -295,20 +296,26 @@ def _render_custom_role_form(
     lang: Language,
 ) -> None:
     with st.form("streamlit-custom-role"):
-        name = st.selectbox(
+        name = st.text_input(
             catalog.t(lang, "settings.custom_role.name"),
-            _localized_options(
-                lang,
-                ja=["記録係", "追跡者", "沈黙の守り手", "攪乱者"],
-                en=["Archivist", "Tracker", "Silent Guard", "Disruptor"],
-            ),
+            value="新しい役職" if lang == "ja" else "New role",
         )
-        faction_ids = sorted({role.faction for role in setup_options.roles})
-        faction = st.radio(
+        faction_ids = sorted({role.identity_faction for role in setup_options.roles})
+        identity_faction = st.radio(
             catalog.t(lang, "settings.custom_role.faction"),
             faction_ids,
             format_func=lambda value: catalog.label(lang, "faction", value),
             horizontal=True,
+        )
+        victory_team = st.radio(
+            "勝利陣営",
+            faction_ids,
+            format_func=lambda value: catalog.label(lang, "faction", value),
+            horizontal=True,
+        )
+        objective = st.text_area(
+            "目的",
+            value="所属する勝利陣営の条件達成を目指します。",
         )
         abilities = st.multiselect(
             catalog.t(lang, "settings.custom_role.abilities"),
@@ -326,7 +333,9 @@ def _render_custom_role_form(
         add_custom_role(
             st.session_state,
             name=str(name),
-            faction=str(faction),
+            identity_faction=str(identity_faction),
+            victory_team=str(victory_team),
+            objective=str(objective),
             abilities=[str(ability) for ability in abilities],
             difficulty=int(difficulty),
         )
@@ -479,14 +488,42 @@ def _render_local_rules_settings(
     )
     tie_rule = st.radio(
         catalog.t(lang, "settings.rule.tie"),
-        ["no_elimination", "random_elimination"],
-        index=0 if current_rules.enable_no_elimination_on_tie else 1,
+        ["no_elimination", "random_elimination", "revote"],
+        index=["no_elimination", "random_elimination", "revote"].index(
+            current_rules.vote_tie_resolution
+        ),
         format_func=lambda value: catalog.t(
             lang,
             "settings.rule.tie.no_elimination"
             if value == "no_elimination"
-            else "settings.rule.tie.random_elimination",
+            else "settings.rule.tie.random_elimination"
+            if value == "random_elimination"
+            else "settings.rule.tie.revote",
         ),
+    )
+    wolf_attack_tie_resolution = st.selectbox(
+        "襲撃先が同数の場合",
+        ["random_target", "no_attack"],
+        index=["random_target", "no_attack"].index(current_rules.wolf_attack_tie_resolution),
+        format_func=lambda value: "抽選で決める" if value == "random_target" else "襲撃しない",
+    )
+    seer_result_detail = st.selectbox(
+        "調査で分かる情報",
+        ["faction", "role"],
+        index=["faction", "role"].index(current_rules.seer_result_detail),
+        format_func=lambda value: "陣営" if value == "faction" else "役職",
+    )
+    medium_result_detail = st.selectbox(
+        "霊媒で分かる情報",
+        ["faction", "role"],
+        index=["faction", "role"].index(current_rules.medium_result_detail),
+        format_func=lambda value: "陣営" if value == "faction" else "役職",
+    )
+    starting_phase = st.selectbox(
+        "開始する場面",
+        ["night", "day_discussion"],
+        index=["night", "day_discussion"].index(current_rules.starting_phase),
+        format_func=lambda value: "夜" if value == "night" else "昼の議論",
     )
     next_rules = LocalRulesSettings(
         day_speech_limit_per_player=int(day_speech_limit_per_player),
@@ -494,13 +531,17 @@ def _render_local_rules_settings(
         allow_vote_revision=allow_vote_revision,
         allow_night_action_revision=allow_night_action_revision,
         enable_first_night_attack=enable_first_night_attack,
-        enable_no_elimination_on_tie=tie_rule == "no_elimination",
-        enable_random_elimination_on_tie=tie_rule == "random_elimination",
+        vote_tie_resolution=tie_rule,
+        wolf_attack_tie_resolution=wolf_attack_tie_resolution,
+        seer_result_detail=seer_result_detail,
+        medium_result_detail=medium_result_detail,
+        starting_phase=starting_phase,
         allow_knight_self_guard=allow_knight_self_guard,
         allow_knight_repeat_guard=allow_knight_repeat_guard,
         allow_seer_self_inspect=allow_seer_self_inspect,
         allow_werewolf_friendly_fire=allow_werewolf_friendly_fire,
         reveal_role_on_death=reveal_role_on_death,
+        require_all_actions_before_advance=current_rules.require_all_actions_before_advance,
     )
     if next_rules != current_rules:
         remember_rules(st.session_state, next_rules)

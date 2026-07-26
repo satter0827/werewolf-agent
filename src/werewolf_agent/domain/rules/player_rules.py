@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import replace
 
 from werewolf_agent.domain._messages import (
@@ -12,6 +13,8 @@ from werewolf_agent.domain._messages import (
 )
 from werewolf_agent.domain.errors import GameError, GamePhaseError
 from werewolf_agent.domain.state import (
+    ABILITY_DEATH_SHOT,
+    FACTION_FOX,
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
     GameState,
@@ -99,6 +102,37 @@ def mark_dead(
     return replace(snapshot, players=updated_players)
 
 
+def resolve_death_reactions(
+    snapshot: GameState,
+    newly_dead_player_ids: list[str],
+    rng: random.Random,
+    *,
+    during_night: bool,
+) -> tuple[GameState, tuple[str, ...]]:
+    """Resolve passive hunter reactions, including deterministic chained deaths."""
+    updated = snapshot
+    queue = list(newly_dead_player_ids)
+    reaction_deaths: list[str] = []
+    while queue:
+        dead_id = queue.pop(0)
+        dead = updated.players[dead_id]
+        if not updated.config.roles.role_has_ability(dead.role, ABILITY_DEATH_SHOT):
+            continue
+        targets = sorted(player.id for player in alive_players(updated))
+        if not targets:
+            continue
+        target_id = rng.choice(targets)
+        updated = mark_dead(
+            updated,
+            target_id,
+            killed_night=updated.day if during_night else None,
+            eliminated_day=None if during_night else updated.day,
+        )
+        reaction_deaths.append(target_id)
+        queue.append(target_id)
+    return updated, tuple(reaction_deaths)
+
+
 def check_win(snapshot: GameState) -> WinResult | None:
     """Return a win result when either faction has met its win condition."""
     alive = alive_players(snapshot)
@@ -107,24 +141,35 @@ def check_win(snapshot: GameState) -> WinResult | None:
         for player in alive
         if player.role is not None and faction_for_role(snapshot, player.role) == FACTION_WEREWOLF
     ]
-    alive_village = [
+    alive_non_wolves = [
         player
         for player in alive
-        if player.role is not None and faction_for_role(snapshot, player.role) == FACTION_VILLAGE
+        if player.role is not None and faction_for_role(snapshot, player.role) != FACTION_WEREWOLF
     ]
 
     if not alive_wolves:
-        return _win_result(snapshot, FACTION_VILLAGE, "all_werewolves_eliminated")
-    if len(alive_wolves) >= len(alive_village):
-        return _win_result(snapshot, FACTION_WEREWOLF, "werewolves_reached_parity")
-    return None
+        normal_winner = (FACTION_VILLAGE, "all_werewolves_eliminated")
+    elif len(alive_wolves) >= len(alive_non_wolves):
+        normal_winner = (FACTION_WEREWOLF, "werewolves_reached_parity")
+    else:
+        return None
+    alive_foxes = [
+        player
+        for player in alive
+        if player.role is not None
+        and snapshot.config.roles.victory_team_for_role(player.role) == FACTION_FOX
+    ]
+    if alive_foxes:
+        return _win_result(snapshot, FACTION_FOX, "fox_survived_until_normal_victory")
+    return _win_result(snapshot, *normal_winner)
 
 
 def _win_result(snapshot: GameState, winner: str, reason: str) -> WinResult:
     winning_player_ids = [
         player.id
         for player in snapshot.players.values()
-        if player.role is not None and faction_for_role(snapshot, player.role) == winner
+        if player.role is not None
+        and snapshot.config.roles.victory_team_for_role(player.role) == winner
     ]
     return WinResult(
         winner=winner,

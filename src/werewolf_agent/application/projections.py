@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import datetime
 from typing import Any, cast
 
@@ -34,9 +35,16 @@ PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "phase_started": frozenset({"phase"}),
     "speech_recorded": frozenset({"message"}),
     "vote_resolved": frozenset(
-        {"eliminated_player_id", "counts", "tied_player_ids", "role", "faction"}
+        {
+            "eliminated_player_id",
+            "counts",
+            "tied_player_ids",
+            "reaction_player_ids",
+            "role",
+            "faction",
+        }
     ),
-    "night_resolved": frozenset({"killed_player_id", "role", "faction"}),
+    "night_resolved": frozenset({"killed_player_id", "killed_player_ids", "role", "faction"}),
     "game_finished": frozenset({"winner", "reason"}),
 }
 
@@ -59,6 +67,7 @@ def public_state_payload_from_snapshot(
     scenario_id: str | None = None,
     scenario_name: str | None = None,
     narration_mode: str = DEFAULT_NARRATION_MODE,
+    theme: Mapping[str, object] | None = None,
 ) -> dict[str, Any]:
     """Project a full domain snapshot into a public state payload."""
     players = [
@@ -101,6 +110,7 @@ def public_state_payload_from_snapshot(
         scenario_id=scenario_id,
         scenario_name=scenario_name,
         narration_mode=cast(Any, narration_mode),
+        theme=None if theme is None else dict(theme),
         players=players,
         alive_player_ids=alive_player_ids,
         eliminated_player_ids=eliminated_player_ids,
@@ -126,6 +136,9 @@ def public_game_summary_payload_from_record(record: StoredGameSummary) -> dict[s
         day=record.day,
         version=record.version,
         seed=record.seed,
+        scenario_id=record.scenario_id,
+        scenario_name=record.scenario_name,
+        theme=record.theme,
         player_count=record.player_count,
         alive_count=record.alive_count,
         winner=record.winner,
@@ -162,6 +175,7 @@ def events_to_create(
     *,
     narration_profile: NarrationProfileDefinition | None = None,
     narration_mode: str = DEFAULT_NARRATION_MODE,
+    theme: Mapping[str, object] | None = None,
 ) -> list[GameEventCreate]:
     """Return sanitized event data ready for an outer persistence adapter."""
     return [
@@ -169,6 +183,7 @@ def events_to_create(
             event,
             narration_profile=narration_profile,
             narration_mode=narration_mode,
+            theme=theme,
         )
         for event in events
     ]
@@ -179,10 +194,17 @@ def event_to_create(
     *,
     narration_profile: NarrationProfileDefinition | None = None,
     narration_mode: str = DEFAULT_NARRATION_MODE,
+    theme: Mapping[str, object] | None = None,
 ) -> GameEventCreate:
     """Return sanitized persistable event data for one domain event."""
     payload = public_safe_payload(event)
-    narration = public_narration(event, payload, narration_profile, narration_mode=narration_mode)
+    narration = public_narration(
+        event,
+        payload,
+        narration_profile,
+        narration_mode=narration_mode,
+        theme=theme,
+    )
     if narration:
         payload["narration"] = narration
     return GameEventCreate(
@@ -212,6 +234,7 @@ def public_narration(
     narration_profile: NarrationProfileDefinition | None,
     *,
     narration_mode: str,
+    theme: Mapping[str, object] | None = None,
 ) -> str:
     """Return one public-safe narration line for a public event."""
     if narration_mode == NARRATION_MODE_NONE or narration_profile is None:
@@ -223,13 +246,23 @@ def public_narration(
     values = {
         "day": event.day if event.day is not None else "",
         "phase": event.phase.value if event.phase is not None else "",
-        "phase_label": _phase_label(event.phase.value if event.phase is not None else ""),
+        "phase_label": _theme_term(
+            theme,
+            "phase_names",
+            event.phase.value if event.phase is not None else "",
+            _phase_label(event.phase.value if event.phase is not None else ""),
+        ),
         "actor": _public_player_label(event.actor_id),
         "player_count": payload.get("player_count", ""),
         "eliminated_player": _public_player_label(payload.get("eliminated_player_id")),
         "killed_player": _public_player_label(payload.get("killed_player_id")),
         "winner": payload.get("winner", ""),
-        "winner_label": _winner_label(payload.get("winner")),
+        "winner_label": _theme_term(
+            theme,
+            "faction_names",
+            payload.get("winner"),
+            _winner_label(payload.get("winner")),
+        ),
     }
     try:
         return template.format(**values)
@@ -257,7 +290,23 @@ def _winner_label(value: object) -> str:
     return {
         "village": "村人陣営",
         "werewolf": "人狼陣営",
+        "fox": "妖狐陣営",
     }.get(str(value), str(value) if value is not None else "")
+
+
+def _theme_term(
+    theme: Mapping[str, object] | None,
+    field: str,
+    value: object,
+    fallback: str,
+) -> str:
+    key = str(value) if value is not None else ""
+    terms = theme.get(field) if theme is not None else None
+    if isinstance(terms, Mapping):
+        label = terms.get(key)
+        if isinstance(label, str) and label.strip():
+            return label
+    return fallback
 
 
 def status_from_snapshot(snapshot: GameState) -> GameStatus:

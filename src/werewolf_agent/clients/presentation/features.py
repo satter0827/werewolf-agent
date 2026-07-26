@@ -28,6 +28,7 @@ class FeatureSpec:
 _FEATURES: Final[tuple[FeatureSpec, ...]] = (
     FeatureSpec("runtime_config_get", "public", ("api",)),
     FeatureSpec("runtime_status_get", "public", ("api",)),
+    FeatureSpec("setup_validate", "public", ("api",), streamlit_required=False),
     FeatureSpec(
         "session_get",
         "player",

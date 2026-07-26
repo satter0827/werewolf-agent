@@ -177,8 +177,6 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
     assert settings.llm_players_path is None
-    assert settings.game_role_name_map["werewolf"] == "人狼"
-    assert settings.game_phase_name_map["day_discussion"] == "昼チャット"
     assert settings.game_min_players == PACKAGED_DEFAULTS["game_min_players"]
     assert settings.game_max_players == PACKAGED_DEFAULTS["game_max_players"]
     assert settings.game_default_player_count == PACKAGED_DEFAULTS["game_default_player_count"]
@@ -195,7 +193,7 @@ def test_game_application_config_is_built_from_application_settings() -> None:
         game_default_player_count=7,
         game_supported_agent_type="llm",
         game_supported_agent_name="LLM Agent",
-        game_default_setup_preset_id="logic_6",
+        game_default_setup_preset_id="standard_6",
     )
 
     application_config = build_game_application_config(settings)
@@ -204,7 +202,7 @@ def test_game_application_config_is_built_from_application_settings() -> None:
     assert application_config.max_players == 8
     assert application_config.default_player_count == 7
     assert application_config.supported_agent_type == "llm"
-    assert application_config.default_setup_preset_id == "logic_6"
+    assert application_config.default_setup_preset_id == "standard_6"
     assert application_config.default_narration_mode == "standard"
     assert application_config.game_list_default_limit == 20
     assert application_config.game_list_max_limit == 100
@@ -226,7 +224,17 @@ def test_game_application_config_is_built_from_application_settings() -> None:
     assert llm_config.fallback_policy == "deterministic_legal_action"
 
     game_definitions = build_game_definitions(settings)
-    assert sorted(game_definitions.roles.roles) == ["knight", "seer", "villager", "werewolf"]
+    assert sorted(game_definitions.roles.roles) == [
+        "apothecary",
+        "fox",
+        "hunter",
+        "knight",
+        "madman",
+        "medium",
+        "seer",
+        "villager",
+        "werewolf",
+    ]
     assert game_definitions.roles.default_counts_for(5) == {
         "werewolf": 1,
         "seer": 1,
@@ -331,7 +339,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "WEREWOLF_LLM_PLAYERS_FILE",
         "src/werewolf_agent/agents/resources/llm/players.toml",
     )
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID", "logic_6")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID", "standard_6")
     monkeypatch.setenv(
         "WEREWOLF_GAME_RULES_FILE",
         "src/werewolf_agent/application/resources/game/rules.toml",
@@ -340,9 +348,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         "WEREWOLF_GAME_ROLES_FILE",
         "src/werewolf_agent/application/resources/game/roles.toml",
     )
-    monkeypatch.setenv("WEREWOLF_GAME_SETUP_DESCRIPTION_TEMPLATE", "{min_players}-{max_players}")
-    monkeypatch.setenv("WEREWOLF_GAME_ROLE_NAMES", "villager:Villager")
-    monkeypatch.setenv("WEREWOLF_GAME_PHASE_NAMES", "night:Night")
     monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS", "0.1")
     monkeypatch.setenv("WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS", "30")
     monkeypatch.setenv("WEREWOLF_CLI_OUTPUT_FORMAT", "json")
@@ -367,7 +372,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_API_GAME_LIST_MAX_LIMIT", "77")
     monkeypatch.setenv("WEREWOLF_API_TIMELINE_DEFAULT_LIMIT", "17")
     monkeypatch.setenv("WEREWOLF_API_TIMELINE_MAX_LIMIT", "177")
-    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_NARRATION_MODE", "rich")
+    monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_NARRATION_MODE", "none")
     monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "http://127.0.0.1:54321")
     monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "anon-test")
     monkeypatch.setenv(
@@ -406,7 +411,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         settings.llm_players_path
         == repository_root() / "src/werewolf_agent/agents/resources/llm/players.toml"
     )
-    assert settings.game_default_setup_preset_id == "logic_6"
+    assert settings.game_default_setup_preset_id == "standard_6"
     assert (
         settings.game_rules_path
         == repository_root() / "src/werewolf_agent/application/resources/game/rules.toml"
@@ -415,9 +420,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
         settings.game_roles_path
         == repository_root() / "src/werewolf_agent/application/resources/game/roles.toml"
     )
-    assert settings.game_setup_description_template == "{min_players}-{max_players}"
-    assert settings.game_role_name_map == {"villager": "Villager"}
-    assert settings.game_phase_name_map == {"night": "Night"}
     assert settings.advance_job_poll_interval_seconds == 0.1
     assert settings.advance_job_poll_timeout_seconds == 30.0
     assert settings.cli_output_format == "json"
@@ -442,7 +444,7 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.api_game_list_max_limit == 77
     assert settings.api_timeline_default_limit == 17
     assert settings.api_timeline_max_limit == 177
-    assert settings.game_default_narration_mode == "rich"
+    assert settings.game_default_narration_mode == "none"
     assert settings.supabase_url == "http://127.0.0.1:54321"
     assert settings.supabase_publishable_key_value == "anon-test"
     assert settings.supabase_worker_configured is True
@@ -465,8 +467,11 @@ allow_self_vote = false
 allow_vote_revision = false
 allow_night_action_revision = false
 enable_first_night_attack = true
-enable_no_elimination_on_tie = true
-enable_random_elimination_on_tie = false
+vote_tie_resolution = "no_elimination"
+wolf_attack_tie_resolution = "random_target"
+seer_result_detail = "faction"
+medium_result_detail = "faction"
+starting_phase = "night"
 allow_knight_self_guard = true
 allow_knight_repeat_guard = true
 allow_seer_self_inspect = false
@@ -478,11 +483,15 @@ reveal_role_on_death = false
     roles_file.write_text(
         """
 [roles.plain]
-faction = "village"
+identity_faction = "village"
+victory_team = "village"
+objective = "Find the threat."
 abilities = []
 
 [roles.beast]
-faction = "werewolf"
+identity_faction = "werewolf"
+victory_team = "werewolf"
+objective = "Reach parity."
 abilities = ["night_attack", "pack_knowledge"]
 
 [default_role_counts.5]
@@ -501,9 +510,37 @@ summary = "Test scenario."
 prompt_premise = "A test village debates."
 narration_profile = "standard"
 recommended_setup_preset = "test_5"
-allowed_roles = ["plain", "beast"]
+    allowed_roles = ["plain", "beast"]
 
-[setup_presets.test_5]
+    [scenarios.test.role_names]
+    plain = "Resident"
+    beast = "Beast"
+
+    [scenarios.test.role_objectives]
+    plain = "Find the threat."
+    beast = "Reach parity."
+
+    [scenarios.test.faction_names]
+    village = "Residents"
+    werewolf = "Beasts"
+
+    [scenarios.test.ability_names]
+    night_attack = "Night attack"
+    pack_knowledge = "Pack knowledge"
+
+    [scenarios.test.action_names]
+    speech = "Speak"
+    vote = "Vote"
+    werewolf_attack = "Attack"
+    pass = "Wait"
+
+    [scenarios.test.phase_names]
+    night = "Night"
+    day_discussion = "Discussion"
+    voting = "Voting"
+    finished = "Finished"
+
+    [setup_presets.test_5]
 label = "Test 5"
 scenario_id = "test"
 
@@ -580,7 +617,9 @@ def test_invalid_definition_values_fail_in_resource_adapter(tmp_path: Path) -> N
     roles_file.write_text(
         """
 [roles.plain]
-faction = "village"
+identity_faction = "village"
+victory_team = "village"
+objective = "Find the threat."
 abilities = []
 
 [default_role_counts.5]
@@ -605,19 +644,27 @@ def test_unknown_role_ability_fails_during_definition_load(tmp_path: Path) -> No
     roles_file.write_text(
         """
 [roles.villager]
-faction = "village"
+identity_faction = "village"
+victory_team = "village"
+objective = "Find the threat."
 abilities = ["teleport"]
 
 [roles.werewolf]
-faction = "werewolf"
+identity_faction = "werewolf"
+victory_team = "werewolf"
+objective = "Reach parity."
 abilities = ["night_attack", "pack_knowledge"]
 
 [roles.seer]
-faction = "village"
+identity_faction = "village"
+victory_team = "village"
+objective = "Inspect suspects."
 abilities = ["inspect"]
 
 [roles.knight]
-faction = "village"
+identity_faction = "village"
+victory_team = "village"
+objective = "Guard villagers."
 abilities = ["guard"]
 
 [default_role_counts.5]
@@ -734,12 +781,6 @@ def test_game_settings_reject_inconsistent_player_counts() -> None:
             game_max_players=8,
             game_default_player_count=9,
         )
-
-    with pytest.raises(ValidationError):
-        AppSettings(_env_file=None, game_role_names="villager")
-
-    with pytest.raises(ValidationError):
-        AppSettings(_env_file=None, game_setup_description_template="{unknown}")
 
 
 def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:

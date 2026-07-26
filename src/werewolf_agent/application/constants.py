@@ -16,19 +16,16 @@ NARRATION_MODE_NONE: Final = "none"
 
 NARRATION_MODE_STANDARD: Final = "standard"
 
-NARRATION_MODE_RICH: Final = "rich"
-
 NARRATION_MODES: Final = (
     NARRATION_MODE_NONE,
     NARRATION_MODE_STANDARD,
-    NARRATION_MODE_RICH,
 )
 
 NARRATION_MODE_CHOICES: Final = frozenset(NARRATION_MODES)
 
 DEFAULT_NARRATION_MODE: Final[Literal["standard"]] = NARRATION_MODE_STANDARD
 
-NarrationMode: TypeAlias = Literal["none", "standard", "rich"]
+NarrationMode: TypeAlias = Literal["none", "standard"]
 
 
 MIN_ROLE_COUNT: Final = 0

@@ -10,7 +10,6 @@ from typing import Any, cast
 import typer
 from pydantic import ValidationError
 
-from werewolf_agent.adapters.application_bridge import build_game_definitions
 from werewolf_agent.adapters.auth import require_supabase_client_config
 from werewolf_agent.adapters.factory import build_game_client
 from werewolf_agent.adapters.ports import GameClient
@@ -35,15 +34,17 @@ from werewolf_agent.clients.cli.output import (
 )
 from werewolf_agent.clients.requests import (
     build_create_game_request,
-    parse_role_counts,
 )
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
+    CustomSetupRequest,
+    GameSetupDocumentRequest,
+    GameSetupSelectionRequest,
     GameTimelineItem,
     PlayerActionRequest,
-    RuleCompositionSelection,
+    PresetSetupRequest,
 )
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_SUCCESS,
@@ -63,34 +64,34 @@ def _create_request(
     *,
     seed: int | None,
     manual_player: str | None,
-    role_count: list[str],
-    rule_composition_file: Path | None = None,
+    setup_file: Path | None = None,
+    preset_id: str | None = None,
 ) -> CreateGameRequest:
     settings = get_settings()
-    role_counts = (
-        parse_role_counts(role_count)
-        if role_count
-        else build_game_definitions(settings).roles.default_counts_for(
-            settings.game_default_player_count
-        )
-    )
-    rule_composition = None
-    if rule_composition_file is not None:
+    selection: GameSetupSelectionRequest
+    if setup_file is not None:
         try:
-            with rule_composition_file.open("rb") as file:
+            with setup_file.open("rb") as file:
                 payload = tomllib.load(file)
-            composition_payload = payload.get("rule_composition", payload)
-            rule_composition = RuleCompositionSelection.model_validate(composition_payload)
+            selection = CustomSetupRequest(
+                mode="custom",
+                setup=GameSetupDocumentRequest.model_validate(payload),
+            )
         except (OSError, tomllib.TOMLDecodeError, ValidationError) as exc:
             raise AppError(
-                "rule composition TOMLを読み込めませんでした。",
+                "game setup TOMLを読み込めませんでした。",
                 code=ErrorCode.CONFIG_INVALID_VALUE,
             ) from exc
+    else:
+        selection = PresetSetupRequest(
+            mode="preset",
+            preset_id=preset_id or settings.game_default_setup_preset_id,
+        )
     return build_create_game_request(
         seed=seed,
         manual_player_id=manual_player,
-        role_counts=role_counts,
-        rule_composition=rule_composition,
+        setup=selection,
+        narration_mode=settings.game_default_narration_mode,
     )
 
 

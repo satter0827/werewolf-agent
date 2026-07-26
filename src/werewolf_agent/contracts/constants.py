@@ -30,7 +30,7 @@ NARRATION_MODE_STANDARD: Final = "standard"
 
 DEFAULT_NARRATION_MODE: Final[Literal["standard"]] = NARRATION_MODE_STANDARD
 
-NarrationMode: TypeAlias = Literal["none", "standard", "rich"]
+NarrationMode: TypeAlias = Literal["none", "standard"]
 
 EVENT_SCHEMA_VERSION: Final = "1.0"
 

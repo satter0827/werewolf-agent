@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
@@ -43,14 +43,15 @@ def setup_options_response(
     settings: AppSettings,
 ) -> GameSetupOptionsResponse:
     """Convert application setup metadata into the public wire schema."""
-    role_names = settings.game_role_name_map
     return GameSetupOptionsResponse(
         player_count=options.player_count,
         roles=[
             RoleDefinitionView(
                 id=role_id,
-                name=str(definition.get("label") or role_names.get(role_id, role_id)),
-                faction=str(definition["faction"]),
+                name=str(definition.get("label") or role_id),
+                identity_faction=str(definition["identity_faction"]),
+                victory_team=str(definition["victory_team"]),
+                objective=str(definition["objective"]),
                 abilities=[str(ability) for ability in definition.get("abilities") or []],
                 description=str(definition.get("description") or ""),
                 difficulty=int(definition.get("difficulty") or 1),
@@ -69,7 +70,18 @@ def setup_options_response(
                 id=ability_id,
                 name=str(definition["label"]),
                 description=str(definition["description"]),
+                phase=str(definition["phase"]),
+                action=str(definition["action"]),
+                validation_policy=str(definition["validation_policy"]),
+                resolution_policy=str(definition["resolution_policy"]),
                 target_policy=str(definition["target_policy"]),
+                effect=str(definition["effect"]),
+                max_uses=(
+                    int(definition["max_uses"]) if definition.get("max_uses") is not None else None
+                ),
+                start_day=int(definition["start_day"]),
+                result_visibility=cast(Any, str(definition.get("result_visibility") or "private")),
+                resolution_priority=int(definition.get("resolution_priority") or 100),
                 difficulty=int(definition["difficulty"]),
             )
             for ability_id, definition in options.abilities.items()
@@ -79,10 +91,41 @@ def setup_options_response(
                 id=scenario_id,
                 name=str(definition["label"]),
                 summary=str(definition["summary"]),
+                premise=str(definition["prompt_premise"]),
                 recommended_setup_preset=cast(
                     str | None,
                     definition.get("recommended_setup_preset"),
                 ),
+                role_names={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("role_names") or {}).items()
+                },
+                role_objectives={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("role_objectives") or {}).items()
+                },
+                faction_names={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("faction_names") or {}).items()
+                },
+                ability_names={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("ability_names") or {}).items()
+                },
+                action_names={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("action_names") or {}).items()
+                },
+                phase_names={
+                    str(key): str(value)
+                    for key, value in dict(definition.get("phase_names") or {}).items()
+                },
+                narration={
+                    str(event_type): tuple(str(item) for item in event["templates"])
+                    for event_type, event in dict(
+                        options.narration_profiles[str(definition["narration_profile"])]["events"]
+                    ).items()
+                },
             )
             for scenario_id, definition in options.scenarios.items()
         ],

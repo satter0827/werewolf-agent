@@ -38,6 +38,7 @@ PRIVATE_GAMEPLAY_LOG_FIELDS: Final = (
     "game.action.type",
     "game_action_type",
     "known_roles",
+    "known_factions",
     "night_action",
     "pending_actions",
     "player.id",

@@ -49,8 +49,11 @@ def test_public_domain_api_can_create_restore_and_progress_a_game() -> None:
         allow_vote_revision=False,
         allow_night_action_revision=False,
         enable_first_night_attack=True,
-        enable_no_elimination_on_tie=True,
-        enable_random_elimination_on_tie=False,
+        vote_tie_resolution="no_elimination",
+        wolf_attack_tie_resolution="random_target",
+        seer_result_detail="faction",
+        medium_result_detail="faction",
+        starting_phase="night",
         allow_knight_self_guard=True,
         allow_knight_repeat_guard=True,
         allow_seer_self_inspect=False,
@@ -59,9 +62,12 @@ def test_public_domain_api_can_create_restore_and_progress_a_game() -> None:
     )
     roles = domain_api.RoleCatalog(
         roles={
-            "villager": domain_api.RoleDefinition(faction="village"),
+            "villager": domain_api.RoleDefinition(
+                identity_faction="village", victory_team="village"
+            ),
             "werewolf": domain_api.RoleDefinition(
-                faction="werewolf",
+                identity_faction="werewolf",
+                victory_team="werewolf",
                 abilities=("night_attack",),
             ),
         }
@@ -79,6 +85,7 @@ def test_public_domain_api_can_create_restore_and_progress_a_game() -> None:
                 resolution_policy="standard",
                 target_policy="other_alive_non_pack",
                 start_day=1,
+                effect="attack",
             )
         },
     )
@@ -130,26 +137,42 @@ class HeadlessRun:
 def role_catalog() -> RoleCatalog:
     return RoleCatalog(
         roles={
-            ROLE_PLAIN: RoleDefinition(faction=FACTION_VILLAGE, abilities=()),
+            ROLE_PLAIN: RoleDefinition(
+                identity_faction=FACTION_VILLAGE,
+                victory_team=FACTION_VILLAGE,
+                abilities=(),
+            ),
             ROLE_SHADOW: RoleDefinition(
-                faction=FACTION_WEREWOLF,
+                identity_faction=FACTION_WEREWOLF,
+                victory_team=FACTION_WEREWOLF,
                 abilities=(ABILITY_NIGHT_ATTACK, ABILITY_PACK_KNOWLEDGE),
             ),
-            ROLE_READER: RoleDefinition(faction=FACTION_VILLAGE, abilities=(ABILITY_INSPECT,)),
-            ROLE_SHIELD: RoleDefinition(faction=FACTION_VILLAGE, abilities=(ABILITY_GUARD,)),
+            ROLE_READER: RoleDefinition(
+                identity_faction=FACTION_VILLAGE,
+                victory_team=FACTION_VILLAGE,
+                abilities=(ABILITY_INSPECT,),
+            ),
+            ROLE_SHIELD: RoleDefinition(
+                identity_faction=FACTION_VILLAGE,
+                victory_team=FACTION_VILLAGE,
+                abilities=(ABILITY_GUARD,),
+            ),
         }
     )
 
 
-def local_rules(*, random_tie: bool = False) -> LocalRules:
+def local_rules(*, random_tie: bool = False, starting_phase: str = "night") -> LocalRules:
     return LocalRules(
         day_speech_limit_per_player=1,
         allow_self_vote=False,
         allow_vote_revision=False,
         allow_night_action_revision=False,
         enable_first_night_attack=True,
-        enable_no_elimination_on_tie=not random_tie,
-        enable_random_elimination_on_tie=random_tie,
+        vote_tie_resolution="random_elimination" if random_tie else "no_elimination",
+        wolf_attack_tie_resolution="random_target",
+        seer_result_detail="faction",
+        medium_result_detail="faction",
+        starting_phase=starting_phase,
         allow_knight_self_guard=True,
         allow_knight_repeat_guard=True,
         allow_seer_self_inspect=False,
@@ -182,6 +205,7 @@ def ability_definitions() -> dict[str, AbilityDefinition]:
             resolution_policy="standard",
             target_policy="other_alive_non_pack",
             start_day=1,
+            effect="attack",
         ),
         ABILITY_PACK_KNOWLEDGE: AbilityDefinition(
             phase=Phase.NIGHT,
@@ -190,6 +214,7 @@ def ability_definitions() -> dict[str, AbilityDefinition]:
             resolution_policy="standard",
             target_policy="none",
             start_day=1,
+            effect="knowledge",
         ),
         ABILITY_INSPECT: AbilityDefinition(
             phase=Phase.NIGHT,
@@ -198,6 +223,7 @@ def ability_definitions() -> dict[str, AbilityDefinition]:
             resolution_policy="standard",
             target_policy="other_alive",
             start_day=1,
+            effect="inspection",
         ),
         ABILITY_GUARD: AbilityDefinition(
             phase=Phase.NIGHT,
@@ -206,6 +232,7 @@ def ability_definitions() -> dict[str, AbilityDefinition]:
             resolution_policy="standard",
             target_policy="alive",
             start_day=1,
+            effect="protection",
         ),
     }
 
@@ -443,8 +470,12 @@ def test_night_actions_resolve_guard_and_private_seer_knowledge() -> None:
     assert snapshot.history.nights[-1].protected_player_id == "p4"
     assert snapshot.history.nights[-1].killed_player_id is None
     assert run.events[-2].event_type == "night_resolved"
-    assert run.events[-2].payload == {"killed_player_id": None}
-    assert run.observe("p2").known_roles["p1"] == ROLE_SHADOW
+    assert run.events[-2].payload == {
+        "killed_player_id": None,
+        "killed_player_ids": (),
+    }
+    assert run.observe("p2").known_factions["p1"] == FACTION_WEREWOLF
+    assert "p1" not in run.observe("p2").known_roles
     assert "p1" not in run.observe("p4").known_roles
 
 
@@ -709,11 +740,11 @@ def test_game_aggregate_uses_registered_victory_policy() -> None:
     assert not any(event.event_type == "game_finished" for event in events)
 
 
-def test_rule_set_uses_configured_phase_order() -> None:
+def test_rule_set_uses_configured_starting_phase() -> None:
     definition = RuleSetDefinition(
         player_count=5,
         role_counts=mvp_config().role_counts,
-        rules=local_rules(),
+        rules=local_rules(starting_phase="day_discussion"),
         roles=role_catalog(),
         abilities=ability_definitions(),
         phases=("day_discussion", "voting", "night"),

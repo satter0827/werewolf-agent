@@ -20,7 +20,7 @@ describe("mapGameScreen", () => {
       seatTone: "self",
     });
     expect(screen.turnPanel.title).toBe("あなたの手番");
-    expect(screen.turnPanel.actions[0]?.label).toBe("発言する");
+    expect(screen.turnPanel.actions[0]?.label).toBe("発言");
     expect(screen.turnPanel.actions[0]?.requiresMessage).toBe(true);
     expect(screen.timeline[screen.timeline.length - 1]?.detail).toContain("温度差");
     expect(screen.observerRecord?.title).toBe("公開された記録");
@@ -88,7 +88,32 @@ describe("mapGameScreen", () => {
 
     const screen = mapGameScreen({ screen: source, manualPlayerId: "player-1" });
 
-    expect(screen.turnPanel.subtitle).toBe("この村の物語は終わりました");
+    expect(screen.turnPanel.subtitle).toBe("この物語は終わりました");
     expect(screen.turnPanel.actions).toEqual([]);
+  });
+
+  it("uses the selected story theme throughout the playable screen", () => {
+    const source = sampleScreenSource();
+    source.state.phase = "voting";
+    source.state.winner = "fox";
+    source.state.theme = {
+      ...source.state.theme!,
+      id: "starship",
+      name: "宇宙船",
+      premise: "航行中の宇宙船で擬態生命体を探します。",
+      role_names: { ...source.state.theme!.role_names, seer: "解析技師" },
+      faction_names: { village: "乗組員側", werewolf: "擬態生命体側", fox: "潜伏個体側" },
+      action_names: { ...source.state.theme!.action_names, speech: "通信", vote: "排除投票" },
+      phase_names: { ...source.state.theme!.phase_names, voting: "排除投票" },
+    };
+
+    const screen = mapGameScreen({ screen: source, manualPlayerId: "player-1" });
+
+    expect(screen.storyThemeId).toBe("starship");
+    expect(screen.tableSubtitle).toContain("宇宙船");
+    expect(screen.phaseLabel).toBe("排除投票");
+    expect(screen.turnPanel.roleHint).toBe("あなたは 解析技師");
+    expect(screen.turnPanel.actions[0]?.label).toBe("通信");
+    expect(screen.winnerLabel).toBe("潜伏個体側の勝利");
   });
 });

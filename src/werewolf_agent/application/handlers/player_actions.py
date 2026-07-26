@@ -14,6 +14,7 @@ from werewolf_agent.application.handlers.common import (
     _narration_profile,
     _parse_game_id,
     _restore_game,
+    _setup_theme,
 )
 from werewolf_agent.application.messages import (
     MESSAGE_ADVANCE_JOB_STATE_CHANGED,
@@ -104,6 +105,7 @@ def submit_player_action(
         scenario_id=_config_text(run.config, "scenario_id"),
         scenario_name=_config_text(run.config, "scenario_name"),
         narration_mode=_narration_mode(run.config),
+        theme=_setup_theme(run.config),
     )
     updated_run = dependencies.repository.save(
         GameRecordUpdate(
@@ -124,6 +126,7 @@ def submit_player_action(
             events,
             narration_profile=_narration_profile(run.config, dependencies.game_definitions),
             narration_mode=_narration_mode(run.config),
+            theme=_setup_theme(run.config),
         ),
     )
     turns = dependencies.repository.list_public_turns(

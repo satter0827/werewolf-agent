@@ -27,7 +27,6 @@ export function VillageSetup({
   const defaultPlayerId = uiSettings.default_manual_player_id;
   const defaultSeed = uiSettings.default_setup_seed;
   const [draft, setDraft] = useState<SetupDraft>({
-    scenarioId: setupOptions.default_scenario_id ?? setupOptions.scenarios[0]?.id ?? "",
     setupPresetId: setupOptions.default_setup_preset_id ?? setupOptions.setup_presets[0]?.id ?? "",
     manualPlayerId: defaultPlayerId,
     seed: defaultSeed,
@@ -52,32 +51,39 @@ export function VillageSetup({
   }, [defaultPlayerId, draft.manualPlayerId, seatOptions]);
 
   return (
-    <section className="wa-setup" aria-label="村を作る">
+    <section className="wa-setup" aria-label="ゲームを作る">
       <div className="wa-setup-main">
-        <p className="wa-kicker">村を作る</p>
-        <h2>今夜の舞台を選ぶ</h2>
+        <p className="wa-kicker">ゲームを作る</p>
+        <h2>遊び方を選ぶ</h2>
         <div className="wa-scenario-grid">
-          {setupOptions.scenarios.map((scenario) => (
-            <button
-              className={
-                scenario.id === draft.scenarioId
-                  ? "wa-scenario wa-scenario-selected"
-                  : "wa-scenario"
-              }
-              key={scenario.id}
-              onClick={() => setDraft((current) => ({ ...current, scenarioId: scenario.id }))}
-              type="button"
-            >
-              <strong>{scenario.name}</strong>
-              <span>{scenario.summary}</span>
-            </button>
-          ))}
+          {setupOptions.setup_presets.map((preset) => {
+            const scenario = setupOptions.scenarios.find(
+              (candidate) => candidate.id === preset.scenario_id,
+            );
+            return (
+              <button
+                className={
+                  preset.id === draft.setupPresetId
+                    ? "wa-scenario wa-scenario-selected"
+                    : "wa-scenario"
+                }
+                key={preset.id}
+                onClick={() => setDraft((current) => ({ ...current, setupPresetId: preset.id }))}
+                type="button"
+              >
+                <strong>{preset.name}</strong>
+                <span>
+                  {scenario ? `${scenario.name} — ${scenario.summary}` : preset.scenario_id}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 
       <aside className="wa-setup-side">
         <label>
-          配役
+          選択中の遊び方
           <select
             value={draft.setupPresetId}
             onChange={(event) =>
@@ -129,7 +135,11 @@ export function VillageSetup({
           type="button"
         >
           <Play size={18} aria-hidden="true" />
-          {isCreating ? "村を準備中" : draft.manualPlayerId ? "この村で始める" : "観戦を始める"}
+          {isCreating
+            ? "ゲームを準備中"
+            : draft.manualPlayerId
+              ? "この設定で始める"
+              : "観戦を始める"}
         </button>
       </aside>
     </section>

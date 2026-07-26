@@ -21,9 +21,12 @@
 
 | ID | 要件 | 主な境界 |
 | --- | --- | --- |
-| `REQ-GAME-001` | 設定済みルールからゲームを作成・復元できる | domain |
+| `REQ-GAME-001` | 完全なsetup documentからゲームを作成・復元できる | domain |
+| `REQ-GAME-008` | ルール、役職、能力、背景、登場人物を一体の設定として編集できる | setup、clients |
+| `REQ-GAME-009` | 背景固有の名称を画面とLLMへ反映し、mechanicsの安定IDと分離する | projection、agents |
+| `REQ-GAME-010` | setupとmechanicsのchecksumを保存し、replayとLLM traceで追跡できる | persistence、LLM |
 | `REQ-GAME-002` | 行動受付、phase 進行、勝敗、可視性を domain が判定する | domain |
-| `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`の正規IDで表す | domain、application |
+| `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`、`fox`の正規IDで表す | domain、application |
 | `REQ-API-001` | React、CLI、Streamlit は同じ HTTP 契約でゲームを操作する | API |
 | `REQ-API-002` | 各clientは公開operationを分類し、対象となる利用者機能へ到達できる | API、clients |
 | `REQ-RUNTIME-001` | 外部依存の障害時もprocessのshellと安全な診断を返し、影響する機能だけを停止する | API、clients |
@@ -50,7 +53,7 @@
 ## 提供範囲
 
 - 一つの manual player と自動 player を含むゲーム進行
-- `villager`、`werewolf`、`seer`、`knight`の4役職
+- `villager`、`werewolf`、`seer`、`knight`、`medium`、`apothecary`、`hunter`、`madman`、`fox`の9役職
 - FakeListLLM による offline 実行
 - Supabase Auth、PostgreSQL 永続化、operation queue
 - FastAPI、React、CLI、Streamlit、worker
@@ -59,4 +62,4 @@
 
 production deployment、DB backup、外部監視、secret rotation は利用する platform が
 所有する。repository は接続契約、health、log、migration、検証入口を提供する。
-複数manual player、追加役職、汎用DSL、plugin機構は現行要件に含めない。
+複数manual player、任意code実行を伴う能力DSL、plugin機構は現行要件に含めない。

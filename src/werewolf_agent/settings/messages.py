@@ -10,11 +10,6 @@ MESSAGE_INVALID_VALUE = "Invalid value."
 
 MESSAGE_SETTINGS = "settings"
 
-MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE = (
-    "exactly one tie rule must be enabled: "
-    "enable_no_elimination_on_tie, enable_random_elimination_on_tie"
-)
-
 MESSAGE_GENERATED_PLAYER_INDEX_MUST_BE_AT_LEAST_ONE = "generated player index must be at least 1"
 
 MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE = "role abilities must be unique"

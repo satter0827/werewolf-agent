@@ -73,6 +73,12 @@ def game_state_from_data(data: Mapping[str, Any]) -> GameState:
         players={str(key): _player(value) for key, value in players.items()},
         history=_history(_mapping(data.get("history", {}))),
         pending_actions=_pending(_mapping(data.get("pending_actions", {}))),
+        ability_uses={
+            str(player_id): {
+                str(ability_id): int(count) for ability_id, count in _mapping(uses).items()
+            }
+            for player_id, uses in _mapping(data.get("ability_uses", {})).items()
+        },
         win_result=_win(data.get("win_result")),
     )
 
@@ -88,7 +94,8 @@ def game_config_from_data(data: Mapping[str, Any]) -> GameConfig:
         roles=RoleCatalog(
             roles={
                 str(key): RoleDefinition(
-                    faction=str(_mapping(value)["faction"]),
+                    identity_faction=str(_mapping(value)["identity_faction"]),
+                    victory_team=str(_mapping(value)["victory_team"]),
                     abilities=tuple(
                         str(item) for item in _sequence(_mapping(value).get("abilities"))
                     ),
@@ -104,6 +111,10 @@ def game_config_from_data(data: Mapping[str, Any]) -> GameConfig:
                 resolution_policy=str(_mapping(value)["resolution_policy"]),
                 target_policy=str(_mapping(value)["target_policy"]),
                 start_day=int(_mapping(value)["start_day"]),
+                effect=str(_mapping(value)["effect"]),
+                max_uses=_optional_int(_mapping(value).get("max_uses")),
+                result_visibility=str(_mapping(value).get("result_visibility") or "private"),
+                resolution_priority=int(_mapping(value).get("resolution_priority") or 100),
             )
             for key, value in abilities_data.items()
         },
@@ -148,6 +159,8 @@ def _vote(data: Mapping[str, Any]) -> VoteResult:
         tied_player_ids=tuple(str(value) for value in _sequence(data.get("tied_player_ids"))),
         missing_voter_ids=tuple(str(value) for value in _sequence(data.get("missing_voter_ids"))),
         eliminated_player_id=_optional_text(data.get("eliminated_player_id")),
+        round=int(data.get("round") or 1),
+        requires_revote=bool(data.get("requires_revote", False)),
     )
 
 
@@ -157,6 +170,7 @@ def _night(data: Mapping[str, Any]) -> NightResult:
         attacked_player_id=_optional_text(data.get("attacked_player_id")),
         protected_player_id=_optional_text(data.get("protected_player_id")),
         killed_player_id=_optional_text(data.get("killed_player_id")),
+        killed_player_ids=tuple(str(value) for value in _sequence(data.get("killed_player_ids"))),
         inspections=tuple(
             InspectionResult(
                 day=int(item["day"]),
@@ -180,6 +194,8 @@ def _pending(data: Mapping[str, Any]) -> PendingActions:
             str(key): action_from_data(_mapping(value))
             for key, value in _mapping(data.get("night_actions", {})).items()
         },
+        vote_round=int(data.get("vote_round") or 1),
+        revote_candidates=tuple(str(value) for value in _sequence(data.get("revote_candidates"))),
     )
 
 

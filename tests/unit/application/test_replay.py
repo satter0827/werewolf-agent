@@ -6,6 +6,7 @@ from typing import Any
 
 from tests.unit.domain.test_domain_game import fixed_players, mvp_config, rule_set_for
 
+from werewolf_agent.application.definitions import CustomCharacterDefinition
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.projections import (
     event_to_create,
@@ -13,6 +14,12 @@ from werewolf_agent.application.projections import (
 )
 from werewolf_agent.application.randomness import runtime_seed
 from werewolf_agent.application.replay import checksum_payload, verify_replay
+from werewolf_agent.application.setup_document import (
+    GameSetupDocument,
+    MechanicsDefinition,
+    RosterDefinition,
+    StoryThemeDefinition,
+)
 from werewolf_agent.domain import Game, GameSetup, GameState
 from werewolf_agent.domain.state import Action, Player
 
@@ -31,6 +38,76 @@ def _record(version: int, payload: object) -> dict[str, Any]:
         "payload": payload,
         "checksum": checksum_payload(payload),
     }
+
+
+def _setup_document(snapshot: GameState) -> GameSetupDocument:
+    config = snapshot.config
+    roles = {
+        role_id: {
+            **domain_to_data(role),
+            "objective": "Meet the configured victory condition.",
+            "label": role_id,
+            "difficulty": 1,
+        }
+        for role_id, role in config.roles.roles.items()
+    }
+    abilities = {
+        ability_id: {
+            **domain_to_data(ability),
+            "label": ability_id,
+            "description": ability_id,
+            "difficulty": 1,
+        }
+        for ability_id, ability in config.abilities.items()
+    }
+    mechanics = MechanicsDefinition.model_validate(
+        {
+            "role_counts": config.role_counts,
+            "roles": roles,
+            "abilities": abilities,
+            "rules": domain_to_data(config.rules),
+        }
+    )
+    action_ids = {ability.action.value for ability in config.abilities.values()} | {
+        "speech",
+        "vote",
+        "pass",
+    }
+    theme = StoryThemeDefinition(
+        id="test",
+        name="Test",
+        summary="Test setup",
+        premise="A deterministic test game.",
+        role_names={role_id: role_id for role_id in roles},
+        role_objectives={role_id: str(role["objective"]) for role_id, role in roles.items()},
+        faction_names={"village": "Village", "werewolf": "Werewolf"},
+        ability_names={ability_id: ability_id for ability_id in abilities},
+        action_names={action_id: action_id for action_id in action_ids},
+        phase_names={
+            "night": "Night",
+            "day_discussion": "Discussion",
+            "voting": "Voting",
+            "finished": "Finished",
+        },
+    )
+    characters = {
+        player.id: CustomCharacterDefinition(
+            id=player.id,
+            name=player.name,
+            age=20,
+            gender="unspecified",
+            personality="steady",
+            speaking_style="brief",
+            reasoning_style="logical",
+            risk_tolerance="medium",
+        )
+        for player in snapshot.players.values()
+    }
+    return GameSetupDocument(
+        mechanics=mechanics,
+        theme=theme,
+        roster=RosterDefinition(characters=characters),
+    )
 
 
 def test_replay_rejects_a_missing_state_version_even_when_checksums_match() -> None:
@@ -114,11 +191,14 @@ def test_replay_reexecutes_the_genesis_command() -> None:
         "request": {"seed": seed},
         "domain_actions": [],
         "replay": {
-            "format_version": 1,
+            "format_version": 2,
             "seed": seed,
-            "config": domain_to_data(snapshot.config),
+            "setup_document": _setup_document(snapshot).model_dump(mode="json"),
+            "setup_checksum": checksum_payload(_setup_document(snapshot).model_dump(mode="json")),
+            "mechanics_checksum": checksum_payload(
+                _setup_document(snapshot).mechanics.model_dump(mode="json")
+            ),
             "players": [{"id": player.id, "name": player.name} for player in setup_players],
-            "rule_composition": {},
         },
     }
     created_event = event_to_create(game.creation_events[0], narration_mode="none")
@@ -228,6 +308,7 @@ def test_replay_reexecutes_player_action_and_advance_commands() -> None:
     first_state = state_payload(first_snapshot, 1)
     second_state = state_payload(second_snapshot, 2)
     third_state = state_payload(third_snapshot, 3)
+    setup_document = _setup_document(first_snapshot)
     create_payload = {
         "operation_type": "create_game",
         "actor_user_id": "user-1",
@@ -236,11 +317,14 @@ def test_replay_reexecutes_player_action_and_advance_commands() -> None:
         "request": {"seed": seed},
         "domain_actions": [],
         "replay": {
-            "format_version": 1,
+            "format_version": 2,
             "seed": seed,
-            "config": domain_to_data(first_snapshot.config),
+            "setup_document": setup_document.model_dump(mode="json"),
+            "setup_checksum": checksum_payload(setup_document.model_dump(mode="json")),
+            "mechanics_checksum": checksum_payload(
+                setup_document.mechanics.model_dump(mode="json")
+            ),
             "players": [{"id": player.id, "name": player.name} for player in setup_players],
-            "rule_composition": {},
         },
     }
     action_payload = {

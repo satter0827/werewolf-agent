@@ -28,6 +28,7 @@ from werewolf_agent.clients.cli.commands.admin import (
     replay_verify,
     reveal,
 )
+from werewolf_agent.clients.cli.commands.setup import export_setup, inspect_setup, validate_setup
 from werewolf_agent.clients.cli.commands.system import status
 from werewolf_agent.clients.cli.events import (
     LOG_CLI_APPLICATION_STARTED,
@@ -104,9 +105,18 @@ def _register_feature_command(
 
 
 system_app.command(name="doctor", help="ローカル設定とresourceを検査します。")(doctor)
+setup_app.command(name="export", help="presetを編集可能なTOMLへ出力します。")(export_setup)
 for _group, _path, _name, _handler, _help in (
     (system_app, "system status", "status", status, "APIと依存先の可用性を表示します。"),
     (setup_app, "setup show", "show", setup_options, "選択可能なゲーム設定を表示します。"),
+    (setup_app, "setup validate", "validate", validate_setup, "setup TOMLを検証します。"),
+    (
+        setup_app,
+        "setup inspect",
+        "inspect",
+        inspect_setup,
+        "setup TOMLの正規化結果を表示します。",
+    ),
     (game_app, "game create", "create", new, "ゲームを作成します。"),
     (game_app, "game list", "list", games, "ゲーム一覧を表示します。"),
     (game_app, "game show", "show", show, "公開game状態を表示します。"),

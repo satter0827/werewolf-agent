@@ -38,7 +38,8 @@ def observation_view_from_response(
     known_roles = observation.get("known_roles")
     known_role_lines = (
         [
-            f"{_player_name(state.players, player_id)}: {catalog.label(lang, 'role', role_id)}"
+            f"{_player_name(state.players, player_id)}: "
+            f"{_theme_term(state, 'role_names', role_id, catalog.label(lang, 'role', role_id))}"
             for player_id, role_id in sorted(known_roles.items())
         ]
         if isinstance(known_roles, dict)
@@ -54,7 +55,7 @@ def observation_view_from_response(
         for action in actions
     }
     return ObservationView(
-        role=catalog.label(lang, "role", role),
+        role=_theme_term(state, "role_names", role, catalog.label(lang, "role", role)),
         available_actions=actions,
         action_choices=[
             action_choice(
@@ -62,6 +63,12 @@ def observation_view_from_response(
                 catalog,
                 lang,
                 requires_target=bool(target_candidates[action]),
+                label=_theme_term(
+                    state,
+                    "action_names",
+                    action,
+                    catalog.label(lang, "action", action),
+                ),
             )
             for action in actions
         ],
@@ -76,15 +83,38 @@ def action_choice(
     lang: Language,
     *,
     requires_target: bool,
+    label: str | None = None,
 ) -> ActionChoiceView:
     """Return display metadata for one action."""
     return ActionChoiceView(
         action_type=action_type,
         icon=action_icon(action_type).symbol,
-        label=catalog.label(lang, "action", action_type),
+        label=label or catalog.label(lang, "action", action_type),
         requires_target=requires_target,
         requires_message=action_type == "speech",
     )
+
+
+def _theme_term(
+    state: PublicGameState,
+    field: str,
+    concept_id: str | None,
+    fallback: str,
+) -> str:
+    """Resolve a presentation term from the game theme without changing mechanics IDs."""
+    if concept_id is None or state.theme is None:
+        return fallback
+    terms = getattr(state.theme, field)
+    return str(terms.get(concept_id, fallback))
+
+
+def _winner_label(state: PublicGameState, catalog: I18nCatalog, lang: Language) -> str:
+    """Return the selected theme's winning faction label."""
+    fallback = catalog.label(lang, "winner", state.winner)
+    if state.winner is None:
+        return fallback
+    faction = _theme_term(state, "faction_names", state.winner, fallback)
+    return f"{faction}の勝利"
 
 
 def target_candidates_for_action(
@@ -125,7 +155,7 @@ def hand_panel_view(
             detail=catalog.t(
                 lang,
                 "result.fact.winner",
-                winner=catalog.label(lang, "winner", state.winner),
+                winner=_winner_label(state, catalog, lang),
             ),
             tone="safe",
             advance_title=catalog.t(lang, "game.completed.title"),
@@ -143,9 +173,7 @@ def hand_panel_view(
             can_advance=False,
         )
     if observation is not None and observation.available_actions:
-        labels = " / ".join(
-            catalog.label(lang, "action", action) for action in observation.available_actions
-        )
+        labels = " / ".join(choice.label for choice in observation.action_choices)
         return HandPanelView(
             heading=heading,
             title=catalog.t(lang, "game.current.playable"),
@@ -195,14 +223,12 @@ def current_turn_detail(
         return catalog.t(
             lang,
             "result.fact.winner",
-            winner=catalog.label(lang, "winner", state.winner),
+            winner=_winner_label(state, catalog, lang),
         )
     if screen_mode == "observer":
         return catalog.t(lang, "game.observer.detail")
     if observation is not None and observation.available_actions:
-        labels = " / ".join(
-            catalog.label(lang, "action", action) for action in observation.available_actions
-        )
+        labels = " / ".join(choice.label for choice in observation.action_choices)
         return labels
     return catalog.t(lang, "game.play.waiting.detail")
 

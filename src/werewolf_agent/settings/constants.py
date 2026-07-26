@@ -40,14 +40,12 @@ MAX_DAY_SPEECH_LIMIT_PER_PLAYER: Final = 10
 
 NARRATION_MODE_NONE: Final = "none"
 NARRATION_MODE_STANDARD: Final = "standard"
-NARRATION_MODE_RICH: Final = "rich"
 NARRATION_MODES: Final = (
     NARRATION_MODE_NONE,
     NARRATION_MODE_STANDARD,
-    NARRATION_MODE_RICH,
 )
 NARRATION_MODE_CHOICES: Final = frozenset(NARRATION_MODES)
-NarrationMode: TypeAlias = Literal["none", "standard", "rich"]
+NarrationMode: TypeAlias = Literal["none", "standard"]
 
 LLM_PROVIDER_FAKE: Final = "fake"
 LLM_PROVIDER_LMSTUDIO: Final = "lmstudio"
@@ -141,6 +139,7 @@ SENSITIVE_KEY_PARTS: Final = (
     "apikey",
     "authorization",
     "known_roles",
+    "known_factions",
     "night_action",
     "password",
     "private_state",

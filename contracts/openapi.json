@@ -5,6 +5,10 @@
         "additionalProperties": false,
         "description": "Public ability metadata for setup screens.",
         "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
           "description": {
             "title": "Description",
             "type": "string"
@@ -15,16 +19,66 @@
             "title": "Difficulty",
             "type": "integer"
           },
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses"
           },
           "name": {
             "title": "Name",
             "type": "string"
           },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_policy": {
+            "title": "Resolution Policy",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "default": "private",
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
           "target_policy": {
             "title": "Target Policy",
+            "type": "string"
+          },
+          "validation_policy": {
+            "title": "Validation Policy",
             "type": "string"
           }
         },
@@ -32,7 +86,12 @@
           "id",
           "name",
           "description",
+          "phase",
+          "action",
+          "validation_policy",
+          "resolution_policy",
           "target_policy",
+          "effect",
           "difficulty"
         ],
         "title": "AbilityDefinitionView",
@@ -399,27 +458,6 @@
         "additionalProperties": false,
         "description": "Payload for creating one game.",
         "properties": {
-          "character_assignments": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Character Assignments",
-            "type": "object"
-          },
-          "custom_characters": {
-            "items": {
-              "$ref": "#/components/schemas/CustomCharacterDefinitionRequest"
-            },
-            "title": "Custom Characters",
-            "type": "array"
-          },
-          "custom_roles": {
-            "items": {
-              "$ref": "#/components/schemas/CustomRoleDefinitionRequest"
-            },
-            "title": "Custom Roles",
-            "type": "array"
-          },
           "manual_player_id": {
             "anyOf": [
               {
@@ -432,59 +470,13 @@
             "title": "Manual Player Id"
           },
           "narration_mode": {
-            "anyOf": [
-              {
-                "enum": [
-                  "none",
-                  "standard",
-                  "rich"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+            "default": "standard",
+            "enum": [
+              "none",
+              "standard"
             ],
-            "title": "Narration Mode"
-          },
-          "role_counts": {
-            "additionalProperties": {
-              "minimum": 0.0,
-              "type": "integer"
-            },
-            "title": "Role Counts",
-            "type": "object"
-          },
-          "rule_composition": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/RuleCompositionSelection"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "rules": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/LocalRulesSettings"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "scenario_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scenario Id"
+            "title": "Narration Mode",
+            "type": "string"
           },
           "seed": {
             "anyOf": [
@@ -497,20 +489,27 @@
             ],
             "title": "Seed"
           },
-          "setup_preset_id": {
-            "anyOf": [
+          "setup": {
+            "discriminator": {
+              "mapping": {
+                "custom": "#/components/schemas/CustomSetupRequest",
+                "preset": "#/components/schemas/PresetSetupRequest"
+              },
+              "propertyName": "mode"
+            },
+            "oneOf": [
               {
-                "type": "string"
+                "$ref": "#/components/schemas/PresetSetupRequest"
               },
               {
-                "type": "null"
+                "$ref": "#/components/schemas/CustomSetupRequest"
               }
             ],
-            "title": "Setup Preset Id"
+            "title": "Setup"
           }
         },
         "required": [
-          "role_counts"
+          "setup"
         ],
         "title": "CreateGameRequest",
         "type": "object"
@@ -567,48 +566,24 @@
         "title": "CustomCharacterDefinitionRequest",
         "type": "object"
       },
-      "CustomRoleDefinitionRequest": {
+      "CustomSetupRequest": {
         "additionalProperties": false,
-        "description": "Session-scoped role definition supplied by a UI client.",
+        "description": "Supply a complete custom setup.",
         "properties": {
-          "abilities": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Abilities",
-            "type": "array"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
+          "mode": {
+            "const": "custom",
+            "title": "Mode",
             "type": "string"
           },
-          "difficulty": {
-            "default": 1,
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Difficulty",
-            "type": "integer"
-          },
-          "faction": {
-            "title": "Faction",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
+          "setup": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
           }
         },
         "required": [
-          "id",
-          "name",
-          "faction"
+          "mode",
+          "setup"
         ],
-        "title": "CustomRoleDefinitionRequest",
+        "title": "CustomSetupRequest",
         "type": "object"
       },
       "GameListResponse": {
@@ -696,6 +671,8 @@
               "seer_inspect",
               "knight_guard",
               "werewolf_attack",
+              "apothecary_heal",
+              "apothecary_poison",
               "pass"
             ],
             "title": "Type",
@@ -813,12 +790,12 @@
             ],
             "title": "Eliminated Day"
           },
-          "faction": {
-            "title": "Faction",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
+            "type": "string"
+          },
+          "identity_faction": {
+            "title": "Identity Faction",
             "type": "string"
           },
           "killed_night": {
@@ -836,6 +813,10 @@
             "title": "Name",
             "type": "string"
           },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
           "role": {
             "title": "Role",
             "type": "string"
@@ -847,13 +828,19 @@
             ],
             "title": "Status",
             "type": "string"
+          },
+          "victory_team": {
+            "title": "Victory Team",
+            "type": "string"
           }
         },
         "required": [
           "id",
           "name",
           "role",
-          "faction",
+          "identity_faction",
+          "victory_team",
+          "objective",
           "alive",
           "status"
         ],
@@ -890,8 +877,7 @@
             "default": "standard",
             "enum": [
               "none",
-              "standard",
-              "rich"
+              "standard"
             ],
             "title": "Narration Mode",
             "type": "string"
@@ -1002,7 +988,8 @@
               {
                 "enum": [
                   "village",
-                  "werewolf"
+                  "werewolf",
+                  "fox"
                 ],
                 "type": "string"
               },
@@ -1088,6 +1075,33 @@
         "title": "GameRevealVote",
         "type": "object"
       },
+      "GameSetupDocumentRequest": {
+        "additionalProperties": false,
+        "description": "Complete portable setup document.",
+        "properties": {
+          "mechanics": {
+            "$ref": "#/components/schemas/SetupMechanicsSettings"
+          },
+          "roster": {
+            "$ref": "#/components/schemas/SetupRosterSettings"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "theme": {
+            "$ref": "#/components/schemas/StoryThemeSettings"
+          }
+        },
+        "required": [
+          "mechanics",
+          "theme"
+        ],
+        "title": "GameSetupDocumentRequest",
+        "type": "object"
+      },
       "GameSetupOptionsResponse": {
         "additionalProperties": false,
         "description": "Public setup metadata for client bootstrapping.",
@@ -1110,8 +1124,7 @@
             "default": "standard",
             "enum": [
               "none",
-              "standard",
-              "rich"
+              "standard"
             ],
             "title": "Default Narration Mode",
             "type": "string"
@@ -1367,13 +1380,13 @@
             "title": "Enable First Night Attack",
             "type": "boolean"
           },
-          "enable_no_elimination_on_tie": {
-            "title": "Enable No Elimination On Tie",
-            "type": "boolean"
-          },
-          "enable_random_elimination_on_tie": {
-            "title": "Enable Random Elimination On Tie",
-            "type": "boolean"
+          "medium_result_detail": {
+            "enum": [
+              "faction",
+              "role"
+            ],
+            "title": "Medium Result Detail",
+            "type": "string"
           },
           "require_all_actions_before_advance": {
             "default": true,
@@ -1383,6 +1396,39 @@
           "reveal_role_on_death": {
             "title": "Reveal Role On Death",
             "type": "boolean"
+          },
+          "seer_result_detail": {
+            "enum": [
+              "faction",
+              "role"
+            ],
+            "title": "Seer Result Detail",
+            "type": "string"
+          },
+          "starting_phase": {
+            "enum": [
+              "night",
+              "day_discussion"
+            ],
+            "title": "Starting Phase",
+            "type": "string"
+          },
+          "vote_tie_resolution": {
+            "enum": [
+              "no_elimination",
+              "random_elimination",
+              "revote"
+            ],
+            "title": "Vote Tie Resolution",
+            "type": "string"
+          },
+          "wolf_attack_tie_resolution": {
+            "enum": [
+              "random_target",
+              "no_attack"
+            ],
+            "title": "Wolf Attack Tie Resolution",
+            "type": "string"
           }
         },
         "required": [
@@ -1391,8 +1437,11 @@
           "allow_vote_revision",
           "allow_night_action_revision",
           "enable_first_night_attack",
-          "enable_no_elimination_on_tie",
-          "enable_random_elimination_on_tie",
+          "vote_tie_resolution",
+          "wolf_attack_tie_resolution",
+          "seer_result_detail",
+          "medium_result_detail",
+          "starting_phase",
           "allow_knight_self_guard",
           "allow_knight_repeat_guard",
           "allow_seer_self_inspect",
@@ -1552,6 +1601,8 @@
               "seer_inspect",
               "knight_guard",
               "werewolf_attack",
+              "apothecary_heal",
+              "apothecary_poison",
               "pass"
             ],
             "title": "Type",
@@ -1588,6 +1639,27 @@
           "observation"
         ],
         "title": "PlayerObservationResponse",
+        "type": "object"
+      },
+      "PresetSetupRequest": {
+        "additionalProperties": false,
+        "description": "Select a packaged setup preset.",
+        "properties": {
+          "mode": {
+            "const": "preset",
+            "title": "Mode",
+            "type": "string"
+          },
+          "preset_id": {
+            "title": "Preset Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "preset_id"
+        ],
+        "title": "PresetSetupRequest",
         "type": "object"
       },
       "ProblemDetails": {
@@ -1742,8 +1814,7 @@
             "default": "standard",
             "enum": [
               "none",
-              "standard",
-              "rich"
+              "standard"
             ],
             "title": "Narration Mode",
             "type": "string"
@@ -1811,6 +1882,16 @@
             "title": "Summary",
             "type": "object"
           },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicTheme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "updated_at": {
             "anyOf": [
               {
@@ -1832,7 +1913,8 @@
               {
                 "enum": [
                   "village",
-                  "werewolf"
+                  "werewolf",
+                  "fox"
                 ],
                 "type": "string"
               },
@@ -1905,6 +1987,28 @@
             "title": "Player Count",
             "type": "integer"
           },
+          "scenario_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Id"
+          },
+          "scenario_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scenario Name"
+          },
           "seed": {
             "anyOf": [
               {
@@ -1928,6 +2032,16 @@
             "title": "Step Count",
             "type": "integer"
           },
+          "theme": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicTheme"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "turn_count": {
             "title": "Turn Count",
             "type": "integer"
@@ -1946,7 +2060,8 @@
               {
                 "enum": [
                   "village",
-                  "werewolf"
+                  "werewolf",
+                  "fox"
                 ],
                 "type": "string"
               },
@@ -1998,7 +2113,8 @@
               {
                 "enum": [
                   "village",
-                  "werewolf"
+                  "werewolf",
+                  "fox"
                 ],
                 "type": "string"
               },
@@ -2162,6 +2278,79 @@
         "title": "PublicRuntimeLimits",
         "type": "object"
       },
+      "PublicTheme": {
+        "additionalProperties": false,
+        "description": "Presentation terms selected for one game.",
+        "properties": {
+          "ability_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ability Names",
+            "type": "object"
+          },
+          "action_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Action Names",
+            "type": "object"
+          },
+          "faction_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Faction Names",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phase_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Phase Names",
+            "type": "object"
+          },
+          "premise": {
+            "title": "Premise",
+            "type": "string"
+          },
+          "role_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Names",
+            "type": "object"
+          },
+          "role_objectives": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Objectives",
+            "type": "object"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "premise",
+          "role_names",
+          "role_objectives",
+          "faction_names",
+          "ability_names",
+          "action_names",
+          "phase_names"
+        ],
+        "title": "PublicTheme",
+        "type": "object"
+      },
       "PublicUiConfig": {
         "additionalProperties": false,
         "description": "Browser-verifiable presentation settings.",
@@ -2317,23 +2506,33 @@
             "title": "Difficulty",
             "type": "integer"
           },
-          "faction": {
-            "title": "Faction",
-            "type": "string"
-          },
           "id": {
             "title": "Id",
             "type": "string"
           },
+          "identity_faction": {
+            "title": "Identity Faction",
+            "type": "string"
+          },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "victory_team": {
+            "title": "Victory Team",
             "type": "string"
           }
         },
         "required": [
           "id",
           "name",
-          "faction",
+          "identity_faction",
+          "victory_team",
+          "objective",
           "abilities"
         ],
         "title": "RoleDefinitionView",
@@ -2578,12 +2777,54 @@
         "additionalProperties": false,
         "description": "Public scenario metadata for setup screens.",
         "properties": {
+          "ability_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ability Names",
+            "type": "object"
+          },
+          "action_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Action Names",
+            "type": "object"
+          },
+          "faction_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Faction Names",
+            "type": "object"
+          },
           "id": {
             "title": "Id",
             "type": "string"
           },
           "name": {
             "title": "Name",
+            "type": "string"
+          },
+          "narration": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Narration",
+            "type": "object"
+          },
+          "phase_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Phase Names",
+            "type": "object"
+          },
+          "premise": {
+            "title": "Premise",
             "type": "string"
           },
           "recommended_setup_preset": {
@@ -2597,6 +2838,20 @@
             ],
             "title": "Recommended Setup Preset"
           },
+          "role_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Names",
+            "type": "object"
+          },
+          "role_objectives": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Objectives",
+            "type": "object"
+          },
           "summary": {
             "title": "Summary",
             "type": "string"
@@ -2605,7 +2860,8 @@
         "required": [
           "id",
           "name",
-          "summary"
+          "summary",
+          "premise"
         ],
         "title": "ScenarioDefinitionView",
         "type": "object"
@@ -2644,6 +2900,151 @@
         "title": "SessionResponse",
         "type": "object"
       },
+      "SetupAbilityDefinition": {
+        "additionalProperties": false,
+        "description": "Wire definition for one registered, typed ability.",
+        "properties": {
+          "action": {
+            "title": "Action",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "difficulty": {
+            "default": 1,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Difficulty",
+            "type": "integer"
+          },
+          "effect": {
+            "enum": [
+              "attack",
+              "inspection",
+              "protection",
+              "poison",
+              "knowledge",
+              "reaction",
+              "immunity",
+              "vulnerability",
+              "pass"
+            ],
+            "title": "Effect",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_policy": {
+            "title": "Resolution Policy",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "default": 100,
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "default": "private",
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "title": "Target Policy",
+            "type": "string"
+          },
+          "validation_policy": {
+            "title": "Validation Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "phase",
+          "action",
+          "validation_policy",
+          "resolution_policy",
+          "target_policy",
+          "effect",
+          "start_day",
+          "label",
+          "description"
+        ],
+        "title": "SetupAbilityDefinition",
+        "type": "object"
+      },
+      "SetupMechanicsSettings": {
+        "additionalProperties": false,
+        "description": "Deterministic mechanics supplied with a custom setup.",
+        "properties": {
+          "abilities": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SetupAbilityDefinition"
+            },
+            "title": "Abilities",
+            "type": "object"
+          },
+          "composition": {
+            "$ref": "#/components/schemas/RuleCompositionSelection"
+          },
+          "role_counts": {
+            "additionalProperties": {
+              "minimum": 0.0,
+              "type": "integer"
+            },
+            "title": "Role Counts",
+            "type": "object"
+          },
+          "roles": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/SetupRoleDefinition"
+            },
+            "title": "Roles",
+            "type": "object"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/LocalRulesSettings"
+          }
+        },
+        "required": [
+          "role_counts",
+          "roles",
+          "abilities",
+          "rules"
+        ],
+        "title": "SetupMechanicsSettings",
+        "type": "object"
+      },
       "SetupPresetDefinitionView": {
         "additionalProperties": false,
         "description": "Public setup preset metadata for setup screens.",
@@ -2676,6 +3077,233 @@
           "role_counts"
         ],
         "title": "SetupPresetDefinitionView",
+        "type": "object"
+      },
+      "SetupRoleDefinition": {
+        "additionalProperties": false,
+        "description": "Wire definition for one stable role ID.",
+        "properties": {
+          "abilities": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Abilities",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "difficulty": {
+            "default": 1,
+            "maximum": 5.0,
+            "minimum": 1.0,
+            "title": "Difficulty",
+            "type": "integer"
+          },
+          "identity_faction": {
+            "enum": [
+              "village",
+              "werewolf",
+              "fox"
+            ],
+            "title": "Identity Faction",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "objective": {
+            "title": "Objective",
+            "type": "string"
+          },
+          "victory_team": {
+            "enum": [
+              "village",
+              "werewolf",
+              "fox"
+            ],
+            "title": "Victory Team",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity_faction",
+          "victory_team",
+          "objective",
+          "label",
+          "description"
+        ],
+        "title": "SetupRoleDefinition",
+        "type": "object"
+      },
+      "SetupRosterSettings": {
+        "additionalProperties": false,
+        "description": "Characters and fixed seat assignments supplied with a setup.",
+        "properties": {
+          "assignments": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Assignments",
+            "type": "object"
+          },
+          "characters": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/CustomCharacterDefinitionRequest"
+            },
+            "title": "Characters",
+            "type": "object"
+          }
+        },
+        "title": "SetupRosterSettings",
+        "type": "object"
+      },
+      "SetupValidationResponse": {
+        "additionalProperties": false,
+        "description": "Normalized summary returned after semantic setup validation.",
+        "properties": {
+          "ability_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ability Ids",
+            "type": "array"
+          },
+          "mechanics_checksum": {
+            "title": "Mechanics Checksum",
+            "type": "string"
+          },
+          "player_count": {
+            "minimum": 1.0,
+            "title": "Player Count",
+            "type": "integer"
+          },
+          "role_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Role Ids",
+            "type": "array"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "setup_checksum": {
+            "title": "Setup Checksum",
+            "type": "string"
+          },
+          "theme_id": {
+            "title": "Theme Id",
+            "type": "string"
+          },
+          "theme_name": {
+            "title": "Theme Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema_version",
+          "player_count",
+          "theme_id",
+          "theme_name",
+          "role_ids",
+          "ability_ids",
+          "setup_checksum",
+          "mechanics_checksum"
+        ],
+        "title": "SetupValidationResponse",
+        "type": "object"
+      },
+      "StoryThemeSettings": {
+        "additionalProperties": false,
+        "description": "Presentation-only terminology supplied with a game setup.",
+        "properties": {
+          "ability_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ability Names",
+            "type": "object"
+          },
+          "action_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Action Names",
+            "type": "object"
+          },
+          "faction_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Faction Names",
+            "type": "object"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "narration": {
+            "additionalProperties": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "title": "Narration",
+            "type": "object"
+          },
+          "phase_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Phase Names",
+            "type": "object"
+          },
+          "premise": {
+            "title": "Premise",
+            "type": "string"
+          },
+          "role_names": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Names",
+            "type": "object"
+          },
+          "role_objectives": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Objectives",
+            "type": "object"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "summary",
+          "premise",
+          "role_names",
+          "role_objectives",
+          "faction_names",
+          "ability_names",
+          "action_names",
+          "phase_names"
+        ],
+        "title": "StoryThemeSettings",
         "type": "object"
       },
       "ValidationError": {
@@ -4910,6 +5538,138 @@
           }
         ],
         "summary": "Get Session",
+        "tags": [
+          "configuration"
+        ]
+      }
+    },
+    "/api/v1/setups/validate": {
+      "post": {
+        "description": "Validate one complete setup through the canonical application boundary.",
+        "operationId": "setup_validate",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GameSetupDocumentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupValidationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "summary": "Validate Setup",
         "tags": [
           "configuration"
         ]

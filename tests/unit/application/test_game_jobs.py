@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+from pydantic import ValidationError
 
 import werewolf_agent.application as application_api
 import werewolf_agent.application.handlers as usecases
@@ -55,6 +56,7 @@ from werewolf_agent.application.models import (
     StoredGameTurn,
 )
 from werewolf_agent.application.ports import GameRepository
+from werewolf_agent.application.setup_document import setup_document_from_preset
 from werewolf_agent.contracts import (
     GameError,
     GameNotFoundError,
@@ -118,11 +120,9 @@ def test_game_application_accepts_only_public_creation_and_page_inputs() -> None
 
 
 def test_create_command_can_be_built_from_the_application_public_surface() -> None:
-    rules = local_rules_definition()
+    setup = setup_document_from_preset("standard_5", game_definitions(), player_definitions())
     command = application_api.CreateGameCommand(
-        narration_mode="none",
-        role_counts=DEFAULT_ROLE_COUNTS,
-        rules=application_api.LocalRulesDefinition(**rules.model_dump()),
+        setup=setup,
     )
 
     assert command.player_count == 5
@@ -186,6 +186,16 @@ def test_create_game_persists_the_selected_rule_composition_snapshot() -> None:
 
     stored = repository.games[UUID(created.game_id)]
     assert stored.config["rule_composition"] == composition.model_dump(mode="json")
+
+
+def test_create_game_persists_the_selected_narration_mode() -> None:
+    deps, repository = dependencies()
+
+    created = GameApplication(deps).create(create_command(seed=1, narration_mode="none"))
+
+    stored = repository.games[UUID(created.game_id)]
+    assert stored.config["narration_mode"] == "none"
+    assert created.state["narration_mode"] == "none"
 
 
 def test_create_game_rejects_an_unregistered_rule_policy() -> None:
@@ -397,8 +407,11 @@ def local_rules_definition() -> LocalRulesDefinition:
         allow_vote_revision=False,
         allow_night_action_revision=False,
         enable_first_night_attack=True,
-        enable_no_elimination_on_tie=True,
-        enable_random_elimination_on_tie=False,
+        vote_tie_resolution="no_elimination",
+        wolf_attack_tie_resolution="random_target",
+        seer_result_detail="faction",
+        medium_result_detail="faction",
+        starting_phase="night",
         allow_knight_self_guard=True,
         allow_knight_repeat_guard=True,
         allow_seer_self_inspect=False,
@@ -412,13 +425,30 @@ def game_definitions() -> GameDefinitions:
         rules=GameRuleDefinitions(local_rules=local_rules_definition()),
         roles=GameRoleDefinitions(
             roles={
-                "villager": RoleDefinition(faction="village", abilities=()),
+                "villager": RoleDefinition(
+                    identity_faction="village",
+                    victory_team="village",
+                    objective="Find the werewolf.",
+                    abilities=(),
+                ),
                 "werewolf": RoleDefinition(
-                    faction="werewolf",
+                    identity_faction="werewolf",
+                    victory_team="werewolf",
+                    objective="Reach parity.",
                     abilities=("night_attack", "pack_knowledge"),
                 ),
-                "seer": RoleDefinition(faction="village", abilities=("inspect",)),
-                "knight": RoleDefinition(faction="village", abilities=("guard",)),
+                "seer": RoleDefinition(
+                    identity_faction="village",
+                    victory_team="village",
+                    objective="Inspect suspects.",
+                    abilities=("inspect",),
+                ),
+                "knight": RoleDefinition(
+                    identity_faction="village",
+                    victory_team="village",
+                    objective="Protect villagers.",
+                    abilities=("guard",),
+                ),
             },
             default_role_counts={5: DEFAULT_ROLE_COUNTS},
         ),
@@ -430,6 +460,7 @@ def game_definitions() -> GameDefinitions:
                     validation_policy="standard",
                     resolution_policy="standard",
                     target_policy="other_alive_non_pack",
+                    effect="attack",
                     start_day=1,
                     label="Attack",
                     description="Attack one player.",
@@ -440,6 +471,7 @@ def game_definitions() -> GameDefinitions:
                     validation_policy="standard",
                     resolution_policy="standard",
                     target_policy="none",
+                    effect="knowledge",
                     start_day=1,
                     label="Pack knowledge",
                     description="Know allied players.",
@@ -450,6 +482,7 @@ def game_definitions() -> GameDefinitions:
                     validation_policy="standard",
                     resolution_policy="standard",
                     target_policy="other_alive",
+                    effect="inspection",
                     start_day=1,
                     label="Inspect",
                     description="Inspect one player.",
@@ -460,6 +493,7 @@ def game_definitions() -> GameDefinitions:
                     validation_policy="standard",
                     resolution_policy="standard",
                     target_policy="alive",
+                    effect="protection",
                     start_day=1,
                     label="Guard",
                     description="Guard one player.",
@@ -472,6 +506,39 @@ def game_definitions() -> GameDefinitions:
                     prompt_premise="A village debates.",
                     narration_profile="standard",
                     recommended_setup_preset="standard_5",
+                    role_names={
+                        "villager": "Villager",
+                        "werewolf": "Werewolf",
+                        "seer": "Seer",
+                        "knight": "Knight",
+                    },
+                    role_objectives={
+                        "villager": "Remove werewolves.",
+                        "werewolf": "Reach parity.",
+                        "seer": "Find werewolves.",
+                        "knight": "Protect the village.",
+                    },
+                    faction_names={"village": "Village", "werewolf": "Werewolf"},
+                    ability_names={
+                        "night_attack": "Attack",
+                        "pack_knowledge": "Pack knowledge",
+                        "inspect": "Inspect",
+                        "guard": "Guard",
+                    },
+                    action_names={
+                        "speech": "Speech",
+                        "vote": "Vote",
+                        "werewolf_attack": "Attack",
+                        "seer_inspect": "Inspect",
+                        "knight_guard": "Guard",
+                        "pass": "Pass",
+                    },
+                    phase_names={
+                        "night": "Night",
+                        "day_discussion": "Discussion",
+                        "voting": "Voting",
+                        "finished": "Finished",
+                    },
                 )
             },
             narration_profiles={"standard": NarrationProfileDefinition()},
@@ -600,10 +667,19 @@ def player_definitions() -> PlayerSetupDefinitions:
 
 
 def create_command(**values: object) -> CreateGameCommand:
-    values.setdefault("role_counts", DEFAULT_ROLE_COUNTS)
-    values.setdefault("rules", local_rules_definition())
-    values.setdefault("narration_mode", PACKAGED_DEFAULTS["game_default_narration_mode"])
-    return CreateGameCommand.model_validate(values)
+    setup = setup_document_from_preset("standard_5", game_definitions(), player_definitions())
+    mechanics_updates: dict[str, object] = {}
+    if "role_counts" in values:
+        mechanics_updates["role_counts"] = values.pop("role_counts")
+    if "rules" in values:
+        mechanics_updates["rules"] = values.pop("rules")
+    if "rule_composition" in values:
+        mechanics_updates["composition"] = values.pop("rule_composition")
+    if mechanics_updates:
+        setup = setup.model_copy(
+            update={"mechanics": setup.mechanics.model_copy(update=mechanics_updates)}
+        )
+    return CreateGameCommand.model_validate({"setup": setup, **values})
 
 
 def _first_target(observation: dict[str, object], *, player_id: str) -> str:
@@ -685,7 +761,7 @@ def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
         "player-4",
         "player-5",
     ]
-    assert "role" not in json.dumps(result.model_dump(mode="json"))
+    assert all(player.get("role") is None for player in result.state["players"])
     event_stream = repository.events[UUID(result.game_id)]
     assert event_stream[0].event_type == "game_started"
     assert "role_counts" not in event_stream[0].payload
@@ -734,14 +810,12 @@ def test_reveal_returns_roles_and_private_resolution_without_changing_public_sta
     assert {player.role for player in reveal.players} >= {"werewolf", "villager"}
     assert reveal.nights
     assert "role" in json.dumps(reveal.model_dump(mode="json"))
-    assert "role" not in json.dumps(public_state.model_dump(mode="json"))
+    assert all(player.get("role") is None for player in public_state.state["players"])
 
 
-def test_create_game_rejects_out_of_range_role_count_total() -> None:
-    deps, _repository = dependencies()
-
-    with pytest.raises(GameError):
-        UsecaseHarness(deps).create_game(create_command(role_counts={"werewolf": 1, "villager": 3}))
+def test_create_command_rejects_an_inconsistent_role_count_override() -> None:
+    with pytest.raises(ValidationError, match="unused mechanics"):
+        create_command(role_counts={"werewolf": 1, "villager": 3})
 
 
 def test_game_id_is_parsed_and_validated_inside_usecase() -> None:
@@ -769,7 +843,8 @@ def test_advance_game_delegates_core_progression_and_returns_public_payloads() -
     assert "protected_player_id" not in json.dumps(timeline.model_dump(mode="json"))
     assert timeline.items
     assert any(
-        item["event_type"] == "night_resolved" and set(item["payload"]) <= {"killed_player_id"}
+        item["event_type"] == "night_resolved"
+        and set(item["payload"]) <= {"killed_player_id", "killed_player_ids"}
         for item in timeline.model_dump(mode="json")["items"]
     )
     assert timeline.next_after <= repository.latest_public_turn_sequence(UUID(created.game_id))

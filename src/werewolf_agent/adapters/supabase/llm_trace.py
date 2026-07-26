@@ -54,9 +54,13 @@ class SupabaseLlmTraceSink:
             insert into private.llm_traces (
               game_id, operation_id, trace_id, provider, model, player_id,
               phase, day, state_version, prompt_messages, prompt_hash,
+              prompt_version, setup_checksum, mechanics_checksum, observation_checksum,
               request_payload, raw_response, parsed_decision, error_payload, latency_ms
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s
+            )
             """,
             (
                 self._game_id,
@@ -70,6 +74,10 @@ class SupabaseLlmTraceSink:
                 self._state_version,
                 Jsonb(list(trace.prompt_messages)),
                 trace.prompt_hash,
+                trace.prompt_version,
+                trace.setup_checksum,
+                trace.mechanics_checksum,
+                trace.observation_checksum,
                 Jsonb(dict(trace.request_payload)),
                 Jsonb(dict(trace.raw_response or {})) if trace.raw_response is not None else None,
                 Jsonb(dict(trace.parsed_decision or {}))

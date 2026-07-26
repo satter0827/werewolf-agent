@@ -106,11 +106,6 @@ def message_unknown_scenario(scenario_id: str) -> str:
     return f"Unknown scenario: {scenario_id}"
 
 
-MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE = (
-    "exactly one tie rule must be enabled: "
-    "enable_no_elimination_on_tie, enable_random_elimination_on_tie"
-)
-
 MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE = "role abilities must be unique"
 
 MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE = "custom role abilities must be unique"

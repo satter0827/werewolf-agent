@@ -18,6 +18,10 @@ class LlmInvocationTrace:
     day: int
     prompt_messages: list[Mapping[str, object]]
     prompt_hash: str
+    prompt_version: int = 1
+    setup_checksum: str = ""
+    mechanics_checksum: str = ""
+    observation_checksum: str = ""
     request_payload: Mapping[str, object] = field(default_factory=dict)
     raw_response: Mapping[str, object] | None = None
     parsed_decision: Mapping[str, object] | None = None

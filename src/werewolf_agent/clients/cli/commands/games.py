@@ -30,7 +30,6 @@ from werewolf_agent.clients.cli.messages import (
     HELP_GAME_STATUS_FILTER,
     HELP_MANUAL_PLAYER,
     HELP_OUTPUT_FORMAT,
-    HELP_ROLE_COUNT,
     HELP_SEED,
     message_created_game,
     message_next_offset,
@@ -56,17 +55,14 @@ def new(
         str | None,
         typer.Option("--manual-player", help=HELP_MANUAL_PLAYER),
     ] = None,
-    role_count: Annotated[
-        list[str] | None,
-        typer.Option("--role-count", help=HELP_ROLE_COUNT),
-    ] = None,
-    rule_composition: Annotated[
+    setup_file: Annotated[
         Path | None,
         typer.Option(
-            "--rule-composition",
-            help="rule compositionを記述したTOML file",
+            "--setup-file",
+            help="完全なgame setupを記述したTOML file",
         ),
     ] = None,
+    preset: Annotated[str | None, typer.Option("--preset", help="setup preset ID")] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
@@ -77,8 +73,8 @@ def new(
         lambda: _new(
             seed=seed,
             manual_player=manual_player,
-            role_count=role_count or [],
-            rule_composition_file=rule_composition,
+            setup_file=setup_file,
+            preset_id=preset,
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -88,16 +84,16 @@ def _new(
     *,
     seed: int | None,
     manual_player: str | None,
-    role_count: list[str],
-    rule_composition_file: Path | None = None,
+    setup_file: Path | None = None,
+    preset_id: str | None = None,
     output_format: OutputFormat,
     client: GameClient | None = None,
 ) -> None:
     request = _create_request(
         seed=seed,
         manual_player=manual_player,
-        role_count=role_count,
-        rule_composition_file=rule_composition_file,
+        setup_file=setup_file,
+        preset_id=preset_id,
     )
     api = client or _client()
     created = api.create_game(request)

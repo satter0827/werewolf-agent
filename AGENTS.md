@@ -31,7 +31,7 @@ Werewolf AgentはLLM agentを人狼ゲームのplayerとして動かすPython ba
 - CLIとStreamlitはHTTP APIだけでゲームを操作する。
 - public state、timeline、LLM observationへ秘匿情報を含めない。
 - 外部LLM出力はschema検証後にactionへ変換する。
-- 正規faction IDとwinner IDは`village`、`werewolf`とする。
+- 正規faction IDとwinner IDは`village`、`werewolf`、`fox`とする。
 
 構造規則の正本は`scripts/architecture/rules.toml`です。構造テスト、分析JSON、
 評価文書、図は同じ定義を使用します。

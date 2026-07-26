@@ -6,7 +6,12 @@ import httpx
 from pydantic import BaseModel, ConfigDict
 
 from werewolf_agent.adapters.http.base import HttpApiClient
-from werewolf_agent.contracts.api import PublicRuntimeConfig, RuntimeStatusResponse
+from werewolf_agent.contracts.api import (
+    PublicRuntimeConfig,
+    RuntimeStatusResponse,
+    SetupValidationResponse,
+)
+from werewolf_agent.contracts.schemas import GameSetupDocumentRequest
 from werewolf_agent.settings import AppSettings
 
 
@@ -43,6 +48,15 @@ class HttpPublicClient:
     def get_runtime_status(self) -> RuntimeStatusResponse:
         """Return sanitized dependency availability."""
         return self._http.model(RuntimeStatusResponse, "GET", "/api/v1/status")
+
+    def validate_setup(self, setup: GameSetupDocumentRequest) -> SetupValidationResponse:
+        """Validate a complete setup through the canonical application boundary."""
+        return self._http.model(
+            SetupValidationResponse,
+            "POST",
+            "/api/v1/setups/validate",
+            json=setup.model_dump(mode="json"),
+        )
 
 
 __all__ = ["HttpPublicClient"]

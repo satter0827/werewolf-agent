@@ -17,9 +17,11 @@ from werewolf_agent.application.models import (
     PlayerObservationResult,
     PreparedAdvanceGame,
     ReplayVerificationResult,
+    SetupValidationResult,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue
 from werewolf_agent.application.ports import GameRepository
+from werewolf_agent.application.setup_options import validate_setup_document
 
 __all__ = [
     "AccessPolicy",
@@ -42,4 +44,6 @@ __all__ = [
     "PlayerObservationResult",
     "PreparedAdvanceGame",
     "ReplayVerificationResult",
+    "SetupValidationResult",
+    "validate_setup_document",
 ]

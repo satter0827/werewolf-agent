@@ -67,6 +67,16 @@ from werewolf_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
+SETUP_STEP_BY_ELEMENT = {
+    "preset": 0,
+    "scenario": 0,
+    "narration": 0,
+    "role_counts": 1,
+    "character_assignments": 2,
+    "seed": 3,
+    "local_rules": 3,
+    "rule_composition": 3,
+}
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
 
 
@@ -96,46 +106,61 @@ def _render_setup_screen(
     if not mutations_available:
         st.warning(catalog.t(lang, "runtime.queue_required"))
 
+    st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
+    st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
+    steps = st.tabs(
+        [
+            "1. 世界観",
+            "2. 役職",
+            "3. 登場人物",
+            "4. ルール",
+        ]
+    )
     for element in screens.elements("setup", "main"):
         if element.id == "header":
-            st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
-            st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
-        elif element.id == "preset":
-            _render_setup_preset_selector(
-                st, setup_options=setup_options, catalog=catalog, lang=lang
-            )
-        elif element.id == "scenario":
-            _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
-        elif element.id == "narration":
-            _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
-        elif element.id == "seed":
-            seed_value = _render_seed_controls(
-                st,
-                settings,
-                catalog,
-                lang,
-                column_count=cast(int, screens.layout("setup").seed_columns),
-            )
-        elif element.id == "role_counts":
-            counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
-        elif element.id == "character_assignments":
-            _render_character_assignments(
-                st,
-                setup_options=setup_options,
-                catalog=catalog,
-                lang=lang,
-            )
-        elif element.id == "local_rules":
-            _render_local_rules_settings(
-                st, setup_options=setup_options, catalog=catalog, lang=lang
-            )
-        elif element.id == "rule_composition":
-            rule_composition = _render_rule_composition(
-                st,
-                setup_options,
-                catalog=catalog,
-                lang=lang,
-            )
+            continue
+        step_index = SETUP_STEP_BY_ELEMENT.get(element.id)
+        if step_index is None:
+            continue
+        with steps[step_index]:
+            if element.id == "preset":
+                _render_setup_preset_selector(
+                    st, setup_options=setup_options, catalog=catalog, lang=lang
+                )
+            elif element.id == "scenario":
+                _render_scenario_settings(
+                    st, setup_options=setup_options, catalog=catalog, lang=lang
+                )
+            elif element.id == "narration":
+                _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
+            elif element.id == "seed":
+                seed_value = _render_seed_controls(
+                    st,
+                    settings,
+                    catalog,
+                    lang,
+                    column_count=cast(int, screens.layout("setup").seed_columns),
+                )
+            elif element.id == "role_counts":
+                counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
+            elif element.id == "character_assignments":
+                _render_character_assignments(
+                    st,
+                    setup_options=setup_options,
+                    catalog=catalog,
+                    lang=lang,
+                )
+            elif element.id == "local_rules":
+                _render_local_rules_settings(
+                    st, setup_options=setup_options, catalog=catalog, lang=lang
+                )
+            elif element.id == "rule_composition":
+                rule_composition = _render_rule_composition(
+                    st,
+                    setup_options,
+                    catalog=catalog,
+                    lang=lang,
+                )
 
     counts = role_counts(st.session_state, setup_options)
     active_rules = rules(st.session_state, setup_options)
@@ -430,7 +455,7 @@ def _render_role_counts(
                 max_value=setup_options.player_count["max"],
                 step=1,
                 key=widget_key,
-                help=f"{catalog.label(lang, 'faction', role.faction)} / "
+                help=f"{catalog.label(lang, 'faction', role.identity_faction)} / "
                 f"{', '.join(ability_names) if ability_names else catalog.t(lang, 'common.none')}",
             )
         )

@@ -3763,6 +3763,7 @@ dependencies = [
     { name = "rich" },
     { name = "structlog" },
     { name = "supabase-auth" },
+    { name = "toml" },
     { name = "typer" },
 ]
 
@@ -3830,6 +3831,7 @@ requires-dist = [
     { name = "streamlit", marker = "extra == 'streamlit'", specifier = ">=1.41,<2" },
     { name = "structlog", specifier = ">=24.4,<26" },
     { name = "supabase-auth", specifier = ">=2.31,<3" },
+    { name = "toml", specifier = ">=0.10,<1" },
     { name = "typer", specifier = ">=0.15,<1" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'api'", specifier = ">=0.34,<1" },
 ]

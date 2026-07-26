@@ -45,9 +45,25 @@ class GameSetupOptionsResult(ApplicationModel):
     default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
     scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    narration_profiles: dict[str, dict[str, Any]] = Field(default_factory=dict)
     setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
     rule_composition: dict[str, Any] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetupValidationResult(ApplicationModel):
+    """Normalized summary of one semantically valid complete setup."""
+
+    schema_version: int
+    player_count: int
+    theme_id: str
+    theme_name: str
+    role_ids: tuple[str, ...]
+    ability_ids: tuple[str, ...]
+    setup_checksum: str
+    mechanics_checksum: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -136,6 +152,7 @@ class GameRevealResult(ApplicationModel):
     scenario_id: str | None = None
     scenario_name: str | None = None
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    theme: dict[str, Any] | None = None
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     players: list[GameRevealPlayer]
@@ -242,6 +259,7 @@ class PublicGameState(ApplicationModel):
     scenario_id: str | None = None
     scenario_name: str | None = None
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    theme: dict[str, Any] | None = None
     players: list[PublicPlayerState]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
@@ -262,6 +280,9 @@ class PublicGameSummary(ApplicationModel):
     day: int
     version: int
     seed: int | None
+    scenario_id: str | None = None
+    scenario_name: str | None = None
+    theme: dict[str, Any] | None = None
     player_count: int
     alive_count: int
     winner: Winner | None = None

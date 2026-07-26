@@ -43,7 +43,6 @@ from werewolf_agent.settings.messages import (
     message_field_must_be_le_field,
     message_game_default_player_count_between,
     message_game_min_players_le_max_players,
-    message_game_setup_description_template_invalid,
     message_mapping_item_must_use_separator,
     message_settings_llm_base_url_required,
     message_settings_openai_api_key_required,
@@ -175,16 +174,6 @@ class AppSettings(
         """Return the Supabase JWKS endpoint used for key rotation."""
         configured = self.supabase_jwks_url.strip()
         return configured or f"{self.supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
-
-    @property
-    def game_role_name_map(self) -> dict[str, str]:
-        """Return configured public role display names."""
-        return split_mapping(self.game_role_names, field_name="game_role_names")
-
-    @property
-    def game_phase_name_map(self) -> dict[str, str]:
-        """Return configured public phase display names."""
-        return split_mapping(self.game_phase_names, field_name="game_phase_names")
 
     @property
     def streamlit_i18n_path(self) -> Path | None:
@@ -453,9 +442,6 @@ class AppSettings(
     @field_validator(
         "game_supported_agent_name",
         "game_default_setup_preset_id",
-        "game_setup_description_template",
-        "game_role_names",
-        "game_phase_names",
         mode="before",
     )
     @classmethod
@@ -505,16 +491,6 @@ class AppSettings(
             raise ValueError(message_game_min_players_le_max_players())
         if not self.game_min_players <= self.game_default_player_count <= self.game_max_players:
             raise ValueError(message_game_default_player_count_between())
-        split_mapping(self.game_role_names, field_name="game_role_names")
-        split_mapping(self.game_phase_names, field_name="game_phase_names")
-        try:
-            self.game_setup_description_template.format(
-                min_players=self.game_min_players,
-                max_players=self.game_max_players,
-                default_player_count=self.game_default_player_count,
-            )
-        except (KeyError, ValueError) as exc:
-            raise ValueError(message_game_setup_description_template_invalid()) from exc
         self._validate_llm_settings()
         return self
 

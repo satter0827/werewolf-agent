@@ -13,15 +13,13 @@ export function RecordsPanel({ games, onResumeGame }: RecordsPanelProps) {
       <div className="wa-record-list">
         {games.map((game, index) => (
           <article className="wa-record-row" key={game.game_id}>
-            <span>村 {index + 1}</span>
-            <strong>{game.status === "completed" ? "終わった村" : "進行中の村"}</strong>
+            <span>{game.scenario_name ?? `ゲーム ${index + 1}`}</span>
+            <strong>{game.status === "completed" ? "終了" : "進行中"}</strong>
             <p>
               {game.day}日目 / 生存 {game.alive_count}人 /{" "}
-              {game.winner === "village"
-                ? "村人陣営の勝利"
-                : game.winner === "werewolf"
-                  ? "人狼陣営の勝利"
-                  : "勝負中"}
+              {game.winner
+                ? `${game.theme?.faction_names?.[game.winner] ?? game.winner}の勝利`
+                : "勝負中"}
             </p>
             <button
               className="wa-record-resume"

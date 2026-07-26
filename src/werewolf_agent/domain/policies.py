@@ -50,7 +50,13 @@ def _resolve_action(
         next_snapshot, events = day_speech.record_day_speech(snapshot, action)
         return next_snapshot, pending_actions, events
     if action.type is ActionType.VOTE:
-        votes = voting.record_vote(snapshot, snapshot.config, pending_actions.votes, action)
+        votes = voting.record_vote(
+            snapshot,
+            snapshot.config,
+            pending_actions.votes,
+            action,
+            candidates=pending_actions.revote_candidates,
+        )
         return (
             snapshot,
             replace(pending_actions, votes=votes),
@@ -99,12 +105,15 @@ def _advance_without_victory(
         pending_actions.votes,
         pending_actions.night_actions,
         random_source,
+        vote_round=pending_actions.vote_round,
         victory_evaluator=lambda _state: None,
     )
     next_pending = replace(
         pending_actions,
         votes={} if outcome.clear_votes else pending_actions.votes,
         night_actions={} if outcome.clear_night_actions else pending_actions.night_actions,
+        vote_round=outcome.next_vote_round,
+        revote_candidates=outcome.revote_candidates,
     )
     return outcome.snapshot, next_pending, outcome.events
 

@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
 from werewolf_agent.adapters.ports import GameClient, PublicClient
-from werewolf_agent.clients.requests import build_create_game_request
+from werewolf_agent.clients.requests import build_create_game_request, build_custom_setup_request
 from werewolf_agent.clients.streamlit.events import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
@@ -136,18 +136,50 @@ def create_game_from_setup(
 ) -> GameResponse:
     """Create a game from the shared Play/Observe setup."""
     seed = int(seed_text) if seed_text.strip() else None
+    setup_options = load_setup_options(settings=settings)
+    if custom_roles or custom_characters:
+        from werewolf_agent.contracts.schemas import CharacterDefinitionView, RoleDefinitionView
+
+        setup_options = setup_options.model_copy(
+            update={
+                "roles": [
+                    *setup_options.roles,
+                    *[
+                        RoleDefinitionView(
+                            id=role.id,
+                            name=role.name,
+                            identity_faction=role.identity_faction,
+                            victory_team=role.victory_team,
+                            objective=role.objective,
+                            abilities=role.abilities,
+                            description=role.description,
+                            difficulty=role.difficulty,
+                        )
+                        for role in custom_roles
+                    ],
+                ],
+                "characters": [
+                    *setup_options.characters,
+                    *[
+                        CharacterDefinitionView.model_validate(character.model_dump(mode="json"))
+                        for character in custom_characters
+                    ],
+                ],
+            }
+        )
+    setup_request = build_custom_setup_request(
+        setup_options=setup_options,
+        role_counts=role_counts,
+        rules=rules,
+        scenario_id=scenario_id or setup_options.default_scenario_id or "",
+        character_assignments=character_assignments,
+        rule_composition=rule_composition or setup_options.rule_composition.default,
+    )
     request = build_create_game_request(
         seed=seed,
-        role_counts=role_counts,
         manual_player_id=manual_player_id,
-        rules=rules,
-        scenario_id=scenario_id,
-        setup_preset_id=setup_preset_id,
+        setup=setup_request,
         narration_mode=narration_mode,
-        character_assignments=character_assignments,
-        custom_roles=custom_roles,
-        custom_characters=custom_characters,
-        rule_composition=rule_composition,
     )
     response = build_streamlit_client(settings).create_game(request)
     logger.info(

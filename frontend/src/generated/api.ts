@@ -288,6 +288,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/setups/validate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Validate Setup
+         * @description Validate one complete setup through the canonical application boundary.
+         */
+        post: operations["setup_validate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/status": {
         parameters: {
             query?: never;
@@ -317,16 +337,44 @@ export interface components {
          * @description Public ability metadata for setup screens.
          */
         AbilityDefinitionView: {
+            /** Action */
+            action: string;
             /** Description */
             description: string;
             /** Difficulty */
             difficulty: number;
+            /** Effect */
+            effect: string;
             /** Id */
             id: string;
+            /** Max Uses */
+            max_uses?: number | null;
             /** Name */
             name: string;
+            /** Phase */
+            phase: string;
+            /** Resolution Policy */
+            resolution_policy: string;
+            /**
+             * Resolution Priority
+             * @default 100
+             */
+            resolution_priority: number;
+            /**
+             * Result Visibility
+             * @default private
+             * @enum {string}
+             */
+            result_visibility: "private" | "public" | "none";
+            /**
+             * Start Day
+             * @default 1
+             */
+            start_day: number;
             /** Target Policy */
             target_policy: string;
+            /** Validation Policy */
+            validation_policy: string;
         };
         /**
          * AdminLlmTraceListResponse
@@ -459,30 +507,18 @@ export interface components {
          * @description Payload for creating one game.
          */
         CreateGameRequest: {
-            /** Character Assignments */
-            character_assignments?: {
-                [key: string]: string;
-            };
-            /** Custom Characters */
-            custom_characters?: components["schemas"]["CustomCharacterDefinitionRequest"][];
-            /** Custom Roles */
-            custom_roles?: components["schemas"]["CustomRoleDefinitionRequest"][];
             /** Manual Player Id */
             manual_player_id?: string | null;
-            /** Narration Mode */
-            narration_mode?: ("none" | "standard" | "rich") | null;
-            /** Role Counts */
-            role_counts: {
-                [key: string]: number;
-            };
-            rule_composition?: components["schemas"]["RuleCompositionSelection"] | null;
-            rules?: components["schemas"]["LocalRulesSettings"] | null;
-            /** Scenario Id */
-            scenario_id?: string | null;
+            /**
+             * Narration Mode
+             * @default standard
+             * @enum {string}
+             */
+            narration_mode: "none" | "standard";
             /** Seed */
             seed?: number | null;
-            /** Setup Preset Id */
-            setup_preset_id?: string | null;
+            /** Setup */
+            setup: components["schemas"]["PresetSetupRequest"] | components["schemas"]["CustomSetupRequest"];
         };
         /**
          * CustomCharacterDefinitionRequest
@@ -507,28 +543,16 @@ export interface components {
             speaking_style: string;
         };
         /**
-         * CustomRoleDefinitionRequest
-         * @description Session-scoped role definition supplied by a UI client.
+         * CustomSetupRequest
+         * @description Supply a complete custom setup.
          */
-        CustomRoleDefinitionRequest: {
-            /** Abilities */
-            abilities?: string[];
+        CustomSetupRequest: {
             /**
-             * Description
-             * @default
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
-            description: string;
-            /**
-             * Difficulty
-             * @default 1
-             */
-            difficulty: number;
-            /** Faction */
-            faction: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
+            mode: "custom";
+            setup: components["schemas"]["GameSetupDocumentRequest"];
         };
         /**
          * GameListResponse
@@ -564,7 +588,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "pass";
+            type: "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "apothecary_heal" | "apothecary_poison" | "pass";
         };
         /**
          * GameRevealInspection
@@ -605,14 +629,16 @@ export interface components {
             alive: boolean;
             /** Eliminated Day */
             eliminated_day?: number | null;
-            /** Faction */
-            faction: string;
             /** Id */
             id: string;
+            /** Identity Faction */
+            identity_faction: string;
             /** Killed Night */
             killed_night?: number | null;
             /** Name */
             name: string;
+            /** Objective */
+            objective: string;
             /** Role */
             role: string;
             /**
@@ -620,6 +646,8 @@ export interface components {
              * @enum {string}
              */
             status: "alive" | "dead";
+            /** Victory Team */
+            victory_team: string;
         };
         /**
          * GameRevealResponse
@@ -639,7 +667,7 @@ export interface components {
              * @default standard
              * @enum {string}
              */
-            narration_mode: "none" | "standard" | "rich";
+            narration_mode: "none" | "standard";
             /** Nights */
             nights?: components["schemas"]["GameRevealNight"][];
             /** Pending Night Actions */
@@ -674,7 +702,7 @@ export interface components {
             /** Votes */
             votes?: components["schemas"]["GameRevealVote"][];
             /** Winner */
-            winner?: ("village" | "werewolf") | null;
+            winner?: ("village" | "werewolf" | "fox") | null;
         };
         /**
          * GameRevealVote
@@ -701,6 +729,21 @@ export interface components {
             };
         };
         /**
+         * GameSetupDocumentRequest
+         * @description Complete portable setup document.
+         */
+        GameSetupDocumentRequest: {
+            mechanics: components["schemas"]["SetupMechanicsSettings"];
+            roster?: components["schemas"]["SetupRosterSettings"];
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            theme: components["schemas"]["StoryThemeSettings"];
+        };
+        /**
          * GameSetupOptionsResponse
          * @description Public setup metadata for client bootstrapping.
          */
@@ -714,7 +757,7 @@ export interface components {
              * @default standard
              * @enum {string}
              */
-            default_narration_mode: "none" | "standard" | "rich";
+            default_narration_mode: "none" | "standard";
             /** Default Role Counts */
             default_role_counts: {
                 [key: string]: number;
@@ -807,10 +850,11 @@ export interface components {
             day_speech_limit_per_player: number;
             /** Enable First Night Attack */
             enable_first_night_attack: boolean;
-            /** Enable No Elimination On Tie */
-            enable_no_elimination_on_tie: boolean;
-            /** Enable Random Elimination On Tie */
-            enable_random_elimination_on_tie: boolean;
+            /**
+             * Medium Result Detail
+             * @enum {string}
+             */
+            medium_result_detail: "faction" | "role";
             /**
              * Require All Actions Before Advance
              * @default true
@@ -818,6 +862,26 @@ export interface components {
             require_all_actions_before_advance: boolean;
             /** Reveal Role On Death */
             reveal_role_on_death: boolean;
+            /**
+             * Seer Result Detail
+             * @enum {string}
+             */
+            seer_result_detail: "faction" | "role";
+            /**
+             * Starting Phase
+             * @enum {string}
+             */
+            starting_phase: "night" | "day_discussion";
+            /**
+             * Vote Tie Resolution
+             * @enum {string}
+             */
+            vote_tie_resolution: "no_elimination" | "random_elimination" | "revote";
+            /**
+             * Wolf Attack Tie Resolution
+             * @enum {string}
+             */
+            wolf_attack_tie_resolution: "random_target" | "no_attack";
         };
         /**
          * OperationResponse
@@ -882,7 +946,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "pass";
+            type: "speech" | "vote" | "seer_inspect" | "knight_guard" | "werewolf_attack" | "apothecary_heal" | "apothecary_poison" | "pass";
         };
         /**
          * PlayerObservationResponse
@@ -897,6 +961,19 @@ export interface components {
             };
             /** Player Id */
             player_id: string;
+        };
+        /**
+         * PresetSetupRequest
+         * @description Select a packaged setup preset.
+         */
+        PresetSetupRequest: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            mode: "preset";
+            /** Preset Id */
+            preset_id: string;
         };
         /**
          * ProblemDetails
@@ -966,7 +1043,7 @@ export interface components {
              * @default standard
              * @enum {string}
              */
-            narration_mode: "none" | "standard" | "rich";
+            narration_mode: "none" | "standard";
             /**
              * Phase
              * @enum {string}
@@ -989,12 +1066,13 @@ export interface components {
             summary: {
                 [key: string]: unknown;
             };
+            theme?: components["schemas"]["PublicTheme"] | null;
             /** Updated At */
             updated_at?: string | null;
             /** Version */
             version: number;
             /** Winner */
-            winner?: ("village" | "werewolf") | null;
+            winner?: ("village" | "werewolf" | "fox") | null;
         };
         /**
          * PublicGameSummary
@@ -1021,6 +1099,10 @@ export interface components {
             phase: "night" | "day_discussion" | "voting" | "finished";
             /** Player Count */
             player_count: number;
+            /** Scenario Id */
+            scenario_id?: string | null;
+            /** Scenario Name */
+            scenario_name?: string | null;
             /** Seed */
             seed: number | null;
             /**
@@ -1030,6 +1112,7 @@ export interface components {
             status: "running" | "completed";
             /** Step Count */
             step_count: number;
+            theme?: components["schemas"]["PublicTheme"] | null;
             /** Turn Count */
             turn_count: number;
             /**
@@ -1040,7 +1123,7 @@ export interface components {
             /** Version */
             version: number;
             /** Winner */
-            winner?: ("village" | "werewolf") | null;
+            winner?: ("village" | "werewolf" | "fox") | null;
         };
         /**
          * PublicPlayerState
@@ -1052,7 +1135,7 @@ export interface components {
             /** Eliminated Day */
             eliminated_day?: number | null;
             /** Faction */
-            faction?: ("village" | "werewolf") | null;
+            faction?: ("village" | "werewolf" | "fox") | null;
             /** Id */
             id: string;
             /** Killed Night */
@@ -1110,6 +1193,42 @@ export interface components {
             message_max_chars: number;
             /** Timeline Page Size */
             timeline_page_size: number;
+        };
+        /**
+         * PublicTheme
+         * @description Presentation terms selected for one game.
+         */
+        PublicTheme: {
+            /** Ability Names */
+            ability_names: {
+                [key: string]: string;
+            };
+            /** Action Names */
+            action_names: {
+                [key: string]: string;
+            };
+            /** Faction Names */
+            faction_names: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Phase Names */
+            phase_names: {
+                [key: string]: string;
+            };
+            /** Premise */
+            premise: string;
+            /** Role Names */
+            role_names: {
+                [key: string]: string;
+            };
+            /** Role Objectives */
+            role_objectives: {
+                [key: string]: string;
+            };
         };
         /**
          * PublicUiConfig
@@ -1173,12 +1292,16 @@ export interface components {
              * @default 1
              */
             difficulty: number;
-            /** Faction */
-            faction: string;
             /** Id */
             id: string;
+            /** Identity Faction */
+            identity_faction: string;
             /** Name */
             name: string;
+            /** Objective */
+            objective: string;
+            /** Victory Team */
+            victory_team: string;
         };
         /**
          * RuleCompositionOptionsView
@@ -1301,12 +1424,42 @@ export interface components {
          * @description Public scenario metadata for setup screens.
          */
         ScenarioDefinitionView: {
+            /** Ability Names */
+            ability_names?: {
+                [key: string]: string;
+            };
+            /** Action Names */
+            action_names?: {
+                [key: string]: string;
+            };
+            /** Faction Names */
+            faction_names?: {
+                [key: string]: string;
+            };
             /** Id */
             id: string;
             /** Name */
             name: string;
+            /** Narration */
+            narration?: {
+                [key: string]: string[];
+            };
+            /** Phase Names */
+            phase_names?: {
+                [key: string]: string;
+            };
+            /** Premise */
+            premise: string;
             /** Recommended Setup Preset */
             recommended_setup_preset?: string | null;
+            /** Role Names */
+            role_names?: {
+                [key: string]: string;
+            };
+            /** Role Objectives */
+            role_objectives?: {
+                [key: string]: string;
+            };
             /** Summary */
             summary: string;
         };
@@ -1331,6 +1484,71 @@ export interface components {
             llm_mode: "fake" | "paid";
         };
         /**
+         * SetupAbilityDefinition
+         * @description Wire definition for one registered, typed ability.
+         */
+        SetupAbilityDefinition: {
+            /** Action */
+            action: string;
+            /** Description */
+            description: string;
+            /**
+             * Difficulty
+             * @default 1
+             */
+            difficulty: number;
+            /**
+             * Effect
+             * @enum {string}
+             */
+            effect: "attack" | "inspection" | "protection" | "poison" | "knowledge" | "reaction" | "immunity" | "vulnerability" | "pass";
+            /** Label */
+            label: string;
+            /** Max Uses */
+            max_uses?: number | null;
+            /** Phase */
+            phase: string;
+            /** Resolution Policy */
+            resolution_policy: string;
+            /**
+             * Resolution Priority
+             * @default 100
+             */
+            resolution_priority: number;
+            /**
+             * Result Visibility
+             * @default private
+             * @enum {string}
+             */
+            result_visibility: "private" | "public" | "none";
+            /** Start Day */
+            start_day: number;
+            /** Target Policy */
+            target_policy: string;
+            /** Validation Policy */
+            validation_policy: string;
+        };
+        /**
+         * SetupMechanicsSettings
+         * @description Deterministic mechanics supplied with a custom setup.
+         */
+        SetupMechanicsSettings: {
+            /** Abilities */
+            abilities: {
+                [key: string]: components["schemas"]["SetupAbilityDefinition"];
+            };
+            composition?: components["schemas"]["RuleCompositionSelection"];
+            /** Role Counts */
+            role_counts: {
+                [key: string]: number;
+            };
+            /** Roles */
+            roles: {
+                [key: string]: components["schemas"]["SetupRoleDefinition"];
+            };
+            rules: components["schemas"]["LocalRulesSettings"];
+        };
+        /**
          * SetupPresetDefinitionView
          * @description Public setup preset metadata for setup screens.
          */
@@ -1345,6 +1563,116 @@ export interface components {
             };
             /** Scenario Id */
             scenario_id: string;
+        };
+        /**
+         * SetupRoleDefinition
+         * @description Wire definition for one stable role ID.
+         */
+        SetupRoleDefinition: {
+            /**
+             * Abilities
+             * @default []
+             */
+            abilities: string[];
+            /** Description */
+            description: string;
+            /**
+             * Difficulty
+             * @default 1
+             */
+            difficulty: number;
+            /**
+             * Identity Faction
+             * @enum {string}
+             */
+            identity_faction: "village" | "werewolf" | "fox";
+            /** Label */
+            label: string;
+            /** Objective */
+            objective: string;
+            /**
+             * Victory Team
+             * @enum {string}
+             */
+            victory_team: "village" | "werewolf" | "fox";
+        };
+        /**
+         * SetupRosterSettings
+         * @description Characters and fixed seat assignments supplied with a setup.
+         */
+        SetupRosterSettings: {
+            /** Assignments */
+            assignments?: {
+                [key: string]: string;
+            };
+            /** Characters */
+            characters?: {
+                [key: string]: components["schemas"]["CustomCharacterDefinitionRequest"];
+            };
+        };
+        /**
+         * SetupValidationResponse
+         * @description Normalized summary returned after semantic setup validation.
+         */
+        SetupValidationResponse: {
+            /** Ability Ids */
+            ability_ids: string[];
+            /** Mechanics Checksum */
+            mechanics_checksum: string;
+            /** Player Count */
+            player_count: number;
+            /** Role Ids */
+            role_ids: string[];
+            /** Schema Version */
+            schema_version: number;
+            /** Setup Checksum */
+            setup_checksum: string;
+            /** Theme Id */
+            theme_id: string;
+            /** Theme Name */
+            theme_name: string;
+        };
+        /**
+         * StoryThemeSettings
+         * @description Presentation-only terminology supplied with a game setup.
+         */
+        StoryThemeSettings: {
+            /** Ability Names */
+            ability_names: {
+                [key: string]: string;
+            };
+            /** Action Names */
+            action_names: {
+                [key: string]: string;
+            };
+            /** Faction Names */
+            faction_names: {
+                [key: string]: string;
+            };
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Narration */
+            narration?: {
+                [key: string]: string[];
+            };
+            /** Phase Names */
+            phase_names: {
+                [key: string]: string;
+            };
+            /** Premise */
+            premise: string;
+            /** Role Names */
+            role_names: {
+                [key: string]: string;
+            };
+            /** Role Objectives */
+            role_objectives: {
+                [key: string]: string;
+            };
+            /** Summary */
+            summary: string;
         };
         /** ValidationError */
         ValidationError: {
@@ -2974,6 +3302,120 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    setup_validate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GameSetupDocumentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SetupValidationResponse"];
                 };
             };
             /** @description RFC 9457 Problem Details */

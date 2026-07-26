@@ -29,7 +29,15 @@ uv run --no-sync python -m scripts.supabase preflight
 CLI で再現可能な game を実行します。
 
 ```powershell
-uv run --no-sync werewolf-agent game play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run --no-sync werewolf-agent game play --preset standard_6 --seed 1
+```
+
+設定を編集する場合は、完全なsetup documentをTOMLへ出力してから検証します。
+
+```powershell
+uv run --no-sync werewolf-agent setup export --preset standard_6 --output-file game-setup.toml
+uv run --no-sync werewolf-agent setup validate game-setup.toml
+uv run --no-sync werewolf-agent game create --setup-file game-setup.toml --seed 1
 ```
 
 各 process は console entrypoint または `.vscode/launch.json` から起動できます。

@@ -75,7 +75,7 @@ class SupabaseGameRepository(GameRepository):
                 str(game.public_state.get("narration_mode") or "standard"),
                 Jsonb(game.public_state),
                 Jsonb(_json_object(game.config.get("definition_snapshot"))),
-                str(game.config.get("engine_version") or "0.1.0"),
+                str(game.config["engine_schema_version"]),
                 str(game.config.get("llm_mode") or "fake"),
                 _state_checksum(game.version, game.private_state, game.public_state),
                 now,
@@ -377,16 +377,20 @@ class SupabaseGameRepository(GameRepository):
             """
             insert into public.game_summaries (
               game_id, owner_user_id, status, phase, day, version, seed,
+              scenario_id, scenario_name, theme,
               player_count, alive_count, winner, step_count, turn_count,
               created_at, updated_at, completed_at
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (game_id) do update set
               status = excluded.status,
               phase = excluded.phase,
               day = excluded.day,
               version = excluded.version,
               seed = excluded.seed,
+              scenario_id = excluded.scenario_id,
+              scenario_name = excluded.scenario_name,
+              theme = excluded.theme,
               player_count = excluded.player_count,
               alive_count = excluded.alive_count,
               winner = excluded.winner,
@@ -403,6 +407,11 @@ class SupabaseGameRepository(GameRepository):
                 game.day,
                 game.version,
                 game.seed,
+                public_state.get("scenario_id"),
+                public_state.get("scenario_name"),
+                Jsonb(_json_object(public_state.get("theme")))
+                if public_state.get("theme") is not None
+                else None,
                 len(public_state.get("players") or []),
                 int(state_summary.get("alive_count") or 0),
                 public_state.get("winner"),

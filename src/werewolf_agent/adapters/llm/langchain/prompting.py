@@ -177,16 +177,33 @@ def _prompt_inputs(
     target_rankings: Mapping[str, list[str]] | None = None,
 ) -> dict[str, str]:
     _ = parser
+    game_context = observation.game_context
     return {
         "player_id": player_id,
-        "phase": observation.phase.value,
+        "phase": (
+            game_context.phase_names.get(observation.phase.value, observation.phase.value)
+            if game_context is not None
+            else observation.phase.value
+        ),
         "day": str(observation.day),
-        "role": observation.role if observation.role is not None else "",
+        "role": (
+            game_context.role_name
+            if game_context is not None
+            else observation.role
+            if observation.role is not None
+            else ""
+        ),
         "scenario_name": observation.scenario.name if observation.scenario is not None else "",
         "scenario_premise": (
             observation.scenario.premise if observation.scenario is not None else ""
         ),
         "character_profile": _character_profile_text(observation.profile),
+        "game_context_json": json.dumps(
+            (game_context.model_dump(mode="json") if game_context is not None else {}),
+            ensure_ascii=False,
+            separators=PROMPT_JSON_SEPARATORS,
+            sort_keys=True,
+        ),
         "available_actions": json.dumps(
             [action.value for action in observation.available_actions],
             ensure_ascii=False,
@@ -229,6 +246,7 @@ def _compact_observation(
         "me": observation.me.model_dump(mode="json"),
         "players": [player.model_dump(mode="json") for player in observation.players],
         "known_roles": dict(observation.known_roles),
+        "known_factions": dict(observation.known_factions),
         "speeches": [
             speech.model_dump(mode="json")
             for speech in observation.speeches[-PROMPT_RECENT_SPEECH_LIMIT:]
@@ -238,6 +256,8 @@ def _compact_observation(
             for vote_round in observation.vote_rounds[-PROMPT_RECENT_VOTE_ROUND_LIMIT:]
         ],
     }
+    if observation.game_context is not None:
+        payload["game_context"] = observation.game_context.model_dump(mode="json")
     if role_hint:
         payload["strategy_hint"] = role_hint
     if target_rankings:
