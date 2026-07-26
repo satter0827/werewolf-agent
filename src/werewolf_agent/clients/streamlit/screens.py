@@ -35,6 +35,7 @@ ScreenElementId = Literal[
     "role_counts",
     "character_assignments",
     "local_rules",
+    "rule_composition",
     "summary_metrics",
     "validation_messages",
     "manual_seat",
@@ -85,6 +86,7 @@ _ALLOWED_ELEMENTS: Final[Mapping[tuple[str, str], frozenset[str]]] = {
             "role_counts",
             "character_assignments",
             "local_rules",
+            "rule_composition",
         }
     ),
     ("setup", "summary"): frozenset(
@@ -122,6 +124,12 @@ _ALLOWED_VARIANTS: Final[Mapping[tuple[str, str, str], frozenset[str]]] = {
     ("game", "main", "timeline"): frozenset({"desktop"}),
     ("game", "bottom", "timeline"): frozenset({"mobile"}),
 }
+_REQUIRED_ELEMENTS: Final[Mapping[str, frozenset[str]]] = {
+    "sidebar": frozenset({"brand", "navigation"}),
+    "setup": frozenset({"header", "role_counts", "local_rules", "rule_composition", "submit"}),
+    "settings": frozenset({"preferences", "role_definitions", "character_definitions"}),
+    "game": frozenset({"status_bar", "game_table", "timeline", "hand_panel", "action_form"}),
+}
 
 
 class ScreenElement(BaseModel):
@@ -129,7 +137,6 @@ class ScreenElement(BaseModel):
 
     id: ScreenElementId
     order: int = Field(ge=0)
-    enabled: bool = True
     variant: ElementVariant = ""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -167,6 +174,15 @@ class ScreenDefinition(BaseModel):
 class ScreenCatalog(BaseModel):
     """Validated Streamlit screen definition catalog."""
 
+    workspace_order: tuple[Literal["play", "observe", "records", "admin", "preferences"], ...] = (
+        "play",
+        "observe",
+        "records",
+        "admin",
+        "preferences",
+    )
+    information_density: Literal["comfortable", "compact"] = "comfortable"
+    analysis_collapsed: bool = True
     sidebar: ScreenDefinition
     setup: ScreenDefinition
     settings: ScreenDefinition
@@ -177,10 +193,21 @@ class ScreenCatalog(BaseModel):
     @model_validator(mode="after")
     def validate_screen_catalog(self) -> ScreenCatalog:
         """Validate region, element, order, and layout contracts."""
+        expected_workspaces = {"play", "observe", "records", "admin", "preferences"}
+        if set(self.workspace_order) != expected_workspaces or len(self.workspace_order) != 5:
+            raise ValueError("workspace_order must contain each supported workspace exactly once")
         for screen_id in SCREEN_IDS:
             definition = self.screen(screen_id)
             _validate_regions(screen_id, definition)
             _validate_layout(screen_id, definition.layout)
+            present = {
+                element.id for region in definition.regions.values() for element in region.elements
+            }
+            missing = _REQUIRED_ELEMENTS[screen_id] - present
+            if missing:
+                raise ValueError(
+                    f"{screen_id} is missing required elements: {', '.join(sorted(missing))}"
+                )
         return self
 
     def screen(self, screen_id: ScreenId) -> ScreenDefinition:
@@ -196,7 +223,7 @@ class ScreenCatalog(BaseModel):
         region = self.screen(screen_id).regions.get(region_id)
         if region is None:
             return ()
-        return tuple(sorted((item for item in region.elements if item.enabled), key=_sort_element))
+        return tuple(sorted(region.elements, key=_sort_element))
 
     def element_enabled(
         self,
@@ -219,7 +246,9 @@ def load_screen_catalog(settings: AppSettings) -> ScreenCatalog:
     try:
         return ScreenCatalog.model_validate(payload)
     except ValidationError as exc:
-        raise ConfigError(message_streamlit_screen_definition_invalid(exc)) from exc
+        if settings.streamlit_screens_path is None:
+            raise ConfigError(message_streamlit_screen_definition_invalid(exc)) from exc
+        return ScreenCatalog.model_validate(load_streamlit_screens(None))
 
 
 def _sort_element(element: ScreenElement) -> tuple[int, str, str]:

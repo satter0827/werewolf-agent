@@ -46,3 +46,12 @@ def test_game_tables_are_unavailable_through_supabase_data_api() -> None:
     assert "drop function if exists public.is_admin() cascade" in rpc_cleanup
     for private_replacement in ("llm_invocations", "audit_events"):
         assert f"drop table if exists public.{private_replacement}" in migration
+
+
+def test_agent_graph_cleanup_updates_the_private_snapshot_owner() -> None:
+    migration = (
+        ROOT / "supabase" / "migrations" / "20260726000000_adopt_pgmq_and_single_agent_graph.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "update private.game_snapshots\nset config" in migration
+    assert "update public.games\nset config" not in migration

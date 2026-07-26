@@ -127,7 +127,7 @@ uv sync --group dev --extra worker --extra streamlit --extra llm
 ```bash
 python -m scripts.supabase preflight
 uv run --extra worker werewolf-agent-worker run
-uv run werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run --no-sync werewolf-agent game play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 Supabase worker:

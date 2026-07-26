@@ -37,6 +37,7 @@ from werewolf_agent.settings.validation import (
 )
 
 KEY_CURRENT_VIEW = "werewolf_streamlit_current_view"
+KEY_PENDING_VIEW_SCROLL = "werewolf_streamlit_pending_view_scroll"
 KEY_GAME_SETUP_DRAFT = "werewolf_streamlit_game_setup_draft"
 KEY_CUSTOM_ROLE_DEFINITIONS = "werewolf_streamlit_custom_role_definitions"
 KEY_CUSTOM_CHARACTER_DEFINITIONS = "werewolf_streamlit_custom_character_definitions"
@@ -47,7 +48,17 @@ VIEW_OBSERVE_SETUP = "observe_setup"
 VIEW_HISTORY = "history"
 VIEW_GAME = "game"
 VIEW_APP_SETTINGS = "app_settings"
-VIEWS = frozenset({VIEW_PLAY_SETUP, VIEW_OBSERVE_SETUP, VIEW_HISTORY, VIEW_GAME, VIEW_APP_SETTINGS})
+VIEW_ADMIN = "admin"
+VIEWS = frozenset(
+    {
+        VIEW_PLAY_SETUP,
+        VIEW_OBSERVE_SETUP,
+        VIEW_HISTORY,
+        VIEW_GAME,
+        VIEW_APP_SETTINGS,
+        VIEW_ADMIN,
+    }
+)
 
 CUSTOM_ROLE_NO_ABILITIES_TEXT = "none"
 NARRATION_MODES: tuple[NarrationMode, ...] = (
@@ -137,7 +148,16 @@ def current_view(session: MutableMapping[str, Any]) -> str:
 
 def switch_view(session: MutableMapping[str, Any], view: str) -> None:
     """Switch the current Streamlit view."""
-    session[KEY_CURRENT_VIEW] = view if view in VIEWS else VIEW_PLAY_SETUP
+    next_view = view if view in VIEWS else VIEW_PLAY_SETUP
+    if current_view(session) == next_view:
+        return
+    session[KEY_CURRENT_VIEW] = next_view
+    session[KEY_PENDING_VIEW_SCROLL] = True
+
+
+def consume_pending_view_scroll(session: MutableMapping[str, Any]) -> bool:
+    """Consume the one-shot scroll reset requested by a view transition."""
+    return bool(session.pop(KEY_PENDING_VIEW_SCROLL, False))
 
 
 def game_setup_draft(session: MutableMapping[str, Any]) -> GameSetupDraft:

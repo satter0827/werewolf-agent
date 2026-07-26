@@ -26,7 +26,9 @@ React から Supabase へ直接接続する用途は Auth に限定し、
 ゲームテーブルは Data API から参照させない。
 
 完全状態を返す reveal は、管理者認可と専用設定を通過する HTTP route に限定する。
-通常の `GameClient`、React の game data client、CLI、Streamlit からは呼び出せない。
+通常の `GameClient`とReactのgame data clientからは呼び出せない。CLIとStreamlitの
+管理者領域は、管理者認可を通過した`AdminClient`だけから呼び出す。完全情報を通常clientで
+取得してから画面で隠す実装は禁止する。
 
 並行更新は repository 境界で検出する。worker の operation は取得、実行、完了または
 失敗の状態を持ち、中断後に未確定な操作を成功扱いしない。

@@ -1,10 +1,10 @@
 """生成contract検査gate。"""
 
-import shutil
 import sys
 import time
 from pathlib import Path
 
+from scripts._infra.node import node_executable
 from scripts._infra.process import (
     REPOSITORY_ROOT,
     CommandResult,
@@ -113,7 +113,7 @@ def check_openapi_contract(context: RunContext, _: Path) -> CommandResult:
     if result.returncode != 0:
         return result
     frontend_directory = REPOSITORY_ROOT / "frontend"
-    node = shutil.which("node") or "node"
+    node = node_executable()
     cli = frontend_directory / "node_modules" / "openapi-typescript" / "bin" / "cli.js"
     if not cli.is_file():
         raise EnvironmentBlockedError(

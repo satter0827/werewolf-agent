@@ -45,4 +45,5 @@ def default_setup_options(
             character_id: definition.model_dump(mode="json")
             for character_id, definition in player_definitions.players.players.items()
         },
+        rule_composition=definitions.rules.composition.model_dump(mode="json"),
     )

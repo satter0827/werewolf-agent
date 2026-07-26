@@ -50,6 +50,10 @@ OpenAPIのpositive/negative入力とDeepのstateful操作列、respxはHTTP異�
 子processと実行中runの所有権を担当する。
 構造testはdomainの第三者package、applicationからwire contractへの依存、API routeから
 access/queue adapterへの直接呼出し、公開export allowlist、旧plural faction IDを検出する。
+OpenAPI operation、`FeatureSpec`、CLI command、Streamlit workspaceの対応と、admin機能の
+通常workspace混入も検出する。command登録とrendererのFeature ID宣言も照合し、配置だけが存在する
+未実装を許可しない。rule compositionは選択肢0件、1件、複数件、未知ID、保存済みsnapshot、
+再戦への引継ぎ、replay再現を検証する。
 replay testはcommand、event、state、projection、rule snapshotの改変と旧形式を、最初の
 不一致versionで検出する。必須fieldが欠けた破損記録も例外を公開せずunsupportedとして扱う。
 domain testは復元snapshotのplayer数、役職構成、終局結果、pending action参照の不整合を拒否する。
@@ -63,6 +67,13 @@ test結果、coverage、画面を含む一式でlatestを置換する。失敗ru
 Playwrightは操作、contract、accessibility、console、外部通信を判定する。見た目はpixel
 差分で合否を出さず、setup、進行中、観戦、空の履歴、完了結果を含むdesktop/mobileの
 個別画像、一覧画像、HTML/JSONを人が読む。
+client fault testはAPI、Auth、database、operation queue、worker、LLM、CSS、翻訳、screen
+定義を個別に故障させ、停止範囲が依存するfeatureに限られることを確認する。画面はkeyboard、
+focus保持、label、状態通知、200% zoom、reduced motion、contrastも確認する。
+screen overrideの正常系ではworkspace順序、情報密度、分析領域の初期状態がrendererへ届くことを
+検証し、異常系では必須Featureを含むpackaged defaultへ戻ることを検証する。
+環境準備testはmarkerとimage cacheの不一致、Docker daemon停止、全必須imageありを個別に作り、
+release系profileだけが現在のDocker contextを検査することを確認する。
 coverage、benchmark、面白さ、会話品質にも根拠のない閾値を置かず、観測値と証拠を残す。
 Gameplay reviewは現在のrules、roles、abilitiesからseed固定で一局を完走し、設定、操作列、
 公開timeline、終局を保存する。解決前の行動対象などprivate情報はreview証拠へ保存しない。

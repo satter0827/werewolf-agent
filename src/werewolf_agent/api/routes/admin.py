@@ -22,7 +22,11 @@ from werewolf_agent.contracts.schemas import GameRevealResponse
 router = APIRouter(prefix="/admin", tags=["administration"])
 
 
-@router.get("/games/{game_id}/reveal", response_model=GameRevealResponse)
+@router.get(
+    "/games/{game_id}/reveal",
+    response_model=GameRevealResponse,
+    operation_id="admin_game_reveal",
+)
 def reveal_game(
     game_id: str,
     principal: PrincipalDependency,
@@ -45,6 +49,7 @@ def reveal_game(
 @router.post(
     "/games/{game_id}/replay/verify",
     response_model=ReplayVerificationResponse,
+    operation_id="admin_replay_verify",
 )
 def verify_game_replay(
     game_id: str,
@@ -63,6 +68,7 @@ def verify_game_replay(
 @router.get(
     "/operations/{operation_id}",
     response_model=AdminOperationDiagnosticResponse,
+    operation_id="admin_operation_get",
 )
 def diagnose_operation(
     operation_id: str,
@@ -83,6 +89,7 @@ def diagnose_operation(
 @router.get(
     "/games/{game_id}/llm-traces",
     response_model=AdminLlmTraceListResponse,
+    operation_id="admin_llm_traces_get",
 )
 def list_llm_traces(
     game_id: str,
@@ -104,6 +111,7 @@ def list_llm_traces(
 @router.get(
     "/games/{game_id}/llm-usage",
     response_model=AdminLlmUsageResponse,
+    operation_id="admin_llm_usage_get",
 )
 def get_llm_usage(
     game_id: str,

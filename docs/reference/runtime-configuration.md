@@ -22,10 +22,10 @@ safe representation を使う。
 ## 検証
 
 ```powershell
-uv run werewolf-agent doctor
+uv run werewolf-agent system doctor
 ```
 
-doctor は設定と packaged resource を検証する。database や provider への外部接続を
+`system doctor`は設定とpackaged resourceを検証する。databaseやproviderへの外部接続を
 伴う確認は個別の preflight として実行する。
 
 ## 設定追加

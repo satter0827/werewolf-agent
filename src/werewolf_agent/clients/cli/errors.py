@@ -15,11 +15,12 @@ from werewolf_agent.clients.cli.events import (
 from werewolf_agent.clients.cli.messages import (
     message_error_line,
 )
+from werewolf_agent.clients.presentation import present_error
 from werewolf_agent.contracts import AppError, InternalError
 from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.observability.constants import EVENT_OUTCOME_FAILURE
 from werewolf_agent.observability.levels import log_level_number
-from werewolf_agent.security.redaction import redact_mapping, redact_text
+from werewolf_agent.security.redaction import redact_text
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
@@ -58,6 +59,8 @@ def run_app_command(command: Callable[[], T]) -> T:
 
 
 def _safe_error_message(error: AppError) -> str:
-    context = redact_mapping(error.context)
-    suffix = f" context={context}" if context else ""
-    return message_error_line(redact_text(error.detail), suffix)
+    presentation = present_error(error, language="ja")
+    suffix = ""
+    if presentation.next_action:
+        suffix = f"{suffix} 必要な対応: {presentation.next_action}"
+    return message_error_line(redact_text(presentation.detail), suffix)

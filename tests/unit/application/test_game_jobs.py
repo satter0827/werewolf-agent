@@ -31,6 +31,7 @@ from werewolf_agent.application.definitions import (
     PlayerRoster,
     PlayerSetupDefinitions,
     RoleDefinition,
+    RuleCompositionDefinition,
     ScenarioDefinition,
     SetupPresetDefinition,
 )
@@ -173,6 +174,26 @@ def test_create_game_materializes_an_omitted_seed_for_replay() -> None:
 
     assert isinstance(created.state["seed"], int)
     assert stored.seed == created.state["seed"]
+
+
+def test_create_game_persists_the_selected_rule_composition_snapshot() -> None:
+    deps, repository = dependencies()
+    composition = RuleCompositionDefinition(
+        phases=("day_discussion", "voting", "night"),
+    )
+
+    created = GameApplication(deps).create(create_command(seed=1, rule_composition=composition))
+
+    stored = repository.games[UUID(created.game_id)]
+    assert stored.config["rule_composition"] == composition.model_dump(mode="json")
+
+
+def test_create_game_rejects_an_unregistered_rule_policy() -> None:
+    deps, _repository = dependencies()
+    composition = RuleCompositionDefinition(action_policy="unknown")
+
+    with pytest.raises(ValueError, match="Unknown rule policy: unknown"):
+        GameApplication(deps).create(create_command(seed=1, rule_composition=composition))
 
 
 class InMemoryGameRepository(GameRepository):

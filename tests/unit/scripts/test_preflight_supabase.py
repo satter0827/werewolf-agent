@@ -7,11 +7,17 @@ import pytest
 from scripts._infra.process import CommandResult
 from scripts.supabase import preflight as preflight_supabase
 from scripts.supabase.preflight import (
+    APPLICATION_PREFLIGHT_ARGUMENTS,
     SupabasePreflight,
     is_supported_supabase_version,
     parse_status_environment,
     select_status_environment,
 )
+
+
+def test_application_preflight_uses_the_current_cli_command() -> None:
+    """Supabase preflightが廃止済みのCLI aliasへ戻らない。"""
+    assert APPLICATION_PREFLIGHT_ARGUMENTS == ("system", "doctor")
 
 
 def test_supabase_cli_version_is_pinned() -> None:

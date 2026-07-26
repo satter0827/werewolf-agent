@@ -1,0 +1,19 @@
+.block-container {
+    max-width: 1500px;
+    padding-top: 1rem;
+    padding-bottom: 1.75rem;
+}
+
+.wa-status-grid,
+.wa-seat-grid {
+    display: grid;
+    gap: var(--wa-space-3);
+}
+
+.wa-status-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.wa-seat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+}

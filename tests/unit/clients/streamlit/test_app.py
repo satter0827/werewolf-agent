@@ -1,12 +1,14 @@
 import logging
+from types import SimpleNamespace
 from typing import Any
 
 from werewolf_agent.clients.streamlit.i18n import load_i18n
 from werewolf_agent.clients.streamlit.screens import ScreenCatalog, load_screen_catalog
-from werewolf_agent.clients.streamlit.setup import VIEW_PLAY_SETUP
+from werewolf_agent.clients.streamlit.setup import KEY_PENDING_VIEW_SCROLL, VIEW_PLAY_SETUP
 from werewolf_agent.clients.streamlit.views import game, sidebar
 from werewolf_agent.clients.streamlit.views import runtime as app
 from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.api import SessionResponse
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import LocalRulesSettings
 from werewolf_agent.settings import AppSettings
@@ -29,20 +31,59 @@ def test_sidebar_navigation_order_is_play_observe_history_settings(monkeypatch) 
         screens=screens,
     )
 
-    assert streamlit.sidebar.button_labels == ["▶ プレイ", "◉ 観戦", "▣ 履歴", "⚙ 設定"]
+    assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
 
 
-def test_sidebar_disabled_element_does_not_call_renderer(monkeypatch) -> None:
+def test_sidebar_navigation_uses_configured_workspace_order(monkeypatch) -> None:
     settings = AppSettings(_env_file=None)
     catalog = load_i18n(settings)
-    screens = _sidebar_catalog(brand_enabled=False)
+    screens = load_screen_catalog(settings).model_copy(
+        update={
+            "workspace_order": (
+                "records",
+                "play",
+                "observe",
+                "preferences",
+                "admin",
+            )
+        }
+    )
     streamlit = _StreamlitStub()
 
+    monkeypatch.setattr(sidebar, "_render_sidebar_brand", lambda *args, **kwargs: None)
+    monkeypatch.setattr(sidebar, "_render_history_selector", lambda *args, **kwargs: None)
+
+    sidebar._render_sidebar(
+        streamlit,
+        settings,
+        catalog=catalog,
+        lang="ja",
+        screens=screens,
+        is_admin=True,
+    )
+
+    assert streamlit.sidebar.button_labels == [
+        "記録",
+        "プレイ",
+        "観戦",
+        "表示設定",
+        "管理",
+    ]
+
+
+def test_sidebar_definition_keeps_required_brand(monkeypatch) -> None:
+    settings = AppSettings(_env_file=None)
+    catalog = load_i18n(settings)
+    screens = load_screen_catalog(settings)
+    streamlit = _StreamlitStub()
+
+    rendered: list[str] = []
     monkeypatch.setattr(
         sidebar,
         "_render_sidebar_brand",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("brand renderer called")),
+        lambda *args, **kwargs: rendered.append("brand"),
     )
+    monkeypatch.setattr(sidebar, "_render_history_selector", lambda *args, **kwargs: None)
 
     sidebar._render_sidebar(
         streamlit,
@@ -52,7 +93,8 @@ def test_sidebar_disabled_element_does_not_call_renderer(monkeypatch) -> None:
         screens=screens,
     )
 
-    assert streamlit.sidebar.button_labels == ["▶ プレイ", "◉ 観戦", "▣ 履歴", "⚙ 設定"]
+    assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
+    assert rendered == ["brand"]
 
 
 def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> None:
@@ -66,6 +108,15 @@ def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> Non
 
     monkeypatch.setattr(app, "require_supabase_client_config", lambda _settings: None)
     monkeypatch.setattr(app, "ensure_session", lambda _settings, **_kwargs: object())
+    monkeypatch.setattr(
+        app,
+        "load_session",
+        lambda **_kwargs: SessionResponse(
+            anonymous=True,
+            administrator=False,
+            llm_mode="fake",
+        ),
+    )
     monkeypatch.setattr(
         app,
         "_render_sidebar",
@@ -83,6 +134,26 @@ def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> Non
     assert rendered == ["setup"]
 
 
+def test_pending_view_scroll_is_rendered_once(monkeypatch) -> None:
+    streamlit = _StreamlitStub()
+    rendered: list[tuple[str, int, bool]] = []
+    streamlit.session_state[KEY_PENDING_VIEW_SCROLL] = True
+    monkeypatch.setattr(
+        app.importlib,
+        "import_module",
+        lambda _name: SimpleNamespace(
+            html=lambda value, *, height, scrolling: rendered.append((value, height, scrolling))
+        ),
+    )
+
+    app._render_pending_view_scroll(streamlit)
+    app._render_pending_view_scroll(streamlit)
+
+    assert len(rendered) == 1
+    assert "stMain" in rendered[0][0]
+    assert rendered[0][1:] == (0, False)
+
+
 def test_app_shows_supabase_config_error_before_rendering_game_views(
     monkeypatch,
     caplog,
@@ -96,10 +167,11 @@ def test_app_shows_supabase_config_error_before_rendering_game_views(
     with caplog.at_level(logging.INFO, logger=app.__name__):
         app._render_app(streamlit, settings)
 
-    assert streamlit.error_texts == [
+    assert streamlit.error_texts == []
+    assert streamlit.info_texts == [
         (
-            "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required. "
-            "Create .env from local Supabase values before starting CLI or Streamlit."
+            "現在の状態: 認証を利用できません。必要な対応: Supabase Authの設定を確認し、"
+            "接続の復旧後に画面を再読み込みしてください。"
         )
     ]
     records = [
@@ -109,7 +181,10 @@ def test_app_shows_supabase_config_error_before_rendering_game_views(
     ]
     assert len(records) == 1
     assert records[0].event_outcome == "failure"
-    assert records[0].error_message == streamlit.error_texts[0]
+    assert records[0].error_message == (
+        "WEREWOLF_SUPABASE_URL and WEREWOLF_SUPABASE_PUBLISHABLE_KEY are required. "
+        "Create .env from local Supabase values before starting CLI or Streamlit."
+    )
 
 
 def test_create_game_logs_operational_error(monkeypatch, caplog) -> None:
@@ -154,15 +229,15 @@ def _fail_renderer(name: str):
     return fail
 
 
-def _sidebar_catalog(*, brand_enabled: bool) -> ScreenCatalog:
+def _sidebar_catalog() -> ScreenCatalog:
     return ScreenCatalog.model_validate(
         {
             "sidebar": {
                 "regions": {
                     "main": {
                         "elements": [
-                            {"id": "brand", "order": 10, "enabled": brand_enabled},
-                            {"id": "navigation", "order": 20, "enabled": True},
+                            {"id": "brand", "order": 10},
+                            {"id": "navigation", "order": 20},
                         ]
                     }
                 }
@@ -216,6 +291,9 @@ class _SidebarStub:
     def subheader(self, value: str) -> None:
         pass
 
+    def caption(self, value: str) -> None:
+        pass
+
     def button(self, label: str, **kwargs: Any) -> bool:
         self.button_labels.append(label)
         return False
@@ -245,6 +323,24 @@ class _AppStub(_StreamlitStub):
 
     def header(self, value: str) -> None:
         self.header_texts.append(value)
+
+    def title(self, value: str) -> None:
+        self.header_texts.append(value)
+
+    def caption(self, value: str) -> None:
+        pass
+
+    def subheader(self, value: str) -> None:
+        pass
+
+    def write(self, value: str) -> None:
+        pass
+
+    def warning(self, value: str) -> None:
+        pass
+
+    def selectbox(self, label: str, options: list[str], **kwargs: Any) -> str:
+        return options[kwargs.get("index", 0)]
 
     def error(self, value: str) -> None:
         self.error_texts.append(value)

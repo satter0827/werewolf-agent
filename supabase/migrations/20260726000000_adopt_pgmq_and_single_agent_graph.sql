@@ -35,7 +35,7 @@ drop index if exists public.idx_game_operation_requests_queue;
 alter table public.game_operation_requests
   drop column if exists claimed_until;
 
-update public.games
+update private.game_snapshots
 set config = config - 'agent_strategy_id'
 where config ? 'agent_strategy_id';
 

@@ -58,7 +58,12 @@ class I18nCatalog:
 def load_i18n(settings: AppSettings) -> I18nCatalog:
     """Load the Streamlit translation catalog from settings."""
     payload = load_streamlit_i18n(settings.streamlit_i18n_path)
-    return _catalog_from_payload(payload)
+    try:
+        return _catalog_from_payload(payload)
+    except ConfigError:
+        if settings.streamlit_i18n_path is None:
+            raise
+        return _catalog_from_payload(load_streamlit_i18n(None))
 
 
 def current_language(session: MutableMapping[str, Any], settings: AppSettings) -> Language:

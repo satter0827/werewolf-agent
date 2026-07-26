@@ -17,6 +17,8 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, TextIO
 
+from scripts._infra.node import preferred_node_directory
+
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = REPOSITORY_ROOT / ".werewolf-agent"
 QUALITY_ROOT = ARTIFACT_ROOT / "quality"
@@ -139,6 +141,9 @@ def quality_environment(
 ) -> dict[str, str]:
     """外部providerとtelemetryを無効にした子プロセス環境を返す。"""
     environment = dict(os.environ)
+    node_directory = preferred_node_directory()
+    if node_directory is not None:
+        environment["PATH"] = str(node_directory) + os.pathsep + environment.get("PATH", "")
     if extra:
         environment.update(extra)
     for name in tuple(environment):

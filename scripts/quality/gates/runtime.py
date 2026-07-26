@@ -5,10 +5,10 @@ import time
 from pathlib import Path
 
 from scripts._infra.process import CommandResult, EnvironmentBlockedError, run_command
+from scripts.environment.manager import RUNTIME_IMAGE
 from scripts.quality.models import Gate, RunContext
 
 GATES = ("docker",)
-RUNTIME_IMAGE = "werewolf-agent-quality-runtime:latest"
 
 
 def build() -> list[Gate]:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -59,6 +60,13 @@ def new(
         list[str] | None,
         typer.Option("--role-count", help=HELP_ROLE_COUNT),
     ] = None,
+    rule_composition: Annotated[
+        Path | None,
+        typer.Option(
+            "--rule-composition",
+            help="rule compositionを記述したTOML file",
+        ),
+    ] = None,
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
@@ -70,6 +78,7 @@ def new(
             seed=seed,
             manual_player=manual_player,
             role_count=role_count or [],
+            rule_composition_file=rule_composition,
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -80,6 +89,7 @@ def _new(
     seed: int | None,
     manual_player: str | None,
     role_count: list[str],
+    rule_composition_file: Path | None = None,
     output_format: OutputFormat,
     client: GameClient | None = None,
 ) -> None:
@@ -87,6 +97,7 @@ def _new(
         seed=seed,
         manual_player=manual_player,
         role_count=role_count,
+        rule_composition_file=rule_composition_file,
     )
     api = client or _client()
     created = api.create_game(request)

@@ -15,6 +15,7 @@ from werewolf_agent.contracts.schemas import (
 
 OperationStatus = Literal["queued", "running", "succeeded", "failed"]
 LlmMode = Literal["fake", "paid"]
+RuntimeAvailability = Literal["available", "degraded", "unavailable"]
 
 
 class PublicRuntimeLimits(BaseModel):
@@ -64,6 +65,36 @@ class PublicRuntimeConfig(BaseModel):
     limits: PublicRuntimeLimits
     features: PublicRuntimeFeatures
     ui: PublicUiConfig
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RuntimeComponentStatus(BaseModel):
+    """Sanitized availability for one runtime dependency."""
+
+    component: Literal["api", "authentication", "database", "operation_queue"]
+    status: RuntimeAvailability
+    reason_code: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RuntimeStatusResponse(BaseModel):
+    """Public dependency status used for client-side degradation."""
+
+    status: RuntimeAvailability
+    components: tuple[RuntimeComponentStatus, ...]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SessionResponse(BaseModel):
+    """Allowlisted properties of the authenticated request principal."""
+
+    authenticated: bool = True
+    anonymous: bool
+    administrator: bool
+    llm_mode: LlmMode
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -189,4 +220,8 @@ __all__ = [
     "PublicRuntimeLimits",
     "PublicUiConfig",
     "ReplayVerificationResponse",
+    "RuntimeAvailability",
+    "RuntimeComponentStatus",
+    "RuntimeStatusResponse",
+    "SessionResponse",
 ]

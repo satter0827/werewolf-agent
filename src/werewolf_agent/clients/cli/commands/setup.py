@@ -7,10 +7,8 @@ from typing import Annotated
 
 import typer
 
-from werewolf_agent.clients.cli.commands.common import (
-    _client,
-    _output_format,
-)
+from werewolf_agent.adapters.factory import build_public_client
+from werewolf_agent.clients.cli.commands.common import _output_format
 from werewolf_agent.clients.cli.errors import run_app_command
 from werewolf_agent.clients.cli.messages import (
     HELP_OUTPUT_FORMAT,
@@ -32,7 +30,7 @@ def setup_options(
     """Print default game setup metadata."""
     run_app_command(
         lambda: print_setup_options(
-            _client().get_setup_options(),
+            build_public_client(get_settings()).get_runtime_config().setup,
             output_format=_output_format(output, get_settings()),
         )
     )

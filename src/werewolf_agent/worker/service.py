@@ -41,6 +41,7 @@ from werewolf_agent.application.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
     LocalRulesDefinition,
+    RuleCompositionDefinition,
 )
 from werewolf_agent.application.models import (
     ApplicationContext,
@@ -376,6 +377,13 @@ def _create_command(
             CustomCharacterDefinition.model_validate(character.model_dump(mode="json"))
             for character in request.custom_characters
         ],
+        rule_composition=(
+            RuleCompositionDefinition.model_validate(
+                request.rule_composition.model_dump(mode="json")
+            )
+            if request.rule_composition is not None
+            else service.game_definitions.rules.composition
+        ),
         llm_mode=service.create_llm_mode,
     )
 

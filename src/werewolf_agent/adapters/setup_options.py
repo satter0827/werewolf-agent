@@ -10,6 +10,7 @@ from werewolf_agent.adapters.application_bridge import (
     build_player_setup_definitions,
 )
 from werewolf_agent.application.models import GameSetupOptionsResult
+from werewolf_agent.application.policy_catalog import PHASE_ORDER_OPTIONS, POLICY_OPTIONS
 from werewolf_agent.application.setup_options import default_setup_options
 from werewolf_agent.contracts.schemas import (
     AbilityDefinitionView,
@@ -17,6 +18,10 @@ from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     LocalRulesSettings,
     RoleDefinitionView,
+    RuleCompositionOptionsView,
+    RuleCompositionSelection,
+    RulePhaseOrderOptionView,
+    RulePolicyOptionView,
     ScenarioDefinitionView,
     SetupPresetDefinitionView,
 )
@@ -106,4 +111,14 @@ def setup_options_response(
             )
             for character_id, definition in options.characters.items()
         ],
+        rule_composition=RuleCompositionOptionsView(
+            default=RuleCompositionSelection.model_validate(options.rule_composition),
+            phase_orders=[
+                RulePhaseOrderOptionView.model_validate(item) for item in PHASE_ORDER_OPTIONS
+            ],
+            **{
+                key: [RulePolicyOptionView.model_validate(item) for item in values]
+                for key, values in POLICY_OPTIONS.items()
+            },
+        ),
     )

@@ -1,17 +1,25 @@
-"""Minimal protocol shared by user clients."""
+"""Minimal protocols shared by user clients."""
 
 from __future__ import annotations
 
 from typing import Protocol
 
-from werewolf_agent.contracts.api import PublicRuntimeConfig
+from werewolf_agent.contracts.api import (
+    AdminLlmTraceListResponse,
+    AdminLlmUsageResponse,
+    AdminOperationDiagnosticResponse,
+    PublicRuntimeConfig,
+    ReplayVerificationResponse,
+    RuntimeStatusResponse,
+    SessionResponse,
+)
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameListResponse,
     GameResponse,
-    GameSetupOptionsResponse,
+    GameRevealResponse,
     GameTimelineResponse,
     PlayerActionRequest,
     PlayerActionResponse,
@@ -19,23 +27,36 @@ from werewolf_agent.contracts.schemas import (
 )
 
 
-class GameClient(Protocol):
-    """Operations needed by human-facing entry points."""
+class PublicClient(Protocol):
+    """Operations available before authentication."""
 
     def health(self) -> dict[str, str]:
-        """Return backing service health."""
+        """Return process liveness."""
+        ...
 
     def get_runtime_config(self) -> PublicRuntimeConfig:
-        """Return the API-owned public runtime configuration."""
+        """Return public runtime configuration."""
+        ...
 
-    def get_setup_options(self) -> GameSetupOptionsResponse:
-        """Return game setup options."""
+    def get_runtime_status(self) -> RuntimeStatusResponse:
+        """Return safe dependency availability."""
+        ...
+
+
+class GameClient(Protocol):
+    """Authenticated game operations used by human-facing entry points."""
+
+    def get_session(self) -> SessionResponse:
+        """Return safe capabilities of the current session."""
+        ...
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
-        """Create one game."""
+        """Create one game and await its operation."""
+        ...
 
     def get_game(self, game_id: str) -> GameResponse:
-        """Fetch one game."""
+        """Return one authorized public game projection."""
+        ...
 
     def list_games(
         self,
@@ -44,19 +65,24 @@ class GameClient(Protocol):
         limit: int | None = None,
         offset: int = 0,
     ) -> GameListResponse:
-        """Return visible game summaries."""
+        """Return one authorized page of games."""
+        ...
 
     def advance_game(self, game_id: str) -> AdvanceGameResponse:
-        """Advance one game, waiting for queue completion when needed."""
+        """Advance one game and await its operation."""
+        ...
 
     def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
-        """Queue one advance request."""
+        """Start one game advance operation."""
+        ...
 
     def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
-        """Fetch one queued operation as a job."""
+        """Return one advance operation owned by the game."""
+        ...
 
     def get_latest_advance_job(self, game_id: str) -> AdvanceGameJobResponse:
-        """Fetch the latest queued operation for a game."""
+        """Return the latest locally started advance operation."""
+        ...
 
     def get_timeline(
         self,
@@ -65,14 +91,16 @@ class GameClient(Protocol):
         after: int = 0,
         limit: int | None = None,
     ) -> GameTimelineResponse:
-        """Fetch public timeline items."""
+        """Return public timeline items after a cursor."""
+        ...
 
     def get_private_observation(
         self,
         game_id: str,
         player_id: str,
     ) -> PlayerObservationResponse:
-        """Fetch private observation visible to a player."""
+        """Return one authorized player's private observation."""
+        ...
 
     def submit_player_action(
         self,
@@ -80,4 +108,37 @@ class GameClient(Protocol):
         player_id: str,
         request: PlayerActionRequest,
     ) -> PlayerActionResponse:
-        """Submit one manual player action."""
+        """Submit one authorized manual-player action."""
+        ...
+
+
+class AdminClient(Protocol):
+    """Administrator-only diagnostics and reveal operations."""
+
+    def reveal_game(self, game_id: str) -> GameRevealResponse:
+        """Return the authorized complete game state."""
+        ...
+
+    def verify_replay(self, game_id: str) -> ReplayVerificationResponse:
+        """Verify deterministic replay for one game."""
+        ...
+
+    def diagnose_operation(self, operation_id: str) -> AdminOperationDiagnosticResponse:
+        """Return bounded operation diagnostics."""
+        ...
+
+    def list_llm_traces(
+        self,
+        game_id: str,
+        *,
+        limit: int = 50,
+    ) -> AdminLlmTraceListResponse:
+        """Return redacted LLM trace metadata."""
+        ...
+
+    def get_llm_usage(self, game_id: str) -> AdminLlmUsageResponse:
+        """Return aggregate LLM usage for one game."""
+        ...
+
+
+__all__ = ["AdminClient", "GameClient", "PublicClient"]

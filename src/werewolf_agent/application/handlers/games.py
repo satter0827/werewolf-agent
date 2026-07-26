@@ -89,7 +89,7 @@ def create_game(
         }
         for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
     ]
-    rule_composition = game_definitions.rules.composition.model_dump(mode="json")
+    rule_composition = command.rule_composition.model_dump(mode="json")
     definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=command.role_counts,

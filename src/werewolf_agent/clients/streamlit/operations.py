@@ -6,8 +6,8 @@ import logging
 from typing import Any, cast
 from uuid import uuid4
 
-from werewolf_agent.adapters.factory import build_game_client
-from werewolf_agent.adapters.ports import GameClient
+from werewolf_agent.adapters.factory import build_game_client, build_public_client
+from werewolf_agent.adapters.ports import GameClient, PublicClient
 from werewolf_agent.clients.requests import build_create_game_request
 from werewolf_agent.clients.streamlit.events import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
@@ -23,18 +23,25 @@ from werewolf_agent.clients.streamlit.view_models import (
     ScreenMode,
     build_game_screen_view,
 )
-from werewolf_agent.contracts.api import PublicRuntimeConfig
+from werewolf_agent.contracts.api import (
+    PublicRuntimeConfig,
+    RuntimeStatusResponse,
+    SessionResponse,
+)
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     GameResponse,
     GameSetupOptionsResponse,
+    GameTimelineItem,
     LocalRulesSettings,
     NarrationMode,
     PlayerActionRequest,
     PlayerObservationResponse,
+    PublicGameState,
     PublicGameSummary,
+    RuleCompositionSelection,
 )
 from werewolf_agent.observability import bind_observation_context, get_observation_context
 from werewolf_agent.observability.constants import EVENT_OUTCOME_SUCCESS
@@ -48,6 +55,11 @@ logger = logging.getLogger(__name__)
 def build_streamlit_client(settings: AppSettings) -> GameClient:
     """Build the shared HTTP game client used by Streamlit."""
     return build_game_client(settings)
+
+
+def build_streamlit_public_client(settings: AppSettings) -> PublicClient:
+    """Build the unauthenticated client used by the Streamlit shell."""
+    return build_public_client(settings)
 
 
 def log_streamlit_rerun_started(settings: AppSettings) -> None:
@@ -75,14 +87,36 @@ def list_recent_games(*, settings: AppSettings) -> list[PublicGameSummary]:
     return client.list_games(limit=settings.streamlit_run_limit).games
 
 
+def load_public_record(
+    *,
+    settings: AppSettings,
+    game_id: str,
+) -> tuple[PublicGameState, list[GameTimelineItem]]:
+    """Return the public state and resolved timeline for one record."""
+    client = build_streamlit_client(settings)
+    state = client.get_game(game_id).state
+    timeline = client.get_timeline(game_id, limit=settings.streamlit_turn_limit).items
+    return state, timeline
+
+
 def load_setup_options(*, settings: AppSettings) -> GameSetupOptionsResponse:
     """Return setup metadata from the active data source."""
-    return build_streamlit_client(settings).get_setup_options()
+    return build_streamlit_public_client(settings).get_runtime_config().setup
 
 
 def load_runtime_config(*, settings: AppSettings) -> PublicRuntimeConfig:
     """Return public limits and presentation settings owned by the API."""
-    return build_streamlit_client(settings).get_runtime_config()
+    return build_streamlit_public_client(settings).get_runtime_config()
+
+
+def load_runtime_status(*, settings: AppSettings) -> RuntimeStatusResponse:
+    """Return public dependency availability for graceful degradation."""
+    return build_streamlit_public_client(settings).get_runtime_status()
+
+
+def load_session(*, settings: AppSettings) -> SessionResponse:
+    """Return safe capabilities of the bound authenticated session."""
+    return build_streamlit_client(settings).get_session()
 
 
 def create_game_from_setup(
@@ -98,6 +132,7 @@ def create_game_from_setup(
     character_assignments: dict[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
     custom_characters: list[CustomCharacterDefinitionRequest],
+    rule_composition: RuleCompositionSelection | None = None,
 ) -> GameResponse:
     """Create a game from the shared Play/Observe setup."""
     seed = int(seed_text) if seed_text.strip() else None
@@ -112,6 +147,7 @@ def create_game_from_setup(
         character_assignments=character_assignments,
         custom_roles=custom_roles,
         custom_characters=custom_characters,
+        rule_composition=rule_composition,
     )
     response = build_streamlit_client(settings).create_game(request)
     logger.info(

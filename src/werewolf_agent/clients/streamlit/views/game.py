@@ -6,6 +6,7 @@ import logging
 import time
 from typing import Any, cast
 
+from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.components import (
     action_header_html,
     advance_note_html,
@@ -76,6 +77,7 @@ from werewolf_agent.clients.streamlit.view_models import (
     GameScreenView,
     SavedGameOptionView,
 )
+from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.contracts import (
     ACTIVE_ADVANCE_JOB_STATUSES,
     ADVANCE_JOB_STATUS_FAILED,
@@ -87,6 +89,7 @@ from werewolf_agent.contracts.schemas import (
     CustomRoleDefinitionRequest,
     LocalRulesSettings,
     NarrationMode,
+    RuleCompositionSelection,
 )
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_FAILURE,
@@ -101,6 +104,14 @@ logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
 
 
+@implements_features(
+    "game_get",
+    "game_timeline_get",
+    "game_observation_get",
+    "game_action_submit",
+    "game_advance",
+    "operation_get",
+)
 def _render_game_screen(
     st: Any,
     *,
@@ -111,6 +122,7 @@ def _render_game_screen(
     lang: Language,
     message_max_chars: int,
     screens: ScreenCatalog,
+    mutations_available: bool = True,
 ) -> None:
     """Render the active game screen from its screen definition."""
     for element in screens.elements("game", "top"):
@@ -141,6 +153,7 @@ def _render_game_screen(
             lang=lang,
             message_max_chars=message_max_chars,
             screens=screens,
+            mutations_available=mutations_available,
         )
 
     for element in screens.elements("game", "bottom"):
@@ -196,6 +209,7 @@ def _create_game(
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
+    rule_composition: RuleCompositionSelection | None = None,
     catalog: I18nCatalog,
     lang: Language,
 ) -> None:
@@ -212,6 +226,7 @@ def _create_game(
             character_assignments=character_assignments or {},
             custom_roles=custom_roles or [],
             custom_characters=custom_characters or [],
+            rule_composition=rule_composition,
         )
     except (AppError, ValueError) as exc:
         if isinstance(exc, AppError):
@@ -250,6 +265,7 @@ def _create_game(
         character_assignments=character_assignments or {},
         custom_roles=custom_roles or [],
         custom_characters=custom_characters or [],
+        rule_composition=rule_composition,
     )
     remember_active_game_selection(st.session_state, selection)
     remember_selected_history(st.session_state, f"session:{selection.selection_id}")
@@ -343,6 +359,7 @@ def _render_next_actions(
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
             custom_characters=selected_option.custom_characters or [],
+            rule_composition=selected_option.rule_composition,
             catalog=catalog,
             lang=lang,
         )
@@ -366,6 +383,7 @@ def _render_next_actions(
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
             custom_characters=selected_option.custom_characters or [],
+            rule_composition=selected_option.rule_composition,
             catalog=catalog,
             lang=lang,
         )
@@ -405,12 +423,15 @@ def _render_action_panel(
     lang: Language,
     message_max_chars: int,
     screens: ScreenCatalog,
+    mutations_available: bool,
 ) -> None:
     elements = screens.elements("game", "side")
     if not elements:
         return
     has_active_job = bool(advance_job_id(st.session_state, selected_option.game_id))
     is_playable = screen.screen_mode != "observer"
+    if is_playable and not mutations_available:
+        st.warning(catalog.t(lang, "runtime.queue_required"))
 
     with st.container(border=False, key="right_command_panel"):
         for element in elements:
@@ -450,6 +471,7 @@ def _render_action_panel(
                 and not screen.is_completed
                 and not has_active_job
                 and screen.can_submit_action
+                and mutations_available
             ):
                 _render_action_form(
                     st,
@@ -466,6 +488,7 @@ def _render_action_panel(
                 and not screen.is_completed
                 and not has_active_job
                 and not screen.can_submit_action
+                and mutations_available
             ):
                 _render_auto_advance_controls(
                     st,
@@ -551,7 +574,7 @@ def _render_action_form(
                 message=str(message).strip() if message else None,
             )
         except AppError as exc:
-            st.error(exc.detail)
+            render_app_error(st, exc, lang=lang)
             return
         clear_message(st.session_state)
         try:
@@ -561,7 +584,7 @@ def _render_action_form(
                 game_id=selected_option.game_id,
             )
         except AppError as exc:
-            st.error(exc.detail)
+            render_app_error(st, exc, lang=lang)
             return
         st.rerun()
 

@@ -37,7 +37,14 @@ PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
 STREAMLIT_I18N_FILE = "i18n.toml"
-STREAMLIT_CSS_FILE = "default.css"
+STREAMLIT_CSS_FILES = (
+    "tokens.css",
+    "base.css",
+    "layout.css",
+    "components.css",
+    "streamlit.css",
+    "responsive.css",
+)
 STREAMLIT_SCREENS_FILE = "screens.toml"
 
 
@@ -96,29 +103,37 @@ def load_external_text(path: Path) -> str:
 
 def load_streamlit_i18n(override_path: Path | None) -> dict[str, object]:
     """Load Streamlit UI translations from settings."""
-    return (
-        load_external_toml(override_path)
-        if override_path is not None
-        else load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_I18N_FILE)
-    )
+    if override_path is not None:
+        try:
+            return load_external_toml(override_path)
+        except (OSError, tomllib.TOMLDecodeError):
+            pass
+    return load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_I18N_FILE)
 
 
-def load_streamlit_css(override_path: Path | None) -> str:
-    """Load Streamlit UI CSS from settings."""
-    return (
-        load_external_text(override_path)
-        if override_path is not None
-        else load_packaged_text(STREAMLIT_PACKAGE, STREAMLIT_CSS_FILE)
+def load_streamlit_css(override_path: Path | None, *, runtime_css: str = "") -> str:
+    """Load bundled CSS, runtime layout values, then an optional override."""
+    bundled = "\n".join(
+        load_packaged_text(STREAMLIT_PACKAGE, file_name) for file_name in STREAMLIT_CSS_FILES
     )
+    base = f"{bundled}\n{runtime_css}" if runtime_css else bundled
+    if override_path is None:
+        return base
+    try:
+        override = load_external_text(override_path)
+    except OSError:
+        return base
+    return f"{base}\n{override}"
 
 
 def load_streamlit_screens(override_path: Path | None) -> dict[str, object]:
     """Load Streamlit screen definitions from settings."""
-    return (
-        load_external_toml(override_path)
-        if override_path is not None
-        else load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_SCREENS_FILE)
-    )
+    if override_path is not None:
+        try:
+            return load_external_toml(override_path)
+        except (OSError, tomllib.TOMLDecodeError):
+            pass
+    return load_packaged_toml(STREAMLIT_PACKAGE, STREAMLIT_SCREENS_FILE)
 
 
 def load_game_definitions(

@@ -141,6 +141,8 @@ def test_problem_details_contract_dumps_without_none_fields() -> None:
         "detail": "The requested game action is not valid.",
         "instance": "/api/games/1/actions/",
         "code": "game.invalid_action",
+        "retryable": False,
+        "recovery": "none",
     }
 
 
@@ -165,6 +167,8 @@ def test_problem_details_helper_from_error_matches_contract_shape() -> None:
         "instance": "/api/v1/games/game-1/actions",
         "code": "game.invalid_action",
         "trace_id": "trace-1",
+        "retryable": False,
+        "recovery": "none",
     }
 
 
@@ -189,6 +193,8 @@ def test_problem_details_helper_from_spec_allows_response_overrides() -> None:
         "code": "request.validation_failed",
         "trace_id": "trace-2",
         "errors": [{"code": "required", "detail": "This field is required.", "pointer": "/name"}],
+        "retryable": False,
+        "recovery": "none",
     }
 
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
 import typer
+from pydantic import ValidationError
 
 from werewolf_agent.adapters.application_bridge import build_game_definitions
 from werewolf_agent.adapters.auth import require_supabase_client_config
@@ -41,6 +43,7 @@ from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameTimelineItem,
     PlayerActionRequest,
+    RuleCompositionSelection,
 )
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_SUCCESS,
@@ -61,6 +64,7 @@ def _create_request(
     seed: int | None,
     manual_player: str | None,
     role_count: list[str],
+    rule_composition_file: Path | None = None,
 ) -> CreateGameRequest:
     settings = get_settings()
     role_counts = (
@@ -70,10 +74,23 @@ def _create_request(
             settings.game_default_player_count
         )
     )
+    rule_composition = None
+    if rule_composition_file is not None:
+        try:
+            with rule_composition_file.open("rb") as file:
+                payload = tomllib.load(file)
+            composition_payload = payload.get("rule_composition", payload)
+            rule_composition = RuleCompositionSelection.model_validate(composition_payload)
+        except (OSError, tomllib.TOMLDecodeError, ValidationError) as exc:
+            raise AppError(
+                "rule composition TOMLを読み込めませんでした。",
+                code=ErrorCode.CONFIG_INVALID_VALUE,
+            ) from exc
     return build_create_game_request(
         seed=seed,
         manual_player_id=manual_player,
         role_counts=role_counts,
+        rule_composition=rule_composition,
     )
 
 

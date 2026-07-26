@@ -60,7 +60,7 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 - アイコンは当面、Streamlit 標準で扱える絵文字/記号を使う
 - UI 文言とイベント種別、行動、フェーズ、役職の表示名は `clients/streamlit/resources/i18n.toml` に閉じる
 - `WEREWOLF_STREAMLIT_I18N_FILE` を指定すると外部 TOML で UI 文言を差し替えられる
-- CSS は `clients/streamlit/resources/default.css` に閉じ、`WEREWOLF_STREAMLIT_CSS_FILE` を指定すると外部 CSS で丸ごと置換する
+- CSS は `tokens`、`base`、`layout`、`components`、`streamlit`、`responsive` の固定順で読み、`WEREWOLF_STREAMLIT_CSS_FILE` は最後にoverrideとして追加する
 - 画面要素の表示有無、順序、配置、列数は `clients/streamlit/resources/screens.toml` に閉じ、`WEREWOLF_STREAMLIT_SCREENS_FILE` で差し替える
 - 画面定義体は表示構成だけを扱い、public / private 判定、action availability、API payload、game state 計算は持たない
 - 画面起動時の初期言語とデータソース状態は `AppSettings` から読み、実行中の選択は `StreamlitPreferences` として Streamlit session state に保持する

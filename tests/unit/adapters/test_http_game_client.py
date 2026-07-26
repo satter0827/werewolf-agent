@@ -1,11 +1,8 @@
-from datetime import UTC, datetime, timedelta
-
 import httpx
 import pytest
 import respx
 
-from werewolf_agent.adapters.http import HttpGameClient
-from werewolf_agent.adapters.supabase import SupabaseSession
+from werewolf_agent.adapters.http import HttpPublicClient
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import GameSetupOptionsResponse
 from werewolf_agent.settings import AppSettings
@@ -48,26 +45,18 @@ def test_get_setup_options_uses_public_api_config_not_supabase_data_api() -> Non
             },
         )
 
-    client = HttpGameClient(
+    client = HttpPublicClient(
         AppSettings(
             _env_file=None,
             api_base_url="http://api.test",
             supabase_url="http://auth.test",
             supabase_publishable_key="anon-test",
         ),
-        SupabaseSession(
-            access_token="access",
-            refresh_token="refresh",
-            expires_at=datetime.now(UTC) + timedelta(hours=1),
-            user_id="user-1",
-            email="",
-            is_anonymous=True,
-        ),
         transport=httpx.MockTransport(handler),
     )
 
     runtime = client.get_runtime_config()
-    response = client.get_setup_options()
+    response = runtime.setup
 
     assert runtime.limits.message_max_chars == 120
     assert response.default_setup_preset_id == "classic-six"
@@ -98,21 +87,13 @@ def test_malformed_success_response_is_rejected_by_schema() -> None:
     assert captured.value.code is ErrorCode.INTERNAL_UNEXPECTED
 
 
-def _client() -> HttpGameClient:
-    return HttpGameClient(
+def _client() -> HttpPublicClient:
+    return HttpPublicClient(
         AppSettings(
             _env_file=None,
             api_base_url="http://api.test",
             supabase_url="http://auth.test",
             supabase_publishable_key="anon-test",
-        ),
-        SupabaseSession(
-            access_token="access",
-            refresh_token="refresh",
-            expires_at=datetime.now(UTC) + timedelta(hours=1),
-            user_id="user-1",
-            email="",
-            is_anonymous=True,
         ),
     )
 

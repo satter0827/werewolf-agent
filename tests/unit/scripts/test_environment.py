@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -36,6 +37,7 @@ def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(Path, "write_text", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(manager.shutil, "which", lambda command: command)
+    monkeypatch.setattr(manager, "npm_executable", lambda: "npm")
 
     manager._setup_locked("release")
 
@@ -47,6 +49,12 @@ def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> N
     assert all("--offline" not in command for command in flattened)
     assert all("--pull=false" not in command for command in flattened)
     assert any(LOCAL_EXCLUDED_SERVICES_CSV in command for command in flattened)
+    stop_indexes = [index for index, command in enumerate(flattened) if "supabase stop" in command]
+    start_index = next(
+        index for index, command in enumerate(flattened) if "supabase start" in command
+    )
+    assert len(stop_indexes) == 2
+    assert stop_indexes[0] < start_index < stop_indexes[1]
 
 
 def test_environment_state_is_repository_local() -> None:
@@ -70,3 +78,56 @@ def test_quiet_environment_command_does_not_inherit_terminal_output(
 
     assert observed["capture_output"] is True
     assert observed["text"] is True
+
+
+def test_release_marker_is_not_ready_when_required_images_are_missing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """保存済みmarkerだけではrelease準備済みと判定しない。"""
+    repository = tmp_path / "repository"
+    state_root = repository / ".werewolf-agent" / "runtime" / "environment"
+    (repository / ".venv").mkdir(parents=True)
+    binary_root = repository / "frontend" / "node_modules" / ".bin"
+    binary_root.mkdir(parents=True)
+    for name in manager.FRONTEND_BINARIES:
+        (binary_root / f"{name}.cmd").write_text("", encoding="utf-8")
+    state_root.mkdir(parents=True)
+    (state_root / "release.json").write_text(
+        json.dumps({"fingerprint": "same", "profile": "release"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "REPOSITORY_ROOT", repository)
+    monkeypatch.setattr(manager, "STATE_ROOT", state_root)
+    monkeypatch.setattr(manager, "_release_environment_ready", lambda _profile: False)
+
+    assert manager._ready("release", "same") is False
+
+
+def test_release_readiness_rejects_stopped_docker_daemon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker CLIがあってもdaemonへ接続できなければ準備済みにしない。"""
+    monkeypatch.setattr(manager.shutil, "which", lambda _command: "docker")
+    monkeypatch.setattr(manager, "_command_succeeds", lambda _command: False)
+
+    assert manager._release_environment_ready("release") is False
+
+
+def test_release_readiness_requires_every_declared_image(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """現在のDocker contextに全必須imageがある場合だけ準備済みにする。"""
+    observed: list[tuple[str, ...]] = []
+    monkeypatch.setattr(manager.shutil, "which", lambda _command: "docker")
+
+    def succeeds(command: tuple[str, ...]) -> bool:
+        observed.append(command)
+        return True
+
+    monkeypatch.setattr(manager, "_command_succeeds", succeeds)
+
+    assert manager._release_environment_ready("release") is True
+    assert observed[0] == ("docker", "info")
+    assert [command[-1] for command in observed[1:]] == list(manager.required_release_images())
+    assert manager._release_environment_ready("check") is True

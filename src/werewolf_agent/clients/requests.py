@@ -18,6 +18,7 @@ from werewolf_agent.contracts.schemas import (
     LocalRulesSettings,
     NarrationMode,
     RoleId,
+    RuleCompositionSelection,
 )
 
 
@@ -33,6 +34,7 @@ def build_create_game_request(
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
+    rule_composition: RuleCompositionSelection | None = None,
 ) -> CreateGameRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
     try:
@@ -47,6 +49,7 @@ def build_create_game_request(
             character_assignments=character_assignments or {},
             custom_roles=custom_roles or [],
             custom_characters=custom_characters or [],
+            rule_composition=rule_composition,
         )
     except ValidationError as exc:
         detail = "; ".join(

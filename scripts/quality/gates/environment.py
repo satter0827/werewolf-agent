@@ -1,10 +1,10 @@
 """環境と外部接続制約のgate。"""
 
-import shutil
 import sys
 import time
 from pathlib import Path
 
+from scripts._infra.node import REQUIRED_NODE_MAJOR, node_executable, npm_executable
 from scripts._infra.process import (
     ISOLATION_ENVIRONMENT,
     REPOSITORY_ROOT,
@@ -48,8 +48,8 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             f"{profile}環境が現在のlock・source fingerprintに対応していません。"
             "scripts.environment setupを実行してください。\n",
         )
-    npm = shutil.which("npm") or "npm"
-    node = shutil.which("node") or "node"
+    npm = npm_executable()
+    node = node_executable()
     commands = (
         (sys.executable, "-c", "import werewolf_agent"),
         (node, "--version"),
@@ -91,12 +91,15 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
                 "".join(output),
                 result.timed_out,
             )
-        if index == 1 and int(result.output.strip().lstrip("v").split(".", 1)[0]) < 22:
+        if (
+            index == 1
+            and int(result.output.strip().lstrip("v").split(".", 1)[0]) != REQUIRED_NODE_MAJOR
+        ):
             return CommandResult(
                 list(command),
                 1,
                 time.monotonic() - started,
-                "".join(output) + "Node.js 22以上が必要です。\n",
+                "".join(output) + "Node.js 22が必要です。\n",
             )
     return CommandResult(
         ["environment-check"],

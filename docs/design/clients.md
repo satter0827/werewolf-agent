@@ -15,8 +15,9 @@ selector は見た目の階層ではなく role と利用者向けラベルを�
 
 ## CLI
 
-CLI は自動化、診断、開発確認の入口である。console entrypoint を使い、HTTP
-`GameClient` を通して操作する。machine-readable な出力を選べるコマンドでは、
+CLI は自動化、診断、開発確認の入口である。`system`、`setup`、`game`、`records`、
+`admin`の利用目的でcommandを分ける。公開情報は`PublicClient`、通常操作は
+`GameClient`、管理操作は`AdminClient`を通す。machine-readable な出力を選べるコマンドでは、
 標準出力へ安定した schema を返し、診断ログと分離する。
 
 ## Streamlit
@@ -27,6 +28,23 @@ Streamlit は操作確認と可視化の補助 UI である。session state に�
 
 表示modelは型、game state、timeline、observation/actionのmoduleに分ける。screenは
 必要なprojectionだけをimportし、HTTP responseの変換をscreen本体へ重複させない。
+
+workspaceは`Play`、`Observe`、`Records`、`Admin`、`Preferences`の順に扱う。管理者と
+確認できない場合は`Admin`を表示しない。認証やdatabaseが利用できない場合もCSS、表示設定、
+navigation、依存状態を描画し、guestや管理者へ暗黙昇格しない。ゲーム情報を分析情報より先に
+置き、分析領域は初期状態で折りたたむ。`Records`は公開stateと解決済みtimelineを取得し、
+物語としてのreplayと分析を同じ記録導線で分けて表示する。
+
+databaseが利用できない場合は権威あるstateを表示しない。operation queueだけが利用できない
+場合はstate、timeline、記録の参照を維持し、作成、行動、進行だけを停止する。表示するerrorは
+安定したerror codeから利用者向けの状態と復旧方法へ変換し、内部adapterの文言を直接表示しない。
+
+workspaceを切り替えた場合だけmain領域を先頭へ戻す。自動更新と同じworkspace内の操作では
+scrollと入力focusを維持し、利用者の読解や入力を中断しない。
+
+`FeatureSpec`はOpenAPI operation ID、利用者区分、依存先、client配置を対応付ける。CLIの
+登録commandとStreamlit rendererは実装するFeature IDを宣言する。OpenAPI、CLI command、
+Streamlit workspace、renderer宣言の未知参照、未配置、重複を構造testで検出する。
 
 ## 共通境界
 

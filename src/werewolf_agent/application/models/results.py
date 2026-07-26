@@ -47,6 +47,7 @@ class GameSetupOptionsResult(ApplicationModel):
     scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
     setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    rule_composition: dict[str, Any] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -15,7 +15,7 @@ Python 3.11 以上 3.15 未満、uv、Node.js、Docker、Supabase CLI を使用�
 
 ```powershell
 uv run --no-project python -m scripts.environment setup check
-uv run --no-sync werewolf-agent doctor
+uv run --no-sync werewolf-agent system doctor
 ```
 
 local Supabase を含む事前確認:
@@ -29,7 +29,7 @@ uv run --no-sync python -m scripts.supabase preflight
 CLI で再現可能な game を実行します。
 
 ```powershell
-uv run --no-sync werewolf-agent play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
+uv run --no-sync werewolf-agent game play --role-count werewolf=1 --role-count seer=1 --role-count knight=1 --role-count villager=3 --seed 1
 ```
 
 各 process は console entrypoint または `.vscode/launch.json` から起動できます。

@@ -8,7 +8,7 @@ import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import Depends, FastAPI
@@ -46,6 +46,7 @@ from werewolf_agent.api.errors import (
 from werewolf_agent.api.middleware.limits import PrincipalRateLimiter, RequestLimitsMiddleware
 from werewolf_agent.api.middleware.security_headers import ApiSecurityHeadersMiddleware
 from werewolf_agent.api.routes import admin, config, games, operations
+from werewolf_agent.api.runtime import AvailabilityGuardedOperationQueue, RuntimeDependencies
 from werewolf_agent.application import GameApplication
 from werewolf_agent.application.models import ApplicationContext
 from werewolf_agent.contracts import AppError, ErrorCode
@@ -73,16 +74,22 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         if runtime.supabase_worker_configured
         else None
     )
+    dependencies = RuntimeDependencies(
+        pool=pool,
+        authentication_configured=runtime.supabase_client_configured,
+        database_configured=runtime.supabase_worker_configured,
+        open_pool=lambda target, timeout: open_database_pool(target, timeout=timeout),
+        probe_database=_probe_database,
+        probe_operation_queue=_probe_operation_queue,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        if pool is not None:
-            open_database_pool(pool, timeout=runtime.supabase_pool_timeout_seconds)
+        dependencies.open(timeout=runtime.supabase_pool_timeout_seconds)
         try:
             yield
         finally:
-            if pool is not None:
-                pool.close()
+            dependencies.close()
 
     app = FastAPI(
         title="Werewolf Agent API",
@@ -106,6 +113,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.public_runtime_config = _public_runtime_config(runtime)
     app.state.instance_id = runtime.api_instance_id.strip() or uuid4().hex
     app.state.database_pool = pool
+    app.state.runtime_dependencies = dependencies
     app.state.started_at = datetime.now(UTC).isoformat()
     app.state.config_fingerprint = hashlib.sha256(
         json.dumps(
@@ -137,7 +145,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(operations.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
     install_openapi_error_contract(app)
-    app.dependency_overrides[get_services] = _service_dependency(runtime, pool)
+    app.dependency_overrides[get_services] = _service_dependency(runtime, dependencies)
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
@@ -154,12 +162,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
 def _service_dependency(
     runtime: AppSettings,
-    pool: object | None,
+    dependencies: RuntimeDependencies,
 ) -> Callable[[Principal], Iterator[RequestServices]]:
     def dependency(
         principal: Annotated[Principal, Depends(get_principal)],
     ) -> Iterator[RequestServices]:
-        if pool is None:
+        dependencies.refresh()
+        pool = dependencies.pool
+        if pool is None or not dependencies.database_available:
             raise AppError(
                 "データベースが設定されていません。",
                 code=ErrorCode.API_UNAVAILABLE,
@@ -178,7 +188,10 @@ def _service_dependency(
             yield RequestServices(
                 games=GameApplication(
                     context,
-                    operation_queue=SupabaseOperationQueue(connection),
+                    operation_queue=AvailabilityGuardedOperationQueue(
+                        SupabaseOperationQueue(connection),
+                        available=lambda: dependencies.operation_queue_available,
+                    ),
                     access_policy=SupabaseAccessPolicy(connection),
                 ),
                 message_max_chars=runtime.api_message_max_chars,
@@ -218,6 +231,30 @@ def _public_runtime_config(settings: AppSettings) -> PublicRuntimeConfig:
             operation_poll_timeout_ms=settings.ui_operation_poll_timeout_ms,
         ),
     )
+
+
+def _probe_database(pool: Any) -> None:
+    """Verify the database can serve a read-only request."""
+    with borrow_database_connection(pool) as connection:
+        connection.execute("select 1").fetchone()
+
+
+def _probe_operation_queue(pool: Any) -> None:
+    """Verify the configured queue exists without enqueueing or consuming work."""
+    with borrow_database_connection(pool) as connection:
+        row = connection.execute(
+            """
+            select exists (
+              select 1 from pgmq.list_queues() where queue_name = 'game_operations'
+            ) as available
+            """
+        ).fetchone()
+    if row is None or not bool(row["available"]):
+        raise AppError(
+            "処理キューを利用できません。",
+            code=ErrorCode.API_UNAVAILABLE,
+            retryable=True,
+        )
 
 
 __all__ = ["create_app"]

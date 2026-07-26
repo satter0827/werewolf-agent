@@ -37,7 +37,12 @@ LimitQuery = Annotated[int | None, Query(ge=1)]
 OffsetQuery = Annotated[int, Query(ge=0)]
 
 
-@router.post("/games", response_model=OperationResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/games",
+    response_model=OperationResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    operation_id="game_create",
+)
 def create_game(
     request: CreateGameRequest,
     idempotency_key: IdempotencyKey,
@@ -54,7 +59,12 @@ def create_game(
     return operation_response(operation)
 
 
-@router.get("/games", response_model=GameListResponse, response_model_exclude_none=True)
+@router.get(
+    "/games",
+    response_model=GameListResponse,
+    response_model_exclude_none=True,
+    operation_id="game_list",
+)
 def list_games(
     principal: PrincipalDependency,
     services: ServicesDependency,
@@ -76,7 +86,12 @@ def list_games(
     return game_list_response(result)
 
 
-@router.get("/games/{game_id}", response_model=GameResponse, response_model_exclude_none=True)
+@router.get(
+    "/games/{game_id}",
+    response_model=GameResponse,
+    response_model_exclude_none=True,
+    operation_id="game_get",
+)
 def get_game(
     game_id: str,
     principal: PrincipalDependency,
@@ -87,7 +102,11 @@ def get_game(
     return game_response(result)
 
 
-@router.get("/games/{game_id}/timeline", response_model=GameTimelineResponse)
+@router.get(
+    "/games/{game_id}/timeline",
+    response_model=GameTimelineResponse,
+    operation_id="game_timeline_get",
+)
 def get_timeline(
     game_id: str,
     principal: PrincipalDependency,
@@ -108,6 +127,7 @@ def get_timeline(
 @router.get(
     "/games/{game_id}/observation/{player_id}",
     response_model=PlayerObservationResponse,
+    operation_id="game_observation_get",
 )
 def get_observation(
     game_id: str,
@@ -128,6 +148,7 @@ def get_observation(
     "/games/{game_id}/actions",
     response_model=OperationResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    operation_id="game_action_submit",
 )
 def submit_action(
     game_id: str,
@@ -162,6 +183,7 @@ def _validate_action_text(request: PlayerActionOperationRequest, max_chars: int)
     "/games/{game_id}/advance",
     response_model=OperationResponse,
     status_code=status.HTTP_202_ACCEPTED,
+    operation_id="game_advance",
 )
 def advance_game(
     game_id: str,

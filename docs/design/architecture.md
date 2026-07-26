@@ -43,6 +43,11 @@
 - API routeはapplicationの公開contractだけを呼ぶ。
 - CLIとStreamlitはdomain、application、Supabaseを参照しない。
 - React、CLI、StreamlitはHTTP APIを通じてゲームを操作する。
+- clientは未認証の`PublicClient`、通常操作の`GameClient`、管理操作の`AdminClient`へ分け、
+  admin responseを通常clientへ追加しない。
+- `GET /health`はprocess livenessだけを示し、`GET /api/v1/status`は依存先の可用性、
+  `GET /api/v1/session`は安全な利用者区分を返す。
+- database接続失敗はAPI processを停止せず、databaseを必要とするrequestだけを失敗させる。
 
 `api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
 構造規則の正本は`scripts/architecture/rules.toml`とする。

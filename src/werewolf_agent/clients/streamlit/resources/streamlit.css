@@ -1,0 +1,22 @@
+[data-testid="stSidebar"] {
+    background: #f8fafc;
+    border-right: 1px solid var(--wa-line);
+}
+
+[data-testid="stSidebar"] .stButton > button,
+[data-testid="stSidebar"] .stFormSubmitButton > button {
+    min-height: 40px;
+    border-radius: var(--wa-radius);
+    font-weight: 800;
+}
+
+[data-testid="stAlert"] {
+    border-radius: var(--wa-radius);
+}
+[data-testid="stVerticalBlock"] {
+    gap: var(--wa-density-block-gap);
+}
+
+[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
+    gap: var(--wa-density-section-gap);
+}

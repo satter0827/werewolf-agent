@@ -23,6 +23,7 @@ from werewolf_agent.clients.streamlit.screens import (
     ScreenCatalog,
 )
 from werewolf_agent.clients.streamlit.setup import (
+    VIEW_ADMIN,
     VIEW_APP_SETTINGS,
     VIEW_GAME,
     VIEW_HISTORY,
@@ -40,6 +41,7 @@ from werewolf_agent.clients.streamlit.state import (
 from werewolf_agent.clients.streamlit.view_models import (
     SavedGameOptionView,
 )
+from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.clients.streamlit.views.game import (
     _selected_option_by_id,
     _selected_option_index,
@@ -53,6 +55,13 @@ from werewolf_agent.settings import (
 
 logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
+_WORKSPACE_NAVIGATION = {
+    "play": ("nav.play", VIEW_PLAY_SETUP),
+    "observe": ("nav.observe", VIEW_OBSERVE_SETUP),
+    "records": ("nav.records", VIEW_HISTORY),
+    "admin": ("nav.admin", VIEW_ADMIN),
+    "preferences": ("nav.preferences", VIEW_APP_SETTINGS),
+}
 
 
 class SessionStore(Protocol):
@@ -76,6 +85,7 @@ def _render_sidebar(
     lang: Language,
     screens: ScreenCatalog,
     session_store: SessionStore | None = None,
+    is_admin: bool = False,
 ) -> tuple[SavedGameOptionView | None, str]:
     selected_option: SavedGameOptionView | None = None
 
@@ -83,7 +93,13 @@ def _render_sidebar(
         if element.id == "brand":
             _render_sidebar_brand(st, catalog=catalog, lang=lang)
             if session_store is not None:
-                _render_sidebar_auth(st, settings=settings, session_store=session_store)
+                _render_sidebar_auth(
+                    st,
+                    settings=settings,
+                    session_store=session_store,
+                    catalog=catalog,
+                    lang=lang,
+                )
         elif element.id == "history_selector":
             st.sidebar.divider()
             st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
@@ -96,7 +112,13 @@ def _render_sidebar(
         elif element.id == "navigation":
             st.sidebar.divider()
             st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
-            _render_sidebar_navigation(st, catalog=catalog, lang=lang)
+            _render_sidebar_navigation(
+                st,
+                catalog=catalog,
+                lang=lang,
+                screens=screens,
+                is_admin=is_admin,
+            )
     return selected_option, current_view(st.session_state)
 
 
@@ -105,30 +127,34 @@ def _render_sidebar_auth(
     *,
     settings: AppSettings,
     session_store: SessionStore,
+    catalog: I18nCatalog,
+    lang: Language,
 ) -> None:
     """Render guest/member controls without exposing session credentials."""
     session = session_store.load()
     if session is not None and not session.is_anonymous:
-        st.sidebar.caption(session.email or "ログイン中")
-        if st.sidebar.button("ログアウト", use_container_width=True):
+        st.sidebar.caption(session.email or catalog.t(lang, "auth.signed_in"))
+        if st.sidebar.button(catalog.t(lang, "auth.sign_out"), use_container_width=True):
             try:
                 sign_out(settings, store=session_store)
             except AppError as exc:
-                st.sidebar.error(exc.detail)
+                render_app_error(st.sidebar, exc, lang=lang)
                 return
             st.rerun()
         return
 
-    st.sidebar.caption("ゲストで利用中")
-    with st.sidebar.expander("ログイン"):
+    st.sidebar.caption(catalog.t(lang, "auth.guest"))
+    with st.sidebar.expander(catalog.t(lang, "auth.sign_in")):
         with st.form("account_login"):
-            email = st.text_input("メールアドレス", max_chars=254)
+            email = st.text_input(catalog.t(lang, "auth.email"), max_chars=254)
             password = st.text_input(
-                "パスワード",
+                catalog.t(lang, "auth.password"),
                 type="password",
                 max_chars=128,
             )
-            submitted = st.form_submit_button("ログイン", use_container_width=True)
+            submitted = st.form_submit_button(
+                catalog.t(lang, "auth.sign_in"), use_container_width=True
+            )
         if submitted:
             try:
                 sign_in_with_password(
@@ -138,32 +164,65 @@ def _render_sidebar_auth(
                     store=session_store,
                 )
             except AppError as exc:
-                st.error(exc.detail)
+                render_app_error(st, exc, lang=lang)
                 return
             st.rerun()
 
 
-def _render_sidebar_navigation(st: Any, *, catalog: I18nCatalog, lang: Language) -> None:
+def _render_sidebar_navigation(
+    st: Any,
+    *,
+    catalog: I18nCatalog,
+    lang: Language,
+    screens: ScreenCatalog,
+    is_admin: bool = False,
+) -> None:
     """Render sidebar navigation controls."""
-    if st.sidebar.button(f"▶ {catalog.t(lang, 'nav.play')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_PLAY_SETUP)
-        st.rerun()
-    if st.sidebar.button(f"◉ {catalog.t(lang, 'nav.observe')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_OBSERVE_SETUP)
-        st.rerun()
-    if st.sidebar.button(f"▣ {catalog.t(lang, 'nav.history')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_HISTORY)
-        st.rerun()
-    if st.sidebar.button(f"⚙ {catalog.t(lang, 'nav.settings')}", use_container_width=True):
-        switch_view(st.session_state, VIEW_APP_SETTINGS)
-        st.rerun()
+    for workspace, label_key, view in _navigation_items(screens, is_admin=is_admin):
+        if st.sidebar.button(
+            catalog.t(lang, label_key),
+            key=f"navigation_{workspace}",
+            use_container_width=True,
+        ):
+            switch_view(st.session_state, view)
+            st.rerun()
+
+
+def _render_unavailable_navigation(
+    st: Any,
+    *,
+    catalog: I18nCatalog,
+    lang: Language,
+    screens: ScreenCatalog,
+) -> None:
+    """Render configured workspaces as disabled during degraded operation."""
+    st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
+    for workspace, label_key, _view in _navigation_items(screens, is_admin=False):
+        st.sidebar.button(
+            catalog.t(lang, label_key),
+            key=f"unavailable_navigation_{workspace}",
+            use_container_width=True,
+            disabled=True,
+        )
+    st.sidebar.caption(catalog.t(lang, "runtime.navigation_unavailable"))
+
+
+def _navigation_items(
+    screens: ScreenCatalog,
+    *,
+    is_admin: bool,
+) -> list[tuple[str, str, str]]:
+    return [
+        (workspace, *_WORKSPACE_NAVIGATION[workspace])
+        for workspace in screens.workspace_order
+        if workspace != "admin" or is_admin
+    ]
 
 
 def _render_sidebar_brand(st: Any, *, catalog: I18nCatalog, lang: Language) -> None:
     st.sidebar.markdown(
         f"""
         <div class="wa-sidebar-brand">
-                <div class="wa-brand-mark">🐺</div>
                 <div>
                     <h1 class="wa-brand-title">Werewolf Agent</h1>
                     <div class="wa-brand-mode">{catalog.t(lang, "brand.mode")}</div>

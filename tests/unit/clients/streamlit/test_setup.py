@@ -1,6 +1,13 @@
+from typing import Any
+
 from werewolf_agent.clients.streamlit import setup
 from werewolf_agent.clients.streamlit.i18n import load_i18n
-from werewolf_agent.contracts.schemas import GameSetupOptionsResponse, LocalRulesSettings
+from werewolf_agent.clients.streamlit.views.setup import _select_policy
+from werewolf_agent.contracts.schemas import (
+    GameSetupOptionsResponse,
+    LocalRulesSettings,
+    RulePhaseOrderOptionView,
+)
 from werewolf_agent.settings import AppSettings
 
 
@@ -17,6 +24,19 @@ def test_setup_defaults_use_setup_options_role_counts_and_rules() -> None:
     assert setup.current_view(session) == setup.VIEW_OBSERVE_SETUP
     assert setup.role_counts(session, setup_options) == {"werewolf": 1, "villager": 4}
     assert setup.rules(session, setup_options) == _rules()
+
+
+def test_view_transition_requests_one_scroll_reset() -> None:
+    session: dict[str, object] = {}
+
+    setup.switch_view(session, setup.VIEW_OBSERVE_SETUP)
+
+    assert setup.consume_pending_view_scroll(session) is True
+    assert setup.consume_pending_view_scroll(session) is False
+
+    setup.switch_view(session, setup.VIEW_OBSERVE_SETUP)
+
+    assert setup.consume_pending_view_scroll(session) is False
 
 
 def test_setup_role_counts_drive_validation_and_seats() -> None:
@@ -71,6 +91,47 @@ def test_setup_draft_and_preferences_use_single_session_models() -> None:
     }
     assert setup.game_setup_draft(session).manual_player_id == "player-2"
     assert setup.preferred_language(session, "ja") == "en"
+
+
+def test_phase_order_selector_matches_default_by_phase_sequence() -> None:
+    streamlit = _PolicySelectorStub()
+    default_phases = ("night", "day_discussion", "voting")
+    options = [
+        RulePhaseOrderOptionView(
+            id="reverse",
+            name="逆順",
+            description="投票から始めます。",
+            phases=("voting", "day_discussion", "night"),
+        ),
+        RulePhaseOrderOptionView(
+            id="classic",
+            name="標準順",
+            description="夜から始めます。",
+            phases=default_phases,
+        ),
+    ]
+
+    selected = _select_policy(
+        streamlit,
+        "phase順序",
+        options,
+        default_phases,
+        empty_message="選択肢がありません: {label}",
+    )
+
+    assert selected == default_phases
+    assert streamlit.selected_index == 1
+
+
+class _PolicySelectorStub:
+    selected_index = -1
+
+    def selectbox(self, label: str, options: list[str], **kwargs: Any) -> str:
+        self.selected_index = int(kwargs["index"])
+        return options[self.selected_index]
+
+    def caption(self, value: str) -> None:
+        pass
 
 
 def _setup_options() -> GameSetupOptionsResponse:

@@ -52,6 +52,7 @@ from werewolf_agent.clients.cli.messages import (
     table_title_game,
     table_title_observation,
 )
+from werewolf_agent.contracts.api import RuntimeStatusResponse
 from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     GameTimelineItem,
@@ -60,7 +61,7 @@ from werewolf_agent.contracts.schemas import (
     PublicGameSummary,
 )
 
-console = Console()
+console = Console(legacy_windows=False)
 OutputFormat = CliOutputFormat
 
 
@@ -97,8 +98,110 @@ def print_setup_options(
     table.add_column(COLUMN_VALUE, overflow="fold")
     table.add_row(ROW_PLAYER_COUNT, str(options.player_count))
     table.add_row(ROW_ROLES, ", ".join(role.id for role in options.roles))
+    table.add_row(
+        "役職の詳細",
+        "\n".join(
+            f"{role.name} ({role.id}): {role.description} / 能力={','.join(role.abilities) or '-'}"
+            for role in options.roles
+        ),
+    )
+    table.add_row(
+        "能力",
+        "\n".join(
+            f"{ability.name} ({ability.id}): {ability.description}" for ability in options.abilities
+        )
+        or EMPTY_VALUE,
+    )
+    table.add_row(
+        "シナリオ",
+        "\n".join(
+            f"{scenario.name} ({scenario.id}): {scenario.summary}" for scenario in options.scenarios
+        )
+        or EMPTY_VALUE,
+    )
+    table.add_row(
+        "プリセット",
+        "\n".join(
+            f"{preset.name} ({preset.id}): {preset.role_counts}" for preset in options.setup_presets
+        )
+        or EMPTY_VALUE,
+    )
+    table.add_row(
+        "キャラクター",
+        ", ".join(f"{character.name} ({character.id})" for character in options.characters)
+        or EMPTY_VALUE,
+    )
     table.add_row(ROW_DEFAULT_ROLE_COUNTS, str(options.default_role_counts))
+    table.add_row("ローカルルール", str(options.default_rules.model_dump(mode="json")))
+    table.add_row("既定のシナリオ", options.default_scenario_id or EMPTY_VALUE)
+    table.add_row("既定のプリセット", options.default_setup_preset_id or EMPTY_VALUE)
+    table.add_row("既定のナレーション", options.default_narration_mode)
+    composition = options.rule_composition
+    table.add_row(
+        "フェーズ順序",
+        "\n".join(
+            f"{item.name} ({item.id}): {item.description} / {', '.join(item.phases)}"
+            for item in composition.phase_orders
+        ),
+    )
+    table.add_row(
+        "行動判定ポリシー",
+        _policy_option_lines(composition.action_policies),
+    )
+    table.add_row(
+        "行動解決ポリシー",
+        _policy_option_lines(composition.resolution_policies),
+    )
+    table.add_row(
+        "フェーズ進行ポリシー",
+        _policy_option_lines(composition.phase_policies),
+    )
+    table.add_row(
+        "勝敗判定ポリシー",
+        _policy_option_lines(composition.victory_policies),
+    )
+    table.add_row(
+        "公開範囲ポリシー",
+        _policy_option_lines(composition.visibility_policies),
+    )
     console.print(table)
+
+
+def print_runtime_status(
+    status: RuntimeStatusResponse,
+    *,
+    output_format: OutputFormat = CLI_OUTPUT_FORMAT_TABLE,
+) -> None:
+    """Print runtime component availability and safe reason codes."""
+    if output_format != CLI_OUTPUT_FORMAT_TABLE:
+        print_json(status, output_format=output_format)
+        return
+    component_names = {
+        "api": "API",
+        "authentication": "認証",
+        "database": "データベース",
+        "operation_queue": "処理キュー",
+    }
+    status_names = {
+        "available": "利用可能",
+        "degraded": "一部利用可能",
+        "unavailable": "利用不可",
+    }
+    table = Table(title=f"システム状態: {status_names[status.status]}")
+    table.add_column("構成要素", style="cyan", no_wrap=True)
+    table.add_column("状態", no_wrap=True)
+    table.add_column("理由コード", overflow="fold")
+    for component in status.components:
+        table.add_row(
+            component_names[component.component],
+            status_names[component.status],
+            component.reason_code or EMPTY_VALUE,
+        )
+    console.print(table)
+
+
+def _policy_option_lines(options: list[Any]) -> str:
+    return "\n".join(f"{item.name} ({item.id}): {item.description}" for item in options)
 
 
 def print_state(

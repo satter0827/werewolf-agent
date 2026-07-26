@@ -11,6 +11,7 @@ from werewolf_agent.contracts.schemas import (
     PublicGameState,
     PublicGameSummary,
     PublicPlayerState,
+    RuleCompositionSelection,
 )
 from werewolf_agent.settings import AppSettings
 
@@ -19,6 +20,7 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
     settings = AppSettings(_env_file=None)
     catalog = load_i18n(settings)
     response = GameResponse(game_id="game-1", state=_state())
+    composition = RuleCompositionSelection()
     selection = create_session_game_selection(
         response,
         manual_player_id="player-1",
@@ -31,6 +33,7 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
         character_assignments={},
         custom_roles=[],
         custom_characters=[],
+        rule_composition=composition,
     )
 
     options = build_history_options(
@@ -43,6 +46,7 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
     assert options[0].option_id.startswith("session:")
     assert options[0].mode == "playable"
     assert options[0].manual_player_id == "player-1"
+    assert options[0].rule_composition == composition
 
 
 def test_database_history_without_session_token_is_observer_only() -> None:

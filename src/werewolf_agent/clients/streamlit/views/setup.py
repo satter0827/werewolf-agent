@@ -6,6 +6,7 @@ import logging
 import secrets
 from typing import Any, cast
 
+from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.i18n import (
     I18nCatalog,
     Language,
@@ -36,6 +37,7 @@ from werewolf_agent.clients.streamlit.setup import (
     setup_summary,
     validate_setup,
 )
+from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.clients.streamlit.views.game import _create_game
 from werewolf_agent.clients.streamlit.views.settings import (
     _ability_name,
@@ -58,6 +60,7 @@ from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
+    RuleCompositionSelection,
 )
 from werewolf_agent.settings import (
     AppSettings,
@@ -67,6 +70,7 @@ logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
 
 
+@implements_features("game_create")
 def _render_setup_screen(
     st: Any,
     *,
@@ -75,6 +79,7 @@ def _render_setup_screen(
     lang: Language,
     observer: bool,
     screens: ScreenCatalog,
+    mutations_available: bool = True,
 ) -> None:
     try:
         setup_options = setup_options_with_session_customs(
@@ -82,11 +87,14 @@ def _render_setup_screen(
             load_setup_options(settings=settings),
         )
     except AppError as exc:
-        st.error(exc.detail)
+        render_app_error(st, exc, lang=lang)
         return
 
     seed_value = seed_text(st.session_state, settings.streamlit_default_seed)
     counts = role_counts(st.session_state, setup_options)
+    rule_composition = setup_options.rule_composition.default
+    if not mutations_available:
+        st.warning(catalog.t(lang, "runtime.queue_required"))
 
     for element in screens.elements("setup", "main"):
         if element.id == "header":
@@ -120,6 +128,13 @@ def _render_setup_screen(
         elif element.id == "local_rules":
             _render_local_rules_settings(
                 st, setup_options=setup_options, catalog=catalog, lang=lang
+            )
+        elif element.id == "rule_composition":
+            rule_composition = _render_rule_composition(
+                st,
+                setup_options,
+                catalog=catalog,
+                lang=lang,
             )
 
     counts = role_counts(st.session_state, setup_options)
@@ -200,8 +215,10 @@ def _render_setup_screen(
                 setup_preset_id=preset_id,
                 narration_mode_value=active_narration_mode,
                 character_assignments_value=active_assignments,
+                rule_composition=rule_composition,
                 catalog=catalog,
                 lang=lang,
+                mutations_available=mutations_available,
             )
 
 
@@ -267,12 +284,15 @@ def _render_setup_submit(
     setup_preset_id: str | None,
     narration_mode_value: NarrationMode,
     character_assignments_value: dict[str, str],
+    rule_composition: RuleCompositionSelection,
     catalog: I18nCatalog,
     lang: Language,
+    mutations_available: bool,
 ) -> None:
     """Render the configured setup submit action."""
     disabled = (
-        not validation.is_valid
+        not mutations_available
+        or not validation.is_valid
         or (manual_player_id is None and not observer)
         or scenario_id is None
         or _has_duplicate_values(character_assignments_value)
@@ -299,9 +319,91 @@ def _render_setup_submit(
         character_assignments=character_assignments_value,
         custom_roles=custom_roles(st.session_state),
         custom_characters=custom_characters(st.session_state),
+        rule_composition=rule_composition,
         catalog=catalog,
         lang=lang,
     )
+
+
+def _render_rule_composition(
+    st: Any,
+    setup_options: GameSetupOptionsResponse,
+    *,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> RuleCompositionSelection:
+    """Render fixed policies as descriptions and multiple policies as selectors."""
+    options = setup_options.rule_composition
+    with st.expander(catalog.t(lang, "rules.advanced"), expanded=False):
+        phase = _select_policy(
+            st,
+            catalog.t(lang, "rules.phase_order"),
+            options.phase_orders,
+            options.default.phases,
+            empty_message=catalog.t(lang, "rules.options_empty"),
+        )
+        selected: dict[str, str] = {}
+        for field, label, values in (
+            ("action_policy", catalog.t(lang, "rules.action"), options.action_policies),
+            (
+                "resolution_policy",
+                catalog.t(lang, "rules.resolution"),
+                options.resolution_policies,
+            ),
+            ("phase_policy", catalog.t(lang, "rules.phase"), options.phase_policies),
+            ("victory_policy", catalog.t(lang, "rules.victory"), options.victory_policies),
+            (
+                "visibility_policy",
+                catalog.t(lang, "rules.visibility"),
+                options.visibility_policies,
+            ),
+        ):
+            selected[field] = _select_policy(
+                st,
+                label,
+                values,
+                getattr(options.default, field),
+                empty_message=catalog.t(lang, "rules.options_empty"),
+            )
+    return RuleCompositionSelection(phases=phase, **selected)
+
+
+def _select_policy(
+    st: Any,
+    label: str,
+    options: list[Any],
+    default: Any,
+    *,
+    empty_message: str,
+) -> Any:
+    if not options:
+        raise AppError(empty_message.format(label=label))
+    if len(options) == 1:
+        option = options[0]
+        st.markdown(f"**{label}: {option.name}**")
+        st.caption(option.description)
+        return getattr(option, "phases", option.id)
+    ids = [option.id for option in options]
+    default_id = default if isinstance(default, str) else ""
+    if not default_id:
+        default_phases = tuple(default)
+        default_id = next(
+            (
+                option.id
+                for option in options
+                if tuple(getattr(option, "phases", ())) == default_phases
+            ),
+            ids[0],
+        )
+    selected_id = st.selectbox(
+        label,
+        ids,
+        index=ids.index(default_id) if default_id in ids else 0,
+        format_func=lambda value: next(item.name for item in options if item.id == value),
+    )
+    option = next(item for item in options if item.id == selected_id)
+    st.caption(option.description)
+    return getattr(option, "phases", option.id)
 
 
 def _render_role_counts(

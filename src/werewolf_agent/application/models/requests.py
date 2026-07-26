@@ -19,6 +19,7 @@ from werewolf_agent.application.definitions import (
     CustomCharacterDefinition,
     CustomRoleDefinition,
     LocalRulesDefinition,
+    RuleCompositionDefinition,
 )
 from werewolf_agent.application.messages import (
     MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
@@ -53,6 +54,7 @@ class CreateGameCommand(ApplicationModel):
     character_assignments: dict[str, str] = Field(default_factory=dict)
     custom_roles: list[CustomRoleDefinition] = Field(default_factory=list)
     custom_characters: list[CustomCharacterDefinition] = Field(default_factory=list)
+    rule_composition: RuleCompositionDefinition = Field(default_factory=RuleCompositionDefinition)
     llm_mode: Literal["fake", "paid"] = "fake"
 
     @field_validator("role_counts")

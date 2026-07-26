@@ -25,6 +25,9 @@
 | `REQ-GAME-002` | 行動受付、phase 進行、勝敗、可視性を domain が判定する | domain |
 | `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`の正規IDで表す | domain、application |
 | `REQ-API-001` | React、CLI、Streamlit は同じ HTTP 契約でゲームを操作する | API |
+| `REQ-API-002` | 各clientは公開operationを分類し、対象となる利用者機能へ到達できる | API、clients |
+| `REQ-RUNTIME-001` | 外部依存の障害時もprocessのshellと安全な診断を返し、影響する機能だけを停止する | API、clients |
+| `REQ-RULE-001` | 登録済みrule policyの構成を選択し、gameとreplay snapshotへ保存できる | application、domain |
 | `REQ-AGENT-001` | agent は観測可能な情報と合法候補だけから判断する | agents |
 | `REQ-DATA-001` | accepted command、event、state、projection から完全 replay できる | persistence |
 | `REQ-DATA-002` | replayはcommandを先頭から再実行し、各versionのstate、event、projectionを照合する | application |

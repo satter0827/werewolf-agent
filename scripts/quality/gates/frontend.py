@@ -1,10 +1,10 @@
 """Frontend静的検査とbuild gate。"""
 
-import shutil
 import time
 from pathlib import Path
 
 from scripts._infra.artifacts import LAYOUT, publish_directory, staged_directory
+from scripts._infra.node import npm_executable
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
 from scripts.quality.models import Gate, RunContext
 
@@ -15,7 +15,7 @@ GATES = (*STATIC_GATES, *BUILD_GATES)
 
 def build() -> list[Gate]:
     """package.jsonのscriptだけを呼ぶFrontend gateを返す。"""
-    npm = shutil.which("npm") or "npm"
+    npm = npm_executable()
     cwd = REPOSITORY_ROOT / "frontend"
     return [
         Gate(
@@ -66,7 +66,7 @@ def build() -> list[Gate]:
 def _build_action(context: RunContext, _: Path) -> CommandResult:
     """Frontendをscratchで構築し、成功時だけ公開する。"""
     started = time.monotonic()
-    npm = shutil.which("npm") or "npm"
+    npm = npm_executable()
     with staged_directory("frontend") as staging:
         command = [
             npm,

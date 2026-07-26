@@ -23,6 +23,7 @@ from werewolf_agent.contracts.schemas import (
     LocalRulesSettings,
     NarrationMode,
     PublicGameSummary,
+    RuleCompositionSelection,
 )
 
 
@@ -42,6 +43,7 @@ class SessionGameSelection:
     character_assignments: dict[str, str]
     custom_roles: list[CustomRoleDefinitionRequest]
     custom_characters: list[CustomCharacterDefinitionRequest]
+    rule_composition: RuleCompositionSelection | None = None
 
 
 def create_session_game_selection(
@@ -57,6 +59,7 @@ def create_session_game_selection(
     character_assignments: Mapping[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
     custom_characters: list[CustomCharacterDefinitionRequest],
+    rule_composition: RuleCompositionSelection | None = None,
 ) -> SessionGameSelection:
     """Create a session-only playable selection from a newly created game."""
     return SessionGameSelection(
@@ -75,6 +78,7 @@ def create_session_game_selection(
         },
         custom_roles=list(custom_roles),
         custom_characters=list(custom_characters),
+        rule_composition=rule_composition,
     )
 
 
@@ -125,6 +129,7 @@ def build_history_options(
                 character_assignments=dict(session_selection.character_assignments),
                 custom_roles=list(session_selection.custom_roles),
                 custom_characters=list(session_selection.custom_characters),
+                rule_composition=session_selection.rule_composition,
             )
         )
         session_game_id = session_selection.game_id

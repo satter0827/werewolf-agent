@@ -10,6 +10,7 @@ from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
     LocalRulesSettings,
+    RuleCompositionSelection,
 )
 
 ScreenMode = Literal["playable", "observer"]
@@ -33,6 +34,7 @@ class SavedGameOptionView:
     character_assignments: dict[str, str] | None = None
     custom_roles: list[CustomRoleDefinitionRequest] | None = None
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None
+    rule_composition: RuleCompositionSelection | None = None
 
 
 @dataclass(frozen=True)

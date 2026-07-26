@@ -30,6 +30,18 @@ test("Streamlit exposes the same game setup capability through the API", async (
 
   await page.getByRole("button", { name: "新しいゲームを始める" }).click();
   await expect(page.getByText("ゲーム卓", { exact: true })).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Math.max(
+          window.scrollY,
+          document.scrollingElement?.scrollTop ?? 0,
+          document.querySelector('[data-testid="stAppViewContainer"]')?.scrollTop ?? 0,
+          document.querySelector('[data-testid="stMain"]')?.scrollTop ?? 0,
+        ),
+      ),
+    )
+    .toBe(0);
   await expect(page.locator("body")).not.toContainText(/provider|model|token/i);
   await page.screenshot({
     path: testInfo.outputPath(`streamlit-gameplay-${testInfo.project.name}.png`),
@@ -69,29 +81,32 @@ test("Streamlit observer mode uses only public API data", async ({ page }, testI
   });
 });
 
-test("Streamlit history and settings are reviewable", async ({ page }, testInfo) => {
+test("Streamlit records and preferences are reviewable", async ({ page }, testInfo) => {
   await page.goto("/");
-  const history = page.getByRole("button", { name: /履歴/ }).first();
+  const records = page.getByRole("button", { name: "記録", exact: true }).first();
   if (testInfo.project.name === "mobile") {
-    await history.evaluate((element) => (element as HTMLButtonElement).click());
+    await records.evaluate((element) => (element as HTMLButtonElement).click());
   } else {
-    await history.click();
+    await records.click();
   }
-  await expect(page.getByRole("heading", { name: "履歴" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "ゲーム記録" })).toBeVisible();
+  await expect(
+    page.getByTestId("stMain").getByText("記録はまだありません。", { exact: true }),
+  ).toBeVisible();
   await page.screenshot({
-    path: testInfo.outputPath(`streamlit-history-${testInfo.project.name}.png`),
+    path: testInfo.outputPath(`streamlit-records-${testInfo.project.name}.png`),
     fullPage: true,
   });
 
-  const settings = page.getByRole("button", { name: /設定/ }).first();
+  const preferences = page.getByRole("button", { name: "表示設定", exact: true }).first();
   if (testInfo.project.name === "mobile") {
-    await settings.evaluate((element) => (element as HTMLButtonElement).click());
+    await preferences.evaluate((element) => (element as HTMLButtonElement).click());
   } else {
-    await settings.click();
+    await preferences.click();
   }
-  await expect(page.getByRole("heading", { name: "設定" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "表示設定" })).toBeVisible();
   await page.screenshot({
-    path: testInfo.outputPath(`streamlit-settings-${testInfo.project.name}.png`),
+    path: testInfo.outputPath(`streamlit-preferences-${testInfo.project.name}.png`),
     fullPage: true,
   });
 });

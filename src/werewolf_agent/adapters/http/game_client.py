@@ -3,19 +3,18 @@
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
-from typing import Any, TypeVar
+from typing import Any
 from uuid import uuid4
 
 import httpx
-from pydantic import BaseModel, ConfigDict, ValidationError
 
+from werewolf_agent.adapters.http.base import HttpApiClient, parse_model
 from werewolf_agent.adapters.supabase.session_store import SupabaseSession
 from werewolf_agent.contracts import AppError, ErrorCode, ResourceNotFoundError
 from werewolf_agent.contracts.api import (
     OperationResponse,
     PlayerActionOperationRequest,
-    PublicRuntimeConfig,
+    SessionResponse,
 )
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
@@ -23,26 +22,12 @@ from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameListResponse,
     GameResponse,
-    GameSetupOptionsResponse,
     GameTimelineResponse,
     PlayerActionRequest,
     PlayerActionResponse,
     PlayerObservationResponse,
-    ProblemDetails,
 )
 from werewolf_agent.settings import AppSettings
-
-TModel = TypeVar("TModel", bound=BaseModel)
-
-
-class _HealthResponse(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-
-    status: str
-    service: str
-    instance_id: str
-    started_at: str
-    config_fingerprint: str
 
 
 class HttpGameClient:
@@ -57,31 +42,16 @@ class HttpGameClient:
     ) -> None:
         """Create a reusable client without exposing the token to callers."""
         self._settings = settings
-        self._session = session
-        self._client = httpx.Client(
-            base_url=settings.api_base_url.rstrip("/"),
-            timeout=settings.api_timeout_seconds,
+        self._http = HttpApiClient(
+            settings,
+            session,
             transport=transport,
-            headers={"Authorization": f"Bearer {session.access_token}"},
         )
         self._latest_jobs: dict[str, str] = {}
 
-    def health(self) -> dict[str, str]:
-        """Return the API process health status."""
-        return self._model(_HealthResponse, "GET", "/health").model_dump()
-
-    def get_runtime_config(self) -> PublicRuntimeConfig:
-        """Return the API-owned public runtime configuration."""
-        return self._model(
-            PublicRuntimeConfig,
-            "GET",
-            "/api/v1/config",
-            authenticated=False,
-        )
-
-    def get_setup_options(self) -> GameSetupOptionsResponse:
-        """Return server-validated game setup options."""
-        return self.get_runtime_config().setup
+    def get_session(self) -> SessionResponse:
+        """Return the current authenticated session capabilities."""
+        return self._http.model(SessionResponse, "GET", "/api/v1/session")
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Create a game and wait for its asynchronous operation."""
@@ -92,11 +62,11 @@ class HttpGameClient:
         completed = self._wait(operation)
         if completed.result is None:
             raise AppError("ゲーム作成結果がありません。", code=ErrorCode.INTERNAL_UNEXPECTED)
-        return _parse(GameResponse, completed.result)
+        return parse_model(GameResponse, completed.result)
 
     def get_game(self, game_id: str) -> GameResponse:
         """Return one authorized public game projection."""
-        return self._model(GameResponse, "GET", f"/api/v1/games/{game_id}")
+        return self._http.model(GameResponse, "GET", f"/api/v1/games/{game_id}")
 
     def list_games(
         self,
@@ -111,7 +81,12 @@ class HttpGameClient:
             params["status"] = status
         if limit is not None:
             params["limit"] = limit
-        return self._model(GameListResponse, "GET", "/api/v1/games", params=params)
+        return self._http.model(
+            GameListResponse,
+            "GET",
+            "/api/v1/games",
+            params=params,
+        )
 
     def advance_game(self, game_id: str) -> AdvanceGameResponse:
         """Advance a game and wait for its asynchronous operation."""
@@ -124,7 +99,7 @@ class HttpGameClient:
         completed = self._wait(operation)
         if completed.result is None:
             raise AppError("進行結果がありません。", code=ErrorCode.INTERNAL_UNEXPECTED)
-        return _parse(AdvanceGameResponse, completed.result)
+        return parse_model(AdvanceGameResponse, completed.result)
 
     def start_advance_game(self, game_id: str) -> AdvanceGameJobResponse:
         """Queue a game advance and return its job state."""
@@ -138,7 +113,7 @@ class HttpGameClient:
 
     def get_advance_job(self, game_id: str, job_id: str) -> AdvanceGameJobResponse:
         """Return one owned advance job."""
-        operation = self._model(
+        operation = self._http.model(
             OperationResponse,
             "GET",
             f"/api/v1/operations/{job_id}",
@@ -165,7 +140,7 @@ class HttpGameClient:
         params: dict[str, Any] = {"after": after}
         if limit is not None:
             params["limit"] = limit
-        return self._model(
+        return self._http.model(
             GameTimelineResponse,
             "GET",
             f"/api/v1/games/{game_id}/timeline",
@@ -178,7 +153,7 @@ class HttpGameClient:
         player_id: str,
     ) -> PlayerObservationResponse:
         """Return one authorized player's private observation."""
-        return self._model(
+        return self._http.model(
             PlayerObservationResponse,
             "GET",
             f"/api/v1/games/{game_id}/observation/{player_id}",
@@ -204,10 +179,10 @@ class HttpGameClient:
         completed = self._wait(operation)
         if completed.result is None:
             raise AppError("行動結果がありません。", code=ErrorCode.INTERNAL_UNEXPECTED)
-        return _parse(PlayerActionResponse, completed.result)
+        return parse_model(PlayerActionResponse, completed.result)
 
     def _command(self, path: str, body: dict[str, Any]) -> OperationResponse:
-        return self._model(
+        return self._http.model(
             OperationResponse,
             "POST",
             path,
@@ -226,7 +201,7 @@ class HttpGameClient:
                     retryable=True,
                 )
             time.sleep(self._settings.advance_job_poll_interval_seconds)
-            current = self._model(
+            current = self._http.model(
                 OperationResponse,
                 "GET",
                 f"/api/v1/operations/{current.operation_id}",
@@ -236,39 +211,9 @@ class HttpGameClient:
             raise AppError(detail, code=ErrorCode.INTERNAL_UNEXPECTED)
         return current
 
-    def _model(
-        self,
-        model_type: type[TModel],
-        method: str,
-        path: str,
-        *,
-        authenticated: bool = True,
-        **kwargs: Any,
-    ) -> TModel:
-        headers = dict(kwargs.pop("headers", {}))
-        if not authenticated:
-            headers["Authorization"] = ""
-        try:
-            response = self._client.request(method, path, headers=headers, **kwargs)
-        except httpx.HTTPError as exc:
-            raise AppError(
-                "APIへ接続できませんでした。",
-                code=ErrorCode.API_UNAVAILABLE,
-                retryable=True,
-            ) from exc
-        if response.is_error:
-            _raise_problem(response)
-        try:
-            return model_type.model_validate(response.json())
-        except (ValidationError, ValueError) as exc:
-            raise AppError(
-                "API応答の形式を確認できませんでした。",
-                code=ErrorCode.INTERNAL_UNEXPECTED,
-            ) from exc
-
 
 def _job(operation: OperationResponse) -> AdvanceGameJobResponse:
-    result = _parse(AdvanceGameResponse, operation.result) if operation.result else None
+    result = parse_model(AdvanceGameResponse, operation.result) if operation.result else None
     status = {
         "queued": "queued",
         "running": "running",
@@ -290,36 +235,6 @@ def _job(operation: OperationResponse) -> AdvanceGameJobResponse:
         completed_at=operation.updated_at if operation.status in {"succeeded", "failed"} else None,
         updated_at=operation.updated_at,
     )
-
-
-def _parse(model_type: type[TModel], payload: Any) -> TModel:
-    try:
-        return model_type.model_validate(payload)
-    except ValidationError as exc:
-        raise AppError(
-            "API応答の形式を確認できませんでした。",
-            code=ErrorCode.INTERNAL_UNEXPECTED,
-        ) from exc
-
-
-def _raise_problem(response: httpx.Response) -> None:
-    try:
-        problem = ProblemDetails.model_validate(response.json())
-    except (ValidationError, ValueError) as exc:
-        raise AppError(
-            "API要求に失敗しました。",
-            code=ErrorCode.API_UNAVAILABLE,
-        ) from exc
-    code = (
-        ErrorCode(problem.code)
-        if problem.code in {item.value for item in ErrorCode}
-        else ErrorCode.INTERNAL_UNEXPECTED
-    )
-    raise AppError(problem.detail, code=code)
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 __all__ = ["HttpGameClient"]

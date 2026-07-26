@@ -59,7 +59,7 @@ def test_contract_comparison_ignores_platform_newline_difference(
 
     monkeypatch.setattr(contracts, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(contracts, "run_command", run)
-    monkeypatch.setattr(contracts.shutil, "which", lambda command: command)
+    monkeypatch.setattr(contracts, "node_executable", lambda: "node")
 
     result = contracts.check_openapi_contract(context, tmp_path / "log")
 

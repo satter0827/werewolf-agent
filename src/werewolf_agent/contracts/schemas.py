@@ -55,6 +55,14 @@ ADVANCE_JOB_STATUS_FAILED: Final = "failed"
 GamePhase = Literal["night", "day_discussion", "voting", "finished"]
 GameStatus = Literal["running", "completed"]
 AdvanceJobStatus = Literal["queued", "running", "completed", "failed"]
+RecoveryAction = Literal[
+    "retry",
+    "sign_in",
+    "reload",
+    "check_configuration",
+    "contact_admin",
+    "none",
+]
 ACTIVE_ADVANCE_JOB_STATUSES: Final[frozenset[AdvanceJobStatus]] = frozenset(
     {ADVANCE_JOB_STATUS_QUEUED, ADVANCE_JOB_STATUS_RUNNING}
 )
@@ -88,6 +96,31 @@ class CustomCharacterDefinitionRequest(CustomCharacterDefinition):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class RuleCompositionSelection(BaseModel):
+    """Registered rule policies selected for one game."""
+
+    phases: tuple[str, ...] = ("night", "day_discussion", "voting")
+    action_policy: str = "standard"
+    resolution_policy: str = "standard"
+    phase_policy: str = "required_actions"
+    victory_policy: str = "faction_balance"
+    visibility_policy: str = "standard"
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator(
+        "action_policy",
+        "resolution_policy",
+        "phase_policy",
+        "victory_policy",
+        "visibility_policy",
+    )
+    @classmethod
+    def validate_policy_id(cls, value: str, info: ValidationInfo) -> str:
+        """Return a normalized policy id."""
+        return non_blank(value, str(info.field_name))
+
+
 class CreateGameRequest(BaseModel):
     """Payload for creating one game."""
 
@@ -101,6 +134,7 @@ class CreateGameRequest(BaseModel):
     character_assignments: dict[str, str] = Field(default_factory=dict)
     custom_roles: list[CustomRoleDefinitionRequest] = Field(default_factory=list)
     custom_characters: list[CustomCharacterDefinitionRequest] = Field(default_factory=list)
+    rule_composition: RuleCompositionSelection | None = None
 
     model_config = ConfigDict(extra="forbid")
 
@@ -407,6 +441,94 @@ class RoleDefinitionView(BaseModel):
         return non_blank(value, str(info.field_name))
 
 
+class RulePolicyOptionView(BaseModel):
+    """Public display metadata for one registered rule policy."""
+
+    id: str
+    name: str
+    description: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RulePhaseOrderOptionView(BaseModel):
+    """Public display metadata for one supported phase order."""
+
+    id: str
+    name: str
+    description: str
+    phases: tuple[str, ...]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RuleCompositionOptionsView(BaseModel):
+    """Selectable registered policies and the current default composition."""
+
+    default: RuleCompositionSelection
+    phase_orders: list[RulePhaseOrderOptionView]
+    action_policies: list[RulePolicyOptionView]
+    resolution_policies: list[RulePolicyOptionView]
+    phase_policies: list[RulePolicyOptionView]
+    victory_policies: list[RulePolicyOptionView]
+    visibility_policies: list[RulePolicyOptionView]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @model_validator(mode="after")
+    def validate_non_empty_policy_options(self) -> Self:
+        """Reject a server setup that cannot produce a complete composition."""
+        for field_name in (
+            "phase_orders",
+            "action_policies",
+            "resolution_policies",
+            "phase_policies",
+            "victory_policies",
+            "visibility_policies",
+        ):
+            if not getattr(self, field_name):
+                raise ValueError(f"{field_name} must contain at least one option")
+        return self
+
+
+def _default_rule_composition_options() -> RuleCompositionOptionsView:
+    selection = RuleCompositionSelection()
+    return RuleCompositionOptionsView(
+        default=selection,
+        phase_orders=[
+            RulePhaseOrderOptionView(
+                id="standard",
+                name="標準のphase順序",
+                description="夜、昼の議論、投票の順に進行します。",
+                phases=selection.phases,
+            )
+        ],
+        action_policies=[
+            RulePolicyOptionView(id="standard", name="標準", description="標準の行動判定")
+        ],
+        resolution_policies=[
+            RulePolicyOptionView(id="standard", name="標準", description="標準の行動解決")
+        ],
+        phase_policies=[
+            RulePolicyOptionView(
+                id="required_actions",
+                name="必要行動を待つ",
+                description="必要な行動が揃ってから進行",
+            )
+        ],
+        victory_policies=[
+            RulePolicyOptionView(
+                id="faction_balance",
+                name="陣営人数",
+                description="生存人数から勝敗を判定",
+            )
+        ],
+        visibility_policies=[
+            RulePolicyOptionView(id="standard", name="標準", description="標準の公開範囲")
+        ],
+    )
+
+
 class GameSetupOptionsResponse(BaseModel):
     """Public setup metadata for client bootstrapping."""
 
@@ -421,6 +543,9 @@ class GameSetupOptionsResponse(BaseModel):
     scenarios: list[ScenarioDefinitionView] = Field(default_factory=list)
     setup_presets: list[SetupPresetDefinitionView] = Field(default_factory=list)
     characters: list[CharacterDefinitionView] = Field(default_factory=list)
+    rule_composition: RuleCompositionOptionsView = Field(
+        default_factory=_default_rule_composition_options
+    )
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -577,6 +702,8 @@ class ProblemDetails(BaseModel):
     code: str
     trace_id: str | None = None
     errors: list[ProblemIssue] | None = None
+    retryable: bool = False
+    recovery: RecoveryAction = "none"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -670,9 +797,14 @@ __all__ = [
     "PublicGameState",
     "PublicGameSummary",
     "PublicPlayerState",
+    "RecoveryAction",
     "RoleCount",
     "RoleDefinitionView",
     "RoleId",
+    "RuleCompositionOptionsView",
+    "RuleCompositionSelection",
+    "RulePhaseOrderOptionView",
+    "RulePolicyOptionView",
     "ScenarioDefinitionView",
     "SetupPresetDefinitionView",
     "Winner",

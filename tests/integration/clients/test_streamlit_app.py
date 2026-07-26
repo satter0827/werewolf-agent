@@ -1,19 +1,20 @@
-"""Streamlit AppTestによる起動失敗画面の安全性。"""
+"""Streamlit AppTestによる縮退起動画面の安全性。"""
 
 from pathlib import Path
 
 from streamlit.testing.v1 import AppTest
 
 
-def test_streamlit_renders_safe_configuration_error_without_crashing(monkeypatch) -> None:
-    monkeypatch.delenv("WEREWOLF_SUPABASE_URL", raising=False)
-    monkeypatch.delenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", raising=False)
+def test_streamlit_renders_safe_degraded_shell_without_crashing(monkeypatch) -> None:
+    monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "")
+    monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "")
     app = Path("src/werewolf_agent/clients/streamlit/app.py")
 
     result = AppTest.from_file(str(app)).run(timeout=20)
 
     assert not result.exception
-    assert result.error
-    rendered = " ".join(error.value for error in result.error)
+    assert result.warning or result.info
+    rendered = " ".join(message.value for message in (*result.warning, *result.info))
+    assert "認証を利用できません" in rendered
     assert "token" not in rendered.casefold()
     assert "password" not in rendered.casefold()

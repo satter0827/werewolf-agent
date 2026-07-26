@@ -69,6 +69,14 @@ ERROR_CONTEXT_SCHEMA: Final = "schema"
 LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE: Final = "InvalidModelsResponse"
 LLM_PROVIDER_ERROR_NO_LOADED_MODEL: Final = "NoLoadedModel"
 ErrorLogLevel = Literal["INFO", "WARNING", "ERROR"]
+RecoveryAction = Literal[
+    "retry",
+    "sign_in",
+    "reload",
+    "check_configuration",
+    "contact_admin",
+    "none",
+]
 
 
 class ErrorSpec(BaseModel):
@@ -78,6 +86,7 @@ class ErrorSpec(BaseModel):
     status: HTTPStatus
     detail: str
     retryable: bool = False
+    recovery: RecoveryAction = "none"
     log_level: ErrorLogLevel = "INFO"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -95,6 +104,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_INVALID_CONFIGURATION,
         status=HTTPStatus.BAD_REQUEST,
         detail=DETAIL_CONFIG_INVALID_VALUE,
+        recovery="check_configuration",
     ),
     ErrorCode.REQUEST_VALIDATION_FAILED: ErrorSpec(
         title=TITLE_REQUEST_VALIDATION_FAILED,
@@ -106,6 +116,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.TOO_MANY_REQUESTS,
         detail=DETAIL_REQUEST_RATE_LIMITED,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.REQUEST_BODY_TOO_LARGE: ErrorSpec(
@@ -118,6 +129,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_REQUEST_CONCURRENCY_LIMITED,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.REQUEST_INVALID_CONTENT_LENGTH: ErrorSpec(
@@ -130,6 +142,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.GATEWAY_TIMEOUT,
         detail=DETAIL_REQUEST_TIMED_OUT,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.REQUEST_IDEMPOTENCY_CONFLICT: ErrorSpec(
@@ -146,17 +159,20 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_AUTHENTICATION_REQUIRED,
         status=HTTPStatus.UNAUTHORIZED,
         detail=DETAIL_AUTHENTICATION_REQUIRED,
+        recovery="sign_in",
     ),
     ErrorCode.AUTHORIZATION_FAILED: ErrorSpec(
         title=TITLE_AUTHORIZATION_FAILED,
         status=HTTPStatus.FORBIDDEN,
         detail=DETAIL_AUTHORIZATION_FAILED,
+        recovery="contact_admin",
     ),
     ErrorCode.API_UNAVAILABLE: ErrorSpec(
         title=TITLE_API_UNAVAILABLE,
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_API_UNAVAILABLE,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.RESOURCE_NOT_FOUND: ErrorSpec(
@@ -190,6 +206,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_LLM_PROVIDER_UNAVAILABLE,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.OBSERVATION_WRITE_FAILED: ErrorSpec(
@@ -197,12 +214,14 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
         detail=DETAIL_OBSERVATION_WRITE_FAILED,
         retryable=True,
+        recovery="retry",
         log_level="WARNING",
     ),
     ErrorCode.OPERATION_RETRY_EXHAUSTED: ErrorSpec(
         title=TITLE_OPERATION_RETRY_EXHAUSTED,
         status=HTTPStatus.SERVICE_UNAVAILABLE,
         detail=DETAIL_OPERATION_RETRY_EXHAUSTED,
+        recovery="contact_admin",
         log_level="ERROR",
     ),
     ErrorCode.OPERATION_UPGRADE_INTERRUPTED: ErrorSpec(
@@ -215,6 +234,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_UNEXPECTED_INTERNAL_ERROR,
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
         detail=DETAIL_INTERNAL_UNEXPECTED,
+        recovery="contact_admin",
         log_level="ERROR",
     ),
 }
@@ -248,6 +268,7 @@ __all__ = [
     "ErrorLogLevel",
     "ErrorSpec",
     "ProblemDetailsSource",
+    "RecoveryAction",
     "get_error_spec",
     "problem_type_uri",
 ]

@@ -13,12 +13,13 @@ from pathlib import Path
 
 from filelock import FileLock, Timeout
 
+from scripts._infra.node import node_executable, npm_executable
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     QUALITY_COMPOSE_PROJECT_NAME,
     REPOSITORY_ROOT,
 )
-from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
+from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, REQUIRED_LOCAL_IMAGES
 
 STATE_ROOT = ARTIFACT_ROOT / "runtime" / "environment"
 LOCK_PATH = STATE_ROOT / "setup.lock"
@@ -41,6 +42,16 @@ RELEASE_INPUTS = (
     "src",
     "supabase",
 )
+E2E_COMPOSE_SERVICES = (
+    "api",
+    "worker",
+    "frontend",
+    "frontend-e2e",
+    "streamlit",
+    "e2e",
+    "migrate",
+)
+RUNTIME_IMAGE = "werewolf-agent-quality-runtime:latest"
 
 
 def _run(
@@ -97,8 +108,8 @@ def dependency_fingerprint(profile: str) -> str:
     for value in (
         profile,
         _version(("uv", "--version")),
-        _version(("node", "--version")),
-        _version(("npm", "--version")),
+        _version((node_executable(), "--version")),
+        _version((npm_executable(), "--version")),
         _version(("docker", "--version")) if profile in {"release", "deep"} else "",
         _version(("supabase", "--version")) if profile in {"release", "deep"} else "",
     ):
@@ -151,10 +162,50 @@ def _ready(profile: str, fingerprint: str) -> bool:
         state = json.loads(state_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    return isinstance(state, dict) and state == {
+    state_matches = isinstance(state, dict) and state == {
         "fingerprint": fingerprint,
         "profile": profile,
     }
+    return state_matches and _release_environment_ready(profile)
+
+
+def required_release_images() -> tuple[str, ...]:
+    """Release準備が現在のDocker contextへ作成するimageを返す。"""
+    compose_images = tuple(
+        f"{QUALITY_COMPOSE_PROJECT_NAME}-{service}" for service in E2E_COMPOSE_SERVICES
+    )
+    return (*REQUIRED_LOCAL_IMAGES, *compose_images, RUNTIME_IMAGE)
+
+
+def _release_environment_ready(profile: str) -> bool:
+    """Release系profileのdaemonと必須imageが現在のcontextに存在するか返す。"""
+    if profile not in {"release", "deep"}:
+        return True
+    docker = shutil.which("docker")
+    if docker is None or not _command_succeeds((docker, "info")):
+        return False
+    return all(
+        _command_succeeds((docker, "image", "inspect", image))
+        for image in required_release_images()
+    )
+
+
+def _command_succeeds(command: Sequence[str]) -> bool:
+    """準備済み判定用の読取commandが成功したか返す。"""
+    try:
+        completed = subprocess.run(
+            list(command),
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=30,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def setup(profile: str = "check") -> None:
@@ -170,7 +221,7 @@ def setup(profile: str = "check") -> None:
 def _setup_locked(profile: str) -> None:
     """Process間lock内で指定profileの依存を準備する。"""
     uv = shutil.which("uv") or "uv"
-    npm = shutil.which("npm") or "npm"
+    npm = npm_executable()
     _run((uv, "sync", "--frozen", "--all-groups", "--all-extras"))
     _run((npm, "ci", "--ignore-scripts"), cwd=REPOSITORY_ROOT / "frontend")
     if profile in {"release", "deep"}:
@@ -180,6 +231,7 @@ def _setup_locked(profile: str) -> None:
             raise RuntimeError("releaseにはDockerが必要です。")
         if supabase is None:
             raise RuntimeError("releaseにはSupabase CLIが必要です。")
+        _run((supabase, "stop", "--no-backup"), quiet=True)
         _run(
             (
                 supabase,
@@ -199,13 +251,7 @@ def _setup_locked(profile: str) -> None:
                 "--profile",
                 "e2e",
                 "build",
-                "api",
-                "worker",
-                "frontend",
-                "frontend-e2e",
-                "streamlit",
-                "e2e",
-                "migrate",
+                *E2E_COMPOSE_SERVICES,
             )
         )
         _run(
@@ -217,7 +263,7 @@ def _setup_locked(profile: str) -> None:
                 "-f",
                 "docker/backend.Dockerfile",
                 "-t",
-                "werewolf-agent-quality-runtime:latest",
+                RUNTIME_IMAGE,
                 ".",
             )
         )
@@ -289,10 +335,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "FRONTEND_BINARIES",
     "PROFILES",
+    "RUNTIME_IMAGE",
     "dependency_fingerprint",
     "ensure",
     "frontend_installation_fingerprint",
     "is_ready",
     "main",
+    "required_release_images",
     "setup",
 ]

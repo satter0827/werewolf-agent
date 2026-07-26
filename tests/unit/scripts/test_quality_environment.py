@@ -22,7 +22,8 @@ def test_environment_gate_checks_frozen_dependencies_and_runtime_versions(
 
     monkeypatch.setattr(environment, "run_command", run)
     monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
-    monkeypatch.setattr(environment.shutil, "which", lambda command: command)
+    monkeypatch.setattr(environment, "node_executable", lambda: "node")
+    monkeypatch.setattr(environment, "npm_executable", lambda: "npm")
     context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
@@ -50,15 +51,16 @@ def test_environment_gate_rejects_unsupported_node_version(
     """Frontend標準と異なるNode.jsを依存同期済みでも受理しない。"""
 
     def run(command: tuple[str, ...], **_kwargs: object) -> CommandResult:
-        output = "v20.0.0\n" if "--version" in command else ""
+        output = "v24.0.0\n" if "--version" in command else ""
         return CommandResult(list(command), 0, 0.0, output)
 
     monkeypatch.setattr(environment, "run_command", run)
     monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
-    monkeypatch.setattr(environment.shutil, "which", lambda command: command)
+    monkeypatch.setattr(environment, "node_executable", lambda: "node")
+    monkeypatch.setattr(environment, "npm_executable", lambda: "npm")
     context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
 
     assert result.returncode == 1
-    assert "Node.js 22以上" in result.output
+    assert "Node.js 22が必要" in result.output

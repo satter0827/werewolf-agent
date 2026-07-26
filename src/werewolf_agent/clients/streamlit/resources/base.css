@@ -1,0 +1,19 @@
+html {
+    color-scheme: light;
+}
+
+.stApp {
+    background: linear-gradient(180deg, var(--wa-shell) 0, #d9e0ea 96px, var(--wa-bg) 224px);
+    color: var(--wa-text);
+}
+
+.block-container h1,
+.block-container h2,
+.block-container h3 {
+    color: var(--wa-text);
+}
+
+:focus-visible {
+    outline: 3px solid var(--wa-info) !important;
+    outline-offset: 2px;
+}

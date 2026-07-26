@@ -26,6 +26,17 @@ defaultを所有する。settingsはpathとruntime値だけを検証し、resour
 定義間の相互参照検証はadapterがcomposition時に行う。resourceはpackage APIから
 読み、作業directoryに依存しない。
 
+Streamlitのscreen定義はworkspace順序、region、column比、情報密度、分析領域の初期状態を
+扱い、必須機能の有効・無効は扱わない。CSSは`tokens`、`base`、`layout`、`components`、
+`streamlit`、`responsive`の固定順で読み、外部overrideを最後に追加する。CSS、翻訳、
+screen overrideの欠落または破損時はpackaged resourceへ戻す。rule、認証、秘匿設定には
+fallbackを設けない。workspace順序は通常時と縮退時のnavigationへ共通適用する。情報密度は
+spacing tokenを切り替え、分析領域の初期状態はRecordsとAdminのexpanderへ適用する。
+
+runtime statusはdatabaseとoperation queueを独立した読取probeで判定する。probe失敗はprocessを
+停止せず、各requestで状態を再評価して復旧を反映する。queueへの追加は可用性guardを通し、
+queue障害時も既存operationの参照を維持する。
+
 ## 実行プロセス
 
 | プロセス | 入口 | 主な責務 |
@@ -53,6 +64,6 @@ redactionしてからsinkへ渡す。domainとapplicationはlogging設定に依�
 
 ## 実行前検証
 
-`werewolf-agent doctor` が必須設定、resource、接続先の構成を検査する。外部接続を
+`werewolf-agent system doctor` が必須設定、resource、接続先の構成を検査する。外部接続を
 必要とする検証は明示した preflight に分け、通常の unit test と品質 runner が
 外部 API を暗黙に呼ばないようにする。

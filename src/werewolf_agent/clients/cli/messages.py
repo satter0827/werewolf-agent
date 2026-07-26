@@ -2,85 +2,85 @@
 
 from __future__ import annotations
 
-HELP_APP = "Werewolf Agent development and gameplay commands."
-HELP_OUTPUT_FORMAT = "Output format: table, json, or jsonl."
-HELP_SEED = "Deterministic seed."
-HELP_MANUAL_PLAYER = "Player id controlled by this CLI."
-HELP_ROLE_COUNT = "Role count entry, e.g. werewolf=1."
-HELP_GAME_ID_INSPECT = "Game id to inspect."
-HELP_GAME_ID_ADVANCE = "Game id to advance."
-HELP_MAX_STEPS = "Maximum advance steps."
-HELP_LOG_JSONL = "Optional public timeline JSONL."
-HELP_POLL_INTERVAL_STEPS = "Seconds to wait between advance steps."
-HELP_SHOW_TIMELINE = "Print public timeline items."
-HELP_AFTER_SEQUENCE = "Start after this timeline sequence."
-HELP_LIMIT_PER_POLL = "Maximum items per poll."
-HELP_POLL_INTERVAL_FOLLOW = "Seconds to wait between polls when following."
-HELP_FOLLOW = "Keep polling for new items."
-HELP_TIMELINE_FILE = "Public timeline JSONL."
-HELP_GAME_ID_REPLAY = "Game id to replay from the active data source."
-HELP_REPLAY_DELAY = "Seconds to wait between items."
-HELP_GAME_STATUS_FILTER = "Optional game status filter."
-HELP_GAME_LIST_LIMIT = "Maximum games to return."
-HELP_GAME_PAGE_OFFSET = "Game page offset."
+HELP_APP = "Werewolf Agentのゲーム操作と開発診断を行います。"
+HELP_OUTPUT_FORMAT = "出力形式をtable、json、jsonlから選びます。"
+HELP_SEED = "再現に使用するシードです。"
+HELP_MANUAL_PLAYER = "CLIで操作するプレイヤーIDです。"
+HELP_ROLE_COUNT = "役職人数をwerewolf=1の形式で指定します。"
+HELP_GAME_ID_INSPECT = "表示するゲームIDです。"
+HELP_GAME_ID_ADVANCE = "進行するゲームIDです。"
+HELP_MAX_STEPS = "進行する最大ステップ数です。"
+HELP_LOG_JSONL = "公開タイムラインを保存するJSONLファイルです。"
+HELP_POLL_INTERVAL_STEPS = "進行ステップ間の待機秒数です。"
+HELP_SHOW_TIMELINE = "公開タイムラインを表示します。"
+HELP_AFTER_SEQUENCE = "この連番より後のタイムラインを取得します。"
+HELP_LIMIT_PER_POLL = "1回に取得する最大件数です。"
+HELP_POLL_INTERVAL_FOLLOW = "継続取得時の待機秒数です。"
+HELP_FOLLOW = "新しい項目を継続して取得します。"
+HELP_TIMELINE_FILE = "公開タイムラインのJSONLファイルです。"
+HELP_GAME_ID_REPLAY = "APIから再生するゲームIDです。"
+HELP_REPLAY_DELAY = "項目を表示する間隔の秒数です。"
+HELP_GAME_STATUS_FILTER = "ゲーム状態で絞り込みます。"
+HELP_GAME_LIST_LIMIT = "取得するゲームの最大件数です。"
+HELP_GAME_PAGE_OFFSET = "ゲーム一覧の開始位置です。"
 
-TABLE_TITLE_API_HEALTH = "Data Source Health"
-TABLE_TITLE_GAME_SETUP = "Game Setup"
-TABLE_TITLE_GAMES = "Games"
-TABLE_TITLE_GAME_TIMELINE = "Game Timeline"
-TABLE_TITLE_DOCTOR = "Werewolf Agent Doctor"
+TABLE_TITLE_API_HEALTH = "接続状態"
+TABLE_TITLE_GAME_SETUP = "ゲーム設定"
+TABLE_TITLE_GAMES = "ゲーム一覧"
+TABLE_TITLE_GAME_TIMELINE = "ゲームタイムライン"
+TABLE_TITLE_DOCTOR = "Werewolf Agent 診断"
 
-COLUMN_FIELD = "Field"
-COLUMN_VALUE = "Value"
-COLUMN_CHECK = "Check"
-COLUMN_GAME = "Game"
-COLUMN_STATUS = "Status"
-COLUMN_PHASE = "Phase"
-COLUMN_DAY = "Day"
-COLUMN_WINNER = "Winner"
-COLUMN_TURNS = "Turns"
-COLUMN_SEQUENCE = "Seq"
-COLUMN_EVENT = "Event"
-COLUMN_ACTOR = "Actor"
-COLUMN_PAYLOAD = "Payload"
+COLUMN_FIELD = "項目"
+COLUMN_VALUE = "値"
+COLUMN_CHECK = "確認項目"
+COLUMN_GAME = "ゲーム"
+COLUMN_STATUS = "状態"
+COLUMN_PHASE = "フェーズ"
+COLUMN_DAY = "日"
+COLUMN_WINNER = "勝利陣営"
+COLUMN_TURNS = "ターン"
+COLUMN_SEQUENCE = "連番"
+COLUMN_EVENT = "イベント"
+COLUMN_ACTOR = "実行者"
+COLUMN_PAYLOAD = "内容"
 
-ROW_PLAYER_COUNT = "player count"
-ROW_ROLES = "roles"
-ROW_DEFAULT_ROLE_COUNTS = "default role counts"
-ROW_STATUS = "status"
-ROW_PHASE = "phase"
-ROW_DAY = "day"
-ROW_VERSION = "version"
-ROW_ALIVE = "alive"
-ROW_ELIMINATED = "eliminated"
-ROW_WINNER = "winner"
-ROW_ROLE = "role"
-ROW_AVAILABLE_ACTIONS = "available actions"
-ROW_KNOWN_ROLES = "known roles"
+ROW_PLAYER_COUNT = "プレイヤー人数"
+ROW_ROLES = "役職"
+ROW_DEFAULT_ROLE_COUNTS = "既定の役職人数"
+ROW_STATUS = "状態"
+ROW_PHASE = "フェーズ"
+ROW_DAY = "日"
+ROW_VERSION = "バージョン"
+ROW_ALIVE = "生存者"
+ROW_ELIMINATED = "退場者"
+ROW_WINNER = "勝利陣営"
+ROW_ROLE = "役職"
+ROW_AVAILABLE_ACTIONS = "実行できる行動"
+ROW_KNOWN_ROLES = "判明している役職"
 
 EMPTY_VALUE = "-"
-PROMPT_SPEECH = "speech"
-MESSAGE_REPLAY_SOURCE_REQUIRED = "Either --timeline or --game-id is required."
+PROMPT_SPEECH = "発言内容"
+MESSAGE_REPLAY_SOURCE_REQUIRED = "--timelineまたは--game-idを指定してください。"
 
 
 def table_title_game(game_id: str) -> str:
     """Return the game-state table title."""
-    return f"Game {game_id}"
+    return f"ゲーム {game_id}"
 
 
 def table_title_observation(player_id: str) -> str:
     """Return the private-observation table title."""
-    return f"Observation {player_id}"
+    return f"観測情報 {player_id}"
 
 
 def message_created_game(game_id: str) -> str:
     """Return the CLI created-game notice."""
-    return f"Created game [bold]{game_id}[/bold]"
+    return f"ゲームを作成しました: [bold]{game_id}[/bold]"
 
 
 def message_game_completed(*, winner: str, steps: int) -> str:
     """Return the CLI game-completed notice."""
-    return f"[bold green]Game completed[/bold green]: winner={winner}, steps={steps}"
+    return f"[bold green]ゲームが終了しました[/bold green]: 勝利陣営={winner}, ステップ={steps}"
 
 
 def message_timeline_item(*, sequence: int, event_type: str, payload: object) -> str:
@@ -95,23 +95,23 @@ def message_next_offset(next_offset: int) -> str:
 
 def message_target_prompt(action_type: str) -> str:
     """Return the target prompt for an action type."""
-    return f"{action_type} target_id"
+    return f"{action_type}の対象ID"
 
 
-MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE = "max_steps must be at least 1."
+MESSAGE_MAX_STEPS_MUST_BE_AT_LEAST_ONE = "max_stepsは1以上にしてください。"
 
-MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE = "poll_interval must be zero or greater."
+MESSAGE_POLL_INTERVAL_MUST_BE_NON_NEGATIVE = "poll_intervalは0以上にしてください。"
 
-MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID = "output format must be one of: table, json, jsonl."
+MESSAGE_OUTPUT_FORMAT_MUST_BE_VALID = "出力形式はtable、json、jsonlから選んでください。"
 
-MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW = "Use jsonl output when following streamed timeline items."
+MESSAGE_JSON_OUTPUT_CANNOT_FOLLOW = "継続取得ではjsonl出力を使用してください。"
 
 
 def message_game_did_not_complete(max_steps: int) -> str:
     """Return a CLI max-step failure message."""
-    return f"Game did not complete within {max_steps} API steps."
+    return f"ゲームは{max_steps} APIステップ以内に終了しませんでした。"
 
 
 def message_error_line(detail: str, suffix: str = "") -> str:
     """Return one CLI error line."""
-    return f"Error: {detail}{suffix}"
+    return f"エラー: {detail}{suffix}"

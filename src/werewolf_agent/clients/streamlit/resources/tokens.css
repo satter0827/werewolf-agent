@@ -1,0 +1,32 @@
+:root {
+    --wa-shell: #1b2437;
+    --wa-shell-soft: #263249;
+    --wa-bg: #f4f6f8;
+    --wa-surface: #ffffff;
+    --wa-surface-warm: #fbfcfe;
+    --wa-line: #dfe5ec;
+    --wa-line-strong: #c7d0dc;
+    --wa-text: #152033;
+    --wa-muted: #667085;
+    --wa-danger: #cf2f37;
+    --wa-danger-soft: #fff1f2;
+    --wa-danger-line: #f5b7bd;
+    --wa-day: #c7781a;
+    --wa-day-soft: #fff7e8;
+    --wa-day-line: #f6c783;
+    --wa-safe: #087f72;
+    --wa-safe-soft: #e7f8f4;
+    --wa-safe-line: #8dd8ca;
+    --wa-info: #315f9f;
+    --wa-info-soft: #edf4ff;
+    --wa-shadow: 0 10px 28px rgba(21, 32, 51, 0.09);
+    --wa-command-shadow: 0 18px 42px rgba(21, 32, 51, 0.12);
+    --wa-radius: 8px;
+    --wa-radius-sm: 6px;
+    --wa-space-2: 8px;
+    --wa-space-3: 12px;
+    --wa-space-4: 16px;
+    --wa-space-5: 20px;
+    --wa-space-6: 24px;
+}
+

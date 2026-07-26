@@ -23,17 +23,12 @@ from scripts._infra.process import (
     remove_managed_path,
     run_command,
 )
-from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
+from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, REQUIRED_LOCAL_IMAGES
 
 _ENV_LINE = re.compile(r'^([A-Z][A-Z0-9_]*)="?(.*?)"?$')
 _ALLOWED_STATUS_KEYS = frozenset({"ANON_KEY", "API_URL", "DB_URL", "PUBLISHABLE_KEY"})
 _SUPPORTED_SUPABASE_CLI_VERSION = "2.104.0"
-_REQUIRED_LOCAL_IMAGES = (
-    "public.ecr.aws/supabase/gotrue:v2.189.0",
-    "public.ecr.aws/supabase/kong:2.8.1",
-    "public.ecr.aws/supabase/postgres:17.6.1.132",
-    "public.ecr.aws/supabase/postgrest:v14.12",
-)
+APPLICATION_PREFLIGHT_ARGUMENTS = ("system", "doctor")
 
 
 def is_supported_supabase_version(output: str) -> bool:
@@ -112,7 +107,7 @@ def prepare_supabase(
         raise EnvironmentBlockedError("Docker engineが起動していません。")
     missing_images = [
         image
-        for image in _REQUIRED_LOCAL_IMAGES
+        for image in REQUIRED_LOCAL_IMAGES
         if run_command(
             ["docker", "image", "inspect", image],
             timeout_seconds=30,
@@ -192,7 +187,7 @@ def prepare_supabase(
             _failure_message("Supabase migrationの適用に失敗しました。", migration)
         )
 
-    command = [sys.executable, "-m", "werewolf_agent", "doctor"]
+    command = [sys.executable, "-m", "werewolf_agent", *APPLICATION_PREFLIGHT_ARGUMENTS]
     checked = run_command(
         command,
         timeout_seconds=60,

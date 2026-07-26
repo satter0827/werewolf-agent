@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 from rich.table import Table
 
-from werewolf_agent.adapters.factory import build_game_client
+from werewolf_agent.adapters.factory import build_public_client
 from werewolf_agent.clients.cli.commands.common import (
     _output_format,
 )
@@ -48,7 +48,7 @@ def _doctor(*, output: str | None) -> None:
     settings = get_settings()
     output_format = _output_format(output, settings)
     try:
-        health = build_game_client(settings).health()
+        health = build_public_client(settings).health()
     except AppError as exc:
         api_health = exc.detail
     else:

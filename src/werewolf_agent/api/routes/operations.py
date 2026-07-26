@@ -11,7 +11,11 @@ from werewolf_agent.contracts.api import OperationResponse
 router = APIRouter(tags=["operations"])
 
 
-@router.get("/operations/{operation_id}", response_model=OperationResponse)
+@router.get(
+    "/operations/{operation_id}",
+    response_model=OperationResponse,
+    operation_id="operation_get",
+)
 def get_operation(
     operation_id: str,
     principal: PrincipalDependency,

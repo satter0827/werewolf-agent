@@ -33,8 +33,12 @@ CPU数と設定上限の小さい方です。worker数は設定上限以下、ti
 ない数値閾値では合否を決めません。
 
 `scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython、
-Node、Supabase image、E2E image、runtime imageを準備します。品質commandは不足物を
-取得せず`blocked`にします。
+Frontend依存を同期します。FrontendはNode.js 22を使用し、`WEREWOLF_NODE_HOME`、PATH、
+WindowsのScoop `nodejs22`から対応toolchainを解決して子processへ固定します。
+release環境ではSupabase image、E2E image、runtime imageも準備します。品質commandは不足物を
+取得せず`blocked`にします。release系の準備済み判定は保存済みmarkerだけでなく、現在の
+Docker contextでdaemonと全必須imageの実在も確認します。Docker Desktopのresetやcontext変更で
+imageが失われた場合、次の`ensure`は自動的に再準備します。
 
 ## 判定
 

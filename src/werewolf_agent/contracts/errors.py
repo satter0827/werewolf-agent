@@ -64,6 +64,8 @@ def problem_details_from_spec(
         code=error_code.value,
         trace_id=trace_id,
         errors=errors,
+        retryable=spec.retryable,
+        recovery=spec.recovery,
     )
 
 

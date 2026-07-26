@@ -15,7 +15,7 @@ export interface paths {
          * List Llm Traces
          * @description Return trace metadata without prompt or raw response content.
          */
-        get: operations["list_llm_traces_api_v1_admin_games__game_id__llm_traces_get"];
+        get: operations["admin_llm_traces_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -35,7 +35,7 @@ export interface paths {
          * Get Llm Usage
          * @description Return aggregate LLM usage without exposing credentials or prompts.
          */
-        get: operations["get_llm_usage_api_v1_admin_games__game_id__llm_usage_get"];
+        get: operations["admin_llm_usage_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -57,7 +57,7 @@ export interface paths {
          * Verify Game Replay
          * @description Verify replay checksums without returning private state or events.
          */
-        post: operations["verify_game_replay_api_v1_admin_games__game_id__replay_verify_post"];
+        post: operations["admin_replay_verify"];
         delete?: never;
         options?: never;
         head?: never;
@@ -75,7 +75,7 @@ export interface paths {
          * Reveal Game
          * @description Return complete game state only to an administrator.
          */
-        get: operations["reveal_game_api_v1_admin_games__game_id__reveal_get"];
+        get: operations["admin_game_reveal"];
         put?: never;
         post?: never;
         delete?: never;
@@ -95,7 +95,7 @@ export interface paths {
          * Diagnose Operation
          * @description Return bounded operation diagnostics to administrators.
          */
-        get: operations["diagnose_operation_api_v1_admin_operations__operation_id__get"];
+        get: operations["admin_operation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -115,7 +115,7 @@ export interface paths {
          * Get Runtime Config
          * @description Return only values safe to expose to every browser.
          */
-        get: operations["get_runtime_config_api_v1_config_get"];
+        get: operations["runtime_config_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -135,13 +135,13 @@ export interface paths {
          * List Games
          * @description Return games visible through the caller's application projection.
          */
-        get: operations["list_games_api_v1_games_get"];
+        get: operations["game_list"];
         put?: never;
         /**
          * Create Game
          * @description Queue one game with a server-selected immutable LLM mode.
          */
-        post: operations["create_game_api_v1_games_post"];
+        post: operations["game_create"];
         delete?: never;
         options?: never;
         head?: never;
@@ -159,7 +159,7 @@ export interface paths {
          * Get Game
          * @description Return one authorized public game state.
          */
-        get: operations["get_game_api_v1_games__game_id__get"];
+        get: operations["game_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -181,7 +181,7 @@ export interface paths {
          * Submit Action
          * @description Queue one version-checked player action.
          */
-        post: operations["submit_action_api_v1_games__game_id__actions_post"];
+        post: operations["game_action_submit"];
         delete?: never;
         options?: never;
         head?: never;
@@ -201,7 +201,7 @@ export interface paths {
          * Advance Game
          * @description Queue one authorized version-checked game advance.
          */
-        post: operations["advance_game_api_v1_games__game_id__advance_post"];
+        post: operations["game_advance"];
         delete?: never;
         options?: never;
         head?: never;
@@ -219,7 +219,7 @@ export interface paths {
          * Get Observation
          * @description Return only the requesting player's private projection.
          */
-        get: operations["get_observation_api_v1_games__game_id__observation__player_id__get"];
+        get: operations["game_observation_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -239,7 +239,7 @@ export interface paths {
          * Get Timeline
          * @description Return authorized public timeline items.
          */
-        get: operations["get_timeline_api_v1_games__game_id__timeline_get"];
+        get: operations["game_timeline_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -259,7 +259,47 @@ export interface paths {
          * Get Operation
          * @description Return an operation only to its owner.
          */
-        get: operations["get_operation_api_v1_operations__operation_id__get"];
+        get: operations["operation_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Session
+         * @description Return safe properties of the verified request principal.
+         */
+        get: operations["session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Runtime Status
+         * @description Return sanitized infrastructure availability without authentication.
+         */
+        get: operations["runtime_status_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -435,6 +475,7 @@ export interface components {
             role_counts: {
                 [key: string]: number;
             };
+            rule_composition?: components["schemas"]["RuleCompositionSelection"] | null;
             rules?: components["schemas"]["LocalRulesSettings"] | null;
             /** Scenario Id */
             scenario_id?: string | null;
@@ -689,6 +730,7 @@ export interface components {
             };
             /** Roles */
             roles: components["schemas"]["RoleDefinitionView"][];
+            rule_composition?: components["schemas"]["RuleCompositionOptionsView"];
             /** Scenarios */
             scenarios?: components["schemas"]["ScenarioDefinitionView"][];
             /** Setup Presets */
@@ -869,6 +911,17 @@ export interface components {
             errors?: components["schemas"]["ProblemIssue"][] | null;
             /** Instance */
             instance: string;
+            /**
+             * Recovery
+             * @default none
+             * @enum {string}
+             */
+            recovery: "retry" | "sign_in" | "reload" | "check_configuration" | "contact_admin" | "none";
+            /**
+             * Retryable
+             * @default false
+             */
+            retryable: boolean;
             /** Status */
             status: number;
             /** Title */
@@ -1128,6 +1181,122 @@ export interface components {
             name: string;
         };
         /**
+         * RuleCompositionOptionsView
+         * @description Selectable registered policies and the current default composition.
+         */
+        RuleCompositionOptionsView: {
+            /** Action Policies */
+            action_policies: components["schemas"]["RulePolicyOptionView"][];
+            default: components["schemas"]["RuleCompositionSelection"];
+            /** Phase Orders */
+            phase_orders: components["schemas"]["RulePhaseOrderOptionView"][];
+            /** Phase Policies */
+            phase_policies: components["schemas"]["RulePolicyOptionView"][];
+            /** Resolution Policies */
+            resolution_policies: components["schemas"]["RulePolicyOptionView"][];
+            /** Victory Policies */
+            victory_policies: components["schemas"]["RulePolicyOptionView"][];
+            /** Visibility Policies */
+            visibility_policies: components["schemas"]["RulePolicyOptionView"][];
+        };
+        /**
+         * RuleCompositionSelection
+         * @description Registered rule policies selected for one game.
+         */
+        RuleCompositionSelection: {
+            /**
+             * Action Policy
+             * @default standard
+             */
+            action_policy: string;
+            /**
+             * Phase Policy
+             * @default required_actions
+             */
+            phase_policy: string;
+            /**
+             * Phases
+             * @default [
+             *       "night",
+             *       "day_discussion",
+             *       "voting"
+             *     ]
+             */
+            phases: string[];
+            /**
+             * Resolution Policy
+             * @default standard
+             */
+            resolution_policy: string;
+            /**
+             * Victory Policy
+             * @default faction_balance
+             */
+            victory_policy: string;
+            /**
+             * Visibility Policy
+             * @default standard
+             */
+            visibility_policy: string;
+        };
+        /**
+         * RulePhaseOrderOptionView
+         * @description Public display metadata for one supported phase order.
+         */
+        RulePhaseOrderOptionView: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+            /** Phases */
+            phases: string[];
+        };
+        /**
+         * RulePolicyOptionView
+         * @description Public display metadata for one registered rule policy.
+         */
+        RulePolicyOptionView: {
+            /** Description */
+            description: string;
+            /** Id */
+            id: string;
+            /** Name */
+            name: string;
+        };
+        /**
+         * RuntimeComponentStatus
+         * @description Sanitized availability for one runtime dependency.
+         */
+        RuntimeComponentStatus: {
+            /**
+             * Component
+             * @enum {string}
+             */
+            component: "api" | "authentication" | "database" | "operation_queue";
+            /** Reason Code */
+            reason_code?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "degraded" | "unavailable";
+        };
+        /**
+         * RuntimeStatusResponse
+         * @description Public dependency status used for client-side degradation.
+         */
+        RuntimeStatusResponse: {
+            /** Components */
+            components: components["schemas"]["RuntimeComponentStatus"][];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "degraded" | "unavailable";
+        };
+        /**
          * ScenarioDefinitionView
          * @description Public scenario metadata for setup screens.
          */
@@ -1140,6 +1309,26 @@ export interface components {
             recommended_setup_preset?: string | null;
             /** Summary */
             summary: string;
+        };
+        /**
+         * SessionResponse
+         * @description Allowlisted properties of the authenticated request principal.
+         */
+        SessionResponse: {
+            /** Administrator */
+            administrator: boolean;
+            /** Anonymous */
+            anonymous: boolean;
+            /**
+             * Authenticated
+             * @default true
+             */
+            authenticated: boolean;
+            /**
+             * Llm Mode
+             * @enum {string}
+             */
+            llm_mode: "fake" | "paid";
         };
         /**
          * SetupPresetDefinitionView
@@ -1179,7 +1368,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    list_llm_traces_api_v1_admin_games__game_id__llm_traces_get: {
+    admin_llm_traces_get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -1293,7 +1482,7 @@ export interface operations {
             };
         };
     };
-    get_llm_usage_api_v1_admin_games__game_id__llm_usage_get: {
+    admin_llm_usage_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1405,7 +1594,7 @@ export interface operations {
             };
         };
     };
-    verify_game_replay_api_v1_admin_games__game_id__replay_verify_post: {
+    admin_replay_verify: {
         parameters: {
             query?: never;
             header?: never;
@@ -1517,7 +1706,7 @@ export interface operations {
             };
         };
     };
-    reveal_game_api_v1_admin_games__game_id__reveal_get: {
+    admin_game_reveal: {
         parameters: {
             query?: never;
             header?: never;
@@ -1629,7 +1818,7 @@ export interface operations {
             };
         };
     };
-    diagnose_operation_api_v1_admin_operations__operation_id__get: {
+    admin_operation_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1741,7 +1930,7 @@ export interface operations {
             };
         };
     };
-    get_runtime_config_api_v1_config_get: {
+    runtime_config_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -1851,7 +2040,7 @@ export interface operations {
             };
         };
     };
-    list_games_api_v1_games_get: {
+    game_list: {
         parameters: {
             query?: {
                 status?: ("running" | "completed") | null;
@@ -1965,7 +2154,7 @@ export interface operations {
             };
         };
     };
-    create_game_api_v1_games_post: {
+    game_create: {
         parameters: {
             query?: never;
             header: {
@@ -2081,7 +2270,7 @@ export interface operations {
             };
         };
     };
-    get_game_api_v1_games__game_id__get: {
+    game_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2193,7 +2382,7 @@ export interface operations {
             };
         };
     };
-    submit_action_api_v1_games__game_id__actions_post: {
+    game_action_submit: {
         parameters: {
             query?: never;
             header: {
@@ -2311,7 +2500,7 @@ export interface operations {
             };
         };
     };
-    advance_game_api_v1_games__game_id__advance_post: {
+    game_advance: {
         parameters: {
             query?: never;
             header: {
@@ -2429,7 +2618,7 @@ export interface operations {
             };
         };
     };
-    get_observation_api_v1_games__game_id__observation__player_id__get: {
+    game_observation_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2542,7 +2731,7 @@ export interface operations {
             };
         };
     };
-    get_timeline_api_v1_games__game_id__timeline_get: {
+    game_timeline_get: {
         parameters: {
             query?: {
                 after?: number;
@@ -2657,7 +2846,7 @@ export interface operations {
             };
         };
     };
-    get_operation_api_v1_operations__operation_id__get: {
+    operation_get: {
         parameters: {
             query?: never;
             header?: never;
@@ -2675,6 +2864,226 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OperationResponse"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description RFC 9457 Problem Details */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    runtime_status_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuntimeStatusResponse"];
                 };
             };
             /** @description RFC 9457 Problem Details */

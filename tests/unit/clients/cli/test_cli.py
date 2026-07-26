@@ -3,6 +3,7 @@ import json
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import typer
@@ -11,6 +12,7 @@ from typer.testing import CliRunner
 from werewolf_agent.clients.cli import commands as cui_commands
 from werewolf_agent.clients.cli.app import app
 from werewolf_agent.clients.cli.commands import common as command_common
+from werewolf_agent.clients.cli.commands import setup as setup_command
 from werewolf_agent.clients.cli.errors import run_app_command
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import (
@@ -260,10 +262,10 @@ def test_doctor_command_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     fake_client = FakeGameClient()
     monkeypatch.setattr(command_common, "build_game_client", lambda _settings: fake_client)
 
-    result = runner.invoke(app, ["doctor"])
+    result = runner.invoke(app, ["system", "doctor"])
 
     assert result.exit_code == 0
-    assert "Werewolf Agent Doctor" in result.output
+    assert "Werewolf Agent 診断" in result.output
     assert "fake" in result.output
     assert "fake-list-llm" in result.output
 
@@ -272,7 +274,7 @@ def test_doctor_json_output_is_machine_readable(monkeypatch: pytest.MonkeyPatch)
     fake_client = FakeGameClient()
     monkeypatch.setattr(command_common, "build_game_client", lambda _settings: fake_client)
 
-    result = CliRunner().invoke(app, ["doctor", "--output", "json"])
+    result = CliRunner().invoke(app, ["system", "doctor", "--output", "json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -289,7 +291,7 @@ def test_doctor_command_redacts_supabase_worker_dsn(monkeypatch: pytest.MonkeyPa
     try:
         result = CliRunner().invoke(
             app,
-            ["doctor"],
+            ["system", "doctor"],
             env={
                 "WEREWOLF_SUPABASE_URL": "http://127.0.0.1:54321",
                 "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "anon-test",
@@ -326,7 +328,8 @@ def test_run_app_command_handles_app_error_safely(caplog: pytest.LogCaptureFixtu
         result = CliRunner().invoke(test_app, ["broken"])
 
     assert result.exit_code == 1
-    assert "The selected action is not allowed." in result.output
+    assert "このゲームでは選択した操作を行えません。" in result.output
+    assert "context=" not in result.output
     assert "secret" not in result.output
     record = next(
         record
@@ -369,7 +372,11 @@ def test_run_app_command_logs_operational_app_error_as_warning(
 def test_doctor_command_reports_invalid_configuration_safely() -> None:
     get_settings.cache_clear()
     try:
-        result = CliRunner().invoke(app, ["doctor"], env={"WEREWOLF_LOG_LEVEL": "VERBOSE"})
+        result = CliRunner().invoke(
+            app,
+            ["system", "doctor"],
+            env={"WEREWOLF_LOG_LEVEL": "VERBOSE"},
+        )
     finally:
         get_settings.cache_clear()
 
@@ -388,7 +395,7 @@ def test_cli_startup_log_writes_trace_settings(
     try:
         result = CliRunner().invoke(
             app,
-            ["doctor"],
+            ["system", "doctor"],
             env={
                 "WEREWOLF_LOG_LEVEL": "DEBUG",
                 "WEREWOLF_LOG_OUTPUT": "file",
@@ -410,7 +417,7 @@ def test_cli_startup_log_writes_trace_settings(
         payload for payload in payloads if payload["event.action"] == "cli.application.started"
     )
     assert startup_payload["event.outcome"] == "success"
-    assert startup_payload["cli_command"] == "doctor"
+    assert startup_payload["cli_command"] == "system"
     assert startup_payload["log_level"] == "DEBUG"
     assert startup_payload["log_output"] == "file"
     assert startup_payload["log_file_path"] == str(log_file)
@@ -429,6 +436,7 @@ def test_play_command_uses_public_api_client(
     result = CliRunner().invoke(
         app,
         [
+            "game",
             "play",
             "--role-count",
             "werewolf=1",
@@ -449,7 +457,7 @@ def test_play_command_uses_public_api_client(
     )
 
     assert result.exit_code == 0
-    assert "Game completed" in result.output
+    assert "ゲームが終了しました" in result.output
     assert fake_client.calls == [
         ("create", 6),
         ("timeline", 0),
@@ -475,6 +483,7 @@ def test_play_json_output_is_single_machine_readable_document(
         result = CliRunner().invoke(
             app,
             [
+                "game",
                 "play",
                 "--role-count",
                 "werewolf=1",
@@ -510,7 +519,8 @@ def test_new_command_can_request_one_manual_player(monkeypatch: pytest.MonkeyPat
     result = CliRunner().invoke(
         app,
         [
-            "new",
+            "game",
+            "create",
             "--manual-player",
             "player-1",
             "--role-count",
@@ -529,7 +539,8 @@ def test_new_command_rejects_unknown_manual_player() -> None:
     result = CliRunner().invoke(
         app,
         [
-            "new",
+            "game",
+            "create",
             "--role-count",
             "werewolf=1",
             "--role-count",
@@ -540,7 +551,45 @@ def test_new_command_rejects_unknown_manual_player() -> None:
     )
 
     assert result.exit_code == 1
-    assert "manual_player_id must match a generated player id" in result.output
+    assert "設定に不備があります。" in result.output
+
+
+def test_create_command_accepts_rule_composition_toml(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    fake_client = FakeGameClient()
+    monkeypatch.setattr(command_common, "build_game_client", lambda _settings: fake_client)
+    composition_file = tmp_path / "composition.toml"
+    composition_file.write_text(
+        """
+[rule_composition]
+phases = ["day_discussion", "voting", "night"]
+action_policy = "standard"
+resolution_policy = "standard"
+phase_policy = "required_actions"
+victory_policy = "faction_balance"
+visibility_policy = "standard"
+""".strip(),
+        encoding="utf-8",
+    )
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "game",
+            "create",
+            "--role-count",
+            "werewolf=1",
+            "--role-count",
+            "villager=4",
+            "--rule-composition",
+            str(composition_file),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert fake_client.calls == [("create", 5)]
 
 
 def test_setup_options_show_and_advance_commands_use_public_api_client(
@@ -548,10 +597,17 @@ def test_setup_options_show_and_advance_commands_use_public_api_client(
 ) -> None:
     fake_client = FakeGameClient()
     monkeypatch.setattr(command_common, "build_game_client", lambda _settings: fake_client)
+    monkeypatch.setattr(
+        setup_command,
+        "build_public_client",
+        lambda _settings: SimpleNamespace(
+            get_runtime_config=lambda: SimpleNamespace(setup=fake_client.get_setup_options())
+        ),
+    )
 
-    setup_options_result = CliRunner().invoke(app, ["setup-options"])
-    show_result = CliRunner().invoke(app, ["show", "game-1"])
-    advance_result = CliRunner().invoke(app, ["advance", "game-1"])
+    setup_options_result = CliRunner().invoke(app, ["setup", "show"])
+    show_result = CliRunner().invoke(app, ["game", "show", "game-1"])
+    advance_result = CliRunner().invoke(app, ["game", "advance", "game-1"])
 
     assert setup_options_result.exit_code == 0
     assert show_result.exit_code == 0
@@ -572,11 +628,10 @@ def test_setup_options_requires_supabase_client_env_before_building_client(
     monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "")
     get_settings.cache_clear()
 
-    result = CliRunner().invoke(app, ["setup-options"])
+    result = CliRunner().invoke(app, ["setup", "show"])
 
     assert result.exit_code == 1
-    assert "WEREWOLF_SUPABASE_URL" in result.output
-    assert "WEREWOLF_SUPABASE_PUBLISHABLE_KEY" in result.output
+    assert "APIへ接続できませんでした。" in result.output
 
 
 def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -595,10 +650,11 @@ def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.Mon
         lambda _settings: FailingGameClient(),
     )
 
-    result = CliRunner().invoke(app, ["play"])
+    result = CliRunner().invoke(app, ["game", "play"])
 
     assert result.exit_code == 1
-    assert "game.invalid_action: The selected action is not allowed." in result.output
+    assert "このゲームでは選択した操作を行えません。" in result.output
+    assert "context=" not in result.output
     assert "secret" not in result.output
 
 
@@ -660,15 +716,18 @@ def test_timeline_replay_and_games_use_public_api_client(
 
     timeline_result = CliRunner().invoke(
         app,
-        ["timeline", "game-1", "--log-jsonl", str(log_path)],
+        ["records", "timeline", "game-1", "--log-jsonl", str(log_path)],
     )
-    replay_result = CliRunner().invoke(app, ["replay", "--timeline", str(timeline_path)])
-    games_result = CliRunner().invoke(app, ["games"])
+    replay_result = CliRunner().invoke(
+        app,
+        ["records", "replay", "--timeline", str(timeline_path)],
+    )
+    games_result = CliRunner().invoke(app, ["game", "list"])
 
     assert timeline_result.exit_code == 0
     assert replay_result.exit_code == 0
     assert games_result.exit_code == 0
-    assert "Games" in games_result.output
+    assert "ゲーム一覧" in games_result.output
     assert "game_started" in timeline_result.output
     assert log_path.exists()
 
@@ -680,6 +739,7 @@ def test_timeline_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) ->
     result = CliRunner().invoke(
         app,
         [
+            "records",
             "timeline",
             "game-1",
             "--follow",
@@ -689,7 +749,7 @@ def test_timeline_follow_rejects_json_output(monkeypatch: pytest.MonkeyPatch) ->
     )
 
     assert result.exit_code == 1
-    assert "Use jsonl output when following streamed timeline items." in result.output
+    assert "継続取得ではjsonl出力を使用してください。" in result.output
 
 
 def test_cui_does_not_import_internal_game_layers() -> None:

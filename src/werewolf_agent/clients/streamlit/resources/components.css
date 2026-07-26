@@ -1,35 +1,3 @@
-:root {
-    --wa-shell: #1b2437;
-    --wa-shell-soft: #263249;
-    --wa-bg: #f4f6f8;
-    --wa-surface: #ffffff;
-    --wa-surface-warm: #fbfcfe;
-    --wa-line: #dfe5ec;
-    --wa-line-strong: #c7d0dc;
-    --wa-text: #152033;
-    --wa-muted: #667085;
-    --wa-danger: #cf2f37;
-    --wa-danger-soft: #fff1f2;
-    --wa-danger-line: #f5b7bd;
-    --wa-day: #c7781a;
-    --wa-day-soft: #fff7e8;
-    --wa-day-line: #f6c783;
-    --wa-safe: #087f72;
-    --wa-safe-soft: #e7f8f4;
-    --wa-safe-line: #8dd8ca;
-    --wa-info: #315f9f;
-    --wa-info-soft: #edf4ff;
-    --wa-shadow: 0 10px 28px rgba(21, 32, 51, 0.09);
-    --wa-command-shadow: 0 18px 42px rgba(21, 32, 51, 0.12);
-    --wa-radius: 8px;
-    --wa-radius-sm: 6px;
-    --wa-space-2: 8px;
-    --wa-space-3: 12px;
-    --wa-space-4: 16px;
-    --wa-space-5: 20px;
-    --wa-space-6: 24px;
-}
-
 .stApp {
     background:
         linear-gradient(180deg, var(--wa-shell) 0, #d9e0ea 96px, var(--wa-bg) 224px);
@@ -131,21 +99,7 @@ header[data-testid="stHeader"] {
 .wa-sidebar-brand {
     display: flex;
     align-items: center;
-    gap: 11px;
     padding: 10px 2px 4px;
-}
-
-.wa-brand-mark {
-    width: 42px;
-    height: 42px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border: 1px solid var(--wa-danger-line);
-    border-radius: var(--wa-radius);
-    background: var(--wa-danger-soft);
-    color: var(--wa-danger);
-    font-size: 27px;
 }
 
 .wa-brand-title {
@@ -841,83 +795,4 @@ header[data-testid="stHeader"] {
 .wa-muted {
     color: var(--wa-muted);
     font-size: 13px;
-}
-
-@media (min-width: 1480px) {
-    .wa-seat-grid {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 1180px) {
-    .wa-status-grid {
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-
-    .wa-seat-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-@media (max-width: 760px) {
-    .block-container {
-        padding-left: 1rem;
-        padding-right: 1rem;
-    }
-
-    .wa-status-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .wa-timeline-desktop {
-        display: none;
-    }
-
-    .wa-timeline-mobile {
-        display: block;
-    }
-
-    .wa-timeline-section {
-        margin-top: 14px;
-    }
-
-    .wa-section-head {
-        display: block;
-    }
-
-    .wa-table-legend {
-        justify-content: flex-start;
-        margin-top: 8px;
-    }
-
-    .wa-timeline-row {
-        grid-template-columns: 1fr;
-    }
-
-    .wa-timeline-day {
-        display: flex;
-        justify-content: space-between;
-        gap: 8px;
-    }
-
-    .st-key-right_command_panel {
-        margin-top: var(--wa-space-4);
-        padding: 14px !important;
-    }
-
-    .wa-observation-memo-head {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 3px;
-    }
-
-    .wa-observation-memo span {
-        flex: 0 1 auto;
-    }
-}
-
-@media (max-width: 460px) {
-    .wa-seat-grid {
-        grid-template-columns: 1fr;
-    }
 }
