@@ -179,19 +179,6 @@ class SupabaseWorkerStore:
             (game_id, user_id, player_id, role),
         )
 
-    def owns_player(self, *, game_id: str, player_id: str, user_id: str) -> bool:
-        """Return whether a user currently owns a playable seat."""
-        row = self._connection.execute(
-            """
-            select 1 from public.game_participants
-            where game_id = %s and player_id = %s and user_id = %s
-              and participant_role in ('owner', 'player')
-            limit 1
-            """,
-            (game_id, player_id, user_id),
-        ).fetchone()
-        return row is not None
-
     def participates(self, *, game_id: str, user_id: str) -> bool:
         """Return whether a user currently participates in a game."""
         row = self._connection.execute(
@@ -308,12 +295,52 @@ class SupabaseWorkerStore:
         state = _object(result_payload.get("state"))
         version = int(state.get("version") or 1)
         game_id = str(result_payload.get("game_id") or request.get("game_id") or "")
-        payload = {
+        normalized_request = _object(request.get("request_payload"))
+        payload: dict[str, Any] = {
             "operation_type": str(request["operation_type"]),
+            "actor_user_id": str(request["owner_user_id"]),
             "expected_version": request.get("expected_version"),
             "player_id": request.get("player_id"),
-            "request": _object(request.get("request_payload")),
+            "request": normalized_request,
         }
+        decisions = self._connection.execute(
+            """
+            select parsed_decision
+            from private.llm_traces
+            where operation_id = %s and parsed_decision is not null
+            order by created_at, invocation_id
+            """,
+            (request["request_id"],),
+        ).fetchall()
+        payload["domain_actions"] = [_object(row["parsed_decision"]) for row in decisions]
+        if request["operation_type"] == "create_game":
+            snapshot_row = self._connection.execute(
+                """
+                select config, private_state
+                from private.game_snapshots
+                where game_id = %s
+                """,
+                (game_id,),
+            ).fetchone()
+            if snapshot_row is None:
+                raise RuntimeError("Created game snapshot is missing.")
+            private_state = _object(snapshot_row["private_state"])
+            players = _object(private_state.get("players"))
+            effective_seed = state.get("seed")
+            normalized_request["seed"] = effective_seed
+            payload["replay"] = {
+                "format_version": 1,
+                "seed": effective_seed,
+                "config": _object(private_state.get("config")),
+                "players": [
+                    {"id": str(player["id"]), "name": str(player["name"])}
+                    for player in map(_object, players.values())
+                ],
+                "rule_composition": _object(snapshot_row["config"]).get(
+                    "rule_composition",
+                    {},
+                ),
+            }
         self._connection.execute(
             """
             insert into private.accepted_commands (

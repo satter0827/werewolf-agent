@@ -9,6 +9,7 @@ from typing import TypeVar
 import typer
 
 from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.observability import configure_entrypoint_logging
 from werewolf_agent.observability.constants import (
@@ -98,16 +99,17 @@ def _run_worker_command(command: Callable[[], T]) -> T:
         return command()
     except AppError as exc:
         logger.log(
-            log_level_number(exc.spec.log_level),
+            log_level_number(get_error_spec(exc.code).log_level),
             LOG_WORKER_APPLICATION_ERROR_HANDLED,
             extra={
                 **exc.log_extra(),
+                "error_message": redact_text(exc.detail),
                 "error.message": redact_text(exc.detail),
                 "event_action": LOG_WORKER_APPLICATION_ERROR_HANDLED,
                 "event_outcome": EVENT_OUTCOME_FAILURE,
             },
         )
-        typer.echo(message_error_line(exc.detail), err=True)
+        typer.echo(message_error_line(redact_text(exc.detail)), err=True)
         raise typer.Exit(code=1) from exc
 
 

@@ -2,10 +2,12 @@ import inspect
 import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
 
+import werewolf_agent.application as application_api
 import werewolf_agent.application.handlers as usecases
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import (
@@ -53,7 +55,6 @@ from werewolf_agent.application.models import (
 )
 from werewolf_agent.application.ports import GameRepository
 from werewolf_agent.contracts import (
-    CreateGameRequest,
     GameError,
     GameNotFoundError,
     GameStatus,
@@ -97,21 +98,56 @@ def test_dependencies_require_definition_values() -> None:
         ApplicationContext(repository=object())  # type: ignore[arg-type,call-arg]
 
 
+def test_actor_requires_a_non_blank_external_subject() -> None:
+    with pytest.raises(ValueError, match="must not be blank"):
+        Actor(user_id="  ")
+
+
 def test_game_application_accepts_only_public_creation_and_page_inputs() -> None:
     deps, _repository = dependencies()
     games = GameApplication(deps)
     actor = Actor(user_id="user-1")
 
-    created = games.create(
-        CreateGameRequest(
-            seed=1,
-            role_counts=DEFAULT_ROLE_COUNTS,
-        )
-    )
+    created = games.create(create_command(seed=1))
     page = games.list(actor, limit=10, offset=0)
 
     assert page.games[0]["game_id"] == created.game_id
+    assert _repository.last_list_user_id == actor.user_id
     assert "llm_mode" not in inspect.signature(GameApplication.create).parameters
+
+
+def test_create_command_can_be_built_from_the_application_public_surface() -> None:
+    rules = local_rules_definition()
+    command = application_api.CreateGameCommand(
+        narration_mode="none",
+        role_counts=DEFAULT_ROLE_COUNTS,
+        rules=application_api.LocalRulesDefinition(**rules.model_dump()),
+    )
+
+    assert command.player_count == 5
+
+
+def test_game_application_owns_game_and_player_authorization() -> None:
+    class DenyAccess:
+        def require_game_access(self, game_id: str, *, user_id: str) -> None:
+            raise PermissionError(f"{user_id}:{game_id}")
+
+        def require_player_access(self, game_id: str, player_id: str, *, user_id: str) -> None:
+            raise PermissionError(f"{user_id}:{game_id}:{player_id}")
+
+    deps, _repository = dependencies()
+    games = GameApplication(deps, access_policy=DenyAccess())
+    actor = Actor(user_id="user-1")
+
+    with pytest.raises(PermissionError):
+        games.get(str(uuid4()), actor)
+    with pytest.raises(PermissionError):
+        games.observation(str(uuid4()), actor, "player-1")
+    with pytest.raises(PermissionError):
+        games.commit_advance(
+            actor,
+            SimpleNamespace(game_id=str(uuid4())),  # type: ignore[arg-type]
+        )
 
 
 def test_game_application_uses_only_the_dependency_selected_llm_mode() -> None:
@@ -124,11 +160,19 @@ def test_game_application_uses_only_the_dependency_selected_llm_mode() -> None:
         create_llm_mode="paid",
     )
 
-    created = GameApplication(trusted_deps).create(
-        CreateGameRequest(seed=1, role_counts=DEFAULT_ROLE_COUNTS)
-    )
+    created = GameApplication(trusted_deps).create(create_command(seed=1))
 
     assert repository.games[UUID(created.game_id)].config["llm_mode"] == "paid"
+
+
+def test_create_game_materializes_an_omitted_seed_for_replay() -> None:
+    deps, repository = dependencies()
+
+    created = GameApplication(deps).create(create_command(seed=None))
+    stored = repository.games[UUID(created.game_id)]
+
+    assert isinstance(created.state["seed"], int)
+    assert stored.seed == created.state["seed"]
 
 
 class InMemoryGameRepository(GameRepository):
@@ -136,6 +180,7 @@ class InMemoryGameRepository(GameRepository):
         self.games: dict[UUID, StoredGame] = {}
         self.events: dict[UUID, list[StoredGameEvent]] = {}
         self.turns: dict[UUID, list[StoredGameTurn]] = {}
+        self.last_list_user_id: str | None = None
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         stored = StoredGame(
@@ -166,10 +211,12 @@ class InMemoryGameRepository(GameRepository):
     def list_game_summaries(
         self,
         *,
+        user_id: str,
         status: GameStatus | None,
         limit: int,
         offset: int,
     ) -> list[StoredGameSummary]:
+        self.last_list_user_id = user_id
         games = [
             game
             for game in sorted(self.games.values(), key=lambda item: item.created_at, reverse=True)
@@ -721,6 +768,25 @@ def test_fake_list_llm_can_complete_a_game() -> None:
     assert game.state["winner"] in {"village", "werewolf"}
 
 
+def test_death_role_reveal_is_applied_only_to_dead_players_when_enabled() -> None:
+    deps, _repository = dependencies()
+    use_cases = UsecaseHarness(deps)
+    rules = local_rules_definition().model_copy(update={"reveal_role_on_death": True})
+    game = use_cases.create_game(create_command(seed=1, rules=rules))
+
+    for _ in range(30):
+        dead = [player for player in game.state["players"] if not player["alive"]]
+        if dead:
+            break
+        game = use_cases.advance_game(AdvanceGameCommand(game_id=game.game_id))
+
+    dead = [player for player in game.state["players"] if not player["alive"]]
+    alive = [player for player in game.state["players"] if player["alive"]]
+    assert dead
+    assert all(player["role"] and player["faction"] for player in dead)
+    assert all("role" not in player and "faction" not in player for player in alive)
+
+
 def test_discussion_timeline_contains_fake_speeches_without_private_fields() -> None:
     deps, _repository = dependencies()
     use_cases = UsecaseHarness(deps)
@@ -820,7 +886,7 @@ def test_list_games_and_turns_return_public_read_models() -> None:
     created = use_cases.create_game(create_command(seed=1))
     use_cases.advance_game(AdvanceGameCommand(game_id=created.game_id))
 
-    games = use_cases.list_games(ListGamesQuery(limit=10))
+    games = use_cases.list_games(ListGamesQuery(trusted_user_id="user-1", limit=10))
     timeline = use_cases.list_timeline(ListTimelineQuery(game_id=created.game_id))
 
     assert games.games[0]["game_id"] == created.game_id

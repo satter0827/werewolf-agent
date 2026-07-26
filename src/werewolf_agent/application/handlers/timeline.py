@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from werewolf_agent.application.errors import GameNotFoundError
 from werewolf_agent.application.handlers.common import (
     _page_limit,
     _parse_game_id,
@@ -13,9 +14,6 @@ from werewolf_agent.application.models import (
 )
 from werewolf_agent.application.projections import (
     public_turn_payload_from_record,
-)
-from werewolf_agent.contracts import (
-    GameNotFoundError,
 )
 
 

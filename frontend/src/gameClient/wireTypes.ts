@@ -5,7 +5,7 @@ type Schema<Name extends keyof components["schemas"]> = components["schemas"][Na
 export type GamePhase = Schema<"PublicGameState">["phase"];
 export type GameStatus = Schema<"PublicGameState">["status"];
 export type PlayerStatus = Schema<"PublicPlayerState">["status"];
-export type Winner = "villagers" | "werewolves";
+export type Winner = "village" | "werewolf";
 
 export type PublicPlayerState = Schema<"PublicPlayerState">;
 export type PublicGameState = Omit<Schema<"PublicGameState">, "winner"> & {

@@ -231,7 +231,7 @@ function timelineTone(eventType: string): TimelineEntry["tone"] {
 }
 
 function winnerLabel(winner: string): string {
-  return winner === "villagers" ? "村人陣営の勝利" : "人狼陣営の勝利";
+  return winner === "village" ? "村人陣営の勝利" : "人狼陣営の勝利";
 }
 
 function friendlyRole(role: string): string {

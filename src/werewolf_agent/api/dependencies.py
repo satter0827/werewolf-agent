@@ -11,7 +11,6 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from werewolf_agent.api.messages import DETAIL_REQUEST_RATE_LIMITED
 from werewolf_agent.application import GameApplication
-from werewolf_agent.application.operations import AccessPolicy, OperationQueue
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.security.principal import AuthenticationError, Principal
 
@@ -37,8 +36,6 @@ class RequestServices:
     """Request-scoped application services."""
 
     games: GameApplication
-    operations: OperationQueue
-    access: AccessPolicy
     message_max_chars: int
     diagnostics: AdminDiagnostics | None = None
     reveal_api_enabled: bool = True

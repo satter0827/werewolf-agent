@@ -10,8 +10,8 @@
 
 | Layer | 責務 |
 | --- | --- |
-| `domain` | aggregate、state、event、rule policy |
-| `application` | authorization、transaction、DTO、port、projection |
+| `domain` | 標準libraryだけで構成するaggregate、immutable state、event、rule policy |
+| `application` | use case、authorization、transaction、command/result、port、projection |
 | `agents` | provider非依存のobservation、decision、player port |
 | `adapters` | HTTP client、Supabase、LangChain、外部I/O |
 | `contracts` | wire schema、error、Problem Details |
@@ -35,7 +35,8 @@
 ## 境界
 
 - domainは他layerを参照しない。
-- applicationは外部service、delivery、agentsを参照しない。
+- applicationはdomainとapplication内部だけを参照し、wire schema、外部service、delivery、
+  agentsを参照しない。
 - agentsはdomainとapplicationを参照しない。
 - LangChainはadapter、workerは独立processとして扱う。
 - package resourceと外部定義fileのI/Oおよび相互参照検証はadapterに置く。
@@ -54,6 +55,8 @@ applicationは`GameApplication`、`Actor`、外部実装に必要なport、公�
 
 application内部はゲーム参照、進行、player action、timelineを独立したhandlerにする。
 DTOはruntime context、request、result、persistence recordのlifecycleで分ける。
+HTTP routeはwire schemaとapplication command/resultの変換だけを行い、認可adapterと
+queue adapterを直接呼ばない。
 
 ## 検証
 

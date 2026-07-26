@@ -211,11 +211,25 @@ def test_worker_deletes_reveal_view_when_reveal_is_disabled(
     settings = AppSettings(_env_file=None, reveal_api_enabled=False)
 
     monkeypatch.setattr(worker_service, "_service", lambda *_args, **_kwargs: service)
-    monkeypatch.setattr(worker_service, "_current_game_version", lambda *_args: 1)
     monkeypatch.setattr(
-        worker_service.application_handlers,
-        "get_player_observation",
+        worker_service.GameApplication,
+        "get",
+        lambda *_args, **_kwargs: SimpleNamespace(state={"version": 1}),
+    )
+    monkeypatch.setattr(
+        worker_service.GameApplication,
+        "observation",
         lambda *_args, **_kwargs: SimpleNamespace(observation={"visible": True}),
+    )
+
+    def record_reveal(*_args: object, **_kwargs: object) -> SimpleNamespace:
+        service.reveal_called = True
+        return SimpleNamespace(version=1)
+
+    monkeypatch.setattr(
+        worker_service.GameApplication,
+        "reveal",
+        record_reveal,
     )
 
     worker_service._materialize_private_views(
@@ -223,6 +237,7 @@ def test_worker_deletes_reveal_view_when_reveal_is_disabled(
         SupabaseWorkerStore(connection),
         settings,
         "00000000-0000-0000-0000-000000000001",
+        actor_user_id="00000000-0000-0000-0000-000000000002",
     )
 
     statements = [sql.lower() for sql, _params in connection.calls]

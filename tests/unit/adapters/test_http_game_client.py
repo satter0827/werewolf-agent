@@ -124,7 +124,7 @@ def _setup_payload() -> dict[str, object]:
             {
                 "id": "villager",
                 "name": "村人",
-                "faction": "villagers",
+                "faction": "village",
                 "abilities": [],
                 "description": "推理で村を守ります",
                 "difficulty": 1,

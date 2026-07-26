@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import replace
 
 from werewolf_agent.domain._messages import (
     MESSAGE_EXPECTED_VOTE_ACTION,
@@ -21,14 +22,14 @@ from werewolf_agent.domain.state import (
     Action,
     ActionType,
     GameConfig,
-    GameSnapshot,
+    GameState,
     Phase,
     VoteResult,
 )
 
 
 def record_vote(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     action: Action,
@@ -50,11 +51,11 @@ def record_vote(
 
 
 def resolve_votes(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     rng: random.Random,
-) -> tuple[GameSnapshot, VoteResult]:
+) -> tuple[GameState, VoteResult]:
     """Resolve all currently pending votes."""
     require_phase(snapshot, Phase.VOTING)
 
@@ -89,8 +90,8 @@ def resolve_votes(
         day=snapshot.day,
         votes=vote_targets,
         counts=counts,
-        tied_player_ids=tied_player_ids,
-        missing_voter_ids=missing_voter_ids,
+        tied_player_ids=tuple(tied_player_ids),
+        missing_voter_ids=tuple(missing_voter_ids),
         eliminated_player_id=eliminated_player_id,
         tie_break_policy=(
             "random_elimination"
@@ -98,10 +99,8 @@ def resolve_votes(
             else "no_elimination"
         ),
     )
-    history = updated_snapshot.history.model_copy(
-        update={"votes": [*updated_snapshot.history.votes, result]}
-    )
-    return updated_snapshot.model_copy(update={"history": history}), result
+    history = replace(updated_snapshot.history, votes=(*updated_snapshot.history.votes, result))
+    return replace(updated_snapshot, history=history), result
 
 
 def _vote_target(action: Action) -> str:

@@ -176,9 +176,11 @@ def _service_dependency(
                 player_definitions=build_player_setup_definitions(runtime),
             )
             yield RequestServices(
-                games=GameApplication(context),
-                operations=SupabaseOperationQueue(connection),
-                access=SupabaseAccessPolicy(connection),
+                games=GameApplication(
+                    context,
+                    operation_queue=SupabaseOperationQueue(connection),
+                    access_policy=SupabaseAccessPolicy(connection),
+                ),
                 message_max_chars=runtime.api_message_max_chars,
                 diagnostics=SupabaseAdminDiagnostics(connection),
                 reveal_api_enabled=runtime.reveal_api_enabled,

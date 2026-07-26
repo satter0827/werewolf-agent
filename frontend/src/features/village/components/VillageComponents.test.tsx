@@ -60,7 +60,7 @@ describe("village components", () => {
             turn_count: 12,
             updated_at: "2026-07-24T00:10:00Z",
             version: 7,
-            winner: "villagers",
+            winner: "village",
           },
         ]}
         onResumeGame={onResumeGame}

@@ -15,6 +15,9 @@
 | LLM trace | 観測、構造化出力、provider 情報 | 運用権限を持つ主体 |
 | credential | token、API key、秘密鍵 | 実行環境だけ |
 
+死亡時役職公開が有効な場合だけ、死亡者のroleとfactionをpublic stateへ移す。通常のpublic
+stateは終局後も全役職を公開せず、完全状態は管理者revealと認可済みreplayに限定する。
+
 ## 永続化
 
 Supabase adapter は repository port を実装し、公式Auth SDK、game state、PGMQ、
@@ -27,6 +30,12 @@ React から Supabase へ直接接続する用途は Auth に限定し、
 
 並行更新は repository 境界で検出する。worker の operation は取得、実行、完了または
 失敗の状態を持ち、中断後に未確定な操作を成功扱いしない。
+
+accepted commandはactor、期待version、正規化済み入力、再現に必要なseedと自動playerの
+domain actionを保存する。作成時のrule snapshotから集約を再構築し、version順にcommandを
+再適用してstate、event、public projectionを照合する。checksumは破損検出に使用し、再実行の
+代用にしない。各game versionのcommand、event、state、projectionは同じtransactionで
+追記し、同じversionを上書きしない。旧形式は暗黙変換せずunsupportedとして扱う。
 
 ## 秘密情報
 
@@ -47,3 +56,4 @@ React から Supabase へ直接接続する用途は Auth に限定し、
 
 public DTO と timeline に秘匿 field が混入しないこと、redaction が入れ子構造でも
 働くこと、別利用者の game を操作できないことを自動テストで保証する。
+公開eventはallowlistへ射影してから保存し、死亡時役職公開が無効ならroleとfactionを除く。

@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from collections import Counter
 from collections.abc import Mapping
+from dataclasses import replace
 
 from werewolf_agent.domain._messages import (
     MESSAGE_CANNOT_INSPECT_UNASSIGNED_ROLE,
@@ -28,7 +29,7 @@ from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
     ActionType,
-    GameSnapshot,
+    GameState,
     InspectionResult,
     NightResult,
     Phase,
@@ -36,7 +37,7 @@ from werewolf_agent.domain.state import (
 
 
 def record_night_action(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: Mapping[str, Action],
     action: Action,
 ) -> dict[str, Action]:
@@ -50,10 +51,10 @@ def record_night_action(
 
 
 def resolve_night(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: Mapping[str, Action],
     rng: random.Random,
-) -> tuple[GameSnapshot, NightResult]:
+) -> tuple[GameState, NightResult]:
     """Resolve all currently pending night actions."""
     require_phase(snapshot, Phase.NIGHT)
 
@@ -85,15 +86,13 @@ def resolve_night(
         attacked_player_id=attacked_player_id,
         protected_player_id=protected_player_id,
         killed_player_id=killed_player_id,
-        inspections=inspection_results,
+        inspections=tuple(inspection_results),
     )
-    history = updated_snapshot.history.model_copy(
-        update={"nights": [*updated_snapshot.history.nights, result]}
-    )
-    return updated_snapshot.model_copy(update={"history": history}), result
+    history = replace(updated_snapshot.history, nights=(*updated_snapshot.history.nights, result))
+    return replace(updated_snapshot, history=history), result
 
 
-def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
+def _validate_night_action(snapshot: GameState, action: Action) -> None:
     target_id = _night_target(action)
     ability = _ability_for_action(snapshot, action)
     target = require_alive(snapshot, target_id)
@@ -142,7 +141,7 @@ def _validate_night_action(snapshot: GameSnapshot, action: Action) -> None:
     raise GameError(MESSAGE_UNSUPPORTED_NIGHT_ACTION)
 
 
-def _ability_for_action(snapshot: GameSnapshot, action: Action) -> AbilityDefinition:
+def _ability_for_action(snapshot: GameState, action: Action) -> AbilityDefinition:
     actor = require_alive(snapshot, action.player_id)
     if actor.role is None:
         raise GameError(MESSAGE_UNSUPPORTED_NIGHT_ACTION)
@@ -181,7 +180,7 @@ def _resolve_guard_target(guards: list[Action]) -> str | None:
     return _night_target(sorted(guards, key=lambda action: action.player_id)[0])
 
 
-def _inspect(snapshot: GameSnapshot, action: Action) -> InspectionResult:
+def _inspect(snapshot: GameState, action: Action) -> InspectionResult:
     seer = require_alive(snapshot, action.player_id)
     target = player_by_id(snapshot, _night_target(action))
     if target.role is None:

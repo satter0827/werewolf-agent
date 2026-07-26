@@ -1,9 +1,9 @@
 import random
-from dataclasses import dataclass, field
+from dataclasses import FrozenInstanceError, dataclass, field, replace
 
 import pytest
-from pydantic import ValidationError
 
+import werewolf_agent.domain as domain_api
 from werewolf_agent.domain import (
     Game,
     GameSetup,
@@ -22,10 +22,11 @@ from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
     ActionType,
-    DomainEvent,
     GameConfig,
-    GameSnapshot,
+    GameEvent,
+    GameState,
     LocalRules,
+    PendingActions,
     Phase,
     Player,
     PlayerStatus,
@@ -40,14 +41,79 @@ ROLE_READER = "reader"
 ROLE_SHIELD = "shield"
 
 
+def test_public_domain_api_can_create_restore_and_progress_a_game() -> None:
+    """公開moduleだけでheadless engineの基本lifecycleを実行できる。"""
+    local = domain_api.LocalRules(
+        day_speech_limit_per_player=1,
+        allow_self_vote=False,
+        allow_vote_revision=False,
+        allow_night_action_revision=False,
+        enable_first_night_attack=True,
+        enable_no_elimination_on_tie=True,
+        enable_random_elimination_on_tie=False,
+        allow_knight_self_guard=True,
+        allow_knight_repeat_guard=True,
+        allow_seer_self_inspect=False,
+        allow_werewolf_friendly_fire=False,
+        reveal_role_on_death=False,
+    )
+    roles = domain_api.RoleCatalog(
+        roles={
+            "villager": domain_api.RoleDefinition(faction="village"),
+            "werewolf": domain_api.RoleDefinition(
+                faction="werewolf",
+                abilities=("night_attack",),
+            ),
+        }
+    )
+    definition = domain_api.RuleSetDefinition(
+        player_count=3,
+        role_counts={"villager": 2, "werewolf": 1},
+        rules=local,
+        roles=roles,
+        abilities={
+            "night_attack": domain_api.AbilityDefinition(
+                phase=domain_api.Phase.NIGHT,
+                action=domain_api.ActionType.WEREWOLF_ATTACK,
+                validation_policy="standard",
+                resolution_policy="standard",
+                target_policy="other_alive_non_pack",
+                start_day=1,
+            )
+        },
+    )
+    rules = domain_api.RuleRegistry.standard().build(definition)
+    game = domain_api.Game.create(
+        domain_api.GameSetup(
+            players=tuple(
+                domain_api.Player(id=f"p{index}", name=f"Player {index}") for index in range(1, 4)
+            )
+        ),
+        rules=rules,
+        random=random.Random(1),
+    )
+
+    restored = domain_api.Game.restore(game.snapshot(), rules=rules)
+    actor = next(
+        player.id
+        for player in restored.snapshot().players.values()
+        if restored.view_for(player.id).available_actions
+    )
+    target = restored.view_for(actor).legal_targets[domain_api.ActionType.WEREWOLF_ATTACK][0]
+    events = restored.submit(domain_api.Action.attack(actor, target))
+
+    assert events
+    assert restored.snapshot().pending_actions.night_actions[actor].target_id == target
+
+
 @dataclass
 class HeadlessRun:
     game: Game
     rng: random.Random
-    events: list[DomainEvent] = field(default_factory=list)
+    events: list[GameEvent] = field(default_factory=list)
 
     @property
-    def snapshot(self) -> GameSnapshot:
+    def snapshot(self) -> GameState:
         return self.game.snapshot()
 
     def observe(self, player_id: str):
@@ -56,7 +122,7 @@ class HeadlessRun:
     def submit(self, action: Action) -> None:
         self.events.extend(self.game.submit(action))
 
-    def advance(self) -> GameSnapshot:
+    def advance(self) -> GameState:
         self.events.extend(self.game.advance(self.rng))
         return self.game.snapshot()
 
@@ -234,6 +300,58 @@ def test_core_game_creation_benchmark(benchmark) -> None:
     assert result.snapshot.phase is Phase.NIGHT
 
 
+def test_public_state_and_nested_collections_are_immutable() -> None:
+    snapshot = start_fixed_run().snapshot
+
+    with pytest.raises(FrozenInstanceError):
+        snapshot.day = 99  # type: ignore[misc]
+    with pytest.raises(TypeError):
+        snapshot.players["p1"] = snapshot.players["p2"]  # type: ignore[index]
+    with pytest.raises(TypeError):
+        snapshot.pending_actions.votes["p1"] = Action.vote("p1", "p2")  # type: ignore[index]
+    internal_players = snapshot.players._values
+    with pytest.raises(TypeError):
+        internal_players["p1"] = snapshot.players["p2"]
+
+
+def test_restored_state_rejects_aggregate_invariant_violations() -> None:
+    snapshot = start_fixed_run().snapshot
+    first = snapshot.players["p1"]
+    replacement_role = next(
+        player.role for player in snapshot.players.values() if player.role != first.role
+    )
+
+    with pytest.raises(ValueError, match="assigned roles"):
+        replace(
+            snapshot,
+            players={**snapshot.players, first.id: replace(first, role=replacement_role)},
+        )
+    with pytest.raises(ValueError, match="player count"):
+        replace(snapshot, players=dict(tuple(snapshot.players.items())[1:]))
+    with pytest.raises(ValueError, match="pending action"):
+        replace(
+            snapshot,
+            pending_actions=PendingActions(night_actions={"ghost": Action.pass_("ghost")}),
+        )
+    with pytest.raises(ValueError, match="finished phase"):
+        replace(snapshot, phase=Phase.FINISHED)
+    with pytest.raises(ValueError, match="winning faction"):
+        replace(
+            snapshot,
+            phase=Phase.FINISHED,
+            win_result=WinResult(
+                winner=FACTION_VILLAGE,
+                reason="invalid winners",
+                day=snapshot.day,
+                winning_player_ids=(),
+            ),
+        )
+    with pytest.raises(ValueError, match="death marker"):
+        replace(first, status=PlayerStatus.DEAD)
+    with pytest.raises(ValueError, match="Unsupported faction"):
+        WinResult(winner="other", reason="invalid", day=1, winning_player_ids=())
+
+
 @pytest.mark.monkey
 @pytest.mark.deep
 def test_domain_state_transitions_are_stable_for_256_seeded_runs() -> None:
@@ -268,7 +386,7 @@ def complete_night(run: HeadlessRun) -> None:
 
 
 def test_game_config_validates_role_counts() -> None:
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         GameConfig(
             player_count=5,
             role_counts={ROLE_SHADOW: 1, ROLE_PLAIN: 3},
@@ -371,8 +489,8 @@ def test_vote_tie_policy_can_leave_everyone_alive() -> None:
     assert snapshot.phase is Phase.NIGHT
     assert snapshot.day == 2
     assert snapshot.history.votes[-1].eliminated_player_id is None
-    assert snapshot.history.votes[-1].tied_player_ids == ["p4", "p5"]
-    assert snapshot.history.votes[-1].missing_voter_ids == []
+    assert snapshot.history.votes[-1].tied_player_ids == ("p4", "p5")
+    assert snapshot.history.votes[-1].missing_voter_ids == ()
 
 
 def test_invalid_actions_raise_safe_game_errors() -> None:
@@ -397,7 +515,7 @@ def test_day_speech_is_only_recorded_during_discussion() -> None:
 
     assert run.snapshot.history.speeches[-1].message == "I have a read."
     assert run.snapshot.history.speeches[-1].day == 1
-    assert run.observe("p2").available_actions == []
+    assert run.observe("p2").available_actions == ()
     with pytest.raises(RuleViolation):
         run.submit(Action.speech("p2", "same day duplicate"))
 
@@ -419,12 +537,13 @@ def test_day_speech_limit_resets_on_next_day() -> None:
 
     assert run.snapshot.phase is Phase.DAY_DISCUSSION
     assert run.snapshot.day == 2
-    assert run.observe("p2").available_actions == [ActionType.SPEECH]
+    assert run.observe("p2").available_actions == (ActionType.SPEECH,)
 
 
 def test_day_speech_limit_is_rule_driven() -> None:
-    config = mvp_config().model_copy(
-        update={"rules": local_rules().model_copy(update={"day_speech_limit_per_player": 2})}
+    config = replace(
+        mvp_config(),
+        rules=replace(local_rules(), day_speech_limit_per_player=2),
     )
     game = Game.create(
         GameSetup(players=tuple(fixed_players())),
@@ -440,10 +559,10 @@ def test_day_speech_limit_is_rule_driven() -> None:
     complete_night(run)
     run.advance()
     run.submit(Action.speech("p2", "first"))
-    assert run.observe("p2").available_actions == [ActionType.SPEECH]
+    assert run.observe("p2").available_actions == (ActionType.SPEECH,)
     run.submit(Action.speech("p2", "second"))
 
-    assert run.observe("p2").available_actions == []
+    assert run.observe("p2").available_actions == ()
     with pytest.raises(RuleViolation):
         run.submit(Action.speech("p2", "third"))
 
@@ -460,7 +579,7 @@ def test_vote_and_night_actions_are_single_submission_by_default() -> None:
     run.advance()
     run.advance()
     run.submit(Action.vote("p2", "p1"))
-    assert run.observe("p2").available_actions == []
+    assert run.observe("p2").available_actions == ()
     with pytest.raises(RuleViolation):
         run.submit(Action.vote("p2", "p4"))
 
@@ -548,9 +667,9 @@ def test_observation_contains_only_domain_validated_targets() -> None:
     seer = run.observe("p2")
     knight = run.observe("p3")
 
-    assert wolf.legal_targets[ActionType.WEREWOLF_ATTACK] == ["p2", "p3", "p4", "p5"]
-    assert seer.legal_targets[ActionType.SEER_INSPECT] == ["p1", "p3", "p4", "p5"]
-    assert knight.legal_targets[ActionType.KNIGHT_GUARD] == ["p1", "p2", "p3", "p4", "p5"]
+    assert wolf.legal_targets[ActionType.WEREWOLF_ATTACK] == ("p2", "p3", "p4", "p5")
+    assert seer.legal_targets[ActionType.SEER_INSPECT] == ("p1", "p3", "p4", "p5")
+    assert knight.legal_targets[ActionType.KNIGHT_GUARD] == ("p1", "p2", "p3", "p4", "p5")
 
 
 def test_game_aggregate_uses_registered_victory_policy() -> None:
@@ -612,7 +731,7 @@ def test_rule_set_uses_configured_phase_order() -> None:
 
 def test_ability_start_day_controls_available_actions() -> None:
     config = mvp_config()
-    delayed_inspection = config.abilities[ABILITY_INSPECT].model_copy(update={"start_day": 2})
+    delayed_inspection = replace(config.abilities[ABILITY_INSPECT], start_day=2)
     abilities = {**config.abilities, ABILITY_INSPECT: delayed_inspection}
     definition = RuleSetDefinition(
         player_count=5,
@@ -628,4 +747,4 @@ def test_ability_start_day_controls_available_actions() -> None:
     )
 
     assert ActionType.SEER_INSPECT not in game.view_for("p2").available_actions
-    assert AbilityDefinition.model_validate(delayed_inspection).start_day == 2
+    assert delayed_inspection.start_day == 2

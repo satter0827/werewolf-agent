@@ -9,6 +9,11 @@
 `Game` がゲーム状態を変更できる唯一の集約である。参加者、役職、フェーズ、投票、
 夜行動、勝敗を一貫した単位として検証し、成功した操作をイベントとして記録する。
 applicationやclientは合法手や勝敗を再計算しない。
+状態、設定、action、event、viewは凍結dataclass、tuple、読み取り専用mappingで表し、
+snapshotを受け取った側から変更できない。`player_id`はゲーム内で一意な非空文字列であり、
+domainはID生成規則とuserの所有関係を扱わない。
+復元時にもplayer数、mapping key、役職構成、終局結果、pending actionの参照整合を検証する。
+player mappingはID順へ正規化し、保存形式のobject順序に状態遷移を依存させない。
 
 ```{image} ../_generated/architecture/domain-structure.svg
 :alt: Game 集約とルール、状態、イベントの関係
@@ -21,6 +26,8 @@ applicationやclientは合法手や勝敗を再計算しない。
 public timeline に射影し、player observation は認証した本人が知り得る範囲へ
 絞る。完全状態の管理者 reveal、ゲーム終了後の完全リプレイ、LLM trace は、公開
 DTO とは別の認可された経路で扱う。
+`reveal_role_on_death`が有効な場合だけ、死亡が確定したplayerのroleとfactionをpublic stateと
+対応する解決済みeventへ含める。生存者、未解決投票、夜行動、占い結果は公開しない。
 
 ## ルール
 
@@ -39,6 +46,7 @@ import path や独自 DSL を記述しない。policy は状態を保持せず�
 ## 保証
 
 - domain は他のプロジェクト層へ依存しない。
+- domain はPydanticを含む第三者packageへ依存しない。
 - file I/O、環境変数、logging、database、HTTP、LLM provider に依存しない。
 - ランダム性を使う処理は seed または明示した乱数源で再現できる。
 - public state と public timeline は秘匿情報を含まない。

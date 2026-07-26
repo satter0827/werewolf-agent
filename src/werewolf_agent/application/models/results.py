@@ -17,7 +17,14 @@ from werewolf_agent.application.definitions import (
     LocalRulesDefinition,
 )
 from werewolf_agent.application.models.base import ApplicationModel
-from werewolf_agent.contracts import GamePhase, GameStatus, RoleCount, RoleId, Winner
+from werewolf_agent.application.types import (
+    Faction,
+    GamePhase,
+    GameStatus,
+    RoleCount,
+    RoleId,
+    Winner,
+)
 
 if TYPE_CHECKING:
     pass
@@ -59,7 +66,7 @@ class GameRevealPlayer(ApplicationModel):
     id: str
     name: str
     role: RoleId
-    faction: str
+    faction: Faction
     alive: bool
     status: str
     eliminated_day: int | None = None
@@ -85,7 +92,7 @@ class GameRevealInspection(ApplicationModel):
     seer_id: str
     target_id: str
     target_role: RoleId
-    target_faction: str
+    target_faction: Faction
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -200,6 +207,7 @@ class ReplayVerificationResult(ApplicationModel):
     valid: bool
     checked_versions: int = Field(ge=0)
     first_mismatch_version: int | None = Field(default=None, ge=MIN_VERSION)
+    comparison_target: str | None = None
     expected_checksum: str | None = None
     actual_checksum: str | None = None
 
@@ -215,6 +223,8 @@ class PublicPlayerState(ApplicationModel):
     status: str
     eliminated_day: int | None = None
     killed_night: int | None = None
+    role: str | None = None
+    faction: Faction | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import importlib
+import sys
 import tomllib
 from pathlib import Path
 
@@ -67,6 +68,111 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
     for module in (domain, application):
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
+    assert set(domain.__all__) == {
+        "AbilityDefinition",
+        "Action",
+        "ActionType",
+        "EventVisibility",
+        "Game",
+        "GameConfig",
+        "GameEvent",
+        "GameSetup",
+        "GameState",
+        "GameView",
+        "LocalRules",
+        "Phase",
+        "Player",
+        "PlayerStatus",
+        "RuleRegistry",
+        "RoleCatalog",
+        "RoleDefinition",
+        "RuleSet",
+        "RuleSetDefinition",
+        "RuleViolation",
+        "WinResult",
+    }
+    assert set(application.__all__) == {
+        "AccessPolicy",
+        "Actor",
+        "AdvanceGameResult",
+        "ApplicationContext",
+        "CreateGameCommand",
+        "ComputedAdvanceGame",
+        "GameApplication",
+        "GameApplicationConfig",
+        "GameListResult",
+        "GameRepository",
+        "GameResult",
+        "GameRevealResult",
+        "GameTimelineResult",
+        "LocalRulesDefinition",
+        "OperationQueue",
+        "PlayerActionCommand",
+        "PlayerActionResult",
+        "PlayerObservationResult",
+        "PreparedAdvanceGame",
+        "ReplayVerificationResult",
+    }
+
+
+def test_domain_uses_only_the_standard_library_and_domain_modules() -> None:
+    """Domainへvalidation frameworkや他layerを持ち込まない。"""
+    offenders = [
+        (path.relative_to(ROOT), imported)
+        for path in (PACKAGE / "domain").rglob("*.py")
+        for imported in _imports(path)
+        if imported.split(".", maxsplit=1)[0] not in sys.stdlib_module_names
+        and not imported.startswith("werewolf_agent.domain")
+    ]
+    assert not offenders
+
+
+def test_api_routes_do_not_invoke_access_or_queue_adapters_directly() -> None:
+    """認可とcommand受付をapplication facadeへ集約する。"""
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (PACKAGE / "api" / "routes").glob("*.py")
+    )
+    assert "services.access" not in source
+    assert "services.operations" not in source
+
+
+def test_worker_invokes_application_through_the_public_facade() -> None:
+    """Workerからapplication handlerの直接実行を禁止する。"""
+    imports = _imports(PACKAGE / "worker" / "service.py")
+    assert "werewolf_agent.application.handlers" not in imports
+
+
+def test_persisted_game_versions_are_append_only() -> None:
+    """保存済みversionをrepositoryのupsertで書き換えない。"""
+    source = (PACKAGE / "adapters" / "supabase" / "repository.py").read_text(encoding="utf-8")
+    insert_state_version = source.split("def _insert_state_version", maxsplit=1)[1].split(
+        "def _append_state_event", maxsplit=1
+    )[0]
+    assert "on conflict" not in insert_state_version.lower()
+
+
+def test_legacy_domain_aliases_and_plural_faction_ids_do_not_return() -> None:
+    """同義domain型とclient固有のfaction IDを再導入しない。"""
+    domain_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (PACKAGE / "domain").rglob("*.py")
+    )
+    for alias in ("GameSnapshot =", "Observation =", "DomainEvent ="):
+        assert alias not in domain_source
+
+    runtime_roots = (PACKAGE, ROOT / "frontend" / "src", ROOT / "frontend" / "e2e")
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in runtime_roots
+        for pattern in ("*.py", "*.ts", "*.tsx")
+        for path in root.rglob(pattern)
+    )
+    assert '"villagers"' not in source
+    assert '"werewolves"' not in source
+    assert "'villagers'" not in source
+    assert "'werewolves'" not in source
+
+    assert "CreateGameRequest" not in application.__all__
+    assert "PlayerActionRequest" not in application.__all__
 
 
 def test_runtime_settings_are_owned_by_disjoint_manifest_sections() -> None:

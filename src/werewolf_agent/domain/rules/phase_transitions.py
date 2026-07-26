@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from werewolf_agent.domain._messages import message_cannot_advance_phase
 from werewolf_agent.domain.errors import GamePhaseError
@@ -13,9 +13,9 @@ from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.rules.voting import resolve_votes
 from werewolf_agent.domain.state import (
     Action,
-    DomainEvent,
     GameConfig,
-    GameSnapshot,
+    GameEvent,
+    GameState,
     Phase,
     WinResult,
 )
@@ -25,19 +25,19 @@ from werewolf_agent.domain.state import (
 class TransitionOutcome:
     """Internal result for one phase transition."""
 
-    snapshot: GameSnapshot
-    events: list[DomainEvent] = field(default_factory=list)
+    snapshot: GameState
+    events: list[GameEvent] = field(default_factory=list)
     clear_votes: bool = False
     clear_night_actions: bool = False
 
 
 def advance_game_phase(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     pending_night_actions: Mapping[str, Action],
     rng: random.Random,
-    victory_evaluator: Callable[[GameSnapshot], WinResult | None] = check_win,
+    victory_evaluator: Callable[[GameState], WinResult | None] = check_win,
 ) -> TransitionOutcome:
     """Advance the state machine by one phase."""
     if snapshot.phase is Phase.NIGHT:
@@ -59,20 +59,21 @@ def advance_game_phase(
 
 
 def _advance_from_night(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
     pending_night_actions: Mapping[str, Action],
     rng: random.Random,
-    victory_evaluator: Callable[[GameSnapshot], WinResult | None],
+    victory_evaluator: Callable[[GameState], WinResult | None],
 ) -> TransitionOutcome:
     resolved_snapshot, result = resolve_night(snapshot, pending_night_actions, rng)
     events = [
-        DomainEvent(
+        GameEvent(
             event_type="night_resolved",
             phase=snapshot.phase,
             day=snapshot.day,
             payload={
                 "killed_player_id": result.killed_player_id,
+                **_death_reveal(resolved_snapshot, result.killed_player_id),
             },
         )
     ]
@@ -89,15 +90,15 @@ def _advance_from_night(
 
 
 def _advance_from_voting(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
     pending_votes: Mapping[str, Action],
     rng: random.Random,
-    victory_evaluator: Callable[[GameSnapshot], WinResult | None],
+    victory_evaluator: Callable[[GameState], WinResult | None],
 ) -> TransitionOutcome:
     resolved_snapshot, result = resolve_votes(snapshot, config, pending_votes, rng)
     events = [
-        DomainEvent(
+        GameEvent(
             event_type="vote_resolved",
             phase=snapshot.phase,
             day=snapshot.day,
@@ -105,6 +106,7 @@ def _advance_from_voting(
                 "eliminated_player_id": result.eliminated_player_id,
                 "counts": result.counts,
                 "tied_player_ids": result.tied_player_ids,
+                **_death_reveal(resolved_snapshot, result.eliminated_player_id),
             },
         )
     ]
@@ -125,21 +127,21 @@ def _advance_from_voting(
     )
 
 
-def _phase_only(snapshot: GameSnapshot, config: GameConfig) -> TransitionOutcome:
+def _phase_only(snapshot: GameState, config: GameConfig) -> TransitionOutcome:
     next_snapshot = _move_to_next(snapshot, config)
     return TransitionOutcome(snapshot=next_snapshot, events=[_phase_started(next_snapshot)])
 
 
 def _finish_or_move(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     config: GameConfig,
-    victory_evaluator: Callable[[GameSnapshot], WinResult | None],
-) -> tuple[GameSnapshot, list[DomainEvent]]:
+    victory_evaluator: Callable[[GameState], WinResult | None],
+) -> tuple[GameState, list[GameEvent]]:
     win_result = victory_evaluator(snapshot)
     if win_result is not None:
-        finished = snapshot.model_copy(update={"phase": Phase.FINISHED, "win_result": win_result})
+        finished = replace(snapshot, phase=Phase.FINISHED, win_result=win_result)
         return finished, [
-            DomainEvent(
+            GameEvent(
                 event_type="game_finished",
                 phase=Phase.FINISHED,
                 day=snapshot.day,
@@ -154,8 +156,8 @@ def _finish_or_move(
     return next_snapshot, [_phase_started(next_snapshot)]
 
 
-def _phase_started(snapshot: GameSnapshot) -> DomainEvent:
-    return DomainEvent(
+def _phase_started(snapshot: GameState) -> GameEvent:
+    return GameEvent(
         event_type="phase_started",
         phase=snapshot.phase,
         day=snapshot.day,
@@ -168,12 +170,19 @@ def _next_phase(config: GameConfig, current: Phase) -> Phase:
     return config.phase_order[(index + 1) % len(config.phase_order)]
 
 
-def _move_to_next(snapshot: GameSnapshot, config: GameConfig) -> GameSnapshot:
+def _death_reveal(snapshot: GameState, player_id: str | None) -> dict[str, str]:
+    if player_id is None or not snapshot.config.rules.reveal_role_on_death:
+        return {}
+    player = snapshot.players[player_id]
+    if player.role is None:
+        return {}
+    return {
+        "role": player.role,
+        "faction": snapshot.config.roles.faction_for_role(player.role),
+    }
+
+
+def _move_to_next(snapshot: GameState, config: GameConfig) -> GameState:
     next_phase = _next_phase(config, snapshot.phase)
     wrapped = config.phase_order.index(next_phase) <= config.phase_order.index(snapshot.phase)
-    return snapshot.model_copy(
-        update={
-            "phase": next_phase,
-            "day": snapshot.day + int(wrapped),
-        }
-    )
+    return replace(snapshot, phase=next_phase, day=snapshot.day + int(wrapped))

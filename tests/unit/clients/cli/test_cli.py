@@ -97,7 +97,7 @@ def _run_summary() -> PublicGameSummary:
         seed=1,
         player_count=6,
         alive_count=3,
-        winner="villagers",
+        winner="village",
         step_count=3,
         turn_count=3,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -113,7 +113,7 @@ class FakeGameClient:
         self.events = [
             _event(1, "game_started", {"player_count": 6}),
             _event(2, "phase_started", {"phase": "day_discussion"}),
-            _event(3, "game_finished", {"winner": "villagers"}),
+            _event(3, "game_finished", {"winner": "village"}),
         ]
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
@@ -159,7 +159,7 @@ class FakeGameClient:
         self.available_sequence += 1
         status = "completed" if self.available_sequence >= 3 else "running"
         phase = "finished" if status == "completed" else "day_discussion"
-        winner = "villagers" if status == "completed" else None
+        winner = "village" if status == "completed" else None
         timeline = [item for item in self.events if item.sequence == self.available_sequence]
         return AdvanceGameResponse(
             game_id=game_id,
@@ -499,7 +499,7 @@ def test_play_json_output_is_single_machine_readable_document(
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["game_id"] == "game-1"
-    assert payload["winner"] == "villagers"
+    assert payload["winner"] == "village"
     assert [item["sequence"] for item in payload["timeline"]] == [1, 2, 3]
 
 

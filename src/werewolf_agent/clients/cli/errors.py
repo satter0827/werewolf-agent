@@ -16,6 +16,7 @@ from werewolf_agent.clients.cli.messages import (
     message_error_line,
 )
 from werewolf_agent.contracts import AppError, InternalError
+from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.observability.constants import EVENT_OUTCOME_FAILURE
 from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.security.redaction import redact_mapping, redact_text
@@ -30,10 +31,11 @@ def run_app_command(command: Callable[[], T]) -> T:
         return command()
     except AppError as exc:
         logger.log(
-            log_level_number(exc.spec.log_level),
+            log_level_number(get_error_spec(exc.code).log_level),
             LOG_CLI_APPLICATION_ERROR_HANDLED,
             extra={
                 **exc.log_extra(),
+                "error_message": redact_text(exc.detail),
                 "error.message": redact_text(exc.detail),
                 "event_action": LOG_CLI_APPLICATION_ERROR_HANDLED,
                 "event_outcome": EVENT_OUTCOME_FAILURE,
@@ -58,4 +60,4 @@ def run_app_command(command: Callable[[], T]) -> T:
 def _safe_error_message(error: AppError) -> str:
     context = redact_mapping(error.context)
     suffix = f" context={context}" if context else ""
-    return message_error_line(error.detail, suffix)
+    return message_error_line(redact_text(error.detail), suffix)

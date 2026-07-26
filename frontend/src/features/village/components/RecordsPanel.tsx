@@ -17,9 +17,9 @@ export function RecordsPanel({ games, onResumeGame }: RecordsPanelProps) {
             <strong>{game.status === "completed" ? "終わった村" : "進行中の村"}</strong>
             <p>
               {game.day}日目 / 生存 {game.alive_count}人 /{" "}
-              {game.winner === "villagers"
+              {game.winner === "village"
                 ? "村人陣営の勝利"
-                : game.winner === "werewolves"
+                : game.winner === "werewolf"
                   ? "人狼陣営の勝利"
                   : "勝負中"}
             </p>

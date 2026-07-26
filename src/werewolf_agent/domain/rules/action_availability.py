@@ -9,7 +9,7 @@ from werewolf_agent.domain.state import (
     ABILITY_NIGHT_ATTACK,
     Action,
     ActionType,
-    GameSnapshot,
+    GameState,
     PendingActions,
     Phase,
     PlayerStatus,
@@ -17,7 +17,7 @@ from werewolf_agent.domain.state import (
 
 
 def available_actions(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     player_id: str,
 ) -> list[ActionType]:
@@ -63,7 +63,7 @@ def available_actions(
 
 
 def legal_targets(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     player_id: str,
 ) -> dict[ActionType, list[str]]:
@@ -90,7 +90,7 @@ def legal_targets(
 
 
 def _night_targets(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     player_id: str,
     action_type: ActionType,
     alive_ids: list[str],
@@ -138,13 +138,13 @@ def _night_targets(
     return targets
 
 
-def _player_faction(snapshot: GameSnapshot, player_id: str) -> str | None:
+def _player_faction(snapshot: GameState, player_id: str) -> str | None:
     role = snapshot.players[player_id].role
     return None if role is None else snapshot.config.roles.faction_for_role(role)
 
 
 def require_action_available(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     action: Action,
 ) -> None:
@@ -161,7 +161,7 @@ def require_action_available(
         )
 
 
-def _speech_count_for_today(snapshot: GameSnapshot, player_id: str) -> int:
+def _speech_count_for_today(snapshot: GameState, player_id: str) -> int:
     return sum(
         1
         for speech in snapshot.history.speeches

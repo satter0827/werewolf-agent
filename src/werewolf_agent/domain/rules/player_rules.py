@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from werewolf_agent.domain._messages import (
     message_expected_phase,
     message_player_cannot_perform_role_action,
@@ -12,7 +14,7 @@ from werewolf_agent.domain.errors import GameError, GamePhaseError
 from werewolf_agent.domain.state import (
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
-    GameSnapshot,
+    GameState,
     Phase,
     Player,
     PlayerStatus,
@@ -20,12 +22,12 @@ from werewolf_agent.domain.state import (
 )
 
 
-def faction_for_role(snapshot: GameSnapshot, role: str) -> str:
+def faction_for_role(snapshot: GameState, role: str) -> str:
     """Return the faction for one role."""
     return snapshot.config.roles.faction_for_role(role)
 
 
-def require_phase(snapshot: GameSnapshot, expected: Phase) -> None:
+def require_phase(snapshot: GameState, expected: Phase) -> None:
     """Raise if the game is not in the expected phase."""
     if snapshot.phase is not expected:
         raise GamePhaseError(
@@ -34,7 +36,7 @@ def require_phase(snapshot: GameSnapshot, expected: Phase) -> None:
         )
 
 
-def player_by_id(snapshot: GameSnapshot, player_id: str) -> Player:
+def player_by_id(snapshot: GameState, player_id: str) -> Player:
     """Return one player or raise a safe game error."""
     try:
         return snapshot.players[player_id]
@@ -45,7 +47,7 @@ def player_by_id(snapshot: GameSnapshot, player_id: str) -> Player:
         ) from exc
 
 
-def require_alive(snapshot: GameSnapshot, player_id: str) -> Player:
+def require_alive(snapshot: GameState, player_id: str) -> Player:
     """Return one alive player or raise a safe game error."""
     player = player_by_id(snapshot, player_id)
     if player.status is not PlayerStatus.ALIVE:
@@ -56,7 +58,7 @@ def require_alive(snapshot: GameSnapshot, player_id: str) -> Player:
     return player
 
 
-def require_role(snapshot: GameSnapshot, player_id: str, expected: str) -> Player:
+def require_role(snapshot: GameState, player_id: str, expected: str) -> Player:
     """Return an alive player with the expected role."""
     player = require_alive(snapshot, player_id)
     if player.role != expected:
@@ -72,33 +74,32 @@ def require_role(snapshot: GameSnapshot, player_id: str, expected: str) -> Playe
     return player
 
 
-def alive_players(snapshot: GameSnapshot) -> list[Player]:
+def alive_players(snapshot: GameState) -> list[Player]:
     """Return alive players in stable game order."""
     return [player for player in snapshot.players.values() if player.status is PlayerStatus.ALIVE]
 
 
 def mark_dead(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     player_id: str,
     *,
     eliminated_day: int | None = None,
     killed_night: int | None = None,
-) -> GameSnapshot:
+) -> GameState:
     """Return a copy of the snapshot with one player marked dead."""
     player = require_alive(snapshot, player_id)
-    updated_player = player.model_copy(
-        update={
-            "status": PlayerStatus.DEAD,
-            "eliminated_day": eliminated_day,
-            "killed_night": killed_night,
-        }
+    updated_player = replace(
+        player,
+        status=PlayerStatus.DEAD,
+        eliminated_day=eliminated_day,
+        killed_night=killed_night,
     )
     updated_players = dict(snapshot.players)
     updated_players[player_id] = updated_player
-    return snapshot.model_copy(update={"players": updated_players})
+    return replace(snapshot, players=updated_players)
 
 
-def check_win(snapshot: GameSnapshot) -> WinResult | None:
+def check_win(snapshot: GameState) -> WinResult | None:
     """Return a win result when either faction has met its win condition."""
     alive = alive_players(snapshot)
     alive_wolves = [
@@ -119,7 +120,7 @@ def check_win(snapshot: GameSnapshot) -> WinResult | None:
     return None
 
 
-def _win_result(snapshot: GameSnapshot, winner: str, reason: str) -> WinResult:
+def _win_result(snapshot: GameState, winner: str, reason: str) -> WinResult:
     winning_player_ids = [
         player.id
         for player in snapshot.players.values()
@@ -129,5 +130,5 @@ def _win_result(snapshot: GameSnapshot, winner: str, reason: str) -> WinResult:
         winner=winner,
         reason=reason,
         day=snapshot.day,
-        winning_player_ids=winning_player_ids,
+        winning_player_ids=tuple(winning_player_ids),
     )

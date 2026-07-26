@@ -15,7 +15,7 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.contracts import GameStatus
+from werewolf_agent.application.types import GameStatus
 
 
 class GameRepository(Protocol):
@@ -57,6 +57,7 @@ class GameRepository(Protocol):
     def list_game_summaries(
         self,
         *,
+        user_id: str,
         status: GameStatus | None,
         limit: int,
         offset: int,
@@ -64,6 +65,7 @@ class GameRepository(Protocol):
         """Return a page of game summaries.
 
         Args:
+            user_id: Verified user whose participant games are visible.
             status: Optional public game status filter.
             limit: Maximum number of summaries to return.
             offset: Result offset for pagination.

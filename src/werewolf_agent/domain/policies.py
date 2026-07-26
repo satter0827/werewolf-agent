@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Sequence
+from dataclasses import replace
 
 from werewolf_agent.domain._messages import MESSAGE_UNSUPPORTED_AGENT_ACTION
 from werewolf_agent.domain.errors import GameError, RuleViolation
@@ -28,10 +29,10 @@ from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
-    DomainEvent,
     EventVisibility,
-    GameSnapshot,
-    Observation,
+    GameEvent,
+    GameState,
+    GameView,
     PendingActions,
     Phase,
     WinResult,
@@ -39,10 +40,10 @@ from werewolf_agent.domain.state import (
 
 
 def _resolve_action(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     action: Action,
-) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+) -> tuple[GameState, PendingActions, list[GameEvent]]:
     if action.type is ActionType.PASS:
         return snapshot, pending_actions, []
     if action.type is ActionType.SPEECH:
@@ -52,9 +53,9 @@ def _resolve_action(
         votes = voting.record_vote(snapshot, snapshot.config, pending_actions.votes, action)
         return (
             snapshot,
-            pending_actions.model_copy(update={"votes": votes}),
+            replace(pending_actions, votes=votes),
             [
-                DomainEvent(
+                GameEvent(
                     event_type="vote_submitted",
                     phase=snapshot.phase,
                     day=snapshot.day,
@@ -72,9 +73,9 @@ def _resolve_action(
         )
         return (
             snapshot,
-            pending_actions.model_copy(update={"night_actions": actions}),
+            replace(pending_actions, night_actions=actions),
             [
-                DomainEvent(
+                GameEvent(
                     event_type="night_action_submitted",
                     phase=snapshot.phase,
                     day=snapshot.day,
@@ -88,10 +89,10 @@ def _resolve_action(
 
 
 def _advance_without_victory(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     random_source: random.Random,
-) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+) -> tuple[GameState, PendingActions, list[GameEvent]]:
     outcome = phase_transitions.advance_game_phase(
         snapshot,
         snapshot.config,
@@ -100,12 +101,11 @@ def _advance_without_victory(
         random_source,
         victory_evaluator=lambda _state: None,
     )
-    updates: dict[str, object] = {}
-    if outcome.clear_votes:
-        updates["votes"] = {}
-    if outcome.clear_night_actions:
-        updates["night_actions"] = {}
-    next_pending = pending_actions.model_copy(update=updates) if updates else pending_actions
+    next_pending = replace(
+        pending_actions,
+        votes={} if outcome.clear_votes else pending_actions.votes,
+        night_actions={} if outcome.clear_night_actions else pending_actions.night_actions,
+    )
     return outcome.snapshot, next_pending, outcome.events
 
 
@@ -128,7 +128,7 @@ class StandardResolutionPolicy(ResolutionPolicy):
         self,
         action: Action,
         context: RuleContext,
-    ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+    ) -> tuple[GameState, PendingActions, list[GameEvent]]:
         """Resolve one action without retaining policy state."""
         return _resolve_action(context.state, context.pending, action)
 
@@ -162,7 +162,7 @@ class RequiredActionsPhasePolicy(PhasePolicy):
         self,
         context: RuleContext,
         random_source: random.Random,
-    ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+    ) -> tuple[GameState, PendingActions, list[GameEvent]]:
         """Advance one completed phase without evaluating victory."""
         return _advance_without_victory(context.state, context.pending, random_source)
 
@@ -178,7 +178,7 @@ class FactionBalanceVictoryPolicy(VictoryPolicy):
 class StandardVisibilityPolicy(VisibilityPolicy):
     """Build the standard role-aware player observation."""
 
-    def build_view(self, player_id: str, context: RuleContext) -> Observation:
+    def build_view(self, player_id: str, context: RuleContext) -> GameView:
         """Return a role-aware view with domain-validated legal targets."""
         return observations.build_player_observation(context.state, context.pending, player_id)
 

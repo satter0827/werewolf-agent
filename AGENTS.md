@@ -21,13 +21,17 @@ Werewolf AgentはLLM agentを人狼ゲームのplayerとして動かすPython ba
 ## 絶対境界
 
 - `Game`だけがゲーム状態を変更する。
-- domainは他layer、I/O、環境変数、logging、database、LLMへ依存しない。
+- domainは標準libraryとdomain内部だけに依存し、Pydantic、I/O、環境変数、logging、
+  database、LLMを参照しない。
+- applicationのcommand、query、resultとHTTPのwire schemaを共有しない。
+- game参照、player操作、observation、非同期command受付の認可はapplicationで完結する。
 - applicationとagentsは相互に依存しない。
 - API routeはapplicationの公開contractだけを呼ぶ。
 - workerがapplication、agent、外部adapterを組み立てる。
 - CLIとStreamlitはHTTP APIだけでゲームを操作する。
 - public state、timeline、LLM observationへ秘匿情報を含めない。
 - 外部LLM出力はschema検証後にactionへ変換する。
+- 正規faction IDとwinner IDは`village`、`werewolf`とする。
 
 構造規則の正本は`scripts/architecture/rules.toml`です。構造テスト、分析JSON、
 評価文書、図は同じ定義を使用します。

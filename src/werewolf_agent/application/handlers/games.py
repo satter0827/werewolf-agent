@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import random
+import secrets
 from typing import cast
 from uuid import uuid4
 
 from werewolf_agent.application.definitions import (
     LocalRulesDefinition,
 )
+from werewolf_agent.application.domain_codec import domain_to_data, game_setup_from_data
+from werewolf_agent.application.errors import GameNotFoundError
 from werewolf_agent.application.handlers.common import (
     _config_text,
     _game_definitions_for,
@@ -50,16 +53,15 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
-from werewolf_agent.contracts import (
-    GameNotFoundError,
+from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.application.types import (
+    Faction,
     GamePhase,
     GameStatus,
 )
 from werewolf_agent.domain import (
     Game,
-    GameSetup,
     RuleRegistry,
-    RuleSetDefinition,
 )
 
 
@@ -70,13 +72,14 @@ def create_game(
 ) -> GameResult:
     """Create and persist one deterministic game."""
     game_id = uuid4()
+    seed = command.seed if command.seed is not None else secrets.randbits(63)
     requested_players = _requested_player_configs(command, dependencies.config)
     game_definitions = _game_definitions_for(command, dependencies.game_definitions)
     player_definitions = _player_definitions_for(command, dependencies.player_definitions)
     selected_profiles = _select_player_profiles(
         player_definitions.players,
         player_count=len(requested_players),
-        seed=command.seed,
+        seed=seed,
         character_assignments=command.character_assignments,
     )
     players = [
@@ -87,7 +90,7 @@ def create_game(
         for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
     ]
     rule_composition = game_definitions.rules.composition.model_dump(mode="json")
-    definition = RuleSetDefinition.from_values(
+    definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=command.role_counts,
         rules=command.rules.model_dump(mode="json"),
@@ -124,9 +127,9 @@ def create_game(
         ),
     }
     game = Game.create(
-        GameSetup.model_validate({"players": players}),
+        game_setup_from_data({"players": players}),
         rules=rules,
-        random=random.Random(command.seed),
+        random=random.Random(seed),
     )
     snapshot = game.snapshot()
     events = list(game.creation_events)
@@ -134,7 +137,7 @@ def create_game(
         snapshot,
         game_id=str(game_id),
         version=1,
-        seed=command.seed,
+        seed=seed,
         scenario_id=_config_text(scenario_config, "scenario_id"),
         scenario_name=_config_text(scenario_config, "scenario_name"),
         narration_mode=command.narration_mode,
@@ -145,11 +148,11 @@ def create_game(
             status=cast(GameStatus, public_state["status"]),
             phase=cast(GamePhase, public_state["phase"]),
             day=cast(int, public_state["day"]),
-            seed=command.seed,
+            seed=seed,
             config=run_config,
             public_state=public_state,
-            private_state=snapshot.model_dump(mode="json"),
-            pending_actions=snapshot.pending_actions.model_dump(mode="json"),
+            private_state=domain_to_data(snapshot),
+            pending_actions=domain_to_data(snapshot.pending_actions),
             version=1,
         )
     )
@@ -209,13 +212,13 @@ def get_game_reveal(
         scenario_name=_config_text(run.config, "scenario_name"),
         narration_mode=_narration_mode(run.config),
         role_counts=dict(snapshot.config.role_counts),
-        rules=LocalRulesDefinition.model_validate(snapshot.config.rules.model_dump(mode="json")),
+        rules=LocalRulesDefinition.model_validate(domain_to_data(snapshot.config.rules)),
         players=[
             GameRevealPlayer(
                 id=player.id,
                 name=player.name,
                 role=str(player.role or ""),
-                faction=_player_faction(snapshot, player.role),
+                faction=cast(Faction, _player_faction(snapshot, player.role)),
                 alive=player.is_alive,
                 status=player.status.value,
                 eliminated_day=player.eliminated_day,
@@ -253,7 +256,7 @@ def get_game_reveal(
                         seer_id=inspection.seer_id,
                         target_id=inspection.target_id,
                         target_role=inspection.target_role,
-                        target_faction=inspection.target_faction,
+                        target_faction=cast(Faction, inspection.target_faction),
                     )
                     for inspection in night.inspections
                 ],
@@ -276,6 +279,7 @@ def list_games(
         field_name="limit",
     )
     records = dependencies.repository.list_game_summaries(
+        user_id=query.trusted_user_id,
         status=query.status,
         limit=limit,
         offset=query.offset,

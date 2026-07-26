@@ -10,9 +10,9 @@ from dataclasses import dataclass
 from werewolf_agent.domain.errors import RuleViolation
 from werewolf_agent.domain.state import (
     Action,
-    DomainEvent,
-    GameSnapshot,
-    Observation,
+    GameEvent,
+    GameState,
+    GameView,
     PendingActions,
     WinResult,
 )
@@ -22,7 +22,7 @@ from werewolf_agent.domain.state import (
 class RuleContext:
     """Immutable input shared by rule policies."""
 
-    state: GameSnapshot
+    state: GameState
     pending: PendingActions
 
 
@@ -42,7 +42,7 @@ class ResolutionPolicy(ABC):
         self,
         action: Action,
         context: RuleContext,
-    ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+    ) -> tuple[GameState, PendingActions, list[GameEvent]]:
         """Return the atomic result of one action."""
 
 
@@ -58,7 +58,7 @@ class PhasePolicy(ABC):
         self,
         context: RuleContext,
         random_source: random.Random,
-    ) -> tuple[GameSnapshot, PendingActions, list[DomainEvent]]:
+    ) -> tuple[GameState, PendingActions, list[GameEvent]]:
         """Return the atomic result of advancing one phase."""
 
 
@@ -74,7 +74,7 @@ class VisibilityPolicy(ABC):
     """Build one player-specific view from private game state."""
 
     @abstractmethod
-    def build_view(self, player_id: str, context: RuleContext) -> Observation:
+    def build_view(self, player_id: str, context: RuleContext) -> GameView:
         """Return only information visible to the requested player."""
 
 

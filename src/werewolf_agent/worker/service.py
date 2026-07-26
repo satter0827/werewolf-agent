@@ -25,6 +25,7 @@ from werewolf_agent.adapters.supabase.llm_trace import (
     BufferedLlmTraceSink,
     SupabaseLlmTraceSink,
 )
+from werewolf_agent.adapters.supabase.operations import SupabaseAccessPolicy
 from werewolf_agent.adapters.supabase.pool import (
     SupabaseDatabaseUnavailableError,
     borrow_database_connection,
@@ -36,11 +37,15 @@ from werewolf_agent.adapters.supabase.repository import (
 )
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.application import Actor, GameApplication
-from werewolf_agent.application import handlers as application_handlers
+from werewolf_agent.application.definitions import (
+    CustomCharacterDefinition,
+    CustomRoleDefinition,
+    LocalRulesDefinition,
+)
 from werewolf_agent.application.models import (
-    AdvanceGameCommand,
     ApplicationContext,
-    GetGameQuery,
+    CreateGameCommand,
+    PlayerActionCommand,
 )
 from werewolf_agent.contracts import (
     AppError,
@@ -71,8 +76,6 @@ from werewolf_agent.worker.events import (
     LOG_WORKER_REQUEST_FAILED,
 )
 from werewolf_agent.worker.messages import (
-    MESSAGE_GAME_PARTICIPATION_REQUIRED,
-    MESSAGE_PLAYER_SEAT_NOT_OWNED,
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
     MESSAGE_WORKER_REQUEST_FAILED,
     message_unsupported_operation_type,
@@ -247,22 +250,18 @@ def _execute_advance_request(
     game_id = str(request.get("game_id") or "")
     user_id = str(request["owner_user_id"])
     with borrow_database_connection(pool) as connection, connection.transaction():
-        store = SupabaseWorkerStore(connection)
-        if not store.participates(game_id=game_id, user_id=user_id):
-            raise AppError(
-                MESSAGE_GAME_PARTICIPATION_REQUIRED,
-                code=ErrorCode.AUTHORIZATION_FAILED,
-            )
         context = _service(connection, settings)
-        prepared = application_handlers.prepare_advance_game(
-            AdvanceGameCommand(
-                game_id=game_id,
-                expected_version=_expected_version(request),
-            ),
-            dependencies=context,
+        application = GameApplication(
+            context,
+            access_policy=SupabaseAccessPolicy(connection),
         )
+        prepared = application.prepare_advance(
+            game_id,
+            Actor(user_id=user_id),
+            _expected_version(request),
+        )
+        store = SupabaseWorkerStore(connection)
         llm_mode = store.game_llm_mode(game_id)
-        game_definitions = context.game_definitions
 
     traces = BufferedLlmTraceSink()
     runtime = AgentRuntime(
@@ -276,19 +275,16 @@ def _execute_advance_request(
             supported_agent_type=settings.game_supported_agent_type,
             runtime=runtime,
         )
-        computed = application_handlers.compute_prepared_advance(
-            driven,
-            game_definitions=game_definitions,
-        )
+        computed = application.compute_advance(driven)
         heartbeat.require_owned()
 
         with borrow_database_connection(pool) as connection, connection.transaction():
             store = SupabaseWorkerStore(connection)
             context = _service(connection, settings)
-            result = application_handlers.commit_prepared_advance(
-                computed,
-                dependencies=context,
-            )
+            result = GameApplication(
+                context,
+                access_policy=SupabaseAccessPolicy(connection),
+            ).commit_advance(Actor(user_id=user_id), computed)
             response = _wire_model(AdvanceGameResponse, result)
             traces.flush_to(
                 SupabaseLlmTraceSink(
@@ -298,7 +294,13 @@ def _execute_advance_request(
                     state_version=_expected_version(request),
                 )
             )
-            _materialize_private_views(connection, store, settings, response.game_id)
+            _materialize_private_views(
+                connection,
+                store,
+                settings,
+                response.game_id,
+                actor_user_id=user_id,
+            )
             _complete_result(store, request, response)
 
 
@@ -347,6 +349,37 @@ class _LeaseHeartbeat:
                 return
 
 
+def _create_command(
+    request: CreateGameRequest,
+    service: ApplicationContext,
+) -> CreateGameCommand:
+    """Translate the HTTP wire request into the application contract."""
+    config = service.config
+    return CreateGameCommand(
+        seed=request.seed,
+        role_counts=request.role_counts,
+        manual_player_id=request.manual_player_id,
+        rules=(
+            LocalRulesDefinition.model_validate(request.rules.model_dump(mode="json"))
+            if request.rules is not None
+            else service.game_definitions.rules.local_rules
+        ),
+        scenario_id=request.scenario_id,
+        setup_preset_id=request.setup_preset_id,
+        narration_mode=request.narration_mode or config.default_narration_mode,
+        character_assignments=request.character_assignments,
+        custom_roles=[
+            CustomRoleDefinition.model_validate(role.model_dump(mode="json"))
+            for role in request.custom_roles
+        ],
+        custom_characters=[
+            CustomCharacterDefinition.model_validate(character.model_dump(mode="json"))
+            for character in request.custom_characters
+        ],
+        llm_mode=service.create_llm_mode,
+    )
+
+
 def _create_game(
     connection: Any,
     store: SupabaseWorkerStore,
@@ -366,7 +399,7 @@ def _create_game(
         owner_user_id=owner_user_id,
         create_llm_mode=llm_mode,
     )
-    result = GameApplication(service).create(create_request)
+    result = GameApplication(service).create(_create_command(create_request, service))
     response = _wire_model(GameResponse, result)
     participant_player_id = create_request.manual_player_id or "observer"
     store.add_participant(
@@ -375,7 +408,13 @@ def _create_game(
         player_id=participant_player_id,
         role="owner" if create_request.manual_player_id is None else "player",
     )
-    _materialize_private_views(connection, store, settings, response.game_id)
+    _materialize_private_views(
+        connection,
+        store,
+        settings,
+        response.game_id,
+        actor_user_id=owner_user_id,
+    )
     return response
 
 
@@ -388,25 +427,31 @@ def _submit_action(
     game_id = str(request.get("game_id") or "")
     player_id = str(request.get("player_id") or "")
     user_id = str(request["owner_user_id"])
-    if not store.owns_player(game_id=game_id, player_id=player_id, user_id=user_id):
-        raise AppError(
-            MESSAGE_PLAYER_SEAT_NOT_OWNED,
-            code=ErrorCode.AUTHORIZATION_FAILED,
-        )
     action_request = PlayerActionRequest.model_validate(
         _json_object(request.get("request_payload"))
     )
     service = _service(connection, settings)
-    application = GameApplication(service)
+    application = GameApplication(service, access_policy=SupabaseAccessPolicy(connection))
     result = application.submit_action(
-        game_id,
         Actor(user_id=user_id),
-        action_request,
-        _expected_version(request),
-        player_id=player_id,
+        PlayerActionCommand(
+            game_id=game_id,
+            player_id=player_id,
+            type=action_request.type,
+            target_id=action_request.target_id,
+            message=action_request.message,
+            reason=action_request.reason,
+            expected_version=_expected_version(request),
+        ),
     )
     response = _wire_model(PlayerActionResponse, result)
-    _materialize_private_views(connection, store, settings, response.game_id)
+    _materialize_private_views(
+        connection,
+        store,
+        settings,
+        response.game_id,
+        actor_user_id=user_id,
+    )
     return response
 
 
@@ -415,11 +460,23 @@ def _materialize_private_views(
     store: SupabaseWorkerStore,
     settings: AppSettings,
     game_id: str,
+    *,
+    actor_user_id: str,
 ) -> None:
     service = _service(connection, settings)
-    state_version = _materialize_reveal_view(store, settings, service, game_id)
+    state_version = _materialize_reveal_view(
+        connection,
+        store,
+        settings,
+        service,
+        game_id,
+        actor_user_id=actor_user_id,
+    )
     for participant in store.player_participants(game_id):
-        observation = GameApplication(service).observation(
+        observation = GameApplication(
+            service,
+            access_policy=SupabaseAccessPolicy(connection),
+        ).observation(
             game_id,
             Actor(user_id=participant.user_id),
             participant.player_id,
@@ -433,14 +490,24 @@ def _materialize_private_views(
 
 
 def _materialize_reveal_view(
+    connection: Any,
     store: SupabaseWorkerStore,
     settings: AppSettings,
     service: ApplicationContext,
     game_id: str,
+    *,
+    actor_user_id: str,
 ) -> int:
     if not settings.reveal_api_enabled:
         store.delete_reveal(game_id)
-        return _current_game_version(service, game_id)
+        public_game = GameApplication(
+            service,
+            access_policy=SupabaseAccessPolicy(connection),
+        ).get(
+            game_id,
+            Actor(user_id=actor_user_id),
+        )
+        return int(public_game.state["version"])
 
     reveal = GameApplication(service).reveal(
         game_id,
@@ -453,11 +520,6 @@ def _materialize_reveal_view(
         version=reveal_response.version,
     )
     return reveal_response.version
-
-
-def _current_game_version(service: ApplicationContext, game_id: str) -> int:
-    game = application_handlers.get_game(GetGameQuery(game_id=game_id), dependencies=service)
-    return int(game.state["version"])
 
 
 def _service(

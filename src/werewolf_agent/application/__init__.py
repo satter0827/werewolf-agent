@@ -1,28 +1,33 @@
 """公開Python application facade."""
 
+from werewolf_agent.application.definitions import LocalRulesDefinition
 from werewolf_agent.application.facade import Actor, GameApplication
 from werewolf_agent.application.models import (
     AdvanceGameResult,
     ApplicationContext,
+    ComputedAdvanceGame,
+    CreateGameCommand,
     GameApplicationConfig,
     GameListResult,
     GameResult,
     GameRevealResult,
     GameTimelineResult,
+    PlayerActionCommand,
     PlayerActionResult,
     PlayerObservationResult,
+    PreparedAdvanceGame,
     ReplayVerificationResult,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue
 from werewolf_agent.application.ports import GameRepository
-from werewolf_agent.contracts.schemas import CreateGameRequest, PlayerActionRequest
 
 __all__ = [
     "AccessPolicy",
     "Actor",
     "AdvanceGameResult",
     "ApplicationContext",
-    "CreateGameRequest",
+    "ComputedAdvanceGame",
+    "CreateGameCommand",
     "GameApplication",
     "GameApplicationConfig",
     "GameListResult",
@@ -30,9 +35,11 @@ __all__ = [
     "GameResult",
     "GameRevealResult",
     "GameTimelineResult",
+    "LocalRulesDefinition",
     "OperationQueue",
-    "PlayerActionRequest",
+    "PlayerActionCommand",
     "PlayerActionResult",
     "PlayerObservationResult",
+    "PreparedAdvanceGame",
     "ReplayVerificationResult",
 ]

@@ -109,6 +109,7 @@ class ReplayVerificationResponse(BaseModel):
     valid: bool
     checked_versions: int = Field(ge=0)
     first_mismatch_version: int | None = Field(default=None, ge=1)
+    comparison_target: str | None = None
     expected_checksum: str | None = None
     actual_checksum: str | None = None
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import cast
 
+from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.application.errors import GameError, GameNotFoundError, GamePhaseError
 from werewolf_agent.application.handlers.common import (
     _action_from_command,
     _authorize_manual_player,
@@ -31,12 +33,9 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     public_turn_payload_from_record,
 )
-from werewolf_agent.contracts import (
+from werewolf_agent.application.types import (
     GAME_STATUS_COMPLETED,
-    GameError,
-    GameNotFoundError,
     GamePhase,
-    GamePhaseError,
     GameStatus,
 )
 from werewolf_agent.domain import (
@@ -64,7 +63,7 @@ def get_player_observation(
     return PlayerObservationResult(
         game_id=str(run.id),
         player_id=query.player_id,
-        observation=observation.model_dump(mode="json"),
+        observation=domain_to_data(observation),
     )
 
 
@@ -113,8 +112,8 @@ def submit_player_action(
             phase=cast(GamePhase, next_public_state["phase"]),
             day=cast(int, next_public_state["day"]),
             public_state=next_public_state,
-            private_state=next_snapshot.model_dump(mode="json"),
-            pending_actions=next_pending_actions.model_dump(mode="json"),
+            private_state=domain_to_data(next_snapshot),
+            pending_actions=domain_to_data(next_pending_actions),
             version=run.version + 1,
         )
     )

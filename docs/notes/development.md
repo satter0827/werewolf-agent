@@ -193,10 +193,13 @@ pytest単体の既定levelは`quick`です。integration、monkey、benchmark、
 - 独自fake LLM
 - 旧import aliasと互換export
 
-## 未実装
+## 将来候補
+
+次の項目は現行要件の未達ではなく、別途要件化して扱う候補です。
 
 - 実providerの長時間QAと評価基盤
 - 複数manual player
+- 追加役職
 - private LLM traceの自動retention cleanup
 - 登録済み以外の新しい集計、勝敗、可視性アルゴリズム
 
@@ -220,3 +223,4 @@ production既定値120は変更していません。
 1. 実providerごとの契約テストを追加する
 2. 設定組み合わせのproperty-based testを拡充する
 3. 複数manual playerの権限モデルを設計する
+4. 現行4役職とは独立した追加役職の要件を定義する

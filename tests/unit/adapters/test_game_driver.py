@@ -30,7 +30,7 @@ from werewolf_agent.contracts import (
 from werewolf_agent.domain.state import (
     ActionType,
     GameHistory,
-    Observation,
+    GameView,
     Phase,
     Player,
     PlayerStatus,
@@ -57,7 +57,7 @@ def _lmstudio_auto_config() -> LlmProviderConfig:
 
 
 def test_agent_observation_from_game_carries_public_history_only() -> None:
-    game_observation = Observation(
+    game_observation = GameView(
         phase=Phase.VOTING,
         day=2,
         me=Player(id="p1", name="Alice", role="seer"),
@@ -301,7 +301,7 @@ def test_lmstudio_auto_discovery_connection_error_falls_back_at_runtime(monkeypa
         _lmstudio_auto_config(),
         definitions=definitions,
     )
-    observation = Observation(
+    observation = GameView(
         phase=Phase.DAY_DISCUSSION,
         day=1,
         me=Player(id="p1", name="Alice"),
@@ -391,7 +391,7 @@ def test_real_provider_invoke_error_uses_deterministic_fallback(monkeypatch) -> 
         ),
         definitions=definitions,
     )
-    observation = Observation(
+    observation = GameView(
         phase=Phase.DAY_DISCUSSION,
         day=1,
         me=Player(id="p1", name="Alice"),

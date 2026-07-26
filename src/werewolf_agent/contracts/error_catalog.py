@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from enum import StrEnum
 from http import HTTPStatus
 from typing import Final, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict
 
+from werewolf_agent.application.errors import ErrorCode
 from werewolf_agent.contracts.messages import (
     DETAIL_AGENT_INVALID_RESPONSE,
     DETAIL_API_UNAVAILABLE,
@@ -71,33 +71,6 @@ LLM_PROVIDER_ERROR_NO_LOADED_MODEL: Final = "NoLoadedModel"
 ErrorLogLevel = Literal["INFO", "WARNING", "ERROR"]
 
 
-class ErrorCode(StrEnum):
-    """Stable machine-readable application error codes."""
-
-    CONFIG_INVALID_VALUE = "config.invalid_value"
-    REQUEST_VALIDATION_FAILED = "request.validation_failed"
-    REQUEST_RATE_LIMITED = "request.rate_limited"
-    REQUEST_BODY_TOO_LARGE = "request.body_too_large"
-    REQUEST_CONCURRENCY_LIMITED = "request.concurrency_limited"
-    REQUEST_INVALID_CONTENT_LENGTH = "request.invalid_content_length"
-    REQUEST_TIMED_OUT = "request.timed_out"
-    REQUEST_IDEMPOTENCY_CONFLICT = "request.idempotency_conflict"
-    REQUEST_METHOD_NOT_ALLOWED = "request.method_not_allowed"
-    AUTHENTICATION_REQUIRED = "auth.required"
-    AUTHORIZATION_FAILED = "auth.forbidden"
-    API_UNAVAILABLE = "api.unavailable"
-    RESOURCE_NOT_FOUND = "resource.not_found"
-    HTTP_ERROR = "http.error"
-    GAME_INVALID_PHASE = "game.invalid_phase"
-    GAME_INVALID_ACTION = "game.invalid_action"
-    AGENT_INVALID_RESPONSE = "agent.invalid_response"
-    LLM_PROVIDER_UNAVAILABLE = "llm.provider_unavailable"
-    OBSERVATION_WRITE_FAILED = "observation.write_failed"
-    OPERATION_RETRY_EXHAUSTED = "operation.retry_exhausted"
-    OPERATION_UPGRADE_INTERRUPTED = "operation.upgrade_interrupted"
-    INTERNAL_UNEXPECTED = "internal.unexpected"
-
-
 class ErrorSpec(BaseModel):
     """Public metadata for one application error code."""
 
@@ -114,7 +87,6 @@ class ProblemDetailsSource(Protocol):
     """Application error shape needed to build Problem Details."""
 
     code: ErrorCode
-    spec: ErrorSpec
     detail: str
 
 

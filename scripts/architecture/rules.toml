@@ -114,6 +114,10 @@ roots = [
 ]
 forbidden = ["werewolf_agent.settings.loading"]
 
+[path_rules.domain_frameworks]
+roots = ["src/werewolf_agent/domain"]
+forbidden = ["pydantic"]
+
 [call_rules.worker_database]
 roots = ["src/werewolf_agent/worker"]
 forbidden = ["execute", "executemany"]
@@ -125,7 +129,7 @@ allowed = ["domain"]
 allowed = ["settings"]
 
 [layers.contracts]
-allowed = ["contracts", "security"]
+allowed = ["application", "contracts", "security"]
 
 [layers.security]
 allowed = ["contracts", "security", "settings"]
@@ -137,7 +141,7 @@ allowed = ["contracts", "observability", "security", "settings"]
 allowed = ["agents", "contracts"]
 
 [layers.application]
-allowed = ["application", "contracts", "domain"]
+allowed = ["application", "domain"]
 
 [layers.adapters]
 allowed = [

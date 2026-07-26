@@ -118,7 +118,7 @@ def test_rls_hides_another_users_game_and_private_reveal() -> None:
         connection.execute(
             """
             insert into private.game_reveals (game_id, reveal_payload, state_version)
-            values (%s, '{"winner":"villagers"}'::jsonb, 1)
+            values (%s, '{"winner":"village"}'::jsonb, 1)
             """,
             (game_id,),
         )

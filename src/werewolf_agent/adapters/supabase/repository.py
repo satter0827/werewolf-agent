@@ -155,24 +155,22 @@ class SupabaseGameRepository(GameRepository):
     def list_game_summaries(
         self,
         *,
+        user_id: str,
         status: GameStatus | None,
         limit: int,
         offset: int,
     ) -> list[StoredGameSummary]:
         """Return game summaries."""
-        params: list[object] = []
-        clauses: list[str] = []
-        if self._owner_user_id is not None:
-            clauses.append(
-                """
-                exists (
-                  select 1 from public.game_participants participant
-                  where participant.game_id = game_summaries.game_id
-                    and participant.user_id = %s
-                )
-                """
+        params: list[object] = [_uuid_or_none(user_id)]
+        clauses: list[str] = [
+            """
+            exists (
+              select 1 from public.game_participants participant
+              where participant.game_id = game_summaries.game_id
+                and participant.user_id = %s
             )
-            params.append(_uuid_or_none(self._owner_user_id))
+            """
+        ]
         if status is not None:
             clauses.append("status = %s")
             params.append(status)
@@ -420,7 +418,7 @@ class SupabaseGameRepository(GameRepository):
         """Return private checksum records for administrator replay verification."""
         commands = self._connection.execute(
             """
-            select version, command_type, payload, checksum
+            select version, command_type, actor_user_id, payload, checksum
             from private.accepted_commands
             where game_id = %s
             order by version, accepted_at
@@ -429,7 +427,8 @@ class SupabaseGameRepository(GameRepository):
         ).fetchall()
         events = self._connection.execute(
             """
-            select version, sequence, event_type, payload, checksum
+            select version, sequence, visibility, phase, day, actor_id,
+                   event_type, payload, checksum
             from private.game_events
             where game_id = %s
             order by sequence
@@ -481,10 +480,6 @@ class SupabaseGameRepository(GameRepository):
               game_id, version, private_state, public_state, checksum
             )
             values (%s, %s, %s, %s, %s)
-            on conflict (game_id, version) do update set
-              private_state = excluded.private_state,
-              public_state = excluded.public_state,
-              checksum = excluded.checksum
             """,
             (
                 game_id,

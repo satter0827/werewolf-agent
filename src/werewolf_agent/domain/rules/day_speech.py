@@ -2,23 +2,25 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from werewolf_agent.domain._messages import MESSAGE_EXPECTED_SPEECH_ACTION
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rules.player_rules import require_alive, require_phase
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
-    DomainEvent,
-    GameSnapshot,
+    GameEvent,
+    GameState,
     Phase,
     SpeechRecord,
 )
 
 
 def record_day_speech(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     action: Action,
-) -> tuple[GameSnapshot, list[DomainEvent]]:
+) -> tuple[GameState, list[GameEvent]]:
     """Return an updated snapshot after recording one day speech."""
     require_phase(snapshot, Phase.DAY_DISCUSSION)
     require_alive(snapshot, action.player_id)
@@ -31,10 +33,10 @@ def record_day_speech(
         message=action.message,
         reason=action.reason,
     )
-    history = snapshot.history.model_copy(update={"speeches": [*snapshot.history.speeches, speech]})
-    updated = snapshot.model_copy(update={"history": history})
+    history = replace(snapshot.history, speeches=(*snapshot.history.speeches, speech))
+    updated = replace(snapshot, history=history)
     return updated, [
-        DomainEvent(
+        GameEvent(
             event_type="speech_recorded",
             phase=snapshot.phase,
             day=snapshot.day,

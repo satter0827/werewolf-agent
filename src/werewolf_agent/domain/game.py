@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 
 from werewolf_agent.domain.definitions import RuleSet
 from werewolf_agent.domain.errors import RuleViolation
@@ -10,10 +11,8 @@ from werewolf_agent.domain.rules import game_setup
 from werewolf_agent.domain.rules.base import RuleContext
 from werewolf_agent.domain.state import (
     Action,
-    DomainEvent,
     GameEvent,
     GameSetup,
-    GameSnapshot,
     GameState,
     GameView,
     PendingActions,
@@ -26,15 +25,16 @@ class Game:
 
     def __init__(
         self,
-        state: GameSnapshot,
-        pending: PendingActions,
+        state: GameState,
         rules: RuleSet,
         creation_events: tuple[GameEvent, ...] = (),
     ) -> None:
         """Restore aggregate fields from validated values."""
-        self._state = state.model_copy(update={"pending_actions": pending})
+        if state.config != rules.config:
+            raise RuleViolation("rules_mismatch", "State and rule set do not match.")
+        self._state = state
         self._rules = rules
-        self._creation_events = creation_events
+        self._creation_events = tuple(creation_events)
 
     @classmethod
     def create(
@@ -47,7 +47,7 @@ class Game:
         """Create a game from validated setup data and injected rules."""
         state = game_setup.create_game_snapshot(rules.config, setup.players, random)
         events = (
-            DomainEvent(
+            GameEvent(
                 event_type="game_started",
                 phase=state.phase,
                 day=state.day,
@@ -57,7 +57,7 @@ class Game:
                 },
             ),
         )
-        return cls(state, PendingActions(), rules, events)
+        return cls(state, rules, events)
 
     @classmethod
     def restore(
@@ -67,9 +67,7 @@ class Game:
         rules: RuleSet,
     ) -> Game:
         """Restore a game without performing external I/O."""
-        if state.config != rules.config:
-            raise RuleViolation("rules_mismatch", "State and rule set do not match.")
-        return cls(state, state.pending_actions, rules)
+        return cls(state, rules)
 
     def submit(self, action: Action) -> list[GameEvent]:
         """Validate and atomically apply one player action."""
@@ -78,7 +76,7 @@ class Game:
         if violations:
             raise violations[0]
         state, pending, events = self._rules.resolution.resolve(action, context)
-        self._state = state.model_copy(update={"pending_actions": pending})
+        self._state = replace(state, pending_actions=pending)
         return events
 
     def advance(self, random: random.Random) -> list[GameEvent]:
@@ -90,10 +88,10 @@ class Game:
         state, pending, events = self._rules.phase.advance(context, random)
         win_result = self._rules.victory.evaluate(RuleContext(state, pending))
         if win_result is not None:
-            state = state.model_copy(update={"phase": Phase.FINISHED, "win_result": win_result})
+            state = replace(state, phase=Phase.FINISHED, win_result=win_result)
             events = [
                 *events,
-                DomainEvent(
+                GameEvent(
                     event_type="game_finished",
                     phase=Phase.FINISHED,
                     day=state.day,
@@ -104,7 +102,7 @@ class Game:
                     },
                 ),
             ]
-        self._state = state.model_copy(update={"pending_actions": pending})
+        self._state = replace(state, pending_actions=pending)
         return events
 
     def view_for(self, player_id: str) -> GameView:

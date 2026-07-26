@@ -6,6 +6,8 @@ import random
 from typing import cast
 
 from werewolf_agent.application.definitions import GameDefinitions
+from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.application.errors import GameError, GameNotFoundError, GamePhaseError
 from werewolf_agent.application.handlers.common import (
     _config_text,
     _manual_input_required,
@@ -35,12 +37,9 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     public_turn_payload_from_record,
 )
-from werewolf_agent.contracts import (
+from werewolf_agent.application.types import (
     GAME_STATUS_COMPLETED,
-    GameError,
-    GameNotFoundError,
     GamePhase,
-    GamePhaseError,
     GameStatus,
 )
 from werewolf_agent.domain import (
@@ -136,8 +135,8 @@ def compute_prepared_advance(
         phase=cast(GamePhase, next_public_state["phase"]),
         day=cast(int, next_public_state["day"]),
         public_state=next_public_state,
-        private_state=next_snapshot.model_dump(mode="json"),
-        pending_actions=game.pending_actions.model_dump(mode="json"),
+        private_state=domain_to_data(next_snapshot),
+        pending_actions=domain_to_data(game.pending_actions),
         events=events_to_create(
             [*action_events, *phase_events],
             narration_profile=_narration_profile(prepared.config, game_definitions),

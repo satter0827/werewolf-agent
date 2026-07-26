@@ -48,6 +48,11 @@ architecture testは`scripts/architecture/rules.toml`を正本とし、grimpのi
 間接依存と循環を検査する。Hypothesisはdomain操作列の生成と縮小、Schemathesisは
 OpenAPIのpositive/negative入力とDeepのstateful操作列、respxはHTTP異常、psutilは
 子processと実行中runの所有権を担当する。
+構造testはdomainの第三者package、applicationからwire contractへの依存、API routeから
+access/queue adapterへの直接呼出し、公開export allowlist、旧plural faction IDを検出する。
+replay testはcommand、event、state、projection、rule snapshotの改変と旧形式を、最初の
+不一致versionで検出する。必須fieldが欠けた破損記録も例外を公開せずunsupportedとして扱う。
+domain testは復元snapshotのplayer数、役職構成、終局結果、pending action参照の不整合を拒否する。
 
 各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`を持つ。manifestには
 producer、分類、MIME、size、SHA-256、保持状態を記録する。成功runもlog、JSON/HTMLの

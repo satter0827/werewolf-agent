@@ -990,6 +990,10 @@
           "winner": {
             "anyOf": [
               {
+                "enum": [
+                  "village",
+                  "werewolf"
+                ],
                 "type": "string"
               },
               {
@@ -1795,6 +1799,10 @@
           "winner": {
             "anyOf": [
               {
+                "enum": [
+                  "village",
+                  "werewolf"
+                ],
                 "type": "string"
               },
               {
@@ -1905,6 +1913,10 @@
           "winner": {
             "anyOf": [
               {
+                "enum": [
+                  "village",
+                  "werewolf"
+                ],
                 "type": "string"
               },
               {
@@ -1950,6 +1962,21 @@
             ],
             "title": "Eliminated Day"
           },
+          "faction": {
+            "anyOf": [
+              {
+                "enum": [
+                  "village",
+                  "werewolf"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faction"
+          },
           "id": {
             "title": "Id",
             "type": "string"
@@ -1968,6 +1995,17 @@
           "name": {
             "title": "Name",
             "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
           },
           "status": {
             "enum": [
@@ -2173,6 +2211,17 @@
             "minimum": 0.0,
             "title": "Checked Versions",
             "type": "integer"
+          },
+          "comparison_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comparison Target"
           },
           "expected_checksum": {
             "anyOf": [

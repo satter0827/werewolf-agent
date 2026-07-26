@@ -8,18 +8,18 @@ from werewolf_agent.domain.state import (
     ABILITY_PACK_KNOWLEDGE,
     FACTION_WEREWOLF,
     GameHistory,
-    GameSnapshot,
-    Observation,
+    GameState,
+    GameView,
     PendingActions,
     Player,
 )
 
 
 def build_player_observation(
-    snapshot: GameSnapshot,
+    snapshot: GameState,
     pending_actions: PendingActions,
     player_id: str,
-) -> Observation:
+) -> GameView:
     """Return the information visible to one player."""
     observer = player_by_id(snapshot, player_id)
     known_roles = _known_roles(snapshot, player_id)
@@ -34,7 +34,7 @@ def build_player_observation(
         )
         for player in snapshot.players.values()
     ]
-    return Observation(
+    return GameView(
         phase=snapshot.phase,
         day=snapshot.day,
         me=Player(
@@ -45,10 +45,13 @@ def build_player_observation(
             eliminated_day=observer.eliminated_day,
             killed_night=observer.killed_night,
         ),
-        players=observed_players,
+        players=tuple(observed_players),
         known_roles=known_roles,
-        available_actions=available_actions(snapshot, pending_actions, player_id),
-        legal_targets=legal_targets(snapshot, pending_actions, player_id),
+        available_actions=tuple(available_actions(snapshot, pending_actions, player_id)),
+        legal_targets={
+            action_type: tuple(targets)
+            for action_type, targets in legal_targets(snapshot, pending_actions, player_id).items()
+        },
         history=GameHistory(
             speeches=snapshot.history.speeches,
             votes=snapshot.history.votes,
@@ -57,7 +60,7 @@ def build_player_observation(
     )
 
 
-def _known_roles(snapshot: GameSnapshot, player_id: str) -> dict[str, str]:
+def _known_roles(snapshot: GameState, player_id: str) -> dict[str, str]:
     observer = player_by_id(snapshot, player_id)
     known_roles: dict[str, str] = {}
     if observer.role is not None:

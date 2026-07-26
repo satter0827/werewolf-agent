@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 
+from werewolf_agent.domain._model import frozen_mapping
 from werewolf_agent.domain.rules.base import (
     ActionPolicy,
     PhasePolicy,
@@ -15,7 +16,6 @@ from werewolf_agent.domain.rules.base import (
 from werewolf_agent.domain.state import (
     AbilityDefinition,
     GameConfig,
-    GameState,
     LocalRules,
     Phase,
     RoleCatalog,
@@ -27,10 +27,10 @@ class RuleSetDefinition:
     """Validated data used to compose one executable rule set."""
 
     player_count: int
-    role_counts: dict[str, int]
+    role_counts: Mapping[str, int]
     rules: LocalRules
     roles: RoleCatalog
-    abilities: dict[str, AbilityDefinition]
+    abilities: Mapping[str, AbilityDefinition]
     phases: tuple[str, ...] = ("night", "day_discussion", "voting")
     action_policy: str = "standard"
     resolution_policy: str = "standard"
@@ -38,86 +38,11 @@ class RuleSetDefinition:
     victory_policy: str = "faction_balance"
     visibility_policy: str = "standard"
 
-    @classmethod
-    def from_values(
-        cls,
-        *,
-        player_count: int,
-        role_counts: Mapping[str, int],
-        rules: Mapping[str, object],
-        roles: Mapping[str, Mapping[str, object]],
-        abilities: Mapping[str, Mapping[str, object]],
-        composition: Mapping[str, object],
-    ) -> RuleSetDefinition:
-        """Build a definition from validated external configuration values."""
-        return cls(
-            player_count=player_count,
-            role_counts=dict(role_counts),
-            rules=LocalRules.model_validate(rules),
-            roles=RoleCatalog.model_validate(
-                {
-                    "roles": {
-                        role_id: {
-                            "faction": value.get("faction"),
-                            "abilities": value.get("abilities", ()),
-                        }
-                        for role_id, value in roles.items()
-                    }
-                }
-            ),
-            abilities={
-                ability_id: AbilityDefinition.model_validate(
-                    {
-                        key: value.get(key)
-                        for key in (
-                            "phase",
-                            "action",
-                            "validation_policy",
-                            "resolution_policy",
-                            "target_policy",
-                            "start_day",
-                        )
-                    }
-                )
-                for ability_id, value in abilities.items()
-            },
-            phases=_phase_ids(composition),
-            action_policy=_policy_id(composition, "action_policy", "standard"),
-            resolution_policy=_policy_id(
-                composition,
-                "resolution_policy",
-                "standard",
-            ),
-            phase_policy=_policy_id(composition, "phase_policy", "required_actions"),
-            victory_policy=_policy_id(composition, "victory_policy", "faction_balance"),
-            visibility_policy=_policy_id(composition, "visibility_policy", "standard"),
-        )
-
-    @classmethod
-    def from_state(
-        cls,
-        state: GameState,
-        composition: Mapping[str, object],
-    ) -> RuleSetDefinition:
-        """Rebuild a definition for one serialized aggregate state."""
-        config = state.config
-        return cls(
-            player_count=config.player_count,
-            role_counts=dict(config.role_counts),
-            rules=config.rules,
-            roles=config.roles,
-            abilities=dict(config.abilities),
-            phases=tuple(phase.value for phase in config.phase_order),
-            action_policy=_policy_id(composition, "action_policy", "standard"),
-            resolution_policy=_policy_id(
-                composition,
-                "resolution_policy",
-                "standard",
-            ),
-            phase_policy=_policy_id(composition, "phase_policy", "required_actions"),
-            victory_policy=_policy_id(composition, "victory_policy", "faction_balance"),
-            visibility_policy=_policy_id(composition, "visibility_policy", "standard"),
-        )
+    def __post_init__(self) -> None:
+        """Freeze nested rule definition values."""
+        object.__setattr__(self, "role_counts", frozen_mapping(self.role_counts))
+        object.__setattr__(self, "abilities", frozen_mapping(self.abilities))
+        object.__setattr__(self, "phases", tuple(self.phases))
 
 
 @dataclass(frozen=True)
@@ -133,21 +58,6 @@ class RuleSet:
 
 
 PolicyFactory = Callable[[], object]
-
-
-def _policy_id(
-    composition: Mapping[str, object],
-    key: str,
-    default: str,
-) -> str:
-    return str(composition.get(key, default))
-
-
-def _phase_ids(composition: Mapping[str, object]) -> tuple[str, ...]:
-    value = composition.get("phases")
-    if not isinstance(value, (list, tuple)):
-        return ("night", "day_discussion", "voting")
-    return tuple(str(phase) for phase in value)
 
 
 class RuleRegistry:
@@ -210,15 +120,14 @@ class RuleRegistry:
 
     def build(self, definition: RuleSetDefinition) -> RuleSet:
         """Build one rule set or fail for an unregistered policy id."""
-        config_values = {
-            "player_count": definition.player_count,
-            "role_counts": definition.role_counts,
-            "rules": definition.rules,
-            "roles": definition.roles,
-            "phase_order": tuple(Phase(phase) for phase in definition.phases),
-        }
-        config_values["abilities"] = definition.abilities
-        config = GameConfig.model_validate(config_values)
+        config = GameConfig(
+            player_count=definition.player_count,
+            role_counts=definition.role_counts,
+            rules=definition.rules,
+            roles=definition.roles,
+            abilities=definition.abilities,
+            phase_order=tuple(Phase(phase) for phase in definition.phases),
+        )
         try:
             return RuleSet(
                 config=config,

@@ -68,7 +68,7 @@ ActionType = Literal[
     "pass",
 ]
 RoleId = str
-Winner = str
+Winner = Literal["village", "werewolf"]
 RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 
 
@@ -174,6 +174,8 @@ class PublicPlayerState(BaseModel):
     status: PlayerStatus
     eliminated_day: int | None = None
     killed_night: int | None = None
+    role: str | None = None
+    faction: Literal["village", "werewolf"] | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -121,8 +121,8 @@ def test_timeline_renders_public_speech_vote_and_night_results() -> None:
 def test_observer_mode_uses_only_public_timeline_without_action_state() -> None:
     catalog = _catalog()
     screen = build_game_screen_view(
-        state=_state(status="completed", winner="villagers"),
-        turns=[_turn("game_finished", {"winner": "villagers"})],
+        state=_state(status="completed", winner="village"),
+        turns=[_turn("game_finished", {"winner": "village"})],
         observation=None,
         manual_player_id=None,
         screen_mode="observer",
@@ -147,8 +147,8 @@ def test_observer_mode_uses_only_public_timeline_without_action_state() -> None:
 def test_play_result_summary_uses_public_information_only() -> None:
     catalog = _catalog()
     screen = build_game_screen_view(
-        state=_state(status="completed", winner="villagers"),
-        turns=[_turn("game_finished", {"winner": "villagers"})],
+        state=_state(status="completed", winner="village"),
+        turns=[_turn("game_finished", {"winner": "village"})],
         observation=None,
         manual_player_id=None,
         screen_mode="playable",

@@ -23,6 +23,13 @@ from werewolf_agent.application.definitions import (
     PlayerSetupDefinitions,
     RoleDefinition,
 )
+from werewolf_agent.application.domain_codec import action_from_data, game_state_from_data
+from werewolf_agent.application.errors import (
+    AppError,
+    ErrorCode,
+    GameError,
+    InvalidGameIdError,
+)
 from werewolf_agent.application.messages import (
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_CHARACTER_IDS,
     MESSAGE_CHARACTER_ASSIGNMENTS_CONTAIN_UNKNOWN_GENERATED_PLAYER_IDS,
@@ -51,13 +58,9 @@ from werewolf_agent.application.players import (
     SelectedPlayerProfile,
     select_players,
 )
-from werewolf_agent.contracts import (
-    AppError,
-    ErrorCode,
-    GameError,
-    InvalidGameIdError,
-)
-from werewolf_agent.contracts.validation import (
+from werewolf_agent.application.randomness import runtime_seed
+from werewolf_agent.application.rules import rule_definition_from_state
+from werewolf_agent.application.validation import (
     generated_player_id,
     generated_player_ids,
     generated_player_name,
@@ -67,7 +70,6 @@ from werewolf_agent.domain import (
     Game,
     GameState,
     RuleRegistry,
-    RuleSetDefinition,
 )
 
 
@@ -334,12 +336,13 @@ def _parse_game_id(value: str | UUID) -> UUID:
 
 def _action_from_command(command: PlayerActionCommand) -> Action:
     try:
-        return Action.model_validate(
+        return action_from_data(
             {
                 "player_id": command.player_id,
                 "type": command.type,
                 "target_id": command.target_id,
                 "message": command.message,
+                "reason": command.reason,
             }
         )
     except ValueError as exc:
@@ -350,15 +353,10 @@ def _action_from_command(command: PlayerActionCommand) -> Action:
 
 
 def _restore_game(run: StoredGame) -> Game:
-    state = GameState.model_validate(
-        {
-            **run.private_state,
-            "pending_actions": run.pending_actions,
-        }
-    )
+    state = game_state_from_data({**run.private_state, "pending_actions": run.pending_actions})
     composition_value = run.config.get("rule_composition")
     composition = composition_value if isinstance(composition_value, Mapping) else {}
-    rules = RuleRegistry.standard().build(RuleSetDefinition.from_state(state, composition))
+    rules = RuleRegistry.standard().build(rule_definition_from_state(state, composition))
     return Game.restore(state, rules=rules)
 
 
@@ -427,4 +425,4 @@ def _manual_input_required(
 
 
 def _runtime_seed(seed: int | None, version: int) -> int:
-    return (seed or 0) + version * 1009
+    return runtime_seed(seed, version)

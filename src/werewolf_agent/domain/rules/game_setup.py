@@ -13,14 +13,14 @@ from werewolf_agent.domain._messages import (
     MESSAGE_PLAYER_ROLES_ALL_OR_NONE,
 )
 from werewolf_agent.domain.errors import GameError
-from werewolf_agent.domain.state import GameConfig, GameSnapshot, Player
+from werewolf_agent.domain.state import GameConfig, GameState, Player
 
 
 def create_game_snapshot(
     config: GameConfig,
     players: Sequence[Player],
     rng: random.Random,
-) -> GameSnapshot:
+) -> GameState:
     """Return a validated initial game snapshot."""
     if len(players) != config.player_count:
         raise GameError(
@@ -40,7 +40,7 @@ def create_game_snapshot(
         )
         for player, role in zip(players, assigned_roles, strict=True)
     }
-    return GameSnapshot(
+    return GameState(
         config=config,
         phase=config.phase_order[0],
         day=1,

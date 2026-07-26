@@ -23,9 +23,11 @@
 | --- | --- | --- |
 | `REQ-GAME-001` | 設定済みルールからゲームを作成・復元できる | domain |
 | `REQ-GAME-002` | 行動受付、phase 進行、勝敗、可視性を domain が判定する | domain |
+| `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`の正規IDで表す | domain、application |
 | `REQ-API-001` | React、CLI、Streamlit は同じ HTTP 契約でゲームを操作する | API |
 | `REQ-AGENT-001` | agent は観測可能な情報と合法候補だけから判断する | agents |
 | `REQ-DATA-001` | accepted command、event、state、projection から完全 replay できる | persistence |
+| `REQ-DATA-002` | replayはcommandを先頭から再実行し、各versionのstate、event、projectionを照合する | application |
 | `REQ-ADMIN-001` | 管理者は private payload を返さず整合性と処理状態を診断できる | admin API |
 | `REQ-ADMIN-002` | 完全状態の reveal は設定で有効化した管理者専用 API だけが返す | admin API |
 
@@ -45,6 +47,7 @@
 ## 提供範囲
 
 - 一つの manual player と自動 player を含むゲーム進行
+- `villager`、`werewolf`、`seer`、`knight`の4役職
 - FakeListLLM による offline 実行
 - Supabase Auth、PostgreSQL 永続化、operation queue
 - FastAPI、React、CLI、Streamlit、worker
@@ -53,3 +56,4 @@
 
 production deployment、DB backup、外部監視、secret rotation は利用する platform が
 所有する。repository は接続契約、health、log、migration、検証入口を提供する。
+複数manual player、追加役職、汎用DSL、plugin機構は現行要件に含めない。

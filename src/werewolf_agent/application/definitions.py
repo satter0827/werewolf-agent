@@ -34,7 +34,7 @@ from werewolf_agent.application.messages import (
     message_default_role_counts_unknown_roles,
     message_definition_references_unknown_ids,
 )
-from werewolf_agent.contracts.validation import non_blank
+from werewolf_agent.application.validation import non_blank
 
 RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 

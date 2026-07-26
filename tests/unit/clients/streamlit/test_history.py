@@ -71,7 +71,7 @@ def _summary(game_id: str) -> PublicGameSummary:
         seed=1,
         player_count=5,
         alive_count=3,
-        winner="villagers",
+        winner="village",
         step_count=3,
         turn_count=3,
         created_at=now,

@@ -50,6 +50,7 @@ from werewolf_agent.clients.streamlit.views.sidebar import _render_sidebar
 from werewolf_agent.contracts import (
     AppError,
 )
+from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.observability import bind_observation_context, configure_entrypoint_logging
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_FAILURE,
@@ -208,13 +209,14 @@ def _streamlit() -> Any:
 
 def _handle_app_error(st: Any, exc: AppError) -> None:
     logger.log(
-        log_level_number(exc.spec.log_level),
+        log_level_number(get_error_spec(exc.code).log_level),
         LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
         extra={
             **exc.log_extra(),
+            "error_message": redact_text(exc.detail),
             "error.message": redact_text(exc.detail),
             "event_action": LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
             "event_outcome": EVENT_OUTCOME_FAILURE,
         },
     )
-    st.error(exc.detail)
+    st.error(redact_text(exc.detail))

@@ -75,7 +75,42 @@ class FakeAccess:
 
 
 class FakeGames:
-    pass
+    def __init__(self, operations: FakeOperations, access: FakeAccess) -> None:
+        self.operations = operations
+        self.access = access
+
+    def enqueue_create(self, actor: Any, **values: Any) -> QueuedOperation:
+        return self.operations.enqueue(
+            operation_type="create_game",
+            owner_user_id=actor.user_id,
+            **values,
+        )
+
+    def enqueue_action(self, game_id: str, actor: Any, **values: Any) -> QueuedOperation:
+        player_id = str(values.pop("player_id"))
+        self.access.require_player_access(game_id, player_id, user_id=actor.user_id)
+        return self.operations.enqueue(
+            operation_type="submit_action",
+            owner_user_id=actor.user_id,
+            game_id=game_id,
+            player_id=player_id,
+            llm_mode=None,
+            **values,
+        )
+
+    def enqueue_advance(self, game_id: str, actor: Any, **values: Any) -> QueuedOperation:
+        self.access.require_game_access(game_id, user_id=actor.user_id)
+        return self.operations.enqueue(
+            operation_type="advance_game",
+            owner_user_id=actor.user_id,
+            game_id=game_id,
+            request_payload={},
+            llm_mode=None,
+            **values,
+        )
+
+    def operation(self, operation_id: str, actor: Any) -> QueuedOperation | None:
+        return self.operations.get(operation_id, owner_user_id=actor.user_id)
 
 
 class FakeDiagnostics:
@@ -129,10 +164,9 @@ class FakeDiagnostics:
 def _client() -> tuple[TestClient, FakeOperations]:
     app = create_app()
     operations = FakeOperations()
+    access = FakeAccess()
     services = RequestServices(  # type: ignore[arg-type]
-        games=FakeGames(),
-        operations=operations,
-        access=FakeAccess(),
+        games=FakeGames(operations, access),
         message_max_chars=200,
         diagnostics=FakeDiagnostics(),
     )
@@ -218,8 +252,6 @@ def test_admin_reveal_feature_flag_matches_runtime_behavior() -> None:
     services = client.app.dependency_overrides[get_services]()
     client.app.dependency_overrides[get_services] = lambda: RequestServices(
         games=services.games,
-        operations=services.operations,
-        access=services.access,
         message_max_chars=services.message_max_chars,
         diagnostics=services.diagnostics,
         reveal_api_enabled=False,

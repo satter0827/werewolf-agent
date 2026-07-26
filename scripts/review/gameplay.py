@@ -6,8 +6,10 @@ import random
 from typing import Any
 
 from werewolf_agent.adapters.application_bridge import build_game_definitions
-from werewolf_agent.domain import Game, GameSetup, RuleRegistry, RuleSetDefinition
-from werewolf_agent.domain.state import Action, ActionType, EventVisibility
+from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.domain import Game, GameSetup, RuleRegistry
+from werewolf_agent.domain.state import Action, ActionType, EventVisibility, Player
 from werewolf_agent.settings import get_settings
 
 MAX_PHASES = 64
@@ -19,7 +21,7 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     definitions = build_game_definitions(settings)
     player_count = settings.game_default_player_count
     role_counts = definitions.roles.default_counts_for(player_count)
-    rule_definition = RuleSetDefinition.from_values(
+    rule_definition = rule_definition_from_values(
         player_count=player_count,
         role_counts=role_counts,
         rules=definitions.rules.local_rules.model_dump(mode="json"),
@@ -35,20 +37,18 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     )
     rng = random.Random(seed)
     game = Game.create(
-        GameSetup.model_validate(
-            {
-                "players": [
-                    {"id": f"p{index + 1}", "name": f"Player {index + 1}"}
-                    for index in range(player_count)
-                ]
-            }
+        GameSetup(
+            players=tuple(
+                Player(id=f"p{index + 1}", name=f"Player {index + 1}")
+                for index in range(player_count)
+            )
         ),
         rules=RuleRegistry.standard().build(rule_definition),
         random=rng,
     )
     operations: list[dict[str, object]] = []
     public_timeline = [
-        event.model_dump(mode="json")
+        domain_to_data(event)
         for event in game.creation_events
         if event.visibility is EventVisibility.PUBLIC
     ]
@@ -75,13 +75,13 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
                     }
                 )
                 public_timeline.extend(
-                    event.model_dump(mode="json")
+                    domain_to_data(event)
                     for event in events
                     if event.visibility is EventVisibility.PUBLIC
                 )
                 observation = game.view_for(player_id)
         public_timeline.extend(
-            event.model_dump(mode="json")
+            domain_to_data(event)
             for event in game.advance(rng)
             if event.visibility is EventVisibility.PUBLIC
         )

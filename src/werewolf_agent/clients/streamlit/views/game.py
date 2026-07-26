@@ -81,6 +81,7 @@ from werewolf_agent.contracts import (
     ADVANCE_JOB_STATUS_FAILED,
     AppError,
 )
+from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
@@ -214,7 +215,7 @@ def _create_game(
         )
     except (AppError, ValueError) as exc:
         if isinstance(exc, AppError):
-            log_level = log_level_number(exc.spec.log_level)
+            log_level = log_level_number(get_error_spec(exc.code).log_level)
             error_extra = exc.log_extra()
             error_message = exc.detail
         else:
@@ -226,6 +227,7 @@ def _create_game(
             LOG_STREAMLIT_GAME_CREATE_FAILED,
             extra={
                 **error_extra,
+                "error_message": redact_text(error_message),
                 "error.message": redact_text(error_message),
                 "event_action": LOG_STREAMLIT_GAME_CREATE_FAILED,
                 "event_outcome": EVENT_OUTCOME_FAILURE,

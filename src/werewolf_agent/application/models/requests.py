@@ -30,8 +30,8 @@ from werewolf_agent.application.messages import (
 )
 from werewolf_agent.application.models.base import ApplicationModel
 from werewolf_agent.application.models.results import GameEventCreate
-from werewolf_agent.contracts import GamePhase, GameStatus, RoleCount, RoleId
-from werewolf_agent.contracts.validation import generated_player_ids, non_blank
+from werewolf_agent.application.types import GamePhase, GameStatus, RoleCount, RoleId
+from werewolf_agent.application.validation import generated_player_ids, non_blank
 
 if TYPE_CHECKING:
     from werewolf_agent.domain import Game, GameEvent
@@ -202,6 +202,7 @@ class PlayerActionCommand(ApplicationModel):
 class ListGamesQuery(ApplicationModel):
     """Query for listing public games."""
 
+    trusted_user_id: str
     status: GameStatus | None = None
     limit: int | None = Field(default=None, ge=MIN_PAGE_LIMIT)
     offset: int = Field(default=MIN_PAGE_OFFSET, ge=MIN_PAGE_OFFSET)

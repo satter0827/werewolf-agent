@@ -45,9 +45,8 @@ def create_game(
     services: ServicesDependency,
 ) -> OperationResponse:
     """Queue one game with a server-selected immutable LLM mode."""
-    operation = services.operations.enqueue(
-        operation_type="create_game",
-        owner_user_id=principal.user_id,
+    operation = services.games.enqueue_create(
+        Actor(user_id=principal.user_id),
         idempotency_key=idempotency_key,
         request_payload=request.model_dump(mode="json", exclude_none=True),
         llm_mode=principal.llm_mode,
@@ -55,7 +54,7 @@ def create_game(
     return operation_response(operation)
 
 
-@router.get("/games", response_model=GameListResponse)
+@router.get("/games", response_model=GameListResponse, response_model_exclude_none=True)
 def list_games(
     principal: PrincipalDependency,
     services: ServicesDependency,
@@ -77,14 +76,13 @@ def list_games(
     return game_list_response(result)
 
 
-@router.get("/games/{game_id}", response_model=GameResponse)
+@router.get("/games/{game_id}", response_model=GameResponse, response_model_exclude_none=True)
 def get_game(
     game_id: str,
     principal: PrincipalDependency,
     services: ServicesDependency,
 ) -> GameResponse:
     """Return one authorized public game state."""
-    services.access.require_game_access(game_id, user_id=principal.user_id)
     result = services.games.get(game_id, Actor(user_id=principal.user_id))
     return game_response(result)
 
@@ -98,7 +96,6 @@ def get_timeline(
     limit: LimitQuery = None,
 ) -> GameTimelineResponse:
     """Return authorized public timeline items."""
-    services.access.require_game_access(game_id, user_id=principal.user_id)
     result = services.games.timeline(
         game_id,
         Actor(user_id=principal.user_id),
@@ -119,7 +116,6 @@ def get_observation(
     services: ServicesDependency,
 ) -> PlayerObservationResponse:
     """Return only the requesting player's private projection."""
-    services.access.require_player_access(game_id, player_id, user_id=principal.user_id)
     result = services.games.observation(
         game_id,
         Actor(user_id=principal.user_id),
@@ -142,20 +138,13 @@ def submit_action(
 ) -> OperationResponse:
     """Queue one version-checked player action."""
     _validate_action_text(request, services.message_max_chars)
-    services.access.require_player_access(
+    operation = services.games.enqueue_action(
         game_id,
-        request.player_id,
-        user_id=principal.user_id,
-    )
-    operation = services.operations.enqueue(
-        operation_type="submit_action",
-        owner_user_id=principal.user_id,
-        idempotency_key=idempotency_key,
-        request_payload=request.action.model_dump(mode="json", exclude_none=True),
-        llm_mode=None,
-        game_id=game_id,
+        Actor(user_id=principal.user_id),
         player_id=request.player_id,
         expected_version=request.expected_version,
+        idempotency_key=idempotency_key,
+        request_payload=request.action.model_dump(mode="json", exclude_none=True),
     )
     return operation_response(operation)
 
@@ -182,14 +171,10 @@ def advance_game(
     services: ServicesDependency,
 ) -> OperationResponse:
     """Queue one authorized version-checked game advance."""
-    services.access.require_game_access(game_id, user_id=principal.user_id)
-    operation = services.operations.enqueue(
-        operation_type="advance_game",
-        owner_user_id=principal.user_id,
-        idempotency_key=idempotency_key,
-        request_payload={},
-        llm_mode=None,
-        game_id=game_id,
+    operation = services.games.enqueue_advance(
+        game_id,
+        Actor(user_id=principal.user_id),
         expected_version=request.expected_version,
+        idempotency_key=idempotency_key,
     )
     return operation_response(operation)

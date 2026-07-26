@@ -9,7 +9,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field
 
 from werewolf_agent.application.models.base import ApplicationModel
-from werewolf_agent.contracts import GamePhase, GameStatus, Winner
+from werewolf_agent.application.types import GamePhase, GameStatus, Winner
 
 if TYPE_CHECKING:
     pass

@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from werewolf_agent.application.constants import DEFAULT_NARRATION_MODE, NARRATION_MODE_NONE
 from werewolf_agent.application.definitions import NarrationProfileDefinition
+from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.models import (
     GameEventCreate,
     GameTimelineItem,
@@ -17,22 +18,25 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.contracts import (
+from werewolf_agent.application.types import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_RUNNING,
+    Faction,
     GamePhase,
     GameStatus,
     Winner,
 )
-from werewolf_agent.contracts.validation import public_generated_player_label
+from werewolf_agent.application.validation import public_generated_player_label
 from werewolf_agent.domain import GameEvent, GameState
 
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
     "phase_started": frozenset({"phase"}),
     "speech_recorded": frozenset({"message"}),
-    "vote_resolved": frozenset({"eliminated_player_id", "counts", "tied_player_ids"}),
-    "night_resolved": frozenset({"killed_player_id"}),
+    "vote_resolved": frozenset(
+        {"eliminated_player_id", "counts", "tied_player_ids", "role", "faction"}
+    ),
+    "night_resolved": frozenset({"killed_player_id", "role", "faction"}),
     "game_finished": frozenset({"winner", "reason"}),
 }
 
@@ -42,7 +46,7 @@ def public_state_payload_from_game(game: StoredGame) -> dict[str, Any]:
     payload = dict(game.public_state)
     payload["created_at"] = game.created_at
     payload["updated_at"] = game.updated_at
-    return PublicGameState.model_validate(payload).model_dump(mode="json")
+    return PublicGameState.model_validate(payload).model_dump(mode="json", exclude_none=True)
 
 
 def public_state_payload_from_snapshot(
@@ -65,6 +69,21 @@ def public_state_payload_from_snapshot(
             status=player.status.value,
             eliminated_day=player.eliminated_day,
             killed_night=player.killed_night,
+            role=(
+                player.role
+                if not player.is_alive and snapshot.config.rules.reveal_role_on_death
+                else None
+            ),
+            faction=cast(
+                Faction | None,
+                (
+                    snapshot.config.roles.faction_for_role(player.role)
+                    if not player.is_alive
+                    and player.role is not None
+                    and snapshot.config.rules.reveal_role_on_death
+                    else None
+                ),
+            ),
         )
         for player in snapshot.players.values()
     ]
@@ -95,7 +114,7 @@ def public_state_payload_from_snapshot(
         },
         created_at=created_at,
     )
-    return state.model_dump(mode="json")
+    return state.model_dump(mode="json", exclude_none=True)
 
 
 def public_game_summary_payload_from_record(record: StoredGameSummary) -> dict[str, Any]:
@@ -184,7 +203,7 @@ def public_safe_payload(event: GameEvent) -> dict[str, Any]:
         if allowed_keys is not None
         else {}
     )
-    return payload
+    return cast(dict[str, Any], domain_to_data(payload))
 
 
 def public_narration(
@@ -236,8 +255,8 @@ def _phase_label(value: str) -> str:
 
 def _winner_label(value: object) -> str:
     return {
-        "villagers": "村人陣営",
-        "werewolves": "人狼陣営",
+        "village": "村人陣営",
+        "werewolf": "人狼陣営",
     }.get(str(value), str(value) if value is not None else "")
 
 
@@ -250,4 +269,4 @@ def status_from_snapshot(snapshot: GameState) -> GameStatus:
 
 def winner_from_snapshot(snapshot: GameState) -> Winner | None:
     """Return the public winner value for a domain snapshot."""
-    return snapshot.winner_id
+    return cast(Winner | None, snapshot.winner_id)

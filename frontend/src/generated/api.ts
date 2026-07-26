@@ -633,7 +633,7 @@ export interface components {
             /** Votes */
             votes?: components["schemas"]["GameRevealVote"][];
             /** Winner */
-            winner?: string | null;
+            winner?: ("village" | "werewolf") | null;
         };
         /**
          * GameRevealVote
@@ -941,7 +941,7 @@ export interface components {
             /** Version */
             version: number;
             /** Winner */
-            winner?: string | null;
+            winner?: ("village" | "werewolf") | null;
         };
         /**
          * PublicGameSummary
@@ -987,7 +987,7 @@ export interface components {
             /** Version */
             version: number;
             /** Winner */
-            winner?: string | null;
+            winner?: ("village" | "werewolf") | null;
         };
         /**
          * PublicPlayerState
@@ -998,12 +998,16 @@ export interface components {
             alive: boolean;
             /** Eliminated Day */
             eliminated_day?: number | null;
+            /** Faction */
+            faction?: ("village" | "werewolf") | null;
             /** Id */
             id: string;
             /** Killed Night */
             killed_night?: number | null;
             /** Name */
             name: string;
+            /** Role */
+            role?: string | null;
             /**
              * Status
              * @enum {string}
@@ -1088,6 +1092,8 @@ export interface components {
             actual_checksum?: string | null;
             /** Checked Versions */
             checked_versions: number;
+            /** Comparison Target */
+            comparison_target?: string | null;
             /** Expected Checksum */
             expected_checksum?: string | null;
             /** First Mismatch Version */

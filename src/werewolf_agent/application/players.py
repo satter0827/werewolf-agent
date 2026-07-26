@@ -7,8 +7,8 @@ import re
 from dataclasses import dataclass
 
 from werewolf_agent.application.definitions import PlayerProfile, PlayerRoster
+from werewolf_agent.application.errors import GameError
 from werewolf_agent.application.messages import MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS
-from werewolf_agent.contracts import GameError
 
 DEFAULT_PLAYER_NAME_PATTERN = re.compile(r"^Player\s+\d+$")
 

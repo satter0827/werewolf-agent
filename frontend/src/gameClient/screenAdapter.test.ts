@@ -83,7 +83,7 @@ describe("mapGameScreen", () => {
     const source = sampleScreenSource();
     source.state.status = "completed";
     source.state.phase = "finished";
-    source.state.winner = "villagers";
+    source.state.winner = "village";
     source.observation = null;
 
     const screen = mapGameScreen({ screen: source, manualPlayerId: "player-1" });

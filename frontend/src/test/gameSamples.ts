@@ -21,7 +21,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
     {
       id: "villager",
       name: "村人",
-      faction: "villagers",
+      faction: "village",
       abilities: [],
       description: "推理で村を守ります",
       difficulty: 1,
@@ -29,7 +29,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
     {
       id: "werewolf",
       name: "人狼",
-      faction: "werewolves",
+      faction: "werewolf",
       abilities: ["werewolf_attack"],
       description: "夜に村を襲います",
       difficulty: 3,
@@ -37,7 +37,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
     {
       id: "seer",
       name: "占い師",
-      faction: "villagers",
+      faction: "village",
       abilities: ["seer_inspect"],
       description: "夜にひとりを調べます",
       difficulty: 2,
@@ -45,7 +45,7 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
     {
       id: "knight",
       name: "騎士",
-      faction: "villagers",
+      faction: "village",
       abilities: ["knight_guard"],
       description: "夜にひとりを守ります",
       difficulty: 2,

@@ -487,13 +487,9 @@ knight = "騎士"
 [labels.en.winner]
 village = "Village Team"
 werewolf = "Werewolf Team"
-villagers = "Village Team"
-werewolves = "Werewolf Team"
 unknown = "Undecided"
 
 [labels.ja.winner]
 village = "村人陣営"
 werewolf = "人狼陣営"
-villagers = "村人陣営"
-werewolves = "人狼陣営"
 unknown = "未決着"
