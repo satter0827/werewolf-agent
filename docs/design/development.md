@@ -33,10 +33,16 @@ uv run --no-sync werewolf-agent doctor
 `ensure`はlockとtool versionのfingerprintを確認し、不足または変更時だけ同期する。
 registry、browser配布元、image registryへの接続は環境準備で許可する。
 
-VS Codeでは`Project: Setup`、`Verify: Quick`、`Verify: Check`を日常操作に使用する。
-個別gateは`python -m scripts.quality gate <selector>`から実行する。
-`React Stack`と`Streamlit Stack`はローカルSupabaseを含むprocessを所有し、debug
-sessionの終了時にまとめて停止する。
+VS Codeの「実行とデバッグ」では`Run: React Stack`、`Run: Streamlit Stack`、
+`Run: CLI Play`、`Debug: API`、`Debug: Worker`を使う。`Verify: Quality`は
+Quick/Check/Release/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
+`Open: Latest Quality Report`と`Cleanup: Owned Resources`も同じ場所から実行する。
+選択は`pickString`で行い、commandや引数を手入力しない。Ensure、Supabase、Frontend
+起動taskは内部実装として候補から隠す。stackはローカルSupabaseを含むprocessを所有し、
+debug sessionの終了時にまとめて停止する。
+
+個別gateはAI、CI、重点調査向けに`python -m scripts.quality gate <selector>`を残す。
+gateはpytest markerと公開commandだけを使い、test sourceを解析して選択しない。
 
 ## 検証
 

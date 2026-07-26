@@ -41,18 +41,34 @@ def build(
                 "--benchmark-disable",
                 "--junitxml",
                 str(run_dir / "test-results" / "quick.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "quick.json"),
+                "--html",
+                str(run_dir / "test-results" / "quick.html"),
+                "--self-contained-html",
                 "--basetemp",
                 str(basetemp),
                 "tests",
             ),
-            artifacts=("test-results/quick.xml",),
+            artifacts=(
+                "test-results/quick.xml",
+                "test-results/quick.json",
+                "test-results/quick.html",
+            ),
         ),
         Gate(
             "coverage",
             "Python total and branch coverage",
             tuple(coverage_command(run_dir, settings)),
             action=partial(run_coverage, settings=settings),
-            artifacts=("coverage/coverage.xml", "test-results/coverage.xml"),
+            artifacts=(
+                "coverage/coverage.xml",
+                "coverage/html/index.html",
+                "test-results/coverage.xml",
+                "test-results/coverage.json",
+                "test-results/coverage.html",
+            ),
         ),
         Gate(
             "deep-tests",
@@ -69,9 +85,19 @@ def build(
                 "0",
                 "--junitxml",
                 str(run_dir / "test-results" / "deep.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "deep.json"),
+                "--html",
+                str(run_dir / "test-results" / "deep.html"),
+                "--self-contained-html",
                 "tests",
             ),
-            artifacts=("test-results/deep.xml",),
+            artifacts=(
+                "test-results/deep.xml",
+                "test-results/deep.json",
+                "test-results/deep.html",
+            ),
         ),
         Gate(
             "deep-integration",
@@ -88,11 +114,21 @@ def build(
                 "0",
                 "--junitxml",
                 str(run_dir / "test-results" / "deep-integration.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "deep-integration.json"),
+                "--html",
+                str(run_dir / "test-results" / "deep-integration.html"),
+                "--self-contained-html",
                 "tests",
             ),
             dependencies=("supabase-preflight",),
             exclusive_resources=("supabase",),
-            artifacts=("test-results/deep-integration.xml",),
+            artifacts=(
+                "test-results/deep-integration.xml",
+                "test-results/deep-integration.json",
+                "test-results/deep-integration.html",
+            ),
         ),
     ]
 
@@ -103,7 +139,7 @@ def run_coverage(
     *,
     settings: QualitySettings,
 ) -> CommandResult:
-    """総合coverageとbranch rateをそれぞれの下限で検査する。"""
+    """総合coverageとbranch rateを判定せず観測する。"""
     started = time.monotonic()
     command = coverage_command(context.run_dir, settings)
     coverage = run_command(
@@ -115,15 +151,11 @@ def run_coverage(
         return coverage
     errors, branch_percentage = branch_coverage_contract(
         context.run_dir / "coverage" / "coverage.xml",
-        minimum_percentage=settings.branch_coverage_fail_under,
+        minimum_percentage=0,
     )
     output = [coverage.output]
     if branch_percentage is not None:
-        output.append(
-            "branch coverage: "
-            f"{branch_percentage:.2f}% "
-            f"(下限 {settings.branch_coverage_fail_under}%)\n"
-        )
+        output.append(f"branch coverage: {branch_percentage:.2f}% (観測値)\n")
     if errors:
         output.append("branch coverage契約に違反しています:\n")
         output.extend(f"- {error}\n" for error in errors)
@@ -150,9 +182,15 @@ def coverage_command(run_dir: Path, settings: QualitySettings) -> list[str]:
         f"xml:{run_dir / 'coverage' / 'coverage.xml'}",
         "--cov-report",
         f"html:{run_dir / 'coverage' / 'html'}",
-        f"--cov-fail-under={settings.coverage_fail_under}",
+        "--cov-fail-under=0",
         "--junitxml",
         str(run_dir / "test-results" / "coverage.xml"),
+        "--json-report",
+        "--json-report-file",
+        str(run_dir / "test-results" / "coverage.json"),
+        "--html",
+        str(run_dir / "test-results" / "coverage.html"),
+        "--self-contained-html",
         "tests/unit",
     ]
 

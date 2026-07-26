@@ -92,12 +92,22 @@ uv run --no-sync python -m scripts.quality list
 
 `scripts.quality` は品質 gate 全体の順序、timeout、report を管理します。docs と
 architecture の個別処理は専用 script が所有し、品質 runner はその入口を呼びます。
-結果は `.werewolf-agent/quality` に保存されます。
+結果は`.werewolf-agent/quality`に保存されます。最新成功runはreportだけでなく、event、
+log、JSON/HTML test結果、coverage、画面、manifestを含むreview bundleです。
+`manifest.json`のSHA-256とproducerから証拠の出所と実在を確認できます。
 
-`Project: Setup`と各`Verify` taskは、不足時だけlockに従って依存、browser、imageを
-準備します。品質判定はfake、fixture、localhost、Compose内serviceだけを使用し、
-有料LLM providerや任意の外部APIへ依存しません。online auditは
-`Dependencies: Audit`から明示的に実行します。
+VS Codeでは「実行とデバッグ」の`Verify: Quality`からlevelを選び、
+`Review: Evidence`からUI、Gameplay、Local LLMの読解用証拠を選びます。起動、report表示、
+所有resourceのcleanupも同じ候補から実行でき、commandの手入力は不要です。
+UIはdesktop/mobileのsetup、gameplay、observer、空の履歴、完了結果、履歴、設定と代表的な
+loading/errorを画像と一覧画像で残します。Gameplayは現在のゲーム定義からseed固定で完走し、設定、操作列、公開
+timeline、終局をJSONへ保存します。面白さや見た目に点数や自動合否は付けません。
+
+環境準備はfile lockの内側でlockに従って依存、browser、imageを準備します。品質判定は
+fake、fixture、localhost、Compose内serviceだけを使用し、有料LLM providerや任意の
+外部APIへ依存しません。利用者がアプリ運用で有料providerを設定することはできますが、
+品質・review processはcredentialを除去します。online auditは`Dependencies: Audit`から
+明示的に実行します。
 
 ## 運用境界
 

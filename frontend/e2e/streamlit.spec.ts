@@ -4,7 +4,9 @@ import { expect, test } from "./fixtures";
 
 test.use({ baseURL: process.env.PLAYWRIGHT_STREAMLIT_URL ?? "http://streamlit:8501" });
 
-test("Streamlit exposes the same game setup capability through the API", async ({ page }) => {
+test("Streamlit exposes the same game setup capability through the API", async ({
+  page,
+}, testInfo) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: /Werewolf Agent/i })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/MOC|mock|provider|model|token/i);
@@ -29,6 +31,10 @@ test("Streamlit exposes the same game setup capability through the API", async (
   await page.getByRole("button", { name: "新しいゲームを始める" }).click();
   await expect(page.getByText("ゲーム卓", { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/provider|model|token/i);
+  await page.screenshot({
+    path: testInfo.outputPath(`streamlit-gameplay-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
 });
 
 test("Streamlit observer mode uses only public API data", async ({ page }, testInfo) => {
@@ -57,4 +63,35 @@ test("Streamlit observer mode uses only public API data", async ({ page }, testI
   await expect(page.getByText("観戦モード", { exact: true }).first()).toBeVisible();
   expect(administratorRequests).toEqual([]);
   expect(privateObservationRequests).toEqual([]);
+  await page.screenshot({
+    path: testInfo.outputPath(`streamlit-observer-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+});
+
+test("Streamlit history and settings are reviewable", async ({ page }, testInfo) => {
+  await page.goto("/");
+  const history = page.getByRole("button", { name: /履歴/ }).first();
+  if (testInfo.project.name === "mobile") {
+    await history.evaluate((element) => (element as HTMLButtonElement).click());
+  } else {
+    await history.click();
+  }
+  await expect(page.getByRole("heading", { name: "履歴" })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath(`streamlit-history-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
+
+  const settings = page.getByRole("button", { name: /設定/ }).first();
+  if (testInfo.project.name === "mobile") {
+    await settings.evaluate((element) => (element as HTMLButtonElement).click());
+  } else {
+    await settings.click();
+  }
+  await expect(page.getByRole("heading", { name: "設定" })).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath(`streamlit-settings-${testInfo.project.name}.png`),
+    fullPage: true,
+  });
 });

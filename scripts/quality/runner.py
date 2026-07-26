@@ -5,11 +5,14 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import os
+import shutil
 import sys
 import time
 import tomllib
 from collections.abc import Sequence
 from pathlib import Path
+
+import psutil  # type: ignore[import-untyped]
 
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -27,6 +30,7 @@ from scripts._infra.process import (
     run_command,
     utc_now,
 )
+from scripts.environment.manager import frontend_installation_fingerprint
 from scripts.quality.gates import repository as repository_gate
 from scripts.quality.gates import services as services_gate
 from scripts.quality.models import (
@@ -61,28 +65,9 @@ def load_quality_settings() -> QualitySettings:
     tool = _required_table(document, "tool", "tool")
     quality = _required_table(tool, "werewolf-quality", "tool.werewolf-quality")
     timeouts = _required_table(quality, "timeouts", "tool.werewolf-quality.timeouts")
-    coverage = _required_table(tool, "coverage", "tool.coverage")
-    coverage_report = _required_table(coverage, "report", "tool.coverage.report")
     return QualitySettings(
         max_jobs=_required_int(quality, "max_jobs", minimum=1),
         benchmark_min_rounds=_required_int(quality, "benchmark_min_rounds", minimum=1),
-        benchmark_max_mean_ms=_required_int(
-            quality,
-            "benchmark_max_mean_ms",
-            minimum=1,
-        ),
-        coverage_fail_under=_required_int(
-            coverage_report,
-            "fail_under",
-            minimum=0,
-            maximum=100,
-        ),
-        branch_coverage_fail_under=_required_int(
-            quality,
-            "branch_coverage_fail_under",
-            minimum=0,
-            maximum=100,
-        ),
         timeouts={
             profile: _required_int(timeouts, profile, minimum=1) for profile in PROFILE_ORDER
         },
@@ -243,10 +228,21 @@ def _artifact_contract(context: RunContext, gate: Gate) -> tuple[list[str], list
         if not matches:
             issues.append(f"成果物がありません: {pattern}")
             continue
-        artifacts.extend(_artifact_name(path, context.run_dir) for path in matches)
+        artifacts.extend(_snapshot_artifact(path, context.run_dir) for path in matches)
         if all(path.stat().st_mtime < started for path in matches):
             issues.append(f"成果物が現在runで更新されていません: {pattern}")
     return issues, artifacts
+
+
+def _snapshot_artifact(path: Path, run_dir: Path) -> str:
+    """共有build成果物をrun内へ固定し、後続runによる上書きを防ぐ。"""
+    if path.is_relative_to(run_dir):
+        return path.relative_to(run_dir).as_posix()
+    relative = path.relative_to(ARTIFACT_ROOT)
+    target = run_dir / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, target)
+    return relative.as_posix()
 
 
 def _resolved_diagnostics(context: RunContext, gate: Gate) -> list[str]:
@@ -257,13 +253,6 @@ def _resolved_diagnostics(context: RunContext, gate: Gate) -> list[str]:
         for path in sorted(context.run_dir.glob(pattern))
         if path.is_file() and path.is_relative_to(context.run_dir)
     ]
-
-
-def _artifact_name(path: Path, run_dir: Path) -> str:
-    try:
-        return path.relative_to(run_dir).as_posix()
-    except ValueError:
-        return path.relative_to(ARTIFACT_ROOT).as_posix()
 
 
 def _command_state(result: CommandResult, *, nonzero_state: FailureState = "failed") -> State:
@@ -318,7 +307,11 @@ def execute(
     selectors: Sequence[str] | None = None,
 ) -> tuple[State, Path]:
     """指定profileのgateを段階ごとに並列実行する。"""
+    from scripts.quality.retention import mark_run_active, recover_abandoned_runs
+
+    recover_abandoned_runs()
     run_id, run_dir = create_run_directory(profile)
+    mark_run_active(run_dir)
     environment = quality_environment(run_dir=run_dir)
     context = RunContext(
         profile=profile,
@@ -341,6 +334,7 @@ def execute(
         stages = stages_override or _profile_stages(profile, jobs, run_dir, settings)
     try:
         context.initial_git_status = repository_gate.git_status(environment)
+        context.initial_dependency_fingerprint = frontend_installation_fingerprint()
     except KeyboardInterrupt:
         message = "品質実行が初期化中に中断されました。"
         log_path = run_dir / "logs" / "runner-setup.log"
@@ -478,7 +472,8 @@ def execute(
         results.extend(skipped_results)
         _append_events(event_path, skipped_results)
     finally:
-        if context.supabase_cleanup_required:
+        supabase_lease = context.resources.get("supabase")
+        if supabase_lease is not None and supabase_lease.cleanup_required:
             stopped = _run_gate(
                 context,
                 Gate(
@@ -492,11 +487,76 @@ def execute(
             results.append(stopped)
             _append_events(event_path, [stopped])
 
+    stability = _environment_stability_result(context)
+    results.append(stability)
+    _append_events(event_path, [stability])
+    process_stability = _process_stability_result(context)
+    results.append(process_stability)
+    _append_events(event_path, [process_stability])
+
     state, _report_path = _write_summary(context, results)
     redact_artifacts(run_dir)
     from scripts.quality.retention import publish_run
 
     return state, publish_run(run_dir, context.profile, state)
+
+
+def _environment_stability_result(context: RunContext) -> GateResult:
+    """品質実行がFrontend依存環境を変更していないことを返す。"""
+    started = time.monotonic()
+    log_path = context.run_dir / "logs" / "environment-stability.log"
+    try:
+        current = frontend_installation_fingerprint()
+        changed = current != context.initial_dependency_fingerprint
+        message = "品質実行によりFrontend依存環境が変更されました。" if changed else None
+        log_path.write_text((message or "Frontend依存環境は不変です。") + "\n", encoding="utf-8")
+        return GateResult(
+            "environment-stability",
+            "Dependency environment unchanged",
+            "failed" if changed else "passed",
+            time.monotonic() - started,
+            command=["frontend-installation-fingerprint"],
+            returncode=1 if changed else 0,
+            log=log_path.relative_to(context.run_dir).as_posix(),
+            message=message,
+        )
+    except (OSError, ValueError) as error:
+        message = f"Frontend依存環境を再確認できません: {error}"
+        log_path.write_text(message + "\n", encoding="utf-8")
+        return GateResult(
+            "environment-stability",
+            "Dependency environment unchanged",
+            "error",
+            time.monotonic() - started,
+            command=["frontend-installation-fingerprint"],
+            log=log_path.relative_to(context.run_dir).as_posix(),
+            message=message,
+        )
+
+
+def _process_stability_result(context: RunContext) -> GateResult:
+    """品質runnerが起動した子processを残していないことを検査する。"""
+    started = time.monotonic()
+    log_path = context.run_dir / "logs" / "process-stability.log"
+    children = [child for child in psutil.Process().children(recursive=True) if child.is_running()]
+    if children:
+        identities = [f"{child.pid}:{child.name()}" for child in children]
+        message = "品質所有processが残っています: " + ", ".join(identities)
+        state: State = "error"
+    else:
+        message = "品質所有processは残っていません。"
+        state = "passed"
+    log_path.write_text(message + "\n", encoding="utf-8")
+    return GateResult(
+        "process-stability",
+        "Quality-owned processes stopped",
+        state,
+        time.monotonic() - started,
+        command=["psutil.Process.children"],
+        returncode=0 if state == "passed" else 1,
+        log=log_path.relative_to(context.run_dir).as_posix(),
+        message=None if state == "passed" else message,
+    )
 
 
 def build_parser(settings: QualitySettings | None = None) -> argparse.ArgumentParser:

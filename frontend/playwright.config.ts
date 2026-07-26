@@ -1,11 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const outputDir = process.env.PLAYWRIGHT_OUTPUT_DIR ?? "../.werewolf-agent/playwright";
+const artifactRoot = process.env.PLAYWRIGHT_OUTPUT_DIR ?? "../.werewolf-agent/playwright";
 
 export default defineConfig({
   testDir: process.env.PLAYWRIGHT_TEST_DIR ?? "e2e",
-  outputDir,
-  reporter: [["json", { outputFile: `${outputDir}/results.json` }]],
+  outputDir: `${artifactRoot}/test-results`,
+  reporter: [
+    ["json", { outputFile: `${artifactRoot}/results.json` }],
+    ["html", { outputFolder: `${artifactRoot}/html`, open: "never" }],
+  ],
   timeout: 45_000,
   expect: { timeout: 10_000 },
   use: {

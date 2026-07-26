@@ -20,17 +20,17 @@ python -m scripts.quality clean
 python -m scripts.supabase preflight
 ```
 
-- `quick`: 日常の静的検査とunit test
-- `check`: branch coverage、docs、frontend build、配布物契約、monkey、benchmark
-- `release`: local Supabase、integration、React／Streamlit E2E、Docker smoke
-- `deep`: 拡張探索、障害系、画面操作
+- `quick`: architecture、format、lint、型、unit、軽量Hypothesis
+- `check`: Quick、offline test、coverage観測、docs、OpenAPI、Schemathesis、build
+- `release`: Check、local Supabase、integration、React／Streamlit E2E、Docker smoke
+- `deep`: 長時間stateful、fault injection、benchmark観測
 - `clean`: 再生成可能なbuild、品質用一時cache、coverage、期限切れrun
 
 `--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
 CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
-既定worker上限、保持日数、profile別timeout、benchmark反復下限、平均時間上限、
-branch coverage下限は`pyproject.toml`の`tool.werewolf-quality`から読みます。
-総合coverage下限は`tool.coverage.report.fail_under`と共有します。
+既定worker上限、保持件数、profile別timeout、benchmark反復下限は`pyproject.toml`の
+`tool.werewolf-quality`から読みます。coverageとbenchmarkは観測値として保存し、根拠の
+ない数値閾値では合否を決めません。
 
 `scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython、
 Node、Supabase image、E2E image、runtime imageを準備します。品質commandは不足物を
@@ -47,7 +47,8 @@ CLIなど、選択profileに必要なローカル環境が不足した場合に�
 
 成功結果は`.werewolf-agent/quality/latest/profiles/<profile>/`、個別gateは
 `.werewolf-agent/quality/latest/gates/<selector>/`へ保存します。成功履歴は増やさず、
-最新のJSON reportとMarkdown summaryだけを置き換えます。非成功結果は
+report、summary、event、log、test結果、coverage、画面、manifestを含む一式を
+置き換えます。非成功結果は
 `.werewolf-agent/quality/failures/<selector>/`へ直近3件だけ保存します。未実行gateも
 `skipped`として残すため、AIと人間が同じreportから調査を開始できます。Git状態の
 初期確認失敗やrunner中断も、実行済み・未完了・cleanupを含むreportを生成します。
@@ -76,8 +77,8 @@ Playwright suiteをcontainer内で共有し、子processの出力と画像をrun
 Supabase CLIの出力からは公開キー、URL、DB接続先だけを許可し、service-role値は
 引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageは
 environment準備で取得します。
-Release/Deepは固有project IDと未使用portの隔離DBを使い、
-品質用session、container、volume、project設定を終了時に削除します。Docker buildは
+Release/Deepは固定された品質用Compose projectを一組だけ使い、所有labelで識別した
+session、container、volumeを終了時に削除します。Docker buildは
 runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、
 品質用Supabaseと一時Docker imageのcleanupを試みます。OneDrive上の再生成可能な
 ディレクトリ削除は、一時的な競合に限って短時間再試行します。成功結果の置換と

@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 import tarfile
+import time
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -51,9 +52,6 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
 
     assert settings.max_jobs == 4
     assert settings.benchmark_min_rounds == 5
-    assert settings.benchmark_max_mean_ms == 10
-    assert settings.coverage_fail_under == 74
-    assert settings.branch_coverage_fail_under == 48
     assert settings.timeouts == {
         "quick": 60,
         "check": 180,
@@ -80,17 +78,13 @@ def test_invalid_quality_settings_are_rejected(
     (tmp_path / "pyproject.toml").write_text(
         """
 [tool.werewolf-quality]
-benchmark_max_mean_ms = 10
 benchmark_min_rounds = 5
-branch_coverage_fail_under = 48
 max_jobs = 0
 [tool.werewolf-quality.timeouts]
 quick = 60
 check = 180
 release = 600
 deep = 1200
-[tool.coverage.report]
-fail_under = 74
 """.strip(),
         encoding="utf-8",
     )
@@ -100,33 +94,16 @@ fail_under = 74
         quality.load_quality_settings()
 
 
-def test_invalid_coverage_threshold_is_rejected(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """coverage下限を有効な百分率の範囲に限定する。"""
+def test_quality_settings_do_not_define_arbitrary_numeric_verdicts() -> None:
+    """Coverageとbenchmarkは観測値とし、根拠のない閾値を持たない。"""
 
-    (tmp_path / "pyproject.toml").write_text(
-        """
-[tool.werewolf-quality]
-benchmark_max_mean_ms = 10
-benchmark_min_rounds = 5
-branch_coverage_fail_under = 48
-max_jobs = 4
-[tool.werewolf-quality.timeouts]
-quick = 60
-check = 180
-release = 600
-deep = 1200
-[tool.coverage.report]
-fail_under = 101
-""".strip(),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(quality, "REPOSITORY_ROOT", tmp_path)
+    document = quality._load_pyproject()
+    quality_settings = document["tool"]["werewolf-quality"]
+    coverage_settings = document["tool"]["coverage"]["report"]
 
-    with pytest.raises(ValueError, match="fail_under"):
-        quality.load_quality_settings()
+    assert "benchmark_max_mean_ms" not in quality_settings
+    assert "branch_coverage_fail_under" not in quality_settings
+    assert "fail_under" not in coverage_settings
 
 
 def test_profiles_have_expected_order_and_isolated_commands() -> None:
@@ -139,7 +116,11 @@ def test_profiles_have_expected_order_and_isolated_commands() -> None:
 
     assert quick < check < release < deep
     assert {"pytest", "mypy", "eslint", "vitest"} <= quick
-    assert {"coverage", "docs", "package", "benchmark"} <= check
+    assert {"coverage", "docs", "package"} <= check
+    assert "benchmark" not in check
+    assert "benchmark" in deep
+    assert "schemathesis-stateful" not in check
+    assert "schemathesis-stateful" in deep
     assert {"supabase-preflight", "integration", "docker"} <= release
     assert {"deep-tests", "deep-integration"} <= deep
     assert all(gate.command for stage in quality._profile_stages("deep", 1) for gate in stage)
@@ -247,6 +228,16 @@ def test_redact_masks_credentials_embedded_in_url() -> None:
 
     assert "local-password" not in output
     assert output == ("dsn=postgresql://postgres:[REDACTED]@127.0.0.1:5432/postgres")
+
+
+def test_url_redaction_is_bounded_for_long_non_credential_payload() -> None:
+    """生成contractの長いcurlでもcredential探索をbacktrackingさせない。"""
+    started = time.monotonic()
+
+    output = redact("http://" + "a" * 100_000 + "/openapi")
+
+    assert output.endswith("/openapi")
+    assert time.monotonic() - started < 1.0
 
 
 def test_redact_artifacts_keeps_json_valid_and_masks_failure_details(
@@ -659,12 +650,13 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
 
     assert visible_launch_names == {
-        "API",
-        "Worker",
-        "React",
-        "Streamlit",
-        "CLI Doctor",
-        "CLI Play",
+        "Debug: API",
+        "Debug: Worker",
+        "Run: CLI Play",
+        "Verify: Quality",
+        "Review: Evidence",
+        "Open: Latest Quality Report",
+        "Cleanup: Owned Resources",
     }
     assert visible_task_names == {
         "Project: Setup",
@@ -675,10 +667,9 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         "Docs: Build",
         "Architecture: Analyze",
         "Dependencies: Audit",
-        "Advanced: Quality Gate",
     }
     compounds = {compound["name"]: compound for compound in launch["compounds"]}
-    assert set(compounds) == {"React Stack", "Streamlit Stack"}
+    assert set(compounds) == {"Run: React Stack", "Run: Streamlit Stack"}
     assert all(
         "Internal: Supabase Stack" in compound["configurations"] and compound["stopAll"] is True
         for compound in compounds.values()
@@ -694,6 +685,13 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     )
     assert frontend_task["isBackground"] is True
     assert frontend_task["problemMatcher"][0]["background"]["endsPattern"]
+    inputs = {item["id"]: item for item in launch["inputs"]}
+    assert inputs["qualityLevel"]["type"] == "pickString"
+    assert inputs["qualityLevel"]["options"] == ["quick", "check", "release", "deep"]
+    assert inputs["reviewKind"]["type"] == "pickString"
+    assert inputs["reviewKind"]["options"] == ["ui", "gameplay", "local-llm"]
+    assert "promptString" not in json.dumps(launch)
+    assert "promptString" not in json.dumps(tasks)
     assert task_commands["Verify: Quick"][-4:] == ["python", "-m", "scripts.quality", "quick"]
     assert task_commands["Verify: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
     assert task_commands["Docs: Build"][-4:] == ["python", "-m", "scripts.docs", "build"]

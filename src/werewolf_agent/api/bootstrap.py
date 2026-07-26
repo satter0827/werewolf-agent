@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import os
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
 from typing import Annotated
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -71,6 +76,16 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.state.api_logger = logging.getLogger("werewolf_agent.api")
     app.state.public_runtime_config = _public_runtime_config(runtime)
+    app.state.instance_id = os.environ.get("WEREWOLF_RUNTIME_INSTANCE_ID") or uuid4().hex
+    app.state.started_at = datetime.now(UTC).isoformat()
+    app.state.config_fingerprint = hashlib.sha256(
+        json.dumps(
+            app.state.public_runtime_config.model_dump(mode="json"),
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=runtime.api_cors_origin_values,
@@ -97,7 +112,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": "api"}
+        return {
+            "status": "ok",
+            "service": "api",
+            "instance_id": app.state.instance_id,
+            "started_at": app.state.started_at,
+            "config_fingerprint": app.state.config_fingerprint,
+        }
 
     return app
 

@@ -13,6 +13,11 @@ from typing import Any
 
 import pytest
 
+os.environ.setdefault(
+    "HYPOTHESIS_STORAGE_DIRECTORY",
+    str(Path(__file__).resolve().parents[1] / ".werewolf-agent" / "cache" / "hypothesis"),
+)
+
 LEVELS = ("quick", "check", "release", "deep")
 LEVEL_INDEX = {level: index for index, level in enumerate(LEVELS)}
 _REQUIRED_LEVEL_KEY = pytest.StashKey[str]()
@@ -46,6 +51,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     for marker, description in (
         ("unit", "外部serviceを使わないunit test"),
+        ("contract", "OpenAPIから生成するAPI contract test"),
         ("integration", "local integration test"),
         ("monkey", "seed固定の状態遷移探索"),
         ("benchmark", "性能退行の検出"),
@@ -113,6 +119,8 @@ def required_level(item: pytest.Item) -> str:
     parts = Path(str(item.path)).parts
     if "integration" in parts:
         required = "release"
+    elif "contract" in parts:
+        required = "check"
     if item.get_closest_marker("monkey") or item.get_closest_marker("benchmark"):
         required = max(required, "check", key=LEVEL_INDEX.__getitem__)
     if item.get_closest_marker("deep"):

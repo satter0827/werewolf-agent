@@ -1,9 +1,12 @@
 from datetime import UTC, datetime, timedelta
 
 import httpx
+import pytest
+import respx
 
 from werewolf_agent.adapters.http import HttpGameClient
 from werewolf_agent.adapters.supabase import SupabaseSession
+from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.schemas import GameSetupOptionsResponse
 from werewolf_agent.settings import AppSettings
 
@@ -70,6 +73,48 @@ def test_get_setup_options_uses_public_api_config_not_supabase_data_api() -> Non
     assert response.default_setup_preset_id == "classic-six"
     assert requests[0].url.path == "/api/v1/config"
     assert "/rest/v1/" not in str(requests[0].url)
+
+
+@respx.mock
+def test_timeout_is_mapped_to_retryable_api_unavailable() -> None:
+    respx.get("http://api.test/health").mock(side_effect=httpx.ReadTimeout("slow"))
+
+    with pytest.raises(AppError) as captured:
+        _client().health()
+
+    assert captured.value.code is ErrorCode.API_UNAVAILABLE
+    assert captured.value.retryable is True
+
+
+@respx.mock
+def test_malformed_success_response_is_rejected_by_schema() -> None:
+    respx.get("http://api.test/health").mock(
+        return_value=httpx.Response(200, json={"status": "ok"})
+    )
+
+    with pytest.raises(AppError) as captured:
+        _client().health()
+
+    assert captured.value.code is ErrorCode.INTERNAL_UNEXPECTED
+
+
+def _client() -> HttpGameClient:
+    return HttpGameClient(
+        AppSettings(
+            _env_file=None,
+            api_base_url="http://api.test",
+            supabase_url="http://auth.test",
+            supabase_publishable_key="anon-test",
+        ),
+        SupabaseSession(
+            access_token="access",
+            refresh_token="refresh",
+            expires_at=datetime.now(UTC) + timedelta(hours=1),
+            user_id="user-1",
+            email="",
+            is_anonymous=True,
+        ),
+    )
 
 
 def _setup_payload() -> dict[str, object]:

@@ -12,7 +12,7 @@ from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 def test_ensure_skips_prepared_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fingerprintが一致する環境を再同期しない。"""
-    monkeypatch.setattr(manager, "_fingerprint", lambda _profile: "same")
+    monkeypatch.setattr(manager, "dependency_fingerprint", lambda _profile: "same")
     monkeypatch.setattr(manager, "_ready", lambda _profile, _fingerprint: True)
     monkeypatch.setattr(
         manager,
@@ -31,13 +31,13 @@ def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> N
         "_run",
         lambda command, **_kwargs: commands.append(tuple(command)),
     )
-    monkeypatch.setattr(manager, "_fingerprint", lambda _profile: "fingerprint")
+    monkeypatch.setattr(manager, "dependency_fingerprint", lambda _profile: "fingerprint")
     monkeypatch.setattr(manager, "STATE_ROOT", Path(".werewolf-agent/runtime/environment"))
     monkeypatch.setattr(Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(Path, "write_text", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(manager.shutil, "which", lambda command: command)
 
-    manager.setup("release")
+    manager._setup_locked("release")
 
     flattened = [" ".join(command) for command in commands]
     assert any(command.startswith("uv sync --frozen") for command in flattened)

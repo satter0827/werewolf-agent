@@ -187,32 +187,6 @@
       "dependsOn": ["Dependencies: Python Audit", "Dependencies: Frontend Audit"],
       "dependsOrder": "parallel",
       "problemMatcher": []
-    },
-    {
-      "label": "Advanced: Quality Gate",
-      "type": "process",
-      "command": "uv",
-      "args": [
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "scripts.quality",
-        "gate",
-        "${input:qualityGate}"
-      ],
-      "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Check"],
-      "dependsOrder": "sequence",
-      "problemMatcher": []
-    }
-  ],
-  "inputs": [
-    {
-      "id": "qualityGate",
-      "type": "promptString",
-      "description": "scripts.quality listに表示されるgate IDまたは意味単位",
-      "default": "python-static"
     }
   ]
 }

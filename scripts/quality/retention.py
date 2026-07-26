@@ -1,7 +1,8 @@
-"""品質成果物を状態別に確定し、保持上限を適用する。"""
+"""品質成果物をreview bundleとして確定し、保持上限を適用する。"""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import shutil
@@ -11,104 +12,173 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
+import psutil  # type: ignore[import-untyped]
+from filelock import FileLock, Timeout
+
 from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.process import TEMPORARY_ROOT, write_json
+from scripts.quality.artifacts import artifact_category
 
 FAILURES_PER_SELECTOR = 3
 FAILURE_BYTES_LIMIT = 100 * 1024 * 1024
+ABANDONED_RUN_AGE_SECONDS = 300
+RUN_OWNER_FILE = "run-owner.json"
+
+
+def mark_run_active(run_dir: Path) -> Path:
+    """実行processのidentityを記録し、並行runによる誤回収を防ぐ。"""
+    process = psutil.Process(os.getpid())
+    owner = run_dir / RUN_OWNER_FILE
+    write_json(owner, {"pid": process.pid, "create_time": process.create_time()})
+    return owner
+
+
+def recover_abandoned_runs(*, now: float | None = None) -> list[Path]:
+    """前回中断されたscratch runを診断可能なfailure bundleとして回収する。"""
+    current = time.time() if now is None else now
+    scratch_root = TEMPORARY_ROOT / "quality" / "runs"
+    if not scratch_root.is_dir():
+        return []
+    recovered: list[Path] = []
+    with _publication_lock():
+        for run_dir in sorted(path for path in scratch_root.iterdir() if path.is_dir()):
+            if current - run_dir.stat().st_mtime < ABANDONED_RUN_AGE_SECONDS:
+                continue
+            if _is_active_run(run_dir):
+                continue
+            selector = _selector_from_run_id(run_dir.name)
+            target = LAYOUT.quality / "failures" / selector / run_dir.name
+            _ensure_interrupted_report(run_dir, selector)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _replace_directory(target)
+            shutil.move(str(run_dir), target)
+            _bound_failure(target, _retention_settings()[1])
+            _prune_failures(target.parent, _retention_settings()[0])
+            recovered.append(target)
+    return recovered
+
+
+def _is_active_run(run_dir: Path) -> bool:
+    owner = run_dir / RUN_OWNER_FILE
+    if not owner.is_file():
+        return False
+    try:
+        document = json.loads(owner.read_text(encoding="utf-8"))
+        process = psutil.Process(int(document["pid"]))
+        return abs(float(process.create_time()) - float(document["create_time"])) < 0.01
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError, psutil.Error):
+        return False
+
+
+def _selector_from_run_id(run_id: str) -> str:
+    parts = run_id.split("-", maxsplit=2)
+    return parts[1] if len(parts) == 3 else "interrupted"
+
+
+def _ensure_interrupted_report(run_dir: Path, selector: str) -> None:
+    (run_dir / "logs").mkdir(parents=True, exist_ok=True)
+    log = run_dir / "logs" / "interrupted.log"
+    log.write_text("前回の品質実行は完了記録なしで中断されました。\n", encoding="utf-8")
+    if not (run_dir / "events.jsonl").is_file():
+        (run_dir / "events.jsonl").write_text(
+            '{"event":"run_recovered","state":"error"}\n', encoding="utf-8"
+        )
+    write_json(
+        run_dir / "report.json",
+        {
+            "schema_version": 2,
+            "run_id": run_dir.name,
+            "profile": selector,
+            "state": "error",
+            "artifact_manifest": "manifest.json",
+            "results": [
+                {
+                    "name": "runner",
+                    "description": "Interrupted quality runner",
+                    "state": "error",
+                    "duration_seconds": 0.0,
+                    "log": "logs/interrupted.log",
+                    "message": "完了記録のないrunを次回起動時に回収しました。",
+                    "artifacts": [],
+                }
+            ],
+        },
+    )
+    (run_dir / "summary.md").write_text(
+        f"# 品質評価: {selector}\n\n- 判定: `error`\n- Run ID: `{run_dir.name}`\n",
+        encoding="utf-8",
+    )
+    from scripts.quality.artifacts import write_manifest
+    from scripts.quality.models import GateResult
+
+    write_manifest(
+        run_dir,
+        [
+            GateResult(
+                "runner", "Interrupted quality runner", "error", 0.0, log="logs/interrupted.log"
+            )
+        ],
+    )
 
 
 def publish_run(run_dir: Path, selector: str, state: str) -> Path:
-    """一時runを最新成功または保持対象failureとして確定する。"""
+    """一時runを完全な最新成功または保持対象failureとして確定する。"""
     failures_per_selector, failure_bytes_limit = _retention_settings()
     with _publication_lock():
         if state == "passed":
             kind = "gates" if selector.startswith("gate-") else "profiles"
             name = selector.removeprefix("gate-")
             target = LAYOUT.quality / "latest" / kind / name
-            temporary = target.with_name(f".{target.name}.tmp")
-            _replace_directory(temporary)
-            temporary.mkdir(parents=True)
-            for filename in ("report.json", "summary.md"):
-                shutil.copy2(run_dir / filename, temporary / filename)
-            _replace_directory(target)
-            temporary.replace(target)
-            shutil.rmtree(run_dir)
+            _publish_complete_bundle(run_dir, target)
             return target / "report.json"
 
         target = LAYOUT.quality / "failures" / selector / run_dir.name
         target.parent.mkdir(parents=True, exist_ok=True)
         _replace_directory(target)
-        omitted = _copy_failure(run_dir, target)
-        _bound_failure(target, failure_bytes_limit, omitted)
+        shutil.copytree(run_dir, target)
+        _bound_failure(target, failure_bytes_limit)
         shutil.rmtree(run_dir)
         _prune_failures(target.parent, failures_per_selector)
         return target / "report.json"
 
 
-def _copy_failure(source: Path, target: Path) -> list[tuple[str, int]]:
-    """非成功gateの診断に必要な成果物だけを選択してコピーする。"""
-    target.mkdir(parents=True)
-    report_path = source / "report.json"
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    selected = {Path("report.json"), Path("summary.md")}
-    for result in report.get("results", []):
-        if not isinstance(result, dict) or result.get("state") in {"passed", "skipped"}:
-            continue
-        log = result.get("log")
-        if isinstance(log, str):
-            selected.add(Path(log))
-        artifacts = result.get("artifacts")
-        if isinstance(artifacts, list):
-            for pattern in artifacts:
-                if not isinstance(pattern, str):
-                    continue
-                selected.update(
-                    path.relative_to(source)
-                    for path in source.glob(pattern)
-                    if path.is_file() and path.is_relative_to(source)
-                )
-    selected.update(
-        path.relative_to(source)
-        for path in (source / "test-results").glob("*.xml")
-        if path.is_file()
-    )
-    copied: set[Path] = set()
-    for relative in sorted(selected):
-        path = source / relative
-        if not path.is_file() or not path.is_relative_to(source):
-            continue
-        destination = target / relative
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, destination)
-        copied.add(relative)
-    return [
-        (path.relative_to(source).as_posix(), path.stat().st_size)
-        for path in source.rglob("*")
-        if path.is_file() and path.relative_to(source) not in copied
-    ]
+def _publish_complete_bundle(source: Path, target: Path) -> None:
+    """Run一式をatomicに最新review bundleへ置き換える。"""
+    temporary = target.with_name(f".{target.name}.tmp")
+    _replace_directory(temporary)
+    temporary.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(source, temporary)
+    _replace_directory(target)
+    temporary.replace(target)
+    shutil.rmtree(source)
 
 
-def _bound_failure(
-    root: Path,
-    limit_bytes: int = FAILURE_BYTES_LIMIT,
-    omitted: list[tuple[str, int]] | None = None,
-) -> None:
-    """診断価値の低い成果物から順に容量上限まで削減する。"""
+def _bound_failure(root: Path, limit_bytes: int = FAILURE_BYTES_LIMIT) -> None:
+    """再生成可能な大容量成果物だけを容量上限まで削減する。"""
     files = [path for path in root.rglob("*") if path.is_file()]
     total = sum(path.stat().st_size for path in files)
-    omitted = list(omitted or [])
+    omitted: list[tuple[str, int]] = []
     removable = sorted(
-        files, key=lambda path: (_retention_priority(path, root), path.stat().st_size), reverse=True
+        (path for path in files if artifact_category(path.relative_to(root)) == "reproducible"),
+        key=lambda path: path.stat().st_size,
+        reverse=True,
     )
     for path in removable:
         if total <= limit_bytes:
             break
-        if path.name in {"report.json", "summary.md"}:
-            continue
         size = path.stat().st_size
         omitted.append((path.relative_to(root).as_posix(), size))
         total -= size
         path.unlink()
+    _record_retention(root, omitted, limit_bytes, total > limit_bytes)
+
+
+def _record_retention(
+    root: Path,
+    omitted: list[tuple[str, int]],
+    limit_bytes: int,
+    limit_exceeded: bool,
+) -> None:
     report_path = root / "report.json"
     document = json.loads(report_path.read_text(encoding="utf-8"))
     document["retention"] = {
@@ -116,20 +186,38 @@ def _bound_failure(
         "omitted_count": len(omitted),
         "omitted_bytes": sum(size for _path, size in omitted),
         "limit_bytes": limit_bytes,
+        "limit_exceeded": limit_exceeded,
     }
     report_path.write_text(
         json.dumps(document, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    manifest_path = root / "manifest.json"
+    if not manifest_path.is_file():
+        return
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    omitted_paths = {path for path, _size in omitted}
+    for entry in manifest.get("artifacts", []):
+        if not isinstance(entry, dict):
+            continue
+        if entry.get("path") in omitted_paths:
+            entry["retained"] = False
+            entry["omission_reason"] = "failure bundle size limit"
+        if entry.get("path") == "report.json":
+            entry["bytes"] = report_path.stat().st_size
+            entry["sha256"] = _sha256(report_path)
+    manifest_path.write_text(
+        json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
-def _retention_priority(path: Path, root: Path) -> int:
-    relative = path.relative_to(root)
-    if relative.parts and relative.parts[0] == "logs":
-        return 2
-    if relative.parts and relative.parts[0] == "test-results":
-        return 1
-    return 3
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _prune_failures(root: Path, keep: int = FAILURES_PER_SELECTOR) -> None:
@@ -158,31 +246,13 @@ def _retention_settings() -> tuple[int, int]:
 
 @contextmanager
 def _publication_lock() -> Iterator[None]:
-    """成果物確定とretentionの短い区間だけprocess間lockを取得する。"""
+    """成果物確定とretentionの区間だけprocess間lockを取得する。"""
     LAYOUT.quality.mkdir(parents=True, exist_ok=True)
-    lock_path = LAYOUT.quality / ".publish.lock"
-    deadline = time.monotonic() + 10
-    while True:
-        try:
-            descriptor = os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(descriptor, f"{os.getpid()}\n".encode())
-            os.close(descriptor)
-            break
-        except FileExistsError:
-            try:
-                stale = time.time() - lock_path.stat().st_mtime > 60
-            except FileNotFoundError:
-                continue
-            if stale:
-                lock_path.unlink(missing_ok=True)
-                continue
-            if time.monotonic() >= deadline:
-                raise TimeoutError("品質成果物の公開lockを取得できませんでした。") from None
-            time.sleep(0.05)
     try:
-        yield
-    finally:
-        lock_path.unlink(missing_ok=True)
+        with FileLock(LAYOUT.quality / ".publish.lock", timeout=10):
+            yield
+    except Timeout as error:
+        raise TimeoutError("品質成果物の公開lockを取得できませんでした。") from error
 
 
 def _replace_directory(path: Path) -> None:
@@ -190,4 +260,11 @@ def _replace_directory(path: Path) -> None:
         shutil.rmtree(path)
 
 
-__all__ = ["FAILURES_PER_SELECTOR", "FAILURE_BYTES_LIMIT", "publish_run"]
+__all__ = [
+    "ABANDONED_RUN_AGE_SECONDS",
+    "FAILURES_PER_SELECTOR",
+    "FAILURE_BYTES_LIMIT",
+    "mark_run_active",
+    "publish_run",
+    "recover_abandoned_runs",
+]

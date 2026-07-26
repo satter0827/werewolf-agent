@@ -10,13 +10,14 @@ repository 内では起動前検証、migration、worker 実行、品質確認�
 1. 実行基盤が revision、設定、credential を配置する。
 2. migration job が schema を確認して必要な migration を適用する。
 3. API と worker が設定と packaged resource を検証して起動する。
-4. `/health` が API process の稼働を確認する。
+4. `/health` の`instance_id`、`started_at`、`config_fingerprint`が対象processを確認する。
 5. frontend が対応する API contract を使って公開される。
 
 各 process と `doctor` は同じ `AppSettings` と resource loader を使う。VS Code、
 Docker、配布基盤で別の設定 validation を作らない。
 
-`/health` は liveness signal であり、database や queue の readiness を保証しない。
+`/health` はinstanceを識別できるliveness signalであり、databaseやqueueのreadinessを
+保証しない。E2Eは起動時に発行したinstance IDとの一致を確認してから操作する。
 schema と接続の確認は migration と環境別 preflight が担当する。外部運用基盤は
 liveness、migration 結果、worker の operation signal を別々に監視する。
 
@@ -40,6 +41,10 @@ requeue しない。再実行が必要な場合は、原因を解消して新し
 
 architecture の `architecture.json` と品質 report は、AI と人が同じ構造と検証結果を
 参照する調査入力になる。
+
+品質用Composeは固定project名と所有labelで一組だけ起動し、一時jobへ`--rm`を指定する。
+runnerは開始前後の子processと所有resourceを比較し、終了待機後も残る場合は異常とする。
+利用者が起動した無関係なcontainer、volume、processはcleanup対象にしない。
 
 ## 外部運用境界
 

@@ -12,6 +12,8 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+import grimp
+
 from scripts._infra.artifacts import publish_directory, staged_directory
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
 from scripts.architecture.definition import (
@@ -61,18 +63,35 @@ def module_name(path: Path) -> str:
 
 def project_import_edges() -> list[ImportEdge]:
     """Return stable project import edges with relative source evidence."""
+    modules = {module_name(path): path for path in sorted(PACKAGE_ROOT.rglob("*.py"))}
+    graph = grimp.build_graph(
+        "werewolf_agent",
+        exclude_type_checking_imports=True,
+        cache_dir=None,
+    )
     edges: list[ImportEdge] = []
-    for path in sorted(PACKAGE_ROOT.rglob("*.py")):
-        source_module = module_name(path)
+    for source_module in sorted(graph.modules):
+        path = modules.get(source_module)
+        if path is None:
+            continue
         source_parts = source_module.split(".")
         source_layer = source_parts[1] if len(source_parts) > 1 else ""
-        for target_module, line in imports_with_lines(path, source_module):
+        for target_module in sorted(graph.find_modules_directly_imported_by(source_module)):
             parts = target_module.split(".")
             if len(parts) < 2 or parts[0] != "werewolf_agent":
                 continue
             target_layer = parts[1]
             if source_layer not in LAYERS or target_layer not in LAYERS:
                 continue
+            details = graph.get_import_details(
+                importer=source_module,
+                imported=target_module,
+            )
+            line = min(
+                int(detail.get("line_number") or 1)
+                for detail in details
+                if isinstance(detail, dict)
+            )
             edges.append(
                 ImportEdge(
                     source_module=source_module,

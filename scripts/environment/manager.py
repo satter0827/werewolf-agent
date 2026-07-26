@@ -7,8 +7,11 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
+
+from filelock import FileLock, Timeout
 
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -18,9 +21,18 @@ from scripts._infra.process import (
 from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 STATE_ROOT = ARTIFACT_ROOT / "runtime" / "environment"
+LOCK_PATH = STATE_ROOT / "setup.lock"
 PROFILES = ("quick", "check", "release", "deep")
 PYTHON_INPUTS = ("pyproject.toml", "uv.lock")
 FRONTEND_INPUTS = ("frontend/package.json", "frontend/package-lock.json")
+FRONTEND_BINARIES = (
+    "eslint",
+    "openapi-typescript",
+    "prettier",
+    "tsc",
+    "vite",
+    "vitest",
+)
 RELEASE_INPUTS = (
     "compose.yaml",
     "docker",
@@ -65,7 +77,8 @@ def _version(command: Sequence[str]) -> str:
     return completed.stdout.strip() if completed.returncode == 0 else "unavailable"
 
 
-def _fingerprint(profile: str) -> str:
+def dependency_fingerprint(profile: str) -> str:
+    """Lock、tool version、release入力から依存環境fingerprintを返す。"""
     digest = hashlib.sha256()
     inputs = [REPOSITORY_ROOT / relative for relative in (*PYTHON_INPUTS, *FRONTEND_INPUTS)]
     if profile in {"release", "deep"}:
@@ -93,6 +106,31 @@ def _fingerprint(profile: str) -> str:
     return digest.hexdigest()
 
 
+def frontend_installation_fingerprint() -> str:
+    """Frontend直依存とlocal binaryの実体fingerprintを返す。"""
+    frontend = REPOSITORY_ROOT / "frontend"
+    package_json = frontend / "package.json"
+    document = json.loads(package_json.read_text(encoding="utf-8"))
+    names: set[str] = set()
+    for section in ("dependencies", "devDependencies"):
+        values = document.get(section)
+        if not isinstance(values, dict):
+            raise ValueError(f"package.jsonの{section}がobjectではありません。")
+        names.update(str(name) for name in values)
+    digest = hashlib.sha256(package_json.read_bytes())
+    modules = frontend / "node_modules"
+    for name in sorted(names):
+        metadata = modules.joinpath(*name.split("/"), "package.json")
+        digest.update(name.encode())
+        digest.update(metadata.read_bytes() if metadata.is_file() else b"MISSING")
+    binary_root = modules / ".bin"
+    for name in FRONTEND_BINARIES:
+        binary = _local_binary(binary_root, name)
+        digest.update(name.encode())
+        digest.update(binary.read_bytes() if binary.is_file() else b"MISSING")
+    return digest.hexdigest()
+
+
 def _state_path(profile: str) -> Path:
     return STATE_ROOT / f"{profile}.json"
 
@@ -101,7 +139,11 @@ def _ready(profile: str, fingerprint: str) -> bool:
     state_path = _state_path(profile)
     if not (REPOSITORY_ROOT / ".venv").is_dir():
         return False
-    if not (REPOSITORY_ROOT / "frontend" / "node_modules").is_dir():
+    frontend = REPOSITORY_ROOT / "frontend"
+    if not (frontend / "node_modules").is_dir():
+        return False
+    binary_root = frontend / "node_modules" / ".bin"
+    if not all(_local_binary(binary_root, name).is_file() for name in FRONTEND_BINARIES):
         return False
     if not state_path.is_file():
         return False
@@ -117,6 +159,16 @@ def _ready(profile: str, fingerprint: str) -> bool:
 
 def setup(profile: str = "check") -> None:
     """指定profileに必要な依存をlockに従って準備する。"""
+    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    try:
+        with FileLock(LOCK_PATH, timeout=600):
+            _setup_locked(profile)
+    except Timeout as error:
+        raise RuntimeError("依存環境の準備lockを取得できませんでした。") from error
+
+
+def _setup_locked(profile: str) -> None:
+    """Process間lock内で指定profileの依存を準備する。"""
     uv = shutil.which("uv") or "uv"
     npm = shutil.which("npm") or "npm"
     _run((uv, "sync", "--frozen", "--all-groups", "--all-extras"))
@@ -169,7 +221,7 @@ def setup(profile: str = "check") -> None:
                 ".",
             )
         )
-    fingerprint = _fingerprint(profile)
+    fingerprint = dependency_fingerprint(profile)
     STATE_ROOT.mkdir(parents=True, exist_ok=True)
     _state_path(profile).write_text(
         json.dumps(
@@ -185,11 +237,28 @@ def setup(profile: str = "check") -> None:
 
 def ensure(profile: str = "check") -> bool:
     """不足またはlock変更時だけ指定profileの依存を準備する。"""
-    fingerprint = _fingerprint(profile)
-    if _ready(profile, fingerprint):
-        return False
-    setup(profile)
-    return True
+    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    try:
+        with FileLock(LOCK_PATH, timeout=600):
+            fingerprint = dependency_fingerprint(profile)
+            if _ready(profile, fingerprint):
+                return False
+            _setup_locked(profile)
+            return True
+    except Timeout as error:
+        raise RuntimeError("依存環境の準備lockを取得できませんでした。") from error
+
+
+def is_ready(profile: str) -> bool:
+    """現在のlock・source fingerprintに対応する環境が準備済みか返す。"""
+    if profile not in PROFILES:
+        raise ValueError(f"未定義の環境profileです: {profile}")
+    return _ready(profile, dependency_fingerprint(profile))
+
+
+def _local_binary(root: Path, name: str) -> Path:
+    """Platformに応じたFrontend local binaryのpathを返す。"""
+    return root / f"{name}.cmd" if sys.platform == "win32" else root / name
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -217,4 +286,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-__all__ = ["PROFILES", "ensure", "main", "setup"]
+__all__ = [
+    "FRONTEND_BINARIES",
+    "PROFILES",
+    "dependency_fingerprint",
+    "ensure",
+    "frontend_installation_fingerprint",
+    "is_ready",
+    "main",
+    "setup",
+]

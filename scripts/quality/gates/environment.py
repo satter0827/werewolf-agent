@@ -11,6 +11,7 @@ from scripts._infra.process import (
     CommandResult,
     run_command,
 )
+from scripts.environment.manager import PROFILES, is_ready
 from scripts.quality.models import Gate, RunContext
 
 GATES = ("environment", "isolation")
@@ -38,6 +39,15 @@ def build() -> list[Gate]:
 def check_environment(context: RunContext, _: Path) -> CommandResult:
     """Python・Frontendの実行能力を外部接続なしで検査する。"""
     started = time.monotonic()
+    profile = context.profile if context.profile in PROFILES else "check"
+    if not is_ready(profile):
+        return CommandResult(
+            ["environment-check"],
+            1,
+            time.monotonic() - started,
+            f"{profile}環境が現在のlock・source fingerprintに対応していません。"
+            "scripts.environment setupを実行してください。\n",
+        )
     npm = shutil.which("npm") or "npm"
     node = shutil.which("node") or "node"
     commands = (
@@ -49,6 +59,7 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             (
                 "const {spawnSync}=require('node:child_process');"
                 "const r=spawnSync(process.execPath,['--version']);"
+                "if(r.error) console.error(r.error.stack ?? String(r.error));"
                 "process.exit(r.error ? 2 : (r.status ?? 2));"
             ),
         ),

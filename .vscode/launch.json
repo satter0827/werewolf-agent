@@ -13,7 +13,7 @@
       "presentation": { "hidden": true }
     },
     {
-      "name": "API",
+      "name": "Debug: API",
       "type": "debugpy",
       "request": "launch",
       "preLaunchTask": "Internal: Ensure Check",
@@ -28,7 +28,7 @@
       "justMyCode": true
     },
     {
-      "name": "Worker",
+      "name": "Debug: Worker",
       "type": "debugpy",
       "request": "launch",
       "preLaunchTask": "Internal: Ensure Check",
@@ -43,15 +43,16 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "React",
+      "name": "Internal: React",
       "type": "pwa-chrome",
       "request": "launch",
       "preLaunchTask": "Internal: Frontend Dev",
       "url": "http://127.0.0.1:5173",
-      "webRoot": "${workspaceFolder}/frontend/src"
+      "webRoot": "${workspaceFolder}/frontend/src",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "Streamlit",
+      "name": "Internal: Streamlit",
       "type": "debugpy",
       "request": "launch",
       "preLaunchTask": "Internal: Ensure Check",
@@ -72,10 +73,11 @@
         "PYTHONPATH": "${workspaceFolder}/src",
         "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl"
       },
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "CLI Doctor",
+      "name": "Internal: CLI Doctor",
       "type": "debugpy",
       "request": "launch",
       "preLaunchTask": "Internal: Ensure Check",
@@ -83,10 +85,11 @@
       "args": ["doctor"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "CLI Play",
+      "name": "Run: CLI Play",
       "type": "debugpy",
       "request": "launch",
       "preLaunchTask": "Internal: Ensure Check",
@@ -107,20 +110,84 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"
+    },
+    {
+      "name": "Verify: Quality",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.workbench",
+      "args": ["verify", "${input:qualityLevel}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Review: Evidence",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.workbench",
+      "args": ["review", "${input:reviewKind}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Open: Latest Quality Report",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.workbench",
+      "args": ["open-report"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Cleanup: Owned Resources",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.workbench",
+      "args": ["cleanup"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
     }
   ],
   "compounds": [
     {
-      "name": "React Stack",
-      "configurations": ["Internal: Supabase Stack", "API", "Worker", "React"],
+      "name": "Run: React Stack",
+      "configurations": [
+        "Internal: Supabase Stack",
+        "Debug: API",
+        "Debug: Worker",
+        "Internal: React"
+      ],
       "preLaunchTask": "Internal: Supabase Preflight",
       "stopAll": true
     },
     {
-      "name": "Streamlit Stack",
-      "configurations": ["Internal: Supabase Stack", "API", "Worker", "Streamlit"],
+      "name": "Run: Streamlit Stack",
+      "configurations": [
+        "Internal: Supabase Stack",
+        "Debug: API",
+        "Debug: Worker",
+        "Internal: Streamlit"
+      ],
       "preLaunchTask": "Internal: Supabase Preflight",
       "stopAll": true
+    }
+  ],
+  "inputs": [
+    {
+      "id": "qualityLevel",
+      "type": "pickString",
+      "description": "品質levelを選択",
+      "options": ["quick", "check", "release", "deep"],
+      "default": "quick"
+    },
+    {
+      "id": "reviewKind",
+      "type": "pickString",
+      "description": "読解用の証拠を選択",
+      "options": ["ui", "gameplay", "local-llm"],
+      "default": "ui"
     }
   ]
 }

@@ -18,16 +18,46 @@ def build() -> list[Gate]:
     npm = shutil.which("npm") or "npm"
     cwd = REPOSITORY_ROOT / "frontend"
     return [
-        Gate("eslint", "Frontend lint", (npm, "run", "lint"), cwd=cwd),
-        Gate("prettier", "Frontend format", (npm, "run", "format:check"), cwd=cwd),
-        Gate("typescript", "TypeScript type check", (npm, "run", "typecheck"), cwd=cwd),
-        Gate("vitest", "Frontend unit test", (npm, "test"), cwd=cwd),
+        Gate(
+            "eslint",
+            "Frontend lint",
+            (npm, "run", "lint"),
+            cwd=cwd,
+            dependencies=("environment",),
+            exclusive_resources=("frontend-workspace",),
+        ),
+        Gate(
+            "prettier",
+            "Frontend format",
+            (npm, "run", "format:check"),
+            cwd=cwd,
+            dependencies=("environment",),
+            exclusive_resources=("frontend-workspace",),
+        ),
+        Gate(
+            "typescript",
+            "TypeScript type check",
+            (npm, "run", "typecheck"),
+            cwd=cwd,
+            dependencies=("environment",),
+            exclusive_resources=("frontend-workspace",),
+        ),
+        Gate(
+            "vitest",
+            "Frontend unit test",
+            (npm, "test"),
+            cwd=cwd,
+            dependencies=("environment",),
+            exclusive_resources=("frontend-workspace",),
+        ),
         Gate(
             "frontend-build",
             "Frontend production build",
             (npm, "run", "build:quality"),
             cwd=cwd,
             action=_build_action,
+            dependencies=("environment",),
+            exclusive_resources=("frontend-workspace",),
             artifacts=("build/frontend/index.html",),
         ),
     ]

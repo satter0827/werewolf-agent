@@ -21,8 +21,9 @@ def test_environment_gate_checks_frozen_dependencies_and_runtime_versions(
         return CommandResult(list(command), 0, 0.0, output)
 
     monkeypatch.setattr(environment, "run_command", run)
+    monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
     monkeypatch.setattr(environment.shutil, "which", lambda command: command)
-    context = SimpleNamespace(timeout_seconds=60, environment={})
+    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
 
@@ -35,6 +36,7 @@ def test_environment_gate_checks_frozen_dependencies_and_runtime_versions(
             "-e",
             "const {spawnSync}=require('node:child_process');"
             "const r=spawnSync(process.execPath,['--version']);"
+            "if(r.error) console.error(r.error.stack ?? String(r.error));"
             "process.exit(r.error ? 2 : (r.status ?? 2));",
         ),
         ("npm", "ls", "--depth=0", "--ignore-scripts"),
@@ -52,8 +54,9 @@ def test_environment_gate_rejects_unsupported_node_version(
         return CommandResult(list(command), 0, 0.0, output)
 
     monkeypatch.setattr(environment, "run_command", run)
+    monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
     monkeypatch.setattr(environment.shutil, "which", lambda command: command)
-    context = SimpleNamespace(timeout_seconds=60, environment={})
+    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
 

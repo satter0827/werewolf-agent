@@ -113,11 +113,19 @@ function mapTurnPanel(
 ): TurnPanelModel {
   const payload = observation?.observation ?? null;
   const actions = normalizeActions(payload);
+  if (state.phase === "finished") {
+    return {
+      title: "村を見守る",
+      subtitle: "この村の物語は終わりました",
+      roleHint: "公開された記録から結末を振り返ります",
+      visibleClues: ["公開された発言", "投票の流れ", "夜明けの結果"],
+      actions: [],
+    };
+  }
   if (payload === null || actions.length === 0) {
     return {
       title: "村を見守る",
-      subtitle:
-        state.phase === "finished" ? "この村の物語は終わりました" : "次の動きを待っています",
+      subtitle: "次の動きを待っています",
       roleHint: "見えている情報だけで推理します",
       visibleClues: ["公開された発言", "投票の流れ", "夜明けの結果"],
       actions: [

@@ -38,6 +38,8 @@
 | `REQ-SECURITY-001` | public response、timeline、log へ private 情報を出さない | unit、integration |
 | `REQ-ARCH-001` | layer 依存、公開面、循環を機械検査できる | architecture |
 | `REQ-OPS-001` | repository 内の検証と運用準備を CLI から再現できる | quality、release |
+| `REQ-QUALITY-003` | 実行せずにtest結果、画面、設定、logを成果物一式からレビューできる | manifest、review |
+| `REQ-QUALITY-004` | 品質実行が依存環境と所有外resourceを変更しない | fingerprint、lease |
 | `REQ-DOCS-001` | 設計書と公開 API を warning なしで自動生成できる | docs build |
 
 ## 提供範囲

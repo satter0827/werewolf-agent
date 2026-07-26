@@ -12,7 +12,7 @@ from scripts._infra.process import (
     remove_temporary_path,
     run_command,
 )
-from scripts.quality.models import Gate, RunContext
+from scripts.quality.models import Gate, ResourceLease, RunContext
 from scripts.supabase.preflight import isolated_project_id, prepare_supabase
 
 GATES = ("supabase-preflight", "integration")
@@ -42,11 +42,21 @@ def build(run_dir: Path) -> list[Gate]:
                 "0",
                 "--junitxml",
                 str(run_dir / "test-results" / "integration.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "integration.json"),
+                "--html",
+                str(run_dir / "test-results" / "integration.html"),
+                "--self-contained-html",
                 "tests/integration",
             ),
             dependencies=("supabase-preflight",),
             exclusive_resources=("supabase",),
-            artifacts=("test-results/integration.xml",),
+            artifacts=(
+                "test-results/integration.xml",
+                "test-results/integration.json",
+                "test-results/integration.html",
+            ),
         ),
     ]
 
@@ -55,9 +65,10 @@ def start_supabase(context: RunContext, _: Path) -> CommandResult:
     """品質run専用Supabaseを準備して所有情報を記録する。"""
     started = time.monotonic()
     isolated_root = LAYOUT.runtime / "supabase" / context.run_id
-    context.supabase_cleanup_required = True
-    context.supabase_workdir = isolated_root
-    context.supabase_project_id = isolated_project_id(isolated_root)
+    lease = context.resources.setdefault("supabase", ResourceLease("supabase"))
+    lease.cleanup_required = True
+    lease.workdir = isolated_root
+    lease.identifier = isolated_project_id(isolated_root)
     try:
         preflight = prepare_supabase(
             timeout_seconds=min(context.timeout_seconds, 180),
@@ -67,15 +78,15 @@ def start_supabase(context: RunContext, _: Path) -> CommandResult:
     except EnvironmentBlockedError:
         if isolated_root.exists():
             remove_managed_path(isolated_root)
-        context.supabase_cleanup_required = False
-        context.supabase_workdir = None
-        context.supabase_project_id = None
+        lease.cleanup_required = False
+        lease.workdir = None
+        lease.identifier = None
         raise
-    context.supabase_environment = preflight.environment
-    context.supabase_cleanup_required = preflight.workdir is not None
-    context.supabase_workdir = preflight.workdir
-    context.supabase_project_id = preflight.project_id
-    context.environment.update(context.supabase_environment)
+    lease.environment = preflight.environment
+    lease.cleanup_required = preflight.workdir is not None
+    lease.workdir = preflight.workdir
+    lease.identifier = preflight.project_id
+    context.environment.update(lease.environment)
     return CommandResult(
         ["python", "-m", "scripts.supabase", "preflight"],
         0,
@@ -87,12 +98,13 @@ def start_supabase(context: RunContext, _: Path) -> CommandResult:
 def stop_supabase(context: RunContext, _: Path) -> CommandResult:
     """品質用Supabaseと一時projectを停止・削除する。"""
     started = time.monotonic()
+    lease = context.resources.get("supabase", ResourceLease("supabase"))
     command = ["supabase", "stop", "--no-backup"]
-    if context.supabase_project_id is not None:
-        command.extend(["--project-id", context.supabase_project_id])
-    if context.supabase_workdir is not None:
-        command.extend(["--workdir", str(context.supabase_workdir)])
-        if not context.supabase_workdir.exists():
+    if lease.identifier is not None:
+        command.extend(["--project-id", lease.identifier])
+    if lease.workdir is not None:
+        command.extend(["--workdir", str(lease.workdir)])
+        if not lease.workdir.exists():
             result = CommandResult(
                 command,
                 0,
@@ -104,18 +116,15 @@ def stop_supabase(context: RunContext, _: Path) -> CommandResult:
     else:
         result = run_command(command, timeout_seconds=60, environment=context.environment)
     try:
-        if (
-            result.returncode == 0
-            and context.supabase_workdir is not None
-            and context.supabase_workdir.exists()
-        ):
-            remove_managed_path(context.supabase_workdir)
+        if result.returncode == 0 and lease.workdir is not None and lease.workdir.exists():
+            remove_managed_path(lease.workdir)
     finally:
         supabase_home = context.environment.get("SUPABASE_HOME")
         if supabase_home:
             profile = Path(supabase_home)
             if profile.exists():
                 remove_temporary_path(profile)
+        lease.cleanup_required = False
     return CommandResult(
         command,
         result.returncode,

@@ -9,7 +9,12 @@ from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
 
-from scripts._infra.process import utc_now, write_json
+from scripts._infra.process import redact_artifacts, utc_now, write_json
+from scripts.quality.artifacts import (
+    validate_references,
+    validate_retention_capacity,
+    write_manifest,
+)
 from scripts.quality.models import GateResult, RunContext, State
 
 
@@ -21,6 +26,8 @@ def write_summary(
     duration_seconds = (finished_at - context.started_at).total_seconds()
     report_path = context.run_dir / "report.json"
     metrics, artifact_issues = collect_run_metrics(context.run_dir)
+    artifact_issues.extend(validate_references(context.run_dir, results))
+    artifact_issues.extend(validate_retention_capacity(context.run_dir))
     if artifact_issues:
         artifact_result = GateResult(
             name="artifact-validation",
@@ -44,9 +51,11 @@ def write_summary(
         "environment": {
             "platform": platform.platform(),
             "python": platform.python_version(),
+            "dependency_fingerprint": context.initial_dependency_fingerprint,
         },
         "metrics": metrics,
         "artifact_issues": artifact_issues,
+        "artifact_manifest": "manifest.json",
         "results": [asdict(result) for result in results],
     }
     write_json(report_path, report)
@@ -73,6 +82,9 @@ def write_summary(
             log = f" (`{result.log}`)" if result.log else ""
             summary.append(f"- `{result.name}`: {detail}{log}")
     (context.run_dir / "summary.md").write_text("\n".join(summary) + "\n", encoding="utf-8")
+    # manifestのhashは、秘密情報を除去した最終内容に対して計算する。
+    redact_artifacts(context.run_dir)
+    write_manifest(context.run_dir, results)
     return state, report_path
 
 

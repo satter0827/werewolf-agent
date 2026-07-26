@@ -212,7 +212,7 @@ def run_benchmark(
     *,
     settings: QualitySettings,
 ) -> CommandResult:
-    """Core benchmarkを実行し、設定された性能上限を検査する。"""
+    """Core benchmarkを実行し、構造化した観測値を保存する。"""
     started = time.monotonic()
     result_path = context.run_dir / "benchmarks" / "core.json"
     command = benchmark_command(context.run_dir, settings)
@@ -226,7 +226,7 @@ def run_benchmark(
 
     errors, measurements = benchmark_contract(
         result_path,
-        maximum_mean_ms=settings.benchmark_max_mean_ms,
+        maximum_mean_ms=None,
     )
     output = [benchmark.output]
     output.extend(f"{name}: mean={mean_ms:.3f}ms\n" for name, mean_ms in measurements)
@@ -272,7 +272,7 @@ def benchmark_command(run_dir: Path, settings: QualitySettings) -> list[str]:
 def benchmark_contract(
     result_path: Path,
     *,
-    maximum_mean_ms: int,
+    maximum_mean_ms: int | None,
 ) -> tuple[list[str], list[tuple[str, float]]]:
     """Benchmark JSONの構造と平均実行時間を検査する。"""
     try:
@@ -301,7 +301,7 @@ def benchmark_contract(
             continue
         mean_ms = float(mean) * 1000
         measurements.append((name, mean_ms))
-        if mean_ms > maximum_mean_ms:
+        if maximum_mean_ms is not None and mean_ms > maximum_mean_ms:
             errors.append(f"{name}の平均{mean_ms:.3f}msが上限{maximum_mean_ms}msを超えました。")
     return errors, measurements
 

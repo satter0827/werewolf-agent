@@ -6,7 +6,6 @@ import json
 import os
 import re
 import shutil
-import signal
 import stat
 import subprocess
 import sys
@@ -25,6 +24,7 @@ QUALITY_COMPOSE_PROJECT_NAME = "werewolf-agent-quality"
 TEMPORARY_ROOT = ARTIFACT_ROOT / "runtime" / "tmp"
 TEMPORARY_CACHE_DIRECTORIES = (
     TEMPORARY_ROOT / "cache" / "mypy",
+    TEMPORARY_ROOT / "cache" / "process",
     TEMPORARY_ROOT / "cache" / "pytest",
     TEMPORARY_ROOT / "mypy",
     TEMPORARY_ROOT / "pytest",
@@ -63,8 +63,10 @@ _SECRET_PATTERN = re.compile(
     rf"(?i)(\b{_SENSITIVE_KEY}\b\s*[:=]\s*)"
     r"(SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}]+)"
 )
-_URL_CREDENTIAL_PATTERN = re.compile(r"(?i)([a-z][a-z0-9+.-]*://[^\s:/@]+:)([^\s@/]+)(@)")
-_TEXT_ARTIFACT_SUFFIXES = frozenset({".json", ".jsonl", ".log", ".md", ".txt", ".xml"})
+_URL_CREDENTIAL_PATTERN = re.compile(
+    r"(?i)([a-z][a-z0-9+.-]{0,31}+://[^\s:/@]{1,256}+:)([^\s@/]{1,256}+)(@)"
+)
+_TEXT_ARTIFACT_SUFFIXES = frozenset({".html", ".json", ".jsonl", ".log", ".md", ".txt", ".xml"})
 _REMOVE_ATTEMPTS = 5
 _REMOVE_RETRY_SECONDS = 0.2
 ISOLATION_ENVIRONMENT = {
@@ -164,12 +166,18 @@ def quality_environment(
     if run_dir is not None:
         prepare_temporary_directories()
         temporary_cache = TEMPORARY_ROOT / "cache"
+        process_temporary = temporary_cache / "process"
+        process_temporary.mkdir(parents=True, exist_ok=True)
         environment.update(
             {
                 "COVERAGE_FILE": str(run_dir / "coverage" / ".coverage"),
+                "HYPOTHESIS_STORAGE_DIRECTORY": str(temporary_cache / "hypothesis"),
                 "MYPY_CACHE_DIR": str(temporary_cache / "mypy"),
                 "PYTEST_ADDOPTS": "",
                 "PYTEST_DEBUG_TEMPROOT": str(temporary_cache / "pytest" / "tmp"),
+                "TEMP": str(process_temporary),
+                "TMP": str(process_temporary),
+                "TMPDIR": str(process_temporary),
                 "SUPABASE_HOME": str(TEMPORARY_ROOT / "supabase" / run_dir.name),
                 "WEREWOLF_QUALITY_RUN_DIR": str(run_dir),
             }
@@ -258,31 +266,32 @@ def run_command(
 
 def _terminate_process_tree(process: subprocess.Popen[str]) -> None:
     """timeoutしたprocessと、その子孫processを停止する。"""
+    import psutil  # type: ignore[import-untyped]
+
     if process.poll() is not None:
         return
-    if sys.platform == "win32":
-        subprocess.run(
-            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        return
     try:
-        os.killpg(process.pid, signal.SIGTERM)
-    except ProcessLookupError:
+        parent = psutil.Process(process.pid)
+        descendants = parent.children(recursive=True)
+        for child in reversed(descendants):
+            child.terminate()
+        parent.terminate()
+        psutil.wait_procs([*descendants, parent], timeout=5)
+    except psutil.NoSuchProcess:
         return
 
 
 def _kill_process_tree(process: subprocess.Popen[str]) -> None:
     """timeout後も残る子孫processを強制停止する。"""
-    if sys.platform == "win32":
-        if process.poll() is None:
-            process.kill()
-        return
+    import psutil
+
     try:
-        os.killpg(process.pid, signal.SIGKILL)
-    except ProcessLookupError:
+        parent = psutil.Process(process.pid)
+        targets = [*parent.children(recursive=True), parent]
+        for target in reversed(targets):
+            target.kill()
+        psutil.wait_procs(targets, timeout=5)
+    except psutil.NoSuchProcess:
         return
 
 

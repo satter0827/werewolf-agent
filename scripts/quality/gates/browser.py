@@ -20,7 +20,14 @@ def build() -> list[Gate]:
             action=run_browser_e2e,
             dependencies=("supabase-preflight",),
             exclusive_resources=("browser", "supabase"),
-            artifacts=("browser/results.json",),
+            artifacts=(
+                "browser/results.json",
+                "browser/html/index.html",
+                "browser/contact-sheet.png",
+                "browser/docker-before.json",
+                "browser/docker-after.json",
+                "browser/**/*.png",
+            ),
         )
     ]
 

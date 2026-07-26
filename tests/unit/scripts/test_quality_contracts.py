@@ -16,6 +16,9 @@ def test_contract_comparison_ignores_platform_newline_difference(
     """同じ生成内容をWindows改行だけで品質違反にしない。"""
     frontend = tmp_path / "frontend"
     (frontend / "src" / "generated").mkdir(parents=True)
+    cli = frontend / "node_modules" / "openapi-typescript" / "bin" / "cli.js"
+    cli.parent.mkdir(parents=True)
+    cli.write_text("", encoding="utf-8")
     (tmp_path / "contracts").mkdir()
     (tmp_path / "contracts" / "openapi.json").write_text(
         "{\n}\n",
@@ -68,3 +71,10 @@ def test_contract_cli_defaults_to_tracked_repository_contract() -> None:
     output = openapi.build_parser().parse_args([]).output
 
     assert output == Path(__file__).resolve().parents[3] / "contracts" / "openapi.json"
+
+
+def test_stateful_contract_gate_requires_explicit_deep_confirmation() -> None:
+    gate = next(gate for gate in contracts.build() if gate.name == "schemathesis-stateful")
+
+    assert "--test-level=deep" in gate.command
+    assert "--confirm-deep" in gate.command

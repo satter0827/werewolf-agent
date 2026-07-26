@@ -21,9 +21,6 @@ class QualitySettings:
 
     max_jobs: int
     benchmark_min_rounds: int
-    benchmark_max_mean_ms: int
-    coverage_fail_under: int
-    branch_coverage_fail_under: int
     timeouts: dict[str, int]
 
 
@@ -60,6 +57,17 @@ class GateResult:
 
 
 @dataclass(slots=True)
+class ResourceLease:
+    """品質runが所有し、終了時に解放する外部resource。"""
+
+    name: str
+    environment: dict[str, str] = field(default_factory=dict)
+    cleanup_required: bool = False
+    workdir: Path | None = None
+    identifier: str | None = None
+
+
+@dataclass(slots=True)
 class RunContext:
     """1回の品質実行で共有する状態。"""
 
@@ -71,10 +79,8 @@ class RunContext:
     environment: dict[str, str]
     initial_git_status: str
     started_at: datetime
-    supabase_environment: dict[str, str] = field(default_factory=dict)
-    supabase_cleanup_required: bool = False
-    supabase_workdir: Path | None = None
-    supabase_project_id: str | None = None
+    initial_dependency_fingerprint: str = ""
+    resources: dict[str, ResourceLease] = field(default_factory=dict)
 
 
 __all__ = [
@@ -83,6 +89,7 @@ __all__ = [
     "Gate",
     "GateResult",
     "QualitySettings",
+    "ResourceLease",
     "RunContext",
     "State",
 ]

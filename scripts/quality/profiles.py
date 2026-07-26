@@ -17,6 +17,7 @@ from scripts.quality.gates import runtime as runtime_module
 from scripts.quality.gates import services as services_module
 from scripts.quality.gates import tests as tests_module
 from scripts.quality.gates.browser import GATES as BROWSER_GATES
+from scripts.quality.gates.contracts import DEEP_GATES as DEEP_CONTRACT_GATES
 from scripts.quality.gates.contracts import GATES as CONTRACT_GATES
 from scripts.quality.gates.distribution import BENCHMARK_GATES, PACKAGE_GATES
 from scripts.quality.gates.documentation import GATES as DOCS_GATES
@@ -80,9 +81,9 @@ def build_profile(
         "coverage",
         "docs",
         "openapi",
+        "schemathesis",
         "package",
         "frontend-build",
-        "benchmark",
         "clean-tree",
     }
     release = {*check, "supabase-preflight", "integration", "e2e", "docker"}
@@ -90,7 +91,7 @@ def build_profile(
         "quick": quick,
         "check": check,
         "release": release,
-        "deep": {*release, *DEEP_GATES},
+        "deep": {*release, *DEEP_GATES, *DEEP_CONTRACT_GATES, "benchmark"},
     }[profile]
     return select_stages([catalog], sorted(names))
 

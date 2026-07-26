@@ -78,4 +78,17 @@ describe("mapGameScreen", () => {
     expect(text).toContain("公開発言です");
     expect(text).not.toMatch(/werewolf|player-2|do-not-show|hidden|secret-game/);
   });
+
+  it("does not expose an advance action after the game has finished", () => {
+    const source = sampleScreenSource();
+    source.state.status = "completed";
+    source.state.phase = "finished";
+    source.state.winner = "villagers";
+    source.observation = null;
+
+    const screen = mapGameScreen({ screen: source, manualPlayerId: "player-1" });
+
+    expect(screen.turnPanel.subtitle).toBe("この村の物語は終わりました");
+    expect(screen.turnPanel.actions).toEqual([]);
+  });
 });

@@ -26,12 +26,17 @@ def test_success_replaces_latest_without_growing_history(
     """成功結果をselectorごとの最新値へ圧縮する。"""
     monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
 
-    first = retention.publish_run(_run(tmp_path, "first", "passed"), "quick", "passed")
-    second = retention.publish_run(_run(tmp_path, "second", "passed"), "quick", "passed")
+    first_run = _run(tmp_path, "first", "passed")
+    (first_run / "events.jsonl").write_text("{}\n", encoding="utf-8")
+    first = retention.publish_run(first_run, "quick", "passed")
+    second_run = _run(tmp_path, "second", "passed")
+    (second_run / "events.jsonl").write_text("{}\n", encoding="utf-8")
+    second = retention.publish_run(second_run, "quick", "passed")
 
     assert first == second
     assert json.loads(second.read_text(encoding="utf-8"))["run_id"] == "second"
-    assert len(list(second.parent.iterdir())) == 2
+    assert (second.parent / "events.jsonl").is_file()
+    assert len(list(second.parent.iterdir())) == 3
 
 
 def test_failures_are_bounded_per_selector(
@@ -52,11 +57,11 @@ def test_failures_are_bounded_per_selector(
     assert len(list(failures.iterdir())) == retention.FAILURES_PER_SELECTOR
 
 
-def test_failure_keeps_only_actionable_diagnostics(
+def test_failure_keeps_complete_review_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """成功gateのlogとevent streamを失敗履歴へ残さない。"""
+    """失敗に至る成功gateのlogとevent streamも保持する。"""
     monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
     run = _run(tmp_path, "run", "failed")
     (run / "logs").mkdir()
@@ -83,7 +88,43 @@ def test_failure_keeps_only_actionable_diagnostics(
 
     assert (report.parent / "logs" / "failed.log").is_file()
     assert (report.parent / "test-results" / "unit.xml").is_file()
-    assert not (report.parent / "logs" / "passed.log").exists()
-    assert not (report.parent / "events.jsonl").exists()
+    assert (report.parent / "logs" / "passed.log").is_file()
+    assert (report.parent / "events.jsonl").is_file()
     retained = json.loads(report.read_text(encoding="utf-8"))["retention"]
-    assert retained["omitted_count"] == 2
+    assert retained["omitted_count"] == 0
+    assert retained["limit_exceeded"] is False
+
+
+def test_abandoned_run_is_recovered_before_next_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runtime = tmp_path / "runtime"
+    run = runtime / "quality" / "runs" / "20260726T000000Z-quick-1"
+    (run / "logs").mkdir(parents=True)
+    (run / "logs" / "partial.log").write_text("partial", encoding="utf-8")
+    monkeypatch.setattr(retention, "TEMPORARY_ROOT", runtime)
+    monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
+
+    recovered = retention.recover_abandoned_runs(now=run.stat().st_mtime + 600)
+
+    assert len(recovered) == 1
+    assert (recovered[0] / "logs" / "partial.log").is_file()
+    assert (recovered[0] / "manifest.json").is_file()
+    assert (
+        json.loads((recovered[0] / "report.json").read_text(encoding="utf-8"))["state"] == "error"
+    )
+
+
+def test_live_run_is_not_recovered(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = tmp_path / "runtime"
+    run = runtime / "quality" / "runs" / "20260726T000000Z-deep-1"
+    run.mkdir(parents=True)
+    monkeypatch.setattr(retention, "TEMPORARY_ROOT", runtime)
+    monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
+    retention.mark_run_active(run)
+
+    recovered = retention.recover_abandoned_runs(now=run.stat().st_mtime + 600)
+
+    assert recovered == []
+    assert run.is_dir()

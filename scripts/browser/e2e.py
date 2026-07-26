@@ -9,6 +9,9 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
+from uuid import uuid4
+
+from PIL import Image, ImageDraw
 
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -17,6 +20,7 @@ from scripts._infra.process import (
     EnvironmentBlockedError,
     quality_environment,
     run_command,
+    write_json,
 )
 
 _REQUIRED_ENVIRONMENT = (
@@ -49,22 +53,26 @@ def run_e2e(
     )
     output: list[str] = []
     commands = _commands(artifact_directory)
+    initial_cleanup = run_command(
+        ["docker", "compose", "--profile", "e2e", "down", "--volumes", "--remove-orphans"],
+        timeout_seconds=60,
+        environment=environment,
+    )
+    output.append(initial_cleanup.output)
+    before = _owned_resource_snapshot(environment)
+    execution = CommandResult([], 0, 0.0, "")
     try:
         for command in commands:
-            result = run_command(
+            execution = run_command(
                 command,
                 timeout_seconds=timeout_seconds,
                 environment=environment,
             )
-            output.append(result.output)
-            if result.returncode != 0:
-                return CommandResult(
-                    command=list(command),
-                    returncode=result.returncode,
-                    duration_seconds=time.monotonic() - started,
-                    output="".join(output),
-                    timed_out=result.timed_out,
-                )
+            output.append(execution.output)
+            if execution.returncode != 0:
+                break
+        if execution.returncode == 0:
+            create_contact_sheet(artifact_directory)
     finally:
         cleanup = run_command(
             [
@@ -80,13 +88,73 @@ def run_e2e(
             environment=environment,
         )
         output.append(cleanup.output)
+        after = _owned_resource_snapshot(environment)
+        write_json(artifact_directory / "docker-before.json", before)
+        write_json(artifact_directory / "docker-after.json", after)
+        if after["containers"] or after["volumes"]:
+            output.append(f"品質所有Docker resourceが残っています: {after}\n")
+            cleanup = CommandResult(
+                cleanup.command,
+                1,
+                cleanup.duration_seconds,
+                cleanup.output,
+                cleanup.timed_out,
+            )
     return CommandResult(
-        command=list(commands[-1]),
-        returncode=cleanup.returncode,
+        command=execution.command or list(commands[-1]),
+        returncode=execution.returncode or cleanup.returncode,
         duration_seconds=time.monotonic() - started,
         output="".join(output),
-        timed_out=cleanup.timed_out,
+        timed_out=execution.timed_out or cleanup.timed_out,
     )
+
+
+def _owned_resource_snapshot(environment: Mapping[str, str]) -> dict[str, list[str]]:
+    """Compose project labelで品質所有resourceだけを列挙する。"""
+    label = f"com.docker.compose.project={QUALITY_COMPOSE_PROJECT_NAME}"
+    containers = run_command(
+        ["docker", "ps", "-a", "--filter", f"label={label}", "--format", "{{.ID}}"],
+        timeout_seconds=30,
+        environment=environment,
+    )
+    volumes = run_command(
+        ["docker", "volume", "ls", "--filter", f"label={label}", "--format", "{{.Name}}"],
+        timeout_seconds=30,
+        environment=environment,
+    )
+    return {
+        "containers": sorted(line for line in containers.output.splitlines() if line.strip()),
+        "volumes": sorted(line for line in volumes.output.splitlines() if line.strip()),
+    }
+
+
+def create_contact_sheet(artifact_directory: Path) -> Path | None:
+    """個別screenshotを人間レビュー用の一覧画像へまとめる。"""
+    images = sorted(
+        path for path in artifact_directory.rglob("*.png") if path.name != "contact-sheet.png"
+    )
+    if not images:
+        return None
+    width = 520
+    label_height = 40
+    thumbnails: list[tuple[Path, Image.Image]] = []
+    for path in images:
+        with Image.open(path) as source:
+            image = source.convert("RGB")
+            image.thumbnail((width, 520))
+            thumbnails.append((path, image.copy()))
+    height = sum(image.height + label_height for _path, image in thumbnails)
+    sheet = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(sheet)
+    top = 0
+    for path, image in thumbnails:
+        draw.text((8, top + 8), path.relative_to(artifact_directory).as_posix(), fill="black")
+        top += label_height
+        sheet.paste(image, ((width - image.width) // 2, top))
+        top += image.height
+    target = artifact_directory / "contact-sheet.png"
+    sheet.save(target)
+    return target
 
 
 def _compose_environment(
@@ -102,6 +170,7 @@ def _compose_environment(
     extra = {
         "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME,
         "PLAYWRIGHT_VISUAL_REGRESSION": "1" if visual_regression else "0",
+        "WEREWOLF_RUNTIME_INSTANCE_ID": f"quality-{uuid4().hex}",
         "VITE_SUPABASE_PUBLISHABLE_KEY": str(base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]),
         "VITE_SUPABASE_URL": container_api_url,
         "VITE_WEREWOLF_API_URL": "http://api:8000",

@@ -40,6 +40,9 @@ class _HealthResponse(BaseModel):
 
     status: str
     service: str
+    instance_id: str
+    started_at: str
+    config_fingerprint: str
 
 
 class HttpGameClient:

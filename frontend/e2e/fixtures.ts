@@ -11,7 +11,17 @@ const localHosts = new Set([
 ]);
 
 export const test = base.extend({
-  page: async ({ page }, use) => {
+  page: async ({ page, request }, use) => {
+    const expectedInstance = process.env.PLAYWRIGHT_EXPECTED_INSTANCE_ID;
+    expect(expectedInstance, "E2E対象instance IDが設定されていません").toBeTruthy();
+    const apiUrl = process.env.PLAYWRIGHT_API_URL ?? "http://127.0.0.1:8000";
+    const healthResponse = await request.get(`${apiUrl}/health`);
+    expect(healthResponse.ok()).toBeTruthy();
+    const health = await healthResponse.json();
+    expect(health.instance_id).toBe(expectedInstance);
+    expect(health.started_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(health.config_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+
     const blockedHosts = new Set<string>();
     await page.route("**/*", async (route) => {
       const hostname = new URL(route.request().url()).hostname;

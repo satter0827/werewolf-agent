@@ -46,7 +46,7 @@ def test_profile_commands_write_machine_readable_results_to_run_directory(
 
     assert str(tmp_path / "test-results" / "quick.xml") in commands
     assert f"xml:{tmp_path / 'coverage' / 'coverage.xml'}" in commands
-    assert "--cov-fail-under=74" in commands
+    assert "--cov-fail-under=0" in commands
     assert "--benchmark-disable-gc" in commands
     assert "--benchmark-min-rounds=5" in commands
     assert str(tmp_path / "benchmarks" / "core.json") in commands

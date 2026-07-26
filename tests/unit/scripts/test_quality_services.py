@@ -11,6 +11,7 @@ from scripts._infra.artifacts import ArtifactLayout
 from scripts.quality import retention
 from scripts.quality import runner as quality
 from scripts.quality.gates import repository, services
+from scripts.quality.models import ResourceLease
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -36,7 +37,7 @@ def test_execute_stops_owned_supabase_when_runner_is_interrupted(
     def run_gate(context: quality.RunContext, gate: quality.Gate) -> quality.GateResult:
         nonlocal stopped
         if gate.name == "start":
-            context.supabase_cleanup_required = True
+            context.resources["supabase"] = ResourceLease("supabase", cleanup_required=True)
         elif gate.name == "interrupt":
             raise KeyboardInterrupt
         elif gate.name == "supabase-stop":
@@ -82,8 +83,14 @@ def test_supabase_cleanup_removes_isolated_cli_profile(
         environment={"SUPABASE_HOME": str(profile)},
         initial_git_status="",
         started_at=quality.utc_now(),
-        supabase_workdir=tmp_path / "missing-project",
-        supabase_project_id="quality-project",
+        resources={
+            "supabase": ResourceLease(
+                "supabase",
+                cleanup_required=True,
+                workdir=tmp_path / "missing-project",
+                identifier="quality-project",
+            )
+        },
     )
     monkeypatch.setattr(support, "TEMPORARY_ROOT", temporary_root)
 
@@ -119,9 +126,10 @@ def test_supabase_ownership_is_recorded_before_preflight(
     with pytest.raises(KeyboardInterrupt):
         services.start_supabase(context, tmp_path / "log")
 
-    assert context.supabase_cleanup_required is True
-    assert context.supabase_workdir is not None
-    assert context.supabase_project_id == services.isolated_project_id(context.supabase_workdir)
+    lease = context.resources["supabase"]
+    assert lease.cleanup_required is True
+    assert lease.workdir is not None
+    assert lease.identifier == services.isolated_project_id(lease.workdir)
 
 
 def test_blocked_supabase_preflight_releases_local_ownership(
@@ -151,6 +159,7 @@ def test_blocked_supabase_preflight_releases_local_ownership(
     with pytest.raises(quality.EnvironmentBlockedError):
         services.start_supabase(context, tmp_path / "log")
 
-    assert context.supabase_cleanup_required is False
-    assert context.supabase_workdir is None
-    assert context.supabase_project_id is None
+    lease = context.resources["supabase"]
+    assert lease.cleanup_required is False
+    assert lease.workdir is None
+    assert lease.identifier is None
