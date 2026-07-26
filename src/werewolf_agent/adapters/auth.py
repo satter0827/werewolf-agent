@@ -49,7 +49,7 @@ def ensure_session(
     """Return a fresh Supabase session, creating an anonymous user when absent."""
     require_supabase_client_config(settings)
     auth = _auth_client(settings)
-    session_store = store or SupabaseSessionStore()
+    session_store = store or SupabaseSessionStore(settings.supabase_url)
     session = session_store.load()
     if session is None:
         session = auth.sign_in_anonymously()

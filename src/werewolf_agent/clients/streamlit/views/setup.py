@@ -29,7 +29,6 @@ from werewolf_agent.clients.streamlit.setup import (
     seat_options,
     seed_from_text,
     seed_text,
-    selected_agent_strategy_id,
     selected_manual_player_id,
     selected_scenario_id,
     selected_setup_preset_id,
@@ -40,10 +39,8 @@ from werewolf_agent.clients.streamlit.setup import (
 from werewolf_agent.clients.streamlit.views.game import _create_game
 from werewolf_agent.clients.streamlit.views.settings import (
     _ability_name,
-    _agent_strategy_name,
     _has_duplicate_values,
     _narration_label,
-    _render_agent_strategy_setup,
     _render_character_assignments,
     _render_local_rules_settings,
     _render_narration_setup,
@@ -103,13 +100,6 @@ def _render_setup_screen(
             _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
         elif element.id == "narration":
             _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
-        elif element.id == "agent_strategy":
-            _render_agent_strategy_setup(
-                st,
-                setup_options=setup_options,
-                catalog=catalog,
-                lang=lang,
-            )
         elif element.id == "seed":
             seed_value = _render_seed_controls(
                 st,
@@ -137,7 +127,6 @@ def _render_setup_screen(
     scenario_id = selected_scenario_id(st.session_state, setup_options)
     preset_id = selected_setup_preset_id(st.session_state, setup_options)
     active_narration_mode = narration_mode(st.session_state, setup_options)
-    agent_strategy_id = selected_agent_strategy_id(st.session_state, setup_options)
     validation = validate_setup(counts, setup_options, catalog=catalog, lang=lang)
     total_players = sum(counts.values())
     manual_player_id = (
@@ -164,7 +153,6 @@ def _render_setup_screen(
                 scenario_id=scenario_id,
                 preset_id=preset_id,
                 narration_mode_value=active_narration_mode,
-                agent_strategy_id=agent_strategy_id,
                 total_players=total_players,
                 column_count=cast(int, screens.layout("setup").summary_columns),
                 catalog=catalog,
@@ -211,7 +199,6 @@ def _render_setup_screen(
                 scenario_id=scenario_id,
                 setup_preset_id=preset_id,
                 narration_mode_value=active_narration_mode,
-                agent_strategy_id=agent_strategy_id,
                 character_assignments_value=active_assignments,
                 catalog=catalog,
                 lang=lang,
@@ -225,7 +212,6 @@ def _render_setup_summary_metrics(
     scenario_id: str | None,
     preset_id: str | None,
     narration_mode_value: NarrationMode,
-    agent_strategy_id: str | None,
     total_players: int,
     column_count: int,
     catalog: I18nCatalog,
@@ -241,12 +227,6 @@ def _render_setup_summary_metrics(
         (
             catalog.t(lang, "settings.narration"),
             _narration_label(narration_mode_value, catalog, lang),
-        ),
-        (
-            catalog.t(lang, "settings.agent_strategy"),
-            _agent_strategy_name(setup_options, agent_strategy_id, catalog, lang)
-            if agent_strategy_id
-            else "-",
         ),
     )
     columns = st.columns(column_count)
@@ -286,7 +266,6 @@ def _render_setup_submit(
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode_value: NarrationMode,
-    agent_strategy_id: str | None,
     character_assignments_value: dict[str, str],
     catalog: I18nCatalog,
     lang: Language,
@@ -296,7 +275,6 @@ def _render_setup_submit(
         not validation.is_valid
         or (manual_player_id is None and not observer)
         or scenario_id is None
-        or agent_strategy_id is None
         or _has_duplicate_values(character_assignments_value)
     )
     if not st.button(
@@ -317,7 +295,6 @@ def _render_setup_submit(
         screen_mode="observer" if observer else "playable",
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
-        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode_value,
         character_assignments=character_assignments_value,
         custom_roles=custom_roles(st.session_state),

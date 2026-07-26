@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+
 MESSAGE_NO_VALID_VOTE_TARGETS = "no valid vote targets"
 
 MESSAGE_NO_ATTACK_TARGETS = "no attack targets"
@@ -19,6 +21,36 @@ MESSAGE_PLAYER_IS_DEAD = "player is dead"
 MESSAGE_LLM_DECISION_PLAYER_MISMATCH = "llm decision player mismatch"
 
 MESSAGE_LLM_MODEL_NOT_CONFIGURED = "llm model is not configured"
+
+
+def message_field_must_be_one_of(field_name: str, choices: Iterable[str]) -> str:
+    """Return a finite-choice validation message."""
+    return f"{field_name} must be one of: {', '.join(sorted(choices))}"
+
+
+def message_field_must_be_at_least(field_name: str, minimum: object) -> str:
+    """Return a lower-bound validation message."""
+    return f"{field_name} must be at least {minimum}"
+
+
+def message_field_must_be_greater_than(field_name: str, minimum: object) -> str:
+    """Return an exclusive lower-bound validation message."""
+    return f"{field_name} must be greater than {minimum}"
+
+
+def message_field_must_be_between(field_name: str, minimum: object, maximum: object) -> str:
+    """Return an inclusive range validation message."""
+    return f"{field_name} must be between {minimum} and {maximum}"
+
+
+def message_llm_base_url_required(provider: str) -> str:
+    """Return an LLM base URL requirement message."""
+    return f"llm base_url is required for {provider} provider"
+
+
+def message_openai_api_key_required(provider: str) -> str:
+    """Return an OpenAI-compatible API key requirement message."""
+    return f"OPENAI_API_KEY is required for {provider} provider"
 
 
 def message_no_action_for_phase(phase: str) -> str:

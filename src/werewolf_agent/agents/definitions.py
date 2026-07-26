@@ -9,34 +9,17 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.agents.constants import (
-    DECISION_GRAPH_END,
-    DECISION_GRAPH_NODE_ID_SET,
-    DECISION_GRAPH_START,
-    MAX_CHARACTER_AGE,
-    MIN_CHARACTER_AGE,
-    MIN_VERSION,
-)
+from werewolf_agent.agents.constants import MAX_CHARACTER_AGE, MIN_CHARACTER_AGE, MIN_VERSION
 from werewolf_agent.agents.messages import (
-    MESSAGE_AGENT_STRATEGIES_REQUIRED,
-    MESSAGE_AGENT_STRATEGY_DEFAULT_EXACTLY_ONE,
-    MESSAGE_AGENT_STRATEGY_IDS_MUST_BE_UNIQUE,
-    MESSAGE_AGENT_STRATEGY_NODES_MUST_BE_UNIQUE,
-    MESSAGE_AGENT_STRATEGY_NODES_REQUIRED,
-    MESSAGE_DECISION_GRAPH_EDGES_REQUIRED,
-    MESSAGE_DECISION_GRAPH_ROUTES_MUST_BE_UNIQUE,
     MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED,
     MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE,
     MESSAGE_INPUT_VARIABLES_REQUIRED,
     MESSAGE_PROMPT_MESSAGE_ROLE_MUST_BE_VALID,
     MESSAGE_PROMPT_MESSAGES_REQUIRED,
     MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION,
-    message_decision_graph_endpoint_unknown,
-    message_decision_graph_node_unknown,
     message_fake_decision_templates_required,
     message_input_variables_not_used,
     message_message_variables_missing,
-    message_unknown_agent_strategy,
 )
 from werewolf_agent.agents.validation import non_blank
 
@@ -96,10 +79,6 @@ class PromptMessageDefinition(_DefinitionModel):
         """Return a non-empty prompt message."""
         return non_blank(value, "prompt message content")
 
-    def langchain_content(self) -> str:
-        """Return content with MLflow-style variables converted for LangChain."""
-        return PROMPT_VARIABLE_PATTERN.sub(r"{\1}", self.content)
-
     def variables(self) -> set[str]:
         """Return variables referenced by this message."""
         return set(PROMPT_VARIABLE_PATTERN.findall(self.content))
@@ -118,6 +97,7 @@ class PromptDefinition(_DefinitionModel):
         alias="model_config",
     )
     response_format: dict[str, str]
+    role_hints: dict[str, str] = Field(default_factory=dict)
     messages: list[PromptMessageDefinition]
 
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
@@ -155,6 +135,15 @@ class PromptDefinition(_DefinitionModel):
         return {
             non_blank(key, "response format key"): non_blank(item, "response format value")
             for key, item in value.items()
+        }
+
+    @field_validator("role_hints")
+    @classmethod
+    def validate_role_hints(cls, value: dict[str, str]) -> dict[str, str]:
+        """Return role guidance keyed by normalized role id."""
+        return {
+            non_blank(str(role_id), "role hint id"): non_blank(hint, "role hint")
+            for role_id, hint in value.items()
         }
 
     @model_validator(mode="after")
@@ -253,153 +242,3 @@ class FakeDecisionCatalog(_DefinitionModel):
         template_pool = self.templates.get(action_type) or self.templates["pass"]
         template = template_pool[selector % len(template_pool)]
         return template.render(context)
-
-
-class DecisionGraphEdgeDefinition(_DefinitionModel):
-    """One static edge in a registered decision graph definition."""
-
-    from_node: str = Field(alias="from")
-    to_node: str = Field(alias="to")
-
-    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
-
-    @field_validator("from_node", "to_node")
-    @classmethod
-    def validate_endpoint(cls, value: str) -> str:
-        """Return a normalized edge endpoint id."""
-        return non_blank(value, "decision graph endpoint")
-
-
-class DecisionGraphRouteDefinition(_DefinitionModel):
-    """Conditional route targets emitted by validate/repair nodes."""
-
-    from_node: str = Field(alias="from")
-    valid: str | None = None
-    invalid: str | None = None
-    failed: str | None = None
-
-    model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
-
-    @field_validator("from_node", "valid", "invalid", "failed")
-    @classmethod
-    def validate_optional_endpoint(cls, value: str | None) -> str | None:
-        """Return normalized route endpoints."""
-        if value is None:
-            return None
-        return non_blank(value, "decision graph route endpoint")
-
-
-class AgentStrategyDefinition(_DefinitionModel):
-    """One selectable LLM decision strategy backed by registered graph nodes."""
-
-    id: str
-    name: str
-    description: str
-    decision_graph_id: str
-    default: bool = False
-    nodes: tuple[str, ...]
-    edges: tuple[DecisionGraphEdgeDefinition, ...]
-    routes: tuple[DecisionGraphRouteDefinition, ...] = ()
-    role_hints: dict[str, str] = Field(default_factory=dict)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("id", "name", "description", "decision_graph_id")
-    @classmethod
-    def validate_non_blank_text(cls, value: str, info: Any) -> str:
-        """Return normalized strategy text."""
-        return non_blank(value, str(info.field_name))
-
-    @field_validator("nodes")
-    @classmethod
-    def validate_nodes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """Return normalized registered node ids."""
-        nodes = tuple(non_blank(node, "decision graph node") for node in value)
-        if not nodes:
-            raise ValueError(MESSAGE_AGENT_STRATEGY_NODES_REQUIRED)
-        if len(set(nodes)) != len(nodes):
-            raise ValueError(MESSAGE_AGENT_STRATEGY_NODES_MUST_BE_UNIQUE)
-        unknown_nodes = [node for node in nodes if node not in DECISION_GRAPH_NODE_ID_SET]
-        if unknown_nodes:
-            raise ValueError(message_decision_graph_node_unknown(unknown_nodes[0]))
-        return nodes
-
-    @field_validator("role_hints")
-    @classmethod
-    def validate_role_hints(cls, value: dict[str, str]) -> dict[str, str]:
-        """Return role hints keyed by normalized role id."""
-        return {
-            non_blank(str(role_id), "role hint id"): non_blank(hint, "role hint")
-            for role_id, hint in value.items()
-        }
-
-    @field_validator("edges")
-    @classmethod
-    def validate_edges(
-        cls,
-        value: tuple[DecisionGraphEdgeDefinition, ...],
-    ) -> tuple[DecisionGraphEdgeDefinition, ...]:
-        """Return non-empty graph edge definitions."""
-        if not value:
-            raise ValueError(MESSAGE_DECISION_GRAPH_EDGES_REQUIRED)
-        return value
-
-    @model_validator(mode="after")
-    def validate_graph_references(self) -> Self:
-        """Ensure edges and routes only reference registered nodes or graph sentinels."""
-        endpoints = {*self.nodes, DECISION_GRAPH_START, DECISION_GRAPH_END}
-        for edge in self.edges:
-            for node_id in (edge.from_node, edge.to_node):
-                if node_id not in endpoints:
-                    raise ValueError(message_decision_graph_endpoint_unknown(node_id))
-        route_sources: set[str] = set()
-        for route in self.routes:
-            if route.from_node not in self.nodes:
-                raise ValueError(message_decision_graph_endpoint_unknown(route.from_node))
-            if route.from_node in route_sources:
-                raise ValueError(MESSAGE_DECISION_GRAPH_ROUTES_MUST_BE_UNIQUE)
-            route_sources.add(route.from_node)
-            for route_node_id in (route.valid, route.invalid, route.failed):
-                if route_node_id is not None and route_node_id not in endpoints:
-                    raise ValueError(message_decision_graph_endpoint_unknown(route_node_id))
-        return self
-
-
-class AgentStrategyCatalog(_DefinitionModel):
-    """Selectable LLM agent strategy definitions."""
-
-    strategies: tuple[AgentStrategyDefinition, ...]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("strategies")
-    @classmethod
-    def validate_strategies(
-        cls,
-        value: tuple[AgentStrategyDefinition, ...],
-    ) -> tuple[AgentStrategyDefinition, ...]:
-        """Return non-empty unique strategies with exactly one default."""
-        if not value:
-            raise ValueError(MESSAGE_AGENT_STRATEGIES_REQUIRED)
-        ids = [strategy.id for strategy in value]
-        if len(set(ids)) != len(ids):
-            raise ValueError(MESSAGE_AGENT_STRATEGY_IDS_MUST_BE_UNIQUE)
-        if [strategy.default for strategy in value].count(True) != 1:
-            raise ValueError(MESSAGE_AGENT_STRATEGY_DEFAULT_EXACTLY_ONE)
-        return value
-
-    @property
-    def default_strategy_id(self) -> str:
-        """Return the configured default strategy id."""
-        return next(strategy.id for strategy in self.strategies if strategy.default)
-
-    def strategy_for(self, strategy_id: str) -> AgentStrategyDefinition:
-        """Return a strategy by id."""
-        for strategy in self.strategies:
-            if strategy.id == strategy_id:
-                return strategy
-        raise ValueError(message_unknown_agent_strategy(strategy_id))
-
-    def contains(self, strategy_id: str) -> bool:
-        """Return whether the catalog contains a strategy id."""
-        return any(strategy.id == strategy_id for strategy in self.strategies)

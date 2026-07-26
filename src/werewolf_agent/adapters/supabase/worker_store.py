@@ -28,31 +28,98 @@ class SupabaseWorkerStore:
         """Bind operations to one worker database connection."""
         self._connection = connection
 
-    def claim_request(self, *, worker_id: str, claim_seconds: int) -> dict[str, Any] | None:
-        """Claim the oldest available operation request."""
+    def claim_request(
+        self,
+        *,
+        worker_id: str,
+        claim_seconds: int,
+        poll_seconds: int = 0,
+    ) -> dict[str, Any] | None:
+        """Read one PGMQ message and bind its ledger row to this worker."""
+        requests = self.claim_requests(
+            worker_id=worker_id,
+            claim_seconds=claim_seconds,
+            quantity=1,
+            poll_seconds=poll_seconds,
+        )
+        return requests[0] if requests else None
+
+    def claim_requests(
+        self,
+        *,
+        worker_id: str,
+        claim_seconds: int,
+        quantity: int,
+        poll_seconds: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Read a bounded PGMQ batch and bind each ledger row to this worker."""
+        messages = self._connection.execute(
+            """
+            select * from pgmq.read_with_poll(
+              'game_operations', %s, %s, %s, 100
+            )
+            """,
+            (claim_seconds, quantity, poll_seconds),
+        ).fetchall()
+        requests: list[dict[str, Any]] = []
+        for message in messages:
+            payload = message.get("message")
+            operation_id = (
+                str(payload.get("operation_id") or "") if isinstance(payload, Mapping) else ""
+            )
+            row = self._connection.execute(
+                """
+                update public.game_operation_requests
+                set status = 'running', worker_id = %s, attempt_count = %s,
+                    started_at = coalesce(started_at, timezone('utc', now()))
+                where request_id = %s and queue_message_id = %s
+                  and status in ('queued', 'running')
+                returning *
+                """,
+                (worker_id, int(message["read_ct"]), operation_id, int(message["msg_id"])),
+            ).fetchone()
+            if row is None:
+                self.archive_message(int(message["msg_id"]))
+                continue
+            result = dict(row)
+            result["queue_message_id"] = int(message["msg_id"])
+            requests.append(result)
+        return requests
+
+    def renew_claim(
+        self,
+        request: Mapping[str, Any],
+        *,
+        claim_seconds: int,
+    ) -> bool:
+        """Extend visibility only while this worker still owns the ledger claim."""
         row = self._connection.execute(
             """
-            with next_request as (
-              select request_id
-              from public.game_operation_requests
-              where status = 'queued'
-                 or (status = 'running' and claimed_until < timezone('utc', now()))
-              order by created_at
-              for update skip locked
-              limit 1
+            select pgmq.set_vt('game_operations', %s, %s) as renewed
+            where exists (
+              select 1 from public.game_operation_requests
+              where request_id = %s and status = 'running'
+                and attempt_count = %s and worker_id = %s
+                and queue_message_id = %s
             )
-            update public.game_operation_requests r
-            set status = 'running',
-                worker_id = %s,
-                attempt_count = attempt_count + 1,
-                started_at = coalesce(started_at, timezone('utc', now())),
-                claimed_until = timezone('utc', now()) + make_interval(secs => %s)
-            where r.request_id = (select request_id from next_request)
-            returning *
             """,
-            (worker_id, claim_seconds),
+            (
+                int(request["queue_message_id"]),
+                claim_seconds,
+                request["request_id"],
+                request["attempt_count"],
+                request["worker_id"],
+                int(request["queue_message_id"]),
+            ),
         ).fetchone()
-        return dict(row) if row is not None else None
+        return row is not None
+
+    def archive_message(self, message_id: int) -> None:
+        """Archive one consumed PGMQ message."""
+        self._connection.execute(
+            "select pgmq.archive('game_operations', %s)",
+            (message_id,),
+        )
 
     def verify_creation_llm_mode(
         self,
@@ -212,15 +279,16 @@ class SupabaseWorkerStore:
             """
             update public.game_operation_requests
             set status = 'succeeded', result_payload = %s,
-                completed_at = timezone('utc', now()), claimed_until = null
+                completed_at = timezone('utc', now())
             where request_id = %s and status = 'running'
-              and attempt_count = %s and worker_id = %s
+              and attempt_count = %s and worker_id = %s and queue_message_id = %s
             """,
             (
                 jsonb(dict(result_payload)),
                 request["request_id"],
                 request["attempt_count"],
                 request["worker_id"],
+                request["queue_message_id"],
             ),
         )
         if getattr(result, "rowcount", 1) != 1:
@@ -229,6 +297,7 @@ class SupabaseWorkerStore:
                 code=ErrorCode.API_UNAVAILABLE,
                 retryable=True,
             )
+        self.archive_message(int(request["queue_message_id"]))
 
     def record_accepted_command(
         self,
@@ -273,15 +342,16 @@ class SupabaseWorkerStore:
             """
             update public.game_operation_requests
             set status = 'failed', error_payload = %s,
-                completed_at = timezone('utc', now()), claimed_until = null
+                completed_at = timezone('utc', now())
             where request_id = %s and status = 'running'
-              and attempt_count = %s and worker_id = %s
+              and attempt_count = %s and worker_id = %s and queue_message_id = %s
             """,
             (
                 jsonb(problem.model_dump(mode="json")),
                 request["request_id"],
                 request["attempt_count"],
                 request["worker_id"],
+                request["queue_message_id"],
             ),
         )
         if getattr(result, "rowcount", 1) == 1:
@@ -289,6 +359,30 @@ class SupabaseWorkerStore:
                 request,
                 action="operation.failed",
                 metadata={"error_code": problem.code},
+            )
+            self.archive_message(int(request["queue_message_id"]))
+
+    def retry_request(self, request: Mapping[str, Any], problem: ProblemDetails) -> None:
+        """Return a retryable failure to the queue without archiving its message."""
+        result = self._connection.execute(
+            """
+            update public.game_operation_requests
+            set status = 'queued', worker_id = null, error_payload = %s
+            where request_id = %s and status = 'running'
+              and attempt_count = %s and worker_id = %s and queue_message_id = %s
+            """,
+            (
+                jsonb(problem.model_dump(mode="json")),
+                request["request_id"],
+                request["attempt_count"],
+                request["worker_id"],
+                request["queue_message_id"],
+            ),
+        )
+        if getattr(result, "rowcount", 1) == 1:
+            self._connection.execute(
+                "select * from pgmq.set_vt('game_operations', %s, 1)",
+                (int(request["queue_message_id"]),),
             )
 
     def _record_audit(

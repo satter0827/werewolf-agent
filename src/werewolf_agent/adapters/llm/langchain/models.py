@@ -25,8 +25,7 @@ class _ModelDecisionPayload(BaseModel):
 
 class _DecisionGraphState(TypedDict, total=False):
     player_id: str
-    agent_strategy_id: str
-    decision_graph_id: str
+    graph_revision: str
     observation: AgentObservation
     action_type: AgentActionType
     target_id: str | None
@@ -42,5 +41,5 @@ class _DecisionGraphState(TypedDict, total=False):
     invoke_error_payload: Mapping[str, object]
     graph_node: str
     route: str
-    repair_attempted: bool
+    repair_attempts: int
     started_at: float

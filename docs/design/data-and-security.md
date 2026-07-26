@@ -17,8 +17,9 @@
 
 ## 永続化
 
-Supabase adapter は repository port を実装し、Auth、game state、operation queue、
-trace の接続を担当する。React から Supabase へ直接接続する用途は Auth に限定し、
+Supabase adapter は repository port を実装し、公式Auth SDK、game state、PGMQ、
+trace の接続を担当する。APIとworkerは用途別のprocess所有connection poolを使う。
+React から Supabase へ直接接続する用途は Auth に限定し、
 ゲームテーブルは Data API から参照させない。
 
 完全状態を返す reveal は、管理者認可と専用設定を通過する HTTP route に限定する。
@@ -30,6 +31,7 @@ trace の接続を担当する。React から Supabase へ直接接続する用�
 ## 秘密情報
 
 - credential は環境変数または実行環境の secret store から取得する。
+- CLIのSupabase sessionはOS credential storeだけへ保存し、平文fileへfallbackしない。
 - `.env`、token、実データを repository と生成物へ保存しない。
 - `secret`、`token`、`api_key`、`authorization`、`password` をログ記録前に mask する。
 - 例外、HTTP 応答、browser state に内部設定や stack trace を含めない。

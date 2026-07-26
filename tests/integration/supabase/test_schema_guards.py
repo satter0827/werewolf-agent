@@ -38,6 +38,23 @@ def _assume_authenticated_user(connection: psycopg.Connection, user_id: UUID) ->
     connection.execute("select set_config('request.jwt.claim.role', 'authenticated', true)")
 
 
+def _enqueue_operation_message(
+    connection: psycopg.Connection,
+    request_id: UUID,
+) -> int:
+    row = connection.execute(
+        "select pgmq.send('game_operations', %s)",
+        (Jsonb({"operation_id": str(request_id)}),),
+    ).fetchone()
+    assert row is not None
+    message_id = int(row[0])
+    connection.execute(
+        "update public.game_operation_requests set queue_message_id = %s where request_id = %s",
+        (message_id, request_id),
+    )
+    return message_id
+
+
 @pytest.mark.serial
 def test_rls_is_enabled_for_public_user_tables() -> None:
     """利用者dataを持つpublic tableでRLSを無効化しない。"""
@@ -188,6 +205,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
             ),
         ).fetchone()
         assert create_id is not None
+        _enqueue_operation_message(connection, create_id[0])
         connection.commit()
 
         settings = AppSettings(
@@ -225,6 +243,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
             (owner_id, game_id, initial_version[0]),
         ).fetchone()
         assert advance_id is not None
+        _enqueue_operation_message(connection, advance_id[0])
         connection.commit()
         assert process_worker_batch(settings) == 1
 
@@ -262,6 +281,7 @@ def test_concurrent_workers_claim_a_request_once() -> None:
     dsn = os.environ["WEREWOLF_SUPABASE_DB_DSN"]
     owner_id = uuid4()
     setup = psycopg.connect(dsn)
+    message_id: int | None = None
     try:
         _insert_user(setup, owner_id)
         request_row = setup.execute(
@@ -275,6 +295,7 @@ def test_concurrent_workers_claim_a_request_once() -> None:
         ).fetchone()
         assert request_row is not None
         request_id = request_row[0]
+        message_id = _enqueue_operation_message(setup, request_id)
         setup.commit()
 
         def claim(worker_id: str) -> UUID | None:
@@ -294,6 +315,8 @@ def test_concurrent_workers_claim_a_request_once() -> None:
         assert claimed.count(request_id) == 1
         assert claimed.count(None) == 1
     finally:
+        if message_id is not None:
+            setup.execute("select pgmq.archive('game_operations', %s)", (message_id,))
         setup.execute(
             "delete from public.game_operation_requests where owner_user_id = %s",
             (owner_id,),
@@ -313,6 +336,7 @@ def test_request_returns_to_queue_when_worker_stops_before_commit() -> None:
     setup = psycopg.connect(dsn)
     first = psycopg.connect(dsn, row_factory=dict_row)
     second = psycopg.connect(dsn, row_factory=dict_row)
+    message_id: int | None = None
     try:
         _insert_user(setup, owner_id)
         request_row = setup.execute(
@@ -326,6 +350,7 @@ def test_request_returns_to_queue_when_worker_stops_before_commit() -> None:
         ).fetchone()
         assert request_row is not None
         request_id = request_row[0]
+        message_id = _enqueue_operation_message(setup, request_id)
         setup.commit()
         claimed = SupabaseWorkerStore(first).claim_request(
             worker_id="stopped-worker",
@@ -347,6 +372,8 @@ def test_request_returns_to_queue_when_worker_stops_before_commit() -> None:
         second.rollback()
         first.close()
         second.close()
+        if message_id is not None:
+            setup.execute("select pgmq.archive('game_operations', %s)", (message_id,))
         setup.execute(
             "delete from public.game_operation_requests where owner_user_id = %s",
             (owner_id,),

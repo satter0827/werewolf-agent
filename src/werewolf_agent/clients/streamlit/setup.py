@@ -64,7 +64,6 @@ class GameSetupDraft(BaseModel):
     rules: LocalRulesSettings | None = None
     setup_preset_id: str | None = None
     scenario_id: str | None = None
-    agent_strategy_id: str | None = None
     narration_mode: NarrationMode | None = None
     character_assignments: dict[str, str] = Field(default_factory=dict)
     seed_text: str | None = None
@@ -92,7 +91,7 @@ class GameSetupDraft(BaseModel):
             if str(player_id).strip() and str(character_id).strip()
         }
 
-    @field_validator("setup_preset_id", "scenario_id", "agent_strategy_id", "manual_player_id")
+    @field_validator("setup_preset_id", "scenario_id", "manual_player_id")
     @classmethod
     def normalize_optional_text(cls, value: str | None) -> str | None:
         """Return stripped optional text fields."""
@@ -337,26 +336,6 @@ def narration_mode(
 def remember_narration_mode(session: MutableMapping[str, Any], value: NarrationMode) -> None:
     """Store the selected public narration mode."""
     draft = game_setup_draft(session).model_copy(update={"narration_mode": value})
-    remember_game_setup_draft(session, draft)
-
-
-def selected_agent_strategy_id(
-    session: MutableMapping[str, Any],
-    setup_options: GameSetupOptionsResponse,
-) -> str | None:
-    """Return the selected AI strategy id."""
-    strategy_ids = {strategy.id for strategy in setup_options.agent_strategies}
-    draft_value = game_setup_draft(session).agent_strategy_id
-    if draft_value in strategy_ids:
-        return draft_value
-    if setup_options.default_agent_strategy_id in strategy_ids:
-        return setup_options.default_agent_strategy_id
-    return setup_options.agent_strategies[0].id if setup_options.agent_strategies else None
-
-
-def remember_agent_strategy_id(session: MutableMapping[str, Any], value: str | None) -> None:
-    """Store the selected AI strategy id."""
-    draft = game_setup_draft(session).model_copy(update={"agent_strategy_id": value})
     remember_game_setup_draft(session, draft)
 
 

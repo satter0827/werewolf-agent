@@ -343,31 +343,6 @@
         "title": "AdvanceOperationRequest",
         "type": "object"
       },
-      "AgentStrategyDefinitionView": {
-        "additionalProperties": false,
-        "description": "Public display metadata for an LLM agent strategy.",
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description"
-        ],
-        "title": "AgentStrategyDefinitionView",
-        "type": "object"
-      },
       "CharacterDefinitionView": {
         "additionalProperties": false,
         "description": "Public character metadata for setup screens.",
@@ -424,17 +399,6 @@
         "additionalProperties": false,
         "description": "Payload for creating one game.",
         "properties": {
-          "agent_strategy_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Strategy Id"
-          },
           "character_assignments": {
             "additionalProperties": {
               "type": "string"
@@ -1121,23 +1085,12 @@
             "title": "Abilities",
             "type": "array"
           },
-          "agent_strategies": {
-            "items": {
-              "$ref": "#/components/schemas/AgentStrategyDefinitionView"
-            },
-            "title": "Agent Strategies",
-            "type": "array"
-          },
           "characters": {
             "items": {
               "$ref": "#/components/schemas/CharacterDefinitionView"
             },
             "title": "Characters",
             "type": "array"
-          },
-          "default_agent_strategy_id": {
-            "title": "Default Agent Strategy Id",
-            "type": "string"
           },
           "default_narration_mode": {
             "default": "standard",
@@ -1215,8 +1168,7 @@
           "player_count",
           "roles",
           "default_role_counts",
-          "default_rules",
-          "default_agent_strategy_id"
+          "default_rules"
         ],
         "title": "GameSetupOptionsResponse",
         "type": "object"

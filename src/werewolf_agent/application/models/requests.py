@@ -47,7 +47,6 @@ class CreateGameCommand(ApplicationModel):
     scenario_id: str | None = None
     setup_preset_id: str | None = None
     narration_mode: NarrationMode
-    agent_strategy_id: str | None = None
     role_counts: dict[RoleId, RoleCount]
     rules: LocalRulesDefinition
     manual_player_id: str | None = None
@@ -75,7 +74,7 @@ class CreateGameCommand(ApplicationModel):
             return None
         return non_blank(value, "manual_player_id")
 
-    @field_validator("scenario_id", "setup_preset_id", "agent_strategy_id")
+    @field_validator("scenario_id", "setup_preset_id")
     @classmethod
     def validate_optional_ids(cls, value: str | None) -> str | None:
         """Return stripped optional setup ids."""

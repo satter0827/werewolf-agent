@@ -11,6 +11,8 @@ input_variables = [
     "character_profile",
     "available_actions",
     "selected_action",
+    "role_hint",
+    "target_rankings_json",
     "legal_targets_json",
     "observation_json",
     "format_instructions",
@@ -19,7 +21,6 @@ input_variables = [
 [tags]
 task = "agent_decision"
 project = "werewolf-agent"
-runtime = "langchain"
 
 [model_config]
 model_name = "fake-list-llm"
@@ -28,6 +29,12 @@ temperature = 0.7
 [response_format]
 schema = "AgentDecision"
 instructions_variable = "format_instructions"
+
+[role_hints]
+werewolf = "Avoid attacking known werewolves and move suspicion away from allies."
+seer = "Use inspections to separate hard information from public suspicion."
+knight = "Guard likely village power roles or confirmed villagers."
+villager = "Compare speeches and votes, then pressure inconsistent players."
 
 [[messages]]
 role = "system"
@@ -54,6 +61,8 @@ scenario_premise: {{scenario_premise}}
 character_profile: {{character_profile}}
 available_actions: {{available_actions}}
 selected_action: {{selected_action}}
+role_hint: {{role_hint}}
+target_rankings_json: {{target_rankings_json}}
 legal_targets_json: {{legal_targets_json}}
 observation_json: {{observation_json}}
 

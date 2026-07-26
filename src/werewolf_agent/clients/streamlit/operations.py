@@ -94,7 +94,6 @@ def create_game_from_setup(
     manual_player_id: str | None,
     scenario_id: str | None,
     setup_preset_id: str | None,
-    agent_strategy_id: str | None,
     narration_mode: NarrationMode,
     character_assignments: dict[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
@@ -109,7 +108,6 @@ def create_game_from_setup(
         rules=rules,
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
-        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode,
         character_assignments=character_assignments,
         custom_roles=custom_roles,
@@ -125,7 +123,6 @@ def create_game_from_setup(
             "has_manual_player": manual_player_id is not None,
             "player_count": len(response.state.players),
             "seed": seed,
-            "agent_strategy_id": agent_strategy_id or "",
         },
     )
     return response

@@ -15,7 +15,7 @@ order = 30
 enabled = true
 
 [setup.layout]
-summary_columns = 4
+summary_columns = 3
 seed_columns = 2
 
 [setup.regions.main]
@@ -37,11 +37,6 @@ enabled = true
 [[setup.regions.main.elements]]
 id = "narration"
 order = 40
-enabled = true
-
-[[setup.regions.main.elements]]
-id = "agent_strategy"
-order = 50
 enabled = true
 
 [[setup.regions.main.elements]]

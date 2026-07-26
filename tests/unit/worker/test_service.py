@@ -40,6 +40,60 @@ class _Connection:
         self.transaction_count += 1
         return nullcontext()
 
+    def __enter__(self) -> _Connection:
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        return None
+
+
+class _Pool:
+    def __init__(self, connection: _Connection) -> None:
+        self._connection = connection
+
+    def connection(self) -> _Connection:
+        return self._connection
+
+
+def test_worker_archives_exhausted_message_without_executing_it(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _Connection([])
+    request = {
+        "request_id": "operation-1",
+        "operation_type": "advance_game",
+        "owner_user_id": "user-1",
+        "attempt_count": 4,
+        "worker_id": "worker-1",
+        "queue_message_id": 42,
+    }
+    failures: list[ProblemDetails] = []
+
+    class Store:
+        def __init__(self, _connection: object) -> None:
+            pass
+
+        def claim_requests(self, **_kwargs: object) -> list[dict[str, Any]]:
+            return [request]
+
+        def fail_request(self, _request: object, problem: ProblemDetails) -> None:
+            failures.append(problem)
+
+    monkeypatch.setattr(service, "SupabaseWorkerStore", Store)
+    monkeypatch.setattr(
+        service,
+        "_process_request",
+        lambda *_args: pytest.fail("exhausted operation must not execute"),
+    )
+
+    processed = service.process_worker_batch(
+        AppSettings(_env_file=None, supabase_db_dsn=SecretStr("postgresql://local")),
+        pool=_Pool(connection),
+    )
+
+    assert processed == 1
+    assert failures[0].code == ErrorCode.OPERATION_RETRY_EXHAUSTED.value
+
 
 @pytest.mark.parametrize(
     ("requested_mode", "is_anonymous", "expected"),
@@ -85,14 +139,13 @@ def test_paid_creation_is_rejected_if_membership_is_no_longer_valid() -> None:
 
 
 def test_fake_game_cannot_inherit_the_paid_provider_or_secret() -> None:
-    settings = AppSettings.model_validate(
-        {
-            "llm_provider": "openai",
-            "model": "untrusted-default",
-            "worker_paid_llm_provider": "openai",
-            "worker_paid_llm_model": "paid-model",
-            "openai_api_key": SecretStr("paid-secret"),
-        }
+    settings = AppSettings(
+        _env_file=None,
+        llm_provider="openai",
+        model="untrusted-default",
+        worker_paid_llm_provider="openai",
+        worker_paid_llm_model="paid-model",
+        openai_api_key=SecretStr("paid-secret"),
     )
 
     config = build_worker_llm_provider_config("fake", settings)
@@ -104,13 +157,12 @@ def test_fake_game_cannot_inherit_the_paid_provider_or_secret() -> None:
 
 
 def test_paid_game_uses_worker_only_provider_configuration() -> None:
-    settings = AppSettings.model_validate(
-        {
-            "worker_paid_llm_provider": "openai",
-            "worker_paid_llm_model": "paid-model",
-            "worker_paid_llm_base_url": "https://llm.example.test/v1",
-            "openai_api_key": SecretStr("paid-secret"),
-        }
+    settings = AppSettings(
+        _env_file=None,
+        worker_paid_llm_provider="openai",
+        worker_paid_llm_model="paid-model",
+        worker_paid_llm_base_url="https://llm.example.test/v1",
+        openai_api_key=SecretStr("paid-secret"),
     )
 
     config = build_worker_llm_provider_config("paid", settings)
@@ -132,10 +184,9 @@ def test_advance_revalidates_participant_access_at_worker_execution() -> None:
     }
 
     with pytest.raises(AppError) as captured:
-        service._advance_game(
-            connection,
-            SupabaseWorkerStore(connection),
-            AppSettings.model_validate({}),
+        service._execute_advance_request(
+            _Pool(connection),
+            AppSettings(_env_file=None),
             request,
         )
 
@@ -148,7 +199,7 @@ def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(
     connection = _Connection([])
     request = {
         "request_id": "operation-1",
-        "operation_type": "advance_game",
+        "operation_type": "create_game",
         "owner_user_id": "user-1",
         "attempt_count": 1,
         "worker_id": "worker-1",
@@ -160,11 +211,11 @@ def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(
 
     monkeypatch.setattr(service, "_execute_request", fail_execute)
     store = SimpleNamespace(fail_request=lambda _request, problem: recorded.append(problem))
+    monkeypatch.setattr(service, "SupabaseWorkerStore", lambda _connection: store)
 
     service._process_request(
-        connection,
-        store,
-        AppSettings.model_validate({}),
+        _Pool(connection),
+        AppSettings(_env_file=None),
         request,
     )
 

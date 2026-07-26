@@ -11,6 +11,23 @@ from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.replay import checksum_payload
 
 
+class BufferedLlmTraceSink:
+    """Collect traces while the worker is outside a database transaction."""
+
+    def __init__(self) -> None:
+        """Create an empty in-memory trace buffer."""
+        self.records: list[LlmInvocationTrace] = []
+
+    def record_invocation(self, trace: LlmInvocationTrace) -> None:
+        """Append one immutable trace to the in-memory buffer."""
+        self.records.append(trace)
+
+    def flush_to(self, sink: SupabaseLlmTraceSink) -> None:
+        """Persist every buffered trace through a transaction-bound sink."""
+        for trace in self.records:
+            sink.record_invocation(trace)
+
+
 class SupabaseLlmTraceSink:
     """Persist LLM invocation traces into the admin-only trace table."""
 

@@ -8,6 +8,14 @@ TITLE_REQUEST_VALIDATION_FAILED = "Request Validation Failed"
 
 TITLE_REQUEST_RATE_LIMITED = "Too Many Requests"
 
+TITLE_REQUEST_BODY_TOO_LARGE = "Request Body Too Large"
+
+TITLE_REQUEST_CONCURRENCY_LIMITED = "Request Capacity Exceeded"
+
+TITLE_REQUEST_INVALID_CONTENT_LENGTH = "Invalid Content Length"
+
+TITLE_REQUEST_TIMED_OUT = "Request Timed Out"
+
 TITLE_IDEMPOTENCY_CONFLICT = "Idempotency Conflict"
 
 TITLE_API_UNAVAILABLE = "API Unavailable"
@@ -32,6 +40,10 @@ TITLE_LLM_PROVIDER_UNAVAILABLE = "LLM Provider Unavailable"
 
 TITLE_OBSERVATION_WRITE_FAILED = "Observation Write Failed"
 
+TITLE_OPERATION_RETRY_EXHAUSTED = "Operation Retry Limit Exceeded"
+
+TITLE_OPERATION_UPGRADE_INTERRUPTED = "Operation Interrupted by Upgrade"
+
 TITLE_UNEXPECTED_INTERNAL_ERROR = "Unexpected Internal Error"
 
 DETAIL_CONFIG_INVALID_VALUE = "The application configuration contains an invalid value."
@@ -39,6 +51,14 @@ DETAIL_CONFIG_INVALID_VALUE = "The application configuration contains an invalid
 DETAIL_REQUEST_VALIDATION_FAILED = "The request body or parameters failed validation."
 
 DETAIL_REQUEST_RATE_LIMITED = "Wait briefly before trying the request again."
+
+DETAIL_REQUEST_BODY_TOO_LARGE = "The request body exceeds the configured size limit."
+
+DETAIL_REQUEST_CONCURRENCY_LIMITED = "The server is handling its maximum request capacity."
+
+DETAIL_REQUEST_INVALID_CONTENT_LENGTH = "The Content-Length header is invalid."
+
+DETAIL_REQUEST_TIMED_OUT = "The request did not finish within the configured timeout."
 
 DETAIL_IDEMPOTENCY_CONFLICT = "The idempotency key was already used for another request."
 
@@ -63,6 +83,10 @@ DETAIL_AGENT_INVALID_RESPONSE = "The agent response could not be validated."
 DETAIL_LLM_PROVIDER_UNAVAILABLE = "The configured LLM provider is temporarily unavailable."
 
 DETAIL_OBSERVATION_WRITE_FAILED = "The game event log could not be written."
+
+DETAIL_OPERATION_RETRY_EXHAUSTED = "The operation failed after the configured retry limit."
+
+DETAIL_OPERATION_UPGRADE_INTERRUPTED = "The queued operation must be submitted again."
 
 DETAIL_INTERNAL_UNEXPECTED = "An unexpected internal error occurred."
 

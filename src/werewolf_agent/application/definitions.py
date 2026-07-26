@@ -542,20 +542,7 @@ class PlayerRoster(_DefinitionModel):
         return players
 
 
-class AgentStrategyOption(_DefinitionModel):
-    """Applicationへ公開するagent strategyの識別情報."""
-
-    id: str
-    name: str
-    description: str
-
-
 class PlayerSetupDefinitions(_DefinitionModel):
-    """Game作成に必要なplayer profileとstrategy選択肢."""
+    """Game作成に必要なplayer profile定義."""
 
     players: PlayerRoster
-    agent_strategies: dict[str, AgentStrategyOption]
-
-    def contains_strategy(self, strategy_id: str) -> bool:
-        """Strategy IDが定義済みか返す."""
-        return strategy_id in self.agent_strategies

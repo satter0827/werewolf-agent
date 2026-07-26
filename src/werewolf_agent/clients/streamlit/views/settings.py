@@ -25,7 +25,6 @@ from werewolf_agent.clients.streamlit.setup import (
     clear_custom_definitions,
     narration_mode,
     preset_counts,
-    remember_agent_strategy_id,
     remember_character_assignment,
     remember_narration_mode,
     remember_preferred_language,
@@ -36,7 +35,6 @@ from werewolf_agent.clients.streamlit.setup import (
     role_counts,
     rules,
     seat_options,
-    selected_agent_strategy_id,
     selected_scenario_id,
     selected_setup_preset_id,
     setup_options_with_session_customs,
@@ -184,27 +182,6 @@ def _render_narration_setup(
         format_func=lambda value: _narration_label(value, catalog, lang),
     )
     remember_narration_mode(st.session_state, cast(NarrationMode, selected_mode))
-
-
-def _render_agent_strategy_setup(
-    st: Any,
-    *,
-    setup_options: GameSetupOptionsResponse,
-    catalog: I18nCatalog,
-    lang: Language,
-) -> None:
-    """Render the AI strategy selector for the next game."""
-    if not setup_options.agent_strategies:
-        st.caption(catalog.t(lang, "common.none"))
-        return
-    current_strategy_id = selected_agent_strategy_id(st.session_state, setup_options)
-    selected_strategy = st.selectbox(
-        catalog.t(lang, "settings.agent_strategy"),
-        setup_options.agent_strategies,
-        index=_agent_strategy_index(setup_options, current_strategy_id),
-        format_func=lambda value: value.name,
-    )
-    remember_agent_strategy_id(st.session_state, selected_strategy.id)
 
 
 def _render_setup_preset_selector(
@@ -551,16 +528,6 @@ def _setup_preset_index(setup_options: GameSetupOptionsResponse, preset_id: str 
     return 0
 
 
-def _agent_strategy_index(
-    setup_options: GameSetupOptionsResponse,
-    agent_strategy_id: str | None,
-) -> int:
-    for index, strategy in enumerate(setup_options.agent_strategies):
-        if strategy.id == agent_strategy_id:
-            return index
-    return 0
-
-
 def _character_option_index(
     options: list[CharacterDefinitionView | None],
     character_id: str | None,
@@ -600,18 +567,6 @@ def _setup_preset_name(
     for preset in setup_options.setup_presets:
         if preset.id == preset_id:
             return preset.name
-    return catalog.t(lang, "common.none")
-
-
-def _agent_strategy_name(
-    setup_options: GameSetupOptionsResponse,
-    agent_strategy_id: str | None,
-    catalog: I18nCatalog,
-    lang: Language,
-) -> str:
-    for strategy in setup_options.agent_strategies:
-        if strategy.id == agent_strategy_id:
-            return strategy.name
     return catalog.t(lang, "common.none")
 
 

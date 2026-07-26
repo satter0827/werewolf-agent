@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Mapping
 from hashlib import sha256
@@ -23,6 +24,7 @@ from werewolf_agent.adapters.llm.langchain.decisions import (
 )
 from werewolf_agent.agents.definitions import (
     PromptDefinition,
+    PromptMessageDefinition,
 )
 from werewolf_agent.agents.models import (
     AgentActionType,
@@ -33,8 +35,13 @@ from werewolf_agent.agents.models import (
 
 def _to_chat_prompt(prompt: PromptDefinition) -> ChatPromptTemplate:
     return ChatPromptTemplate.from_messages(
-        [(message.role, message.langchain_content()) for message in prompt.messages]
+        [(message.role, _langchain_content(message)) for message in prompt.messages]
     )
+
+
+def _langchain_content(message: PromptMessageDefinition) -> str:
+    """Convert portable double-brace variables at the LangChain boundary."""
+    return re.sub(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}", r"{\1}", message.content)
 
 
 def _prompt_messages(prompt_value: Any) -> list[Mapping[str, object]]:
@@ -69,8 +76,7 @@ def _trace_request_payload(
 ) -> Mapping[str, object]:
     state = state or {}
     payload: dict[str, object] = {
-        "agent_strategy_id": str(state.get("agent_strategy_id") or ""),
-        "decision_graph_id": str(state.get("decision_graph_id") or ""),
+        "graph_revision": str(state.get("graph_revision") or ""),
         "graph_node": str(state.get("graph_node") or ""),
         "route": str(state.get("route") or ""),
         "validation_status": str(state.get("validation_status") or ""),
@@ -186,6 +192,12 @@ def _prompt_inputs(
             ensure_ascii=False,
         ),
         "selected_action": selected_action.value,
+        "role_hint": role_hint,
+        "target_rankings_json": json.dumps(
+            dict(target_rankings or {}),
+            ensure_ascii=False,
+            separators=PROMPT_JSON_SEPARATORS,
+        ),
         "legal_targets_json": json.dumps(
             {
                 action_type.value: player_ids

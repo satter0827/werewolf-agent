@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections.abc import Mapping
 from typing import Any, Literal, TypeVar
@@ -11,9 +12,7 @@ from pydantic import BaseModel
 
 from werewolf_agent.adapters.agents.game_driver import (
     AgentRuntime,
-)
-from werewolf_agent.adapters.agents.game_driver import (
-    advance_game as advance_agent_game,
+    drive_prepared_game,
 )
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
@@ -22,11 +21,18 @@ from werewolf_agent.adapters.application_bridge import (
     build_player_setup_definitions,
     build_worker_llm_provider_config,
 )
-from werewolf_agent.adapters.supabase.llm_trace import SupabaseLlmTraceSink
-from werewolf_agent.adapters.supabase.repository import (
+from werewolf_agent.adapters.supabase.llm_trace import (
+    BufferedLlmTraceSink,
+    SupabaseLlmTraceSink,
+)
+from werewolf_agent.adapters.supabase.pool import (
     SupabaseDatabaseUnavailableError,
+    borrow_database_connection,
+    create_database_pool,
+    open_database_pool,
+)
+from werewolf_agent.adapters.supabase.repository import (
     SupabaseGameRepository,
-    connect_worker_database,
 )
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.application import Actor, GameApplication
@@ -78,60 +84,101 @@ TModel = TypeVar("TModel", bound=BaseModel)
 
 def run_worker_forever(settings: AppSettings) -> None:
     """Run the queue worker until the process is interrupted."""
-    while True:
-        try:
-            processed = process_worker_batch(settings)
-        except SupabaseDatabaseUnavailableError:
-            logger.warning(
-                LOG_WORKER_DATABASE_UNAVAILABLE,
-                extra={
-                    "event_action": LOG_WORKER_DATABASE_UNAVAILABLE,
-                    "event_outcome": EVENT_OUTCOME_FAILURE,
-                },
-            )
-            processed = 0
-        if processed == 0:
-            time.sleep(settings.supabase_worker_poll_interval_seconds)
+    pool = _worker_pool(settings)
+    try:
+        open_database_pool(pool, timeout=settings.supabase_pool_timeout_seconds)
+        while True:
+            try:
+                processed = process_worker_batch(settings, pool=pool)
+            except SupabaseDatabaseUnavailableError:
+                logger.warning(
+                    LOG_WORKER_DATABASE_UNAVAILABLE,
+                    extra={
+                        "event_action": LOG_WORKER_DATABASE_UNAVAILABLE,
+                        "event_outcome": EVENT_OUTCOME_FAILURE,
+                    },
+                )
+                processed = 0
+            if processed == 0:
+                time.sleep(settings.supabase_worker_poll_interval_seconds)
+    finally:
+        pool.close()
 
 
-def process_worker_batch(settings: AppSettings) -> int:
+def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> int:
     """Claim and process at most one configured batch of requests."""
     if not settings.supabase_worker_configured:
         raise AppError(MESSAGE_SUPABASE_WORKER_DSN_REQUIRED)
-    processed = 0
-    with connect_worker_database(settings.supabase_db_dsn_value) as connection:
-        store = SupabaseWorkerStore(connection)
-        for _ in range(settings.supabase_worker_batch_size):
-            with connection.transaction():
-                request = store.claim_request(
-                    worker_id=settings.supabase_worker_id,
-                    claim_seconds=settings.supabase_worker_claim_seconds,
-                )
-            if request is None:
-                break
-            logger.info(
-                LOG_WORKER_REQUEST_CLAIMED,
-                extra={
-                    **_request_log_extra(request),
-                    "event_action": LOG_WORKER_REQUEST_CLAIMED,
-                    "event_outcome": EVENT_OUTCOME_SUCCESS,
-                    "worker_id": settings.supabase_worker_id,
-                },
+    if pool is None:
+        owned_pool = _worker_pool(settings)
+        try:
+            open_database_pool(
+                owned_pool,
+                timeout=settings.supabase_pool_timeout_seconds,
             )
-            _process_request(connection, store, settings, request)
+            return process_worker_batch(settings, pool=owned_pool)
+        finally:
+            owned_pool.close()
+    with borrow_database_connection(pool) as connection:
+        store = SupabaseWorkerStore(connection)
+        with connection.transaction():
+            requests = store.claim_requests(
+                worker_id=settings.supabase_worker_id,
+                claim_seconds=settings.supabase_worker_claim_seconds,
+                quantity=settings.supabase_worker_batch_size,
+            )
+    processed = 0
+    for request in requests:
+        logger.info(
+            LOG_WORKER_REQUEST_CLAIMED,
+            extra={
+                **_request_log_extra(request),
+                "event_action": LOG_WORKER_REQUEST_CLAIMED,
+                "event_outcome": EVENT_OUTCOME_SUCCESS,
+                "worker_id": settings.supabase_worker_id,
+            },
+        )
+        if int(request.get("attempt_count") or 0) > settings.supabase_worker_max_attempts:
+            problem = problem_details_from_spec(
+                ErrorCode.OPERATION_RETRY_EXHAUSTED,
+                instance="supabase-worker",
+            )
+            with borrow_database_connection(pool) as connection, connection.transaction():
+                SupabaseWorkerStore(connection).fail_request(request, problem)
             processed += 1
+            continue
+        _process_request(pool, settings, request)
+        processed += 1
     return processed
 
 
+def _worker_pool(settings: AppSettings) -> Any:
+    """Return the closed process-owned worker pool."""
+    return create_database_pool(
+        settings.supabase_db_dsn_value,
+        min_size=settings.supabase_worker_pool_min_size,
+        max_size=settings.supabase_worker_pool_max_size,
+        timeout=settings.supabase_pool_timeout_seconds,
+        name="werewolf-worker",
+    )
+
+
 def _process_request(
-    connection: Any,
-    store: SupabaseWorkerStore,
+    pool: Any,
     settings: AppSettings,
     request: Mapping[str, Any],
 ) -> None:
     try:
-        with connection.transaction():
-            _execute_request(connection, store, settings, request)
+        if str(request["operation_type"]) == "advance_game":
+            _execute_advance_request(pool, settings, request)
+        else:
+            with borrow_database_connection(pool) as connection, connection.transaction():
+                _execute_request(
+                    connection,
+                    SupabaseWorkerStore(connection),
+                    settings,
+                    request,
+                )
     except Exception as exc:
         logger.exception(
             LOG_WORKER_REQUEST_FAILED,
@@ -141,8 +188,16 @@ def _process_request(
                 "event_outcome": EVENT_OUTCOME_FAILURE,
             },
         )
-        with connection.transaction():
-            store.fail_request(request, _problem_from_exception(exc))
+        problem = _problem_from_exception(exc)
+        with borrow_database_connection(pool) as connection, connection.transaction():
+            store = SupabaseWorkerStore(connection)
+            if (
+                _is_retryable(exc)
+                and int(request.get("attempt_count") or 0) < settings.supabase_worker_max_attempts
+            ):
+                store.retry_request(request, problem)
+            else:
+                store.fail_request(request, problem)
 
 
 def _execute_request(
@@ -156,12 +211,19 @@ def _execute_request(
     result: BaseModel
     if operation_type == "create_game":
         result = _create_game(connection, store, settings, request)
-    elif operation_type == "advance_game":
-        result = _advance_game(connection, store, settings, request)
     elif operation_type == "submit_action":
         result = _submit_action(connection, store, settings, request)
     else:
         raise AppError(message_unsupported_operation_type(operation_type))
+    _complete_result(store, request, result)
+
+
+def _complete_result(
+    store: SupabaseWorkerStore,
+    request: Mapping[str, Any],
+    result: BaseModel,
+) -> None:
+    """Commit ledger, audit, and queue completion for one result."""
     result_payload = result.model_dump(mode="json")
     store.record_accepted_command(request, result_payload)
     store.complete_request(request, result_payload)
@@ -174,6 +236,115 @@ def _execute_request(
             "event_outcome": EVENT_OUTCOME_SUCCESS,
         },
     )
+
+
+def _execute_advance_request(
+    pool: Any,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+) -> None:
+    """Run LangGraph without retaining a database connection or transaction."""
+    game_id = str(request.get("game_id") or "")
+    user_id = str(request["owner_user_id"])
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        store = SupabaseWorkerStore(connection)
+        if not store.participates(game_id=game_id, user_id=user_id):
+            raise AppError(
+                MESSAGE_GAME_PARTICIPATION_REQUIRED,
+                code=ErrorCode.AUTHORIZATION_FAILED,
+            )
+        context = _service(connection, settings)
+        prepared = application_handlers.prepare_advance_game(
+            AdvanceGameCommand(
+                game_id=game_id,
+                expected_version=_expected_version(request),
+            ),
+            dependencies=context,
+        )
+        llm_mode = store.game_llm_mode(game_id)
+        game_definitions = context.game_definitions
+
+    traces = BufferedLlmTraceSink()
+    runtime = AgentRuntime(
+        config=build_worker_llm_provider_config(llm_mode, settings),
+        definitions=build_llm_definitions(settings),
+        trace_sink=traces,
+    )
+    with _LeaseHeartbeat(pool, settings, request) as heartbeat:
+        driven = drive_prepared_game(
+            prepared,
+            supported_agent_type=settings.game_supported_agent_type,
+            runtime=runtime,
+        )
+        computed = application_handlers.compute_prepared_advance(
+            driven,
+            game_definitions=game_definitions,
+        )
+        heartbeat.require_owned()
+
+        with borrow_database_connection(pool) as connection, connection.transaction():
+            store = SupabaseWorkerStore(connection)
+            context = _service(connection, settings)
+            result = application_handlers.commit_prepared_advance(
+                computed,
+                dependencies=context,
+            )
+            response = _wire_model(AdvanceGameResponse, result)
+            traces.flush_to(
+                SupabaseLlmTraceSink(
+                    connection,
+                    game_id=game_id,
+                    request_id=str(request["request_id"]),
+                    state_version=_expected_version(request),
+                )
+            )
+            _materialize_private_views(connection, store, settings, response.game_id)
+            _complete_result(store, request, response)
+
+
+class _LeaseHeartbeat:
+    """Renew one PGMQ visibility timeout while LangGraph is running."""
+
+    def __init__(self, pool: Any, settings: AppSettings, request: Mapping[str, Any]) -> None:
+        self._pool = pool
+        self._interval = settings.supabase_worker_heartbeat_seconds
+        self._claim_seconds = settings.supabase_worker_claim_seconds
+        self._request = request
+        self._stopped = threading.Event()
+        self._lost = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+
+    def __enter__(self) -> _LeaseHeartbeat:
+        self._thread.start()
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self._stopped.set()
+        self._thread.join(timeout=float(self._interval))
+
+    def require_owned(self) -> None:
+        """Fail before commit if the queue visibility lease was lost."""
+        if self._lost.is_set():
+            raise AppError(
+                "操作の処理権限を維持できませんでした。",
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            )
+
+    def _run(self) -> None:
+        while not self._stopped.wait(self._interval):
+            try:
+                with borrow_database_connection(self._pool) as connection, connection.transaction():
+                    renewed = SupabaseWorkerStore(connection).renew_claim(
+                        self._request,
+                        claim_seconds=self._claim_seconds,
+                    )
+                if not renewed:
+                    self._lost.set()
+                    return
+            except Exception:
+                self._lost.set()
+                return
 
 
 def _create_game(
@@ -204,46 +375,6 @@ def _create_game(
         player_id=participant_player_id,
         role="owner" if create_request.manual_player_id is None else "player",
     )
-    _materialize_private_views(connection, store, settings, response.game_id)
-    return response
-
-
-def _advance_game(
-    connection: Any,
-    store: SupabaseWorkerStore,
-    settings: AppSettings,
-    request: Mapping[str, Any],
-) -> AdvanceGameResponse:
-    game_id = str(request.get("game_id") or "")
-    user_id = str(request["owner_user_id"])
-    if not store.participates(game_id=game_id, user_id=user_id):
-        raise AppError(
-            MESSAGE_GAME_PARTICIPATION_REQUIRED,
-            code=ErrorCode.AUTHORIZATION_FAILED,
-        )
-    service = _service(connection, settings)
-    runtime = AgentRuntime(
-        config=build_worker_llm_provider_config(
-            store.game_llm_mode(game_id),
-            settings,
-        ),
-        definitions=build_llm_definitions(settings),
-        trace_sink=SupabaseLlmTraceSink(
-            connection,
-            game_id=game_id,
-            request_id=str(request["request_id"]),
-            state_version=_expected_version(request),
-        ),
-    )
-    result = advance_agent_game(
-        service,
-        AdvanceGameCommand(
-            game_id=game_id,
-            expected_version=_expected_version(request),
-        ),
-        runtime=runtime,
-    )
-    response = _wire_model(AdvanceGameResponse, result)
     _materialize_private_views(connection, store, settings, response.game_id)
     return response
 
@@ -372,6 +503,13 @@ def _problem_from_exception(exc: Exception) -> ProblemDetails:
         instance="supabase-worker",
         detail=MESSAGE_WORKER_REQUEST_FAILED if code is ErrorCode.INTERNAL_UNEXPECTED else None,
     )
+
+
+def _is_retryable(exc: Exception) -> bool:
+    """Return whether a failed operation may be safely redelivered."""
+    if isinstance(exc, AppError):
+        return exc.retryable
+    return isinstance(exc, SupabaseDatabaseUnavailableError)
 
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:

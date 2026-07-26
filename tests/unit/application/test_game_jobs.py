@@ -7,13 +7,10 @@ from uuid import UUID, uuid4
 import pytest
 
 import werewolf_agent.application.handlers as usecases
+from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import (
     LlmDefinitions,
 )
-from werewolf_agent.adapters.resources import (
-    load_llm_definitions as load_runtime_llm_definitions,
-)
-from werewolf_agent.agents.configuration import LlmProviderConfig
 from werewolf_agent.agents.definitions import (
     FakeDecisionCatalog,
     PromptDefinition,
@@ -22,7 +19,6 @@ from werewolf_agent.agents.definitions import (
 from werewolf_agent.application import Actor, GameApplication
 from werewolf_agent.application.definitions import (
     AbilityDefinition,
-    AgentStrategyOption,
     GameCatalogDefinitions,
     GameDefinitions,
     GameRoleDefinitions,
@@ -63,13 +59,8 @@ from werewolf_agent.contracts import (
     GameStatus,
     InvalidGameIdError,
 )
-from werewolf_agent.settings.constants import (
-    DEFAULT_GAME_LIST_LIMIT,
-    DEFAULT_NARRATION_MODE,
-    DEFAULT_TIMELINE_LIMIT,
-    MAX_GAME_LIST_LIMIT,
-    MAX_TIMELINE_LIMIT,
-)
+from werewolf_agent.settings.constants import MAX_GAME_LIST_LIMIT, MAX_TIMELINE_LIMIT
+from werewolf_agent.settings.defaults import PACKAGED_DEFAULTS
 
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
 DEFAULT_ROLE_COUNTS = {"werewolf": 1, "seer": 1, "knight": 1, "villager": 2}
@@ -302,10 +293,9 @@ def _llm_provider_config() -> LlmProviderConfig:
         max_retries=2,
         max_tokens=96,
         temperature=0.7,
-        default_agent_strategy_id="stable_fast",
         structured_output_mode="auto",
         validation_retry_count=1,
-        graph_max_steps=8,
+        graph_max_steps=16,
         fallback_policy="deterministic_legal_action",
     )
 
@@ -324,11 +314,10 @@ def application_config(
         default_player_count=default_player_count,
         supported_agent_type=supported_agent_type,
         default_setup_preset_id=default_setup_preset_id,
-        default_agent_strategy_id="stable_fast",
-        default_narration_mode=DEFAULT_NARRATION_MODE,
-        game_list_default_limit=DEFAULT_GAME_LIST_LIMIT,
+        default_narration_mode=str(PACKAGED_DEFAULTS["game_default_narration_mode"]),
+        game_list_default_limit=int(PACKAGED_DEFAULTS["api_game_list_default_limit"]),
         game_list_max_limit=MAX_GAME_LIST_LIMIT,
-        timeline_default_limit=DEFAULT_TIMELINE_LIMIT,
+        timeline_default_limit=int(PACKAGED_DEFAULTS["api_timeline_default_limit"]),
         timeline_max_limit=MAX_TIMELINE_LIMIT,
     )
 
@@ -493,6 +482,9 @@ def llm_definitions() -> LlmDefinitions:
                 "scenario_premise",
                 "character_profile",
                 "available_actions",
+                "selected_action",
+                "role_hint",
+                "target_rankings_json",
                 "legal_targets_json",
                 "observation_json",
                 "format_instructions",
@@ -504,7 +496,8 @@ def llm_definitions() -> LlmDefinitions:
                     content=(
                         "{{player_id}} {{phase}} {{day}} {{role}} "
                         "{{scenario_name}} {{scenario_premise}} {{character_profile}} "
-                        "{{available_actions}} {{legal_targets_json}} "
+                        "{{available_actions}} {{selected_action}} {{role_hint}} "
+                        "{{target_rankings_json}} {{legal_targets_json}} "
                         "{{observation_json}} {{format_instructions}}"
                     ),
                 )
@@ -531,33 +524,17 @@ def llm_definitions() -> LlmDefinitions:
                 "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
             },
         ),
-        agent_strategies=load_runtime_llm_definitions(
-            players_path=None,
-            prompt_path=None,
-            fake_responses_path=None,
-        ).agent_strategies,
     )
 
 
 def player_definitions() -> PlayerSetupDefinitions:
-    definitions = llm_definitions()
-    return PlayerSetupDefinitions(
-        players=definitions.players,
-        agent_strategies={
-            strategy.id: AgentStrategyOption(
-                id=strategy.id,
-                name=strategy.name,
-                description=strategy.description,
-            )
-            for strategy in definitions.agent_strategies.strategies
-        },
-    )
+    return PlayerSetupDefinitions(players=llm_definitions().players)
 
 
 def create_command(**values: object) -> CreateGameCommand:
     values.setdefault("role_counts", DEFAULT_ROLE_COUNTS)
     values.setdefault("rules", local_rules_definition())
-    values.setdefault("narration_mode", DEFAULT_NARRATION_MODE)
+    values.setdefault("narration_mode", PACKAGED_DEFAULTS["game_default_narration_mode"])
     return CreateGameCommand.model_validate(values)
 
 
@@ -617,8 +594,6 @@ def test_default_setup_options_returns_business_identifiers_only() -> None:
     assert result.default_rules == local_rules_definition()
     assert result.default_setup_preset_id == "standard_5"
     assert result.default_scenario_id == "classic"
-    assert result.default_agent_strategy_id == "stable_fast"
-    assert set(result.agent_strategies) == {"stable_fast", "role_basic", "target_ranker"}
 
 
 def test_default_setup_options_rejects_an_unknown_configured_preset() -> None:
@@ -646,14 +621,6 @@ def test_create_game_generates_player_ids_and_sanitizes_public_events() -> None:
     event_stream = repository.events[UUID(result.game_id)]
     assert event_stream[0].event_type == "game_started"
     assert "role_counts" not in event_stream[0].payload
-    assert repository.games[UUID(result.game_id)].config["agent_strategy_id"] == "stable_fast"
-
-
-def test_create_game_rejects_unknown_agent_strategy() -> None:
-    deps, _repository = dependencies()
-
-    with pytest.raises(GameError, match="Unknown agent strategy"):
-        UsecaseHarness(deps).create_game(create_command(agent_strategy_id="unknown"))
 
 
 def test_create_game_selects_seeded_roster_names_for_default_players() -> None:

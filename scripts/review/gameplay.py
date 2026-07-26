@@ -8,14 +8,14 @@ from typing import Any
 from werewolf_agent.adapters.application_bridge import build_game_definitions
 from werewolf_agent.domain import Game, GameSetup, RuleRegistry, RuleSetDefinition
 from werewolf_agent.domain.state import Action, ActionType, EventVisibility
-from werewolf_agent.settings import AppSettings
+from werewolf_agent.settings import get_settings
 
 MAX_PHASES = 64
 
 
 def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     """現在の設定resourceから再現可能な一局と公開timelineを返す。"""
-    settings = AppSettings()
+    settings = get_settings()
     definitions = build_game_definitions(settings)
     player_count = settings.game_default_player_count
     role_counts = definitions.roles.default_counts_for(player_count)

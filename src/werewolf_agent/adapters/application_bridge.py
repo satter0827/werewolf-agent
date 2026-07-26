@@ -8,6 +8,7 @@ from werewolf_agent.adapters.constants import (
     LLM_PROVIDER_LMSTUDIO,
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
+from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.messages import (
     message_definition_settings_invalid,
     message_role_definition_missing_player_counts,
@@ -18,12 +19,7 @@ from werewolf_agent.adapters.resources import (
     load_game_definitions,
     load_llm_definitions,
 )
-from werewolf_agent.agents.configuration import LlmProviderConfig
-from werewolf_agent.application.definitions import (
-    AgentStrategyOption,
-    GameDefinitions,
-    PlayerSetupDefinitions,
-)
+from werewolf_agent.application.definitions import GameDefinitions, PlayerSetupDefinitions
 from werewolf_agent.application.models import GameApplicationConfig
 from werewolf_agent.settings import AppSettings, get_settings
 
@@ -46,7 +42,6 @@ def build_game_application_config(settings: AppSettings | None = None) -> GameAp
         default_player_count=app_settings.game_default_player_count,
         supported_agent_type=app_settings.game_supported_agent_type,
         default_setup_preset_id=app_settings.game_default_setup_preset_id,
-        default_agent_strategy_id=app_settings.llm_default_agent_strategy_id,
         default_narration_mode=app_settings.game_default_narration_mode,
         game_list_default_limit=app_settings.api_game_list_default_limit,
         game_list_max_limit=app_settings.api_game_list_max_limit,
@@ -79,7 +74,6 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         max_retries=app_settings.llm_max_retries,
         max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
-        default_agent_strategy_id=app_settings.llm_default_agent_strategy_id,
         structured_output_mode=app_settings.llm_structured_output_mode,
         validation_retry_count=app_settings.llm_validation_retry_count,
         graph_max_steps=app_settings.llm_graph_max_steps,
@@ -151,9 +145,7 @@ def build_llm_definitions(settings: AppSettings | None = None) -> LlmDefinitions
             players_path=app_settings.llm_players_path,
             prompt_path=app_settings.llm_prompt_path,
             fake_responses_path=app_settings.llm_fake_responses_path,
-            decision_graphs_path=app_settings.llm_decision_graphs_path,
         )
-        definitions.agent_strategies.strategy_for(app_settings.llm_default_agent_strategy_id)
     except Exception as exc:
         raise ValueError(message_definition_settings_invalid(exc)) from exc
     return definitions
@@ -164,14 +156,4 @@ def build_player_setup_definitions(
 ) -> PlayerSetupDefinitions:
     """Applicationへagent実装を含まないsetup定義を返す."""
     definitions = build_llm_definitions(settings)
-    return PlayerSetupDefinitions(
-        players=definitions.players,
-        agent_strategies={
-            strategy.id: AgentStrategyOption(
-                id=strategy.id,
-                name=strategy.name,
-                description=strategy.description,
-            )
-            for strategy in definitions.agent_strategies.strategies
-        },
-    )
+    return PlayerSetupDefinitions(players=definitions.players)

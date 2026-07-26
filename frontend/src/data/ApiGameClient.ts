@@ -225,7 +225,6 @@ function normalizeSetup(
   return {
     ...value,
     abilities: value.abilities ?? [],
-    agent_strategies: value.agent_strategies ?? [],
     characters: value.characters ?? [],
     scenarios: value.scenarios ?? [],
     setup_presets: value.setup_presets ?? [],

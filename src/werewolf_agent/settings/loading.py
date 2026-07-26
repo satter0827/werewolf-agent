@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import tomllib
 from importlib.resources import files
+from pathlib import Path
 
 SETTINGS_PACKAGE = "werewolf_agent.settings.resources"
 SETTINGS_FILE = "defaults.toml"
@@ -16,4 +17,9 @@ def load_packaged_defaults() -> dict[str, object]:
         return tomllib.load(file)
 
 
-__all__ = ["load_packaged_defaults"]
+def packaged_defaults_path() -> Path:
+    """Return the installed packaged TOML path used by settings sources."""
+    return Path(str(files(SETTINGS_PACKAGE).joinpath(SETTINGS_FILE)))
+
+
+__all__ = ["load_packaged_defaults", "packaged_defaults_path"]

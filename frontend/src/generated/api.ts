@@ -393,18 +393,6 @@ export interface components {
             expected_version: number;
         };
         /**
-         * AgentStrategyDefinitionView
-         * @description Public display metadata for an LLM agent strategy.
-         */
-        AgentStrategyDefinitionView: {
-            /** Description */
-            description: string;
-            /** Id */
-            id: string;
-            /** Name */
-            name: string;
-        };
-        /**
          * CharacterDefinitionView
          * @description Public character metadata for setup screens.
          */
@@ -431,8 +419,6 @@ export interface components {
          * @description Payload for creating one game.
          */
         CreateGameRequest: {
-            /** Agent Strategy Id */
-            agent_strategy_id?: string | null;
             /** Character Assignments */
             character_assignments?: {
                 [key: string]: string;
@@ -680,12 +666,8 @@ export interface components {
         GameSetupOptionsResponse: {
             /** Abilities */
             abilities?: components["schemas"]["AbilityDefinitionView"][];
-            /** Agent Strategies */
-            agent_strategies?: components["schemas"]["AgentStrategyDefinitionView"][];
             /** Characters */
             characters?: components["schemas"]["CharacterDefinitionView"][];
-            /** Default Agent Strategy Id */
-            default_agent_strategy_id: string;
             /**
              * Default Narration Mode
              * @default standard

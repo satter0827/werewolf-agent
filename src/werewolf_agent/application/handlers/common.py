@@ -36,7 +36,6 @@ from werewolf_agent.application.messages import (
     MESSAGE_PLAYER_ROSTER_NOT_ENOUGH_ENABLED_PLAYERS,
     message_field_must_be_between,
     message_player_count_between,
-    message_unknown_agent_strategy,
     message_unknown_scenario,
     message_unknown_setup_preset,
     message_unsupported_action_type,
@@ -62,7 +61,6 @@ from werewolf_agent.contracts.validation import (
     generated_player_id,
     generated_player_ids,
     generated_player_name,
-    non_blank,
 )
 from werewolf_agent.domain import (
     Action,
@@ -293,21 +291,6 @@ def _narration_profile(
     if profile_id is None:
         return None
     return definitions.catalog.narration_profiles.get(profile_id)
-
-
-def _agent_strategy_id(
-    value: str | None,
-    *,
-    definitions: PlayerSetupDefinitions,
-    default_strategy_id: str,
-) -> str:
-    strategy_id = non_blank(value or default_strategy_id, "agent_strategy_id")
-    if not definitions.contains_strategy(strategy_id):
-        raise GameError(
-            message_unknown_agent_strategy(strategy_id),
-            context={"agent_strategy_id": strategy_id},
-        )
-    return strategy_id
 
 
 def _config_text(config: Mapping[str, object], key: str) -> str | None:

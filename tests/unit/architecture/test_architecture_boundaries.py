@@ -151,6 +151,32 @@ def test_frameworks_stay_in_manifest_owned_roots() -> None:
     assert not offenders
 
 
+def test_agent_contract_layer_contains_no_langchain_specific_surface() -> None:
+    """Provider非依存のagents層へLangChain固有名を公開しない。"""
+    offenders = [
+        path.relative_to(ROOT)
+        for path in (PACKAGE / "agents").rglob("*.py")
+        if "langchain" in path.read_text(encoding="utf-8").lower()
+        or "langgraph" in path.read_text(encoding="utf-8").lower()
+    ]
+    assert not offenders
+
+
+def test_packaged_toml_owns_non_secret_runtime_defaults() -> None:
+    """Settings sectionへTOMLと重複するdefault値を戻さない。"""
+    offenders: list[tuple[Path, int]] = []
+    for path in (PACKAGE / "settings" / "sections").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+                continue
+            if node.target.id == "openai_api_key" or not isinstance(node.value, ast.Call):
+                continue
+            if any(keyword.arg == "default" for keyword in node.value.keywords):
+                offenders.append((path.relative_to(ROOT), node.lineno))
+    assert not offenders
+
+
 def test_api_routes_only_use_application_contracts() -> None:
     """Path単位のimport制約をmanifestから評価する。"""
     offenders = [
@@ -220,6 +246,35 @@ def test_domain_and_application_have_no_io_or_logging_dependencies() -> None:
         for imported in _imports(path)
         if any(imported == prefix or imported.startswith(f"{prefix}.") for prefix in forbidden)
     ]
+    assert not offenders
+
+
+def test_environment_access_stays_at_configuration_and_process_boundaries() -> None:
+    """環境変数の読込みをsettingsとentrypointへ限定する。"""
+    allowed = {
+        PACKAGE / "api" / "app.py",
+        PACKAGE / "clients" / "cli" / "app.py",
+        PACKAGE / "clients" / "streamlit" / "app.py",
+        PACKAGE / "settings" / "settings.py",
+        PACKAGE / "worker" / "app.py",
+    }
+    offenders: list[tuple[Path, int]] = []
+    for path in PACKAGE.rglob("*.py"):
+        if path in allowed or path.is_relative_to(PACKAGE / "settings"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "os"
+                and node.attr in {"environ", "getenv"}
+            ) or (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "os"
+                and any(name.name in {"environ", "getenv"} for name in node.names)
+            ):
+                offenders.append((path.relative_to(ROOT), node.lineno))
     assert not offenders
 
 

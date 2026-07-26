@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from typing import cast
 
+from werewolf_agent.application.definitions import GameDefinitions
 from werewolf_agent.application.handlers.common import (
     _config_text,
     _manual_input_required,
@@ -101,6 +102,15 @@ def run_prepared_advance(
     dependencies: ApplicationContext,
 ) -> ComputedAdvanceGame:
     """Run LLM and domain advance computation without persistence access."""
+    return compute_prepared_advance(prepared, game_definitions=dependencies.game_definitions)
+
+
+def compute_prepared_advance(
+    prepared: PreparedAdvanceGame,
+    *,
+    game_definitions: GameDefinitions,
+) -> ComputedAdvanceGame:
+    """Compute an advance using definition data without retaining application I/O."""
     game = prepared.game
     runtime_rng = random.Random(_runtime_seed(prepared.seed, prepared.version))
     action_events = list(prepared.domain_events)
@@ -130,7 +140,7 @@ def run_prepared_advance(
         pending_actions=game.pending_actions.model_dump(mode="json"),
         events=events_to_create(
             [*action_events, *phase_events],
-            narration_profile=_narration_profile(prepared.config, dependencies.game_definitions),
+            narration_profile=_narration_profile(prepared.config, game_definitions),
             narration_mode=_narration_mode(prepared.config),
         ),
     )

@@ -44,7 +44,6 @@ class GameApplicationConfig:
     default_player_count: int
     supported_agent_type: str
     default_setup_preset_id: str
-    default_agent_strategy_id: str
     default_narration_mode: NarrationMode
     game_list_default_limit: int
     game_list_max_limit: int
@@ -61,11 +60,6 @@ class GameApplicationConfig:
             raise ValueError(MESSAGE_DEFAULT_PLAYER_COUNT_WITHIN_MIN_MAX)
         if self.default_narration_mode not in NARRATION_MODE_CHOICES:
             raise ValueError(MESSAGE_DEFAULT_NARRATION_MODE_UNSUPPORTED)
-        object.__setattr__(
-            self,
-            "default_agent_strategy_id",
-            non_blank(self.default_agent_strategy_id, "default_agent_strategy_id"),
-        )
         object.__setattr__(
             self,
             "default_setup_preset_id",

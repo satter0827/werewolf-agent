@@ -67,7 +67,6 @@ class GameApplication:
             ),
             scenario_id=input.scenario_id,
             setup_preset_id=input.setup_preset_id,
-            agent_strategy_id=input.agent_strategy_id or config.default_agent_strategy_id,
             narration_mode=input.narration_mode or config.default_narration_mode,
             character_assignments=input.character_assignments,
             custom_roles=[

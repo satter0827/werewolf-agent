@@ -6,8 +6,6 @@ MESSAGE_GAME_NOT_FOUND_TEMPLATE = "Game not found: {game_id}"
 
 MESSAGE_SUPABASE_AUTH_UNAVAILABLE = "Supabase Auth is unavailable."
 
-MESSAGE_SUPABASE_AUTH_INVALID_RESPONSE = "Supabase Auth returned an invalid response."
-
 MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION = "Supabase Auth returned an incomplete session."
 
 MESSAGE_WORKER_REQUEST_FAILED = "Worker request failed."
@@ -16,8 +14,3 @@ MESSAGE_WORKER_REQUEST_FAILED = "Worker request failed."
 def message_game_not_found(game_id: object) -> str:
     """Return an internal persistence missing-row message."""
     return MESSAGE_GAME_NOT_FOUND_TEMPLATE.format(game_id=game_id)
-
-
-def message_supabase_auth_http_error(status_code: int) -> str:
-    """Return a Supabase Auth HTTP failure message."""
-    return f"Supabase Auth request failed with HTTP {status_code}."

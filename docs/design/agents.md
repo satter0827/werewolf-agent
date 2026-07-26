@@ -15,9 +15,14 @@ JSON Schema 相当で検証し、利用可能な action と対象を確認して
 
 ## Provider 境界
 
-`werewolf_agent.agents` は観測、意思決定、player port を定義する。
-`adapters.llm.langchain`はLangChain graph、prompt、provider、FakeListLLMを実装する。
+`werewolf_agent.agents` は観測、意思決定、trace、player port を定義する。
+`adapters.llm.langchain`は単一のLangGraph、prompt、provider、Fake chat modelを実装する。
 外部 API を使わない再現可能な fixture を通常のテスト経路とする。
+
+標準graphは観測の正規化、必須action、role hint、target評価、prompt、model呼出し、
+構造化出力検証、修復、決定的fallbackを順に処理する。graph topologyとrevisionは
+adapter codeが所有し、game作成contractや保存状態から選択しない。tool、memory、分岐は
+必要になった時点でnodeまたはsubgraphとして追加する。
 
 ## Game driver
 
@@ -27,9 +32,10 @@ agentsはdomainとapplicationに依存せず、applicationもagentsに依存し�
 
 ## Worker
 
-worker は operation queue を取得し、認可された game を自動進行する。処理単位ごとに
-実行 context を作る。lease 中に process が中断した operation は再取得し、捕捉した
-実行エラーは safe Problem Details とともに `failed` へ確定する。有料 provider は
+worker はPGMQの`game_operations`を取得し、認可された game を自動進行する。
+LangGraph実行前後だけ短いtransactionを開き、model待機中はDB connectionを保持しない。
+visibility timeoutは別connectionで更新する。processが中断したmessageはPGMQが再配送し、
+捕捉した実行エラーは分類に従って再配送またはsafe Problem Details付きの`failed`へ確定する。有料 provider は
 認証済み利用者の game に限定し、provider の選択と model は設定から解決する。
 
 private LLM trace は公開 timeline から分離して保存し、入力前と記録前の両方で秘密

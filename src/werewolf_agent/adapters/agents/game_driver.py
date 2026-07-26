@@ -26,12 +26,12 @@ from werewolf_agent.adapters.agents.messages import (
     message_langchain_openai_required,
     message_unsupported_llm_provider,
 )
+from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
     LlmModelInvocationError,
 )
 from werewolf_agent.adapters.resources import LlmDefinitions
-from werewolf_agent.agents.configuration import LlmProviderConfig
 from werewolf_agent.agents.models import (
     AgentActionType,
     AgentDecision,
@@ -147,7 +147,11 @@ def advance_game(
 ) -> AdvanceGameResult:
     """Drive automated players, advance the domain, and commit the result."""
     prepared = prepare_advance_game(command, dependencies=context)
-    driven = drive_prepared_game(prepared, context=context, runtime=runtime)
+    driven = drive_prepared_game(
+        prepared,
+        supported_agent_type=context.config.supported_agent_type,
+        runtime=runtime,
+    )
     computed = run_prepared_advance(driven, dependencies=context)
     return commit_prepared_advance(computed, dependencies=context)
 
@@ -155,7 +159,7 @@ def advance_game(
 def drive_prepared_game(
     prepared: PreparedAdvanceGame,
     *,
-    context: ApplicationContext,
+    supported_agent_type: str,
     runtime: AgentRuntime,
 ) -> PreparedAdvanceGame:
     """Generate automated actions without placing agent logic in application."""
@@ -170,9 +174,6 @@ def drive_prepared_game(
         str(player_id): str(profile_id)
         for player_id, profile_id in dict(prepared.config.get("player_profile_ids") or {}).items()
     }
-    strategy_id = str(
-        prepared.config.get("agent_strategy_id") or runtime.config.default_agent_strategy_id
-    )
     scenario_name = str(prepared.config.get("scenario_name") or "").strip()
     scenario_premise = str(prepared.config.get("scenario_prompt_premise") or "").strip()
     scenario = (
@@ -183,7 +184,6 @@ def drive_prepared_game(
     factory = langchain_agent_factory(
         runtime.config,
         definitions=runtime.definitions,
-        agent_strategy_id=strategy_id,
         profile_ids_by_player=profile_ids,
         scenario=scenario,
         trace_sink=runtime.trace_sink,
@@ -209,7 +209,7 @@ def drive_prepared_game(
                 "game_phase": snapshot.phase.value,
                 "game_day": snapshot.day,
                 "game_version": prepared.version,
-                "agent_type": context.config.supported_agent_type,
+                "agent_type": supported_agent_type,
             },
         )
     return replace(prepared, domain_events=tuple(events))
@@ -219,7 +219,6 @@ def langchain_agent_factory(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
-    agent_strategy_id: str,
     profile_ids_by_player: dict[str, str] | None = None,
     scenario: AgentScenario | None = None,
     trace_sink: LlmTraceSink | None = None,
@@ -230,7 +229,6 @@ def langchain_agent_factory(
         provider=_decision_provider(
             config,
             definitions=definitions,
-            agent_strategy_id=agent_strategy_id,
             trace_sink=trace_sink,
         ),
         profiles=profiles.profiles,
@@ -243,15 +241,12 @@ def _decision_provider(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
-    agent_strategy_id: str,
     trace_sink: LlmTraceSink | None,
 ) -> LangChainDecisionProvider:
-    agent_strategy = definitions.agent_strategies.strategy_for(agent_strategy_id)
     if config.provider == LLM_PROVIDER_FAKE:
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             fake_responses=definitions.fake_responses,
-            agent_strategy=agent_strategy,
             provider_name=config.provider,
             model_name=config.model,
             trace_sink=trace_sink,
@@ -265,7 +260,6 @@ def _decision_provider(
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
             model=_openai_compatible_model(config, model_id=model_id),
-            agent_strategy=agent_strategy,
             provider_name=config.provider,
             model_name=model_id,
             base_url=config.base_url,

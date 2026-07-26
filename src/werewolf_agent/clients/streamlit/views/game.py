@@ -46,7 +46,6 @@ from werewolf_agent.clients.streamlit.setup import (
     VIEW_GAME,
     VIEW_OBSERVE_SETUP,
     VIEW_PLAY_SETUP,
-    remember_agent_strategy_id,
     remember_character_assignment,
     remember_manual_player_id,
     remember_narration_mode,
@@ -192,7 +191,6 @@ def _create_game(
     screen_mode: str,
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
-    agent_strategy_id: str | None = None,
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE,
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
@@ -209,7 +207,6 @@ def _create_game(
             manual_player_id=manual_player_id,
             scenario_id=scenario_id,
             setup_preset_id=setup_preset_id,
-            agent_strategy_id=agent_strategy_id,
             narration_mode=narration_mode,
             character_assignments=character_assignments or {},
             custom_roles=custom_roles or [],
@@ -247,7 +244,6 @@ def _create_game(
         seed=seed_from_text(seed_text),
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
-        agent_strategy_id=agent_strategy_id,
         narration_mode=narration_mode,
         character_assignments=character_assignments or {},
         custom_roles=custom_roles or [],
@@ -341,7 +337,6 @@ def _render_next_actions(
             screen_mode=selected_option.mode,
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
-            agent_strategy_id=selected_option.agent_strategy_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
@@ -365,7 +360,6 @@ def _render_next_actions(
             screen_mode=selected_option.mode,
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
-            agent_strategy_id=selected_option.agent_strategy_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
@@ -379,7 +373,6 @@ def _render_next_actions(
         remember_seed_text(st.session_state, same_seed_text)
         remember_scenario_id(st.session_state, selected_option.scenario_id)
         remember_setup_preset_id(st.session_state, selected_option.setup_preset_id)
-        remember_agent_strategy_id(st.session_state, selected_option.agent_strategy_id)
         remember_narration_mode(
             st.session_state,
             cast(NarrationMode, selected_option.narration_mode),

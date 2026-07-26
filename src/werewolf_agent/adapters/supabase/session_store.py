@@ -1,24 +1,28 @@
-"""OS-user-scoped Supabase session persistence."""
+"""OS credential-store backed Supabase session persistence."""
 
 from __future__ import annotations
 
+import hashlib
 import json
-import os
-import stat
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
-from werewolf_agent.adapters.supabase.constants import JSON_ENCODING
+import keyring
+from keyring.errors import KeyringError, PasswordDeleteError
+from platformdirs import user_config_path
 
-SESSION_FILE_NAME: Final = "session.json"
-APP_DIR_NAME: Final = "werewolf-agent"
+from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.errors import ErrorCode
+
+KEYRING_SERVICE_NAME: Final = "werewolf-agent"
+LEGACY_SESSION_FILE_NAME: Final = "session.json"
 
 
 @dataclass(frozen=True)
 class SupabaseSession:
-    """Authenticated Supabase session safe to keep in the OS user profile."""
+    """Provider-independent session value used by application adapters."""
 
     access_token: str
     refresh_token: str
@@ -34,80 +38,102 @@ class SupabaseSession:
 
 
 class SupabaseSessionStore:
-    """Persist CLI sessions outside the repository."""
+    """Persist CLI sessions only in the operating-system credential store."""
 
-    def __init__(self, path: Path | None = None) -> None:
-        """Create a store at an explicit or OS default path."""
-        self.path = path or default_session_path()
+    def __init__(
+        self,
+        supabase_url: str,
+        *,
+        backend: Any = keyring,
+        legacy_path: Path | None = None,
+    ) -> None:
+        """Bind one normalized Supabase project to an OS credential account."""
+        normalized_url = supabase_url.strip().rstrip("/").lower()
+        self._account = hashlib.sha256(normalized_url.encode("utf-8")).hexdigest()
+        self._backend = backend
+        self._legacy_path = legacy_path or (
+            user_config_path("werewolf-agent", appauthor=False) / LEGACY_SESSION_FILE_NAME
+        )
 
     def load(self) -> SupabaseSession | None:
-        """Return the saved session, or `None` when absent/invalid."""
-        if not self.path.exists():
+        """Return the saved session after verifying keyring availability."""
+        value = self._read_password()
+        self._remove_legacy_session()
+        if value is None:
             return None
         try:
-            payload = json.loads(self.path.read_text(encoding=JSON_ENCODING))
-        except (OSError, ValueError):
-            return None
-        return _session_from_payload(payload)
+            return _session_from_payload(json.loads(value))
+        except (KeyError, TypeError, ValueError) as exc:
+            raise _credential_error() from exc
 
     def save(self, session: SupabaseSession) -> None:
-        """Save a session in the OS user profile."""
-        directory = self.path.parent
-        directory.mkdir(parents=True, exist_ok=True)
-        _restrict_to_owner(directory, stat.S_IRWXU)
-        payload = {
-            "access_token": session.access_token,
-            "refresh_token": session.refresh_token,
-            "expires_at": session.expires_at.isoformat(),
-            "user_id": session.user_id,
-            "email": session.email,
-            "is_anonymous": session.is_anonymous,
-        }
-        temporary_path = self.path.with_suffix(f"{self.path.suffix}.tmp")
-        temporary_path.write_text(
-            json.dumps(payload, ensure_ascii=False, indent=2),
-            encoding=JSON_ENCODING,
-        )
-        _restrict_to_owner(temporary_path, stat.S_IRUSR | stat.S_IWUSR)
-        temporary_path.replace(self.path)
-        _restrict_to_owner(self.path, stat.S_IRUSR | stat.S_IWUSR)
+        """Save all session fields as one credential value."""
+        payload = asdict(session)
+        payload["expires_at"] = session.expires_at.isoformat()
+        try:
+            self._backend.set_password(
+                KEYRING_SERVICE_NAME,
+                self._account,
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            )
+        except (KeyringError, RuntimeError) as exc:
+            raise _credential_error() from exc
+        self._remove_legacy_session()
 
     def clear(self) -> None:
-        """Remove a saved session if it exists."""
+        """Remove the credential when present."""
         try:
-            self.path.unlink()
-        except FileNotFoundError:
-            return
+            self._backend.delete_password(KEYRING_SERVICE_NAME, self._account)
+        except PasswordDeleteError:
+            pass
+        except (KeyringError, RuntimeError) as exc:
+            raise _credential_error() from exc
+        self._remove_legacy_session()
+
+    def _read_password(self) -> str | None:
+        try:
+            return cast(
+                str | None,
+                self._backend.get_password(KEYRING_SERVICE_NAME, self._account),
+            )
+        except (KeyringError, RuntimeError) as exc:
+            raise _credential_error() from exc
+
+    def _remove_legacy_session(self) -> None:
+        try:
+            self._legacy_path.unlink(missing_ok=True)
+        except OSError as exc:
+            raise _credential_error() from exc
 
 
-def default_session_path() -> Path:
-    """Return the OS-native session file path."""
-    if os.name == "nt":
-        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
-        if base:
-            return Path(base) / APP_DIR_NAME / SESSION_FILE_NAME
-    xdg_config = os.environ.get("XDG_CONFIG_HOME")
-    if xdg_config:
-        return Path(xdg_config) / APP_DIR_NAME / SESSION_FILE_NAME
-    return Path.home() / ".config" / APP_DIR_NAME / SESSION_FILE_NAME
-
-
-def _session_from_payload(payload: Any) -> SupabaseSession | None:
+def _session_from_payload(payload: Any) -> SupabaseSession:
     if not isinstance(payload, dict):
-        return None
-    try:
-        return SupabaseSession(
-            access_token=str(payload["access_token"]),
-            refresh_token=str(payload["refresh_token"]),
-            expires_at=datetime.fromisoformat(str(payload["expires_at"])),
-            user_id=str(payload["user_id"]),
-            email=str(payload.get("email") or ""),
-            is_anonymous=bool(payload.get("is_anonymous", False)),
-        )
-    except (KeyError, ValueError, TypeError):
-        return None
+        raise ValueError("credential payload must be an object")
+    access_token = _required_credential_text(payload, "access_token")
+    refresh_token = _required_credential_text(payload, "refresh_token")
+    user_id = _required_credential_text(payload, "user_id")
+    expires_at = datetime.fromisoformat(str(payload["expires_at"]))
+    if expires_at.tzinfo is None or expires_at.utcoffset() is None:
+        raise ValueError("credential expiry must include a timezone")
+    return SupabaseSession(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=expires_at.astimezone(UTC),
+        user_id=user_id,
+        email=str(payload.get("email") or ""),
+        is_anonymous=bool(payload.get("is_anonymous", False)),
+    )
 
 
-def _restrict_to_owner(path: Path, mode: int) -> None:
-    if os.name != "nt":
-        path.chmod(mode)
+def _required_credential_text(payload: dict[str, Any], key: str) -> str:
+    value = str(payload[key]).strip()
+    if not value:
+        raise ValueError(f"credential {key} must not be blank")
+    return value
+
+
+def _credential_error() -> AppError:
+    return AppError(
+        "OSのcredential storeを利用できません。",
+        code=ErrorCode.API_UNAVAILABLE,
+    )

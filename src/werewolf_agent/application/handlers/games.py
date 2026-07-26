@@ -10,7 +10,6 @@ from werewolf_agent.application.definitions import (
     LocalRulesDefinition,
 )
 from werewolf_agent.application.handlers.common import (
-    _agent_strategy_id,
     _config_text,
     _game_definitions_for,
     _narration_mode,
@@ -104,15 +103,9 @@ def create_game(
     )
     rules = RuleRegistry.standard().build(definition)
     scenario_config = _scenario_config(command, game_definitions)
-    agent_strategy_id = _agent_strategy_id(
-        command.agent_strategy_id,
-        definitions=player_definitions,
-        default_strategy_id=dependencies.config.default_agent_strategy_id,
-    )
     run_config = {
         **scenario_config,
         "narration_mode": command.narration_mode,
-        "agent_strategy_id": agent_strategy_id,
         "llm_mode": command.llm_mode,
         "engine_version": "0.1.0",
         "definition_snapshot": game_definitions.model_dump(mode="json"),

@@ -106,11 +106,6 @@ def message_unknown_scenario(scenario_id: str) -> str:
     return f"Unknown scenario: {scenario_id}"
 
 
-def message_unknown_agent_strategy(strategy_id: str) -> str:
-    """Return an unknown agent strategy message."""
-    return f"Unknown agent strategy: {strategy_id}"
-
-
 MESSAGE_LOCAL_RULE_TIE_RULE_EXACTLY_ONE = (
     "exactly one tie rule must be enabled: "
     "enable_no_elimination_on_tie, enable_random_elimination_on_tie"

@@ -43,9 +43,10 @@ infrastructure エラーを混同せず、安定した error code で表す。
 ## Worker
 
 worker は queue 取得、operation dispatch、transaction lifecycle、完了時の観測だけを
-調整する。queue claim、参加者確認、完了・失敗記録、private view materialize の
-SQLは`SupabaseWorkerStore`が所有する。Supabase rowからapplication recordへの変換は
-専用mapping moduleが所有し、worker processとrepository本体へ混在させない。
+調整する。PGMQ操作、参加者確認、完了・失敗記録、private view materialize のSQLは
+`SupabaseWorkerStore`が所有する。自動進行は準備、DB外計算、version付きcommitへ分け、
+古い計算結果を保存しない。APIとworkerはprocess所有poolからconnectionを借用し、
+repositoryとstoreはtransactionを開始しない。
 
 ## 契約の管理
 

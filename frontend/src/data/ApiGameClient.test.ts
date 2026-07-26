@@ -17,7 +17,6 @@ describe("ApiGameClient", () => {
             roles: [],
             default_role_counts: {},
             default_rules: {},
-            default_agent_strategy_id: "stable_fast",
           },
           limits: {
             game_min_players: 5,

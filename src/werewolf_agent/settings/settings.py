@@ -12,7 +12,12 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import (
+    BaseSettings,
+    PydanticBaseSettingsSource,
+    SettingsConfigDict,
+    TomlConfigSettingsSource,
+)
 
 from werewolf_agent.settings.constants import (
     LLM_PROVIDER_LMSTUDIO,
@@ -30,6 +35,7 @@ from werewolf_agent.settings.defaults import (
     STREAMLIT_SIDEBAR_STATE_NAMES,
     SUPPORTED_AGENT_TYPE_NAMES,
 )
+from werewolf_agent.settings.loading import packaged_defaults_path
 from werewolf_agent.settings.messages import (
     MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME,
     MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED,
@@ -115,6 +121,24 @@ class AppSettings(
         populate_by_name=True,
     )
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Apply explicit values, environment, .env, then packaged TOML defaults."""
+        del file_secret_settings
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            TomlConfigSettingsSource(settings_cls, packaged_defaults_path()),
+        )
+
     @property
     def supabase_publishable_key_value(self) -> str:
         """Return the public Supabase browser/client key."""
@@ -191,11 +215,6 @@ class AppSettings(
     def llm_players_path(self) -> Path | None:
         """Return the configured external LLM player definition file, if any."""
         return _optional_repository_path(self.llm_players_file)
-
-    @property
-    def llm_decision_graphs_path(self) -> Path | None:
-        """Return the configured external LLM decision graph file, if any."""
-        return _optional_repository_path(self.llm_decision_graphs_file)
 
     @property
     def game_rules_path(self) -> Path | None:
@@ -376,17 +395,10 @@ class AppSettings(
         """Return the optional OpenAI-compatible provider base URL."""
         return "" if value is None else str(value).strip()
 
-    @field_validator("llm_default_agent_strategy_id", mode="before")
-    @classmethod
-    def normalize_llm_default_agent_strategy_id(cls, value: object) -> str:
-        """Return the default LLM agent strategy id."""
-        return normalize_non_blank(value, field_name="llm_default_agent_strategy_id")
-
     @field_validator(
         "llm_prompt_file",
         "llm_fake_responses_file",
         "llm_players_file",
-        "llm_decision_graphs_file",
         mode="before",
     )
     @classmethod
@@ -456,6 +468,25 @@ class AppSettings(
         """Ensure game count defaults are internally consistent."""
         self._normalize_provider_base_url()
         self._validate_supabase_settings()
+        if self.supabase_api_pool_min_size > self.supabase_api_pool_max_size:
+            raise ValueError(
+                message_field_must_be_le_field(
+                    "supabase_api_pool_min_size",
+                    "supabase_api_pool_max_size",
+                )
+            )
+        if self.supabase_worker_pool_min_size > self.supabase_worker_pool_max_size:
+            raise ValueError(
+                message_field_must_be_le_field(
+                    "supabase_worker_pool_min_size",
+                    "supabase_worker_pool_max_size",
+                )
+            )
+        if self.supabase_worker_heartbeat_seconds * 2 >= self.supabase_worker_claim_seconds:
+            raise ValueError(
+                "supabase_worker_heartbeat_seconds must be less than half of "
+                "supabase_worker_claim_seconds"
+            )
         if self.api_game_list_default_limit > self.api_game_list_max_limit:
             raise ValueError(
                 message_field_must_be_le_field(
@@ -513,4 +544,5 @@ class AppSettings(
 @lru_cache(maxsize=1)
 def get_settings() -> AppSettings:
     """Return cached application settings."""
-    return AppSettings()
+    # Required fields are provided by the configured TOML/environment sources.
+    return AppSettings()  # type: ignore[call-arg]

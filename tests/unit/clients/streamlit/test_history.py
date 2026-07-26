@@ -27,7 +27,6 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
         seed=1,
         scenario_id="classic_village",
         setup_preset_id="standard_6",
-        agent_strategy_id="stable_fast",
         narration_mode="standard",
         character_assignments={},
         custom_roles=[],
@@ -44,7 +43,6 @@ def test_session_game_selection_can_be_opened_as_playable_without_disk_save() ->
     assert options[0].option_id.startswith("session:")
     assert options[0].mode == "playable"
     assert options[0].manual_player_id == "player-1"
-    assert options[0].agent_strategy_id == "stable_fast"
 
 
 def test_database_history_without_session_token_is_observer_only() -> None:

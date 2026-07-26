@@ -99,7 +99,6 @@
 | 背景、表示名、説明 | `application/resources/presentation/catalog.toml` | `WEREWOLF_GAME_CATALOG_FILE` |
 | 既定プリセット | `settings/resources/defaults.toml` | `WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID` |
 | LLM players | `agents/resources/llm/players.toml` | `WEREWOLF_LLM_PLAYERS_FILE` |
-| decision graph | `agents/resources/llm/decision_graphs.toml` | `WEREWOLF_LLM_DECISION_GRAPHS_FILE` |
 | fake応答 | `agents/resources/llm/fake_responses.toml` | `WEREWOLF_LLM_FAKE_RESPONSES_FILE` |
 | prompt | `agents/resources/prompts/agent_decision.toml` | `WEREWOLF_LLM_PROMPT_FILE` |
 
@@ -177,10 +176,6 @@ pytest単体の既定levelは`quick`です。integration、monkey、benchmark、
 - 隔離Supabase、API、worker、RLS、nonroot Docker runtime、外部通信遮断: 成功
 
 最新値は`.werewolf-agent/quality/latest`の`report.json`と`summary.md`を正とします。
-
-pytestでは、LangGraph内部の`BaseCache`が既定serializerを生成する際に
-`LangChainPendingDeprecationWarning`が1件発生します。プロジェクト側の
-serializer生成箇所ではないため、警告を隠す設定は追加していません。
 
 ## 第一段階で削除した構造
 

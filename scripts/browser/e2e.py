@@ -170,7 +170,7 @@ def _compose_environment(
     extra = {
         "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME,
         "PLAYWRIGHT_VISUAL_REGRESSION": "1" if visual_regression else "0",
-        "WEREWOLF_RUNTIME_INSTANCE_ID": f"quality-{uuid4().hex}",
+        "WEREWOLF_API_INSTANCE_ID": f"quality-{uuid4().hex}",
         "VITE_SUPABASE_PUBLISHABLE_KEY": str(base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]),
         "VITE_SUPABASE_URL": container_api_url,
         "VITE_WEREWOLF_API_URL": "http://api:8000",

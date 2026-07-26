@@ -13,7 +13,6 @@ from werewolf_agent.application.models import GameSetupOptionsResult
 from werewolf_agent.application.setup_options import default_setup_options
 from werewolf_agent.contracts.schemas import (
     AbilityDefinitionView,
-    AgentStrategyDefinitionView,
     CharacterDefinitionView,
     GameSetupOptionsResponse,
     LocalRulesSettings,
@@ -60,7 +59,6 @@ def setup_options_response(
         default_scenario_id=options.default_scenario_id,
         default_setup_preset_id=options.default_setup_preset_id,
         default_narration_mode=options.default_narration_mode,
-        default_agent_strategy_id=options.default_agent_strategy_id,
         abilities=[
             AbilityDefinitionView(
                 id=ability_id,
@@ -107,13 +105,5 @@ def setup_options_response(
                 risk_tolerance=str(definition["risk_tolerance"]),
             )
             for character_id, definition in options.characters.items()
-        ],
-        agent_strategies=[
-            AgentStrategyDefinitionView(
-                id=str(strategy_id),
-                name=str(definition["name"]),
-                description=str(definition["description"]),
-            )
-            for strategy_id, definition in options.agent_strategies.items()
         ],
     )

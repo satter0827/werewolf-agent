@@ -2,7 +2,7 @@
 
 from werewolf_agent.observability.logging import configure_observability
 from werewolf_agent.settings import AppSettings, load_app_settings
-from werewolf_agent.settings.defaults import DEFAULT_LOG_FILE_NAME
+from werewolf_agent.settings.defaults import PACKAGED_DEFAULTS
 
 
 def configure_entrypoint_logging(
@@ -13,7 +13,9 @@ def configure_entrypoint_logging(
 ) -> AppSettings:
     """Configure logging for an entry point process and return its settings."""
     loaded_settings = settings or load_app_settings()
-    if default_log_file_name is not None and loaded_settings.log_file_name == DEFAULT_LOG_FILE_NAME:
+    if default_log_file_name is not None and loaded_settings.log_file_name == str(
+        PACKAGED_DEFAULTS["log_file_name"]
+    ):
         loaded_settings = loaded_settings.model_copy(
             update={"log_file_name": default_log_file_name}
         )

@@ -1,22 +1,15 @@
-"""Validated runtime configuration for automated players."""
+"""Validated configuration for external decision-model adapters."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Final
 
-from werewolf_agent.agents.constants import (
-    LLM_FALLBACK_POLICY_CHOICE_SET,
+from werewolf_agent.adapters.agents.constants import (
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
-    LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET,
-    MAX_LLM_TEMPERATURE,
-    MIN_LLM_MAX_TOKENS,
-    MIN_LLM_TEMPERATURE,
-    MIN_RETRY_COUNT,
-    MIN_STEP_LIMIT,
-    MIN_TIMEOUT_SECONDS_EXCLUSIVE,
 )
-from werewolf_agent.agents.messages import (
+from werewolf_agent.adapters.llm.messages import (
     message_field_must_be_at_least,
     message_field_must_be_between,
     message_field_must_be_greater_than,
@@ -26,10 +19,21 @@ from werewolf_agent.agents.messages import (
 )
 from werewolf_agent.agents.validation import non_blank
 
+MIN_TIMEOUT_SECONDS_EXCLUSIVE: Final = 0
+MIN_RETRY_COUNT: Final = 0
+MIN_STEP_LIMIT: Final = 1
+MIN_LLM_MAX_TOKENS: Final = 1
+MIN_LLM_TEMPERATURE: Final = 0
+MAX_LLM_TEMPERATURE: Final = 2
+DECISION_GRAPH_BASE_REQUIRED_STEPS: Final = 8
+DECISION_GRAPH_STEPS_PER_REPAIR: Final = 2
+LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET: Final = frozenset({"auto", "disabled", "required"})
+LLM_FALLBACK_POLICY_CHOICE_SET: Final = frozenset({"deterministic_legal_action"})
+
 
 @dataclass(frozen=True)
 class LlmProviderConfig:
-    """Connection and execution settings for a LangChain-backed player."""
+    """Connection and execution settings for one decision-model adapter."""
 
     provider: str
     model: str
@@ -39,7 +43,6 @@ class LlmProviderConfig:
     max_retries: int
     max_tokens: int
     temperature: float
-    default_agent_strategy_id: str
     structured_output_mode: str
     validation_retry_count: int
     graph_max_steps: int
@@ -51,10 +54,6 @@ class LlmProviderConfig:
         model = non_blank(self.model, "llm model")
         base_url = self.base_url.strip()
         api_key = self.api_key.strip()
-        default_agent_strategy_id = non_blank(
-            self.default_agent_strategy_id,
-            "llm default_agent_strategy_id",
-        )
         structured_output_mode = non_blank(
             self.structured_output_mode,
             "llm structured_output_mode",
@@ -78,6 +77,14 @@ class LlmProviderConfig:
             )
         if self.graph_max_steps < MIN_STEP_LIMIT:
             raise ValueError(message_field_must_be_at_least("llm graph_max_steps", MIN_STEP_LIMIT))
+        required_graph_steps = (
+            DECISION_GRAPH_BASE_REQUIRED_STEPS
+            + self.validation_retry_count * DECISION_GRAPH_STEPS_PER_REPAIR
+        )
+        if self.graph_max_steps < required_graph_steps:
+            raise ValueError(
+                message_field_must_be_at_least("llm graph_max_steps", required_graph_steps)
+            )
         if self.max_tokens < MIN_LLM_MAX_TOKENS:
             raise ValueError(message_field_must_be_at_least("llm max_tokens", MIN_LLM_MAX_TOKENS))
         if not MIN_LLM_TEMPERATURE <= self.temperature <= MAX_LLM_TEMPERATURE:
@@ -111,7 +118,6 @@ class LlmProviderConfig:
         object.__setattr__(self, "model", model)
         object.__setattr__(self, "base_url", base_url)
         object.__setattr__(self, "api_key", api_key)
-        object.__setattr__(self, "default_agent_strategy_id", default_agent_strategy_id)
         object.__setattr__(self, "structured_output_mode", structured_output_mode)
         object.__setattr__(self, "fallback_policy", fallback_policy)
 

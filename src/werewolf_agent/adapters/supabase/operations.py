@@ -51,8 +51,7 @@ class SupabaseOperationQueue:
               game_id, player_id, expected_version, llm_mode, request_hash
             )
             values (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            on conflict (owner_user_id, idempotency_key) do update set
-              idempotency_key = excluded.idempotency_key
+            on conflict (owner_user_id, idempotency_key) do nothing
             returning *
             """,
             (
@@ -67,16 +66,46 @@ class SupabaseOperationQueue:
                 request_hash,
             ),
         ).fetchone()
+        inserted = row is not None
         if row is None:
-            raise AppError(
-                "操作を受け付けられませんでした。",
-                code=ErrorCode.API_UNAVAILABLE,
-            )
+            row = self._connection.execute(
+                """
+                select * from public.game_operation_requests
+                where owner_user_id = %s and idempotency_key = %s
+                limit 1
+                """,
+                (owner_user_id, idempotency_key),
+            ).fetchone()
+        if row is None:
+            raise AppError("操作を受け付けられませんでした。", code=ErrorCode.API_UNAVAILABLE)
         if row.get("request_hash") != request_hash:
             raise AppError(
                 "このIdempotency-Keyは別の操作で使用済みです。",
                 code=ErrorCode.REQUEST_IDEMPOTENCY_CONFLICT,
             )
+        if inserted:
+            message_row = self._connection.execute(
+                "select pgmq.send('game_operations', %s) as msg_id",
+                (Jsonb({"operation_id": str(row["request_id"])}),),
+            ).fetchone()
+            if message_row is None:
+                raise AppError(
+                    "操作をqueueへ登録できませんでした。", code=ErrorCode.API_UNAVAILABLE
+                )
+            message_id = int(message_row["msg_id"])
+            row = self._connection.execute(
+                """
+                update public.game_operation_requests
+                set queue_message_id = %s
+                where request_id = %s
+                returning *
+                """,
+                (message_id, row["request_id"]),
+            ).fetchone()
+            if row is None:
+                raise AppError(
+                    "操作をqueueへ登録できませんでした。", code=ErrorCode.API_UNAVAILABLE
+                )
         return _operation_from_row(row)
 
     def _resolve_llm_mode(self, *, game_id: str | None, llm_mode: str | None) -> str:

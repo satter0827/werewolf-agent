@@ -79,7 +79,6 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
   default_scenario_id: "misty-village",
   default_setup_preset_id: "classic-six",
   default_narration_mode: "standard",
-  default_agent_strategy_id: "stable_fast",
   scenarios: [
     { id: "misty-village", name: "霧の村", summary: "朝霧に包まれた静かな村" },
     { id: "moon-plaza", name: "月明かりの広場", summary: "月光が議論を照らす村" },
@@ -104,7 +103,6 @@ export const sampleSetupOptions: GameSetupOptionsResponse = {
       risk_tolerance: "medium",
     },
   ],
-  agent_strategies: [{ id: "stable_fast", name: "標準", description: "標準的な進行" }],
 };
 
 export function sampleScreenSource(): GameScreenSource {

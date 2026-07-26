@@ -54,7 +54,6 @@ export type PlayerObservationResponse = Omit<Schema<"PlayerObservationResponse">
 };
 export type RoleDefinitionView = Schema<"RoleDefinitionView">;
 export type AbilityDefinitionView = Schema<"AbilityDefinitionView">;
-export type AgentStrategyDefinitionView = Schema<"AgentStrategyDefinitionView">;
 export type ScenarioDefinitionView = Schema<"ScenarioDefinitionView">;
 export type SetupPresetDefinitionView = Schema<"SetupPresetDefinitionView">;
 export type CharacterDefinitionView = Schema<"CharacterDefinitionView">;
@@ -74,10 +73,9 @@ export interface PlayerActionResponse {
 }
 export type GameSetupOptionsResponse = Omit<
   Schema<"GameSetupOptionsResponse">,
-  "abilities" | "agent_strategies" | "characters" | "scenarios" | "setup_presets"
+  "abilities" | "characters" | "scenarios" | "setup_presets"
 > & {
   abilities: AbilityDefinitionView[];
-  agent_strategies: AgentStrategyDefinitionView[];
   characters: CharacterDefinitionView[];
   scenarios: ScenarioDefinitionView[];
   setup_presets: SetupPresetDefinitionView[];

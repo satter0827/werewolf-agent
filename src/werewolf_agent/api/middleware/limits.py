@@ -7,14 +7,18 @@ import time
 from collections import defaultdict, deque
 from collections.abc import Awaitable, Callable
 from threading import Lock
-from typing import Any
 
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-RequestHandler = Callable[[Request], Awaitable[Response]]
+from werewolf_agent.contracts import ErrorCode, problem_details_from_spec
+
+ReceiveFactory = Callable[[], Awaitable[Message]]
+
+
+class _BodyTooLarge(Exception):
+    """Stop request processing when streamed body bytes exceed the limit."""
 
 
 class RateLimitBuckets:
@@ -87,12 +91,12 @@ class PrincipalRateLimiter:
         )
 
 
-class RequestLimitsMiddleware(BaseHTTPMiddleware):
+class RequestLimitsMiddleware:
     """Apply bounded body, timeout, and in-process burst protection."""
 
     def __init__(
         self,
-        app: Any,
+        app: ASGIApp,
         *,
         max_body_bytes: int,
         timeout_seconds: float,
@@ -101,7 +105,7 @@ class RequestLimitsMiddleware(BaseHTTPMiddleware):
         max_concurrent_requests: int,
     ) -> None:
         """Create middleware from validated runtime settings."""
-        super().__init__(app)
+        self.app = app
         self._max_body_bytes = max_body_bytes
         self._timeout_seconds = timeout_seconds
         self._buckets = RateLimitBuckets(
@@ -113,56 +117,72 @@ class RequestLimitsMiddleware(BaseHTTPMiddleware):
         self._active_requests = 0
         self._active_requests_lock = asyncio.Lock()
 
-    async def dispatch(self, request: Request, call_next: RequestHandler) -> Response:
-        """Reject oversized, excessive, or timed-out requests."""
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Reject oversized, excessive, or timed-out HTTP requests."""
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        request = Request(scope)
         content_length = request.headers.get("content-length")
         parsed_content_length = _content_length(content_length)
         if parsed_content_length is None:
-            return _problem(
-                400,
-                "request.invalid_content_length",
-                "送信内容の長さを確認できません。",
+            await _problem(
+                ErrorCode.REQUEST_INVALID_CONTENT_LENGTH,
                 request,
+                scope,
+                receive,
+                send,
             )
+            return
         if parsed_content_length > self._max_body_bytes:
-            return _problem(
-                413,
-                "request.body_too_large",
-                "送信内容が大きすぎます。",
+            await _problem(
+                ErrorCode.REQUEST_BODY_TOO_LARGE,
                 request,
+                scope,
+                receive,
+                send,
             )
-        if request.method in {"POST", "PUT", "PATCH"}:
-            body = await _bounded_body(request, self._max_body_bytes)
-            if body is None:
-                return _problem(
-                    413,
-                    "request.body_too_large",
-                    "送信内容が大きすぎます。",
-                    request,
-                )
+            return
         if not self._buckets.allow(_network_rate_keys(request)):
-            return _problem(
-                429,
-                "request.rate_limited",
-                "しばらく待ってからもう一度お試しください。",
+            await _problem(
+                ErrorCode.REQUEST_RATE_LIMITED,
                 request,
+                scope,
+                receive,
+                send,
             )
+            return
         if not await self._enter_request():
-            return _problem(
-                503,
-                "request.concurrency_limited",
-                "現在アクセスが集中しています。しばらく待ってからお試しください。",
+            await _problem(
+                ErrorCode.REQUEST_CONCURRENCY_LIMITED,
                 request,
+                scope,
+                receive,
+                send,
             )
+            return
         try:
             async with asyncio.timeout(self._timeout_seconds):
-                return await call_next(request)
-        except TimeoutError:
-            return _problem(
-                504,
-                "request.timed_out",
-                "処理が時間内に完了しませんでした。",
+                bounded_receive = await _buffer_bounded_receive(
+                    receive,
+                    self._max_body_bytes,
+                )
+                await self.app(scope, bounded_receive, send)
+        except _BodyTooLarge:
+            await _problem(
+                ErrorCode.REQUEST_BODY_TOO_LARGE,
                 request,
+                scope,
+                receive,
+                send,
+            )
+        except TimeoutError:
+            await _problem(
+                ErrorCode.REQUEST_TIMED_OUT,
+                request,
+                scope,
+                receive,
+                send,
             )
         finally:
             await self._leave_request()
@@ -189,17 +209,28 @@ def _content_length(value: str | None) -> int | None:
     return length if length >= 0 else None
 
 
-async def _bounded_body(request: Request, limit: int) -> bytes | None:
-    chunks: list[bytes] = []
+async def _buffer_bounded_receive(receive: Receive, limit: int) -> ReceiveFactory:
+    messages: deque[Message] = deque()
     size = 0
-    async for chunk in request.stream():
-        size += len(chunk)
+    while True:
+        message = await receive()
+        messages.append(message)
+        if message["type"] == "http.disconnect":
+            break
+        if message["type"] != "http.request":
+            continue
+        size += len(message.get("body", b""))
         if size > limit:
-            return None
-        chunks.append(chunk)
-    body = b"".join(chunks)
-    request._body = body  # Starlette replays the validated body to downstream handlers.
-    return body
+            raise _BodyTooLarge
+        if not message.get("more_body", False):
+            break
+
+    async def bounded() -> Message:
+        if messages:
+            return messages.popleft()
+        return {"type": "http.disconnect"}
+
+    return bounded
 
 
 def _network_rate_keys(request: Request) -> tuple[str, ...]:
@@ -219,19 +250,20 @@ def _game_scope(path: str) -> str:
     return parts[games_index + 1][:64]
 
 
-def _problem(status: int, code: str, detail: str, request: Request) -> JSONResponse:
-    return JSONResponse(
-        status_code=status,
+async def _problem(
+    code: ErrorCode,
+    request: Request,
+    scope: Scope,
+    receive: Receive,
+    send: Send,
+) -> None:
+    problem = problem_details_from_spec(code, instance=request.url.path)
+    response = JSONResponse(
+        status_code=problem.status,
         media_type="application/problem+json",
-        content={
-            "type": f"urn:werewolf-agent:error:{code}",
-            "title": detail,
-            "status": status,
-            "detail": detail,
-            "instance": request.url.path,
-            "code": code,
-        },
+        content=problem.model_dump(mode="json"),
     )
+    await response(scope, receive, send)
 
 
 __all__ = ["PrincipalRateLimiter", "RateLimitBuckets", "RequestLimitsMiddleware"]

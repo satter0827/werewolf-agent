@@ -5,8 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import os
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import Annotated
 from uuid import uuid4
@@ -25,9 +25,13 @@ from werewolf_agent.adapters.supabase.operations import (
     SupabaseAccessPolicy,
     SupabaseOperationQueue,
 )
+from werewolf_agent.adapters.supabase.pool import (
+    borrow_database_connection,
+    create_database_pool,
+    open_database_pool,
+)
 from werewolf_agent.adapters.supabase.repository import (
     SupabaseGameRepository,
-    connect_worker_database,
 )
 from werewolf_agent.api.dependencies import (
     RequestServices,
@@ -44,6 +48,7 @@ from werewolf_agent.api.middleware.security_headers import ApiSecurityHeadersMid
 from werewolf_agent.api.routes import admin, config, games, operations
 from werewolf_agent.application import GameApplication
 from werewolf_agent.application.models import ApplicationContext
+from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PublicRuntimeConfig,
     PublicRuntimeFeatures,
@@ -57,6 +62,28 @@ from werewolf_agent.settings import AppSettings, get_settings
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     """Build the HTTP server and its request-scoped concrete adapters."""
     runtime = settings or get_settings()
+    pool = (
+        create_database_pool(
+            runtime.supabase_db_dsn_value,
+            min_size=runtime.supabase_api_pool_min_size,
+            max_size=runtime.supabase_api_pool_max_size,
+            timeout=runtime.supabase_pool_timeout_seconds,
+            name="werewolf-api",
+        )
+        if runtime.supabase_worker_configured
+        else None
+    )
+
+    @asynccontextmanager
+    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+        if pool is not None:
+            open_database_pool(pool, timeout=runtime.supabase_pool_timeout_seconds)
+        try:
+            yield
+        finally:
+            if pool is not None:
+                pool.close()
+
     app = FastAPI(
         title="Werewolf Agent API",
         version=runtime.api_contract_version,
@@ -64,6 +91,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         redoc_url=None,
         openapi_url="/openapi.json" if runtime.api_docs_enabled else None,
         responses=PROBLEM_RESPONSES,
+        lifespan=lifespan,
     )
     app.state.authenticator = SupabaseJwtAuthenticator(runtime)
     app.state.principal_rate_limiter = PrincipalRateLimiter(
@@ -76,7 +104,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.state.api_logger = logging.getLogger("werewolf_agent.api")
     app.state.public_runtime_config = _public_runtime_config(runtime)
-    app.state.instance_id = os.environ.get("WEREWOLF_RUNTIME_INSTANCE_ID") or uuid4().hex
+    app.state.instance_id = runtime.api_instance_id.strip() or uuid4().hex
+    app.state.database_pool = pool
     app.state.started_at = datetime.now(UTC).isoformat()
     app.state.config_fingerprint = hashlib.sha256(
         json.dumps(
@@ -108,7 +137,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(operations.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
     install_openapi_error_contract(app)
-    app.dependency_overrides[get_services] = _service_dependency(runtime)
+    app.dependency_overrides[get_services] = _service_dependency(runtime, pool)
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
@@ -125,14 +154,18 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
 def _service_dependency(
     runtime: AppSettings,
+    pool: object | None,
 ) -> Callable[[Principal], Iterator[RequestServices]]:
     def dependency(
         principal: Annotated[Principal, Depends(get_principal)],
     ) -> Iterator[RequestServices]:
-        with (
-            connect_worker_database(runtime.supabase_db_dsn_value) as connection,
-            connection.transaction(),
-        ):
+        if pool is None:
+            raise AppError(
+                "データベースが設定されていません。",
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            )
+        with borrow_database_connection(pool) as connection, connection.transaction():
             context = ApplicationContext(
                 repository=SupabaseGameRepository(
                     connection,

@@ -23,7 +23,13 @@ from werewolf_agent.contracts.messages import (
     DETAIL_LLM_PROVIDER_UNAVAILABLE,
     DETAIL_METHOD_NOT_ALLOWED,
     DETAIL_OBSERVATION_WRITE_FAILED,
+    DETAIL_OPERATION_RETRY_EXHAUSTED,
+    DETAIL_OPERATION_UPGRADE_INTERRUPTED,
+    DETAIL_REQUEST_BODY_TOO_LARGE,
+    DETAIL_REQUEST_CONCURRENCY_LIMITED,
+    DETAIL_REQUEST_INVALID_CONTENT_LENGTH,
     DETAIL_REQUEST_RATE_LIMITED,
+    DETAIL_REQUEST_TIMED_OUT,
     DETAIL_REQUEST_VALIDATION_FAILED,
     DETAIL_RESOURCE_NOT_FOUND,
     TITLE_API_UNAVAILABLE,
@@ -38,7 +44,13 @@ from werewolf_agent.contracts.messages import (
     TITLE_LLM_PROVIDER_UNAVAILABLE,
     TITLE_METHOD_NOT_ALLOWED,
     TITLE_OBSERVATION_WRITE_FAILED,
+    TITLE_OPERATION_RETRY_EXHAUSTED,
+    TITLE_OPERATION_UPGRADE_INTERRUPTED,
+    TITLE_REQUEST_BODY_TOO_LARGE,
+    TITLE_REQUEST_CONCURRENCY_LIMITED,
+    TITLE_REQUEST_INVALID_CONTENT_LENGTH,
     TITLE_REQUEST_RATE_LIMITED,
+    TITLE_REQUEST_TIMED_OUT,
     TITLE_REQUEST_VALIDATION_FAILED,
     TITLE_RESOURCE_NOT_FOUND,
     TITLE_UNEXPECTED_INTERNAL_ERROR,
@@ -65,6 +77,10 @@ class ErrorCode(StrEnum):
     CONFIG_INVALID_VALUE = "config.invalid_value"
     REQUEST_VALIDATION_FAILED = "request.validation_failed"
     REQUEST_RATE_LIMITED = "request.rate_limited"
+    REQUEST_BODY_TOO_LARGE = "request.body_too_large"
+    REQUEST_CONCURRENCY_LIMITED = "request.concurrency_limited"
+    REQUEST_INVALID_CONTENT_LENGTH = "request.invalid_content_length"
+    REQUEST_TIMED_OUT = "request.timed_out"
     REQUEST_IDEMPOTENCY_CONFLICT = "request.idempotency_conflict"
     REQUEST_METHOD_NOT_ALLOWED = "request.method_not_allowed"
     AUTHENTICATION_REQUIRED = "auth.required"
@@ -77,6 +93,8 @@ class ErrorCode(StrEnum):
     AGENT_INVALID_RESPONSE = "agent.invalid_response"
     LLM_PROVIDER_UNAVAILABLE = "llm.provider_unavailable"
     OBSERVATION_WRITE_FAILED = "observation.write_failed"
+    OPERATION_RETRY_EXHAUSTED = "operation.retry_exhausted"
+    OPERATION_UPGRADE_INTERRUPTED = "operation.upgrade_interrupted"
     INTERNAL_UNEXPECTED = "internal.unexpected"
 
 
@@ -115,6 +133,30 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_REQUEST_RATE_LIMITED,
         status=HTTPStatus.TOO_MANY_REQUESTS,
         detail=DETAIL_REQUEST_RATE_LIMITED,
+        retryable=True,
+        log_level="WARNING",
+    ),
+    ErrorCode.REQUEST_BODY_TOO_LARGE: ErrorSpec(
+        title=TITLE_REQUEST_BODY_TOO_LARGE,
+        status=HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+        detail=DETAIL_REQUEST_BODY_TOO_LARGE,
+    ),
+    ErrorCode.REQUEST_CONCURRENCY_LIMITED: ErrorSpec(
+        title=TITLE_REQUEST_CONCURRENCY_LIMITED,
+        status=HTTPStatus.SERVICE_UNAVAILABLE,
+        detail=DETAIL_REQUEST_CONCURRENCY_LIMITED,
+        retryable=True,
+        log_level="WARNING",
+    ),
+    ErrorCode.REQUEST_INVALID_CONTENT_LENGTH: ErrorSpec(
+        title=TITLE_REQUEST_INVALID_CONTENT_LENGTH,
+        status=HTTPStatus.BAD_REQUEST,
+        detail=DETAIL_REQUEST_INVALID_CONTENT_LENGTH,
+    ),
+    ErrorCode.REQUEST_TIMED_OUT: ErrorSpec(
+        title=TITLE_REQUEST_TIMED_OUT,
+        status=HTTPStatus.GATEWAY_TIMEOUT,
+        detail=DETAIL_REQUEST_TIMED_OUT,
         retryable=True,
         log_level="WARNING",
     ),
@@ -183,6 +225,18 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.INTERNAL_SERVER_ERROR,
         detail=DETAIL_OBSERVATION_WRITE_FAILED,
         retryable=True,
+        log_level="WARNING",
+    ),
+    ErrorCode.OPERATION_RETRY_EXHAUSTED: ErrorSpec(
+        title=TITLE_OPERATION_RETRY_EXHAUSTED,
+        status=HTTPStatus.SERVICE_UNAVAILABLE,
+        detail=DETAIL_OPERATION_RETRY_EXHAUSTED,
+        log_level="ERROR",
+    ),
+    ErrorCode.OPERATION_UPGRADE_INTERRUPTED: ErrorSpec(
+        title=TITLE_OPERATION_UPGRADE_INTERRUPTED,
+        status=HTTPStatus.CONFLICT,
+        detail=DETAIL_OPERATION_UPGRADE_INTERRUPTED,
         log_level="WARNING",
     ),
     ErrorCode.INTERNAL_UNEXPECTED: ErrorSpec(

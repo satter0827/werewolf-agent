@@ -22,16 +22,17 @@ class _Connection:
         self.stored_hash = stored_hash
         self.parameters: tuple[Any, ...] = ()
         self.inserted_llm_mode = ""
+        self._row: dict[str, Any] | None = None
 
     def execute(self, query: str, parameters: tuple[Any, ...]) -> _Result:
         if "select llm_mode" in query:
             return _Result({"llm_mode": "fake"})
-        self.parameters = parameters
-        self.inserted_llm_mode = str(parameters[7])
-        request_hash = self.stored_hash or str(parameters[-1])
-        now = datetime.now(UTC)
-        return _Result(
-            {
+        if "insert into public.game_operation_requests" in query:
+            self.parameters = parameters
+            self.inserted_llm_mode = str(parameters[7])
+            request_hash = self.stored_hash or str(parameters[-1])
+            now = datetime.now(UTC)
+            self._row = {
                 "request_id": "operation-1",
                 "operation_type": parameters[0],
                 "owner_user_id": parameters[1],
@@ -42,7 +43,16 @@ class _Connection:
                 "created_at": now,
                 "updated_at": now,
             }
-        )
+            return _Result(self._row)
+        if "pgmq.send" in query:
+            return _Result({"msg_id": 42})
+        if "update public.game_operation_requests" in query:
+            assert self._row is not None
+            self._row["queue_message_id"] = parameters[0]
+            return _Result(self._row)
+        if "select * from public.game_operation_requests" in query:
+            return _Result(self._row)
+        raise AssertionError(f"unexpected SQL: {query}")
 
 
 def test_enqueue_persists_a_stable_request_hash() -> None:

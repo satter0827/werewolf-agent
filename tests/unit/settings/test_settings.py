@@ -11,12 +11,6 @@ from werewolf_agent.adapters.application_bridge import (
     build_llm_provider_config,
 )
 from werewolf_agent.settings import (
-    DEFAULT_GAME_DEFAULT_PLAYER_COUNT,
-    DEFAULT_GAME_MAX_PLAYERS,
-    DEFAULT_GAME_MIN_PLAYERS,
-    DEFAULT_STREAMLIT_CSS_FILE,
-    DEFAULT_STREAMLIT_RANDOM_SEED_MAX,
-    DEFAULT_STREAMLIT_SCREENS_FILE,
     PACKAGED_DEFAULTS,
     AppSettings,
     repository_root,
@@ -53,11 +47,9 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
     assert PACKAGED_DEFAULTS["model"] == "fake-list-llm"
     assert PACKAGED_DEFAULTS["llm_base_url"] == ""
-    assert PACKAGED_DEFAULTS["llm_default_agent_strategy_id"] == "stable_fast"
-    assert PACKAGED_DEFAULTS["llm_decision_graphs_file"] == ""
     assert PACKAGED_DEFAULTS["llm_structured_output_mode"] == "auto"
     assert PACKAGED_DEFAULTS["llm_validation_retry_count"] == 1
-    assert PACKAGED_DEFAULTS["llm_graph_max_steps"] == 8
+    assert PACKAGED_DEFAULTS["llm_graph_max_steps"] == 16
     assert PACKAGED_DEFAULTS["llm_fallback_policy"] == "deterministic_legal_action"
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
     assert PACKAGED_DEFAULTS["llm_players_file"] == ""
@@ -158,13 +150,13 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_i18n_file == ""
     assert settings.streamlit_i18n_path is None
-    assert settings.streamlit_css_file == DEFAULT_STREAMLIT_CSS_FILE
+    assert settings.streamlit_css_file == PACKAGED_DEFAULTS["streamlit_css_file"]
     assert settings.streamlit_css_path is None
-    assert settings.streamlit_screens_file == DEFAULT_STREAMLIT_SCREENS_FILE
+    assert settings.streamlit_screens_file == PACKAGED_DEFAULTS["streamlit_screens_file"]
     assert settings.streamlit_screens_path is None
     assert settings.streamlit_page_title == "Werewolf Agent"
     assert settings.streamlit_default_seed == 1
-    assert settings.streamlit_random_seed_max == DEFAULT_STREAMLIT_RANDOM_SEED_MAX
+    assert settings.streamlit_random_seed_max == PACKAGED_DEFAULTS["streamlit_random_seed_max"]
     assert settings.streamlit_default_manual_player_id == "player-1"
     assert settings.api_message_max_chars == 200
     assert settings.streamlit_service_name == "werewolf-agent-streamlit"
@@ -177,12 +169,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.llm_provider == "fake"
     assert settings.model == "fake-list-llm"
     assert settings.llm_base_url == ""
-    assert settings.llm_default_agent_strategy_id == "stable_fast"
-    assert settings.llm_decision_graphs_file == ""
-    assert settings.llm_decision_graphs_path is None
     assert settings.llm_structured_output_mode == "auto"
     assert settings.llm_validation_retry_count == 1
-    assert settings.llm_graph_max_steps == 8
+    assert settings.llm_graph_max_steps == 16
     assert settings.llm_fallback_policy == "deterministic_legal_action"
     assert settings.configured_openai_api_key == ""
     assert settings.llm_prompt_path is None
@@ -190,9 +179,9 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.llm_players_path is None
     assert settings.game_role_name_map["werewolf"] == "人狼"
     assert settings.game_phase_name_map["day_discussion"] == "昼チャット"
-    assert settings.game_min_players == DEFAULT_GAME_MIN_PLAYERS
-    assert settings.game_max_players == DEFAULT_GAME_MAX_PLAYERS
-    assert settings.game_default_player_count == DEFAULT_GAME_DEFAULT_PLAYER_COUNT
+    assert settings.game_min_players == PACKAGED_DEFAULTS["game_min_players"]
+    assert settings.game_max_players == PACKAGED_DEFAULTS["game_max_players"]
+    assert settings.game_default_player_count == PACKAGED_DEFAULTS["game_default_player_count"]
     assert settings.game_default_narration_mode == "standard"
     assert settings.game_rules_path is None
     assert settings.game_roles_path is None
@@ -231,10 +220,9 @@ def test_game_application_config_is_built_from_application_settings() -> None:
     assert llm_config.max_retries == 0
     assert llm_config.max_tokens == 96
     assert llm_config.temperature == 0.7
-    assert llm_config.default_agent_strategy_id == "stable_fast"
     assert llm_config.structured_output_mode == "auto"
     assert llm_config.validation_retry_count == 1
-    assert llm_config.graph_max_steps == 8
+    assert llm_config.graph_max_steps == 16
     assert llm_config.fallback_policy == "deterministic_legal_action"
 
     game_definitions = build_game_definitions(settings)
@@ -283,7 +271,6 @@ def test_lmstudio_llm_provider_config_is_built_from_settings() -> None:
     assert llm_config.max_retries == 3
     assert llm_config.max_tokens == 128
     assert llm_config.temperature == 0.2
-    assert llm_config.default_agent_strategy_id == "stable_fast"
     assert "lm-studio" not in repr(llm_config)
 
 
@@ -302,7 +289,6 @@ def test_openai_llm_provider_config_uses_secret_api_key() -> None:
     assert llm_config.base_url == ""
     assert llm_config.api_key == "sk-test"
     assert llm_config.max_tokens == 96
-    assert llm_config.default_agent_strategy_id == "stable_fast"
     assert "sk-test" not in repr(llm_config)
 
 
@@ -329,7 +315,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_LLM_MAX_RETRIES", "3")
     monkeypatch.setenv("WEREWOLF_LLM_MAX_TOKENS", "128")
     monkeypatch.setenv("WEREWOLF_LLM_TEMPERATURE", "0.2")
-    monkeypatch.setenv("WEREWOLF_LLM_DEFAULT_AGENT_STRATEGY_ID", "target_ranker")
     monkeypatch.setenv("WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE", "disabled")
     monkeypatch.setenv("WEREWOLF_LLM_VALIDATION_RETRY_COUNT", "2")
     monkeypatch.setenv("WEREWOLF_LLM_GRAPH_MAX_STEPS", "12")
@@ -345,10 +330,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv(
         "WEREWOLF_LLM_PLAYERS_FILE",
         "src/werewolf_agent/agents/resources/llm/players.toml",
-    )
-    monkeypatch.setenv(
-        "WEREWOLF_LLM_DECISION_GRAPHS_FILE",
-        "src/werewolf_agent/agents/resources/llm/decision_graphs.toml",
     )
     monkeypatch.setenv("WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID", "logic_6")
     monkeypatch.setenv(
@@ -409,7 +390,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.llm_max_retries == 3
     assert settings.llm_max_tokens == 128
     assert settings.llm_temperature == 0.2
-    assert settings.llm_default_agent_strategy_id == "target_ranker"
     assert settings.llm_structured_output_mode == "disabled"
     assert settings.llm_validation_retry_count == 2
     assert settings.llm_graph_max_steps == 12
@@ -425,10 +405,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert (
         settings.llm_players_path
         == repository_root() / "src/werewolf_agent/agents/resources/llm/players.toml"
-    )
-    assert (
-        settings.llm_decision_graphs_path
-        == repository_root() / "src/werewolf_agent/agents/resources/llm/decision_graphs.toml"
     )
     assert settings.game_default_setup_preset_id == "logic_6"
     assert (

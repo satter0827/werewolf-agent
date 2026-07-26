@@ -7,8 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-import psycopg
-from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
 from werewolf_agent.adapters.supabase.mapping import (
@@ -40,7 +38,7 @@ class SupabaseGameRepository(GameRepository):
 
     def __init__(
         self,
-        connection: psycopg.Connection[Any],
+        connection: Any,
         *,
         owner_user_id: str | None = None,
     ) -> None:
@@ -533,20 +531,6 @@ class SupabaseGameRepository(GameRepository):
                 game_id,
             ),
         )
-
-
-class SupabaseDatabaseUnavailableError(RuntimeError):
-    """Indicate that a worker database connection cannot be established."""
-
-
-def connect_worker_database(dsn: str) -> psycopg.Connection[Any]:
-    """Open a worker DB connection with dict rows."""
-    try:
-        return psycopg.connect(dsn, row_factory=dict_row)
-    except psycopg.OperationalError:
-        # Do not propagate a driver exception which may include connection
-        # details across the adapter boundary.
-        raise SupabaseDatabaseUnavailableError from None
 
 
 def _state_text(state: Mapping[str, Any], key: str) -> str | None:

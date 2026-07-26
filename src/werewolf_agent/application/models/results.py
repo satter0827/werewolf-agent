@@ -36,12 +36,10 @@ class GameSetupOptionsResult(ApplicationModel):
     default_scenario_id: str | None = None
     default_setup_preset_id: str | None = None
     default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
-    default_agent_strategy_id: str
     abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
     scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
     setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
     characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    agent_strategies: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

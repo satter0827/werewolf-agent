@@ -20,6 +20,7 @@ from werewolf_agent.adapters.llm.langchain.constants import (
     DECISION_GRAPH_NODE_REPAIR_ONCE,
     DECISION_GRAPH_NODE_ROLE_HINT,
     DECISION_GRAPH_NODE_VALIDATE_ACTION,
+    DECISION_GRAPH_REVISION,
     ERROR_TYPE_GRAPH_INVOCATION,
     ERROR_TYPE_STRUCTURED_OUTPUT_UNSUPPORTED,
     FALLBACK_REASON_MODEL_ERROR,
@@ -70,11 +71,7 @@ from werewolf_agent.adapters.llm.messages import (
     MESSAGE_LLM_MODEL_NOT_CONFIGURED,
     message_invalid_llm_decision,
 )
-from werewolf_agent.agents.definitions import (
-    AgentStrategyDefinition,
-    FakeDecisionCatalog,
-    PromptDefinition,
-)
+from werewolf_agent.agents.definitions import FakeDecisionCatalog, PromptDefinition
 from werewolf_agent.agents.models import (
     AgentActionType,
     AgentDecision,
@@ -111,7 +108,6 @@ class LangChainDecisionProvider:
     """Decision provider that renders a prompt and parses LangChain model output."""
 
     prompt: PromptDefinition
-    agent_strategy: AgentStrategyDefinition
     model: Any | None = None
     fake_responses: FakeDecisionCatalog | None = None
     provider_name: str = ""
@@ -121,7 +117,7 @@ class LangChainDecisionProvider:
     max_tokens: int | None = None
     structured_output_mode: str = "auto"
     validation_retry_count: int = 1
-    graph_max_steps: int = 8
+    graph_max_steps: int = 16
     fallback_policy: str = LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION
     trace_sink: LlmTraceSink | None = field(default=None, repr=False, compare=False)
     parser: PydanticOutputParser[AgentDecision] = field(
@@ -141,7 +137,7 @@ class LangChainDecisionProvider:
             ]
             fake_model = FakeListLLM(responses=responses)
         object.__setattr__(self, "_fake_model", fake_model)
-        object.__setattr__(self, "_graph", _compile_decision_graph(self, self.agent_strategy))
+        object.__setattr__(self, "_graph", _compile_decision_graph(self))
 
     def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
         """Return one validated decision from visible player context."""
@@ -156,8 +152,7 @@ class LangChainDecisionProvider:
                     {
                         "player_id": player_id,
                         "observation": observation,
-                        "agent_strategy_id": self.agent_strategy.id,
-                        "decision_graph_id": self.agent_strategy.decision_graph_id,
+                        "graph_revision": DECISION_GRAPH_REVISION,
                         "started_at": time.perf_counter(),
                         "validation_status": "",
                         "route": "",
@@ -184,8 +179,7 @@ class LangChainDecisionProvider:
                     action_type,
                     None,
                     state={
-                        "agent_strategy_id": self.agent_strategy.id,
-                        "decision_graph_id": self.agent_strategy.decision_graph_id,
+                        "graph_revision": DECISION_GRAPH_REVISION,
                         "graph_node": DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
                         "validation_status": VALIDATION_STATUS_FALLBACK,
                         "route": ROUTE_FALLBACK,
@@ -260,7 +254,7 @@ class LangChainDecisionProvider:
         observation = state["observation"]
         role = observation.role or ""
         return {
-            "role_hint": self.agent_strategy.role_hints.get(role, ""),
+            "role_hint": self.prompt.role_hints.get(role, ""),
             "graph_node": DECISION_GRAPH_NODE_ROLE_HINT,
         }
 
@@ -379,7 +373,7 @@ class LangChainDecisionProvider:
             if _is_invalid_validated_decision(decision, validated):
                 raise ValueError(validated.reason or "invalid_decision")
         except Exception as exc:
-            failed = bool(state.get("repair_attempted")) or self.validation_retry_count <= 0
+            failed = int(state.get("repair_attempts", 0)) >= self.validation_retry_count
             return {
                 "validation_status": VALIDATION_STATUS_FAILED
                 if failed
@@ -397,18 +391,19 @@ class LangChainDecisionProvider:
         }
 
     def _node_repair_once(self, state: _DecisionGraphState) -> _DecisionGraphState:
+        repair_attempts = int(state.get("repair_attempts", 0)) + 1
         repaired = _repair_payload(state)
         if repaired is None:
             return {
                 "validation_status": VALIDATION_STATUS_FAILED,
                 "fallback_reason": FALLBACK_REASON_REPAIR_FAILED,
                 "route": ROUTE_FAILED,
-                "repair_attempted": True,
+                "repair_attempts": repair_attempts,
                 "graph_node": DECISION_GRAPH_NODE_REPAIR_ONCE,
             }
         return {
             "raw_output": repaired,
-            "repair_attempted": True,
+            "repair_attempts": repair_attempts,
             "validation_status": "",
             "route": "",
             "graph_node": DECISION_GRAPH_NODE_REPAIR_ONCE,

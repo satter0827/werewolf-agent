@@ -27,9 +27,11 @@ API request、worker operation、LLM provider call を correlation ID で追跡�
 error code、latency、queue 滞留、再試行、provider 使用量を外部監視基盤へ渡す。
 ログ本文に private state と credential を含めない。
 
-worker の lease 中断は `running` operation の再取得で回復し、`attempt_count` に残す。
-worker が捕捉した失敗は safe Problem Details とともに `failed` へ確定し、自動
-requeue しない。再実行が必要な場合は、原因を解消して新しい operation として要求する。
+workerは`read_with_poll`で最大5件を取得する。中断はPGMQ visibility timeout後の再配送で
+回復し、`read_ct`をledgerの`attempt_count`へ同期する。heartbeat、完了、再試行は
+`queue_message_id`、`worker_id`、`attempt_count`の一致で所有権を確認する。retryable errorは
+messageをarchiveせず再配送し、検証失敗、重複message、最大試行回数超過は業務処理を
+繰り返さずsafe Problem Detailsとともに`failed`またはarchiveへ確定する。
 
 ## 問題調査
 

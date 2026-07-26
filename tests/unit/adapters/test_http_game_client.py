@@ -147,7 +147,6 @@ def _setup_payload() -> dict[str, object]:
         },
         default_scenario_id="misty-village",
         default_setup_preset_id="classic-six",
-        default_agent_strategy_id="stable_fast",
         scenarios=[
             {
                 "id": "misty-village",
@@ -163,5 +162,4 @@ def _setup_payload() -> dict[str, object]:
                 "role_counts": {"villager": 6},
             }
         ],
-        agent_strategies=[{"id": "stable_fast", "name": "標準", "description": "標準的な進行"}],
     ).model_dump(mode="json")

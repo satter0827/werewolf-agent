@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
 from concurrent.futures import ThreadPoolExecutor
+from typing import Any
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -99,3 +101,47 @@ def test_concurrent_requests_cannot_exceed_the_configured_limit() -> None:
         allowed = list(executor.map(lambda _: buckets.allow(("principal:user-1",)), range(200)))
 
     assert sum(allowed) == request_limit
+
+
+def test_request_body_read_is_covered_by_timeout() -> None:
+    app_called = False
+    sent: list[dict[str, Any]] = []
+
+    async def app(_scope: object, _receive: object, _send: object) -> None:
+        nonlocal app_called
+        app_called = True
+
+    middleware = RequestLimitsMiddleware(
+        app,
+        max_body_bytes=1024,
+        timeout_seconds=0.01,
+        rate_limit_requests=10,
+        rate_limit_window_seconds=60,
+        max_concurrent_requests=1,
+    )
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/v1/games",
+        "raw_path": b"/api/v1/games",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [],
+        "client": ("198.51.100.1", 1234),
+        "server": ("testserver", 80),
+    }
+
+    async def slow_receive() -> dict[str, Any]:
+        await asyncio.sleep(1)
+        return {"type": "http.request", "body": b"{}", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    asyncio.run(middleware(scope, slow_receive, send))  # type: ignore[arg-type]
+
+    assert app_called is False
+    assert sent[0]["status"] == 504

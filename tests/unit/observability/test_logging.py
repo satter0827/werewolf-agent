@@ -13,7 +13,7 @@ from werewolf_agent.observability import (
 )
 from werewolf_agent.security.redaction import redact_mapping, redact_text
 from werewolf_agent.settings import AppSettings
-from werewolf_agent.settings.defaults import DEFAULT_LOG_FILE_NAME
+from werewolf_agent.settings.defaults import PACKAGED_DEFAULTS
 
 
 def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
@@ -46,7 +46,7 @@ def test_entrypoint_logging_uses_process_default_and_preserves_override(
     defaults = AppSettings(
         _env_file=None,
         log_dir=tmp_path,
-        log_file_name=DEFAULT_LOG_FILE_NAME,
+        log_file_name=str(PACKAGED_DEFAULTS["log_file_name"]),
         log_output="none",
     )
     resolved = configure_entrypoint_logging(
