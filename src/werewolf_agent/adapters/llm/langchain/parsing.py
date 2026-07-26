@@ -82,8 +82,22 @@ def _reason_from_raw_output(raw_output: object) -> str:
 def _loose_mapping(raw_output: object) -> Mapping[str, object] | None:
     if hasattr(raw_output, "model_dump"):
         dumped = raw_output.model_dump(mode="json")
-        return dumped if isinstance(dumped, Mapping) else None
+        if not isinstance(dumped, Mapping):
+            return None
+        if dumped.get("type") in {action.value for action in AgentActionType}:
+            return dumped
+        content = dumped.get("content")
+        if isinstance(content, str):
+            try:
+                parsed = parse_json_markdown(content)
+            except Exception:
+                return dumped
+            return parsed if isinstance(parsed, Mapping) else dumped
+        return dumped
     if isinstance(raw_output, Mapping):
+        parsed = raw_output.get("parsed")
+        if parsed is not None:
+            return _loose_mapping(parsed)
         return raw_output
     text = _output_text(raw_output)
     try:
@@ -120,8 +134,24 @@ def _parse_decision_output(
 ) -> AgentDecision:
     if hasattr(raw_output, "model_dump"):
         dumped = raw_output.model_dump(mode="json")
-        parsed = dumped if isinstance(dumped, dict) else {}
+        if isinstance(dumped, dict) and dumped.get("type") in {
+            action.value for action in AgentActionType
+        }:
+            parsed = dumped
+        else:
+            text = _output_text(raw_output)
+            parsed = parse_json_markdown(text)
     elif isinstance(raw_output, Mapping):
+        structured = raw_output.get("parsed")
+        if structured is not None:
+            return _parse_decision_output(
+                structured,
+                player_id=player_id,
+                action_type=action_type,
+                fallback_target_id=fallback_target_id,
+                legal_target_ids=legal_target_ids,
+                parser=parser,
+            )
         parsed = {str(key): value for key, value in raw_output.items()}
     else:
         text = _output_text(raw_output)

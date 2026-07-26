@@ -40,13 +40,22 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
     """Python・Frontendの実行能力を外部接続なしで検査する。"""
     started = time.monotonic()
     profile = context.profile if context.profile in PROFILES else "check"
-    if not is_ready(profile):
+    try:
+        ready = is_ready(profile)
+    except (OSError, RuntimeError) as error:
+        return CommandResult(
+            ["environment-check"],
+            1,
+            time.monotonic() - started,
+            f"環境fingerprintを検査できません: {error}\n",
+        )
+    if not ready:
         return CommandResult(
             ["environment-check"],
             1,
             time.monotonic() - started,
             f"{profile}環境が現在のlock・source fingerprintに対応していません。"
-            "scripts.environment setupを実行してください。\n",
+            f"python -m scripts.environment ensure {profile}を実行してください。\n",
         )
     npm = npm_executable()
     node = node_executable()
@@ -76,12 +85,20 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
         )
     for index, command in enumerate(commands):
         cwd = REPOSITORY_ROOT / "frontend" if index >= 1 else REPOSITORY_ROOT
-        result = run_command(
-            command,
-            cwd=cwd,
-            timeout_seconds=min(context.timeout_seconds, 60),
-            environment=context.environment,
-        )
+        try:
+            result = run_command(
+                command,
+                cwd=cwd,
+                timeout_seconds=min(context.timeout_seconds, 60),
+                environment=context.environment,
+            )
+        except OSError as error:
+            return CommandResult(
+                list(command),
+                1,
+                time.monotonic() - started,
+                "".join(output) + f"実行環境を起動できません: {error}\n",
+            )
         output.append(result.output)
         if result.returncode != 0:
             return CommandResult(

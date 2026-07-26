@@ -161,13 +161,21 @@ class RequestLimitsMiddleware:
                 send,
             )
             return
+        response_started = False
+
+        async def tracked_send(message: Message) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
         try:
             async with asyncio.timeout(self._timeout_seconds):
                 bounded_receive = await _buffer_bounded_receive(
                     receive,
                     self._max_body_bytes,
                 )
-                await self.app(scope, bounded_receive, send)
+                await self.app(scope, bounded_receive, tracked_send)
         except _BodyTooLarge:
             await _problem(
                 ErrorCode.REQUEST_BODY_TOO_LARGE,
@@ -177,13 +185,14 @@ class RequestLimitsMiddleware:
                 send,
             )
         except TimeoutError:
-            await _problem(
-                ErrorCode.REQUEST_TIMED_OUT,
-                request,
-                scope,
-                receive,
-                send,
-            )
+            if not response_started:
+                await _problem(
+                    ErrorCode.REQUEST_TIMED_OUT,
+                    request,
+                    scope,
+                    receive,
+                    send,
+                )
         finally:
             await self._leave_request()
 

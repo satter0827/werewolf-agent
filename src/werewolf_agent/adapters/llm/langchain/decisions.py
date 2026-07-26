@@ -36,6 +36,8 @@ def _selected_action(observation: AgentObservation) -> AgentActionType:
             AgentActionType.WEREWOLF_ATTACK,
             AgentActionType.SEER_INSPECT,
             AgentActionType.KNIGHT_GUARD,
+            AgentActionType.APOTHECARY_HEAL,
+            AgentActionType.APOTHECARY_POISON,
         ):
             if action_type in observation.available_actions:
                 return action_type
@@ -149,6 +151,16 @@ def _target_decision(
         return AgentDecision.inspect(player_id, target_id, reason=reason)
     if action_type is AgentActionType.KNIGHT_GUARD:
         return AgentDecision.guard(player_id, target_id, reason=reason)
+    if action_type in {
+        AgentActionType.APOTHECARY_HEAL,
+        AgentActionType.APOTHECARY_POISON,
+    }:
+        return AgentDecision(
+            type=action_type,
+            player_id=player_id,
+            target_id=target_id,
+            reason=reason,
+        )
     return AgentDecision.pass_(player_id=player_id, reason=reason)
 
 

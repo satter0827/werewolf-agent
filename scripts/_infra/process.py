@@ -56,17 +56,24 @@ _PRIVATE_KEYS = (
     "target",
     "target_id",
 )
+_TOKEN_METRIC_KEYS = frozenset(
+    {"completion_tokens", "input_tokens", "output_tokens", "prompt_tokens", "total_tokens"}
+)
 _SENSITIVE_KEY = rf"[A-Za-z0-9_]*(?:{'|'.join((*_SECRET_KEYS, *_PRIVATE_KEYS))})[A-Za-z0-9_]*"
 _JSON_SECRET_PATTERN = re.compile(
     rf'(?i)("(?P<key>{_SENSITIVE_KEY})"\s*:\s*)'
     r'("(?:\\.|[^"\\])*"|null|true|false|-?\d+(?:\.\d+)?)'
 )
 _SECRET_PATTERN = re.compile(
-    rf"(?i)(\b{_SENSITIVE_KEY}\b\s*[:=]\s*)"
-    r"(SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}]+)"
+    rf"(?i)(\b(?P<key>{_SENSITIVE_KEY})\b\s*[:=]\s*)"
+    r"(SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}&]+)"
 )
 _URL_CREDENTIAL_PATTERN = re.compile(
     r"(?i)([a-z][a-z0-9+.-]{0,31}+://[^\s:/@]{1,256}+:)([^\s@/]{1,256}+)(@)"
+)
+_BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s\"']+")
+_QUERY_SECRET_PATTERN = re.compile(
+    r"(?i)([?&](?:access_token|api_key|apikey|password|refresh_token|token)=)[^&#\s\"']+"
 )
 _TEXT_ARTIFACT_SUFFIXES = frozenset({".html", ".json", ".jsonl", ".log", ".md", ".txt", ".xml"})
 _REMOVE_ATTEMPTS = 5
@@ -78,6 +85,9 @@ ISOLATION_ENVIRONMENT = {
     "OTEL_SDK_DISABLED": "true",
     "SUPABASE_TELEMETRY_DISABLED": "true",
     "WEREWOLF_LLM_PROVIDER": "fake",
+    "WEREWOLF_WORKER_PAID_LLM_BASE_URL": "",
+    "WEREWOLF_WORKER_PAID_LLM_MODEL": "fake-list-llm",
+    "WEREWOLF_WORKER_PAID_LLM_PROVIDER": "fake",
 }
 
 
@@ -118,9 +128,23 @@ def create_run_directory(profile: str) -> tuple[str, Path]:
 
 def redact(value: str) -> str:
     """ログに含まれる代表的な秘密情報を伏せる。"""
-    redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]\3", value)
-    redacted = _JSON_SECRET_PATTERN.sub(r'\1"[REDACTED]"', redacted)
-    return _SECRET_PATTERN.sub(r"\1[REDACTED]", redacted)
+    redacted = _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
+    redacted = _QUERY_SECRET_PATTERN.sub(r"\1[REDACTED]", redacted)
+    redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]\3", redacted)
+    redacted = _JSON_SECRET_PATTERN.sub(_redact_json_secret, redacted)
+    return _SECRET_PATTERN.sub(_redact_text_secret, redacted)
+
+
+def _redact_json_secret(match: re.Match[str]) -> str:
+    if match.group("key").casefold() in _TOKEN_METRIC_KEYS:
+        return match.group(0)
+    return f'{match.group(1)}"[REDACTED]"'
+
+
+def _redact_text_secret(match: re.Match[str]) -> str:
+    if match.group("key").casefold() in _TOKEN_METRIC_KEYS:
+        return match.group(0)
+    return f"{match.group(1)}[REDACTED]"
 
 
 def redact_artifacts(root: Path) -> None:
@@ -158,6 +182,12 @@ def quality_environment(
         "OPENAI_BASE_URL",
         "WEREWOLF_LLM_BASE_URL",
         "WEREWOLF_LLM_MODEL",
+        "WEREWOLF_LOCAL_LLM_BASE_URL",
+        "WEREWOLF_LOCAL_LLM_MODEL",
+        "WEREWOLF_OPENAI_MODEL",
+        "WEREWOLF_WORKER_PAID_LLM_PROVIDER",
+        "WEREWOLF_WORKER_PAID_LLM_MODEL",
+        "WEREWOLF_WORKER_PAID_LLM_BASE_URL",
     ):
         environment.pop(name, None)
     environment.update(

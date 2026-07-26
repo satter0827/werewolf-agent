@@ -11,6 +11,20 @@ from scripts.environment import manager
 from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 
+def test_version_returns_unavailable_when_executable_is_blocked(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OS policyで起動できないtoolを未準備として扱う."""
+    monkeypatch.setattr(manager.shutil, "which", lambda _name: "blocked.exe")
+    monkeypatch.setattr(
+        manager.subprocess,
+        "run",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("blocked")),
+    )
+
+    assert manager._version(("uv", "--version")) == "unavailable"
+
+
 def test_ensure_skips_prepared_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Fingerprintが一致する環境を再同期しない。"""
     monkeypatch.setattr(manager, "dependency_fingerprint", lambda _profile: "same")

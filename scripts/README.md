@@ -18,6 +18,11 @@ python -m scripts.quality gate ruff mypy
 python -m scripts.quality list
 python -m scripts.quality clean
 python -m scripts.supabase preflight
+python -m scripts.agents preflight
+python -m scripts.agents run --provider fake --suite standard
+python -m scripts.agents run --provider local --suite smoke
+python -m scripts.agents run --provider local --suite standard
+python -m scripts.agents local-ui
 ```
 
 - `quick`: architecture、format、lint、型、unit、軽量Hypothesis
@@ -25,6 +30,14 @@ python -m scripts.supabase preflight
 - `release`: Check、local Supabase、integration、React／Streamlit E2E、Docker smoke
 - `deep`: 長時間stateful、fault injection、benchmark観測
 - `clean`: 再生成可能なbuild、品質用一時cache、coverage、期限切れrun
+
+`scripts.agents`は品質判定から独立したAgent reviewです。通常は画面を使わず、同じAgent
+graphをFakeまたはLocal LLMで固定scenarioへ通します。`local-ui`だけが明示的にStreamlitを
+起動し、認証済みAPI driverでLocal LLM gameを進行します。Reactは現在の対象外です。結果は
+`passed`、`degraded`、`failed`、`blocked`、`error`で、
+修復またはfallbackを伴う完走は`degraded`です。standardは開始時とpreset完了時に
+checkpointを更新し、完了または中断時に最終状態を確定します。
+`run --suite standard --preset <id>`は指定presetだけを固定順で実行し、複数指定できます。
 
 `--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
 CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
@@ -69,7 +82,7 @@ profileごとのJUnit、coverage、benchmark、docs、frontend、package、brows
 
 品質実行は依存install、browser download、Docker pull、外部API呼び出しを行いません。
 子processからprovider用の秘密情報と外部base URLを除外し、`WEREWOLF_LLM_PROVIDER`
-を`fake`へ固定してtelemetryを無効化します。package registryとimage registryは
+を`fake`へ固定し、Local／OpenAI／worker provider設定も除去してtelemetryを無効化します。package registryとimage registryは
 環境準備で使用できます。Playwrightは外部requestの試行も
 失敗にし、Chromiumの背景通信と更新確認を無効化します。E2Eは既存のReact／Streamlit
 Playwright suiteをcontainer内で共有し、子processの出力と画像をrun固有領域へ保存して

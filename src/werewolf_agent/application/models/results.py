@@ -83,7 +83,9 @@ class GameRevealPlayer(ApplicationModel):
     id: str
     name: str
     role: RoleId
-    faction: Faction
+    identity_faction: Faction
+    victory_team: Faction
+    objective: str
     alive: bool
     status: str
     eliminated_day: int | None = None

@@ -10,17 +10,14 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from urllib.parse import urlsplit
-
-import httpx
 
 from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
 from scripts._infra.process import (
     QUALITY_COMPOSE_PROJECT_NAME,
     quality_environment,
-    redact,
     utc_now,
 )
+from scripts.agents.review import preflight
 from scripts.review.gameplay import gameplay_summary, generate_gameplay_evidence
 
 
@@ -88,50 +85,19 @@ def _review(kind: str) -> int:
 
 
 def _review_local_llm(root: Path) -> int:
-    """loopbackのOpenAI互換endpointから判定せず会話証拠を保存する。"""
-    base_url = os.environ.get("WEREWOLF_LOCAL_LLM_BASE_URL", "")
-    model = os.environ.get("WEREWOLF_LOCAL_LLM_MODEL", "")
-    if urlsplit(base_url).hostname not in {"127.0.0.1", "::1", "localhost"} or not model:
-        message = (
-            "Local LLM reviewにはloopbackのWEREWOLF_LOCAL_LLM_BASE_URLと"
-            "WEREWOLF_LOCAL_LLM_MODELが必要です。"
-        )
-        (root / "transcript.txt").write_text(message + "\n", encoding="utf-8")
-        print(message)
-        print(f"レビュー証拠: {root}")
-        return 2
-    request = {
-        "model": model,
-        "temperature": 0,
-        "messages": [
-            {
-                "role": "user",
-                "content": (
-                    "人狼ゲームの合法手をJSONだけで返してください。"
-                    '候補はspeech。形式は{"type":"speech","message":"..."}です。'
-                ),
-            }
-        ],
-    }
-    try:
-        with httpx.Client(base_url=base_url.rstrip("/"), timeout=60, trust_env=False) as client:
-            response = client.post("/chat/completions", json=request)
-        evidence = {
-            "request": request,
-            "status_code": response.status_code,
-            "response": response.json() if response.content else None,
-        }
-        transcript = redact(json.dumps(evidence, ensure_ascii=False, indent=2)) + "\n"
-        (root / "conversation.json").write_text(transcript, encoding="utf-8")
-        (root / "transcript.txt").write_text(transcript, encoding="utf-8")
-    except (httpx.HTTPError, ValueError) as error:
-        transcript = redact(f"Local LLMから証拠を取得できませんでした: {error}\n")
-        (root / "transcript.txt").write_text(transcript, encoding="utf-8")
-        print(transcript, end="")
-        print(f"レビュー証拠: {root}")
-        return 2
+    """Local LLMを本番Agent graphまで通すpreflightへ委譲する。"""
+    state, evidence = preflight()
+    document = {"state": state, **evidence}
+    transcript = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
+    (root / "preflight.json").write_text(transcript, encoding="utf-8")
+    (root / "transcript.txt").write_text(transcript, encoding="utf-8")
+    print(transcript, end="")
     print(f"レビュー証拠: {root}")
-    return 0
+    if state == "passed":
+        return 0
+    if state in {"degraded", "failed"}:
+        return 1
+    return 2
 
 
 def _open_latest_report() -> int:

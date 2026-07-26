@@ -8,13 +8,13 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from pydantic import SecretStr
+from pydantic import BaseModel, SecretStr
 
 from werewolf_agent.adapters.application_bridge import build_worker_llm_provider_config
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
-from werewolf_agent.contracts.schemas import ProblemDetails
+from werewolf_agent.contracts.schemas import GameResponse, ProblemDetails
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker import service
 
@@ -53,6 +53,50 @@ class _Pool:
 
     def connection(self) -> _Connection:
         return self._connection
+
+
+class _ApplicationResult(BaseModel):
+    game_id: str
+    state: dict[str, Any]
+
+
+def test_wire_mapping_excludes_internal_story_theme_fields() -> None:
+    theme = {
+        "id": "village",
+        "name": "Village",
+        "premise": "Find the threat.",
+        "role_names": {},
+        "role_objectives": {},
+        "faction_names": {},
+        "ability_names": {},
+        "action_names": {},
+        "phase_names": {},
+        "summary": "Internal setup summary",
+        "narration": {"game_started": ["Internal narration"]},
+    }
+    source = _ApplicationResult(
+        game_id="game-1",
+        state={
+            "game_id": "game-1",
+            "status": "running",
+            "phase": "day_discussion",
+            "day": 1,
+            "version": 1,
+            "seed": 1,
+            "theme": theme,
+            "players": [],
+            "alive_player_ids": [],
+            "eliminated_player_ids": [],
+            "summary": {},
+        },
+    )
+
+    response = service._wire_model(GameResponse, source)
+
+    assert response.state.theme is not None
+    assert response.state.theme.model_dump()["id"] == "village"
+    assert "summary" not in response.state.theme.model_dump()
+    assert "narration" not in response.state.theme.model_dump()
 
 
 def test_worker_archives_exhausted_message_without_executing_it(

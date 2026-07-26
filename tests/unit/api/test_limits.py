@@ -145,3 +145,48 @@ def test_request_body_read_is_covered_by_timeout() -> None:
 
     assert app_called is False
     assert sent[0]["status"] == 504
+
+
+def test_timeout_does_not_send_a_second_response_after_response_started() -> None:
+    sent: list[dict[str, Any]] = []
+
+    async def app(_scope: object, _receive: object, send: Any) -> None:
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        await send({"type": "http.response.body", "body": b"{}", "more_body": False})
+        await asyncio.sleep(1)
+
+    middleware = RequestLimitsMiddleware(
+        app,
+        max_body_bytes=1024,
+        timeout_seconds=0.01,
+        rate_limit_requests=10,
+        rate_limit_window_seconds=60,
+        max_concurrent_requests=1,
+    )
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/api/v1/operations/operation-1",
+        "raw_path": b"/api/v1/operations/operation-1",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [],
+        "client": ("198.51.100.1", 1234),
+        "server": ("testserver", 80),
+    }
+
+    async def receive() -> dict[str, Any]:
+        return {"type": "http.request", "body": b"", "more_body": False}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    asyncio.run(middleware(scope, receive, send))  # type: ignore[arg-type]
+
+    assert [message["type"] for message in sent] == [
+        "http.response.start",
+        "http.response.body",
+    ]

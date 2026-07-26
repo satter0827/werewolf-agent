@@ -5,6 +5,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from werewolf_agent.settings.constants import (
+    MAX_UI_OPERATION_POLL_TIMEOUT_MILLISECONDS,
     MIN_PAGE_LIMIT,
     MIN_TEXT_MAX_CHARS,
 )
@@ -117,6 +118,6 @@ class ApiSettings(BaseModel):
     )
     ui_operation_poll_timeout_ms: int = Field(
         ge=1_000,
-        le=600_000,
+        le=MAX_UI_OPERATION_POLL_TIMEOUT_MILLISECONDS,
         validation_alias="WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS",
     )

@@ -12,8 +12,6 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-import grimp
-
 from scripts._infra.artifacts import publish_directory, staged_directory
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
 from scripts.architecture.definition import (
@@ -64,34 +62,20 @@ def module_name(path: Path) -> str:
 def project_import_edges() -> list[ImportEdge]:
     """Return stable project import edges with relative source evidence."""
     modules = {module_name(path): path for path in sorted(PACKAGE_ROOT.rglob("*.py"))}
-    graph = grimp.build_graph(
-        "werewolf_agent",
-        exclude_type_checking_imports=True,
-        cache_dir=None,
-    )
     edges: list[ImportEdge] = []
-    for source_module in sorted(graph.modules):
-        path = modules.get(source_module)
-        if path is None:
-            continue
+    for source_module, path in sorted(modules.items()):
         source_parts = source_module.split(".")
         source_layer = source_parts[1] if len(source_parts) > 1 else ""
-        for target_module in sorted(graph.find_modules_directly_imported_by(source_module)):
+        for imported, line in sorted(imports_with_lines(path, source_module)):
+            target_module = _project_module_name(imported, modules)
+            if target_module is None:
+                continue
             parts = target_module.split(".")
             if len(parts) < 2 or parts[0] != "werewolf_agent":
                 continue
             target_layer = parts[1]
             if source_layer not in LAYERS or target_layer not in LAYERS:
                 continue
-            details = graph.get_import_details(
-                importer=source_module,
-                imported=target_module,
-            )
-            line = min(
-                int(detail.get("line_number") or 1)
-                for detail in details
-                if isinstance(detail, dict)
-            )
             edges.append(
                 ImportEdge(
                     source_module=source_module,
@@ -137,15 +121,25 @@ def imports_with_lines(path: Path, source_module: str) -> set[tuple[str, int]]:
             )
             if resolved:
                 imports.add((resolved, node.lineno))
-                if node.module is None or resolved == "werewolf_agent":
-                    imports.update(
-                        (f"{resolved}.{alias.name}", node.lineno)
-                        for alias in node.names
-                        if alias.name != "*"
-                    )
+                imports.update(
+                    (f"{resolved}.{alias.name}", node.lineno)
+                    for alias in node.names
+                    if alias.name != "*"
+                )
 
     ImportVisitor().visit(tree)
     return imports
+
+
+def _project_module_name(imported: str, modules: dict[str, Path]) -> str | None:
+    """Imported symbolをrepository内で実在する最長moduleへ解決する。"""
+    parts = imported.split(".")
+    while parts and parts[0] == "werewolf_agent":
+        candidate = ".".join(parts)
+        if candidate in modules:
+            return candidate
+        parts.pop()
+    return None
 
 
 def graph_cycles(graph: dict[str, set[str]]) -> list[tuple[str, ...]]:

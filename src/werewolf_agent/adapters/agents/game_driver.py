@@ -67,6 +67,7 @@ from werewolf_agent.contracts import (
     LlmProviderError,
 )
 from werewolf_agent.domain import Action, GameView
+from werewolf_agent.domain import ActionType as DomainActionType
 
 logger = logging.getLogger(__name__)
 
@@ -543,5 +544,18 @@ def _game_action_from_decision(decision: AgentDecision) -> Action:
         if decision.target_id is None:
             return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_GUARD_TARGET)
         return Action.guard(decision.player_id, decision.target_id, reason=decision.reason)
+
+    if decision.type in {
+        AgentActionType.APOTHECARY_HEAL,
+        AgentActionType.APOTHECARY_POISON,
+    }:
+        if decision.target_id is None:
+            return Action.pass_(decision.player_id, reason=decision.reason)
+        return Action(
+            type=DomainActionType(decision.type.value),
+            player_id=decision.player_id,
+            target_id=decision.target_id,
+            reason=decision.reason,
+        )
 
     return Action.pass_(decision.player_id, reason=decision.reason)

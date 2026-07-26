@@ -22,7 +22,7 @@ from scripts._infra.process import (
 )
 from scripts.quality import retention
 from scripts.quality import runner as quality
-from scripts.quality.gates import distribution, repository, runtime
+from scripts.quality.gates import distribution, frontend, repository, runtime
 from scripts.quality.gates import environment as environment_gate
 from scripts.quality.gates import tests as test_gates
 
@@ -155,6 +155,83 @@ def test_quality_environment_removes_secrets_and_disables_telemetry(
     assert environment["HTTPS_PROXY"] == "https://external-proxy.example"
 
 
+def test_environment_gate_classifies_blocked_executable_as_nonzero_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context = SimpleNamespace(profile="quick", timeout_seconds=60, environment={})
+    monkeypatch.setattr(environment_gate, "is_ready", lambda _profile: True)
+    monkeypatch.setattr(
+        environment_gate,
+        "run_command",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("policy blocked")),
+    )
+
+    result = environment_gate.check_environment(context, tmp_path)
+
+    assert result.returncode == 1
+    assert "実行環境を起動できません" in result.output
+
+
+def test_environment_gate_classifies_fingerprint_error_as_nonzero_result(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    context = SimpleNamespace(profile="quick", timeout_seconds=60, environment={})
+    monkeypatch.setattr(
+        environment_gate,
+        "is_ready",
+        lambda _profile: (_ for _ in ()).throw(OSError("blocked")),
+    )
+
+    result = environment_gate.check_environment(context, tmp_path)
+
+    assert result.returncode == 1
+    assert "fingerprint" in result.output
+
+
+def test_frontend_gate_recognizes_windows_native_policy_block() -> None:
+    assert frontend._native_binding_blocked(
+        "Error: An Application Control policy has blocked this file."
+    )
+    assert frontend._native_binding_blocked(
+        "アプリケーション制御ポリシーによってこのファイルがブロックされました。"
+    )
+    assert not frontend._native_binding_blocked("AssertionError: expected true")
+
+
+def test_frontend_unit_gate_falls_back_to_current_e2e_image(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    results = iter(
+        (
+            support.CommandResult(
+                ("npm", "test"), 1, 0.1, "Application Control policy has blocked"
+            ),
+            support.CommandResult(("docker", "compose", "build"), 0, 0.2, "built\n"),
+            support.CommandResult(("docker", "compose", "run"), 0, 0.3, "25 passed\n"),
+        )
+    )
+    commands: list[list[str]] = []
+
+    def fake_run(command, **_kwargs):
+        commands.append(list(command))
+        return next(results)
+
+    monkeypatch.setattr(frontend, "npm_executable", lambda: "npm")
+    monkeypatch.setattr(frontend, "run_command", fake_run)
+    context = SimpleNamespace(timeout_seconds=60, environment={})
+
+    result = frontend._test_action(context, tmp_path)
+
+    assert result.returncode == 0
+    assert commands[0] == ["npm", "test"]
+    assert commands[1][-2:] == ["build", "e2e"]
+    assert commands[2][-3:] == ["e2e", "npm", "test"]
+    assert result.output == "built\n25 passed\n"
+
+
 def test_quality_environment_cannot_override_isolation_invariants() -> None:
     """追加する接続情報からもsecretを除き、provider隔離を最後に強制する。"""
 
@@ -163,12 +240,20 @@ def test_quality_environment_cannot_override_isolation_invariants() -> None:
             "OPENAI_API_KEY": "paid-secret",
             "HTTPS_PROXY": "https://external-proxy.example",
             "WEREWOLF_LLM_PROVIDER": "openai",
+            "WEREWOLF_LOCAL_LLM_BASE_URL": "http://127.0.0.1:1234/v1",
+            "WEREWOLF_LOCAL_LLM_MODEL": "local-model",
+            "WEREWOLF_WORKER_PAID_LLM_PROVIDER": "lmstudio",
         }
     )
 
     assert "OPENAI_API_KEY" not in environment
     assert environment["HTTPS_PROXY"] == "https://external-proxy.example"
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
+    assert "WEREWOLF_LOCAL_LLM_BASE_URL" not in environment
+    assert "WEREWOLF_LOCAL_LLM_MODEL" not in environment
+    assert environment["WEREWOLF_WORKER_PAID_LLM_PROVIDER"] == "fake"
+    assert environment["WEREWOLF_WORKER_PAID_LLM_MODEL"] == "fake-list-llm"
+    assert environment["WEREWOLF_WORKER_PAID_LLM_BASE_URL"] == ""
 
 
 def test_quality_environment_keeps_only_explicit_public_supabase_keys() -> None:
@@ -228,6 +313,29 @@ def test_redact_masks_credentials_embedded_in_url() -> None:
 
     assert "local-password" not in output
     assert output == ("dsn=postgresql://postgres:[REDACTED]@127.0.0.1:5432/postgres")
+
+
+def test_redact_masks_bearer_and_query_credentials() -> None:
+    output = redact(
+        "Authorization: Bearer secret-value "
+        "https://example.test/callback?access_token=query-secret&next=public"
+    )
+
+    assert "secret-value" not in output
+    assert "query-secret" not in output
+    assert "next=public" in output
+
+
+def test_redact_preserves_token_usage_metrics() -> None:
+    output = redact(
+        'input_tokens=123 total_tokens:168 token=secret "output_tokens":45,"access_token":"private"'
+    )
+
+    assert "input_tokens=123" in output
+    assert "total_tokens:168" in output
+    assert '"output_tokens":45' in output
+    assert "secret" not in output
+    assert "private" not in output
 
 
 def test_url_redaction_is_bounded_for_long_non_credential_payload() -> None:

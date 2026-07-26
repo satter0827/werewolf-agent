@@ -32,6 +32,7 @@ class _DecisionGraphState(TypedDict, total=False):
     prompt_value: Any
     prompt_messages: list[Mapping[str, object]]
     raw_output: object
+    provider_output: object
     decision: AgentDecision
     validation_status: str
     validation_error: str

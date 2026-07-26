@@ -105,3 +105,27 @@ def test_import_analysis_resolves_relative_and_package_imports(tmp_path: Path) -
     assert ("werewolf_agent.contracts", 2) in imports
     assert ("werewolf_agent.domain", 3) in imports
     assert not any(name.startswith("werewolf_agent.clients") for name, _ in imports)
+
+
+def test_project_module_resolution_prefers_the_deepest_real_module() -> None:
+    modules = {
+        "werewolf_agent": Path("root.py"),
+        "werewolf_agent.application": Path("application.py"),
+        "werewolf_agent.application.models": Path("models.py"),
+    }
+
+    assert (
+        architecture._project_module_name(
+            "werewolf_agent.application.models.GameResult",
+            modules,
+        )
+        == "werewolf_agent.application.models"
+    )
+    assert (
+        architecture._project_module_name(
+            "werewolf_agent.application.GameApplication",
+            modules,
+        )
+        == "werewolf_agent.application"
+    )
+    assert architecture._project_module_name("httpx.Client", modules) is None

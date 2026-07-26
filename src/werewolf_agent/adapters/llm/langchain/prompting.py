@@ -13,7 +13,7 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from werewolf_agent.adapters.llm.langchain.constants import (
-    LLM_SPEECH_MESSAGE_MAX_CHARS,
+    LLM_SPEECH_PROMPT_MAX_CHARS,
     PROMPT_JSON_SEPARATORS,
     PROMPT_RECENT_SPEECH_LIMIT,
     PROMPT_RECENT_VOTE_ROUND_LIMIT,
@@ -80,6 +80,9 @@ def _trace_request_payload(
         "graph_node": str(state.get("graph_node") or ""),
         "route": str(state.get("route") or ""),
         "validation_status": str(state.get("validation_status") or ""),
+        "repair_attempts": (
+            state["repair_attempts"] if isinstance(state.get("repair_attempts"), int) else 0
+        ),
         "fallback_reason": str(state.get("fallback_reason") or ""),
         "selected_action": action_type.value,
     }
@@ -117,6 +120,8 @@ def _json_mapping(value: object) -> Mapping[str, object]:
 def _json_compatible(value: object) -> object:
     if isinstance(value, (str, int, float, bool)) or value is None:
         return value
+    if hasattr(value, "model_dump"):
+        return _json_compatible(value.model_dump(mode="json"))
     if isinstance(value, Mapping):
         return {str(key): _json_compatible(item) for key, item in value.items()}
     if isinstance(value, (list, tuple, set, frozenset)):
@@ -269,7 +274,11 @@ def _decision_format_instructions() -> str:
     return (
         'Return JSON with keys "type", optional "target_id", optional "message", '
         'and optional "reason". Do not include "player_id"; the server sets it. '
-        'Use the selected_action value as "type". Include "message" only for speech. '
+        'Use the selected_action value as "type". '
+        'For "speech", include a non-empty "message" and omit "target_id". '
+        'For "vote", "knight_guard", "seer_inspect", or "werewolf_attack", '
+        'include one non-null "target_id" copied exactly from legal_targets_json and omit '
+        '"message". For "pass", omit both "target_id" and "message". '
         "Do not wrap the JSON in markdown fences. "
-        f"Speech message must be {LLM_SPEECH_MESSAGE_MAX_CHARS} characters or less."
+        f"Keep a speech message concise: at most {LLM_SPEECH_PROMPT_MAX_CHARS} characters."
     )

@@ -111,11 +111,33 @@ UIはdesktop/mobileのsetup、gameplay、observer、空の履歴、完了結果�
 loading/errorを画像と一覧画像で残します。Gameplayは現在のゲーム定義からseed固定で完走し、設定、操作列、公開
 timeline、終局をJSONへ保存します。面白さや見た目に点数や自動合否は付けません。
 
+Agentの安定性は画面を起動せず、専用runnerで確認します。Local LLMの既定値は
+`http://127.0.0.1:1234/v1`と`google/gemma-3-4b`で、環境変数から変更できます。
+
+```powershell
+uv run --no-sync python -m scripts.agents preflight
+uv run --no-sync python -m scripts.agents run --provider fake --suite standard
+uv run --no-sync python -m scripts.agents run --provider local --suite smoke
+uv run --no-sync python -m scripts.agents run --provider local --suite standard
+uv run --no-sync python -m scripts.agents local-ui
+```
+
+長時間のLocal標準は`--preset`を繰り返して対象presetを明示できます。Fake標準は全presetを
+維持し、Localだけ実行量を調整する場合に使用します。
+
+`local-ui`だけがLocal LLM、Streamlitを専用Compose projectで統合します。認証済みAPI
+driverで作成・進行し、Streamlitの作成直後、進行中、timeline、終了、異常表示とDB照合を
+生成します。Reactは現在の明示Local LLM画面確認の対象外です。Playwright traceと認証を
+含み得るnative成果物はprivate領域へ保存します。OpenAIは
+`run --provider openai --confirm-paid`を明示し、`OPENAI_API_KEY`を
+設定した場合だけ使用します。成果物は`.werewolf-agent/agents`へ保存されます。
+
 環境準備はfile lockの内側でlockに従って依存、browser、imageを準備します。品質判定は
 fake、fixture、localhost、Compose内serviceだけを使用し、有料LLM providerや任意の
 外部APIへ依存しません。利用者がアプリ運用で有料providerを設定することはできますが、
-品質・review processはcredentialを除去します。online auditは`Dependencies: Audit`から
-明示的に実行します。
+品質processはcredentialとLocal／外部provider設定を除去します。明示的なAgent reviewは
+品質判定から独立し、Local LLMだけloopback接続を許可します。online auditは
+`Dependencies: Audit`から明示的に実行します。
 
 ## 運用境界
 

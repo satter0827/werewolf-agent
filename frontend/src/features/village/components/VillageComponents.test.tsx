@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { mapGameScreen } from "../../../gameClient/screenAdapter";
 import { sampleScreenSource, sampleSetupOptions } from "../../../test/gameSamples";
 import { RoundTable } from "./RoundTable";
+import { ObserverPanel } from "./ObserverPanel";
 import { AuthPanel } from "./AuthPanel";
 import { RecordsPanel } from "./RecordsPanel";
 import { TurnPanel } from "./TurnPanel";
@@ -88,6 +89,16 @@ describe("village components", () => {
     expect(screen.getByText("アオイ")).toBeInTheDocument();
     expect(screen.getByText("あなた")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /発言/ })).toBeInTheDocument();
+  });
+
+  it("lets an observer owner advance a running game", () => {
+    const model = mapGameScreen({ screen: sampleScreenSource(), manualPlayerId: "" });
+    const onAdvance = vi.fn();
+
+    render(<ObserverPanel isSubmitting={false} onAdvance={onAdvance} screen={model} />);
+    fireEvent.click(screen.getByRole("button", { name: "進める" }));
+
+    expect(onAdvance).toHaveBeenCalledOnce();
   });
 
   it("renders the public village timeline", async () => {

@@ -76,15 +76,18 @@ def _run(
 
 def _version(command: Sequence[str]) -> str:
     executable = shutil.which(command[0]) or command[0]
-    completed = subprocess.run(
-        [executable, *command[1:]],
-        cwd=REPOSITORY_ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        check=False,
-    )
+    try:
+        completed = subprocess.run(
+            [executable, *command[1:]],
+            cwd=REPOSITORY_ROOT,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return "unavailable"
     return completed.stdout.strip() if completed.returncode == 0 else "unavailable"
 
 

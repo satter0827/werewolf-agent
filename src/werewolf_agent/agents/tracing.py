@@ -6,6 +6,8 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Protocol
 
+USAGE_SOURCE_UNAVAILABLE = "unavailable"
+
 
 @dataclass(frozen=True)
 class LlmInvocationTrace:
@@ -27,6 +29,19 @@ class LlmInvocationTrace:
     parsed_decision: Mapping[str, object] | None = None
     error_payload: Mapping[str, object] | None = None
     latency_ms: float | None = None
+    validation_status: str = ""
+    repair_attempts: int = 0
+    fallback_used: bool = False
+    fallback_reason: str = ""
+    provider_error: str = ""
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    usage_source: str = USAGE_SOURCE_UNAVAILABLE
+    prompt_characters: int = 0
+    prompt_bytes: int = 0
+    response_characters: int = 0
+    response_bytes: int = 0
 
 
 class LlmTraceSink(Protocol):

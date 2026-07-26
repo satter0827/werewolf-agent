@@ -124,13 +124,6 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ).encode()
     ).hexdigest()
     app.add_middleware(
-        CORSMiddleware,
-        allow_origins=runtime.api_cors_origin_values,
-        allow_credentials=False,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-    )
-    app.add_middleware(
         RequestLimitsMiddleware,
         max_body_bytes=runtime.api_max_body_bytes,
         timeout_seconds=runtime.api_timeout_seconds,
@@ -139,6 +132,13 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         max_concurrent_requests=runtime.api_max_concurrent_requests,
     )
     app.add_middleware(ApiSecurityHeadersMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=runtime.api_cors_origin_values,
+        allow_credentials=False,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+    )
     install_error_handlers(app)
     app.include_router(config.router, prefix="/api/v1")
     app.include_router(games.router, prefix="/api/v1")

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -55,11 +54,15 @@ class SupabaseLlmTraceSink:
               game_id, operation_id, trace_id, provider, model, player_id,
               phase, day, state_version, prompt_messages, prompt_hash,
               prompt_version, setup_checksum, mechanics_checksum, observation_checksum,
-              request_payload, raw_response, parsed_decision, error_payload, latency_ms
+              request_payload, raw_response, parsed_decision, error_payload, latency_ms,
+              validation_status, repair_attempts, fallback_used, fallback_reason, provider_error,
+              input_tokens, output_tokens, total_tokens, usage_source,
+              prompt_characters, prompt_bytes, response_characters, response_bytes
             )
             values (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             (
@@ -85,9 +88,23 @@ class SupabaseLlmTraceSink:
                 else None,
                 Jsonb(dict(trace.error_payload or {})) if trace.error_payload is not None else None,
                 trace.latency_ms,
+                trace.validation_status,
+                trace.repair_attempts,
+                trace.fallback_used,
+                trace.fallback_reason,
+                trace.provider_error,
+                trace.input_tokens,
+                trace.output_tokens,
+                trace.total_tokens,
+                trace.usage_source,
+                trace.prompt_characters,
+                trace.prompt_bytes,
+                trace.response_characters,
+                trace.response_bytes,
             ),
         )
-        input_tokens, output_tokens = _token_usage(trace.raw_response)
+        input_tokens = trace.input_tokens or 0
+        output_tokens = trace.output_tokens or 0
         self._connection.execute(
             """
             insert into private.llm_usage (
@@ -127,21 +144,3 @@ class SupabaseLlmTraceSink:
                     checksum_payload(decision),
                 ),
             )
-
-
-def _token_usage(raw_response: Any) -> tuple[int, int]:
-    if not isinstance(raw_response, Mapping):
-        return 0, 0
-    usage = raw_response.get("usage_metadata") or raw_response.get("usage")
-    if not isinstance(usage, Mapping):
-        return 0, 0
-    input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0))
-    output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0))
-    return _non_negative_int(input_tokens), _non_negative_int(output_tokens)
-
-
-def _non_negative_int(value: Any) -> int:
-    try:
-        return max(int(value), 0)
-    except (TypeError, ValueError):
-        return 0

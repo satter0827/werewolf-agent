@@ -39,4 +39,6 @@ visibility timeoutは別connectionで更新する。processが中断したmessag
 認証済み利用者の game に限定し、provider の選択と model は設定から解決する。
 
 private LLM trace は公開 timeline から分離して保存し、入力前と記録前の両方で秘密
-情報を除去する。
+情報を除去する。provider生応答と修復後payloadを別fieldで保持し、schema検証結果、修復回数、
+fallback、provider error、token usage、文字数、byte数、latencyを正規化して記録する。
+providerがusageを返さない場合はtoken数を推計しない。

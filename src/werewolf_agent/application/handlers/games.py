@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import secrets
+from collections.abc import Mapping
 from typing import cast
 from uuid import uuid4
 
@@ -224,6 +225,12 @@ def get_game_reveal(
         player.id for player in snapshot.players.values() if not player.is_alive
     ]
     setup_theme = _setup_theme(run.config)
+    raw_role_objectives = setup_theme.get("role_objectives", {}) if setup_theme is not None else {}
+    role_objectives = (
+        {str(key): str(value) for key, value in raw_role_objectives.items()}
+        if isinstance(raw_role_objectives, Mapping)
+        else {}
+    )
     return GameRevealResult(
         game_id=str(run.id),
         status=run.status,
@@ -242,7 +249,12 @@ def get_game_reveal(
                 id=player.id,
                 name=player.name,
                 role=str(player.role or ""),
-                faction=cast(Faction, _player_faction(snapshot, player.role)),
+                identity_faction=cast(Faction, _player_faction(snapshot, player.role)),
+                victory_team=cast(
+                    Faction,
+                    snapshot.config.roles.victory_team_for_role(str(player.role or "")),
+                ),
+                objective=str(role_objectives.get(str(player.role or ""), "")),
                 alive=player.is_alive,
                 status=player.status.value,
                 eliminated_day=player.eliminated_day,

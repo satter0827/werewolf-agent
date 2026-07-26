@@ -80,6 +80,15 @@ def test_browser_ui_settings_are_validated_runtime_values() -> None:
     assert settings.ui_operation_poll_timeout_ms == 90_000
 
 
+def test_browser_ui_allows_explicit_long_running_local_agent_timeout() -> None:
+    settings = AppSettings(
+        _env_file=None,
+        ui_operation_poll_timeout_ms=1_200_000,
+    )
+
+    assert settings.ui_operation_poll_timeout_ms == 1_200_000
+
+
 def test_supabase_settings_default_to_unconfigured() -> None:
     settings = AppSettings(_env_file=None)
 

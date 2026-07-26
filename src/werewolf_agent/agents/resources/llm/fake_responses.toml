@@ -56,6 +56,16 @@ knight_guard = [
 {"type":"knight_guard","player_id":"$player_id","target_id":"$target_id","reason":"$target_name の発言が村側の整理に見えるため"}
 """,
 ]
+apothecary_heal = [
+"""
+{"type":"apothecary_heal","player_id":"$player_id","target_id":"$target_id","reason":"$target_name を生存させる価値が高いため"}
+""",
+]
+apothecary_poison = [
+"""
+{"type":"apothecary_poison","player_id":"$player_id","target_id":"$target_id","reason":"$target_name の公開行動が最も不自然なため"}
+""",
+]
 pass = [
 """
 {"type":"pass","player_id":"$player_id","reason":"available actionがないため待機"}

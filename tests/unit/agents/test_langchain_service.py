@@ -3,6 +3,7 @@ import pytest
 from werewolf_agent.adapters.llm.langchain.constants import (
     DECISION_GRAPH_REVISION,
     LLM_SPEECH_MESSAGE_MAX_CHARS,
+    LLM_SPEECH_PROMPT_MAX_CHARS,
     PROMPT_RECENT_SPEECH_LIMIT,
     PROMPT_RECENT_VOTE_ROUND_LIMIT,
 )
@@ -71,6 +72,8 @@ def observation(
                 AgentActionType.WEREWOLF_ATTACK,
                 AgentActionType.SEER_INSPECT,
                 AgentActionType.KNIGHT_GUARD,
+                AgentActionType.APOTHECARY_HEAL,
+                AgentActionType.APOTHECARY_POISON,
             }
         },
         speeches=[],
@@ -212,11 +215,15 @@ def test_compact_observation_keeps_only_recent_public_history() -> None:
     )
 
 
-def test_decision_format_instructions_use_speech_limit_constant() -> None:
+def test_decision_format_instructions_leave_speech_validation_headroom() -> None:
+    instructions = _decision_format_instructions()
     assert (
-        f"Speech message must be {LLM_SPEECH_MESSAGE_MAX_CHARS} characters or less."
-        in _decision_format_instructions()
+        f"Keep a speech message concise: at most {LLM_SPEECH_PROMPT_MAX_CHARS} characters."
+        in instructions
     )
+    assert 'include one non-null "target_id" copied exactly from legal_targets_json' in instructions
+    assert 'For "speech", include a non-empty "message" and omit "target_id".' in instructions
+    assert LLM_SPEECH_PROMPT_MAX_CHARS < LLM_SPEECH_MESSAGE_MAX_CHARS
 
 
 def test_langchain_fake_provider_returns_role_specific_night_decisions() -> None:
@@ -263,6 +270,26 @@ def test_langchain_fake_provider_day_and_vote_decisions_match_phase() -> None:
     assert speech.message
     assert vote.type is AgentActionType.VOTE
     assert vote.target_id != "p2"
+
+
+@pytest.mark.parametrize(
+    "action_type",
+    [AgentActionType.APOTHECARY_HEAL, AgentActionType.APOTHECARY_POISON],
+)
+def test_langchain_fake_provider_supports_every_targeted_night_action(
+    action_type: AgentActionType,
+) -> None:
+    decision = provider().choose_decision(
+        "p2",
+        observation(
+            player_id="p2",
+            role="apothecary",
+            available_actions=[action_type],
+        ),
+    )
+
+    assert decision.type is action_type
+    assert decision.target_id in {"p1", "p3", "p4", "p5"}
 
 
 def test_langchain_fake_provider_passes_when_observation_is_not_for_player() -> None:
@@ -452,3 +479,96 @@ def test_standard_graph_ranks_only_legal_targets() -> None:
 
     assert decision.type is AgentActionType.VOTE
     assert decision.target_id in {"p1", "p3", "p4", "p5"}
+
+
+def test_trace_normalizes_provider_usage_without_estimating_tokens() -> None:
+    class UsageResponse:
+        content = '{"type":"speech","message":"確認します。"}'
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "content": self.content,
+                "usage_metadata": {
+                    "input_tokens": 31,
+                    "output_tokens": 9,
+                    "total_tokens": 40,
+                },
+            }
+
+    class UsageModel:
+        def invoke(self, _prompt_value: object) -> UsageResponse:
+            return UsageResponse()
+
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+    trace_sink = RecordingTraceSink()
+
+    decision = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        model=UsageModel(),
+        provider_name="local",
+        model_name="usage-model",
+        trace_sink=trace_sink,
+        structured_output_mode="disabled",
+    ).choose_decision(
+        "p1",
+        observation(player_id="p1", role="villager", phase=AgentPhase.DAY_DISCUSSION),
+    )
+
+    assert decision.type is AgentActionType.SPEECH
+    trace = trace_sink.records[-1]
+    assert trace.input_tokens == 31
+    assert trace.output_tokens == 9
+    assert trace.total_tokens == 40
+    assert trace.usage_source == "usage_metadata"
+    assert trace.prompt_characters > 0
+    assert trace.response_bytes > 0
+
+
+def test_langchain_ai_message_envelope_is_not_treated_as_agent_action() -> None:
+    class AiMessageLike:
+        content = (
+            '```json\n{"type":"knight_guard","target_id":"p1",'
+            '"message":"ignore envelope message"}\n```'
+        )
+
+        def model_dump(self, *, mode: str) -> dict[str, object]:
+            assert mode == "json"
+            return {
+                "type": "ai",
+                "content": self.content,
+                "usage_metadata": {"input_tokens": 20, "output_tokens": 8},
+            }
+
+    class AiMessageModel:
+        def invoke(self, _prompt_value: object) -> AiMessageLike:
+            return AiMessageLike()
+
+    definitions = load_llm_definitions(
+        players_path=None,
+        prompt_path=None,
+        fake_responses_path=None,
+    )
+    trace_sink = RecordingTraceSink()
+
+    decision = LangChainDecisionProvider(
+        prompt=definitions.prompt,
+        model=AiMessageModel(),
+        trace_sink=trace_sink,
+        structured_output_mode="disabled",
+    ).choose_decision(
+        "p2",
+        observation(
+            player_id="p2",
+            role="knight",
+            available_actions=[AgentActionType.KNIGHT_GUARD],
+        ),
+    )
+
+    assert decision.type is AgentActionType.KNIGHT_GUARD
+    assert decision.target_id == "p1"
+    assert trace_sink.records[-1].repair_attempts == 0

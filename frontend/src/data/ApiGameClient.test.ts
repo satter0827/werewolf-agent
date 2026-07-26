@@ -55,6 +55,43 @@ describe("ApiGameClient", () => {
     expect(config.contract_version).toBe("v1");
     expect(api.GET).toHaveBeenCalledWith("/api/v1/config");
   });
+
+  it("continues polling after a retryable operation status failure", async () => {
+    const completed = {
+      operation_id: "operation-1",
+      operation_type: "create_game",
+      status: "succeeded",
+      result: { game_id: "game-1" },
+    };
+    const api = {
+      use: vi.fn(),
+      POST: vi.fn().mockResolvedValue({
+        data: { ...completed, status: "running", result: null },
+        error: undefined,
+      }),
+      GET: vi
+        .fn()
+        .mockResolvedValueOnce({
+          data: {
+            ui: { operation_poll_interval_ms: 1, operation_poll_timeout_ms: 1_000 },
+          },
+          error: undefined,
+        })
+        .mockResolvedValueOnce({
+          data: undefined,
+          error: { detail: "temporary", retryable: true },
+        })
+        .mockResolvedValueOnce({ data: completed, error: undefined }),
+    } as unknown as Client<paths>;
+    const client = new ApiGameClient(api, {
+      accessToken: vi.fn().mockResolvedValue("access"),
+    });
+
+    const game = await client.createGame({} as never);
+
+    expect(game).toEqual({ game_id: "game-1" });
+    expect(api.GET).toHaveBeenCalledTimes(3);
+  });
 });
 
 describe("createIdempotencyKey", () => {

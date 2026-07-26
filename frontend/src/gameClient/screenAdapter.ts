@@ -230,7 +230,10 @@ function mapTimelineItem(
 function mapObserverRecord(timeline: TimelineEntry[]): ObserverRecord {
   return {
     title: "公開された記録",
-    lines: timeline.slice(-8).map((entry) => `${entry.dayLabel} ${entry.label}: ${entry.detail}`),
+    entries: timeline.slice(-8).map((entry) => ({
+      sequence: entry.sequence,
+      text: `${entry.dayLabel} ${entry.label}: ${entry.detail}`,
+    })),
   };
 }
 

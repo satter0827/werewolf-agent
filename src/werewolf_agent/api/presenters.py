@@ -6,6 +6,7 @@ from pydantic import BaseModel
 
 from werewolf_agent.application.operations import QueuedOperation
 from werewolf_agent.contracts.api import OperationResponse
+from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
     GameListResponse,
     GameResponse,
@@ -18,32 +19,32 @@ from werewolf_agent.contracts.schemas import (
 
 def wire(model_type: type[BaseModel], source: BaseModel) -> BaseModel:
     """Validate one application result against an independent wire model."""
-    return model_type.model_validate(source.model_dump(mode="json"))
+    return wire_model(model_type, source)
 
 
 def game_response(source: BaseModel) -> GameResponse:
     """Return allowlisted public game state."""
-    return GameResponse.model_validate(source.model_dump(mode="json"))
+    return wire_model(GameResponse, source)
 
 
 def game_list_response(source: BaseModel) -> GameListResponse:
     """Return allowlisted public game summaries."""
-    return GameListResponse.model_validate(source.model_dump(mode="json"))
+    return wire_model(GameListResponse, source)
 
 
 def timeline_response(source: BaseModel) -> GameTimelineResponse:
     """Return allowlisted public timeline."""
-    return GameTimelineResponse.model_validate(source.model_dump(mode="json"))
+    return wire_model(GameTimelineResponse, source)
 
 
 def observation_response(source: BaseModel) -> PlayerObservationResponse:
     """Return allowlisted private player observation."""
-    return PlayerObservationResponse.model_validate(source.model_dump(mode="json"))
+    return wire_model(PlayerObservationResponse, source)
 
 
 def reveal_response(source: BaseModel) -> GameRevealResponse:
     """Return allowlisted administrator reveal."""
-    return GameRevealResponse.model_validate(source.model_dump(mode="json"))
+    return wire_model(GameRevealResponse, source)
 
 
 def operation_response(source: QueuedOperation) -> OperationResponse:

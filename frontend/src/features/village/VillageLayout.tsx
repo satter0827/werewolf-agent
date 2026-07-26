@@ -141,7 +141,11 @@ export function VillageLayout({
 
             <aside className="wa-command-zone" aria-label="あなたの手番">
               {activeView === "observe" ? (
-                <ObserverPanel screen={screen} />
+                <ObserverPanel
+                  isSubmitting={isSubmittingAction}
+                  onAdvance={() => onSubmitAction({ type: "advance" })}
+                  screen={screen}
+                />
               ) : activeView === "records" ? (
                 <VillageTimeline entries={screen.timeline} compact />
               ) : (

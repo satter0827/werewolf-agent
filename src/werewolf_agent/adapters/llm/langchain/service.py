@@ -126,19 +126,9 @@ class LangChainDecisionProvider:
         default_factory=lambda: PydanticOutputParser(pydantic_object=AgentDecision)
     )
     _graph: Any = field(init=False, repr=False, compare=False)
-    _fake_model: FakeListLLM | None = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         """Compile the configured decision graph once for this provider."""
-        fake_model = None
-        if self.fake_responses is not None:
-            responses = [
-                response.content
-                for action_type in sorted(self.fake_responses.templates)
-                for response in self.fake_responses.templates[action_type]
-            ]
-            fake_model = FakeListLLM(responses=responses)
-        object.__setattr__(self, "_fake_model", fake_model)
         object.__setattr__(self, "_graph", _compile_decision_graph(self))
 
     def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
@@ -229,7 +219,13 @@ class LangChainDecisionProvider:
                 graph_target_id,
                 state=state,
             ),
-            raw_response=_json_mapping(state["raw_output"]) if "raw_output" in state else None,
+            raw_response=(
+                _json_mapping(state["provider_output"])
+                if "provider_output" in state
+                else _json_mapping(state["raw_output"])
+                if "raw_output" in state
+                else None
+            ),
             parsed_decision=final_decision.model_dump(mode="json"),
             error_payload=_trace_error_payload(state),
             latency_ms=_elapsed_ms(float(started_at_value)),
@@ -343,7 +339,11 @@ class LangChainDecisionProvider:
                 "invoke_error_payload": {"error_type": type(exc).__name__},
                 "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
             }
-        return {"raw_output": raw_output, "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL}
+        return {
+            "raw_output": raw_output,
+            "provider_output": raw_output,
+            "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
+        }
 
     def _node_validate_action(self, state: _DecisionGraphState) -> _DecisionGraphState:
         if state.get("validation_status") == VALIDATION_STATUS_FAILED and "raw_output" not in state:
@@ -433,8 +433,28 @@ class LangChainDecisionProvider:
         target_id: str | None,
         observation: AgentObservation,
     ) -> object:
-        if self._fake_model is not None:
-            return self._fake_model.invoke(prompt_value)
+        if self.fake_responses is not None:
+            visible = {player.id: player.name for player in observation.players}
+            selector_payload = (
+                f"{player_id}:{observation.day}:{observation.phase.value}:{action_type.value}"
+            )
+            selector = int(hashlib.sha256(selector_payload.encode("utf-8")).hexdigest(), 16)
+            response = self.fake_responses.render(
+                action_type.value,
+                context={
+                    "player_id": player_id,
+                    "player_name": observation.me.name,
+                    "day": observation.day,
+                    "target_id": target_id or "",
+                    "target_name": visible.get(target_id or "", target_id or ""),
+                    "focus_name": visible.get(target_id or "", target_id or ""),
+                    "persona": (
+                        observation.profile.personality if observation.profile is not None else ""
+                    ),
+                },
+                selector=selector,
+            )
+            return FakeListLLM(responses=[response]).invoke(prompt_value)
         if self.model is None:
             raise LlmModelInvocationError(
                 MESSAGE_LLM_MODEL_NOT_CONFIGURED,
@@ -455,7 +475,10 @@ class LangChainDecisionProvider:
             return self.model
         structured_output = getattr(self.model, "with_structured_output", None)
         if callable(structured_output):
-            return structured_output(_ModelDecisionPayload)
+            try:
+                return structured_output(_ModelDecisionPayload, include_raw=True)
+            except TypeError:
+                return structured_output(_ModelDecisionPayload)
         if self.structured_output_mode == LLM_STRUCTURED_OUTPUT_MODE_REQUIRED:
             raise LlmModelInvocationError(
                 ERROR_TYPE_STRUCTURED_OUTPUT_UNSUPPORTED,
@@ -491,6 +514,16 @@ class LangChainDecisionProvider:
     ) -> None:
         if self.trace_sink is None:
             return
+        normalized_raw = dict(raw_response or {}) if raw_response is not None else None
+        usage = _normalized_usage(normalized_raw)
+        prompt_text = json.dumps(prompt_messages, ensure_ascii=False, default=str)
+        response_text = (
+            json.dumps(normalized_raw, ensure_ascii=False, default=str)
+            if normalized_raw is not None
+            else ""
+        )
+        validation_status = str(request_payload.get("validation_status") or "")
+        fallback_reason = str(request_payload.get("fallback_reason") or "")
         self.trace_sink.record_invocation(
             LlmInvocationTrace(
                 provider=self.provider_name,
@@ -524,5 +557,74 @@ class LangChainDecisionProvider:
                 parsed_decision=parsed_decision,
                 error_payload=error_payload,
                 latency_ms=latency_ms,
+                validation_status=validation_status,
+                repair_attempts=_non_negative_int(request_payload.get("repair_attempts")) or 0,
+                fallback_used=validation_status == VALIDATION_STATUS_FALLBACK,
+                fallback_reason=fallback_reason,
+                provider_error=_provider_error(error_payload),
+                input_tokens=usage[0],
+                output_tokens=usage[1],
+                total_tokens=usage[2],
+                usage_source=usage[3],
+                prompt_characters=len(prompt_text),
+                prompt_bytes=len(prompt_text.encode("utf-8")),
+                response_characters=len(response_text),
+                response_bytes=len(response_text.encode("utf-8")),
             )
         )
+
+
+def _normalized_usage(
+    raw_response: Mapping[str, object] | None,
+) -> tuple[int | None, int | None, int | None, str]:
+    if raw_response is None:
+        return None, None, None, "unavailable"
+    candidates: list[tuple[object, str]] = [
+        (raw_response.get("usage_metadata"), "usage_metadata"),
+        (raw_response.get("usage"), "usage"),
+    ]
+    raw_message = raw_response.get("raw")
+    if isinstance(raw_message, Mapping):
+        candidates.extend(
+            [
+                (raw_message.get("usage_metadata"), "raw.usage_metadata"),
+                (raw_message.get("usage"), "raw.usage"),
+                (raw_message.get("response_metadata"), "raw.response_metadata"),
+            ]
+        )
+    for candidate, source in candidates:
+        if not isinstance(candidate, Mapping):
+            continue
+        input_tokens = _optional_non_negative_int(
+            candidate.get("input_tokens", candidate.get("prompt_tokens"))
+        )
+        output_tokens = _optional_non_negative_int(
+            candidate.get("output_tokens", candidate.get("completion_tokens"))
+        )
+        total_tokens = _optional_non_negative_int(candidate.get("total_tokens"))
+        if input_tokens is not None or output_tokens is not None or total_tokens is not None:
+            if total_tokens is None and input_tokens is not None and output_tokens is not None:
+                total_tokens = input_tokens + output_tokens
+            return input_tokens, output_tokens, total_tokens, source
+    return None, None, None, "unavailable"
+
+
+def _optional_non_negative_int(value: object) -> int | None:
+    if value is None:
+        return None
+    try:
+        return max(int(str(value)), 0)
+    except (TypeError, ValueError):
+        return None
+
+
+def _non_negative_int(value: object) -> int | None:
+    return _optional_non_negative_int(value)
+
+
+def _provider_error(error_payload: Mapping[str, object] | None) -> str:
+    if not error_payload or set(error_payload) <= {"validation_error"}:
+        return ""
+    return str(
+        error_payload.get("llm_error_type") or error_payload.get("error_type") or "provider_error"
+    )

@@ -54,6 +54,7 @@ from werewolf_agent.contracts import (
     problem_details_from_spec,
 )
 from werewolf_agent.contracts.errors import ErrorCode
+from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
     AdvanceGameResponse,
     CreateGameRequest,
@@ -566,7 +567,7 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _wire_model(model_type: type[TModel], source: BaseModel) -> TModel:
-    return model_type.model_validate(source.model_dump(mode="json"))
+    return wire_model(model_type, source)
 
 
 def _json_object(value: Any) -> dict[str, Any]:

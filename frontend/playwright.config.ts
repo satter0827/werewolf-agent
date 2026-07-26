@@ -13,7 +13,7 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: process.env.PLAYWRIGHT_BASE_URL ?? "http://127.0.0.1:8080",
-    trace: "retain-on-failure",
+    trace: process.env.PLAYWRIGHT_LOCAL_LLM === "1" ? "on" : "retain-on-failure",
     screenshot: "only-on-failure",
   },
   projects: [

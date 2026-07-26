@@ -66,7 +66,7 @@ export interface TimelineEntry {
 
 export interface ObserverRecord {
   title: string;
-  lines: string[];
+  entries: Array<{ sequence: number; text: string }>;
 }
 
 export interface GameScreenModel {

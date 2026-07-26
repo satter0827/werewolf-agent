@@ -461,12 +461,15 @@ def test_chunked_body_cannot_bypass_the_size_limit() -> None:
         headers={
             "Authorization": "Bearer invalid",
             "Idempotency-Key": "oversized-request",
+            "Origin": "http://localhost:5173",
         },
         content=(chunk for chunk in (b"x" * 700, b"y" * 700)),
     )
 
     assert response.status_code == 413
     assert response.json()["code"] == "request.body_too_large"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert response.headers["x-content-type-options"] == "nosniff"
 
 
 def test_understated_content_length_cannot_bypass_the_size_limit() -> None:

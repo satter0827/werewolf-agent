@@ -168,10 +168,18 @@ export class ApiGameClient implements GameClient {
         throw new Error("操作が時間内に完了しませんでした。");
       }
       await delay(pollInterval);
-      const result = await this.api.GET("/api/v1/operations/{operation_id}", {
-        params: { path: { operation_id: current.operation_id } },
-      });
-      current = requireData(result.data, result.error);
+      try {
+        const result = await this.api.GET("/api/v1/operations/{operation_id}", {
+          params: { path: { operation_id: current.operation_id } },
+        });
+        if (result.data !== undefined) {
+          current = result.data;
+        } else if (!isRetryableProblem(result.error)) {
+          throwProblem(result.error);
+        }
+      } catch (error) {
+        if (!(error instanceof TypeError)) throw error;
+      }
     }
     if (current.status === "failed") {
       throw new Error(current.error?.detail ?? "操作に失敗しました。");
@@ -215,8 +223,16 @@ function requireData<T>(data: T | undefined, error: unknown): T {
   if (data !== undefined) {
     return data;
   }
+  throwProblem(error);
+}
+
+function throwProblem(error: unknown): never {
   const problem = error as ProblemDetails | undefined;
   throw new Error(problem?.detail ?? "API要求に失敗しました。");
+}
+
+function isRetryableProblem(error: unknown): boolean {
+  return Boolean((error as ProblemDetails | undefined)?.retryable);
 }
 
 function normalizeSetup(
