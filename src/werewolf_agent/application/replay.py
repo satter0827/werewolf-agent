@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import random
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, cast
 
+from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.domain_codec import (
     action_from_data,
     domain_to_data,
@@ -15,14 +14,15 @@ from werewolf_agent.application.domain_codec import (
     game_state_from_data,
 )
 from werewolf_agent.application.models import ReplayVerificationResult
+from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.projections import (
     event_to_create,
     public_state_payload_from_snapshot,
 )
-from werewolf_agent.application.randomness import runtime_seed
+from werewolf_agent.application.randomness import namespace_seed, runtime_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import GameSetupDocument
-from werewolf_agent.domain import Game, RuleRegistry
+from werewolf_agent.domain import Game, build_game_rules
 
 
 class ReplayRepository(Protocol):
@@ -30,18 +30,6 @@ class ReplayRepository(Protocol):
 
     def replay_records(self, game_id: str) -> Mapping[str, Sequence[Mapping[str, Any]]]:
         """Return checksum-bearing command, event, and state records."""
-
-
-def checksum_payload(payload: Any) -> str:
-    """Return a stable SHA-256 checksum for JSON-compatible data."""
-    canonical = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True,
-        separators=(",", ":"),
-        allow_nan=False,
-    )
-    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def verify_replay(game_id: str, repository: ReplayRepository) -> ReplayVerificationResult:
@@ -278,6 +266,23 @@ def _verify_execution(
             genesis["mechanics_checksum"]
         ):
             raise ValueError("mechanics checksum mismatch")
+        seed = _optional_int(genesis.get("seed"))
+        if seed is None:
+            raise ValueError("replay seed is required")
+        generated_players = generate_players(
+            setup_document.player_generation,
+            player_count=sum(mechanics.role_counts.values()),
+            seed=seed,
+        )
+        if checksum_payload([player.private_payload() for player in generated_players]) != str(
+            genesis["roster_checksum"]
+        ):
+            raise ValueError("roster checksum mismatch")
+        expected_players = [
+            {"id": player.player_id, "name": player.profile.name} for player in generated_players
+        ]
+        if list(_sequence(genesis["players"])) != expected_players:
+            raise ValueError("replay players do not match generated roster")
         definition = rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
@@ -289,12 +294,14 @@ def _verify_execution(
                 ability_id: ability.model_dump(mode="json")
                 for ability_id, ability in mechanics.abilities.items()
             },
-            composition=mechanics.composition.model_dump(mode="json"),
         )
-        rules = RuleRegistry.standard().build(definition)
+        rules = build_game_rules(definition)
         setup = game_setup_from_data({"players": genesis["players"]})
-        seed = _optional_int(genesis.get("seed"))
-        game = Game.create(setup, rules=rules, random=random.Random(seed))
+        game = Game.create(
+            setup,
+            rules=rules,
+            random=random.Random(namespace_seed(seed, "role_assignment")),
+        )
     except (KeyError, TypeError, ValueError):
         return _structural_mismatch(
             game_id,

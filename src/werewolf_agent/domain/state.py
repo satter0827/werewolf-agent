@@ -6,7 +6,7 @@ from collections import Counter
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any, ClassVar, Self
+from typing import Any, Self
 
 from werewolf_agent.domain._messages import (
     MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD,
@@ -31,17 +31,19 @@ from werewolf_agent.domain._model import freeze_value, frozen_mapping, non_blank
 FACTION_VILLAGE = "village"
 FACTION_WEREWOLF = "werewolf"
 FACTION_FOX = "fox"
-ABILITY_NIGHT_ATTACK = "night_attack"
-ABILITY_PACK_KNOWLEDGE = "pack_knowledge"
-ABILITY_INSPECT = "inspect"
-ABILITY_GUARD = "guard"
-ABILITY_MEDIUM_KNOWLEDGE = "medium_knowledge"
-ABILITY_HEAL = "heal"
-ABILITY_POISON = "poison"
-ABILITY_DEATH_SHOT = "death_shot"
-ABILITY_ATTACK_IMMUNITY = "attack_immunity"
-ABILITY_INSPECTION_VULNERABILITY = "inspection_vulnerability"
 SUPPORTED_FACTIONS = frozenset({FACTION_VILLAGE, FACTION_WEREWOLF, FACTION_FOX})
+SUPPORTED_ABILITY_KINDS = frozenset(
+    {
+        "attack",
+        "inspect",
+        "protect",
+        "eliminate",
+        "knowledge",
+        "death_reaction",
+        "immunity",
+        "vulnerability",
+    }
+)
 
 
 class Phase(StrEnum):
@@ -62,15 +64,11 @@ class PlayerStatus(StrEnum):
 
 
 class ActionType(StrEnum):
-    """Actions understood by the standard domain core."""
+    """Stable action envelopes understood by the domain core."""
 
     SPEECH = "speech"
     VOTE = "vote"
-    WEREWOLF_ATTACK = "werewolf_attack"
-    SEER_INSPECT = "seer_inspect"
-    KNIGHT_GUARD = "knight_guard"
-    APOTHECARY_HEAL = "apothecary_heal"
-    APOTHECARY_POISON = "apothecary_poison"
+    USE_ABILITY = "use_ability"
     PASS = "pass"
 
 
@@ -84,67 +82,96 @@ class EventVisibility(StrEnum):
 
 @dataclass(frozen=True)
 class AbilityDefinition:
-    """Immutable configuration for one role ability."""
+    """Immutable configuration for one bounded ability component."""
 
+    kind: str
     phase: Phase
-    action: ActionType
-    validation_policy: str
-    resolution_policy: str
     target_policy: str
     start_day: int
-    effect: str
-    max_uses: int | None = None
-    result_visibility: str = "private"
-    resolution_priority: int = 100
+    max_uses: int | None
+    result_visibility: str
+    resolution_priority: int
+    allow_repeat_target: bool
+    enabled_first_night: bool
+    result_detail: str | None
+    knowledge_mode: str | None
+    tie_resolution: str | None
+    source_kinds: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        """Normalize policy IDs and reject unsupported ability combinations."""
+        """Normalize the action type and optional ability reference."""
+        """Normalize values and reject unsupported component combinations."""
+        kind = non_blank(self.kind, "kind")
+        if kind not in SUPPORTED_ABILITY_KINDS:
+            raise ValueError(f"Unknown ability kind: {kind}")
+        object.__setattr__(self, "kind", kind)
         object.__setattr__(self, "phase", Phase(self.phase))
-        object.__setattr__(self, "action", ActionType(self.action))
-        for name in ("validation_policy", "resolution_policy", "target_policy", "effect"):
-            object.__setattr__(self, name, non_blank(getattr(self, name), name))
+        object.__setattr__(self, "target_policy", non_blank(self.target_policy, "target_policy"))
+        object.__setattr__(self, "source_kinds", tuple(self.source_kinds))
         if self.start_day < 1:
             raise ValueError("start_day must be at least 1.")
-        if self.validation_policy != "standard":
-            raise ValueError(f"Unknown ability validation policy: {self.validation_policy}")
-        if self.resolution_policy != "standard":
-            raise ValueError(f"Unknown ability resolution policy: {self.resolution_policy}")
-        if self.target_policy not in {"none", "alive", "other_alive", "other_alive_non_pack"}:
-            raise ValueError(f"Unknown ability target policy: {self.target_policy}")
-        if self.effect not in {
-            "attack",
-            "inspection",
-            "protection",
-            "poison",
-            "knowledge",
-            "reaction",
-            "immunity",
-            "vulnerability",
-            "pass",
+        if self.target_policy not in {
+            "none",
+            "alive",
+            "other_alive",
+            "other_alive_non_faction",
         }:
-            raise ValueError(f"Unknown ability effect: {self.effect}")
+            raise ValueError(f"Unknown ability target policy: {self.target_policy}")
         if self.max_uses is not None and self.max_uses < 1:
             raise ValueError("max_uses must be at least 1 when configured.")
         if self.result_visibility not in {"private", "public", "none"}:
             raise ValueError(f"Unknown result visibility: {self.result_visibility}")
         if not 0 <= self.resolution_priority <= 1000:
             raise ValueError("resolution_priority must be between 0 and 1000.")
-        night_actions = {
-            ActionType.WEREWOLF_ATTACK,
-            ActionType.SEER_INSPECT,
-            ActionType.KNIGHT_GUARD,
-            ActionType.APOTHECARY_HEAL,
-            ActionType.APOTHECARY_POISON,
+        active_kinds = {"attack", "inspect", "protect", "eliminate"}
+        if kind in active_kinds and self.phase is not Phase.NIGHT:
+            raise ValueError(f"Ability kind {kind} is only supported during the night phase.")
+        if kind in active_kinds and self.target_policy == "none":
+            raise ValueError(f"Ability kind {kind} requires a target policy.")
+        if kind not in active_kinds and self.target_policy != "none":
+            raise ValueError(f"Passive ability kind {kind} cannot define a target policy.")
+        if kind in {"inspect", "knowledge"} and self.result_detail not in {
+            "faction",
+            "role",
+        }:
+            raise ValueError(f"Ability kind {kind} requires result_detail.")
+        if kind not in {"inspect", "knowledge"} and self.result_detail is not None:
+            raise ValueError(f"Ability kind {kind} cannot define result_detail.")
+        if self.knowledge_mode not in {None, "allies", "last_eliminated"}:
+            raise ValueError(f"Unknown knowledge mode: {self.knowledge_mode}")
+        if kind == "knowledge" and self.knowledge_mode is None:
+            raise ValueError("Knowledge abilities require knowledge_mode.")
+        if kind != "knowledge" and self.knowledge_mode is not None:
+            raise ValueError(f"Ability kind {kind} cannot define knowledge_mode.")
+        if kind == "attack" and self.tie_resolution not in {"random_target", "no_action"}:
+            raise ValueError("Attack abilities require tie_resolution.")
+        if kind != "attack" and self.tie_resolution is not None:
+            raise ValueError(f"Ability kind {kind} cannot define tie_resolution.")
+        if kind not in {"immunity", "vulnerability"} and self.source_kinds:
+            raise ValueError(f"Ability kind {kind} cannot define source_kinds.")
+        unknown_sources = sorted(set(self.source_kinds) - SUPPORTED_ABILITY_KINDS)
+        if unknown_sources:
+            raise ValueError(f"Unknown ability source kinds: {unknown_sources}")
+        if len(self.source_kinds) != len(set(self.source_kinds)):
+            raise ValueError("Ability source kinds must be unique.")
+        supported_sources = {
+            "immunity": {"attack", "eliminate", "inspect"},
+            "vulnerability": {"inspect"},
         }
-        targeted_actions = night_actions
-        if self.action not in targeted_actions | {ActionType.PASS}:
-            raise ValueError(f"Action {self.action.value} is not implemented as a role ability.")
-        if self.action in night_actions and self.phase is not Phase.NIGHT:
-            raise ValueError(f"Action {self.action.value} is only implemented for the night phase.")
-        if self.action in targeted_actions and self.target_policy == "none":
-            raise ValueError(f"Action {self.action.value} requires a target policy.")
-        if self.action is ActionType.PASS and self.target_policy != "none":
-            raise ValueError("Pass abilities cannot define a target policy.")
+        if kind in supported_sources:
+            if not self.source_kinds:
+                raise ValueError(f"Ability kind {kind} requires source_kinds.")
+            unsupported_sources = sorted(set(self.source_kinds) - supported_sources[kind])
+            if unsupported_sources:
+                raise ValueError(
+                    f"Ability kind {kind} cannot react to source kinds: {unsupported_sources}"
+                )
+            if self.phase is not Phase.NIGHT:
+                raise ValueError(f"Ability kind {kind} is only supported during the night phase.")
+        if kind == "death_reaction" and self.phase not in {Phase.NIGHT, Phase.VOTING}:
+            raise ValueError(
+                "Ability kind death_reaction is only supported during night or voting."
+            )
 
 
 @dataclass(frozen=True)
@@ -191,16 +218,8 @@ class LocalRules:
     allow_self_vote: bool
     allow_vote_revision: bool
     allow_night_action_revision: bool
-    enable_first_night_attack: bool
     vote_tie_resolution: str
-    wolf_attack_tie_resolution: str
-    seer_result_detail: str
-    medium_result_detail: str
     starting_phase: str
-    allow_knight_self_guard: bool
-    allow_knight_repeat_guard: bool
-    allow_seer_self_inspect: bool
-    allow_werewolf_friendly_fire: bool
     reveal_role_on_death: bool
     require_all_actions_before_advance: bool = True
 
@@ -214,14 +233,6 @@ class LocalRules:
             "revote",
         }:
             raise ValueError(f"Unknown vote tie resolution: {self.vote_tie_resolution}")
-        if self.wolf_attack_tie_resolution not in {"random_target", "no_attack"}:
-            raise ValueError(
-                f"Unknown wolf attack tie resolution: {self.wolf_attack_tie_resolution}"
-            )
-        if self.seer_result_detail not in {"faction", "role"}:
-            raise ValueError(f"Unknown seer result detail: {self.seer_result_detail}")
-        if self.medium_result_detail not in {"faction", "role"}:
-            raise ValueError(f"Unknown medium result detail: {self.medium_result_detail}")
         if self.starting_phase not in {"night", "day_discussion"}:
             raise ValueError(f"Unknown starting phase: {self.starting_phase}")
 
@@ -351,6 +362,30 @@ class GameConfig:
 
 
 @dataclass(frozen=True)
+class AvailableAction:
+    """One action option exposed to a player."""
+
+    type: ActionType
+    ability_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """Normalize and validate the optional ability reference."""
+        object.__setattr__(self, "type", ActionType(self.type))
+        object.__setattr__(self, "ability_id", optional_non_blank(self.ability_id, "ability_id"))
+        if (self.type is ActionType.USE_ABILITY) != (self.ability_id is not None):
+            raise ValueError("Only use_ability actions define ability_id.")
+
+    @property
+    def key(self) -> str:
+        """Return the stable legal-target key for this action."""
+        return (
+            f"{self.type.value}:{self.ability_id}"
+            if self.ability_id is not None
+            else self.type.value
+        )
+
+
+@dataclass(frozen=True)
 class Action:
     """Validated player intent accepted by the game aggregate."""
 
@@ -358,29 +393,10 @@ class Action:
     player_id: str
     reason: str = ""
     target_id: str | None = None
+    ability_id: str | None = None
     message: str | None = None
     focus_id: str | None = None
     evidence_id: str | None = None
-
-    TARGET_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
-        {
-            ActionType.VOTE,
-            ActionType.WEREWOLF_ATTACK,
-            ActionType.SEER_INSPECT,
-            ActionType.KNIGHT_GUARD,
-            ActionType.APOTHECARY_HEAL,
-            ActionType.APOTHECARY_POISON,
-        }
-    )
-    NIGHT_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
-        {
-            ActionType.WEREWOLF_ATTACK,
-            ActionType.SEER_INSPECT,
-            ActionType.KNIGHT_GUARD,
-            ActionType.APOTHECARY_HEAL,
-            ActionType.APOTHECARY_POISON,
-        }
-    )
 
     def __post_init__(self) -> None:
         """Normalize action fields and enforce payload shape by action type."""
@@ -388,6 +404,7 @@ class Action:
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
         object.__setattr__(self, "reason", self.reason.strip())
         object.__setattr__(self, "target_id", optional_non_blank(self.target_id, "target_id"))
+        object.__setattr__(self, "ability_id", optional_non_blank(self.ability_id, "ability_id"))
         object.__setattr__(self, "message", optional_non_blank(self.message, "message"))
         object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
@@ -396,16 +413,30 @@ class Action:
                 raise ValueError(MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE)
             if self.target_id is not None:
                 raise ValueError(MESSAGE_SPEECH_ACTION_FORBIDS_TARGET)
-        elif self.type in self.TARGET_TYPES:
+            if self.ability_id is not None:
+                raise ValueError("Speech actions cannot define ability_id.")
+        elif self.type is ActionType.VOTE:
             if self.focus_id is not None or self.evidence_id is not None:
                 raise ValueError("Public speech references are allowed only for speech actions.")
             if self.target_id is None:
                 raise ValueError(message_target_required(self.type.value, "actions"))
             if self.message is not None:
                 raise ValueError(message_message_not_allowed(self.type.value, "actions"))
+            if self.ability_id is not None:
+                raise ValueError("Vote actions cannot define ability_id.")
+        elif self.type is ActionType.USE_ABILITY:
+            if self.ability_id is None:
+                raise ValueError("use_ability requires ability_id.")
+            if (
+                self.message is not None
+                or self.focus_id is not None
+                or self.evidence_id is not None
+            ):
+                raise ValueError("Ability actions accept only ability_id, target_id, and reason.")
         elif self.type is ActionType.PASS:
             if (
                 self.target_id is not None
+                or self.ability_id is not None
                 or self.message is not None
                 or self.focus_id is not None
                 or self.evidence_id is not None
@@ -417,7 +448,7 @@ class Action:
     @property
     def is_night_action(self) -> bool:
         """Return whether this action is resolved during the night phase."""
-        return self.type in self.NIGHT_TYPES
+        return self.type in {ActionType.USE_ABILITY, ActionType.PASS}
 
     @classmethod
     def speech(
@@ -443,19 +474,22 @@ class Action:
         return cls(ActionType.VOTE, player_id, reason=reason, target_id=target_id)
 
     @classmethod
-    def attack(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a werewolf night attack action."""
-        return cls(ActionType.WEREWOLF_ATTACK, player_id, reason=reason, target_id=target_id)
-
-    @classmethod
-    def inspect(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a seer inspection action."""
-        return cls(ActionType.SEER_INSPECT, player_id, reason=reason, target_id=target_id)
-
-    @classmethod
-    def guard(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a knight guard action."""
-        return cls(ActionType.KNIGHT_GUARD, player_id, reason=reason, target_id=target_id)
+    def use_ability(
+        cls,
+        player_id: str,
+        ability_id: str,
+        target_id: str | None = None,
+        *,
+        reason: str = "",
+    ) -> Self:
+        """Create one configured ability action."""
+        return cls(
+            ActionType.USE_ABILITY,
+            player_id,
+            reason=reason,
+            target_id=target_id,
+            ability_id=ability_id,
+        )
 
     @classmethod
     def pass_(cls, player_id: str, *, reason: str = "") -> Self:
@@ -487,10 +521,11 @@ class VoteResult:
 
 @dataclass(frozen=True)
 class InspectionResult:
-    """Private result of one seer inspection."""
+    """Visibility-controlled result of one configured inspection."""
 
     day: int
-    seer_id: str
+    player_id: str
+    ability_id: str
     target_id: str
     target_role: str
     target_faction: str
@@ -506,10 +541,28 @@ class NightResult:
     killed_player_id: str | None = None
     killed_player_ids: tuple[str, ...] = ()
     inspections: tuple[InspectionResult, ...] = ()
+    ability_targets: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """Freeze inspection results."""
         object.__setattr__(self, "inspections", tuple(self.inspections))
+        object.__setattr__(
+            self,
+            "ability_targets",
+            frozen_mapping(
+                {
+                    non_blank(player_id, "ability target player id"): frozen_mapping(
+                        {
+                            non_blank(ability_id, "ability target id"): non_blank(
+                                target_id, "ability target player id"
+                            )
+                            for ability_id, target_id in targets.items()
+                        }
+                    )
+                    for player_id, targets in self.ability_targets.items()
+                }
+            ),
+        )
         killed_ids = tuple(self.killed_player_ids)
         if self.killed_player_id is not None and not killed_ids:
             killed_ids = (self.killed_player_id,)
@@ -682,8 +735,8 @@ class GameView:
     players: tuple[Player, ...]
     known_roles: Mapping[str, str] = field(default_factory=dict)
     known_factions: Mapping[str, str] = field(default_factory=dict)
-    available_actions: tuple[ActionType, ...] = ()
-    legal_targets: Mapping[ActionType, tuple[str, ...]] = field(default_factory=dict)
+    available_actions: tuple[AvailableAction, ...] = ()
+    legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
     win_result: WinResult | None = None
 
@@ -737,16 +790,14 @@ class GameSetup:
 
 
 __all__ = [
-    "ABILITY_GUARD",
-    "ABILITY_INSPECT",
-    "ABILITY_NIGHT_ATTACK",
-    "ABILITY_PACK_KNOWLEDGE",
     "FACTION_VILLAGE",
     "FACTION_WEREWOLF",
+    "SUPPORTED_ABILITY_KINDS",
     "SUPPORTED_FACTIONS",
     "AbilityDefinition",
     "Action",
     "ActionType",
+    "AvailableAction",
     "EventVisibility",
     "GameConfig",
     "GameEvent",

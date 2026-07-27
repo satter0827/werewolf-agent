@@ -14,6 +14,7 @@ from werewolf_agent.api.presenters import (
     operation_response,
     timeline_response,
 )
+from werewolf_agent.api.routes.setups import resolve_setup
 from werewolf_agent.application import Actor
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
@@ -50,10 +51,22 @@ def create_game(
     services: ServicesDependency,
 ) -> OperationResponse:
     """Queue one game with a server-selected immutable LLM mode."""
+    actor = Actor(
+        user_id=principal.user_id,
+        is_anonymous=principal.is_anonymous,
+        is_admin=principal.is_admin,
+    )
+    command = services.setups.prepare_create(
+        resolve_setup(request.setup, principal, services),
+        seed=request.seed,
+        manual_player_id=request.manual_player_id,
+        llm_mode=principal.llm_mode,
+        deliberation_level=request.deliberation_level,
+    )
     operation = services.games.enqueue_create(
-        Actor(user_id=principal.user_id),
+        actor,
         idempotency_key=idempotency_key,
-        request_payload=request.model_dump(mode="json", exclude_none=True),
+        request_payload=command.model_dump(mode="json", exclude_none=True),
         llm_mode=principal.llm_mode,
     )
     return operation_response(operation)

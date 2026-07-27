@@ -1,0 +1,7 @@
+recommended_template_id = "standard_6"
+template_order = ["standard_6"]
+
+[templates.standard_6]
+name = "標準6人ゲーム"
+summary = "人狼、占い師、騎士、村人で遊ぶ基本構成です。"
+file = "standard_6.toml"

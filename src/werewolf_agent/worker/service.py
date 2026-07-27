@@ -16,9 +16,7 @@ from werewolf_agent.adapters.agents.game_driver import (
 )
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
-    build_game_definitions,
     build_llm_definitions,
-    build_player_setup_definitions,
     build_worker_llm_provider_config,
 )
 from werewolf_agent.adapters.supabase.llm_trace import (
@@ -42,10 +40,6 @@ from werewolf_agent.application.models import (
     CreateGameCommand,
     PlayerActionCommand,
 )
-from werewolf_agent.application.setup_document import (
-    GameSetupDocument,
-    setup_document_from_preset,
-)
 from werewolf_agent.contracts import (
     AppError,
     GameNotFoundError,
@@ -57,7 +51,6 @@ from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
     AdvanceGameResponse,
-    CreateGameRequest,
     GameResponse,
     GameRevealResponse,
     PlayerActionRequest,
@@ -272,7 +265,6 @@ def _execute_advance_request(
     with _LeaseHeartbeat(pool, settings, request) as heartbeat:
         driven = drive_prepared_game(
             prepared,
-            supported_agent_type=settings.game_supported_agent_type,
             runtime=runtime,
         )
         computed = application.compute_advance(driven)
@@ -349,30 +341,6 @@ class _LeaseHeartbeat:
                 return
 
 
-def _create_command(
-    request: CreateGameRequest,
-    service: ApplicationContext,
-) -> CreateGameCommand:
-    """Translate the HTTP wire request into the application contract."""
-    setup = (
-        setup_document_from_preset(
-            request.setup.preset_id,
-            service.game_definitions,
-            service.player_definitions,
-        )
-        if request.setup.mode == "preset"
-        else GameSetupDocument.model_validate(request.setup.setup.model_dump(mode="json"))
-    )
-    return CreateGameCommand(
-        seed=request.seed,
-        setup=setup,
-        manual_player_id=request.manual_player_id,
-        llm_mode=service.create_llm_mode,
-        narration_mode=request.narration_mode,
-        deliberation_level=request.deliberation_level,
-    )
-
-
 def _create_game(
     connection: Any,
     store: SupabaseWorkerStore,
@@ -380,7 +348,7 @@ def _create_game(
     request: Mapping[str, Any],
 ) -> GameResponse:
     payload = _json_object(request.get("request_payload"))
-    create_request = CreateGameRequest.model_validate(payload)
+    create_command = CreateGameCommand.model_validate(payload)
     owner_user_id = str(request["owner_user_id"])
     llm_mode = store.verify_creation_llm_mode(
         owner_user_id=owner_user_id,
@@ -392,14 +360,16 @@ def _create_game(
         owner_user_id=owner_user_id,
         create_llm_mode=llm_mode,
     )
-    result = GameApplication(service).create(_create_command(create_request, service))
+    result = GameApplication(service).create(
+        create_command.model_copy(update={"llm_mode": llm_mode})
+    )
     response = _wire_model(GameResponse, result)
-    participant_player_id = create_request.manual_player_id or "observer"
+    participant_player_id = create_command.manual_player_id or "observer"
     store.add_participant(
         game_id=response.game_id,
         user_id=owner_user_id,
         player_id=participant_player_id,
-        role="owner" if create_request.manual_player_id is None else "player",
+        role="owner" if create_command.manual_player_id is None else "player",
     )
     _materialize_private_views(
         connection,
@@ -431,6 +401,7 @@ def _submit_action(
             game_id=game_id,
             player_id=player_id,
             type=action_request.type,
+            ability_id=action_request.ability_id,
             target_id=action_request.target_id,
             message=action_request.message,
             reason=action_request.reason,
@@ -525,8 +496,6 @@ def _service(
     return ApplicationContext(
         repository=SupabaseGameRepository(connection, owner_user_id=owner_user_id),
         config=build_game_application_config(settings),
-        game_definitions=build_game_definitions(settings),
-        player_definitions=build_player_setup_definitions(settings),
         create_llm_mode=create_llm_mode,
     )
 

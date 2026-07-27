@@ -105,7 +105,7 @@ def _register_feature_command(
 
 
 system_app.command(name="doctor", help="ローカル設定とresourceを検査します。")(doctor)
-setup_app.command(name="export", help="presetを編集可能なTOMLへ出力します。")(export_setup)
+setup_app.command(name="export", help="templateを編集可能なTOMLへ出力します。")(export_setup)
 for _group, _path, _name, _handler, _help in (
     (system_app, "system status", "status", status, "APIと依存先の可用性を表示します。"),
     (setup_app, "setup show", "show", setup_options, "選択可能なゲーム設定を表示します。"),

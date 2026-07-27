@@ -27,6 +27,32 @@ _FEATURES: Final[tuple[FeatureSpec, ...]] = (
     FeatureSpec("runtime_config_get", "public", ("api",)),
     FeatureSpec("runtime_status_get", "public", ("api",)),
     FeatureSpec("setup_validate", "public", ("api",), streamlit_required=False),
+    FeatureSpec("setup_catalog_get", "public", ("api",), cli_required=False),
+    FeatureSpec("setup_template_get", "public", ("api",), cli_required=False),
+    FeatureSpec("setup_player_preview", "public", ("api",), cli_required=False),
+    FeatureSpec("setup_list", "player", ("api", "authentication", "database"), cli_required=False),
+    FeatureSpec(
+        "setup_create", "player", ("api", "authentication", "database"), cli_required=False
+    ),
+    FeatureSpec("setup_get", "player", ("api", "authentication", "database"), cli_required=False),
+    FeatureSpec(
+        "setup_revision_list",
+        "player",
+        ("api", "authentication", "database"),
+        cli_required=False,
+    ),
+    FeatureSpec(
+        "setup_revision_get",
+        "player",
+        ("api", "authentication", "database"),
+        cli_required=False,
+    ),
+    FeatureSpec(
+        "setup_revision_create",
+        "player",
+        ("api", "authentication", "database"),
+        cli_required=False,
+    ),
     FeatureSpec(
         "session_get",
         "player",

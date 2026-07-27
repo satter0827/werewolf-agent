@@ -7,8 +7,7 @@ from dataclasses import replace
 
 from werewolf_agent.domain.definitions import RuleSet
 from werewolf_agent.domain.errors import RuleViolation
-from werewolf_agent.domain.rules import game_setup
-from werewolf_agent.domain.rules.base import RuleContext
+from werewolf_agent.domain.rules import engine, game_setup
 from werewolf_agent.domain.state import (
     Action,
     GameEvent,
@@ -16,7 +15,6 @@ from werewolf_agent.domain.state import (
     GameState,
     GameView,
     PendingActions,
-    Phase,
 )
 
 
@@ -71,46 +69,29 @@ class Game:
 
     def submit(self, action: Action) -> list[GameEvent]:
         """Validate and atomically apply one player action."""
-        context = RuleContext(self._state, self._state.pending_actions)
-        violations = list(self._rules.action.validate(action, context))
-        if violations:
-            raise violations[0]
-        state, pending, events = self._rules.resolution.resolve(action, context)
+        engine.validate_action(self._state, self._state.pending_actions, action)
+        state, pending, events = engine.resolve_action(
+            self._state,
+            self._state.pending_actions,
+            action,
+        )
         self._state = replace(state, pending_actions=pending)
         return events
 
     def advance(self, random: random.Random) -> list[GameEvent]:
         """Validate and atomically advance the current phase."""
-        context = RuleContext(self._state, self._state.pending_actions)
-        violations = list(self._rules.phase.violations(context))
-        if violations:
-            raise violations[0]
-        state, pending, events = self._rules.phase.advance(context, random)
-        win_result = self._rules.victory.evaluate(RuleContext(state, pending))
-        if win_result is not None:
-            state = replace(state, phase=Phase.FINISHED, win_result=win_result)
-            events = [
-                *events,
-                GameEvent(
-                    event_type="game_finished",
-                    phase=Phase.FINISHED,
-                    day=state.day,
-                    payload={
-                        "winner": win_result.winner,
-                        "reason": win_result.reason,
-                        "winning_player_ids": win_result.winning_player_ids,
-                    },
-                ),
-            ]
+        engine.validate_phase_advance(self._state, self._state.pending_actions)
+        state, pending, events = engine.advance_phase(
+            self._state,
+            self._state.pending_actions,
+            random,
+        )
         self._state = replace(state, pending_actions=pending)
         return events
 
     def view_for(self, player_id: str) -> GameView:
         """Return a visibility-filtered player view."""
-        return self._rules.visibility.build_view(
-            player_id,
-            RuleContext(self._state, self._state.pending_actions),
-        )
+        return engine.build_view(self._state, self._state.pending_actions, player_id)
 
     def snapshot(self) -> GameState:
         """Return the current immutable state snapshot."""

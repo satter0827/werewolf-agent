@@ -102,9 +102,8 @@ def create_completed_game(client: httpx.Client, api_url: str, token: str) -> str
         token,
         {
             "manual_player_id": None,
-            "narration_mode": "standard",
             "seed": 7,
-            "setup": {"mode": "preset", "preset_id": "standard_6"},
+            "setup": {"mode": "template", "template_id": "standard_6"},
         },
     )
     result = created.get("result")

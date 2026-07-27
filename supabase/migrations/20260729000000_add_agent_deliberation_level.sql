@@ -1,4 +1,4 @@
-update private.game_runs
+update private.game_snapshots
 set config = jsonb_set(config, '{deliberation_level}', '"standard"'::jsonb, true)
 where not config ? 'deliberation_level';
 

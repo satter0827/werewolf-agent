@@ -3,37 +3,30 @@
 from __future__ import annotations
 
 import tomllib
-from collections.abc import Mapping
 from importlib.resources import files
 from pathlib import Path
-from typing import TypeVar, cast
+from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
 from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
 from werewolf_agent.agents.definitions import PromptDefinition
-from werewolf_agent.application.definitions import (
-    GameCatalogDefinitions,
-    GameDefinitions,
-    GameRoleDefinitions,
-    GameRuleDefinitions,
-    PlayerRoster,
+from werewolf_agent.application.setup_catalog import (
+    SetupTemplateCatalog,
+    SetupTemplateCatalogDefinition,
 )
+from werewolf_agent.application.setup_document import GameSetupDocument
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
-GAME_DEFINITIONS_PACKAGE = "werewolf_agent.application.resources.game"
-PRESENTATION_DEFINITIONS_PACKAGE = "werewolf_agent.application.resources.presentation"
 LLM_DEFINITIONS_PACKAGE = "werewolf_agent.agents.resources.llm"
 FAKE_DEFINITIONS_PACKAGE = "werewolf_agent.adapters.llm.resources"
 PROMPTS_PACKAGE = "werewolf_agent.agents.resources.prompts"
-RULES_FILE = "rules.toml"
-ROLES_FILE = "roles.toml"
-ABILITIES_FILE = "abilities.toml"
+SETUPS_PACKAGE = "werewolf_agent.application.resources.setups"
 CATALOG_FILE = "catalog.toml"
-PLAYERS_FILE = "players.toml"
 PROMPT_FILE = "agent_decision.toml"
 FAKE_RESPONSES_FILE = "fake_responses.toml"
+SETUP_CATALOG_FILE = "catalog.toml"
 
 
 class LlmDefinitions(BaseModel):
@@ -41,7 +34,6 @@ class LlmDefinitions(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    players: PlayerRoster
     prompt: PromptDefinition
     fake_responses: FakeDecisionCatalog
 
@@ -89,65 +81,13 @@ def load_external_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def load_game_definitions(
-    *,
-    rules_path: Path | None,
-    roles_path: Path | None,
-    catalog_path: Path | None = None,
-    abilities_path: Path | None = None,
-) -> GameDefinitions:
-    """Load game-only runtime definitions."""
-    presentation_data = (
-        load_external_toml(catalog_path)
-        if catalog_path is not None
-        else load_packaged_toml(PRESENTATION_DEFINITIONS_PACKAGE, CATALOG_FILE)
-    )
-    ability_data = (
-        load_external_toml(abilities_path)
-        if abilities_path is not None
-        else load_packaged_toml(GAME_DEFINITIONS_PACKAGE, ABILITIES_FILE)
-    )
-    ability_definitions = cast(
-        Mapping[str, Mapping[str, object]],
-        ability_data.get("abilities") or {},
-    )
-    catalog_data = {
-        **presentation_data,
-        "abilities": {
-            ability_id: dict(definition) for ability_id, definition in ability_definitions.items()
-        },
-    }
-    return GameDefinitions(
-        rules=load_toml_model(
-            GameRuleDefinitions,
-            package=GAME_DEFINITIONS_PACKAGE,
-            file_name=RULES_FILE,
-            override_path=rules_path,
-        ),
-        roles=load_toml_model(
-            GameRoleDefinitions,
-            package=GAME_DEFINITIONS_PACKAGE,
-            file_name=ROLES_FILE,
-            override_path=roles_path,
-        ),
-        catalog=GameCatalogDefinitions.model_validate(catalog_data),
-    )
-
-
 def load_llm_definitions(
     *,
-    players_path: Path | None,
     prompt_path: Path | None,
     fake_responses_path: Path | None,
 ) -> LlmDefinitions:
     """Load LLM-only runtime definitions."""
     return LlmDefinitions(
-        players=load_toml_model(
-            PlayerRoster,
-            package=LLM_DEFINITIONS_PACKAGE,
-            file_name=PLAYERS_FILE,
-            override_path=players_path,
-        ),
         prompt=load_toml_model(
             PromptDefinition,
             package=PROMPTS_PACKAGE,
@@ -163,13 +103,32 @@ def load_llm_definitions(
     )
 
 
+def load_setup_template_catalog() -> SetupTemplateCatalog:
+    """Load every complete packaged setup without implicit fallback."""
+    definition = SetupTemplateCatalogDefinition.model_validate(
+        load_packaged_toml(SETUPS_PACKAGE, SETUP_CATALOG_FILE)
+    )
+    documents = {
+        template_id: GameSetupDocument.model_validate(
+            load_packaged_toml(SETUPS_PACKAGE, metadata.file)
+        )
+        for template_id, metadata in definition.templates.items()
+    }
+    return SetupTemplateCatalog(
+        recommended_template_id=definition.recommended_template_id,
+        template_order=definition.template_order,
+        metadata=definition.templates,
+        documents=documents,
+    )
+
+
 __all__ = [
     "LlmDefinitions",
     "load_external_text",
     "load_external_toml",
-    "load_game_definitions",
     "load_llm_definitions",
     "load_packaged_text",
     "load_packaged_toml",
+    "load_setup_template_catalog",
     "load_toml_model",
 ]

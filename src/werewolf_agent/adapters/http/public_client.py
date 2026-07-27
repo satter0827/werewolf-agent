@@ -7,8 +7,12 @@ from pydantic import BaseModel, ConfigDict
 
 from werewolf_agent.adapters.http.base import HttpApiClient
 from werewolf_agent.contracts.api import (
+    PlayerPreviewRequest,
+    PlayerPreviewResponse,
     PublicRuntimeConfig,
     RuntimeStatusResponse,
+    SetupCatalogResponse,
+    SetupTemplateResponse,
     SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import GameSetupDocumentRequest
@@ -56,6 +60,27 @@ class HttpPublicClient:
             "POST",
             "/api/v1/setups/validate",
             json=setup.model_dump(mode="json"),
+        )
+
+    def get_setup_catalog(self) -> SetupCatalogResponse:
+        """Return packaged template and editor metadata."""
+        return self._http.model(SetupCatalogResponse, "GET", "/api/v1/setup-catalog")
+
+    def get_setup_template(self, template_id: str) -> SetupTemplateResponse:
+        """Return one complete packaged setup document."""
+        return self._http.model(
+            SetupTemplateResponse,
+            "GET",
+            f"/api/v1/setup-templates/{template_id}",
+        )
+
+    def preview_players(self, request: PlayerPreviewRequest) -> PlayerPreviewResponse:
+        """Generate the public roster preview for a setup and seed."""
+        return self._http.model(
+            PlayerPreviewResponse,
+            "POST",
+            "/api/v1/setups/preview-players",
+            json=request.model_dump(mode="json", exclude_none=True),
         )
 
 

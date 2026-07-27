@@ -1,102 +1,6 @@
 {
   "components": {
     "schemas": {
-      "AbilityDefinitionView": {
-        "additionalProperties": false,
-        "description": "Public ability metadata for setup screens.",
-        "properties": {
-          "action": {
-            "title": "Action",
-            "type": "string"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "difficulty": {
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Difficulty",
-            "type": "integer"
-          },
-          "effect": {
-            "title": "Effect",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "max_uses": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Max Uses"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "phase": {
-            "title": "Phase",
-            "type": "string"
-          },
-          "resolution_policy": {
-            "title": "Resolution Policy",
-            "type": "string"
-          },
-          "resolution_priority": {
-            "default": 100,
-            "maximum": 1000.0,
-            "minimum": 0.0,
-            "title": "Resolution Priority",
-            "type": "integer"
-          },
-          "result_visibility": {
-            "default": "private",
-            "enum": [
-              "private",
-              "public",
-              "none"
-            ],
-            "title": "Result Visibility",
-            "type": "string"
-          },
-          "start_day": {
-            "default": 1,
-            "minimum": 1.0,
-            "title": "Start Day",
-            "type": "integer"
-          },
-          "target_policy": {
-            "title": "Target Policy",
-            "type": "string"
-          },
-          "validation_policy": {
-            "title": "Validation Policy",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description",
-          "phase",
-          "action",
-          "validation_policy",
-          "resolution_policy",
-          "target_policy",
-          "effect",
-          "difficulty"
-        ],
-        "title": "AbilityDefinitionView",
-        "type": "object"
-      },
       "AdminLlmTraceListResponse": {
         "additionalProperties": false,
         "description": "Bounded administrator trace page.",
@@ -402,63 +306,6 @@
         "title": "AdvanceOperationRequest",
         "type": "object"
       },
-      "CharacterDefinitionView": {
-        "additionalProperties": false,
-        "description": "Public character metadata for setup screens.",
-        "properties": {
-          "age": {
-            "maximum": 99.0,
-            "minimum": 18.0,
-            "title": "Age",
-            "type": "integer"
-          },
-          "evidence_focus": {
-            "default": "vote_consistency",
-            "title": "Evidence Focus",
-            "type": "string"
-          },
-          "gender": {
-            "title": "Gender",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "personality": {
-            "title": "Personality",
-            "type": "string"
-          },
-          "reasoning_style": {
-            "title": "Reasoning Style",
-            "type": "string"
-          },
-          "risk_tolerance": {
-            "title": "Risk Tolerance",
-            "type": "string"
-          },
-          "speaking_style": {
-            "title": "Speaking Style",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "age",
-          "gender",
-          "personality",
-          "speaking_style",
-          "reasoning_style",
-          "risk_tolerance"
-        ],
-        "title": "CharacterDefinitionView",
-        "type": "object"
-      },
       "CreateGameRequest": {
         "additionalProperties": false,
         "description": "Payload for creating one game.",
@@ -484,15 +331,6 @@
             ],
             "title": "Manual Player Id"
           },
-          "narration_mode": {
-            "default": "standard",
-            "enum": [
-              "none",
-              "standard"
-            ],
-            "title": "Narration Mode",
-            "type": "string"
-          },
           "seed": {
             "anyOf": [
               {
@@ -507,17 +345,21 @@
           "setup": {
             "discriminator": {
               "mapping": {
-                "custom": "#/components/schemas/CustomSetupRequest",
-                "preset": "#/components/schemas/PresetSetupRequest"
+                "inline": "#/components/schemas/InlineSetupRequest",
+                "saved": "#/components/schemas/SavedSetupRequest",
+                "template": "#/components/schemas/TemplateSetupRequest"
               },
               "propertyName": "mode"
             },
             "oneOf": [
               {
-                "$ref": "#/components/schemas/PresetSetupRequest"
+                "$ref": "#/components/schemas/TemplateSetupRequest"
               },
               {
-                "$ref": "#/components/schemas/CustomSetupRequest"
+                "$ref": "#/components/schemas/SavedSetupRequest"
+              },
+              {
+                "$ref": "#/components/schemas/InlineSetupRequest"
               }
             ],
             "title": "Setup"
@@ -527,83 +369,6 @@
           "setup"
         ],
         "title": "CreateGameRequest",
-        "type": "object"
-      },
-      "CustomCharacterDefinitionRequest": {
-        "additionalProperties": false,
-        "description": "Session-scoped character definition supplied by a UI client.",
-        "properties": {
-          "age": {
-            "maximum": 99.0,
-            "minimum": 18.0,
-            "title": "Age",
-            "type": "integer"
-          },
-          "evidence_focus": {
-            "default": "vote_consistency",
-            "title": "Evidence Focus",
-            "type": "string"
-          },
-          "gender": {
-            "title": "Gender",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "personality": {
-            "title": "Personality",
-            "type": "string"
-          },
-          "reasoning_style": {
-            "title": "Reasoning Style",
-            "type": "string"
-          },
-          "risk_tolerance": {
-            "title": "Risk Tolerance",
-            "type": "string"
-          },
-          "speaking_style": {
-            "title": "Speaking Style",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "age",
-          "gender",
-          "personality",
-          "speaking_style",
-          "reasoning_style",
-          "risk_tolerance"
-        ],
-        "title": "CustomCharacterDefinitionRequest",
-        "type": "object"
-      },
-      "CustomSetupRequest": {
-        "additionalProperties": false,
-        "description": "Supply a complete custom setup.",
-        "properties": {
-          "mode": {
-            "const": "custom",
-            "title": "Mode",
-            "type": "string"
-          },
-          "setup": {
-            "$ref": "#/components/schemas/GameSetupDocumentRequest"
-          }
-        },
-        "required": [
-          "mode",
-          "setup"
-        ],
-        "title": "CustomSetupRequest",
         "type": "object"
       },
       "GameListResponse": {
@@ -658,6 +423,17 @@
         "additionalProperties": false,
         "description": "Pending action exposed only by the dedicated reveal operation.",
         "properties": {
+          "ability_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ability Id"
+          },
           "message": {
             "anyOf": [
               {
@@ -688,11 +464,7 @@
             "enum": [
               "speech",
               "vote",
-              "seer_inspect",
-              "knight_guard",
-              "werewolf_attack",
-              "apothecary_heal",
-              "apothecary_poison",
+              "use_ability",
               "pass"
             ],
             "title": "Type",
@@ -710,8 +482,12 @@
         "additionalProperties": false,
         "description": "Resolved inspection exposed only by the dedicated reveal operation.",
         "properties": {
-          "seer_id": {
-            "title": "Seer Id",
+          "ability_id": {
+            "title": "Ability Id",
+            "type": "string"
+          },
+          "player_id": {
+            "title": "Player Id",
             "type": "string"
           },
           "target_faction": {
@@ -728,7 +504,8 @@
           }
         },
         "required": [
-          "seer_id",
+          "player_id",
+          "ability_id",
           "target_id",
           "target_role",
           "target_faction"
@@ -1097,17 +874,15 @@
       },
       "GameSetupDocumentRequest": {
         "additionalProperties": false,
-        "description": "Complete portable setup document.",
         "properties": {
           "mechanics": {
             "$ref": "#/components/schemas/SetupMechanicsSettings"
           },
-          "roster": {
-            "$ref": "#/components/schemas/SetupRosterSettings"
+          "player_generation": {
+            "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": 1,
-            "default": 1,
+            "const": 2,
             "title": "Schema Version",
             "type": "integer"
           },
@@ -1116,111 +891,12 @@
           }
         },
         "required": [
+          "schema_version",
           "mechanics",
-          "theme"
+          "theme",
+          "player_generation"
         ],
         "title": "GameSetupDocumentRequest",
-        "type": "object"
-      },
-      "GameSetupOptionsResponse": {
-        "additionalProperties": false,
-        "description": "Public setup metadata for client bootstrapping.",
-        "properties": {
-          "abilities": {
-            "items": {
-              "$ref": "#/components/schemas/AbilityDefinitionView"
-            },
-            "title": "Abilities",
-            "type": "array"
-          },
-          "characters": {
-            "items": {
-              "$ref": "#/components/schemas/CharacterDefinitionView"
-            },
-            "title": "Characters",
-            "type": "array"
-          },
-          "default_narration_mode": {
-            "default": "standard",
-            "enum": [
-              "none",
-              "standard"
-            ],
-            "title": "Default Narration Mode",
-            "type": "string"
-          },
-          "default_role_counts": {
-            "additionalProperties": {
-              "minimum": 0.0,
-              "type": "integer"
-            },
-            "title": "Default Role Counts",
-            "type": "object"
-          },
-          "default_rules": {
-            "$ref": "#/components/schemas/LocalRulesSettings"
-          },
-          "default_scenario_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Scenario Id"
-          },
-          "default_setup_preset_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Default Setup Preset Id"
-          },
-          "player_count": {
-            "additionalProperties": {
-              "type": "integer"
-            },
-            "title": "Player Count",
-            "type": "object"
-          },
-          "roles": {
-            "items": {
-              "$ref": "#/components/schemas/RoleDefinitionView"
-            },
-            "title": "Roles",
-            "type": "array"
-          },
-          "rule_composition": {
-            "$ref": "#/components/schemas/RuleCompositionOptionsView"
-          },
-          "scenarios": {
-            "items": {
-              "$ref": "#/components/schemas/ScenarioDefinitionView"
-            },
-            "title": "Scenarios",
-            "type": "array"
-          },
-          "setup_presets": {
-            "items": {
-              "$ref": "#/components/schemas/SetupPresetDefinitionView"
-            },
-            "title": "Setup Presets",
-            "type": "array"
-          }
-        },
-        "required": [
-          "player_count",
-          "roles",
-          "default_role_counts",
-          "default_rules"
-        ],
-        "title": "GameSetupOptionsResponse",
         "type": "object"
       },
       "GameTimelineItem": {
@@ -1358,24 +1034,30 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "InlineSetupRequest": {
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
+          },
+          "mode": {
+            "const": "inline",
+            "title": "Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "document"
+        ],
+        "title": "InlineSetupRequest",
+        "type": "object"
+      },
       "LocalRulesSettings": {
         "additionalProperties": false,
-        "description": "Local rule settings accepted when creating a game.",
+        "description": "Complete mutable game rules carried by an inline setup.",
         "properties": {
-          "allow_knight_repeat_guard": {
-            "title": "Allow Knight Repeat Guard",
-            "type": "boolean"
-          },
-          "allow_knight_self_guard": {
-            "title": "Allow Knight Self Guard",
-            "type": "boolean"
-          },
           "allow_night_action_revision": {
             "title": "Allow Night Action Revision",
-            "type": "boolean"
-          },
-          "allow_seer_self_inspect": {
-            "title": "Allow Seer Self Inspect",
             "type": "boolean"
           },
           "allow_self_vote": {
@@ -1386,44 +1068,19 @@
             "title": "Allow Vote Revision",
             "type": "boolean"
           },
-          "allow_werewolf_friendly_fire": {
-            "title": "Allow Werewolf Friendly Fire",
-            "type": "boolean"
-          },
           "day_speech_limit_per_player": {
-            "maximum": 10.0,
-            "minimum": 1.0,
+            "maximum": 100.0,
+            "minimum": 0.0,
             "title": "Day Speech Limit Per Player",
             "type": "integer"
           },
-          "enable_first_night_attack": {
-            "title": "Enable First Night Attack",
-            "type": "boolean"
-          },
-          "medium_result_detail": {
-            "enum": [
-              "faction",
-              "role"
-            ],
-            "title": "Medium Result Detail",
-            "type": "string"
-          },
           "require_all_actions_before_advance": {
-            "default": true,
             "title": "Require All Actions Before Advance",
             "type": "boolean"
           },
           "reveal_role_on_death": {
             "title": "Reveal Role On Death",
             "type": "boolean"
-          },
-          "seer_result_detail": {
-            "enum": [
-              "faction",
-              "role"
-            ],
-            "title": "Seer Result Detail",
-            "type": "string"
           },
           "starting_phase": {
             "enum": [
@@ -1441,14 +1098,6 @@
             ],
             "title": "Vote Tie Resolution",
             "type": "string"
-          },
-          "wolf_attack_tie_resolution": {
-            "enum": [
-              "random_target",
-              "no_attack"
-            ],
-            "title": "Wolf Attack Tie Resolution",
-            "type": "string"
           }
         },
         "required": [
@@ -1456,17 +1105,10 @@
           "allow_self_vote",
           "allow_vote_revision",
           "allow_night_action_revision",
-          "enable_first_night_attack",
           "vote_tie_resolution",
-          "wolf_attack_tie_resolution",
-          "seer_result_detail",
-          "medium_result_detail",
           "starting_phase",
-          "allow_knight_self_guard",
-          "allow_knight_repeat_guard",
-          "allow_seer_self_inspect",
-          "allow_werewolf_friendly_fire",
-          "reveal_role_on_death"
+          "reveal_role_on_death",
+          "require_all_actions_before_advance"
         ],
         "title": "LocalRulesSettings",
         "type": "object"
@@ -1587,6 +1229,17 @@
         "additionalProperties": false,
         "description": "One manual player action submitted through the API port.",
         "properties": {
+          "ability_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ability Id"
+          },
           "message": {
             "anyOf": [
               {
@@ -1618,11 +1271,7 @@
             "enum": [
               "speech",
               "vote",
-              "seer_inspect",
-              "knight_guard",
-              "werewolf_attack",
-              "apothecary_heal",
-              "apothecary_poison",
+              "use_ability",
               "pass"
             ],
             "title": "Type",
@@ -1633,6 +1282,70 @@
           "type"
         ],
         "title": "PlayerActionRequest",
+        "type": "object"
+      },
+      "PlayerGenerationSettings": {
+        "properties": {
+          "identities": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerIdentitySettings"
+            },
+            "title": "Identities",
+            "type": "array"
+          },
+          "private_strategies": {
+            "items": {
+              "$ref": "#/components/schemas/PrivateStrategySettings"
+            },
+            "title": "Private Strategies",
+            "type": "array"
+          },
+          "public_personas": {
+            "items": {
+              "$ref": "#/components/schemas/PublicPersonaSettings"
+            },
+            "title": "Public Personas",
+            "type": "array"
+          }
+        },
+        "required": [
+          "identities",
+          "public_personas",
+          "private_strategies"
+        ],
+        "title": "PlayerGenerationSettings",
+        "type": "object"
+      },
+      "PlayerIdentitySettings": {
+        "properties": {
+          "age_max": {
+            "maximum": 120.0,
+            "minimum": 18.0,
+            "title": "Age Max",
+            "type": "integer"
+          },
+          "age_min": {
+            "maximum": 120.0,
+            "minimum": 18.0,
+            "title": "Age Min",
+            "type": "integer"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "age_min",
+          "age_max",
+          "gender"
+        ],
+        "title": "PlayerIdentitySettings",
         "type": "object"
       },
       "PlayerObservationResponse": {
@@ -1661,25 +1374,104 @@
         "title": "PlayerObservationResponse",
         "type": "object"
       },
-      "PresetSetupRequest": {
+      "PlayerPreviewRequest": {
         "additionalProperties": false,
-        "description": "Select a packaged setup preset.",
+        "description": "Request for deterministic public player generation.",
         "properties": {
-          "mode": {
-            "const": "preset",
-            "title": "Mode",
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          },
+          "setup": {
+            "discriminator": {
+              "mapping": {
+                "inline": "#/components/schemas/InlineSetupRequest",
+                "saved": "#/components/schemas/SavedSetupRequest",
+                "template": "#/components/schemas/TemplateSetupRequest"
+              },
+              "propertyName": "mode"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TemplateSetupRequest"
+              },
+              {
+                "$ref": "#/components/schemas/SavedSetupRequest"
+              },
+              {
+                "$ref": "#/components/schemas/InlineSetupRequest"
+              }
+            ],
+            "title": "Setup"
+          }
+        },
+        "required": [
+          "setup"
+        ],
+        "title": "PlayerPreviewRequest",
+        "type": "object"
+      },
+      "PlayerPreviewResponse": {
+        "additionalProperties": false,
+        "description": "Deterministic public roster preview and checksum.",
+        "properties": {
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PublicGeneratedPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "roster_checksum": {
+            "title": "Roster Checksum",
             "type": "string"
           },
-          "preset_id": {
-            "title": "Preset Id",
+          "seed": {
+            "title": "Seed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "seed",
+          "players",
+          "roster_checksum"
+        ],
+        "title": "PlayerPreviewResponse",
+        "type": "object"
+      },
+      "PrivateStrategySettings": {
+        "properties": {
+          "evidence_focus": {
+            "title": "Evidence Focus",
+            "type": "string"
+          },
+          "reasoning_style": {
+            "title": "Reasoning Style",
+            "type": "string"
+          },
+          "risk_tolerance": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Risk Tolerance",
             "type": "string"
           }
         },
         "required": [
-          "mode",
-          "preset_id"
+          "reasoning_style",
+          "risk_tolerance",
+          "evidence_focus"
         ],
-        "title": "PresetSetupRequest",
+        "title": "PrivateStrategySettings",
         "type": "object"
       },
       "ProblemDetails": {
@@ -2109,6 +1901,64 @@
         "title": "PublicGameSummary",
         "type": "object"
       },
+      "PublicGeneratedPlayer": {
+        "additionalProperties": false,
+        "description": "Generated player fields safe to expose before game creation.",
+        "properties": {
+          "age": {
+            "title": "Age",
+            "type": "integer"
+          },
+          "gender": {
+            "title": "Gender",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "personality": {
+            "title": "Personality",
+            "type": "string"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "speaking_style": {
+            "title": "Speaking Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "player_id",
+          "name",
+          "age",
+          "gender",
+          "personality",
+          "speaking_style"
+        ],
+        "title": "PublicGeneratedPlayer",
+        "type": "object"
+      },
+      "PublicPersonaSettings": {
+        "properties": {
+          "personality": {
+            "title": "Personality",
+            "type": "string"
+          },
+          "speaking_style": {
+            "title": "Speaking Style",
+            "type": "string"
+          }
+        },
+        "required": [
+          "personality",
+          "speaking_style"
+        ],
+        "title": "PublicPersonaSettings",
+        "type": "object"
+      },
       "PublicPlayerState": {
         "additionalProperties": false,
         "description": "Public player state exposed to clients.",
@@ -2209,15 +2059,11 @@
           },
           "limits": {
             "$ref": "#/components/schemas/PublicRuntimeLimits"
-          },
-          "setup": {
-            "$ref": "#/components/schemas/GameSetupOptionsResponse"
           }
         },
         "required": [
           "contract_version",
           "config_revision",
-          "setup",
           "limits",
           "features"
         ],
@@ -2438,226 +2284,6 @@
         "title": "ReplayVerificationResponse",
         "type": "object"
       },
-      "RoleDefinitionView": {
-        "additionalProperties": false,
-        "description": "Public role metadata for client bootstrapping.",
-        "properties": {
-          "abilities": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Abilities",
-            "type": "array"
-          },
-          "description": {
-            "default": "",
-            "title": "Description",
-            "type": "string"
-          },
-          "difficulty": {
-            "default": 1,
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Difficulty",
-            "type": "integer"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "identity_faction": {
-            "title": "Identity Faction",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "objective": {
-            "title": "Objective",
-            "type": "string"
-          },
-          "victory_team": {
-            "title": "Victory Team",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "identity_faction",
-          "victory_team",
-          "objective",
-          "abilities"
-        ],
-        "title": "RoleDefinitionView",
-        "type": "object"
-      },
-      "RuleCompositionOptionsView": {
-        "additionalProperties": false,
-        "description": "Selectable registered policies and the current default composition.",
-        "properties": {
-          "action_policies": {
-            "items": {
-              "$ref": "#/components/schemas/RulePolicyOptionView"
-            },
-            "title": "Action Policies",
-            "type": "array"
-          },
-          "default": {
-            "$ref": "#/components/schemas/RuleCompositionSelection"
-          },
-          "phase_orders": {
-            "items": {
-              "$ref": "#/components/schemas/RulePhaseOrderOptionView"
-            },
-            "title": "Phase Orders",
-            "type": "array"
-          },
-          "phase_policies": {
-            "items": {
-              "$ref": "#/components/schemas/RulePolicyOptionView"
-            },
-            "title": "Phase Policies",
-            "type": "array"
-          },
-          "resolution_policies": {
-            "items": {
-              "$ref": "#/components/schemas/RulePolicyOptionView"
-            },
-            "title": "Resolution Policies",
-            "type": "array"
-          },
-          "victory_policies": {
-            "items": {
-              "$ref": "#/components/schemas/RulePolicyOptionView"
-            },
-            "title": "Victory Policies",
-            "type": "array"
-          },
-          "visibility_policies": {
-            "items": {
-              "$ref": "#/components/schemas/RulePolicyOptionView"
-            },
-            "title": "Visibility Policies",
-            "type": "array"
-          }
-        },
-        "required": [
-          "default",
-          "phase_orders",
-          "action_policies",
-          "resolution_policies",
-          "phase_policies",
-          "victory_policies",
-          "visibility_policies"
-        ],
-        "title": "RuleCompositionOptionsView",
-        "type": "object"
-      },
-      "RuleCompositionSelection": {
-        "additionalProperties": false,
-        "description": "Registered rule policies selected for one game.",
-        "properties": {
-          "action_policy": {
-            "default": "standard",
-            "title": "Action Policy",
-            "type": "string"
-          },
-          "phase_policy": {
-            "default": "required_actions",
-            "title": "Phase Policy",
-            "type": "string"
-          },
-          "phases": {
-            "default": [
-              "night",
-              "day_discussion",
-              "voting"
-            ],
-            "items": {
-              "type": "string"
-            },
-            "title": "Phases",
-            "type": "array"
-          },
-          "resolution_policy": {
-            "default": "standard",
-            "title": "Resolution Policy",
-            "type": "string"
-          },
-          "victory_policy": {
-            "default": "faction_balance",
-            "title": "Victory Policy",
-            "type": "string"
-          },
-          "visibility_policy": {
-            "default": "standard",
-            "title": "Visibility Policy",
-            "type": "string"
-          }
-        },
-        "title": "RuleCompositionSelection",
-        "type": "object"
-      },
-      "RulePhaseOrderOptionView": {
-        "additionalProperties": false,
-        "description": "Public display metadata for one supported phase order.",
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          },
-          "phases": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Phases",
-            "type": "array"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description",
-          "phases"
-        ],
-        "title": "RulePhaseOrderOptionView",
-        "type": "object"
-      },
-      "RulePolicyOptionView": {
-        "additionalProperties": false,
-        "description": "Public display metadata for one registered rule policy.",
-        "properties": {
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "name",
-          "description"
-        ],
-        "title": "RulePolicyOptionView",
-        "type": "object"
-      },
       "RuntimeComponentStatus": {
         "additionalProperties": false,
         "description": "Sanitized availability for one runtime dependency.",
@@ -2728,97 +2354,126 @@
         "title": "RuntimeStatusResponse",
         "type": "object"
       },
-      "ScenarioDefinitionView": {
-        "additionalProperties": false,
-        "description": "Public scenario metadata for setup screens.",
+      "SavedSetupListResponse": {
+        "description": "Owned setup summaries visible to the current user.",
         "properties": {
-          "ability_names": {
-            "additionalProperties": {
-              "type": "string"
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedSetupSummaryResponse"
             },
-            "title": "Ability Names",
-            "type": "object"
-          },
-          "action_names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Action Names",
-            "type": "object"
-          },
-          "faction_names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Faction Names",
-            "type": "object"
-          },
-          "id": {
-            "title": "Id",
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SavedSetupListResponse",
+        "type": "object"
+      },
+      "SavedSetupRequest": {
+        "properties": {
+          "mode": {
+            "const": "saved",
+            "title": "Mode",
             "type": "string"
           },
-          "name": {
-            "title": "Name",
-            "type": "string"
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
           },
-          "narration": {
-            "additionalProperties": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "title": "Narration",
-            "type": "object"
-          },
-          "phase_names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Phase Names",
-            "type": "object"
-          },
-          "premise": {
-            "title": "Premise",
-            "type": "string"
-          },
-          "recommended_setup_preset": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recommended Setup Preset"
-          },
-          "role_names": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Role Names",
-            "type": "object"
-          },
-          "role_objectives": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Role Objectives",
-            "type": "object"
-          },
-          "summary": {
-            "title": "Summary",
+          "setup_id": {
+            "title": "Setup Id",
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "name",
-          "summary",
-          "premise"
+          "mode",
+          "setup_id",
+          "revision"
         ],
-        "title": "ScenarioDefinitionView",
+        "title": "SavedSetupRequest",
+        "type": "object"
+      },
+      "SavedSetupRevisionResponse": {
+        "description": "One complete immutable owned setup revision.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
+          },
+          "mechanics_checksum": {
+            "title": "Mechanics Checksum",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "setup_checksum": {
+            "title": "Setup Checksum",
+            "type": "string"
+          },
+          "setup_id": {
+            "title": "Setup Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setup_id",
+          "display_name",
+          "revision",
+          "document",
+          "setup_checksum",
+          "mechanics_checksum",
+          "created_at"
+        ],
+        "title": "SavedSetupRevisionResponse",
+        "type": "object"
+      },
+      "SavedSetupSummaryResponse": {
+        "description": "Owned setup summary with its latest revision number.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "display_name": {
+            "title": "Display Name",
+            "type": "string"
+          },
+          "latest_revision": {
+            "title": "Latest Revision",
+            "type": "integer"
+          },
+          "setup_id": {
+            "title": "Setup Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "setup_id",
+          "display_name",
+          "latest_revision",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "SavedSetupSummaryResponse",
         "type": "object"
       },
       "SessionResponse": {
@@ -2855,73 +2510,52 @@
         "title": "SessionResponse",
         "type": "object"
       },
-      "SetupAbilityDefinition": {
+      "SetupAttackAbility": {
         "additionalProperties": false,
-        "description": "Wire definition for one registered, typed ability.",
         "properties": {
-          "action": {
-            "title": "Action",
-            "type": "string"
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
           },
-          "description": {
-            "title": "Description",
-            "type": "string"
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
           },
-          "difficulty": {
-            "default": 1,
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Difficulty",
-            "type": "integer"
-          },
-          "effect": {
-            "enum": [
-              "attack",
-              "inspection",
-              "protection",
-              "poison",
-              "knowledge",
-              "reaction",
-              "immunity",
-              "vulnerability",
-              "pass"
-            ],
-            "title": "Effect",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
+          "kind": {
+            "const": "attack",
+            "title": "Kind",
             "type": "string"
           },
           "max_uses": {
             "anyOf": [
               {
-                "minimum": 1.0,
-                "type": "integer"
+                "const": "unlimited",
+                "type": "string"
               },
               {
-                "type": "null"
+                "minimum": 1.0,
+                "type": "integer"
               }
             ],
             "title": "Max Uses"
           },
           "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
             "title": "Phase",
             "type": "string"
           },
-          "resolution_policy": {
-            "title": "Resolution Policy",
-            "type": "string"
-          },
           "resolution_priority": {
-            "default": 100,
             "maximum": 1000.0,
             "minimum": 0.0,
             "title": "Resolution Priority",
             "type": "integer"
           },
           "result_visibility": {
-            "default": "private",
             "enum": [
               "private",
               "public",
@@ -2936,45 +2570,622 @@
             "type": "integer"
           },
           "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
             "title": "Target Policy",
             "type": "string"
           },
-          "validation_policy": {
-            "title": "Validation Policy",
+          "tie_resolution": {
+            "enum": [
+              "random_target",
+              "no_action"
+            ],
+            "title": "Tie Resolution",
             "type": "string"
           }
         },
         "required": [
+          "kind",
           "phase",
-          "action",
-          "validation_policy",
-          "resolution_policy",
           "target_policy",
-          "effect",
           "start_day",
-          "label",
-          "description"
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night",
+          "tie_resolution"
         ],
-        "title": "SetupAbilityDefinition",
+        "title": "SetupAttackAbility",
+        "type": "object"
+      },
+      "SetupCatalogResponse": {
+        "additionalProperties": false,
+        "description": "Public editor metadata and packaged template summaries.",
+        "properties": {
+          "ability_kinds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ability Kinds",
+            "type": "array"
+          },
+          "player_count": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Player Count",
+            "type": "object"
+          },
+          "recommended_template_id": {
+            "title": "Recommended Template Id",
+            "type": "string"
+          },
+          "template_order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Template Order",
+            "type": "array"
+          },
+          "templates": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "title": "Templates",
+            "type": "object"
+          }
+        },
+        "required": [
+          "player_count",
+          "recommended_template_id",
+          "template_order",
+          "templates",
+          "ability_kinds"
+        ],
+        "title": "SetupCatalogResponse",
+        "type": "object"
+      },
+      "SetupCreateRequest": {
+        "additionalProperties": false,
+        "description": "Request to persist the first revision of a user setup.",
+        "properties": {
+          "display_name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Display Name",
+            "type": "string"
+          },
+          "document": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
+          }
+        },
+        "required": [
+          "display_name",
+          "document"
+        ],
+        "title": "SetupCreateRequest",
+        "type": "object"
+      },
+      "SetupDeathReactionAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "death_reaction",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night"
+        ],
+        "title": "SetupDeathReactionAbility",
+        "type": "object"
+      },
+      "SetupEliminateAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "eliminate",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night"
+        ],
+        "title": "SetupEliminateAbility",
+        "type": "object"
+      },
+      "SetupImmunityAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "immunity",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "source_kinds": {
+            "items": {
+              "enum": [
+                "attack",
+                "eliminate",
+                "inspect"
+              ],
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Kinds",
+            "type": "array"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night",
+          "source_kinds"
+        ],
+        "title": "SetupImmunityAbility",
+        "type": "object"
+      },
+      "SetupInspectAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "inspect",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_detail": {
+            "enum": [
+              "faction",
+              "role"
+            ],
+            "title": "Result Detail",
+            "type": "string"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night",
+          "result_detail"
+        ],
+        "title": "SetupInspectAbility",
+        "type": "object"
+      },
+      "SetupKnowledgeAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "knowledge",
+            "title": "Kind",
+            "type": "string"
+          },
+          "knowledge_mode": {
+            "enum": [
+              "allies",
+              "last_eliminated"
+            ],
+            "title": "Knowledge Mode",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_detail": {
+            "enum": [
+              "faction",
+              "role"
+            ],
+            "title": "Result Detail",
+            "type": "string"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night",
+          "knowledge_mode",
+          "result_detail"
+        ],
+        "title": "SetupKnowledgeAbility",
         "type": "object"
       },
       "SetupMechanicsSettings": {
         "additionalProperties": false,
-        "description": "Deterministic mechanics supplied with a custom setup.",
         "properties": {
           "abilities": {
             "additionalProperties": {
-              "$ref": "#/components/schemas/SetupAbilityDefinition"
+              "discriminator": {
+                "mapping": {
+                  "attack": "#/components/schemas/SetupAttackAbility",
+                  "death_reaction": "#/components/schemas/SetupDeathReactionAbility",
+                  "eliminate": "#/components/schemas/SetupEliminateAbility",
+                  "immunity": "#/components/schemas/SetupImmunityAbility",
+                  "inspect": "#/components/schemas/SetupInspectAbility",
+                  "knowledge": "#/components/schemas/SetupKnowledgeAbility",
+                  "protect": "#/components/schemas/SetupProtectAbility",
+                  "vulnerability": "#/components/schemas/SetupVulnerabilityAbility"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/SetupAttackAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupInspectAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupProtectAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupEliminateAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupKnowledgeAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupDeathReactionAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupImmunityAbility"
+                },
+                {
+                  "$ref": "#/components/schemas/SetupVulnerabilityAbility"
+                }
+              ]
             },
             "title": "Abilities",
             "type": "object"
           },
-          "composition": {
-            "$ref": "#/components/schemas/RuleCompositionSelection"
-          },
           "role_counts": {
             "additionalProperties": {
-              "minimum": 0.0,
+              "minimum": 1.0,
               "type": "integer"
             },
             "title": "Role Counts",
@@ -3000,62 +3211,119 @@
         "title": "SetupMechanicsSettings",
         "type": "object"
       },
-      "SetupPresetDefinitionView": {
+      "SetupProtectAbility": {
         "additionalProperties": false,
-        "description": "Public setup preset metadata for setup screens.",
         "properties": {
-          "id": {
-            "title": "Id",
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "protect",
+            "title": "Kind",
             "type": "string"
           },
-          "name": {
-            "title": "Name",
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
             "type": "string"
           },
-          "role_counts": {
-            "additionalProperties": {
-              "minimum": 0.0,
-              "type": "integer"
-            },
-            "title": "Role Counts",
-            "type": "object"
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
           },
-          "scenario_id": {
-            "title": "Scenario Id",
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
             "type": "string"
           }
         },
         "required": [
-          "id",
-          "name",
-          "scenario_id",
-          "role_counts"
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night"
         ],
-        "title": "SetupPresetDefinitionView",
+        "title": "SetupProtectAbility",
+        "type": "object"
+      },
+      "SetupRevisionCreateRequest": {
+        "additionalProperties": false,
+        "description": "Optimistic request to append an immutable setup revision.",
+        "properties": {
+          "document": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
+          },
+          "expected_revision": {
+            "minimum": 1.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "document"
+        ],
+        "title": "SetupRevisionCreateRequest",
         "type": "object"
       },
       "SetupRoleDefinition": {
         "additionalProperties": false,
-        "description": "Wire definition for one stable role ID.",
         "properties": {
           "abilities": {
-            "default": [],
             "items": {
               "type": "string"
             },
             "title": "Abilities",
             "type": "array"
-          },
-          "description": {
-            "title": "Description",
-            "type": "string"
-          },
-          "difficulty": {
-            "default": 1,
-            "maximum": 5.0,
-            "minimum": 1.0,
-            "title": "Difficulty",
-            "type": "integer"
           },
           "identity_faction": {
             "enum": [
@@ -3064,14 +3332,6 @@
               "fox"
             ],
             "title": "Identity Faction",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          },
-          "objective": {
-            "title": "Objective",
             "type": "string"
           },
           "victory_team": {
@@ -3087,33 +3347,28 @@
         "required": [
           "identity_faction",
           "victory_team",
-          "objective",
-          "label",
-          "description"
+          "abilities"
         ],
         "title": "SetupRoleDefinition",
         "type": "object"
       },
-      "SetupRosterSettings": {
+      "SetupTemplateResponse": {
         "additionalProperties": false,
-        "description": "Characters and fixed seat assignments supplied with a setup.",
+        "description": "One complete packaged setup template.",
         "properties": {
-          "assignments": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Assignments",
-            "type": "object"
+          "document": {
+            "$ref": "#/components/schemas/GameSetupDocumentRequest"
           },
-          "characters": {
-            "additionalProperties": {
-              "$ref": "#/components/schemas/CustomCharacterDefinitionRequest"
-            },
-            "title": "Characters",
-            "type": "object"
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
           }
         },
-        "title": "SetupRosterSettings",
+        "required": [
+          "template_id",
+          "document"
+        ],
+        "title": "SetupTemplateResponse",
         "type": "object"
       },
       "SetupValidationResponse": {
@@ -3158,6 +3413,14 @@
           "theme_name": {
             "title": "Theme Name",
             "type": "string"
+          },
+          "warnings": {
+            "default": [],
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
           }
         },
         "required": [
@@ -3173,10 +3436,110 @@
         "title": "SetupValidationResponse",
         "type": "object"
       },
+      "SetupVulnerabilityAbility": {
+        "additionalProperties": false,
+        "properties": {
+          "allow_repeat_target": {
+            "title": "Allow Repeat Target",
+            "type": "boolean"
+          },
+          "enabled_first_night": {
+            "title": "Enabled First Night",
+            "type": "boolean"
+          },
+          "kind": {
+            "const": "vulnerability",
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_uses": {
+            "anyOf": [
+              {
+                "const": "unlimited",
+                "type": "string"
+              },
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              }
+            ],
+            "title": "Max Uses"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "resolution_priority": {
+            "maximum": 1000.0,
+            "minimum": 0.0,
+            "title": "Resolution Priority",
+            "type": "integer"
+          },
+          "result_visibility": {
+            "enum": [
+              "private",
+              "public",
+              "none"
+            ],
+            "title": "Result Visibility",
+            "type": "string"
+          },
+          "source_kinds": {
+            "items": {
+              "const": "inspect",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Source Kinds",
+            "type": "array"
+          },
+          "start_day": {
+            "minimum": 1.0,
+            "title": "Start Day",
+            "type": "integer"
+          },
+          "target_policy": {
+            "enum": [
+              "none",
+              "alive",
+              "other_alive",
+              "other_alive_non_faction"
+            ],
+            "title": "Target Policy",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "phase",
+          "target_policy",
+          "start_day",
+          "max_uses",
+          "result_visibility",
+          "resolution_priority",
+          "allow_repeat_target",
+          "enabled_first_night",
+          "source_kinds"
+        ],
+        "title": "SetupVulnerabilityAbility",
+        "type": "object"
+      },
       "StoryThemeSettings": {
         "additionalProperties": false,
-        "description": "Presentation-only terminology supplied with a game setup.",
         "properties": {
+          "ability_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Ability Descriptions",
+            "type": "object"
+          },
           "ability_names": {
             "additionalProperties": {
               "type": "string"
@@ -3216,6 +3579,10 @@
             "title": "Narration",
             "type": "object"
           },
+          "narration_enabled": {
+            "title": "Narration Enabled",
+            "type": "boolean"
+          },
           "phase_names": {
             "additionalProperties": {
               "type": "string"
@@ -3226,6 +3593,13 @@
           "premise": {
             "title": "Premise",
             "type": "string"
+          },
+          "role_descriptions": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Role Descriptions",
+            "type": "object"
           },
           "role_names": {
             "additionalProperties": {
@@ -3253,12 +3627,35 @@
           "premise",
           "role_names",
           "role_objectives",
+          "role_descriptions",
           "faction_names",
           "ability_names",
+          "ability_descriptions",
           "action_names",
-          "phase_names"
+          "phase_names",
+          "narration_enabled",
+          "narration"
         ],
         "title": "StoryThemeSettings",
+        "type": "object"
+      },
+      "TemplateSetupRequest": {
+        "properties": {
+          "mode": {
+            "const": "template",
+            "title": "Mode",
+            "type": "string"
+          },
+          "template_id": {
+            "title": "Template Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "template_id"
+        ],
+        "title": "TemplateSetupRequest",
         "type": "object"
       },
       "ValidationError": {
@@ -5498,9 +5895,661 @@
         ]
       }
     },
+    "/api/v1/setup-catalog": {
+      "get": {
+        "description": "Return public template metadata without requiring authentication.",
+        "operationId": "setup_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupCatalogResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "summary": "Get Catalog",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setup-templates/{template_id}": {
+      "get": {
+        "description": "Return one public complete template without requiring authentication.",
+        "operationId": "setup_template_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "template_id",
+            "required": true,
+            "schema": {
+              "title": "Template Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupTemplateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "summary": "Get Template",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setups": {
+      "get": {
+        "operationId": "setup_list",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSetupListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Setups",
+        "tags": [
+          "setups"
+        ]
+      },
+      "post": {
+        "operationId": "setup_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Setup",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setups/preview-players": {
+      "post": {
+        "description": "Preview template and inline setups publicly, or an authenticated saved revision.",
+        "operationId": "setup_player_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerPreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerPreviewResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Preview Setup Players",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
     "/api/v1/setups/validate": {
       "post": {
-        "description": "Validate one complete setup through the canonical application boundary.",
+        "description": "Validate an inline setup without requiring authentication.",
         "operationId": "setup_validate",
         "requestBody": {
           "content": {
@@ -5626,7 +6675,576 @@
         },
         "summary": "Validate Setup",
         "tags": [
-          "configuration"
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setups/{setup_id}": {
+      "get": {
+        "operationId": "setup_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "setup_id",
+            "required": true,
+            "schema": {
+              "title": "Setup Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Setup",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setups/{setup_id}/revisions": {
+      "get": {
+        "operationId": "setup_revision_list",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "setup_id",
+            "required": true,
+            "schema": {
+              "title": "Setup Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+                  },
+                  "title": "Response Setup Revision List",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "List Setup Revisions",
+        "tags": [
+          "setups"
+        ]
+      },
+      "post": {
+        "operationId": "setup_revision_create",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "setup_id",
+            "required": true,
+            "schema": {
+              "title": "Setup Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRevisionCreateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Create Setup Revision",
+        "tags": [
+          "setups"
+        ]
+      }
+    },
+    "/api/v1/setups/{setup_id}/revisions/{revision}": {
+      "get": {
+        "operationId": "setup_revision_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "setup_id",
+            "required": true,
+            "schema": {
+              "title": "Setup Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "title": "Revision",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "409": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "413": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "429": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          },
+          "504": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            },
+            "description": "RFC 9457 Problem Details"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Get Setup Revision",
+        "tags": [
+          "setups"
         ]
       }
     },

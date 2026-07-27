@@ -8,10 +8,18 @@ from werewolf_agent.contracts.api import (
     AdminLlmTraceListResponse,
     AdminLlmUsageResponse,
     AdminOperationDiagnosticResponse,
+    PlayerPreviewRequest,
+    PlayerPreviewResponse,
     PublicRuntimeConfig,
     ReplayVerificationResponse,
     RuntimeStatusResponse,
+    SavedSetupListResponse,
+    SavedSetupRevisionResponse,
     SessionResponse,
+    SetupCatalogResponse,
+    SetupCreateRequest,
+    SetupRevisionCreateRequest,
+    SetupTemplateResponse,
     SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
@@ -48,12 +56,50 @@ class PublicClient(Protocol):
         """Validate a complete setup without creating a game."""
         ...
 
+    def get_setup_catalog(self) -> SetupCatalogResponse:
+        """Return packaged setup metadata for public editors."""
+        ...
+
+    def get_setup_template(self, template_id: str) -> SetupTemplateResponse:
+        """Return one complete packaged setup template."""
+        ...
+
+    def preview_players(self, request: PlayerPreviewRequest) -> PlayerPreviewResponse:
+        """Return a public deterministic player preview."""
+        ...
+
 
 class GameClient(Protocol):
     """Authenticated game operations used by human-facing entry points."""
 
     def get_session(self) -> SessionResponse:
         """Return safe capabilities of the current session."""
+        ...
+
+    def list_setups(self) -> SavedSetupListResponse:
+        """Return setup summaries owned by the current user."""
+        ...
+
+    def create_setup(self, request: SetupCreateRequest) -> SavedSetupRevisionResponse:
+        """Create an owned setup and its first revision."""
+        ...
+
+    def get_setup(self, setup_id: str) -> SavedSetupRevisionResponse:
+        """Return the latest revision of an owned setup."""
+        ...
+
+    def get_setup_revision(self, setup_id: str, revision: int) -> SavedSetupRevisionResponse:
+        """Return one immutable owned setup revision."""
+        ...
+
+    def list_setup_revisions(self, setup_id: str) -> list[SavedSetupRevisionResponse]:
+        """Return revision history for an owned setup."""
+        ...
+
+    def create_setup_revision(
+        self, setup_id: str, request: SetupRevisionCreateRequest
+    ) -> SavedSetupRevisionResponse:
+        """Append one immutable revision to an owned setup."""
         ...
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:

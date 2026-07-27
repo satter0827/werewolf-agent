@@ -102,7 +102,6 @@ class PromptDefinition(_DefinitionModel):
         alias="model_config",
     )
     response_format: dict[str, str]
-    role_strategies: dict[str, dict[str, str]] = Field(default_factory=dict)
     deliberation: dict[str, DeliberationSettings]
     messages: list[PromptMessageDefinition]
 
@@ -141,20 +140,6 @@ class PromptDefinition(_DefinitionModel):
         return {
             non_blank(key, "response format key"): non_blank(item, "response format value")
             for key, item in value.items()
-        }
-
-    @field_validator("role_strategies")
-    @classmethod
-    def validate_role_strategies(
-        cls, value: dict[str, dict[str, str]]
-    ) -> dict[str, dict[str, str]]:
-        """Return phase-specific role guidance keyed by normalized role id."""
-        return {
-            non_blank(str(role_id), "role strategy id"): {
-                non_blank(purpose, "role strategy purpose"): non_blank(text, "role strategy")
-                for purpose, text in strategies.items()
-            }
-            for role_id, strategies in value.items()
         }
 
     @model_validator(mode="after")

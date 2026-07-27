@@ -42,11 +42,7 @@ class AgentActionType(StrEnum):
 
     SPEECH = "speech"
     VOTE = "vote"
-    WEREWOLF_ATTACK = "werewolf_attack"
-    SEER_INSPECT = "seer_inspect"
-    KNIGHT_GUARD = "knight_guard"
-    APOTHECARY_HEAL = "apothecary_heal"
-    APOTHECARY_POISON = "apothecary_poison"
+    USE_ABILITY = "use_ability"
     PASS = "pass"
 
 
@@ -62,6 +58,25 @@ class _LlmModel(BaseModel):
     """Base model for LLM domain values."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AgentAvailableAction(_LlmModel):
+    """One concrete action option exposed to a decision provider."""
+
+    type: AgentActionType
+    ability_id: str | None = None
+
+    @property
+    def key(self) -> str:
+        """Return the stable action key including an optional ability ID."""
+        return f"{self.type.value}:{self.ability_id}" if self.ability_id else self.type.value
+
+    @model_validator(mode="after")
+    def validate_ability(self) -> Self:
+        """Require an ability ID only for ability actions."""
+        if (self.type is AgentActionType.USE_ABILITY) != (self.ability_id is not None):
+            raise ValueError("use_abilityだけがability_idを持ちます")
+        return self
 
 
 class VisiblePlayer(_LlmModel):
@@ -182,13 +197,14 @@ class AgentModelDecision(_LlmModel):
     """Untrusted decision payload returned by a model."""
 
     type: AgentActionType
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
     focus_id: str | None = None
     evidence_id: str | None = None
     reason: str = ""
 
-    @field_validator("target_id", "message", "focus_id", "evidence_id")
+    @field_validator("ability_id", "target_id", "message", "focus_id", "evidence_id")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return normalized optional output text."""
@@ -205,6 +221,8 @@ class AgentModelDecision(_LlmModel):
             return self
         if self.focus_id is not None:
             raise ValueError("focus_id is allowed only for speech")
+        if (self.type is AgentActionType.USE_ABILITY) != (self.ability_id is not None):
+            raise ValueError("use_abilityだけがability_idを持ちます")
         if self.type in AgentDecision.TARGET_TYPES:
             if self.target_id is None:
                 raise ValueError(message_target_required(self.type.value, "model decisions"))
@@ -240,8 +258,7 @@ class AgentAbilityContext(_LlmModel):
 
     id: str
     name: str
-    action: str
-    effect: str
+    kind: str
     remaining_uses: int | None = Field(default=None, ge=0)
 
 
@@ -280,8 +297,8 @@ class AgentObservation(_LlmModel):
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
     known_factions: dict[str, str] = Field(default_factory=dict)
-    available_actions: list[AgentActionType] = Field(default_factory=list)
-    legal_targets: dict[AgentActionType, list[str]] = Field(default_factory=dict)
+    available_actions: list[AgentAvailableAction] = Field(default_factory=list)
+    legal_targets: dict[str, list[str]] = Field(default_factory=dict)
     speeches: list[_AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[_AgentVoteRound] = Field(default_factory=list)
 
@@ -304,14 +321,14 @@ class AgentObservation(_LlmModel):
     @classmethod
     def validate_legal_targets(
         cls,
-        value: dict[AgentActionType, list[str]],
-    ) -> dict[AgentActionType, list[str]]:
+        value: dict[str, list[str]],
+    ) -> dict[str, list[str]]:
         """Return legal target ids keyed by action type."""
         return {
-            AgentActionType(action_type): [
+            non_blank(str(action_key), "action key"): [
                 non_blank(str(player_id), "legal target player id") for player_id in player_ids
             ]
-            for action_type, player_ids in value.items()
+            for action_key, player_ids in value.items()
         }
 
 
@@ -346,6 +363,7 @@ class AgentDecision(_LlmModel):
 
     type: AgentActionType
     player_id: str
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
     focus_id: str | None = None
@@ -353,14 +371,7 @@ class AgentDecision(_LlmModel):
     reason: str = ""
 
     TARGET_TYPES: ClassVar[frozenset[AgentActionType]] = frozenset(
-        {
-            AgentActionType.VOTE,
-            AgentActionType.WEREWOLF_ATTACK,
-            AgentActionType.SEER_INSPECT,
-            AgentActionType.KNIGHT_GUARD,
-            AgentActionType.APOTHECARY_HEAL,
-            AgentActionType.APOTHECARY_POISON,
-        }
+        {AgentActionType.VOTE, AgentActionType.USE_ABILITY}
     )
 
     @field_validator("player_id")
@@ -369,7 +380,7 @@ class AgentDecision(_LlmModel):
         """Return a trimmed non-empty player id."""
         return non_blank(value, "player_id")
 
-    @field_validator("target_id", "message", "focus_id", "evidence_id")
+    @field_validator("ability_id", "target_id", "message", "focus_id", "evidence_id")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
@@ -387,6 +398,9 @@ class AgentDecision(_LlmModel):
 
         if self.focus_id is not None:
             raise ValueError("focus_id is allowed only for speech decisions")
+
+        if (self.type is AgentActionType.USE_ABILITY) != (self.ability_id is not None):
+            raise ValueError("use_abilityだけがability_idを持ちます")
 
         if self.type in self.TARGET_TYPES:
             if self.target_id is None:
@@ -435,31 +449,14 @@ class AgentDecision(_LlmModel):
         )
 
     @classmethod
-    def attack(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a werewolf attack decision."""
+    def use_ability(
+        cls, player_id: str, ability_id: str, target_id: str, *, reason: str = ""
+    ) -> Self:
+        """Create an ability decision."""
         return cls(
-            type=AgentActionType.WEREWOLF_ATTACK,
+            type=AgentActionType.USE_ABILITY,
             player_id=player_id,
-            target_id=target_id,
-            reason=reason,
-        )
-
-    @classmethod
-    def inspect(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a seer inspection decision."""
-        return cls(
-            type=AgentActionType.SEER_INSPECT,
-            player_id=player_id,
-            target_id=target_id,
-            reason=reason,
-        )
-
-    @classmethod
-    def guard(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """Create a knight guard decision."""
-        return cls(
-            type=AgentActionType.KNIGHT_GUARD,
-            player_id=player_id,
+            ability_id=ability_id,
             target_id=target_id,
             reason=reason,
         )
@@ -473,6 +470,7 @@ class AgentDecision(_LlmModel):
 __all__ = [
     "AgentAbilityContext",
     "AgentActionType",
+    "AgentAvailableAction",
     "AgentDecision",
     "AgentGameContext",
     "AgentModelDecision",

@@ -7,7 +7,6 @@ from collections.abc import Mapping
 from werewolf_agent.domain import RuleSetDefinition
 from werewolf_agent.domain.state import (
     AbilityDefinition,
-    ActionType,
     GameState,
     LocalRules,
     Phase,
@@ -23,7 +22,6 @@ def rule_definition_from_values(
     rules: Mapping[str, object],
     roles: Mapping[str, Mapping[str, object]],
     abilities: Mapping[str, Mapping[str, object]],
-    composition: Mapping[str, object],
 ) -> RuleSetDefinition:
     """Build typed domain rule data from validated application resources."""
     return RuleSetDefinition(
@@ -42,35 +40,39 @@ def rule_definition_from_values(
         ),
         abilities={
             ability_id: AbilityDefinition(
+                kind=str(value.get("kind")),
                 phase=Phase(str(value.get("phase"))),
-                action=ActionType(str(value.get("action"))),
-                validation_policy=str(value.get("validation_policy")),
-                resolution_policy=str(value.get("resolution_policy")),
                 target_policy=str(value.get("target_policy")),
-                start_day=_integer_value(value.get("start_day"), default=1),
-                effect=str(value.get("effect")),
+                start_day=_integer_value(value.get("start_day")),
                 max_uses=(
                     None
-                    if value.get("max_uses") is None
-                    else _integer_value(value.get("max_uses"), default=1)
+                    if value.get("max_uses") == "unlimited"
+                    else _integer_value(value.get("max_uses"))
                 ),
-                result_visibility=str(value.get("result_visibility") or "private"),
-                resolution_priority=_integer_value(value.get("resolution_priority"), default=100),
+                result_visibility=str(value.get("result_visibility")),
+                resolution_priority=_integer_value(value.get("resolution_priority")),
+                allow_repeat_target=bool(value.get("allow_repeat_target")),
+                enabled_first_night=bool(value.get("enabled_first_night")),
+                result_detail=(
+                    None if value.get("result_detail") is None else str(value["result_detail"])
+                ),
+                knowledge_mode=(
+                    None if value.get("knowledge_mode") is None else str(value["knowledge_mode"])
+                ),
+                tie_resolution=(
+                    None if value.get("tie_resolution") is None else str(value["tie_resolution"])
+                ),
+                source_kinds=tuple(
+                    str(item) for item in _sequence_value(value.get("source_kinds"))
+                ),
             )
             for ability_id, value in abilities.items()
         },
-        phases=_phase_ids(composition),
-        action_policy=_policy_id(composition, "action_policy", "standard"),
-        resolution_policy=_policy_id(composition, "resolution_policy", "standard"),
-        phase_policy=_policy_id(composition, "phase_policy", "required_actions"),
-        victory_policy=_policy_id(composition, "victory_policy", "faction_balance"),
-        visibility_policy=_policy_id(composition, "visibility_policy", "standard"),
     )
 
 
 def rule_definition_from_state(
     state: GameState,
-    composition: Mapping[str, object],
 ) -> RuleSetDefinition:
     """Restore typed rule data from one persisted aggregate snapshot."""
     config = state.config
@@ -80,24 +82,7 @@ def rule_definition_from_state(
         rules=config.rules,
         roles=config.roles,
         abilities=config.abilities,
-        phases=tuple(phase.value for phase in config.phase_order),
-        action_policy=_policy_id(composition, "action_policy", "standard"),
-        resolution_policy=_policy_id(composition, "resolution_policy", "standard"),
-        phase_policy=_policy_id(composition, "phase_policy", "required_actions"),
-        victory_policy=_policy_id(composition, "victory_policy", "faction_balance"),
-        visibility_policy=_policy_id(composition, "visibility_policy", "standard"),
     )
-
-
-def _policy_id(composition: Mapping[str, object], key: str, default: str) -> str:
-    return str(composition.get(key, default))
-
-
-def _phase_ids(composition: Mapping[str, object]) -> tuple[str, ...]:
-    value = composition.get("phases")
-    if not isinstance(value, (list, tuple)):
-        return ("night", "day_discussion", "voting")
-    return tuple(str(phase) for phase in value)
 
 
 def _sequence_value(value: object) -> tuple[object, ...]:
@@ -108,9 +93,9 @@ def _sequence_value(value: object) -> tuple[object, ...]:
     return tuple(value)
 
 
-def _integer_value(value: object, *, default: int) -> int:
+def _integer_value(value: object) -> int:
     if value is None:
-        return default
+        raise ValueError("rule integer value is required")
     if not isinstance(value, (str, bytes, bytearray, int, float)):
         raise ValueError("rule integer value must be numeric")
     return int(value)

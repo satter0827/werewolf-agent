@@ -41,7 +41,8 @@ def assert_streamlit_quality(page: Page) -> None:
           height: node.getBoundingClientRect().height,
           text: (node.textContent || '').trim(),
           width: node.getBoundingClientRect().width
-        })).filter(item => item.height < 44 || item.width < 44)"""
+        })).filter(item => item.height > 0 && item.width > 0)
+          .filter(item => item.height < 44 || item.width < 44)"""
     )
     assert undersized == [], f"44px未満の操作対象があります: {undersized}"
 

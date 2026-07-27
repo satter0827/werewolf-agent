@@ -3,18 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, Final, Literal, Self
+from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 
 from werewolf_agent.contracts.constants import (
     DEFAULT_DELIBERATION_LEVEL,
     DEFAULT_NARRATION_MODE,
-    MAX_CHARACTER_AGE,
-    MAX_DIFFICULTY,
     MAX_HTTP_STATUS_CODE,
-    MIN_CHARACTER_AGE,
-    MIN_DIFFICULTY,
     MIN_HTTP_STATUS_CODE,
     MIN_PAGE_LIMIT,
     MIN_PAGE_OFFSET,
@@ -24,17 +20,7 @@ from werewolf_agent.contracts.constants import (
     DeliberationLevel,
     NarrationMode,
 )
-from werewolf_agent.contracts.definitions import (
-    CustomCharacterDefinition,
-    CustomRoleDefinition,
-    LocalRulesDefinition,
-)
-from werewolf_agent.contracts.messages import (
-    MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
-    MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS,
-)
 from werewolf_agent.contracts.validation import (
-    generated_player_ids,
     non_blank,
     optional_non_blank,
 )
@@ -68,189 +54,187 @@ PlayerStatus = Literal["alive", "dead"]
 ActionType = Literal[
     "speech",
     "vote",
-    "seer_inspect",
-    "knight_guard",
-    "werewolf_attack",
-    "apothecary_heal",
-    "apothecary_poison",
+    "use_ability",
     "pass",
 ]
 RoleId = str
 Winner = Literal["village", "werewolf", "fox"]
 RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
+SetupRoleCount = Annotated[int, Field(ge=1)]
 
 
-class LocalRulesSettings(LocalRulesDefinition):
-    """Local rule settings accepted when creating a game."""
+class LocalRulesSettings(BaseModel):
+    """Complete mutable game rules carried by an inline setup."""
 
-
-class CustomRoleDefinitionRequest(CustomRoleDefinition):
-    """Session-scoped role definition supplied by a UI client."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class CustomCharacterDefinitionRequest(CustomCharacterDefinition):
-    """Session-scoped character definition supplied by a UI client."""
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class SetupAbilityDefinition(BaseModel):
-    """Wire definition for one registered, typed ability."""
-
-    phase: str
-    action: str
-    validation_policy: str
-    resolution_policy: str
-    target_policy: str
-    effect: Literal[
-        "attack",
-        "inspection",
-        "protection",
-        "poison",
-        "knowledge",
-        "reaction",
-        "immunity",
-        "vulnerability",
-        "pass",
-    ]
-    start_day: int = Field(ge=1)
-    label: str
-    description: str
-    difficulty: int = Field(default=1, ge=1, le=5)
-    max_uses: int | None = Field(default=None, ge=1)
-    result_visibility: Literal["private", "public", "none"] = "private"
-    resolution_priority: int = Field(default=100, ge=0, le=1000)
+    day_speech_limit_per_player: int = Field(ge=0, le=100)
+    allow_self_vote: bool
+    allow_vote_revision: bool
+    allow_night_action_revision: bool
+    vote_tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    starting_phase: Literal["night", "day_discussion"]
+    reveal_role_on_death: bool
+    require_all_actions_before_advance: bool
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class SetupRoleDefinition(BaseModel):
-    """Wire definition for one stable role ID."""
-
-    identity_faction: Literal["village", "werewolf", "fox"]
-    victory_team: Literal["village", "werewolf", "fox"]
-    objective: str
-    abilities: tuple[str, ...] = ()
-    label: str
-    description: str
-    difficulty: int = Field(default=1, ge=1, le=5)
+    identity_faction: Winner
+    victory_team: Winner
+    abilities: tuple[str, ...]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @field_validator("abilities")
-    @classmethod
-    def validate_abilities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """Normalize ability IDs and reject ambiguous duplicate references."""
-        abilities = tuple(non_blank(item, "ability") for item in value)
-        if len(set(abilities)) != len(abilities):
-            raise ValueError("role abilities must be unique")
-        return abilities
+
+class SetupAbilityComponent(BaseModel):
+    kind: str
+    phase: Literal["night", "day_discussion", "voting", "finished"]
+    target_policy: Literal["none", "alive", "other_alive", "other_alive_non_faction"]
+    start_day: int = Field(ge=1)
+    max_uses: Literal["unlimited"] | Annotated[int, Field(ge=1)]
+    result_visibility: Literal["private", "public", "none"]
+    resolution_priority: int = Field(ge=0, le=1000)
+    allow_repeat_target: bool
+    enabled_first_night: bool
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetupAttackAbility(SetupAbilityComponent):
+    kind: Literal["attack"]
+    tie_resolution: Literal["random_target", "no_action"]
+
+
+class SetupInspectAbility(SetupAbilityComponent):
+    kind: Literal["inspect"]
+    result_detail: Literal["faction", "role"]
+
+
+class SetupProtectAbility(SetupAbilityComponent):
+    kind: Literal["protect"]
+
+
+class SetupEliminateAbility(SetupAbilityComponent):
+    kind: Literal["eliminate"]
+
+
+class SetupKnowledgeAbility(SetupAbilityComponent):
+    kind: Literal["knowledge"]
+    knowledge_mode: Literal["allies", "last_eliminated"]
+    result_detail: Literal["faction", "role"]
+
+
+class SetupDeathReactionAbility(SetupAbilityComponent):
+    kind: Literal["death_reaction"]
+
+
+class SetupImmunityAbility(SetupAbilityComponent):
+    kind: Literal["immunity"]
+    source_kinds: Annotated[
+        tuple[Literal["attack", "eliminate", "inspect"], ...],
+        Field(min_length=1),
+    ]
+
+
+class SetupVulnerabilityAbility(SetupAbilityComponent):
+    kind: Literal["vulnerability"]
+    source_kinds: Annotated[tuple[Literal["inspect"], ...], Field(min_length=1)]
+
+
+SetupAbilityDefinition = Annotated[
+    SetupAttackAbility
+    | SetupInspectAbility
+    | SetupProtectAbility
+    | SetupEliminateAbility
+    | SetupKnowledgeAbility
+    | SetupDeathReactionAbility
+    | SetupImmunityAbility
+    | SetupVulnerabilityAbility,
+    Field(discriminator="kind"),
+]
+
+
+class SetupMechanicsSettings(BaseModel):
+    role_counts: dict[str, SetupRoleCount]
+    roles: dict[str, SetupRoleDefinition]
+    abilities: dict[str, SetupAbilityDefinition]
+    rules: LocalRulesSettings
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class StoryThemeSettings(BaseModel):
-    """Presentation-only terminology supplied with a game setup."""
-
     id: str
     name: str
     summary: str
     premise: str
     role_names: dict[str, str]
     role_objectives: dict[str, str]
+    role_descriptions: dict[str, str]
     faction_names: dict[str, str]
     ability_names: dict[str, str]
+    ability_descriptions: dict[str, str]
     action_names: dict[str, str]
     phase_names: dict[str, str]
-    narration: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    narration_enabled: bool
+    narration: dict[str, tuple[str, ...]]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class SetupMechanicsSettings(BaseModel):
-    """Deterministic mechanics supplied with a custom setup."""
-
-    role_counts: dict[str, RoleCount]
-    roles: dict[str, SetupRoleDefinition]
-    abilities: dict[str, SetupAbilityDefinition]
-    rules: LocalRulesSettings
-    composition: RuleCompositionSelection = Field(
-        default_factory=lambda: RuleCompositionSelection()
-    )
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class PlayerIdentitySettings(BaseModel):
+    name: str
+    age_min: int = Field(ge=18, le=120)
+    age_max: int = Field(ge=18, le=120)
+    gender: str
 
 
-class SetupRosterSettings(BaseModel):
-    """Characters and fixed seat assignments supplied with a setup."""
+class PublicPersonaSettings(BaseModel):
+    personality: str
+    speaking_style: str
 
-    characters: dict[str, CustomCharacterDefinitionRequest] = Field(default_factory=dict)
-    assignments: dict[str, str] = Field(default_factory=dict)
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class PrivateStrategySettings(BaseModel):
+    reasoning_style: str
+    risk_tolerance: Literal["low", "medium", "high"]
+    evidence_focus: str
+
+
+class PlayerGenerationSettings(BaseModel):
+    identities: tuple[PlayerIdentitySettings, ...]
+    public_personas: tuple[PublicPersonaSettings, ...]
+    private_strategies: tuple[PrivateStrategySettings, ...]
 
 
 class GameSetupDocumentRequest(BaseModel):
-    """Complete portable setup document."""
-
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
-    roster: SetupRosterSettings = Field(default_factory=SetupRosterSettings)
+    player_generation: PlayerGenerationSettings
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PresetSetupRequest(BaseModel):
-    """Select a packaged setup preset."""
-
-    mode: Literal["preset"]
-    preset_id: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class TemplateSetupRequest(BaseModel):
+    mode: Literal["template"]
+    template_id: str
 
 
-class CustomSetupRequest(BaseModel):
-    """Supply a complete custom setup."""
+class SavedSetupRequest(BaseModel):
+    mode: Literal["saved"]
+    setup_id: str
+    revision: int = Field(ge=1)
 
-    mode: Literal["custom"]
-    setup: GameSetupDocumentRequest
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+class InlineSetupRequest(BaseModel):
+    mode: Literal["inline"]
+    document: GameSetupDocumentRequest
 
 
 GameSetupSelectionRequest = Annotated[
-    PresetSetupRequest | CustomSetupRequest,
+    TemplateSetupRequest | SavedSetupRequest | InlineSetupRequest,
     Field(discriminator="mode"),
 ]
-
-
-class RuleCompositionSelection(BaseModel):
-    """Registered rule policies selected for one game."""
-
-    phases: tuple[str, ...] = ("night", "day_discussion", "voting")
-    action_policy: str = "standard"
-    resolution_policy: str = "standard"
-    phase_policy: str = "required_actions"
-    victory_policy: str = "faction_balance"
-    visibility_policy: str = "standard"
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator(
-        "action_policy",
-        "resolution_policy",
-        "phase_policy",
-        "victory_policy",
-        "visibility_policy",
-    )
-    @classmethod
-    def validate_policy_id(cls, value: str, info: ValidationInfo) -> str:
-        """Return a normalized policy id."""
-        return non_blank(value, str(info.field_name))
-
-
-SetupMechanicsSettings.model_rebuild()
 
 
 class CreateGameRequest(BaseModel):
@@ -259,7 +243,6 @@ class CreateGameRequest(BaseModel):
     seed: int | None = None
     setup: GameSetupSelectionRequest
     manual_player_id: str | None = None
-    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
 
     model_config = ConfigDict(extra="forbid")
@@ -269,26 +252,6 @@ class CreateGameRequest(BaseModel):
     def validate_manual_player_id(cls, value: str | None, info: ValidationInfo) -> str | None:
         """Return a stripped optional manual player id."""
         return optional_non_blank(value, str(info.field_name))
-
-    @model_validator(mode="after")
-    def validate_manual_player_within_generated_seats(self) -> Self:
-        """Ensure the requested manual seat exists in the generated table."""
-        if self.setup.mode == "preset":
-            return self
-        valid_player_ids = generated_player_ids(self.player_count)
-        if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
-            raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
-        unknown_assignments = sorted(set(self.setup.setup.roster.assignments) - valid_player_ids)
-        if unknown_assignments:
-            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS)
-        return self
-
-    @property
-    def player_count(self) -> int:
-        """Return the player count derived from role counts."""
-        if self.setup.mode == "preset":
-            raise ValueError("player_count is resolved from the selected preset")
-        return sum(self.setup.setup.mechanics.role_counts.values())
 
 
 class PublicPlayerState(BaseModel):
@@ -448,6 +411,7 @@ class GameRevealAction(BaseModel):
 
     player_id: str
     type: ActionType
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
 
@@ -457,7 +421,8 @@ class GameRevealAction(BaseModel):
 class GameRevealInspection(BaseModel):
     """Resolved inspection exposed only by the dedicated reveal operation."""
 
-    seer_id: str
+    player_id: str
+    ability_id: str
     target_id: str
     target_role: RoleId
     target_faction: str
@@ -536,246 +501,6 @@ class GameTimelineQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class RoleDefinitionView(BaseModel):
-    """Public role metadata for client bootstrapping."""
-
-    id: str
-    name: str
-    identity_faction: str
-    victory_team: str
-    objective: str
-    abilities: list[str]
-    description: str = ""
-    difficulty: int = Field(default=MIN_DIFFICULTY, ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("id", "name", "identity_faction", "victory_team", "objective")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, str(info.field_name))
-
-
-class RulePolicyOptionView(BaseModel):
-    """Public display metadata for one registered rule policy."""
-
-    id: str
-    name: str
-    description: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class RulePhaseOrderOptionView(BaseModel):
-    """Public display metadata for one supported phase order."""
-
-    id: str
-    name: str
-    description: str
-    phases: tuple[str, ...]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class RuleCompositionOptionsView(BaseModel):
-    """Selectable registered policies and the current default composition."""
-
-    default: RuleCompositionSelection
-    phase_orders: list[RulePhaseOrderOptionView]
-    action_policies: list[RulePolicyOptionView]
-    resolution_policies: list[RulePolicyOptionView]
-    phase_policies: list[RulePolicyOptionView]
-    victory_policies: list[RulePolicyOptionView]
-    visibility_policies: list[RulePolicyOptionView]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @model_validator(mode="after")
-    def validate_non_empty_policy_options(self) -> Self:
-        """Reject a server setup that cannot produce a complete composition."""
-        for field_name in (
-            "phase_orders",
-            "action_policies",
-            "resolution_policies",
-            "phase_policies",
-            "victory_policies",
-            "visibility_policies",
-        ):
-            if not getattr(self, field_name):
-                raise ValueError(f"{field_name} must contain at least one option")
-        return self
-
-
-def _default_rule_composition_options() -> RuleCompositionOptionsView:
-    selection = RuleCompositionSelection()
-    return RuleCompositionOptionsView(
-        default=selection,
-        phase_orders=[
-            RulePhaseOrderOptionView(
-                id="standard",
-                name="標準のphase順序",
-                description="夜、昼の議論、投票の順に進行します。",
-                phases=selection.phases,
-            )
-        ],
-        action_policies=[
-            RulePolicyOptionView(id="standard", name="標準", description="標準の行動判定")
-        ],
-        resolution_policies=[
-            RulePolicyOptionView(id="standard", name="標準", description="標準の行動解決")
-        ],
-        phase_policies=[
-            RulePolicyOptionView(
-                id="required_actions",
-                name="必要行動を待つ",
-                description="必要な行動が揃ってから進行",
-            )
-        ],
-        victory_policies=[
-            RulePolicyOptionView(
-                id="faction_balance",
-                name="陣営人数",
-                description="生存人数から勝敗を判定",
-            )
-        ],
-        visibility_policies=[
-            RulePolicyOptionView(id="standard", name="標準", description="標準の公開範囲")
-        ],
-    )
-
-
-class GameSetupOptionsResponse(BaseModel):
-    """Public setup metadata for client bootstrapping."""
-
-    player_count: dict[str, int]
-    roles: list[RoleDefinitionView]
-    default_role_counts: dict[RoleId, RoleCount]
-    default_rules: LocalRulesSettings
-    default_scenario_id: str | None = None
-    default_setup_preset_id: str | None = None
-    default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
-    abilities: list[AbilityDefinitionView] = Field(default_factory=list)
-    scenarios: list[ScenarioDefinitionView] = Field(default_factory=list)
-    setup_presets: list[SetupPresetDefinitionView] = Field(default_factory=list)
-    characters: list[CharacterDefinitionView] = Field(default_factory=list)
-    rule_composition: RuleCompositionOptionsView = Field(
-        default_factory=_default_rule_composition_options
-    )
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
-class AbilityDefinitionView(BaseModel):
-    """Public ability metadata for setup screens."""
-
-    id: str
-    name: str
-    description: str
-    phase: str
-    action: str
-    validation_policy: str
-    resolution_policy: str
-    target_policy: str
-    effect: str
-    max_uses: int | None = None
-    start_day: int = Field(default=1, ge=1)
-    result_visibility: Literal["private", "public", "none"] = "private"
-    resolution_priority: int = Field(default=100, ge=0, le=1000)
-    difficulty: int = Field(ge=MIN_DIFFICULTY, le=MAX_DIFFICULTY)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator(
-        "id",
-        "name",
-        "description",
-        "phase",
-        "action",
-        "validation_policy",
-        "resolution_policy",
-        "target_policy",
-        "effect",
-    )
-    @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, str(info.field_name))
-
-
-class ScenarioDefinitionView(BaseModel):
-    """Public scenario metadata for setup screens."""
-
-    id: str
-    name: str
-    summary: str
-    premise: str
-    recommended_setup_preset: str | None = None
-    role_names: dict[str, str] = Field(default_factory=dict)
-    role_objectives: dict[str, str] = Field(default_factory=dict)
-    faction_names: dict[str, str] = Field(default_factory=dict)
-    ability_names: dict[str, str] = Field(default_factory=dict)
-    action_names: dict[str, str] = Field(default_factory=dict)
-    phase_names: dict[str, str] = Field(default_factory=dict)
-    narration: dict[str, tuple[str, ...]] = Field(default_factory=dict)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("id", "name", "summary")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, str(info.field_name))
-
-
-class SetupPresetDefinitionView(BaseModel):
-    """Public setup preset metadata for setup screens."""
-
-    id: str
-    name: str
-    scenario_id: str
-    role_counts: dict[RoleId, RoleCount]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("id", "name", "scenario_id")
-    @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, str(info.field_name))
-
-
-class CharacterDefinitionView(BaseModel):
-    """Public character metadata for setup screens."""
-
-    id: str
-    name: str
-    age: int = Field(ge=MIN_CHARACTER_AGE, le=MAX_CHARACTER_AGE)
-    gender: str
-    personality: str
-    speaking_style: str
-    reasoning_style: str
-    risk_tolerance: str
-    evidence_focus: str = "vote_consistency"
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator(
-        "id",
-        "name",
-        "gender",
-        "personality",
-        "speaking_style",
-        "reasoning_style",
-        "risk_tolerance",
-        "evidence_focus",
-    )
-    @classmethod
-    def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
-        """Return a stripped non-empty string."""
-        return non_blank(value, str(info.field_name))
-
-
 class PlayerObservationResponse(BaseModel):
     """Private observation visible to one authenticated player."""
 
@@ -790,13 +515,14 @@ class PlayerActionRequest(BaseModel):
     """One manual player action submitted through the API port."""
 
     type: ActionType
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
     reason: str = ""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @field_validator("target_id", "message")
+    @field_validator("ability_id", "target_id", "message")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: ValidationInfo) -> str | None:
         """Return stripped optional action text."""
@@ -906,15 +632,11 @@ __all__ = [
     "GAME_PHASE_VOTING",
     "GAME_STATUS_COMPLETED",
     "GAME_STATUS_RUNNING",
-    "AbilityDefinitionView",
     "ActionType",
     "AdvanceGameJobResponse",
     "AdvanceGameResponse",
     "AdvanceJobStatus",
-    "CharacterDefinitionView",
     "CreateGameRequest",
-    "CustomCharacterDefinitionRequest",
-    "CustomRoleDefinitionRequest",
     "DeliberationLevel",
     "ErrorEventPayload",
     "GameListQuery",
@@ -927,7 +649,6 @@ __all__ = [
     "GameRevealPlayer",
     "GameRevealResponse",
     "GameRevealVote",
-    "GameSetupOptionsResponse",
     "GameStatus",
     "GameTimelineItem",
     "GameTimelineQuery",
@@ -945,13 +666,6 @@ __all__ = [
     "PublicPlayerState",
     "RecoveryAction",
     "RoleCount",
-    "RoleDefinitionView",
     "RoleId",
-    "RuleCompositionOptionsView",
-    "RuleCompositionSelection",
-    "RulePhaseOrderOptionView",
-    "RulePolicyOptionView",
-    "ScenarioDefinitionView",
-    "SetupPresetDefinitionView",
     "Winner",
 ]

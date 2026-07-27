@@ -52,7 +52,7 @@ def test_streamlit_displays_one_local_llm_game(
             "manual_player_id": None,
             "narration_mode": "standard",
             "seed": 7,
-            "setup": {"mode": "preset", "preset_id": "standard_6"},
+            "setup": {"mode": "template", "template_id": "standard_6"},
         },
         timeout_seconds=1_200,
     )

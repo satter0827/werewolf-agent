@@ -5,45 +5,51 @@ from __future__ import annotations
 import random
 from typing import Any
 
-from werewolf_agent.adapters.application_bridge import build_game_definitions
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.domain import Game, GameSetup, RuleRegistry
-from werewolf_agent.domain.state import Action, ActionType, EventVisibility, Player
-from werewolf_agent.settings import get_settings
+from werewolf_agent.domain import Game, GameSetup, build_game_rules
+from werewolf_agent.domain.state import (
+    Action,
+    ActionType,
+    AvailableAction,
+    EventVisibility,
+    Player,
+)
 
 MAX_PHASES = 64
 
 
 def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     """現在の設定resourceから再現可能な一局と公開timelineを返す。"""
-    settings = get_settings()
-    definitions = build_game_definitions(settings)
-    player_count = settings.game_default_player_count
-    role_counts = definitions.roles.default_counts_for(player_count)
+    catalog = build_setup_catalog()
+    setup = catalog.require_document(catalog.recommended_template_id)
+    player_count = sum(setup.mechanics.role_counts.values())
+    role_counts = dict(setup.mechanics.role_counts)
     rule_definition = rule_definition_from_values(
         player_count=player_count,
         role_counts=role_counts,
-        rules=definitions.rules.local_rules.model_dump(mode="json"),
+        rules=setup.mechanics.rules.model_dump(mode="json"),
         roles={
-            role_id: role.model_dump(mode="json")
-            for role_id, role in definitions.roles.roles.items()
+            role_id: role.model_dump(mode="json") for role_id, role in setup.mechanics.roles.items()
         },
         abilities={
             ability_id: ability.model_dump(mode="json")
-            for ability_id, ability in definitions.catalog.abilities.items()
+            for ability_id, ability in setup.mechanics.abilities.items()
         },
-        composition=definitions.rules.composition.model_dump(mode="json"),
     )
     rng = random.Random(seed)
     game = Game.create(
         GameSetup(
             players=tuple(
-                Player(id=f"p{index + 1}", name=f"Player {index + 1}")
-                for index in range(player_count)
+                Player(id=item.player_id, name=item.profile.name)
+                for item in generate_players(
+                    setup.player_generation, player_count=player_count, seed=seed
+                )
             )
         ),
-        rules=RuleRegistry.standard().build(rule_definition),
+        rules=build_game_rules(rule_definition),
         random=rng,
     )
     operations: list[dict[str, object]] = []
@@ -70,7 +76,7 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
                         "day": snapshot.day,
                         "phase": snapshot.phase.value,
                         "actor_id": player_id,
-                        "action": action_type.value,
+                        "action": action_type.key,
                         "private_target_omitted": action.target_id is not None,
                     }
                 )
@@ -133,20 +139,20 @@ def _choose_action(
     rng: random.Random,
     game: Game,
     player_id: str,
-    action_type: ActionType,
+    action_type: AvailableAction,
     seed: int,
 ) -> Action:
-    if action_type is ActionType.SPEECH:
+    if action_type.type is ActionType.SPEECH:
         return Action.speech(player_id, f"seed-{seed}の公開発言")
-    targets = game.view_for(player_id).legal_targets[action_type]
+    if action_type.type is ActionType.PASS:
+        return Action.pass_(player_id)
+    targets = game.view_for(player_id).legal_targets[action_type.key]
     target_id = rng.choice(targets)
-    constructors = {
-        ActionType.VOTE: Action.vote,
-        ActionType.WEREWOLF_ATTACK: Action.attack,
-        ActionType.SEER_INSPECT: Action.inspect,
-        ActionType.KNIGHT_GUARD: Action.guard,
-    }
-    return constructors[action_type](player_id, target_id)
+    if action_type.type is ActionType.VOTE:
+        return Action.vote(player_id, target_id)
+    if action_type.ability_id is not None:
+        return Action.use_ability(player_id, action_type.ability_id, target_id)
+    raise ValueError(f"unsupported available action: {action_type.key}")
 
 
 __all__ = ["gameplay_summary", "generate_gameplay_evidence"]

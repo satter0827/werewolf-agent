@@ -1,176 +1,316 @@
+from __future__ import annotations
+
 import random
 
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.adapters.application_bridge import (
-    build_game_definitions,
-    build_player_setup_definitions,
-)
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.application.players import generate_players
+from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import setup_document_from_preset
+from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_options import validate_setup_document
-from werewolf_agent.domain import Action, Game, GameSetup, Phase, Player, RuleRegistry
-from werewolf_agent.settings import AppSettings
+from werewolf_agent.domain import (
+    Action,
+    ActionType,
+    AvailableAction,
+    Game,
+    GameSetup,
+    Phase,
+    Player,
+    build_game_rules,
+)
 
 
-def _definitions():
-    settings = AppSettings(_env_file=None)
-    return build_game_definitions(settings), build_player_setup_definitions(settings)
+def _standard() -> GameSetupDocument:
+    return build_setup_catalog().require_document("standard_6")
 
 
-def test_every_packaged_preset_resolves_to_executable_complete_setup() -> None:
-    definitions, players = _definitions()
-
-    for preset_id in definitions.catalog.setup_presets:
-        setup = setup_document_from_preset(preset_id, definitions, players)
-        mechanics = setup.mechanics
-        definition = rule_definition_from_values(
+def _rules(setup: GameSetupDocument):
+    mechanics = setup.mechanics
+    return build_game_rules(
+        rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
             rules=mechanics.rules.model_dump(mode="json"),
-            roles={
-                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
-            },
+            roles={key: value.model_dump(mode="json") for key, value in mechanics.roles.items()},
             abilities={
-                ability_id: ability.model_dump(mode="json")
-                for ability_id, ability in mechanics.abilities.items()
+                key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
             },
-            composition=mechanics.composition.model_dump(mode="json"),
         )
-
-        rules = RuleRegistry.standard().build(definition)
-
-        assert rules.config.player_count == sum(mechanics.role_counts.values())
-        assert setup.theme.role_names.keys() >= {
-            role_id for role_id, count in mechanics.role_counts.items() if count > 0
-        }
-        assert setup.theme.role_objectives.keys() >= {
-            role_id for role_id, count in mechanics.role_counts.items() if count > 0
-        }
-
-
-def test_every_packaged_preset_reaches_a_winner_for_multiple_seeds() -> None:
-    definitions, player_definitions = _definitions()
-
-    for preset_id in definitions.catalog.setup_presets:
-        setup = setup_document_from_preset(preset_id, definitions, player_definitions)
-        mechanics = setup.mechanics
-        definition = rule_definition_from_values(
-            player_count=sum(mechanics.role_counts.values()),
-            role_counts=mechanics.role_counts,
-            rules=mechanics.rules.model_dump(mode="json"),
-            roles={
-                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
-            },
-            abilities={
-                ability_id: ability.model_dump(mode="json")
-                for ability_id, ability in mechanics.abilities.items()
-            },
-            composition=mechanics.composition.model_dump(mode="json"),
-        )
-        rules = RuleRegistry.standard().build(definition)
-        player_count = sum(mechanics.role_counts.values())
-
-        for seed in range(3):
-            game = Game.create(
-                GameSetup(
-                    players=tuple(
-                        Player(id=f"player-{index}", name=f"Player {index}")
-                        for index in range(1, player_count + 1)
-                    )
-                ),
-                rules=rules,
-                random=random.Random(seed),
-            )
-            for step in range(100):
-                if game.snapshot().phase is Phase.FINISHED:
-                    break
-                for player in tuple(game.snapshot().players.values()):
-                    view = game.view_for(player.id)
-                    while view.available_actions:
-                        action_type = view.available_actions[0]
-                        targets = view.legal_targets.get(action_type, ())
-                        game.submit(
-                            Action(
-                                type=action_type,
-                                player_id=player.id,
-                                target_id=targets[0] if targets else None,
-                                message="状況を確認します。"
-                                if action_type.value == "speech"
-                                else None,
-                            )
-                        )
-                        view = game.view_for(player.id)
-                game.advance(random.Random(seed * 1000 + step))
-
-            snapshot = game.snapshot()
-            assert snapshot.phase is Phase.FINISHED, (preset_id, seed, snapshot.phase)
-            assert snapshot.winner_id in {"village", "werewolf", "fox"}
-
-
-def test_theme_changes_language_without_changing_mechanics_checksum() -> None:
-    definitions, players = _definitions()
-    village = setup_document_from_preset("standard_6", definitions, players)
-    starship = village.model_copy(
-        update={
-            "theme": setup_document_from_preset("fox_8", definitions, players).theme,
-        }
-    )
-
-    assert village.theme.role_names["werewolf"] == "人狼"
-    assert starship.theme.role_names["werewolf"] == "擬態生命体"
-    assert "人狼" not in starship.theme.role_objectives["werewolf"]
-    assert starship.theme.ability_names["night_attack"] == "船内排除"
-    assert checksum_payload(village.mechanics.model_dump(mode="json")) == checksum_payload(
-        starship.mechanics.model_dump(mode="json")
-    )
-    assert checksum_payload(village.model_dump(mode="json")) != checksum_payload(
-        starship.model_dump(mode="json")
     )
 
 
-def test_preset_snapshot_contains_only_selected_mechanics_and_terms() -> None:
-    definitions, players = _definitions()
-    setup = setup_document_from_preset("beginner_6", definitions, players)
+def test_packaged_templates_are_complete_executable_v2_documents() -> None:
+    catalog = build_setup_catalog()
 
-    assert set(setup.mechanics.roles) == {"villager", "werewolf", "seer"}
-    assert set(setup.mechanics.abilities) == {"night_attack", "pack_knowledge", "inspect"}
-    assert set(setup.theme.role_names) == set(setup.mechanics.roles)
-    assert set(setup.theme.role_objectives) == set(setup.mechanics.roles)
-    assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
-    assert "fox" not in setup.theme.faction_names
+    for template_id in catalog.template_order:
+        setup = catalog.require_document(template_id)
+        rules = _rules(setup)
 
-
-def test_packaged_roles_separate_identity_from_victory_team() -> None:
-    definitions, _players = _definitions()
-
-    madman = definitions.roles.roles["madman"]
-    fox = definitions.roles.roles["fox"]
-
-    assert (madman.identity_faction, madman.victory_team) == ("village", "werewolf")
-    assert (fox.identity_faction, fox.victory_team) == ("fox", "fox")
+        assert setup.schema_version == 2
+        assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
+        assert set(setup.theme.role_names) == set(setup.mechanics.roles)
+        assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
+        assert len(setup.player_generation.identities) >= rules.config.player_count
 
 
-def test_setup_rejects_a_theme_without_a_selected_role_objective() -> None:
-    definitions, players = _definitions()
-    setup = setup_document_from_preset("standard_6", definitions, players)
+def test_arbitrary_role_id_runs_through_ability_envelope() -> None:
+    setup = _standard()
     payload = setup.model_dump(mode="json")
+    role = payload["mechanics"]["roles"].pop("seer")
+    count = payload["mechanics"]["role_counts"].pop("seer")
+    payload["mechanics"]["roles"]["oracle_custom"] = role
+    payload["mechanics"]["role_counts"]["oracle_custom"] = count
+    for field in ("role_names", "role_objectives", "role_descriptions"):
+        payload["theme"][field]["oracle_custom"] = payload["theme"][field].pop("seer")
+    custom = GameSetupDocument.model_validate(payload)
+    players = generate_players(custom.player_generation, player_count=6, seed=41)
+    game = Game.create(
+        GameSetup(
+            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+        ),
+        rules=_rules(custom),
+        random=random.Random(namespace_seed(41, "role_assignment")),
+    )
+    oracle = next(
+        player for player in game.snapshot().players.values() if player.role == "oracle_custom"
+    )
+
+    action = next(item for item in game.view_for(oracle.id).available_actions if item.ability_id)
+
+    assert action.type is ActionType.USE_ABILITY
+    assert action.ability_id == "inspect"
+
+
+def test_night_ability_can_be_explicitly_passed() -> None:
+    setup = _standard()
+    players = generate_players(setup.player_generation, player_count=6, seed=41)
+    game = Game.create(
+        GameSetup(
+            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+        ),
+        rules=_rules(setup),
+        random=random.Random(namespace_seed(41, "role_assignment")),
+    )
+    actor = next(
+        player
+        for player in game.snapshot().players.values()
+        if any(
+            action.type is ActionType.USE_ABILITY
+            for action in game.view_for(player.id).available_actions
+        )
+    )
+
+    assert AvailableAction(ActionType.PASS) in game.view_for(actor.id).available_actions
+    game.submit(Action.pass_(actor.id, reason="今夜は能力を使いません。"))
+
+    assert game.pending_actions.night_actions[actor.id].type is ActionType.PASS
+
+
+def test_resolution_priority_controls_protection_order() -> None:
+    setup = _standard()
+    payload = setup.model_dump(mode="json")
+    payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
+
+    def resolve(guard_priority: int) -> bool:
+        configured = payload.copy()
+        configured["mechanics"] = dict(payload["mechanics"])
+        configured["mechanics"]["abilities"] = {
+            key: dict(value) for key, value in payload["mechanics"]["abilities"].items()
+        }
+        configured["mechanics"]["abilities"]["guard"]["resolution_priority"] = guard_priority
+        document = GameSetupDocument.model_validate(configured)
+        players = generate_players(document.player_generation, player_count=6, seed=13)
+        game = Game.create(
+            GameSetup(
+                players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+            ),
+            rules=_rules(document),
+            random=random.Random(namespace_seed(13, "role_assignment")),
+        )
+        by_role = {player.role: player.id for player in game.snapshot().players.values()}
+        victim_id = next(
+            player.id for player in game.snapshot().players.values() if player.role == "villager"
+        )
+        game.submit(Action.use_ability(by_role["knight"], "guard", victim_id))
+        game.submit(Action.use_ability(by_role["werewolf"], "night_attack", victim_id))
+        game.advance(random.Random(1))
+        return game.snapshot().players[victim_id].is_alive
+
+    assert resolve(50)
+    assert not resolve(150)
+
+
+def test_repeat_target_rule_applies_to_every_active_ability_kind() -> None:
+    payload = _standard().model_dump(mode="json")
+    payload["mechanics"]["abilities"]["inspect"]["allow_repeat_target"] = False
+    payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
+    setup = GameSetupDocument.model_validate(payload)
+    players = generate_players(setup.player_generation, player_count=6, seed=29)
+    game = Game.create(
+        GameSetup(
+            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+        ),
+        rules=_rules(setup),
+        random=random.Random(namespace_seed(29, "role_assignment")),
+    )
+    seer_id = next(
+        player.id for player in game.snapshot().players.values() if player.role == "seer"
+    )
+    first_targets = game.view_for(seer_id).legal_targets["use_ability:inspect"]
+    inspected_id = first_targets[0]
+    game.submit(Action.use_ability(seer_id, "inspect", inspected_id))
+    game.advance(random.Random(1))
+    game.advance(random.Random(2))
+    game.advance(random.Random(3))
+
+    assert inspected_id not in game.view_for(seer_id).legal_targets["use_ability:inspect"]
+
+
+def test_packaged_setup_reaches_a_winner_deterministically() -> None:
+    setup = _standard()
+    players = generate_players(setup.player_generation, player_count=6, seed=7)
+    game = Game.create(
+        GameSetup(
+            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+        ),
+        rules=_rules(setup),
+        random=random.Random(namespace_seed(7, "role_assignment")),
+    )
+    gameplay = random.Random(namespace_seed(7, "gameplay"))
+    for _ in range(64):
+        if game.snapshot().phase is Phase.FINISHED:
+            break
+        for player in tuple(game.snapshot().players.values()):
+            view = game.view_for(player.id)
+            while view.available_actions:
+                available = view.available_actions[0]
+                targets = view.legal_targets.get(available.key, ())
+                game.submit(
+                    Action(
+                        type=available.type,
+                        player_id=player.id,
+                        ability_id=available.ability_id,
+                        target_id=targets[0] if targets else None,
+                        message="状況を確認します。"
+                        if available.type is ActionType.SPEECH
+                        else None,
+                    )
+                )
+                view = game.view_for(player.id)
+        game.advance(gameplay)
+
+    assert game.snapshot().phase is Phase.FINISHED
+    assert game.snapshot().winner_id in {"village", "werewolf", "fox"}
+
+
+def test_player_generation_is_reproducible_and_preview_safe() -> None:
+    setup = _standard()
+    first = generate_players(setup.player_generation, player_count=6, seed=99)
+    second = generate_players(setup.player_generation, player_count=6, seed=99)
+
+    assert first == second
+    assert [item.player_id for item in first] == [f"p{index}" for index in range(1, 7)]
+    assert len({item.profile.name for item in first}) == 6
+    assert all("reasoning_style" not in item.public_payload() for item in first)
+    assert namespace_seed(99, "roster") != namespace_seed(99, "role_assignment")
+    assert namespace_seed(99, "role_assignment") != namespace_seed(99, "gameplay")
+
+
+def test_setup_rejects_missing_theme_coverage_and_kind_specific_extras() -> None:
+    payload = _standard().model_dump(mode="json")
     del payload["theme"]["role_objectives"]["werewolf"]
+    with pytest.raises(ValidationError, match="theme coverage"):
+        GameSetupDocument.model_validate(payload)
 
-    with pytest.raises(ValidationError, match="role_objectives"):
-        type(setup).model_validate(payload)
+    payload = _standard().model_dump(mode="json")
+    payload["mechanics"]["abilities"]["guard"]["result_detail"] = "role"
+    with pytest.raises(ValidationError, match="extra"):
+        GameSetupDocument.model_validate(payload)
 
 
-def test_setup_validation_returns_canonical_checksums_without_creating_a_game() -> None:
-    definitions, players = _definitions()
-    setup = setup_document_from_preset("standard_6", definitions, players)
+def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
+    payload = _standard().model_dump(mode="json")
+    payload["player_generation"]["public_personas"][0]["personality"] = "  "
+    with pytest.raises(ValidationError, match="public persona text"):
+        GameSetupDocument.model_validate(payload)
+
+    payload = _standard().model_dump(mode="json")
+    payload["theme"]["narration_enabled"] = True
+    payload["theme"]["narration"] = {}
+    with pytest.raises(ValidationError, match="enabled narration"):
+        GameSetupDocument.model_validate(payload)
+
+    payload = _standard().model_dump(mode="json")
+    del payload["theme"]["narration"]["game_finished"]
+    with pytest.raises(ValidationError, match="cover every supported event"):
+        GameSetupDocument.model_validate(payload)
+
+    payload = _standard().model_dump(mode="json")
+    payload["theme"]["narration"]["game_started"] = ["秘密: {private_role}"]
+    with pytest.raises(ValidationError, match="unknown fields"):
+        GameSetupDocument.model_validate(payload)
+
+
+def test_behavioral_ability_fields_are_explicit() -> None:
+    payload = _standard().model_dump(mode="json")
+    del payload["mechanics"]["abilities"]["inspect"]["max_uses"]
+
+    with pytest.raises(ValidationError, match="max_uses"):
+        GameSetupDocument.model_validate(payload)
+
+    payload = _standard().model_dump(mode="json")
+    payload["mechanics"]["role_counts"]["villager"] = 0
+    with pytest.raises(ValidationError, match="greater than or equal to 1"):
+        GameSetupDocument.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    ("kind", "phase", "source_kinds"),
+    [
+        ("immunity", "voting", ["attack"]),
+        ("immunity", "night", ["protect"]),
+        ("vulnerability", "night", []),
+        ("vulnerability", "night", ["attack"]),
+        ("death_reaction", "day_discussion", None),
+    ],
+)
+def test_setup_rejects_passive_combinations_without_runtime_meaning(
+    kind: str,
+    phase: str,
+    source_kinds: list[str] | None,
+) -> None:
+    payload = _standard().model_dump(mode="json")
+    ability: dict[str, object] = {
+        "kind": kind,
+        "phase": phase,
+        "target_policy": "none",
+        "start_day": 1,
+        "max_uses": "unlimited",
+        "result_visibility": "none",
+        "resolution_priority": 100,
+        "allow_repeat_target": True,
+        "enabled_first_night": True,
+    }
+    if source_kinds is not None:
+        ability["source_kinds"] = source_kinds
+    payload["mechanics"]["abilities"]["custom_passive"] = ability
+    payload["mechanics"]["roles"]["villager"]["abilities"].append("custom_passive")
+    payload["theme"]["ability_names"]["custom_passive"] = "追加能力"
+    payload["theme"]["ability_descriptions"]["custom_passive"] = "追加した能力です。"
+
+    with pytest.raises(ValidationError):
+        GameSetupDocument.model_validate(payload)
+
+
+def test_setup_validation_returns_canonical_checksums() -> None:
+    setup = _standard()
 
     result = validate_setup_document(setup.model_dump(mode="json"))
 
     assert result.player_count == 6
-    assert result.theme_id == "classic_village"
-    assert set(result.role_ids) == set(setup.mechanics.roles)
     assert result.setup_checksum == checksum_payload(setup.model_dump(mode="json"))
     assert result.mechanics_checksum == checksum_payload(setup.mechanics.model_dump(mode="json"))

@@ -15,6 +15,8 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
+from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.types import GameStatus
 
 
@@ -131,3 +133,55 @@ class GameRepository(Protocol):
             Public turn records ordered by sequence.
 
         """
+
+
+class SetupRepository(Protocol):
+    """Persistence operations for user-owned immutable setup revisions."""
+
+    def create(
+        self,
+        *,
+        owner_user_id: str,
+        display_name: str,
+        document: GameSetupDocument,
+        setup_checksum: str,
+        mechanics_checksum: str,
+    ) -> SavedSetupRevision:
+        """Create an owned setup and its first immutable revision."""
+        ...
+
+    def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
+        """List only setup summaries owned by the supplied user."""
+        ...
+
+    def get(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+        revision: int | None = None,
+    ) -> SavedSetupRevision | None:
+        """Return one owned revision or None without revealing foreign rows."""
+        ...
+
+    def list_revisions(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+    ) -> list[SavedSetupRevision]:
+        """List immutable revisions for one owned setup."""
+        ...
+
+    def add_revision(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+        expected_revision: int,
+        document: GameSetupDocument,
+        setup_checksum: str,
+        mechanics_checksum: str,
+    ) -> SavedSetupRevision:
+        """Append a revision after optimistic concurrency validation."""
+        ...

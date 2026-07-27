@@ -4,6 +4,32 @@ from __future__ import annotations
 
 from typing import Final, Literal, TypeAlias
 
+AUTOMATED_AGENT_TYPE: Final = "llm"
+MANUAL_AGENT_TYPE: Final = "manual"
+
+NARRATION_EVENT_IDS: Final = frozenset(
+    {
+        "game_started",
+        "phase_started",
+        "night_resolved",
+        "vote_resolved",
+        "game_finished",
+    }
+)
+NARRATION_TEMPLATE_FIELDS: Final = frozenset(
+    {
+        "day",
+        "phase",
+        "phase_label",
+        "actor",
+        "player_count",
+        "eliminated_player",
+        "killed_player",
+        "winner",
+        "winner_label",
+    }
+)
+
 MIN_PAGE_LIMIT: Final = 1
 
 MIN_PAGE_OFFSET: Final = 0

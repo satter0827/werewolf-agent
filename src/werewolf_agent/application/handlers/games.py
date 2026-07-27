@@ -3,17 +3,11 @@
 from __future__ import annotations
 
 import random
-import secrets
 from collections.abc import Mapping
 from typing import cast
 from uuid import uuid4
 
-from werewolf_agent.application.definitions import (
-    LocalRulesDefinition,
-    PlayerProfile,
-    PlayerRoster,
-    PlayerSetupDefinitions,
-)
+from werewolf_agent.application.constants import AUTOMATED_AGENT_TYPE, MANUAL_AGENT_TYPE
 from werewolf_agent.application.domain_codec import domain_to_data, game_setup_from_data
 from werewolf_agent.application.errors import GameNotFoundError
 from werewolf_agent.application.handlers.common import (
@@ -23,10 +17,8 @@ from werewolf_agent.application.handlers.common import (
     _page_limit,
     _parse_game_id,
     _player_faction,
-    _requested_player_configs,
     _restore_game,
     _reveal_action,
-    _select_player_profiles,
     _setup_theme,
 )
 from werewolf_agent.application.models import (
@@ -44,10 +36,6 @@ from werewolf_agent.application.models import (
     GetGameRevealQuery,
     ListGamesQuery,
 )
-from werewolf_agent.application.players import (
-    display_name_for,
-    profile_ids_by_player,
-)
 from werewolf_agent.application.projections import (
     events_to_create,
     public_game_summary_payload_from_record,
@@ -55,17 +43,15 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
-from werewolf_agent.application.replay import checksum_payload
+from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
     Faction,
     GamePhase,
     GameStatus,
 )
-from werewolf_agent.domain import (
-    Game,
-    RuleRegistry,
-)
+from werewolf_agent.domain import Game, build_game_rules
 
 
 def create_game(
@@ -75,41 +61,16 @@ def create_game(
 ) -> GameResult:
     """Create and persist one deterministic game."""
     game_id = uuid4()
-    seed = command.seed if command.seed is not None else secrets.randbits(63)
-    requested_players = _requested_player_configs(command, dependencies.config)
+    seed = command.seed
     setup = command.setup
     mechanics = setup.mechanics
-    player_definitions = PlayerSetupDefinitions(
-        players=PlayerRoster(
-            players={
-                character_id: PlayerProfile(
-                    name=character.name,
-                    age=character.age,
-                    gender=character.gender,
-                    personality=character.personality,
-                    speaking_style=character.speaking_style,
-                    reasoning_style=character.reasoning_style,
-                    risk_tolerance=character.risk_tolerance,
-                    evidence_focus=character.evidence_focus,
-                )
-                for character_id, character in setup.roster.characters.items()
-            }
-        )
-    )
-    selected_profiles = _select_player_profiles(
-        player_definitions.players,
-        player_count=len(requested_players),
-        seed=seed,
-        character_assignments=setup.roster.assignments,
-    )
     players = [
         {
-            "id": player.id,
-            "name": display_name_for(player.name, selected_profile),
+            "id": player.player_id,
+            "name": player.name,
         }
-        for player, selected_profile in zip(requested_players, selected_profiles, strict=True)
+        for player in command.players
     ]
-    rule_composition = mechanics.composition.model_dump(mode="json")
     definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=mechanics.role_counts,
@@ -119,40 +80,42 @@ def create_game(
             ability_id: ability.model_dump(mode="json")
             for ability_id, ability in mechanics.abilities.items()
         },
-        composition=rule_composition,
     )
-    rules = RuleRegistry.standard().build(definition)
+    rules = build_game_rules(definition)
     setup_payload = setup.model_dump(mode="json")
     scenario_config = {
         "scenario_id": setup.theme.id,
         "scenario_name": setup.theme.name,
         "scenario_prompt_premise": setup.theme.premise,
-        "setup_preset_id": "",
     }
     run_config = {
         **scenario_config,
-        "narration_mode": command.narration_mode,
+        "narration_mode": "standard" if setup.theme.narration_enabled else "none",
         "deliberation_level": command.deliberation_level,
         "llm_mode": command.llm_mode,
         "engine_schema_version": setup.schema_version,
-        "definition_snapshot": setup_payload,
         "setup_document": setup_payload,
-        "setup_checksum": checksum_payload(setup_payload),
-        "mechanics_checksum": checksum_payload(mechanics.model_dump(mode="json")),
-        "rule_composition": rule_composition,
+        "setup_checksum": command.setup_checksum,
+        "mechanics_checksum": command.mechanics_checksum,
+        "roster_checksum": command.roster_checksum,
         "player_agent_types": {
-            str(player["id"]): requested_player.agent_type
-            for player, requested_player in zip(players, requested_players, strict=True)
+            player.player_id: (
+                MANUAL_AGENT_TYPE
+                if player.player_id == command.manual_player_id
+                else AUTOMATED_AGENT_TYPE
+            )
+            for player in command.players
         },
-        "player_profile_ids": profile_ids_by_player(
-            [str(player["id"]) for player in players],
-            selected_profiles,
-        ),
+        "player_profile_ids": {player.player_id: player.player_id for player in command.players},
+        "player_profiles": {
+            player.player_id: player.model_dump(mode="json", exclude={"player_id"})
+            for player in command.players
+        },
     }
     game = Game.create(
         game_setup_from_data({"players": players}),
         rules=rules,
-        random=random.Random(seed),
+        random=random.Random(namespace_seed(seed, "role_assignment")),
     )
     snapshot = game.snapshot()
     events = list(game.creation_events)
@@ -163,7 +126,7 @@ def create_game(
         seed=seed,
         scenario_id=_config_text(scenario_config, "scenario_id"),
         scenario_name=_config_text(scenario_config, "scenario_name"),
-        narration_mode=command.narration_mode,
+        narration_mode="standard" if setup.theme.narration_enabled else "none",
         theme=_setup_theme(run_config),
     )
     run = dependencies.repository.create(
@@ -184,8 +147,8 @@ def create_game(
         run.id,
         events_to_create(
             events,
-            narration_profile=_narration_profile(run_config, dependencies.game_definitions),
-            narration_mode=command.narration_mode,
+            narration_profile=_narration_profile(run_config),
+            narration_mode="standard" if setup.theme.narration_enabled else "none",
             theme=_setup_theme(run_config),
         ),
     )
@@ -291,7 +254,8 @@ def get_game_reveal(
                 killed_player_id=night.killed_player_id,
                 inspections=[
                     GameRevealInspection(
-                        seer_id=inspection.seer_id,
+                        player_id=inspection.player_id,
+                        ability_id=inspection.ability_id,
                         target_id=inspection.target_id,
                         target_role=inspection.target_role,
                         target_faction=cast(Faction, inspection.target_faction),

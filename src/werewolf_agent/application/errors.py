@@ -22,6 +22,7 @@ class ErrorCode(StrEnum):
     AUTHORIZATION_FAILED = "auth.forbidden"
     API_UNAVAILABLE = "api.unavailable"
     RESOURCE_NOT_FOUND = "resource.not_found"
+    SETUP_REVISION_CONFLICT = "setup.revision_conflict"
     HTTP_ERROR = "http.error"
     GAME_INVALID_PHASE = "game.invalid_phase"
     GAME_INVALID_ACTION = "game.invalid_action"
@@ -49,6 +50,7 @@ _DEFAULT_DETAILS = {
     ErrorCode.AUTHORIZATION_FAILED: "The supplied credentials are not valid for this operation.",
     ErrorCode.API_UNAVAILABLE: "The API server could not be reached.",
     ErrorCode.RESOURCE_NOT_FOUND: "The requested resource was not found.",
+    ErrorCode.SETUP_REVISION_CONFLICT: "A newer setup revision already exists.",
     ErrorCode.HTTP_ERROR: "The HTTP request could not be completed.",
     ErrorCode.GAME_INVALID_PHASE: "The requested game operation is not valid in the current phase.",
     ErrorCode.GAME_INVALID_ACTION: "The requested game action is not valid.",

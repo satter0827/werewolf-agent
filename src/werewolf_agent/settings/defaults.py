@@ -21,7 +21,6 @@ CLI_OUTPUT_FORMAT_NAMES: Final = CLI_OUTPUT_FORMAT_CHOICE_SET
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
 LLM_PROVIDER_NAMES: Final = LLM_PROVIDER_CHOICE_SET
-SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({"llm"})
 
 StreamlitLanguage = Literal["ja", "en"]
 StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]

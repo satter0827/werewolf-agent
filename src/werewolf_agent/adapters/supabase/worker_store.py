@@ -343,6 +343,7 @@ class SupabaseWorkerStore:
                 "setup_document": _object(stored_config.get("setup_document")),
                 "setup_checksum": stored_config.get("setup_checksum"),
                 "mechanics_checksum": stored_config.get("mechanics_checksum"),
+                "roster_checksum": stored_config.get("roster_checksum"),
                 "players": [
                     {"id": str(player["id"]), "name": str(player["name"])}
                     for player in map(_object, players.values())

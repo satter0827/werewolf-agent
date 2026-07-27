@@ -9,7 +9,6 @@ from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     GameResponse,
     GameTimelineResponse,
-    LocalRulesSettings,
     PlayerObservationResponse,
     PublicGameState,
     PublicPlayerState,
@@ -187,53 +186,6 @@ def test_start_advance_step_returns_job_with_trace_context(monkeypatch) -> None:
     assert client.advance_context["trace_id"]
 
 
-def test_create_game_from_setup_builds_role_count_request(monkeypatch, caplog) -> None:
-    client = FakeStreamlitClient()
-    monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
-    settings = AppSettings(_env_file=None)
-    from werewolf_agent.adapters.setup_options import get_local_setup_options
-
-    monkeypatch.setattr(
-        operations,
-        "load_setup_options",
-        lambda **_kwargs: get_local_setup_options(settings),
-    )
-    rules = _rules()
-
-    with caplog.at_level(logging.INFO, logger=operations.__name__):
-        created = operations.create_game_from_setup(
-            settings=settings,
-            role_counts={"werewolf": 1, "villager": 4},
-            rules=rules,
-            seed_text="7",
-            manual_player_id="player-1",
-            scenario_id="classic_village",
-            setup_preset_id="standard_6",
-            narration_mode="standard",
-            character_assignments={},
-            custom_roles=[],
-            custom_characters=[],
-        )
-
-    assert created.game_id == "game-1"
-    assert client.created_request is not None
-    assert client.created_request.setup.mode == "custom"
-    assert client.created_request.setup.setup.mechanics.role_counts == {
-        "werewolf": 1,
-        "villager": 4,
-    }
-    assert client.created_request.manual_player_id == "player-1"
-    assert client.created_request.seed == 7
-    assert client.created_request.narration_mode == "standard"
-    assert client.created_request.setup.setup.mechanics.rules == rules
-    assert client.created_request.setup.setup.theme.id == "classic_village"
-    record = next(
-        record for record in caplog.records if record.event_action == "streamlit.game.created"
-    )
-    assert record.player_count == 2
-    assert not hasattr(record, "seat_credential")
-
-
 def test_observer_screen_uses_public_data_without_private_observation(monkeypatch) -> None:
     client = FakeStreamlitClient()
     monkeypatch.setattr(operations, "build_streamlit_client", lambda *_args, **_kwargs: client)
@@ -276,23 +228,3 @@ def _state(*, status: str, phase: str) -> PublicGameState:
 
 def _timestamp() -> datetime:
     return datetime(2026, 1, 1, tzinfo=UTC)
-
-
-def _rules() -> LocalRulesSettings:
-    return LocalRulesSettings(
-        day_speech_limit_per_player=1,
-        allow_self_vote=False,
-        allow_vote_revision=False,
-        allow_night_action_revision=False,
-        enable_first_night_attack=True,
-        vote_tie_resolution="no_elimination",
-        wolf_attack_tie_resolution="random_target",
-        seer_result_detail="faction",
-        medium_result_detail="faction",
-        starting_phase="night",
-        allow_knight_self_guard=True,
-        allow_knight_repeat_guard=True,
-        allow_seer_self_inspect=False,
-        allow_werewolf_friendly_fire=False,
-        reveal_role_on_death=False,
-    )

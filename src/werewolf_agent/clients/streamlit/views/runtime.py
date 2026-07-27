@@ -34,6 +34,7 @@ from werewolf_agent.clients.streamlit.setup import (
     VIEW_ADMIN,
     VIEW_APP_SETTINGS,
     VIEW_GAME,
+    VIEW_GAME_SETTINGS,
     VIEW_HISTORY,
     VIEW_OBSERVE_SETUP,
     consume_pending_view_scroll,
@@ -46,6 +47,7 @@ from werewolf_agent.clients.streamlit.styles import load_style_tag
 from werewolf_agent.clients.streamlit.views.admin import _render_admin_screen
 from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.clients.streamlit.views.game import _render_game_screen
+from werewolf_agent.clients.streamlit.views.game_settings import _render_game_settings_screen
 from werewolf_agent.clients.streamlit.views.history import _render_history_screen
 from werewolf_agent.clients.streamlit.views.settings import _render_settings_screen
 from werewolf_agent.clients.streamlit.views.setup import _render_setup_screen
@@ -228,6 +230,14 @@ def _render_session_app(
         return
     if view == VIEW_APP_SETTINGS:
         _render_settings_screen(
+            st,
+            settings=settings,
+            catalog=catalog,
+            lang=lang,
+        )
+        return
+    if view == VIEW_GAME_SETTINGS:
+        _render_game_settings_screen(
             st,
             settings=settings,
             catalog=catalog,

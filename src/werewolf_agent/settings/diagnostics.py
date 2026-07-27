@@ -38,7 +38,6 @@ def build_entrypoint_diagnostics(
         "llm base url": settings.llm_base_url or "provider default",
         "llm api key": REDACTED if settings.configured_openai_api_key else "not configured",
         "prompt file": str(settings.llm_prompt_path or "packaged"),
-        "player roster file": str(settings.llm_players_path or "packaged"),
         "fake responses file": str(settings.llm_fake_responses_path or "packaged"),
         "log level": settings.log_level,
         "log output": settings.log_output,

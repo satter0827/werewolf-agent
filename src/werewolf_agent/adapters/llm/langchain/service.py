@@ -69,7 +69,10 @@ class LangChainDecisionProvider:
         normalized = observation.model_copy(
             update={"legal_targets": _legal_targets_by_action(observation)}
         )
-        if normalized.available_actions == [AgentActionType.PASS]:
+        if (
+            len(normalized.available_actions) == 1
+            and normalized.available_actions[0].type is AgentActionType.PASS
+        ):
             return AgentDecision.pass_(player_id, reason="only legal action")
 
         started_at = time.perf_counter()
@@ -77,7 +80,6 @@ class LangChainDecisionProvider:
         context = _decision_context(
             player_id,
             normalized,
-            role_strategy=_role_strategy(self.prompt, normalized),
             event_limit=deliberation.event_limit,
         )
         context_text = json.dumps(
@@ -253,7 +255,6 @@ def _decision_context(
     player_id: str,
     observation: AgentObservation,
     *,
-    role_strategy: str,
     event_limit: int,
 ) -> dict[str, object]:
     game = observation.game_context
@@ -270,19 +271,19 @@ def _decision_context(
         },
         "profile": _profile_context(observation),
         "legal": {
-            "actions": [action.value for action in actions],
+            "actions": [action.key for action in actions],
             "targets": {
-                action.value: list(observation.legal_targets.get(action, []))
+                action.key: list(observation.legal_targets.get(action.key, []))
                 for action in actions
-                if action in AgentDecision.TARGET_TYPES
+                if action.type in AgentDecision.TARGET_TYPES
             },
             "constraints": {
                 "speech_max_chars": LLM_SPEECH_MESSAGE_MAX_CHARS,
                 "target_required_for": [
-                    action.value for action in actions if action in AgentDecision.TARGET_TYPES
+                    action.key for action in actions if action.type in AgentDecision.TARGET_TYPES
                 ],
                 "message_required_for": [AgentActionType.SPEECH.value]
-                if AgentActionType.SPEECH in actions
+                if any(action.type is AgentActionType.SPEECH for action in actions)
                 else [],
             },
         },
@@ -294,7 +295,6 @@ def _decision_context(
             "roles": dict(observation.known_roles),
             "factions": dict(observation.known_factions),
         },
-        "strategy": role_strategy,
         "public_position": {
             "current_suspicion_id": _current_suspicion_id(observation),
         },
@@ -306,7 +306,7 @@ def _decision_context(
             "theme": game.theme_name,
             "premise": game.premise if observation.phase is AgentPhase.DAY_DISCUSSION else "",
             "actions": {
-                action.value: game.action_names.get(action.value, action.value)
+                action.key: game.action_names.get(action.type.value, action.key)
                 for action in actions
             },
             "abilities": [
@@ -316,7 +316,7 @@ def _decision_context(
                     "remaining_uses": ability.remaining_uses,
                 }
                 for ability in game.abilities
-                if ability.action in {action.value for action in actions}
+                if any(action.ability_id == ability.id for action in actions)
             ],
         }
     return context
@@ -335,23 +335,12 @@ def _profile_context(observation: AgentObservation) -> dict[str, object]:
     }
 
 
-def _role_strategy(prompt: PromptDefinition, observation: AgentObservation) -> str:
-    strategies = prompt.role_strategies.get(observation.role or "", {})
-    purpose = {
-        AgentPhase.DAY_DISCUSSION: "speech",
-        AgentPhase.VOTING: "vote",
-        AgentPhase.NIGHT: "night",
-    }.get(observation.phase, "")
-    values = [strategies.get(purpose, ""), strategies.get("deception", "")]
-    return " ".join(value for value in values if value)
-
-
 def _candidate_signals(observation: AgentObservation) -> dict[str, dict[str, int]]:
     """Return public comparison signals without selecting or ordering a target."""
     target_ids = {
         player_id
         for action in observation.available_actions
-        for player_id in observation.legal_targets.get(action, [])
+        for player_id in observation.legal_targets.get(action.key, [])
     }
     latest_counts = observation.vote_rounds[-1].counts if observation.vote_rounds else {}
     speech_counts: dict[str, int] = {}
@@ -516,10 +505,16 @@ def _validated_decision(
     model_decision: AgentModelDecision,
     context: Mapping[str, object],
 ) -> AgentDecision:
-    if model_decision.type not in observation.available_actions:
+    requested_key = (
+        f"{model_decision.type.value}:{model_decision.ability_id}"
+        if model_decision.ability_id
+        else model_decision.type.value
+    )
+    available_keys = {action.key for action in observation.available_actions}
+    if requested_key not in available_keys:
         raise ValueError("action is not available")
     if model_decision.type in AgentDecision.TARGET_TYPES:
-        legal_targets = observation.legal_targets.get(model_decision.type, [])
+        legal_targets = observation.legal_targets.get(requested_key, [])
         if model_decision.target_id not in legal_targets:
             raise ValueError("target is not legal")
     if model_decision.type is AgentActionType.VOTE and not model_decision.reason.strip():
@@ -545,6 +540,7 @@ def _validated_decision(
     return AgentDecision(
         type=model_decision.type,
         player_id=player_id,
+        ability_id=model_decision.ability_id,
         target_id=model_decision.target_id,
         message=model_decision.message,
         focus_id=model_decision.focus_id,

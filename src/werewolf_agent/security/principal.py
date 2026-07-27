@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from werewolf_agent.settings import AppSettings
 
@@ -21,7 +21,7 @@ class Principal:
     is_admin: bool
 
     @property
-    def llm_mode(self) -> str:
+    def llm_mode(self) -> Literal["fake", "paid"]:
         """Return the server-selected LLM mode for newly created games."""
         return "fake" if self.is_anonymous else "paid"
 

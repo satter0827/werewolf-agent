@@ -2,24 +2,179 @@
 
 from __future__ import annotations
 
+from string import Formatter
 from typing import Annotated, Literal, Self
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.application.definitions import (
-    AbilityDefinition,
-    CustomCharacterDefinition,
-    GameDefinitions,
-    LocalRulesDefinition,
-    PlayerSetupDefinitions,
-    RoleDefinition,
-    RuleCompositionDefinition,
+from werewolf_agent.application.constants import (
+    NARRATION_EVENT_IDS,
+    NARRATION_TEMPLATE_FIELDS,
 )
-from werewolf_agent.application.models.base import ApplicationModel
 from werewolf_agent.application.validation import non_blank
 
-SETUP_SCHEMA_VERSION = 1
-RoleCount = Annotated[int, Field(ge=0)]
+SETUP_SCHEMA_VERSION = 2
+FactionId = Literal["village", "werewolf", "fox"]
+RoleCount = Annotated[int, Field(ge=1)]
+AbilityKind = Literal[
+    "attack",
+    "inspect",
+    "protect",
+    "eliminate",
+    "knowledge",
+    "death_reaction",
+    "immunity",
+    "vulnerability",
+]
+ImmunitySourceKind = Literal["attack", "eliminate", "inspect"]
+VulnerabilitySourceKind = Literal["inspect"]
+TargetPolicy = Literal["none", "alive", "other_alive", "other_alive_non_faction"]
+
+
+class ApplicationModel(BaseModel):
+    """Strict immutable setup value."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RoleDefinition(ApplicationModel):
+    """Faction membership and ability composition for one role."""
+
+    identity_faction: FactionId
+    victory_team: FactionId
+    abilities: tuple[str, ...]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("abilities")
+    @classmethod
+    def normalize_abilities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        """Return unique normalized ability references."""
+        abilities = tuple(non_blank(item, "ability id") for item in value)
+        if len(set(abilities)) != len(abilities):
+            raise ValueError("role abilities must be unique")
+        return abilities
+
+
+class AbilityComponent(ApplicationModel):
+    """Fields shared by every bounded ability component."""
+
+    kind: AbilityKind
+    phase: Literal["night", "day_discussion", "voting", "finished"]
+    target_policy: TargetPolicy
+    start_day: int = Field(ge=1)
+    max_uses: Literal["unlimited"] | Annotated[int, Field(ge=1)]
+    result_visibility: Literal["private", "public", "none"]
+    resolution_priority: int = Field(ge=0, le=1000)
+    allow_repeat_target: bool
+    enabled_first_night: bool
+
+    @model_validator(mode="after")
+    def validate_common_shape(self) -> Self:
+        active = {"attack", "inspect", "protect", "eliminate"}
+        if self.kind in active and self.phase != "night":
+            raise ValueError(f"{self.kind} abilities must run during night")
+        if self.kind in active and self.target_policy == "none":
+            raise ValueError(f"{self.kind} abilities require a target")
+        if self.kind not in active and self.target_policy != "none":
+            raise ValueError(f"{self.kind} abilities cannot define a target")
+        if self.target_policy == "none" and not self.allow_repeat_target:
+            raise ValueError("abilities without a target must allow repeat targets")
+        if self.phase != "night" and not self.enabled_first_night:
+            raise ValueError("enabled_first_night only applies to night abilities")
+        if self.kind not in {"inspect", "knowledge"} and self.result_visibility != "none":
+            raise ValueError(f"{self.kind} abilities do not produce a visible result")
+        if self.kind == "knowledge" and self.max_uses != "unlimited":
+            raise ValueError("knowledge abilities must use unlimited max_uses")
+        if self.kind in {"immunity", "vulnerability"} and self.phase != "night":
+            raise ValueError(f"{self.kind} abilities must run during night")
+        if self.kind == "death_reaction" and self.phase not in {"night", "voting"}:
+            raise ValueError("death_reaction abilities must run during night or voting")
+        return self
+
+
+class AttackAbility(AbilityComponent):
+    kind: Literal["attack"]
+    tie_resolution: Literal["random_target", "no_action"]
+
+
+class InspectAbility(AbilityComponent):
+    kind: Literal["inspect"]
+    result_detail: Literal["faction", "role"]
+
+
+class ProtectAbility(AbilityComponent):
+    kind: Literal["protect"]
+
+
+class EliminateAbility(AbilityComponent):
+    kind: Literal["eliminate"]
+
+
+class KnowledgeAbility(AbilityComponent):
+    kind: Literal["knowledge"]
+    knowledge_mode: Literal["allies", "last_eliminated"]
+    result_detail: Literal["faction", "role"]
+
+
+class DeathReactionAbility(AbilityComponent):
+    kind: Literal["death_reaction"]
+
+
+class ImmunityAbility(AbilityComponent):
+    kind: Literal["immunity"]
+    source_kinds: Annotated[tuple[ImmunitySourceKind, ...], Field(min_length=1)]
+
+    @field_validator("source_kinds")
+    @classmethod
+    def validate_source_kinds(
+        cls, value: tuple[ImmunitySourceKind, ...]
+    ) -> tuple[ImmunitySourceKind, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("immunity source_kinds must be unique")
+        return value
+
+
+class VulnerabilityAbility(AbilityComponent):
+    kind: Literal["vulnerability"]
+    source_kinds: Annotated[tuple[VulnerabilitySourceKind, ...], Field(min_length=1)]
+
+    @field_validator("source_kinds")
+    @classmethod
+    def validate_source_kinds(
+        cls, value: tuple[VulnerabilitySourceKind, ...]
+    ) -> tuple[VulnerabilitySourceKind, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("vulnerability source_kinds must be unique")
+        return value
+
+
+AbilityDefinition = Annotated[
+    AttackAbility
+    | InspectAbility
+    | ProtectAbility
+    | EliminateAbility
+    | KnowledgeAbility
+    | DeathReactionAbility
+    | ImmunityAbility
+    | VulnerabilityAbility,
+    Field(discriminator="kind"),
+]
+
+
+class LocalRulesDefinition(ApplicationModel):
+    """Game-wide behavior that is not owned by an ability component."""
+
+    day_speech_limit_per_player: int = Field(ge=0, le=100)
+    allow_self_vote: bool
+    allow_vote_revision: bool
+    allow_night_action_revision: bool
+    vote_tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    starting_phase: Literal["night", "day_discussion"]
+    reveal_role_on_death: bool
+    require_all_actions_before_advance: bool
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class MechanicsDefinition(ApplicationModel):
@@ -29,52 +184,40 @@ class MechanicsDefinition(ApplicationModel):
     roles: dict[str, RoleDefinition]
     abilities: dict[str, AbilityDefinition]
     rules: LocalRulesDefinition
-    composition: RuleCompositionDefinition = Field(default_factory=RuleCompositionDefinition)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @field_validator("role_counts")
     @classmethod
     def normalize_role_counts(cls, value: dict[str, int]) -> dict[str, int]:
-        """Normalize selected role counts and discard zero-count catalog entries."""
-        return {
-            non_blank(str(key), "setup role id"): count for key, count in value.items() if count > 0
-        }
+        """Return role counts keyed by normalized role IDs."""
+        return {non_blank(str(key), "role id"): count for key, count in value.items()}
 
     @field_validator("roles", "abilities")
     @classmethod
     def normalize_definition_ids(cls, value: dict[str, object]) -> dict[str, object]:
-        """Normalize stable IDs used as definition mapping keys."""
-        return {non_blank(str(key), "setup definition id"): item for key, item in value.items()}
+        """Return component definitions keyed by normalized IDs."""
+        return {non_blank(str(key), "definition id"): item for key, item in value.items()}
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
-        """Reject incomplete or internally inconsistent mechanics."""
-        if not self.role_counts or sum(self.role_counts.values()) < 1:
+        """Validate role counts, ability references, and component semantics."""
+        if not self.role_counts:
             raise ValueError("role_counts must select at least one player")
-        unknown_roles = sorted(set(self.role_counts) - set(self.roles))
-        if unknown_roles:
-            raise ValueError(f"role_counts reference unknown roles: {unknown_roles}")
-        unused_roles = sorted(set(self.roles) - set(self.role_counts))
-        if unused_roles:
-            raise ValueError(f"setup contains unused roles: {unused_roles}")
-        referenced_abilities = {
-            ability_id for role in self.roles.values() for ability_id in role.abilities
-        }
-        unknown_abilities = sorted(referenced_abilities - set(self.abilities))
-        if unknown_abilities:
-            raise ValueError(f"roles reference unknown abilities: {unknown_abilities}")
-        unused_abilities = sorted(set(self.abilities) - referenced_abilities)
-        if unused_abilities:
-            raise ValueError(f"setup contains unused abilities: {unused_abilities}")
-        selected_teams = {self.roles[role_id].victory_team for role_id in self.role_counts}
-        if "village" not in selected_teams or "werewolf" not in selected_teams:
-            raise ValueError("selected roles require village and werewolf victory teams")
+        selected_roles = set(self.role_counts)
+        if selected_roles != set(self.roles):
+            raise ValueError("roles must exactly match selected role_counts")
+        referenced = {ability_id for role in self.roles.values() for ability_id in role.abilities}
+        if referenced != set(self.abilities):
+            raise ValueError("abilities must exactly match role references")
+        factions = {role.identity_faction for role in self.roles.values()}
+        if not {"village", "werewolf"}.issubset(factions):
+            raise ValueError("selected roles require village and werewolf identity factions")
         return self
 
 
-class StoryThemeDefinition(ApplicationModel):
-    """Presentation-only terminology and public narration for one setup."""
+class ThemeDefinition(ApplicationModel):
+    """Presentation-only terminology and public narration."""
 
     id: str
     name: str
@@ -82,230 +225,256 @@ class StoryThemeDefinition(ApplicationModel):
     premise: str
     role_names: dict[str, str]
     role_objectives: dict[str, str]
+    role_descriptions: dict[str, str]
     faction_names: dict[str, str]
     ability_names: dict[str, str]
+    ability_descriptions: dict[str, str]
     action_names: dict[str, str]
     phase_names: dict[str, str]
-    narration: dict[str, tuple[str, ...]] = Field(default_factory=dict)
+    narration_enabled: bool
+    narration: dict[str, tuple[str, ...]]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @field_validator("id", "name", "summary", "premise")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Normalize required theme text."""
+        """Return non-empty theme identity text."""
         return non_blank(value, "theme text")
 
     @field_validator(
         "role_names",
         "role_objectives",
+        "role_descriptions",
         "faction_names",
         "ability_names",
+        "ability_descriptions",
         "action_names",
         "phase_names",
     )
     @classmethod
     def normalize_terms(cls, value: dict[str, str]) -> dict[str, str]:
-        """Normalize stable IDs and their user-facing terms."""
+        """Return display terms with normalized IDs and text."""
         return {
             non_blank(str(key), "theme term id"): non_blank(text, "theme term")
             for key, text in value.items()
         }
 
+    @field_validator("narration")
+    @classmethod
+    def normalize_narration(cls, value: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
+        """Return narration templates keyed by normalized event IDs."""
+        normalized: dict[str, tuple[str, ...]] = {}
+        for key, templates in value.items():
+            narration_id = non_blank(str(key), "narration id")
+            if not templates:
+                raise ValueError("narration template groups must not be empty")
+            normalized_templates: list[str] = []
+            for template in templates:
+                normalized_template = non_blank(template, "narration template")
+                try:
+                    fields = _narration_fields(normalized_template)
+                except ValueError as exc:
+                    raise ValueError("narration template has invalid format syntax") from exc
+                unknown_fields = sorted(fields - NARRATION_TEMPLATE_FIELDS)
+                if unknown_fields:
+                    raise ValueError(f"narration template has unknown fields: {unknown_fields}")
+                normalized_templates.append(normalized_template)
+            normalized[narration_id] = tuple(normalized_templates)
+        return normalized
 
-class RosterDefinition(ApplicationModel):
-    """Character definitions and optional fixed seat assignments."""
+    @model_validator(mode="after")
+    def validate_narration(self) -> Self:
+        """Validate enabled narration groups and template placeholders."""
+        if self.narration_enabled and not self.narration:
+            raise ValueError("enabled narration requires at least one template group")
+        if self.narration_enabled and set(self.narration) != NARRATION_EVENT_IDS:
+            raise ValueError("enabled narration must cover every supported event")
+        return self
 
-    characters: dict[str, CustomCharacterDefinition] = Field(default_factory=dict)
-    assignments: dict[str, str] = Field(default_factory=dict)
+
+def _narration_fields(template: str) -> set[str]:
+    fields: set[str] = set()
+    for _, field_name, format_spec, _ in Formatter().parse(template):
+        if field_name is not None:
+            fields.add(field_name)
+        if format_spec:
+            fields.update(_narration_fields(format_spec))
+    return fields
+
+
+class PlayerIdentityDefinition(ApplicationModel):
+    """Public identity candidate used once per generated roster."""
+
+    name: str
+    age_min: int = Field(ge=18, le=120)
+    age_max: int = Field(ge=18, le=120)
+    gender: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("name", "gender")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        """Return non-empty player identity text."""
+        return non_blank(value, "player identity text")
+
+    @model_validator(mode="after")
+    def validate_age_range(self) -> Self:
+        """Require a non-decreasing supported age range."""
+        if self.age_min > self.age_max:
+            raise ValueError("age_min must not exceed age_max")
+        return self
+
+
+class PublicPersonaDefinition(ApplicationModel):
+    """Public behavior fields combined with an identity."""
+
+    personality: str
+    speaking_style: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("personality", "speaking_style")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        """Return non-empty public persona text."""
+        return non_blank(value, "public persona text")
+
+
+class PrivateStrategyDefinition(ApplicationModel):
+    """Private reasoning fields provided only to the assigned agent."""
+
+    reasoning_style: str
+    risk_tolerance: Literal["low", "medium", "high"]
+    evidence_focus: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    @field_validator("reasoning_style", "evidence_focus")
+    @classmethod
+    def normalize_text(cls, value: str) -> str:
+        """Return non-empty private strategy text."""
+        return non_blank(value, "private strategy text")
+
+
+class PlayerGenerationDefinition(ApplicationModel):
+    """Deterministic rules for composing a fresh roster for each game."""
+
+    identities: tuple[PlayerIdentityDefinition, ...]
+    public_personas: tuple[PublicPersonaDefinition, ...]
+    private_strategies: tuple[PrivateStrategyDefinition, ...]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @model_validator(mode="after")
-    def validate_assignments(self) -> Self:
-        """Require unique, existing character assignments."""
-        unknown = sorted(set(self.assignments.values()) - set(self.characters))
-        if unknown:
-            raise ValueError(f"assignments reference unknown characters: {unknown}")
-        if len(set(self.assignments.values())) != len(self.assignments):
-            raise ValueError("character assignments must be unique")
+    def validate_pools(self) -> Self:
+        """Require every player generation component pool."""
+        if not self.identities or not self.public_personas or not self.private_strategies:
+            raise ValueError("player generation pools must not be empty")
+        names = [identity.name.strip() for identity in self.identities]
+        if any(not name for name in names) or len(names) != len(set(names)):
+            raise ValueError("player identity names must be non-empty and unique")
         return self
 
 
 class GameSetupDocument(ApplicationModel):
-    """Complete portable setup accepted by API, CLI, UI, and persistence."""
+    """Complete portable setup accepted by every application boundary."""
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2]
     mechanics: MechanicsDefinition
-    theme: StoryThemeDefinition
-    roster: RosterDefinition = Field(default_factory=RosterDefinition)
+    theme: ThemeDefinition
+    player_generation: PlayerGenerationDefinition
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     @model_validator(mode="after")
-    def validate_theme_coverage(self) -> Self:
-        """Require presentation terms for every selected mechanical concept."""
-        selected_roles = {
-            role_id for role_id, count in self.mechanics.role_counts.items() if count > 0
+    def validate_coverage(self) -> Self:
+        """Require theme and player pools to cover the selected mechanics."""
+        roles = set(self.mechanics.roles)
+        abilities = set(self.mechanics.abilities)
+        factions = {
+            str(faction)
+            for role in self.mechanics.roles.values()
+            for faction in (role.identity_faction, role.victory_team)
         }
-        selected_abilities = {
-            ability_id
-            for role_id in selected_roles
-            for ability_id in self.mechanics.roles[role_id].abilities
-        }
-        selected_factions = {
-            faction
-            for role_id in selected_roles
-            for faction in (
-                self.mechanics.roles[role_id].identity_faction,
-                self.mechanics.roles[role_id].victory_team,
-            )
-        }
-        selected_actions = {
-            self.mechanics.abilities[ability_id].action for ability_id in selected_abilities
-        } | {"speech", "vote", "pass"}
+        required_actions = {"speech", "vote", "use_ability", "pass"}
         required_phases = {"night", "day_discussion", "voting", "finished"}
-        missing = {
-            "roles": sorted(selected_roles - set(self.theme.role_names)),
-            "role_objectives": sorted(selected_roles - set(self.theme.role_objectives)),
-            "abilities": sorted(selected_abilities - set(self.theme.ability_names)),
-            "factions": sorted(selected_factions - set(self.theme.faction_names)),
-            "actions": sorted(selected_actions - set(self.theme.action_names)),
-            "phases": sorted(required_phases - set(self.theme.phase_names)),
+        coverage = {
+            "role_names": set(self.theme.role_names),
+            "role_objectives": set(self.theme.role_objectives),
+            "role_descriptions": set(self.theme.role_descriptions),
+            "ability_names": set(self.theme.ability_names),
+            "ability_descriptions": set(self.theme.ability_descriptions),
+            "faction_names": set(self.theme.faction_names),
+            "action_names": set(self.theme.action_names),
+            "phase_names": set(self.theme.phase_names),
         }
-        failures = {key: values for key, values in missing.items() if values}
+        expected: dict[str, set[str]] = {
+            "role_names": roles,
+            "role_objectives": roles,
+            "role_descriptions": roles,
+            "ability_names": abilities,
+            "ability_descriptions": abilities,
+            "faction_names": factions,
+            "action_names": required_actions,
+            "phase_names": required_phases,
+        }
+        failures = {
+            key: sorted(expected[key] ^ values)
+            for key, values in coverage.items()
+            if values != expected[key]
+        }
         if failures:
-            raise ValueError(f"theme does not cover selected mechanics: {failures}")
-        extras = {
-            "roles": sorted(set(self.theme.role_names) - selected_roles),
-            "role_objectives": sorted(set(self.theme.role_objectives) - selected_roles),
-            "abilities": sorted(set(self.theme.ability_names) - selected_abilities),
-            "factions": sorted(set(self.theme.faction_names) - selected_factions),
-            "actions": sorted(set(self.theme.action_names) - selected_actions),
-            "phases": sorted(set(self.theme.phase_names) - required_phases),
-        }
-        extra_values = {key: values for key, values in extras.items() if values}
-        if extra_values:
-            raise ValueError(f"theme contains unused mechanics: {extra_values}")
+            raise ValueError(f"theme coverage must exactly match mechanics: {failures}")
         player_count = sum(self.mechanics.role_counts.values())
-        if len(self.roster.characters) < player_count:
-            raise ValueError("roster must provide at least one character per player")
+        if len(self.player_generation.identities) < player_count:
+            raise ValueError("player identities must cover the selected player count")
         return self
 
 
-class PresetSetupSelection(ApplicationModel):
-    """Reference a packaged complete setup."""
+class TemplateSetupSelection(ApplicationModel):
+    """Selection of one packaged setup template."""
 
-    mode: Literal["preset"]
-    preset_id: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    mode: Literal["template"]
+    template_id: str
 
 
-class CustomSetupSelection(ApplicationModel):
-    """Supply a complete setup inline."""
+class SavedSetupSelection(ApplicationModel):
+    """Selection of one immutable saved setup revision."""
 
-    mode: Literal["custom"]
-    setup: GameSetupDocument
+    mode: Literal["saved"]
+    setup_id: str
+    revision: int = Field(ge=1)
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+
+class InlineSetupSelection(ApplicationModel):
+    """Selection carrying one complete inline setup document."""
+
+    mode: Literal["inline"]
+    document: GameSetupDocument
 
 
 GameSetupSelection = Annotated[
-    PresetSetupSelection | CustomSetupSelection,
+    TemplateSetupSelection | SavedSetupSelection | InlineSetupSelection,
     Field(discriminator="mode"),
 ]
 
 
-def setup_document_from_preset(
-    preset_id: str,
-    definitions: GameDefinitions,
-    player_definitions: PlayerSetupDefinitions,
-) -> GameSetupDocument:
-    """Resolve a packaged preset into the same complete document used by custom setup."""
-    try:
-        preset = definitions.catalog.setup_presets[preset_id]
-    except KeyError as exc:
-        raise ValueError(f"Unknown setup preset: {preset_id}") from exc
-    scenario = definitions.catalog.scenarios[preset.scenario_id]
-    profile = definitions.catalog.narration_profiles[scenario.narration_profile]
-    selected_roles = {
-        role_id: definitions.roles.roles[role_id]
-        for role_id, count in preset.role_counts.items()
-        if count > 0
-    }
-    selected_abilities = {
-        ability_id for role in selected_roles.values() for ability_id in role.abilities
-    }
-    selected_factions = {
-        faction
-        for role in selected_roles.values()
-        for faction in (role.identity_faction, role.victory_team)
-    }
-    selected_actions = {
-        str(definitions.catalog.abilities[ability_id].action) for ability_id in selected_abilities
-    } | {"speech", "vote", "pass"}
-    mechanics = MechanicsDefinition(
-        role_counts=dict(preset.role_counts),
-        roles=selected_roles,
-        abilities={
-            ability_id: definitions.catalog.abilities[ability_id]
-            for ability_id in selected_abilities
-        },
-        rules=definitions.rules.local_rules,
-        composition=definitions.rules.composition,
-    )
-    theme = StoryThemeDefinition(
-        id=preset.scenario_id,
-        name=scenario.label,
-        summary=scenario.summary,
-        premise=scenario.prompt_premise,
-        role_names={role_id: scenario.role_names[role_id] for role_id in selected_roles},
-        role_objectives={role_id: scenario.role_objectives[role_id] for role_id in selected_roles},
-        faction_names={
-            faction_id: scenario.faction_names[faction_id] for faction_id in selected_factions
-        },
-        ability_names={
-            ability_id: scenario.ability_names[ability_id] for ability_id in selected_abilities
-        },
-        action_names={
-            action_id: scenario.action_names[action_id] for action_id in selected_actions
-        },
-        phase_names={
-            phase_id: scenario.phase_names[phase_id]
-            for phase_id in ("night", "day_discussion", "voting", "finished")
-        },
-        narration={event_type: event.templates for event_type, event in profile.events.items()},
-    )
-    characters = {
-        character_id: CustomCharacterDefinition(
-            id=character_id,
-            name=profile.name,
-            age=profile.age,
-            gender=profile.gender,
-            personality=profile.personality,
-            speaking_style=profile.speaking_style,
-            reasoning_style=profile.reasoning_style,
-            risk_tolerance=profile.risk_tolerance,
-            evidence_focus=profile.evidence_focus,
-        )
-        for character_id, profile in player_definitions.players.players.items()
-    }
-    return GameSetupDocument(
-        mechanics=mechanics,
-        theme=theme,
-        roster=RosterDefinition(characters=characters),
-    )
-
-
 __all__ = [
     "SETUP_SCHEMA_VERSION",
-    "CustomSetupSelection",
+    "AbilityDefinition",
     "GameSetupDocument",
     "GameSetupSelection",
+    "InlineSetupSelection",
+    "LocalRulesDefinition",
     "MechanicsDefinition",
-    "PresetSetupSelection",
-    "RosterDefinition",
-    "StoryThemeDefinition",
-    "setup_document_from_preset",
+    "PlayerGenerationDefinition",
+    "PlayerIdentityDefinition",
+    "PrivateStrategyDefinition",
+    "PublicPersonaDefinition",
+    "RoleDefinition",
+    "SavedSetupSelection",
+    "TemplateSetupSelection",
+    "ThemeDefinition",
 ]

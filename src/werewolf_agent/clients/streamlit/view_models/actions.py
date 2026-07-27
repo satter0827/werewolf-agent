@@ -34,7 +34,18 @@ def observation_view_from_response(
     """Return private observation display data."""
     observation = response.observation
     role = _nested_text(observation, "me", "role")
-    actions = [str(item) for item in observation.get("available_actions", [])]
+    actions: list[tuple[str, str | None]] = [
+        (
+            str(item.get("type")),
+            str(item["ability_id"]) if item.get("ability_id") else None,
+        )
+        for item in observation.get("available_actions", [])
+        if isinstance(item, dict)
+    ]
+    action_keys = [
+        f"{action_type}:{ability_id}" if ability_id else action_type
+        for action_type, ability_id in actions
+    ]
     known_roles = observation.get("known_roles")
     known_role_lines = (
         [
@@ -52,25 +63,37 @@ def observation_view_from_response(
             observation=observation,
             manual_player_id=manual_player_id,
         )
-        for action in actions
+        for action in action_keys
     }
     return ObservationView(
         role=_theme_term(state, "role_names", role, catalog.label(lang, "role", role)),
-        available_actions=actions,
+        available_actions=action_keys,
         action_choices=[
             action_choice(
-                action,
+                action_type,
                 catalog,
                 lang,
-                requires_target=bool(target_candidates[action]),
-                label=_theme_term(
-                    state,
-                    "action_names",
-                    action,
-                    catalog.label(lang, "action", action),
+                ability_id=ability_id,
+                requires_target=bool(
+                    target_candidates[f"{action_type}:{ability_id}" if ability_id else action_type]
+                ),
+                label=(
+                    _theme_term(
+                        state,
+                        "ability_names",
+                        ability_id,
+                        str(ability_id),
+                    )
+                    if ability_id
+                    else _theme_term(
+                        state,
+                        "action_names",
+                        action_type,
+                        catalog.label(lang, "action", action_type),
+                    )
                 ),
             )
-            for action in actions
+            for action_type, ability_id in actions
         ],
         known_role_lines=known_role_lines,
         target_candidates=target_candidates,
@@ -82,12 +105,14 @@ def action_choice(
     catalog: I18nCatalog,
     lang: Language,
     *,
+    ability_id: str | None = None,
     requires_target: bool,
     label: str | None = None,
 ) -> ActionChoiceView:
     """Return display metadata for one action."""
     return ActionChoiceView(
-        action_type=action_type,
+        action_type=f"{action_type}:{ability_id}" if ability_id else action_type,
+        ability_id=ability_id,
         icon=action_icon(action_type).symbol,
         label=label or catalog.label(lang, "action", action_type),
         requires_target=requires_target,

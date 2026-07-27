@@ -11,7 +11,7 @@ import typer
 from pydantic import ValidationError
 
 from werewolf_agent.adapters.auth import require_supabase_client_config
-from werewolf_agent.adapters.factory import build_game_client
+from werewolf_agent.adapters.factory import build_game_client, build_public_client
 from werewolf_agent.adapters.ports import GameClient
 from werewolf_agent.clients.cli.constants import (
     CLI_OUTPUT_FORMAT_CHOICE_SET,
@@ -32,20 +32,17 @@ from werewolf_agent.clients.cli.output import (
     print_observation,
     print_timeline,
 )
-from werewolf_agent.clients.requests import (
-    build_create_game_request,
-)
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
-    CustomSetupRequest,
     DeliberationLevel,
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
+    InlineSetupRequest,
     PlayerActionRequest,
-    PresetSetupRequest,
+    TemplateSetupRequest,
 )
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_SUCCESS,
@@ -66,7 +63,7 @@ def _create_request(
     seed: int | None,
     manual_player: str | None,
     setup_file: Path | None = None,
-    preset_id: str | None = None,
+    template_id: str | None = None,
     deliberation_level: DeliberationLevel = "standard",
 ) -> CreateGameRequest:
     settings = get_settings()
@@ -75,9 +72,9 @@ def _create_request(
         try:
             with setup_file.open("rb") as file:
                 payload = tomllib.load(file)
-            selection = CustomSetupRequest(
-                mode="custom",
-                setup=GameSetupDocumentRequest.model_validate(payload),
+            selection = InlineSetupRequest(
+                mode="inline",
+                document=GameSetupDocumentRequest.model_validate(payload),
             )
         except (OSError, tomllib.TOMLDecodeError, ValidationError) as exc:
             raise AppError(
@@ -85,15 +82,15 @@ def _create_request(
                 code=ErrorCode.CONFIG_INVALID_VALUE,
             ) from exc
     else:
-        selection = PresetSetupRequest(
-            mode="preset",
-            preset_id=preset_id or settings.game_default_setup_preset_id,
+        catalog = build_public_client(settings).get_setup_catalog()
+        selection = TemplateSetupRequest(
+            mode="template",
+            template_id=template_id or catalog.recommended_template_id,
         )
-    return build_create_game_request(
+    return CreateGameRequest(
         seed=seed,
         manual_player_id=manual_player,
         setup=selection,
-        narration_mode=settings.game_default_narration_mode,
         deliberation_level=deliberation_level,
     )
 
@@ -114,18 +111,22 @@ def _prompt_and_submit_manual_action(
         return
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_observation(observation)
-    action_type = str(actions[0])
+    selected = actions[0] if isinstance(actions[0], dict) else {"type": str(actions[0])}
+    action_type = str(selected.get("type"))
+    ability_id = str(selected["ability_id"]) if selected.get("ability_id") else None
+    action_key = f"{action_type}:{ability_id}" if ability_id else action_type
     target_id = None
     message = None
     if action_type == "speech":
         message = typer.prompt(PROMPT_SPEECH)
     elif action_type != "pass":
-        target_id = typer.prompt(message_target_prompt(action_type))
+        target_id = typer.prompt(message_target_prompt(action_key))
     response = client.submit_player_action(
         game_id,
         player_id,
         PlayerActionRequest(
             type=cast(Any, action_type),
+            ability_id=ability_id,
             target_id=target_id,
             message=message,
         ),

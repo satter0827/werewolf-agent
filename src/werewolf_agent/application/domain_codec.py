@@ -58,6 +58,7 @@ def action_from_data(data: Mapping[str, Any]) -> Action:
         player_id=str(data["player_id"]),
         reason=str(data.get("reason") or ""),
         target_id=_optional_text(data.get("target_id")),
+        ability_id=_optional_text(data.get("ability_id")),
         message=_optional_text(data.get("message")),
         focus_id=_optional_text(data.get("focus_id")),
         evidence_id=_optional_text(data.get("evidence_id")),
@@ -107,16 +108,21 @@ def game_config_from_data(data: Mapping[str, Any]) -> GameConfig:
         ),
         abilities={
             str(key): AbilityDefinition(
+                kind=str(_mapping(value)["kind"]),
                 phase=Phase(str(_mapping(value)["phase"])),
-                action=ActionType(str(_mapping(value)["action"])),
-                validation_policy=str(_mapping(value)["validation_policy"]),
-                resolution_policy=str(_mapping(value)["resolution_policy"]),
                 target_policy=str(_mapping(value)["target_policy"]),
                 start_day=int(_mapping(value)["start_day"]),
-                effect=str(_mapping(value)["effect"]),
                 max_uses=_optional_int(_mapping(value).get("max_uses")),
-                result_visibility=str(_mapping(value).get("result_visibility") or "private"),
-                resolution_priority=int(_mapping(value).get("resolution_priority") or 100),
+                result_visibility=str(_mapping(value)["result_visibility"]),
+                resolution_priority=int(_mapping(value)["resolution_priority"]),
+                allow_repeat_target=bool(_mapping(value)["allow_repeat_target"]),
+                enabled_first_night=bool(_mapping(value)["enabled_first_night"]),
+                result_detail=_optional_text(_mapping(value).get("result_detail")),
+                knowledge_mode=_optional_text(_mapping(value).get("knowledge_mode")),
+                tie_resolution=_optional_text(_mapping(value).get("tie_resolution")),
+                source_kinds=tuple(
+                    str(item) for item in _sequence(_mapping(value).get("source_kinds"))
+                ),
             )
             for key, value in abilities_data.items()
         },
@@ -178,13 +184,21 @@ def _night(data: Mapping[str, Any]) -> NightResult:
         inspections=tuple(
             InspectionResult(
                 day=int(item["day"]),
-                seer_id=str(item["seer_id"]),
+                player_id=str(item["player_id"]),
+                ability_id=str(item["ability_id"]),
                 target_id=str(item["target_id"]),
                 target_role=str(item["target_role"]),
                 target_faction=str(item["target_faction"]),
             )
             for item in map(_mapping, _sequence(data.get("inspections")))
         ),
+        ability_targets={
+            str(player_id): {
+                str(ability_id): str(target_id)
+                for ability_id, target_id in _mapping(targets).items()
+            }
+            for player_id, targets in _mapping(data.get("ability_targets", {})).items()
+        },
     )
 
 

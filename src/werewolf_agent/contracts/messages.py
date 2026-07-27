@@ -22,6 +22,8 @@ TITLE_API_UNAVAILABLE = "API Unavailable"
 
 TITLE_RESOURCE_NOT_FOUND = "Resource Not Found"
 
+TITLE_SETUP_REVISION_CONFLICT = "Setup Revision Conflict"
+
 TITLE_METHOD_NOT_ALLOWED = "Method Not Allowed"
 
 TITLE_AUTHENTICATION_REQUIRED = "Authentication Required"
@@ -49,6 +51,8 @@ TITLE_UNEXPECTED_INTERNAL_ERROR = "Unexpected Internal Error"
 DETAIL_CONFIG_INVALID_VALUE = "The application configuration contains an invalid value."
 
 DETAIL_REQUEST_VALIDATION_FAILED = "The request body or parameters failed validation."
+
+DETAIL_SETUP_REVISION_CONFLICT = "A newer setup revision already exists."
 
 DETAIL_REQUEST_RATE_LIMITED = "Wait briefly before trying the request again."
 
@@ -97,16 +101,3 @@ MESSAGE_EVENT_TYPE_MUST_NOT_BE_BLANK = "event_type must not be blank"
 MESSAGE_DAY_MUST_BE_NON_NEGATIVE = "day must be zero or greater"
 
 MESSAGE_PLAYER_COUNT_AT_LEAST_ONE = "player_count must be at least 1"
-
-MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS = (
-    "character_assignments keys must match generated player ids"
-)
-
-MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE = "character_assignments values must be unique"
-
-MESSAGE_CUSTOM_ROLE_IDS_MUST_BE_UNIQUE = "custom role ids must be unique"
-
-MESSAGE_CUSTOM_CHARACTER_IDS_MUST_BE_UNIQUE = "custom character ids must be unique"
-
-
-MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE = "custom role abilities must be unique"

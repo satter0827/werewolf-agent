@@ -22,7 +22,6 @@ from pydantic_settings import (
 from werewolf_agent.settings.constants import (
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
-    NARRATION_MODE_CHOICES,
 )
 from werewolf_agent.settings.defaults import (
     CLI_OUTPUT_FORMAT_NAMES,
@@ -31,7 +30,6 @@ from werewolf_agent.settings.defaults import (
     LOG_OUTPUT_NAMES,
     STREAMLIT_LANGUAGE_NAMES,
     STREAMLIT_SIDEBAR_STATE_NAMES,
-    SUPPORTED_AGENT_TYPE_NAMES,
 )
 from werewolf_agent.settings.loading import packaged_defaults_path
 from werewolf_agent.settings.messages import (
@@ -39,7 +37,6 @@ from werewolf_agent.settings.messages import (
     MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED,
     MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP,
     message_field_must_be_le_field,
-    message_game_default_player_count_between,
     message_game_min_players_le_max_players,
     message_mapping_item_must_use_separator,
     message_settings_llm_base_url_required,
@@ -189,31 +186,6 @@ class AppSettings(
         return _optional_repository_path(self.llm_fake_responses_file)
 
     @property
-    def llm_players_path(self) -> Path | None:
-        """Return the configured external LLM player definition file, if any."""
-        return _optional_repository_path(self.llm_players_file)
-
-    @property
-    def game_rules_path(self) -> Path | None:
-        """Return the configured external game rule definition file, if any."""
-        return _optional_repository_path(self.game_rules_file)
-
-    @property
-    def game_roles_path(self) -> Path | None:
-        """Return the configured external game role definition file, if any."""
-        return _optional_repository_path(self.game_roles_file)
-
-    @property
-    def game_catalog_path(self) -> Path | None:
-        """Return the configured external game catalog definition file, if any."""
-        return _optional_repository_path(self.game_catalog_file)
-
-    @property
-    def game_abilities_path(self) -> Path | None:
-        """Return the configured external ability definition file, if any."""
-        return _optional_repository_path(self.game_abilities_file)
-
-    @property
     def log_directory_path(self) -> Path:
         """Return the absolute directory for operational logs."""
         log_dir_text = str(self.log_dir).strip()
@@ -330,12 +302,6 @@ class AppSettings(
         """Return an optional Streamlit resource override file path."""
         return "" if value is None else str(value).strip()
 
-    @field_validator("streamlit_default_manual_player_id", mode="before")
-    @classmethod
-    def normalize_streamlit_player_id(cls, value: object) -> str:
-        """Return the default Streamlit player id."""
-        return normalize_non_blank(value, field_name="streamlit_default_manual_player_id")
-
     @field_validator("cli_output_format", mode="before")
     @classmethod
     def normalize_cli_output_format(cls, value: object) -> str:
@@ -373,7 +339,6 @@ class AppSettings(
     @field_validator(
         "llm_prompt_file",
         "llm_fake_responses_file",
-        "llm_players_file",
         mode="before",
     )
     @classmethod
@@ -381,33 +346,7 @@ class AppSettings(
         """Return an optional LLM resource override file path."""
         return "" if value is None else str(value).strip()
 
-    @field_validator("game_supported_agent_type", mode="before")
-    @classmethod
-    def normalize_supported_agent_type(cls, value: object) -> str:
-        """Return the configured supported agent type."""
-        return normalize_choice(
-            value,
-            field_name="game_supported_agent_type",
-            choices=SUPPORTED_AGENT_TYPE_NAMES,
-            case="lower",
-        )
-
-    @field_validator("game_default_narration_mode", mode="before")
-    @classmethod
-    def normalize_game_default_narration_mode(cls, value: object) -> str:
-        """Return the configured default narration mode."""
-        return normalize_choice(
-            value,
-            field_name="game_default_narration_mode",
-            choices=NARRATION_MODE_CHOICES,
-            case="lower",
-        )
-
-    @field_validator(
-        "game_supported_agent_name",
-        "game_default_setup_preset_id",
-        mode="before",
-    )
+    @field_validator("game_supported_agent_name", mode="before")
     @classmethod
     def normalize_game_text(cls, value: object) -> str:
         """Return a stripped non-empty game configuration string."""
@@ -453,8 +392,6 @@ class AppSettings(
             )
         if self.game_min_players > self.game_max_players:
             raise ValueError(message_game_min_players_le_max_players())
-        if not self.game_min_players <= self.game_default_player_count <= self.game_max_players:
-            raise ValueError(message_game_default_player_count_between())
         self._validate_llm_settings()
         return self
 

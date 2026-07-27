@@ -7,12 +7,6 @@ from typing import Literal
 
 from werewolf_agent.clients.streamlit.constants import DEFAULT_NARRATION_MODE
 from werewolf_agent.contracts.constants import DEFAULT_DELIBERATION_LEVEL
-from werewolf_agent.contracts.schemas import (
-    CustomCharacterDefinitionRequest,
-    CustomRoleDefinitionRequest,
-    LocalRulesSettings,
-    RuleCompositionSelection,
-)
 
 ScreenMode = Literal["playable", "observer"]
 
@@ -26,17 +20,9 @@ class SavedGameOptionView:
     game_id: str
     mode: ScreenMode
     manual_player_id: str | None = None
-    role_counts: dict[str, int] | None = None
-    rules: LocalRulesSettings | None = None
     seed: int | None = None
-    scenario_id: str | None = None
-    setup_preset_id: str | None = None
     narration_mode: str = DEFAULT_NARRATION_MODE
     deliberation_level: str = DEFAULT_DELIBERATION_LEVEL
-    character_assignments: dict[str, str] | None = None
-    custom_roles: list[CustomRoleDefinitionRequest] | None = None
-    custom_characters: list[CustomCharacterDefinitionRequest] | None = None
-    rule_composition: RuleCompositionSelection | None = None
 
 
 @dataclass(frozen=True)
@@ -79,6 +65,7 @@ class ActionChoiceView:
     """One action option visible in the hand panel."""
 
     action_type: str
+    ability_id: str | None
     icon: str
     label: str
     requires_target: bool

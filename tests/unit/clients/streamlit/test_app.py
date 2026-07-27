@@ -4,12 +4,9 @@ from typing import Any
 
 from werewolf_agent.clients.streamlit.i18n import load_i18n
 from werewolf_agent.clients.streamlit.setup import KEY_PENDING_VIEW_SCROLL, VIEW_PLAY_SETUP
-from werewolf_agent.clients.streamlit.views import game, sidebar
 from werewolf_agent.clients.streamlit.views import runtime as app
-from werewolf_agent.contracts import AppError
+from werewolf_agent.clients.streamlit.views import sidebar
 from werewolf_agent.contracts.api import SessionResponse
-from werewolf_agent.contracts.errors import ErrorCode
-from werewolf_agent.contracts.schemas import LocalRulesSettings
 from werewolf_agent.settings import AppSettings
 
 
@@ -28,7 +25,13 @@ def test_sidebar_navigation_order_is_play_observe_history_settings(monkeypatch) 
         lang="ja",
     )
 
-    assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
+    assert streamlit.sidebar.button_labels == [
+        "プレイ",
+        "ゲーム設定",
+        "観戦",
+        "記録",
+        "表示設定",
+    ]
 
 
 def test_sidebar_navigation_includes_admin_for_administrator(monkeypatch) -> None:
@@ -49,6 +52,7 @@ def test_sidebar_navigation_includes_admin_for_administrator(monkeypatch) -> Non
 
     assert streamlit.sidebar.button_labels == [
         "プレイ",
+        "ゲーム設定",
         "観戦",
         "記録",
         "管理",
@@ -76,7 +80,13 @@ def test_sidebar_definition_keeps_required_brand(monkeypatch) -> None:
         lang="ja",
     )
 
-    assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
+    assert streamlit.sidebar.button_labels == [
+        "プレイ",
+        "ゲーム設定",
+        "観戦",
+        "記録",
+        "表示設定",
+    ]
     assert rendered == ["brand"]
 
 
@@ -170,66 +180,11 @@ def test_app_shows_supabase_config_error_before_rendering_game_views(
     )
 
 
-def test_create_game_logs_operational_error(monkeypatch, caplog) -> None:
-    settings = AppSettings(_env_file=None)
-    streamlit = _StreamlitStub()
-    feedback = _FeedbackStub()
-    catalog = load_i18n(settings)
-
-    def fail_create_game(*args: object, **kwargs: object) -> object:
-        raise AppError("operation request timed out", code=ErrorCode.API_UNAVAILABLE)
-
-    monkeypatch.setattr(game, "create_game_from_setup", fail_create_game)
-
-    with caplog.at_level(logging.INFO, logger=game.__name__):
-        game._create_game(
-            streamlit,
-            feedback=feedback,
-            settings=settings,
-            role_counts={"werewolf": 1, "villager": 4},
-            rules=_rules(),
-            seed_text="1",
-            manual_player_id="player-1",
-            screen_mode="play",
-            catalog=catalog,
-            lang="ja",
-        )
-
-    assert feedback.error_texts == ["operation request timed out"]
-    records = [
-        record for record in caplog.records if record.event_action == "streamlit.game.create_failed"
-    ]
-    assert len(records) == 1
-    assert records[0].event_outcome == "failure"
-    assert records[0].error_message == "operation request timed out"
-    assert records[0].screen_mode == "play"
-
-
 def _fail_renderer(name: str):
     def fail(*args: object, **kwargs: object) -> None:
         raise AssertionError(f"{name} renderer called")
 
     return fail
-
-
-def _rules() -> LocalRulesSettings:
-    return LocalRulesSettings(
-        day_speech_limit_per_player=1,
-        allow_self_vote=False,
-        allow_vote_revision=False,
-        allow_night_action_revision=False,
-        enable_first_night_attack=True,
-        vote_tie_resolution="no_elimination",
-        wolf_attack_tie_resolution="random_target",
-        seer_result_detail="faction",
-        medium_result_detail="faction",
-        starting_phase="night",
-        allow_knight_self_guard=True,
-        allow_knight_repeat_guard=True,
-        allow_seer_self_inspect=False,
-        allow_werewolf_friendly_fire=False,
-        reveal_role_on_death=False,
-    )
 
 
 class _SidebarStub:
@@ -299,11 +254,3 @@ class _AppStub(_StreamlitStub):
 
     def info(self, value: str) -> None:
         self.info_texts.append(value)
-
-
-class _FeedbackStub:
-    def __init__(self) -> None:
-        self.error_texts: list[str] = []
-
-    def error(self, value: str) -> None:
-        self.error_texts.append(value)

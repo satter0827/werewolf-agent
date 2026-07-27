@@ -34,18 +34,14 @@ from werewolf_agent.clients.cli.messages import (
     ROW_ALIVE,
     ROW_AVAILABLE_ACTIONS,
     ROW_DAY,
-    ROW_DEFAULT_ROLE_COUNTS,
     ROW_ELIMINATED,
     ROW_KNOWN_ROLES,
     ROW_PHASE,
-    ROW_PLAYER_COUNT,
     ROW_ROLE,
-    ROW_ROLES,
     ROW_STATUS,
     ROW_VERSION,
     ROW_WINNER,
     TABLE_TITLE_API_HEALTH,
-    TABLE_TITLE_GAME_SETUP,
     TABLE_TITLE_GAME_TIMELINE,
     TABLE_TITLE_GAMES,
     message_timeline_item,
@@ -54,7 +50,6 @@ from werewolf_agent.clients.cli.messages import (
 )
 from werewolf_agent.contracts.api import RuntimeStatusResponse
 from werewolf_agent.contracts.schemas import (
-    GameSetupOptionsResponse,
     GameTimelineItem,
     PlayerObservationResponse,
     PublicGameState,
@@ -80,90 +75,6 @@ def print_health(
     table.add_column(COLUMN_VALUE, overflow="fold")
     for key, value in payload.items():
         table.add_row(key, value)
-    console.print(table)
-
-
-def print_setup_options(
-    options: GameSetupOptionsResponse,
-    *,
-    output_format: OutputFormat = CLI_OUTPUT_FORMAT_TABLE,
-) -> None:
-    """Print public setup metadata."""
-    if output_format != CLI_OUTPUT_FORMAT_TABLE:
-        print_json(options, output_format=output_format)
-        return
-
-    table = Table(title=TABLE_TITLE_GAME_SETUP)
-    table.add_column(COLUMN_FIELD, style="cyan", no_wrap=True)
-    table.add_column(COLUMN_VALUE, overflow="fold")
-    table.add_row(ROW_PLAYER_COUNT, str(options.player_count))
-    table.add_row(ROW_ROLES, ", ".join(role.id for role in options.roles))
-    table.add_row(
-        "役職の詳細",
-        "\n".join(
-            f"{role.name} ({role.id}): {role.description} / 能力={','.join(role.abilities) or '-'}"
-            for role in options.roles
-        ),
-    )
-    table.add_row(
-        "能力",
-        "\n".join(
-            f"{ability.name} ({ability.id}): {ability.description}" for ability in options.abilities
-        )
-        or EMPTY_VALUE,
-    )
-    table.add_row(
-        "シナリオ",
-        "\n".join(
-            f"{scenario.name} ({scenario.id}): {scenario.summary}" for scenario in options.scenarios
-        )
-        or EMPTY_VALUE,
-    )
-    table.add_row(
-        "プリセット",
-        "\n".join(
-            f"{preset.name} ({preset.id}): {preset.role_counts}" for preset in options.setup_presets
-        )
-        or EMPTY_VALUE,
-    )
-    table.add_row(
-        "キャラクター",
-        ", ".join(f"{character.name} ({character.id})" for character in options.characters)
-        or EMPTY_VALUE,
-    )
-    table.add_row(ROW_DEFAULT_ROLE_COUNTS, str(options.default_role_counts))
-    table.add_row("ローカルルール", str(options.default_rules.model_dump(mode="json")))
-    table.add_row("既定のシナリオ", options.default_scenario_id or EMPTY_VALUE)
-    table.add_row("既定のプリセット", options.default_setup_preset_id or EMPTY_VALUE)
-    table.add_row("既定のナレーション", options.default_narration_mode)
-    composition = options.rule_composition
-    table.add_row(
-        "フェーズ順序",
-        "\n".join(
-            f"{item.name} ({item.id}): {item.description} / {', '.join(item.phases)}"
-            for item in composition.phase_orders
-        ),
-    )
-    table.add_row(
-        "行動判定ポリシー",
-        _policy_option_lines(composition.action_policies),
-    )
-    table.add_row(
-        "行動解決ポリシー",
-        _policy_option_lines(composition.resolution_policies),
-    )
-    table.add_row(
-        "フェーズ進行ポリシー",
-        _policy_option_lines(composition.phase_policies),
-    )
-    table.add_row(
-        "勝敗判定ポリシー",
-        _policy_option_lines(composition.victory_policies),
-    )
-    table.add_row(
-        "公開範囲ポリシー",
-        _policy_option_lines(composition.visibility_policies),
-    )
     console.print(table)
 
 
@@ -248,7 +159,17 @@ def print_observation(
     table.add_row(ROW_ROLE, str(me.get("role", EMPTY_VALUE)))
     table.add_row(
         ROW_AVAILABLE_ACTIONS,
-        ", ".join(observation.get("available_actions") or []) or EMPTY_VALUE,
+        ", ".join(
+            (
+                f"{item.get('type')}:{item.get('ability_id')}"
+                if isinstance(item, dict) and item.get("ability_id")
+                else str(item.get("type"))
+                if isinstance(item, dict)
+                else str(item)
+            )
+            for item in observation.get("available_actions") or []
+        )
+        or EMPTY_VALUE,
     )
     table.add_row(ROW_KNOWN_ROLES, str(observation.get("known_roles") or {}))
     console.print(table)

@@ -12,7 +12,12 @@ from psycopg.errors import InsufficientPrivilege, LockNotAvailable
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from werewolf_agent.adapters.application_bridge import (
+    build_game_application_config,
+    build_setup_catalog,
+)
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
+from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker.service import process_worker_batch
 
@@ -184,6 +189,20 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
     game_id: UUID | None = None
     try:
         _insert_user(connection, owner_id)
+        settings = AppSettings(
+            llm_provider="fake",
+            supabase_db_dsn=dsn,
+            supabase_worker_batch_size=1,
+        )
+        setup_catalog = build_setup_catalog(settings)
+        setups = SetupApplication(setup_catalog, build_game_application_config(settings))
+        create_command = setups.prepare_create(
+            setup_catalog.require_document("standard_6"),
+            seed=2**40,
+            manual_player_id=None,
+            llm_mode="fake",
+            deliberation_level="standard",
+        )
         create_id = connection.execute(
             """
             insert into public.game_operation_requests (
@@ -193,23 +212,13 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
             """,
             (
                 owner_id,
-                Jsonb(
-                    {
-                        "seed": 1,
-                        "setup": {"mode": "preset", "preset_id": "standard_6"},
-                    }
-                ),
+                Jsonb(create_command.model_dump(mode="json")),
             ),
         ).fetchone()
         assert create_id is not None
         _enqueue_operation_message(connection, create_id[0])
         connection.commit()
 
-        settings = AppSettings(
-            llm_provider="fake",
-            supabase_db_dsn=dsn,
-            supabase_worker_batch_size=1,
-        )
         assert settings.llm_provider == "fake"
         assert process_worker_batch(settings) == 1
 

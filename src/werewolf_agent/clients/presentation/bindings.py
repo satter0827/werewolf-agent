@@ -23,6 +23,11 @@ CLI_COMMAND_FEATURES: dict[str, tuple[str, ...]] = {
 STREAMLIT_WORKSPACE_FEATURES: dict[str, tuple[str, ...]] = {
     "shell": ("runtime_config_get", "runtime_status_get", "session_get"),
     "play": (
+        "setup_catalog_get",
+        "setup_template_get",
+        "setup_player_preview",
+        "setup_list",
+        "setup_revision_list",
         "game_create",
         "game_get",
         "game_observation_get",
@@ -40,6 +45,17 @@ STREAMLIT_WORKSPACE_FEATURES: dict[str, tuple[str, ...]] = {
         "admin_llm_usage_get",
     ),
     "preferences": (),
+    "game_settings": (
+        "setup_validate",
+        "setup_catalog_get",
+        "setup_template_get",
+        "setup_list",
+        "setup_create",
+        "setup_get",
+        "setup_revision_list",
+        "setup_revision_get",
+        "setup_revision_create",
+    ),
 }
 
 __all__ = ["CLI_COMMAND_FEATURES", "STREAMLIT_WORKSPACE_FEATURES"]

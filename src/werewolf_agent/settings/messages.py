@@ -10,25 +10,10 @@ MESSAGE_INVALID_VALUE = "Invalid value."
 
 MESSAGE_SETTINGS = "settings"
 
-MESSAGE_GENERATED_PLAYER_INDEX_MUST_BE_AT_LEAST_ONE = "generated player index must be at least 1"
 
 MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE = "role abilities must be unique"
 
-MESSAGE_CUSTOM_ROLE_ABILITIES_MUST_BE_UNIQUE = "custom role abilities must be unique"
-
 MESSAGE_NARRATION_TEMPLATES_REQUIRED = "narration templates must include at least one value"
-
-MESSAGE_ALLOWED_ROLES_MUST_BE_UNIQUE = "allowed_roles must be unique"
-
-MESSAGE_SETUP_PRESET_ROLE_COUNTS_REQUIRED = (
-    "setup preset role_counts must include at least one player"
-)
-
-MESSAGE_ROLES_REQUIRED = "roles must include at least one role"
-
-MESSAGE_DEFAULT_ROLE_COUNTS_REQUIRED = "default_role_counts must include at least one player count"
-
-MESSAGE_DEFAULT_ROLE_COUNT_KEYS_POSITIVE = "default_role_counts keys must be positive player counts"
 
 MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME = "log_file_name must be a file name"
 
@@ -64,22 +49,9 @@ def message_mapping_item_must_use_separator(field_name: str, separator: str) -> 
     return f"{field_name} items must use '{separator}' between key and value"
 
 
-def message_game_default_player_count_between() -> str:
-    """Return a settings consistency validation message."""
-    return "game_default_player_count must be between game_min_players and game_max_players"
-
-
 def message_game_min_players_le_max_players() -> str:
     """Return a settings consistency validation message."""
     return "game_min_players must be less than or equal to game_max_players"
-
-
-def message_game_setup_description_template_invalid() -> str:
-    """Return a game setup description template validation message."""
-    return (
-        "game_setup_description_template must use only min_players, "
-        "max_players, and default_player_count placeholders"
-    )
 
 
 def message_missing_default_setting(key: str) -> str:
@@ -90,33 +62,6 @@ def message_missing_default_setting(key: str) -> str:
 def message_definition_settings_invalid(error: object) -> str:
     """Return a runtime definition settings validation message."""
     return f"definition settings are invalid: {error}"
-
-
-def message_role_definition_missing_player_counts(missing: str) -> str:
-    """Return a role definition default-count coverage message."""
-    return (
-        f"game role definition default_role_counts must define configured player counts: {missing}"
-    )
-
-
-def message_default_role_counts_unknown_roles(role_ids: Iterable[str]) -> str:
-    """Return an unknown-role validation message for default role counts."""
-    return f"default_role_counts contain unknown roles: {', '.join(role_ids)}"
-
-
-def message_default_role_counts_must_sum(player_count: int) -> str:
-    """Return a default role-count sum validation message."""
-    return f"default_role_counts[{player_count}] must sum to {player_count}"
-
-
-def message_default_role_counts_must_define_player_count(player_count: int) -> str:
-    """Return a default role-count coverage validation message."""
-    return f"default_role_counts must define player_count {player_count}"
-
-
-def message_unknown_setup_preset(preset_id: str) -> str:
-    """Return an unknown setup preset message."""
-    return f"Unknown setup preset: {preset_id}"
 
 
 def message_definition_references_unknown_ids(

@@ -2,13 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import cast
 from uuid import uuid4
 
-from werewolf_agent.clients.streamlit.constants import DEFAULT_NARRATION_MODE
 from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.clients.streamlit.view_models import (
     SavedGameOptionView,
@@ -17,14 +14,9 @@ from werewolf_agent.clients.streamlit.view_models import (
 from werewolf_agent.contracts.schemas import (
     GAME_STATUS_COMPLETED,
     GAME_STATUS_RUNNING,
-    CustomCharacterDefinitionRequest,
-    CustomRoleDefinitionRequest,
     DeliberationLevel,
     GameResponse,
-    LocalRulesSettings,
-    NarrationMode,
     PublicGameSummary,
-    RuleCompositionSelection,
 )
 
 
@@ -35,54 +27,27 @@ class SessionGameSelection:
     selection_id: str
     game_id: str
     manual_player_id: str | None
-    role_counts: dict[str, int]
-    rules: LocalRulesSettings
+    player_count: int
     seed: int | None
-    scenario_id: str | None
-    setup_preset_id: str | None
-    narration_mode: NarrationMode
     deliberation_level: DeliberationLevel
-    character_assignments: dict[str, str]
-    custom_roles: list[CustomRoleDefinitionRequest]
-    custom_characters: list[CustomCharacterDefinitionRequest]
-    rule_composition: RuleCompositionSelection | None = None
 
 
 def create_session_game_selection(
     response: GameResponse,
     *,
     manual_player_id: str | None,
-    role_counts: Mapping[str, int],
-    rules: LocalRulesSettings,
     seed: int | None,
-    scenario_id: str | None,
-    setup_preset_id: str | None,
-    narration_mode: NarrationMode,
+    player_count: int,
     deliberation_level: DeliberationLevel = "standard",
-    character_assignments: Mapping[str, str],
-    custom_roles: list[CustomRoleDefinitionRequest],
-    custom_characters: list[CustomCharacterDefinitionRequest],
-    rule_composition: RuleCompositionSelection | None = None,
 ) -> SessionGameSelection:
     """Create a session-only playable selection from a newly created game."""
     return SessionGameSelection(
         selection_id=uuid4().hex,
         game_id=response.game_id,
         manual_player_id=manual_player_id,
-        role_counts={str(role_id): int(count) for role_id, count in role_counts.items()},
-        rules=rules,
+        player_count=player_count,
         seed=seed,
-        scenario_id=scenario_id,
-        setup_preset_id=setup_preset_id,
-        narration_mode=narration_mode,
         deliberation_level=deliberation_level,
-        character_assignments={
-            str(player_id): str(character_id)
-            for player_id, character_id in character_assignments.items()
-        },
-        custom_roles=list(custom_roles),
-        custom_characters=list(custom_characters),
-        rule_composition=rule_composition,
     )
 
 
@@ -101,9 +66,7 @@ def build_history_options(
         game = games_by_id.get(session_selection.game_id)
         status = game.status if game is not None else GAME_STATUS_RUNNING
         day = game.day if game is not None else 1
-        player_count = (
-            game.player_count if game is not None else sum(session_selection.role_counts.values())
-        )
+        player_count = game.player_count if game is not None else session_selection.player_count
         updated_at = game.updated_at if game is not None else None
         mode: ScreenMode = "playable" if session_selection.manual_player_id else "observer"
         options.append(
@@ -124,17 +87,8 @@ def build_history_options(
                 game_id=session_selection.game_id,
                 mode=mode,
                 manual_player_id=session_selection.manual_player_id,
-                role_counts=dict(session_selection.role_counts),
-                rules=session_selection.rules,
                 seed=session_selection.seed,
-                scenario_id=session_selection.scenario_id,
-                setup_preset_id=session_selection.setup_preset_id,
-                narration_mode=session_selection.narration_mode,
                 deliberation_level=session_selection.deliberation_level,
-                character_assignments=dict(session_selection.character_assignments),
-                custom_roles=list(session_selection.custom_roles),
-                custom_characters=list(session_selection.custom_characters),
-                rule_composition=session_selection.rule_composition,
             )
         )
         session_game_id = session_selection.game_id
@@ -159,7 +113,6 @@ def build_history_options(
                 game_id=game.game_id,
                 mode="observer",
                 seed=game.seed,
-                narration_mode=cast(NarrationMode, DEFAULT_NARRATION_MODE),
             )
         )
     return options

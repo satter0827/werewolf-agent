@@ -250,7 +250,7 @@ def public_narration(
             theme,
             "phase_names",
             event.phase.value if event.phase is not None else "",
-            _phase_label(event.phase.value if event.phase is not None else ""),
+            event.phase.value if event.phase is not None else "",
         ),
         "actor": _public_player_label(event.actor_id),
         "player_count": payload.get("player_count", ""),
@@ -261,7 +261,7 @@ def public_narration(
             theme,
             "faction_names",
             payload.get("winner"),
-            _winner_label(payload.get("winner")),
+            str(payload.get("winner") or ""),
         ),
     }
     try:
@@ -275,23 +275,6 @@ def _public_player_label(value: object) -> str:
         return ""
     text = str(value)
     return public_generated_player_label(text) or text
-
-
-def _phase_label(value: str) -> str:
-    return {
-        "night": "夜",
-        "day_discussion": "話し合い",
-        "voting": "投票",
-        "finished": "終了",
-    }.get(value, value)
-
-
-def _winner_label(value: object) -> str:
-    return {
-        "village": "村人陣営",
-        "werewolf": "人狼陣営",
-        "fox": "妖狐陣営",
-    }.get(str(value), str(value) if value is not None else "")
 
 
 def _theme_term(

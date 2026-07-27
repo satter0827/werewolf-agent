@@ -37,7 +37,7 @@ def request() -> ModelRequest:
                 {"id": "p1", "name": "Alice", "status": "alive"},
                 {"id": "p2", "name": "Bob", "status": "alive"},
             ],
-            "available_actions": ["vote"],
+            "available_actions": [{"type": "vote"}],
             "legal_targets": {"vote": ["p2"]},
         }
     )

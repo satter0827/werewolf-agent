@@ -1,66 +1,57 @@
-"""Setup metadata queries."""
+"""Setup catalog, validation, preview, and create-command preparation."""
 
 from __future__ import annotations
 
+import secrets
 from collections.abc import Mapping
+from typing import Literal
 
 from pydantic import ValidationError
 
-from werewolf_agent.application.definitions import GameDefinitions, PlayerSetupDefinitions
+from werewolf_agent.application.checksums import checksum_payload
+from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import ConfigError
-from werewolf_agent.application.messages import message_unknown_setup_preset
 from werewolf_agent.application.models import (
+    CreateGameCommand,
     GameApplicationConfig,
     GameSetupOptionsResult,
+    GeneratedPlayerInput,
+    PlayerPreviewResult,
     SetupValidationResult,
 )
-from werewolf_agent.application.replay import checksum_payload
+from werewolf_agent.application.players import generate_players
+from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
 from werewolf_agent.application.setup_document import GameSetupDocument
 
+ABILITY_KINDS = (
+    "attack",
+    "inspect",
+    "protect",
+    "eliminate",
+    "knowledge",
+    "death_reaction",
+    "immunity",
+    "vulnerability",
+)
 
-def default_setup_options(
+
+def setup_catalog_options(
     config: GameApplicationConfig,
-    definitions: GameDefinitions,
-    player_definitions: PlayerSetupDefinitions,
+    catalog: SetupTemplateCatalog,
 ) -> GameSetupOptionsResult:
-    """Return game setup business metadata."""
-    default_setup_preset_id = config.default_setup_preset_id
-    default_preset = definitions.catalog.setup_presets.get(default_setup_preset_id)
-    if default_preset is None:
-        raise ValueError(message_unknown_setup_preset(default_setup_preset_id))
-    default_scenario_id = default_preset.scenario_id
+    """Return editor metadata without constructing any implicit setup."""
     return GameSetupOptionsResult(
         player_count={"min": config.min_players, "max": config.max_players},
-        roles={
-            role_id: definition.model_dump(mode="json")
-            for role_id, definition in definitions.roles.roles.items()
+        recommended_template_id=catalog.recommended_template_id,
+        template_order=catalog.template_order,
+        templates={
+            template_id: {
+                "name": metadata.name,
+                "summary": metadata.summary,
+            }
+            for template_id, metadata in catalog.metadata.items()
         },
-        default_role_counts=definitions.roles.default_counts_for(config.default_player_count),
-        default_rules=definitions.rules.local_rules,
-        default_scenario_id=default_scenario_id,
-        default_setup_preset_id=default_setup_preset_id,
-        default_narration_mode=config.default_narration_mode,
-        abilities={
-            ability_id: definition.model_dump(mode="json")
-            for ability_id, definition in definitions.catalog.abilities.items()
-        },
-        scenarios={
-            scenario_id: definition.model_dump(mode="json")
-            for scenario_id, definition in definitions.catalog.scenarios.items()
-        },
-        narration_profiles={
-            profile_id: definition.model_dump(mode="json")
-            for profile_id, definition in definitions.catalog.narration_profiles.items()
-        },
-        setup_presets={
-            preset_id: definition.model_dump(mode="json")
-            for preset_id, definition in definitions.catalog.setup_presets.items()
-        },
-        characters={
-            character_id: definition.model_dump(mode="json")
-            for character_id, definition in player_definitions.players.players.items()
-        },
-        rule_composition=definitions.rules.composition.model_dump(mode="json"),
+        ability_kinds=ABILITY_KINDS,
     )
 
 
@@ -71,13 +62,79 @@ def validate_setup_document(payload: Mapping[str, object]) -> SetupValidationRes
     except ValidationError as exc:
         raise ConfigError(str(exc)) from exc
     mechanics = setup.mechanics
+    warnings: list[str] = []
+    werewolf_count = sum(
+        mechanics.role_counts[role_id]
+        for role_id, role in mechanics.roles.items()
+        if role.identity_faction == "werewolf"
+    )
+    player_count = sum(mechanics.role_counts.values())
+    if werewolf_count * 3 > player_count:
+        warnings.append("人狼陣営が多いため、短いゲームになる可能性があります。")
     return SetupValidationResult(
         schema_version=setup.schema_version,
-        player_count=sum(mechanics.role_counts.values()),
+        player_count=player_count,
         theme_id=setup.theme.id,
         theme_name=setup.theme.name,
         role_ids=tuple(sorted(mechanics.roles)),
         ability_ids=tuple(sorted(mechanics.abilities)),
         setup_checksum=checksum_payload(setup.model_dump(mode="json")),
         mechanics_checksum=checksum_payload(mechanics.model_dump(mode="json")),
+        warnings=tuple(warnings),
     )
+
+
+def preview_players(setup: GameSetupDocument, *, seed: int | None) -> PlayerPreviewResult:
+    """Generate a public-safe roster preview and return the concrete seed."""
+    concrete_seed = secrets.randbits(63) if seed is None else seed
+    players = generate_players(
+        setup.player_generation,
+        player_count=sum(setup.mechanics.role_counts.values()),
+        seed=concrete_seed,
+    )
+    payload = tuple(player.public_payload() for player in players)
+    return PlayerPreviewResult(
+        seed=concrete_seed,
+        players=payload,
+        roster_checksum=checksum_payload([player.private_payload() for player in players]),
+    )
+
+
+def prepare_create_command(
+    setup: GameSetupDocument,
+    *,
+    seed: int | None,
+    manual_player_id: str | None,
+    llm_mode: Literal["fake", "paid"],
+    deliberation_level: DeliberationLevel,
+) -> CreateGameCommand:
+    """Resolve every random setup value before a command reaches the queue."""
+    concrete_seed = secrets.randbits(63) if seed is None else seed
+    generated = generate_players(
+        setup.player_generation,
+        player_count=sum(setup.mechanics.role_counts.values()),
+        seed=concrete_seed,
+    )
+    players = tuple(
+        GeneratedPlayerInput.model_validate(player.private_payload()) for player in generated
+    )
+    return CreateGameCommand(
+        seed=concrete_seed,
+        setup=setup,
+        players=players,
+        setup_checksum=checksum_payload(setup.model_dump(mode="json")),
+        mechanics_checksum=checksum_payload(setup.mechanics.model_dump(mode="json")),
+        roster_checksum=checksum_payload([player.model_dump(mode="json") for player in players]),
+        manual_player_id=manual_player_id,
+        llm_mode=llm_mode,
+        deliberation_level=deliberation_level,
+    )
+
+
+__all__ = [
+    "ABILITY_KINDS",
+    "prepare_create_command",
+    "preview_players",
+    "setup_catalog_options",
+    "validate_setup_document",
+]

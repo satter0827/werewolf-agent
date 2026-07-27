@@ -124,7 +124,7 @@ def submit_player_action(
         updated_run.id,
         events_to_create(
             events,
-            narration_profile=_narration_profile(run.config, dependencies.game_definitions),
+            narration_profile=_narration_profile(run.config),
             narration_mode=_narration_mode(run.config),
             theme=_setup_theme(run.config),
         ),

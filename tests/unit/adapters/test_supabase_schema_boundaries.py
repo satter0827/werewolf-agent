@@ -54,3 +54,28 @@ def test_agent_graph_cleanup_updates_the_private_snapshot_owner() -> None:
 
     assert "update private.game_snapshots\nset config" in migration
     assert "update public.games\nset config" not in migration
+
+
+def test_user_setup_revisions_are_private_immutable_and_owner_indexed() -> None:
+    migration = (
+        ROOT / "supabase" / "migrations" / "20260727085037_add_user_setup_revisions.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "create table private.user_setups" in migration
+    assert "create table private.user_setup_revisions" in migration
+    assert "primary key (setup_id, revision)" in migration
+    assert "on private.user_setups (owner_user_id, created_at desc)" in migration
+    assert "(select auth.uid()) = owner_user_id" in migration
+    assert "revoke all on private.user_setups from anon, authenticated" in migration
+    assert "revoke all on private.user_setup_revisions from anon, authenticated" in migration
+    assert "grant select, insert on private.user_setup_revisions to service_role" in migration
+    assert "grant update" not in migration
+
+
+def test_complete_setup_document_replaces_the_legacy_definition_snapshot_column() -> None:
+    migration = (
+        ROOT / "supabase" / "migrations" / "20260727104335_remove_definition_snapshot.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "alter table public.games" in migration
+    assert "drop column definition_snapshot" in migration

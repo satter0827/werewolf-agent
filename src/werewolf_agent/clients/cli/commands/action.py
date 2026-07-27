@@ -18,6 +18,9 @@ def action(
     game_id: Annotated[str, typer.Argument(help="対象のgame ID")],
     player_id: Annotated[str, typer.Option("--player", help="操作するmanual player ID")],
     action_type: Annotated[str, typer.Option("--type", help="送信するaction ID")],
+    ability_id: Annotated[
+        str | None, typer.Option("--ability", help="use_abilityで使う能力ID")
+    ] = None,
     target_id: Annotated[str | None, typer.Option("--target", help="対象player ID")] = None,
     message: Annotated[str | None, typer.Option(help="発言内容")] = None,
     output: Annotated[str | None, typer.Option("--output", help=HELP_OUTPUT_FORMAT)] = None,
@@ -31,6 +34,7 @@ def action(
                 player_id,
                 PlayerActionRequest(
                     type=cast(Any, action_type),
+                    ability_id=ability_id,
                     target_id=target_id,
                     message=message,
                 ),

@@ -194,12 +194,8 @@ def test_standard_checkpoints_completed_presets_before_later_interruption(
     monkeypatch.setattr(review, "LAYOUT", ArtifactLayout(tmp_path))
     monkeypatch.setattr(
         review,
-        "build_game_definitions",
-        lambda _settings: type(
-            "Definitions",
-            (),
-            {"catalog": type("Catalog", (), {"setup_presets": {"first": {}, "second": {}}})()},
-        )(),
+        "build_setup_catalog",
+        lambda _settings: type("Catalog", (), {"template_order": ("first", "second")})(),
     )
     monkeypatch.setattr(review, "get_settings", lambda: object())
     calls = 0
@@ -292,14 +288,14 @@ def test_standard_suite_can_select_explicit_presets(tmp_path: Path, monkeypatch)
     state, run_dir = review.run_suite(
         "fake",
         "standard",
-        selected_presets=("standard_6", "beginner_6"),
+        selected_presets=("standard_6",),
     )
 
     run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
     scenarios = json.loads((run_dir / "public" / "scenarios.json").read_text(encoding="utf-8"))
     assert state == "passed"
-    assert run["presets"] == ["beginner_6", "standard_6"]
-    assert [item["preset_id"] for item in scenarios] == ["beginner_6", "standard_6"]
+    assert run["presets"] == ["standard_6"]
+    assert [item["preset_id"] for item in scenarios] == ["standard_6"]
 
 
 def test_compare_runs_records_execution_context(tmp_path: Path) -> None:

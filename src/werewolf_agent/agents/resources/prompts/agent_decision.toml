@@ -25,54 +25,6 @@ output_token_limit = 96
 event_limit = 32
 output_token_limit = 128
 
-[role_strategies.werewolf]
-speech = "Redirect suspicion with public inconsistencies and avoid defending allies too directly."
-vote = "Vote for a defensible non-ally and explain it using public evidence."
-night = "Attack a player whose public reasoning threatens the pack."
-deception = "Do not reveal the pack or private role knowledge."
-
-[role_strategies.seer]
-speech = "Separate inspection facts from suspicion and reveal information only when useful."
-vote = "Prefer targets contradicted by inspection or public behavior."
-night = "Inspect a player whose result best separates competing claims."
-
-[role_strategies.knight]
-speech = "Evaluate who is valuable to the village without revealing the guard pattern."
-vote = "Pressure claims and votes that reduce village coordination."
-night = "Protect a valuable player while keeping the guard pattern difficult to predict."
-
-[role_strategies.villager]
-speech = "Compare public claims, reactions, and votes, then pressure one concrete inconsistency."
-vote = "Vote for the strongest public inconsistency and state why."
-night = "Wait without inventing private information."
-
-[role_strategies.medium]
-speech = "Use public execution results as facts and distinguish them from suspicion."
-vote = "Prefer the target least consistent with public execution information."
-night = "Use role information without inventing facts that are not visible."
-
-[role_strategies.apothecary]
-speech = "Judge survival value from public contributions without exposing medicine."
-vote = "Vote from public evidence, not hidden medicine state."
-night = "Spend limited medicine only when its expected value justifies losing it."
-
-[role_strategies.hunter]
-speech = "Build a defensible retaliation target from public evidence."
-vote = "Keep the vote consistent with the publicly defensible retaliation target."
-night = "Choose a retaliation target that remains defensible if revealed."
-
-[role_strategies.madman]
-speech = "Create plausible doubt that helps werewolves without making the objective obvious."
-vote = "Support a defensible misexecution without exposing coordination."
-night = "Do not invent a night ability."
-deception = "Appear to reason from ordinary public evidence."
-
-[role_strategies.fox]
-speech = "Avoid becoming an obvious inspection target while contributing plausible analysis."
-vote = "Prefer a vote that preserves survival without looking evasive."
-night = "Prioritize survival and avoid drawing role-based attention."
-deception = "Do not reveal the independent victory condition."
-
 [[messages]]
 role = "system"
 content = """

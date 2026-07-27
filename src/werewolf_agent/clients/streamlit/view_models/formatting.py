@@ -13,10 +13,6 @@ from werewolf_agent.clients.streamlit.view_models.types import (
 from werewolf_agent.contracts.schemas import (
     PublicPlayerState,
 )
-from werewolf_agent.settings.validation import (
-    public_generated_player_label,
-    public_generated_player_name_label,
-)
 
 
 def _player_name_map(players: list[PublicPlayerState]) -> dict[str, str]:
@@ -85,15 +81,11 @@ def _player_name(players: list[PublicPlayerState], player_id: object) -> str:
 
 def _display_player_name(name: str, *, fallback: str) -> str:
     stripped = name.strip()
-    return (
-        public_generated_player_name_label(stripped)
-        or stripped
-        or _public_actor_label(fallback)
-        or fallback
-    )
+    return stripped or _public_actor_label(fallback) or fallback
 
 
 def _public_actor_label(actor_id: str) -> str:
     if not actor_id:
         return ""
-    return public_generated_player_label(actor_id) or actor_id
+    suffix = actor_id.removeprefix("p")
+    return f"P{suffix}" if actor_id.startswith("p") and suffix.isdigit() else actor_id

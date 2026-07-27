@@ -62,6 +62,26 @@ class HttpApiClient:
                 code=ErrorCode.INTERNAL_UNEXPECTED,
             ) from exc
 
+    def json(self, method: str, path: str, **kwargs: Any) -> Any:
+        """Return one successful JSON response for collection contracts."""
+        try:
+            response = self._client.request(method, path, **kwargs)
+        except httpx.HTTPError as exc:
+            raise AppError(
+                "APIへ接続できませんでした。",
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            ) from exc
+        if response.is_error:
+            _raise_problem(response)
+        try:
+            return response.json()
+        except ValueError as exc:
+            raise AppError(
+                "API応答の形式を確認できませんでした。",
+                code=ErrorCode.INTERNAL_UNEXPECTED,
+            ) from exc
+
 
 def parse_model(model_type: type[TModel], payload: Any) -> TModel:
     """Validate an embedded response payload."""

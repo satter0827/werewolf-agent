@@ -11,16 +11,14 @@ from werewolf_agent.adapters.constants import (
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.messages import (
     message_definition_settings_invalid,
-    message_role_definition_missing_player_counts,
-    message_unknown_setup_preset,
 )
 from werewolf_agent.adapters.resources import (
     LlmDefinitions,
-    load_game_definitions,
     load_llm_definitions,
+    load_setup_template_catalog,
 )
-from werewolf_agent.application.definitions import GameDefinitions, PlayerSetupDefinitions
 from werewolf_agent.application.models import GameApplicationConfig
+from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
 from werewolf_agent.settings import AppSettings, get_settings
 
 
@@ -39,10 +37,6 @@ def build_game_application_config(settings: AppSettings | None = None) -> GameAp
     return GameApplicationConfig(
         min_players=app_settings.game_min_players,
         max_players=app_settings.game_max_players,
-        default_player_count=app_settings.game_default_player_count,
-        supported_agent_type=app_settings.game_supported_agent_type,
-        default_setup_preset_id=app_settings.game_default_setup_preset_id,
-        default_narration_mode=app_settings.game_default_narration_mode,
         game_list_default_limit=app_settings.api_game_list_default_limit,
         game_list_max_limit=app_settings.api_game_list_max_limit,
         timeline_default_limit=app_settings.api_timeline_default_limit,
@@ -103,34 +97,13 @@ def build_worker_llm_provider_config(
     raise ValueError("llm_mode must be fake or paid.")
 
 
-def build_game_definitions(settings: AppSettings | None = None) -> GameDefinitions:
-    """Return loaded game definitions from application settings."""
-    app_settings = settings or get_settings()
+def build_setup_catalog(settings: AppSettings | None = None) -> SetupTemplateCatalog:
+    """Return validated complete setup templates."""
+    _ = settings
     try:
-        definitions = load_game_definitions(
-            rules_path=app_settings.game_rules_path,
-            roles_path=app_settings.game_roles_path,
-            catalog_path=app_settings.game_catalog_path,
-            abilities_path=app_settings.game_abilities_path,
-        )
-        if app_settings.game_default_setup_preset_id not in definitions.catalog.setup_presets:
-            raise ValueError(
-                message_unknown_setup_preset(app_settings.game_default_setup_preset_id)
-            )
-        missing_counts = [
-            player_count
-            for player_count in range(
-                app_settings.game_min_players,
-                app_settings.game_max_players + 1,
-            )
-            if player_count not in definitions.roles.default_role_counts
-        ]
+        return load_setup_template_catalog()
     except Exception as exc:
         raise ValueError(message_definition_settings_invalid(exc)) from exc
-    if missing_counts:
-        missing = ", ".join(str(player_count) for player_count in missing_counts)
-        raise ValueError(message_role_definition_missing_player_counts(missing))
-    return definitions
 
 
 def build_llm_definitions(settings: AppSettings | None = None) -> LlmDefinitions:
@@ -138,18 +111,9 @@ def build_llm_definitions(settings: AppSettings | None = None) -> LlmDefinitions
     app_settings = settings or get_settings()
     try:
         definitions = load_llm_definitions(
-            players_path=app_settings.llm_players_path,
             prompt_path=app_settings.llm_prompt_path,
             fake_responses_path=app_settings.llm_fake_responses_path,
         )
     except Exception as exc:
         raise ValueError(message_definition_settings_invalid(exc)) from exc
     return definitions
-
-
-def build_player_setup_definitions(
-    settings: AppSettings | None = None,
-) -> PlayerSetupDefinitions:
-    """Applicationへagent実装を含まないsetup定義を返す."""
-    definitions = build_llm_definitions(settings)
-    return PlayerSetupDefinitions(players=definitions.players)

@@ -10,7 +10,7 @@ from fastapi import Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from werewolf_agent.api.messages import DETAIL_REQUEST_RATE_LIMITED
-from werewolf_agent.application import GameApplication
+from werewolf_agent.application import GameApplication, SetupApplication
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.security.principal import AuthenticationError, Principal
 
@@ -36,6 +36,7 @@ class RequestServices:
     """Request-scoped application services."""
 
     games: GameApplication
+    setups: SetupApplication
     message_max_chars: int
     diagnostics: AdminDiagnostics | None = None
     reveal_api_enabled: bool = True
@@ -46,16 +47,23 @@ def get_services() -> RequestServices:
     raise RuntimeError("API services are not configured.")
 
 
-def get_principal(
+def get_public_setups() -> SetupApplication:
+    """Require bootstrap to provide the persistence-free setup service."""
+    raise RuntimeError("Public setup services are not configured.")
+
+
+def get_owned_setups() -> SetupApplication | None:
+    """Require bootstrap to provide optional authenticated setup persistence."""
+    raise RuntimeError("Owned setup services are not configured.")
+
+
+def get_optional_principal(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)],
-) -> Principal:
-    """Authenticate one request without exposing the bearer token downstream."""
+) -> Principal | None:
+    """Authenticate a bearer token when present and otherwise return no principal."""
     if credentials is None or credentials.scheme.lower() != "bearer":
-        raise AppError(
-            "ログイン情報が必要です。",
-            code=ErrorCode.AUTHENTICATION_REQUIRED,
-        )
+        return None
     try:
         authenticator = cast(_Authenticator, request.app.state.authenticator)
         principal = authenticator.authenticate(credentials.credentials)
@@ -75,13 +83,34 @@ def get_principal(
     return principal
 
 
+def get_principal(
+    principal: Annotated[Principal | None, Depends(get_optional_principal)],
+) -> Principal:
+    """Require one verified request principal."""
+    if principal is None:
+        raise AppError(
+            "ログイン情報が必要です。",
+            code=ErrorCode.AUTHENTICATION_REQUIRED,
+        )
+    return principal
+
+
 ServicesDependency = Annotated[RequestServices, Depends(get_services)]
+OptionalPrincipalDependency = Annotated[Principal | None, Depends(get_optional_principal)]
 PrincipalDependency = Annotated[Principal, Depends(get_principal)]
+PublicSetupsDependency = Annotated[SetupApplication, Depends(get_public_setups)]
+OwnedSetupsDependency = Annotated[SetupApplication | None, Depends(get_owned_setups)]
 
 __all__ = [
+    "OptionalPrincipalDependency",
+    "OwnedSetupsDependency",
     "PrincipalDependency",
+    "PublicSetupsDependency",
     "RequestServices",
     "ServicesDependency",
+    "get_optional_principal",
+    "get_owned_setups",
     "get_principal",
+    "get_public_setups",
     "get_services",
 ]

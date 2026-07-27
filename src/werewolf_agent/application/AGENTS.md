@@ -12,4 +12,4 @@ applicationはユースケース、DTO、projection、repository portを所有�
 - domain操作、認可、保存、projectionだけを調整する。
 - agents、adapters、clients、loggingへ依存しない。
 - 外部実装が必要な境界はProtocolとして定義する。
-- 標準gameの`player_id`は`player-1`から始まる連番として生成する。
+- gameの`player_id`は設定から生成するseatを`p1`からの連番で識別する。

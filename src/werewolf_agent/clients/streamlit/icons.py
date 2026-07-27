@@ -30,9 +30,7 @@ EVENT_ICONS: dict[str, UiIcon] = {
 ACTION_ICONS: dict[str, UiIcon] = {
     "speech": UiIcon("💬", "safe"),
     "vote": UiIcon("☑", "day"),
-    "werewolf_attack": UiIcon("◆", "danger"),
-    "seer_inspect": UiIcon("◇", "safe"),
-    "knight_guard": UiIcon("◈", "safe"),
+    "use_ability": UiIcon("◇", "safe"),
     "pass": UiIcon("▷", "neutral"),
 }
 

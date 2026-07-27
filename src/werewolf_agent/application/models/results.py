@@ -13,10 +13,8 @@ from werewolf_agent.application.constants import (
     MIN_VERSION,
     NarrationMode,
 )
-from werewolf_agent.application.definitions import (
-    LocalRulesDefinition,
-)
 from werewolf_agent.application.models.base import ApplicationModel
+from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
     Faction,
     GamePhase,
@@ -34,21 +32,13 @@ ActionTypeId = str
 
 
 class GameSetupOptionsResult(ApplicationModel):
-    """Game setup metadata returned by application operations."""
+    """Editor metadata and packaged template summaries."""
 
     player_count: dict[str, int]
-    roles: dict[RoleId, dict[str, Any]]
-    default_role_counts: dict[RoleId, RoleCount]
-    default_rules: LocalRulesDefinition
-    default_scenario_id: str | None = None
-    default_setup_preset_id: str | None = None
-    default_narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
-    abilities: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    scenarios: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    narration_profiles: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    setup_presets: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    characters: dict[str, dict[str, Any]] = Field(default_factory=dict)
-    rule_composition: dict[str, Any] = Field(default_factory=dict)
+    recommended_template_id: str
+    template_order: tuple[str, ...]
+    templates: dict[str, dict[str, str]]
+    ability_kinds: tuple[str, ...]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -64,6 +54,17 @@ class SetupValidationResult(ApplicationModel):
     ability_ids: tuple[str, ...]
     setup_checksum: str
     mechanics_checksum: str
+    warnings: tuple[str, ...] = ()
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerPreviewResult(ApplicationModel):
+    """Public-only generated roster preview."""
+
+    seed: int
+    players: tuple[dict[str, object], ...]
+    roster_checksum: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -99,6 +100,7 @@ class GameRevealAction(ApplicationModel):
 
     player_id: str
     type: ActionTypeId
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
 
@@ -108,7 +110,8 @@ class GameRevealAction(ApplicationModel):
 class GameRevealInspection(ApplicationModel):
     """Resolved inspection for the dedicated reveal boundary."""
 
-    seer_id: str
+    player_id: str
+    ability_id: str
     target_id: str
     target_role: RoleId
     target_faction: Faction

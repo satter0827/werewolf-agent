@@ -7,6 +7,7 @@ from werewolf_agent.clients.streamlit.view_models import (
     game_option_label,
     target_candidates_for_action,
 )
+from werewolf_agent.clients.streamlit.view_models.formatting import _display_player_name
 from werewolf_agent.contracts.schemas import (
     GameTimelineItem,
     PlayerObservationResponse,
@@ -56,6 +57,10 @@ def _turn(event_type: str, payload: dict[str, object]) -> GameTimelineItem:
     )
 
 
+def test_configured_player_name_is_not_rewritten_as_a_seat_label() -> None:
+    assert _display_player_name("Player 3", fallback="p3") == "Player 3"
+
+
 def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
     catalog = _catalog()
     observation = PlayerObservationResponse(
@@ -64,7 +69,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         observation={
             "me": {"id": "player-1", "role": "seer"},
             "known_roles": {"player-2": "werewolf"},
-            "available_actions": ["speech"],
+            "available_actions": [{"type": "speech"}],
         },
     )
 

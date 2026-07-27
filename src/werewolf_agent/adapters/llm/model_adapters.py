@@ -14,6 +14,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
 from werewolf_agent.agents.models import (
     AgentActionType,
+    AgentAvailableAction,
     AgentModelDecision,
     ModelMessage,
     ModelRequest,
@@ -126,7 +127,7 @@ class FakeDecisionModel:
         evidence_id = _fake_evidence_id(request)
         names = _player_names(request)
         response = self.catalog.render(
-            action.value,
+            action.type.value,
             context={
                 "player_name": names.get(request.task.player_id, request.task.player_id),
                 "day": request.task.observation.day,
@@ -147,16 +148,18 @@ class FakeDecisionModel:
         if not isinstance(payload, dict):
             raise LlmModelInvocationError("fake_response_must_be_object")
         payload.pop("player_id", None)
+        if action.ability_id is not None:
+            payload["ability_id"] = action.ability_id
         previous_focus = _latest_own_speech_focus(request)
         if (
-            action is AgentActionType.VOTE
+            action.type is AgentActionType.VOTE
             and previous_focus is not None
             and target_id != previous_focus
         ):
             payload["reason"] = "公開情報を見直し、直前の疑い先から判断を更新したため"
-        if action is AgentActionType.SPEECH and focus_id is not None:
+        if action.type is AgentActionType.SPEECH and focus_id is not None:
             payload["focus_id"] = focus_id
-        if evidence_id is not None:
+        if action.type is not AgentActionType.PASS and evidence_id is not None:
             payload["evidence_id"] = evidence_id
         response = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         raw = FakeListChatModel(responses=[response]).invoke(_langchain_messages(request.messages))
@@ -197,20 +200,19 @@ def _usage(value: object) -> dict[str, int]:
     return usage
 
 
-def _fake_action(request: ModelRequest) -> AgentActionType:
+def _fake_action(request: ModelRequest) -> AgentAvailableAction:
     actions = request.task.observation.available_actions
     if not actions:
-        return AgentActionType.PASS
+        return AgentAvailableAction(type=AgentActionType.PASS)
     digest = hashlib.sha256(f"{request.task.context_checksum}:action".encode()).digest()
     return actions[int.from_bytes(digest[:8], "big") % len(actions)]
 
 
-def _fake_target(request: ModelRequest, action: AgentActionType) -> str | None:
-    candidates = request.task.observation.legal_targets.get(action, [])
+def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | None:
+    candidates = request.task.observation.legal_targets.get(action.key, [])
     if not candidates:
         return None
-    observation = request.task.observation
-    if action is AgentActionType.VOTE:
+    if action.type is AgentActionType.VOTE:
         previous_focus = _latest_own_speech_focus(request)
         if previous_focus in candidates:
             if not _should_change_public_focus(request):
@@ -218,26 +220,8 @@ def _fake_target(request: ModelRequest, action: AgentActionType) -> str | None:
             alternatives = [candidate for candidate in candidates if candidate != previous_focus]
             if alternatives:
                 candidates = alternatives
-    if action is AgentActionType.VOTE and observation.role not in {"werewolf", "madman"}:
-        confirmed_wolves = [
-            player_id
-            for player_id in candidates
-            if observation.known_roles.get(player_id) == "werewolf"
-            or observation.known_factions.get(player_id) == "werewolf"
-        ]
-        if confirmed_wolves:
-            candidates = confirmed_wolves
-    if action is AgentActionType.SEER_INSPECT:
-        unknown = [
-            player_id
-            for player_id in candidates
-            if player_id not in observation.known_roles
-            and player_id not in observation.known_factions
-        ]
-        if unknown:
-            candidates = unknown
     digest = hashlib.sha256(
-        f"{request.task.context_checksum}:{action.value}:target".encode()
+        f"{request.task.context_checksum}:{action.key}:target".encode()
     ).digest()
     return candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
 
@@ -250,16 +234,6 @@ def _fake_focus(request: ModelRequest, target_id: str | None) -> str | None:
         for player in request.task.observation.players
         if player.id != request.task.player_id and player.status.value == "alive"
     ]
-    observation = request.task.observation
-    if observation.role not in {"werewolf", "madman"}:
-        confirmed_wolves = [
-            player_id
-            for player_id in candidates
-            if observation.known_roles.get(player_id) == "werewolf"
-            or observation.known_factions.get(player_id) == "werewolf"
-        ]
-        if confirmed_wolves:
-            candidates = confirmed_wolves
     if not candidates:
         return None
     digest = hashlib.sha256(f"{request.task.context_checksum}:focus".encode()).digest()

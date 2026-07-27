@@ -72,6 +72,7 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
         "AbilityDefinition",
         "Action",
         "ActionType",
+        "AvailableAction",
         "EventVisibility",
         "Game",
         "GameConfig",
@@ -83,13 +84,13 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
         "Phase",
         "Player",
         "PlayerStatus",
-        "RuleRegistry",
         "RoleCatalog",
         "RoleDefinition",
         "RuleSet",
         "RuleSetDefinition",
         "RuleViolation",
         "WinResult",
+        "build_game_rules",
     }
     assert set(application.__all__) == {
         "AccessPolicy",
@@ -105,6 +106,7 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
         "GameResult",
         "GameRevealResult",
         "GameTimelineResult",
+        "GameSetupDocument",
         "LocalRulesDefinition",
         "OperationQueue",
         "PlayerActionCommand",
@@ -113,8 +115,34 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
         "PreparedAdvanceGame",
         "ReplayVerificationResult",
         "SetupValidationResult",
+        "SetupApplication",
+        "SetupRepository",
         "validate_setup_document",
     }
+
+
+def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
+    owners = (
+        PACKAGE / "application" / "handlers" / "games.py",
+        PACKAGE / "application" / "handlers" / "common.py",
+        PACKAGE / "application" / "replay.py",
+    )
+
+    for owner in owners:
+        source = owner.read_text(encoding="utf-8")
+        assert "build_game_rules(" in source, owner
+        assert "RuleRegistry" not in source, owner
+
+
+def test_replay_verifies_every_create_command_checksum() -> None:
+    worker_store = (PACKAGE / "adapters" / "supabase" / "worker_store.py").read_text(
+        encoding="utf-8"
+    )
+    replay = (PACKAGE / "application" / "replay.py").read_text(encoding="utf-8")
+
+    for checksum in ("setup_checksum", "mechanics_checksum", "roster_checksum"):
+        assert f'"{checksum}": stored_config.get("{checksum}")' in worker_store
+        assert f'genesis["{checksum}"]' in replay
 
 
 def test_domain_uses_only_the_standard_library_and_domain_modules() -> None:
@@ -140,8 +168,10 @@ def test_api_routes_do_not_invoke_access_or_queue_adapters_directly() -> None:
 
 def test_worker_invokes_application_through_the_public_facade() -> None:
     """Workerからapplication handlerの直接実行を禁止する。"""
-    imports = _imports(PACKAGE / "worker" / "service.py")
+    worker = PACKAGE / "worker" / "service.py"
+    imports = _imports(worker)
     assert "werewolf_agent.application.handlers" not in imports
+    assert "build_setup_catalog" not in worker.read_text(encoding="utf-8")
 
 
 def test_persisted_game_versions_are_append_only() -> None:

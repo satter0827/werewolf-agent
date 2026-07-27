@@ -45,9 +45,6 @@ class LlmSettings(BaseModel):
     llm_fake_responses_file: str = Field(
         validation_alias="WEREWOLF_LLM_FAKE_RESPONSES_FILE",
     )
-    llm_players_file: str = Field(
-        validation_alias="WEREWOLF_LLM_PLAYERS_FILE",
-    )
     openai_api_key: SecretStr = Field(
         default=SecretStr(""),
         validation_alias="OPENAI_API_KEY",

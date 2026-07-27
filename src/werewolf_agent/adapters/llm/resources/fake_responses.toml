@@ -18,23 +18,9 @@ vote = [
 '''{"type":"vote","target_id":"$target_id","reason":"Day $day 時点で $target_name の根拠が一番薄く見えるため"}''',
 '''{"type":"vote","target_id":"$target_id","reason":"場への乗り方が中立に寄りすぎているため"}''',
 ]
-werewolf_attack = [
-'''{"type":"werewolf_attack","target_id":"$target_id","reason":"$target_name が議論を整理していて村側の軸になりそうなため"}''',
-'''{"type":"werewolf_attack","target_id":"$target_id","reason":"$target_name の推理が伸びる前に盤面から外したいため"}''',
-]
-seer_inspect = [
-'''{"type":"seer_inspect","target_id":"$target_id","reason":"$target_name の色が分かると発言ラインを整理しやすいため"}''',
-'''{"type":"seer_inspect","target_id":"$target_id","reason":"Day $day の疑い先として判断材料が不足しているため"}''',
-]
-knight_guard = [
-'''{"type":"knight_guard","target_id":"$target_id","reason":"$target_name が公開議論の中心に近く、守る価値が高いため"}''',
-'''{"type":"knight_guard","target_id":"$target_id","reason":"$target_name の発言が村側の整理に見えるため"}''',
-]
-apothecary_heal = [
-'''{"type":"apothecary_heal","target_id":"$target_id","reason":"$target_name を生存させる価値が高いため"}''',
-]
-apothecary_poison = [
-'''{"type":"apothecary_poison","target_id":"$target_id","reason":"$target_name の公開行動が最も不自然なため"}''',
+use_ability = [
+'''{"type":"use_ability","target_id":"$target_id","reason":"$target_name への能力使用が現在の判断材料を最も増やすため"}''',
+'''{"type":"use_ability","target_id":"$target_id","reason":"設定された能力の目的に照らして $target_name が妥当な対象であるため"}''',
 ]
 pass = [
 '''{"type":"pass","reason":"available actionがないため待機"}''',

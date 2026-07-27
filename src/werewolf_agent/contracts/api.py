@@ -8,7 +8,8 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from werewolf_agent.contracts.schemas import (
-    GameSetupOptionsResponse,
+    GameSetupDocumentRequest,
+    GameSetupSelectionRequest,
     PlayerActionRequest,
     ProblemDetails,
 )
@@ -46,7 +47,6 @@ class PublicRuntimeConfig(BaseModel):
 
     contract_version: str
     config_revision: str
-    setup: GameSetupOptionsResponse
     limits: PublicRuntimeLimits
     features: PublicRuntimeFeatures
 
@@ -64,8 +64,108 @@ class SetupValidationResponse(BaseModel):
     ability_ids: tuple[str, ...]
     setup_checksum: str
     mechanics_checksum: str
+    warnings: tuple[str, ...] = ()
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetupCatalogResponse(BaseModel):
+    """Public editor metadata and packaged template summaries."""
+
+    player_count: dict[str, int]
+    recommended_template_id: str
+    template_order: tuple[str, ...]
+    templates: dict[str, dict[str, str]]
+    ability_kinds: tuple[str, ...]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetupTemplateResponse(BaseModel):
+    """One complete packaged setup template."""
+
+    template_id: str
+    document: GameSetupDocumentRequest
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerPreviewRequest(BaseModel):
+    """Request for deterministic public player generation."""
+
+    setup: GameSetupSelectionRequest
+    seed: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PublicGeneratedPlayer(BaseModel):
+    """Generated player fields safe to expose before game creation."""
+
+    player_id: str
+    name: str
+    age: int
+    gender: str
+    personality: str
+    speaking_style: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerPreviewResponse(BaseModel):
+    """Deterministic public roster preview and checksum."""
+
+    seed: int
+    players: tuple[PublicGeneratedPlayer, ...]
+    roster_checksum: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SetupCreateRequest(BaseModel):
+    """Request to persist the first revision of a user setup."""
+
+    display_name: str = Field(min_length=1, max_length=120)
+    document: GameSetupDocumentRequest
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
+class SetupRevisionCreateRequest(BaseModel):
+    """Optimistic request to append an immutable setup revision."""
+
+    expected_revision: int = Field(ge=1)
+    document: GameSetupDocumentRequest
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SavedSetupSummaryResponse(BaseModel):
+    """Owned setup summary with its latest revision number."""
+
+    setup_id: str
+    display_name: str
+    latest_revision: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class SavedSetupRevisionResponse(BaseModel):
+    """One complete immutable owned setup revision."""
+
+    setup_id: str
+    display_name: str
+    revision: int
+    document: GameSetupDocumentRequest
+    setup_checksum: str
+    mechanics_checksum: str
+    created_at: datetime
+
+
+class SavedSetupListResponse(BaseModel):
+    """Owned setup summaries visible to the current user."""
+
+    items: list[SavedSetupSummaryResponse]
 
 
 class RuntimeComponentStatus(BaseModel):
@@ -214,6 +314,9 @@ __all__ = [
     "OperationResponse",
     "OperationStatus",
     "PlayerActionOperationRequest",
+    "PlayerPreviewRequest",
+    "PlayerPreviewResponse",
+    "PublicGeneratedPlayer",
     "PublicRuntimeConfig",
     "PublicRuntimeFeatures",
     "PublicRuntimeLimits",
@@ -221,5 +324,13 @@ __all__ = [
     "RuntimeAvailability",
     "RuntimeComponentStatus",
     "RuntimeStatusResponse",
+    "SavedSetupListResponse",
+    "SavedSetupRevisionResponse",
+    "SavedSetupSummaryResponse",
     "SessionResponse",
+    "SetupCatalogResponse",
+    "SetupCreateRequest",
+    "SetupRevisionCreateRequest",
+    "SetupTemplateResponse",
+    "SetupValidationResponse",
 ]

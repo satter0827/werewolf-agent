@@ -54,4 +54,4 @@ def test_public_narration_has_a_fox_fallback_label() -> None:
         narration_mode="template",
     )
 
-    assert created.payload["narration"] == "妖狐陣営の勝利です。"
+    assert created.payload["narration"] == "foxの勝利です。"

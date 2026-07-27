@@ -9,18 +9,15 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
+from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.constants import (
     DEFAULT_DELIBERATION_LEVEL,
-    DEFAULT_NARRATION_MODE,
     MIN_PAGE_LIMIT,
     MIN_PAGE_OFFSET,
     MIN_VERSION,
     DeliberationLevel,
-    NarrationMode,
 )
 from werewolf_agent.application.messages import (
-    MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS,
-    MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE,
     MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS,
 )
 from werewolf_agent.application.models.base import ApplicationModel
@@ -36,14 +33,33 @@ EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
 
 
+class GeneratedPlayerInput(ApplicationModel):
+    """Complete generated player profile embedded in a create command."""
+
+    player_id: str
+    name: str
+    age: int = Field(ge=18, le=120)
+    gender: str
+    personality: str
+    speaking_style: str
+    reasoning_style: str
+    risk_tolerance: str
+    evidence_focus: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class CreateGameCommand(ApplicationModel):
     """Command for creating one game."""
 
-    seed: int | None = None
+    seed: int
     setup: GameSetupDocument
+    players: tuple[GeneratedPlayerInput, ...]
+    setup_checksum: str
+    mechanics_checksum: str
+    roster_checksum: str
     manual_player_id: str | None = None
     llm_mode: Literal["fake", "paid"] = "fake"
-    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
 
     @field_validator("manual_player_id")
@@ -58,14 +74,24 @@ class CreateGameCommand(ApplicationModel):
     def validate_manual_player_within_generated_seats(self) -> Self:
         """Ensure the requested manual seat exists in the generated table."""
         valid_player_ids = generated_player_ids(self.player_count)
+        actual_player_ids = {player.player_id for player in self.players}
+        if actual_player_ids != valid_player_ids or len(self.players) != self.player_count:
+            raise ValueError("generated players must exactly match the configured seats")
+        names = [player.name for player in self.players]
+        if len(names) != len(set(names)):
+            raise ValueError("generated player names must be unique")
         if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
             raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
-        unknown_assignments = sorted(set(self.setup.roster.assignments) - valid_player_ids)
-        if unknown_assignments:
-            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_KEYS_MUST_MATCH_PLAYERS)
-        assigned_character_ids = list(self.setup.roster.assignments.values())
-        if len(set(assigned_character_ids)) != len(assigned_character_ids):
-            raise ValueError(MESSAGE_CHARACTER_ASSIGNMENTS_VALUES_MUST_BE_UNIQUE)
+        expected_checksums = {
+            "setup_checksum": checksum_payload(self.setup.model_dump(mode="json")),
+            "mechanics_checksum": checksum_payload(self.setup.mechanics.model_dump(mode="json")),
+            "roster_checksum": checksum_payload(
+                [player.model_dump(mode="json") for player in self.players]
+            ),
+        }
+        for field_name, expected in expected_checksums.items():
+            if getattr(self, field_name) != expected:
+                raise ValueError(f"{field_name} does not match the normalized command")
         return self
 
     @property
@@ -145,6 +171,7 @@ class PlayerActionCommand(ApplicationModel):
     player_id: str
     trusted_user_id: str | None = None
     type: ActionTypeId
+    ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
     reason: str = ""

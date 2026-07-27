@@ -6,9 +6,9 @@ from werewolf_agent.domain._messages import message_action_not_available
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rules.player_rules import player_by_id
 from werewolf_agent.domain.state import (
-    ABILITY_NIGHT_ATTACK,
     Action,
     ActionType,
+    AvailableAction,
     GameState,
     PendingActions,
     Phase,
@@ -20,8 +20,8 @@ def available_actions(
     snapshot: GameState,
     pending_actions: PendingActions,
     player_id: str,
-) -> list[ActionType]:
-    """Return the actions a player may submit right now."""
+) -> list[AvailableAction]:
+    """Return the concrete actions a player may submit right now."""
     player = player_by_id(snapshot, player_id)
     if player.status is not PlayerStatus.ALIVE:
         return []
@@ -30,122 +30,107 @@ def available_actions(
             _speech_count_for_today(snapshot, player_id)
             < snapshot.config.rules.day_speech_limit_per_player
         ):
-            return [ActionType.SPEECH]
+            return [AvailableAction(ActionType.SPEECH)]
         return []
     if snapshot.phase is Phase.VOTING:
         if snapshot.config.rules.allow_vote_revision or player_id not in pending_actions.votes:
-            return [ActionType.VOTE]
+            return [AvailableAction(ActionType.VOTE)]
         return []
-    if snapshot.phase is Phase.NIGHT:
-        has_submitted = player_id in pending_actions.night_actions
-        if not snapshot.config.rules.allow_night_action_revision and has_submitted:
-            return []
-        if player.role is None:
-            return []
-        role = snapshot.config.roles.require_role(player.role)
-        actions: list[ActionType] = []
-        for ability_id in role.abilities:
-            ability = snapshot.config.abilities[ability_id]
-            if ability.phase is not snapshot.phase or snapshot.day < ability.start_day:
-                continue
-            used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
-            if ability.max_uses is not None and used >= ability.max_uses:
-                continue
-            if ability.action is ActionType.PASS:
-                continue
-            if (
-                ability_id == ABILITY_NIGHT_ATTACK
-                and snapshot.day == 1
-                and not snapshot.config.rules.enable_first_night_attack
-            ):
-                continue
-            if ability.action not in actions:
-                actions.append(ability.action)
-        return actions
-    return []
+    if snapshot.phase is not Phase.NIGHT:
+        return []
+    if (
+        not snapshot.config.rules.allow_night_action_revision
+        and player_id in pending_actions.night_actions
+    ):
+        return []
+    if player.role is None:
+        return []
+    role = snapshot.config.roles.require_role(player.role)
+    actions: list[AvailableAction] = []
+    for ability_id in role.abilities:
+        ability = snapshot.config.abilities[ability_id]
+        if ability.kind not in {"attack", "inspect", "protect", "eliminate"}:
+            continue
+        if ability.phase is not snapshot.phase or snapshot.day < ability.start_day:
+            continue
+        if snapshot.day == 1 and not ability.enabled_first_night:
+            continue
+        used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
+        if ability.max_uses is not None and used >= ability.max_uses:
+            continue
+        actions.append(AvailableAction(ActionType.USE_ABILITY, ability_id))
+    if actions:
+        actions.append(AvailableAction(ActionType.PASS))
+    return actions
 
 
 def legal_targets(
     snapshot: GameState,
     pending_actions: PendingActions,
     player_id: str,
-) -> dict[ActionType, list[str]]:
-    """Return legal target ids for each currently available action."""
-    actions = available_actions(snapshot, pending_actions, player_id)
+) -> dict[str, list[str]]:
+    """Return legal target ids keyed by action type or ability id."""
+    options = available_actions(snapshot, pending_actions, player_id)
     alive_ids = [player.id for player in snapshot.players.values() if player.is_alive]
-    targets: dict[ActionType, list[str]] = {}
-    for action_type in actions:
-        if action_type is ActionType.VOTE:
-            candidate_ids = (
-                list(pending_actions.revote_candidates)
-                if pending_actions.revote_candidates
-                else alive_ids
-            )
-            targets[action_type] = [
+    targets: dict[str, list[str]] = {}
+    for option in options:
+        if option.type is ActionType.VOTE:
+            candidates = list(pending_actions.revote_candidates) or alive_ids
+            targets[option.key] = [
                 target_id
-                for target_id in candidate_ids
+                for target_id in candidates
                 if snapshot.config.rules.allow_self_vote or target_id != player_id
             ]
             continue
-        if action_type not in {
-            ActionType.WEREWOLF_ATTACK,
-            ActionType.SEER_INSPECT,
-            ActionType.KNIGHT_GUARD,
-            ActionType.APOTHECARY_HEAL,
-            ActionType.APOTHECARY_POISON,
-        }:
-            continue
-        targets[action_type] = _night_targets(snapshot, player_id, action_type, alive_ids)
+        if option.ability_id is not None:
+            targets[option.key] = _ability_targets(
+                snapshot,
+                player_id,
+                option.ability_id,
+                alive_ids,
+            )
     return targets
 
 
-def _night_targets(
+def _ability_targets(
     snapshot: GameState,
     player_id: str,
-    action_type: ActionType,
+    ability_id: str,
     alive_ids: list[str],
 ) -> list[str]:
     player = player_by_id(snapshot, player_id)
     if player.role is None:
         return []
     role = snapshot.config.roles.require_role(player.role)
-    ability = next(
-        (
-            snapshot.config.abilities[ability_id]
-            for ability_id in role.abilities
-            if snapshot.config.abilities[ability_id].action is action_type
-        ),
-        None,
-    )
-    if ability is None:
+    if ability_id not in role.abilities:
         return []
+    ability = snapshot.config.abilities[ability_id]
     targets = list(alive_ids)
-    excludes_self = ability.target_policy in {"other_alive", "other_alive_non_pack"}
-    if action_type is ActionType.SEER_INSPECT and snapshot.config.rules.allow_seer_self_inspect:
-        excludes_self = False
-    if action_type is ActionType.KNIGHT_GUARD and snapshot.config.rules.allow_knight_self_guard:
-        excludes_self = False
-    if excludes_self:
+    if ability.target_policy in {"other_alive", "other_alive_non_faction"}:
         targets = [target_id for target_id in targets if target_id != player_id]
-    if (
-        ability.target_policy == "other_alive_non_pack"
-        and action_type is ActionType.WEREWOLF_ATTACK
-        and not snapshot.config.rules.allow_werewolf_friendly_fire
-    ):
-        actor_faction = role.identity_faction
+    if ability.target_policy == "other_alive_non_faction":
         targets = [
             target_id
             for target_id in targets
-            if _player_faction(snapshot, target_id) != actor_faction
+            if _player_faction(snapshot, target_id) != role.identity_faction
         ]
-    if (
-        action_type is ActionType.KNIGHT_GUARD
-        and not snapshot.config.rules.allow_knight_repeat_guard
-        and snapshot.history.nights
-    ):
-        previous_target = snapshot.history.nights[-1].protected_player_id
-        targets = [target_id for target_id in targets if target_id != previous_target]
+    if not ability.allow_repeat_target:
+        previous_target = _previous_ability_target(snapshot, player_id, ability_id)
+        if previous_target is not None:
+            targets = [target_id for target_id in targets if target_id != previous_target]
     return targets
+
+
+def _previous_ability_target(
+    snapshot: GameState,
+    player_id: str,
+    ability_id: str,
+) -> str | None:
+    for night in reversed(snapshot.history.nights):
+        target_id = night.ability_targets.get(player_id, {}).get(ability_id)
+        if target_id is not None:
+            return target_id
+    return None
 
 
 def _player_faction(snapshot: GameState, player_id: str) -> str | None:
@@ -159,15 +144,27 @@ def require_action_available(
     action: Action,
 ) -> None:
     """Raise when an action is not currently accepted by the game rules."""
-    if action.type not in available_actions(snapshot, pending_actions, action.player_id):
+    options = available_actions(snapshot, pending_actions, action.player_id)
+    requested = AvailableAction(action.type, action.ability_id)
+    if requested not in options:
         raise GameError(
-            message_action_not_available(action.type.value, snapshot.phase.value),
+            message_action_not_available(requested.key, snapshot.phase.value),
             context={
                 "player_id": action.player_id,
                 "action_type": action.type.value,
+                "ability_id": action.ability_id,
                 "phase": snapshot.phase.value,
                 "day": snapshot.day,
             },
+        )
+    if action.target_id is not None and action.target_id not in legal_targets(
+        snapshot,
+        pending_actions,
+        action.player_id,
+    ).get(requested.key, []):
+        raise GameError(
+            message_action_not_available(requested.key, snapshot.phase.value),
+            context={"player_id": action.player_id, "target_id": action.target_id},
         )
 
 

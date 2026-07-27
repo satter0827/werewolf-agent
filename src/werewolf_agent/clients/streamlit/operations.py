@@ -8,7 +8,6 @@ from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
 from werewolf_agent.adapters.ports import GameClient, PublicClient
-from werewolf_agent.clients.requests import build_create_game_request, build_custom_setup_request
 from werewolf_agent.clients.streamlit.events import (
     LOG_STREAMLIT_ACTION_SUBMITTED,
     LOG_STREAMLIT_ADVANCE_STEP_COMPLETED,
@@ -24,25 +23,31 @@ from werewolf_agent.clients.streamlit.view_models import (
     build_game_screen_view,
 )
 from werewolf_agent.contracts.api import (
+    PlayerPreviewRequest,
+    PlayerPreviewResponse,
     PublicRuntimeConfig,
     RuntimeStatusResponse,
+    SavedSetupListResponse,
+    SavedSetupRevisionResponse,
     SessionResponse,
+    SetupCatalogResponse,
+    SetupCreateRequest,
+    SetupRevisionCreateRequest,
+    SetupTemplateResponse,
+    SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
-    CustomCharacterDefinitionRequest,
-    CustomRoleDefinitionRequest,
+    CreateGameRequest,
     DeliberationLevel,
     GameResponse,
-    GameSetupOptionsResponse,
+    GameSetupDocumentRequest,
+    GameSetupSelectionRequest,
     GameTimelineItem,
-    LocalRulesSettings,
-    NarrationMode,
     PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
-    RuleCompositionSelection,
 )
 from werewolf_agent.observability import bind_observation_context, get_observation_context
 from werewolf_agent.observability.constants import EVENT_OUTCOME_SUCCESS
@@ -100,9 +105,68 @@ def load_public_record(
     return state, timeline
 
 
-def load_setup_options(*, settings: AppSettings) -> GameSetupOptionsResponse:
-    """Return setup metadata from the active data source."""
-    return build_streamlit_public_client(settings).get_runtime_config().setup
+def load_setup_catalog(*, settings: AppSettings) -> SetupCatalogResponse:
+    """Return packaged setup metadata for editor and game creation views."""
+    return build_streamlit_public_client(settings).get_setup_catalog()
+
+
+def load_setup_template(*, settings: AppSettings, template_id: str) -> SetupTemplateResponse:
+    """Return one complete packaged setup template."""
+    return build_streamlit_public_client(settings).get_setup_template(template_id)
+
+
+def validate_setup(
+    *, settings: AppSettings, setup: GameSetupDocumentRequest
+) -> SetupValidationResponse:
+    """Validate a complete setup through the public API."""
+    return build_streamlit_public_client(settings).validate_setup(setup)
+
+
+def preview_players(
+    *, settings: AppSettings, setup: GameSetupSelectionRequest, seed: int | None
+) -> PlayerPreviewResponse:
+    """Return a deterministic public roster preview."""
+    return build_streamlit_public_client(settings).preview_players(
+        PlayerPreviewRequest(setup=setup, seed=seed)
+    )
+
+
+def list_saved_setups(*, settings: AppSettings) -> SavedSetupListResponse:
+    """Return setups owned by the authenticated user."""
+    return build_streamlit_client(settings).list_setups()
+
+
+def load_saved_setup(
+    *, settings: AppSettings, setup_id: str, revision: int | None = None
+) -> SavedSetupRevisionResponse:
+    """Return the latest or selected revision of an owned setup."""
+    client = build_streamlit_client(settings)
+    return (
+        client.get_setup(setup_id)
+        if revision is None
+        else client.get_setup_revision(setup_id, revision)
+    )
+
+
+def list_setup_revisions(
+    *, settings: AppSettings, setup_id: str
+) -> list[SavedSetupRevisionResponse]:
+    """Return immutable revision history for an owned setup."""
+    return build_streamlit_client(settings).list_setup_revisions(setup_id)
+
+
+def create_saved_setup(
+    *, settings: AppSettings, request: SetupCreateRequest
+) -> SavedSetupRevisionResponse:
+    """Create an owned setup with its first revision."""
+    return build_streamlit_client(settings).create_setup(request)
+
+
+def create_setup_revision(
+    *, settings: AppSettings, setup_id: str, request: SetupRevisionCreateRequest
+) -> SavedSetupRevisionResponse:
+    """Append an immutable revision to an owned setup."""
+    return build_streamlit_client(settings).create_setup_revision(setup_id, request)
 
 
 def load_runtime_config(*, settings: AppSettings) -> PublicRuntimeConfig:
@@ -123,65 +187,16 @@ def load_session(*, settings: AppSettings) -> SessionResponse:
 def create_game_from_setup(
     *,
     settings: AppSettings,
-    role_counts: dict[str, int],
-    rules: LocalRulesSettings,
-    seed_text: str,
+    setup: GameSetupSelectionRequest,
+    seed: int | None,
     manual_player_id: str | None,
-    scenario_id: str | None,
-    setup_preset_id: str | None,
-    narration_mode: NarrationMode,
     deliberation_level: DeliberationLevel = "standard",
-    character_assignments: dict[str, str],
-    custom_roles: list[CustomRoleDefinitionRequest],
-    custom_characters: list[CustomCharacterDefinitionRequest],
-    rule_composition: RuleCompositionSelection | None = None,
 ) -> GameResponse:
-    """Create a game from the shared Play/Observe setup."""
-    seed = int(seed_text) if seed_text.strip() else None
-    setup_options = load_setup_options(settings=settings)
-    if custom_roles or custom_characters:
-        from werewolf_agent.contracts.schemas import CharacterDefinitionView, RoleDefinitionView
-
-        setup_options = setup_options.model_copy(
-            update={
-                "roles": [
-                    *setup_options.roles,
-                    *[
-                        RoleDefinitionView(
-                            id=role.id,
-                            name=role.name,
-                            identity_faction=role.identity_faction,
-                            victory_team=role.victory_team,
-                            objective=role.objective,
-                            abilities=role.abilities,
-                            description=role.description,
-                            difficulty=role.difficulty,
-                        )
-                        for role in custom_roles
-                    ],
-                ],
-                "characters": [
-                    *setup_options.characters,
-                    *[
-                        CharacterDefinitionView.model_validate(character.model_dump(mode="json"))
-                        for character in custom_characters
-                    ],
-                ],
-            }
-        )
-    setup_request = build_custom_setup_request(
-        setup_options=setup_options,
-        role_counts=role_counts,
-        rules=rules,
-        scenario_id=scenario_id or setup_options.default_scenario_id or "",
-        character_assignments=character_assignments,
-        rule_composition=rule_composition or setup_options.rule_composition.default,
-    )
-    request = build_create_game_request(
+    """Create a game from one immutable setup selection."""
+    request = CreateGameRequest(
+        setup=setup,
         seed=seed,
         manual_player_id=manual_player_id,
-        setup=setup_request,
-        narration_mode=narration_mode,
         deliberation_level=deliberation_level,
     )
     response = build_streamlit_client(settings).create_game(request)
@@ -273,12 +288,14 @@ def submit_screen_action(
     game_id: str,
     manual_player_id: str,
     action_type: str,
+    ability_id: str | None,
     target_id: str | None,
     message: str | None,
 ) -> None:
     """Submit one action selected in the Streamlit hand panel."""
     request = PlayerActionRequest(
-        type=cast(Any, action_type),
+        type=cast(Any, action_type.split(":", 1)[0]),
+        ability_id=ability_id,
         target_id=target_id,
         message=message,
     )

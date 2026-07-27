@@ -49,6 +49,23 @@
   `GET /api/v1/session`は安全な利用者区分を返す。
 - database接続失敗はAPI processを停止せず、databaseを必要とするrequestだけを失敗させる。
 
+## ゲーム設定
+
+`GameSetupDocument` v2はmechanics、theme、player generationを一つの完全な文書として扱う。
+同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定playerを
+所有しない。役職はidentity faction、victory team、ability IDだけを持つ。applicationが能力種別の
+判別共用体を検証し、domainの`build_game_rules()`が決定的な実行規則へ変換する。
+
+ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
+seed確定、player生成、checksum計算まで完了した正規化commandだけをqueueへ保存し、workerは
+template resourceや保存revisionを再解決しない。roster、role assignment、gameplayの乱数は同じ
+game seedからSHA-256 namespaceで分離する。
+
+本人の保存設定は`private.user_setups`と`private.user_setup_revisions`へ保存する。revisionは追記専用で、
+親行lockと`expected_revision`により競合を検出する。repositoryは全queryへ所有者条件を付け、private
+schema、権限剥奪、RLSを防御層として重ねる。公開previewはidentityとpublic personaだけを返し、
+role assignmentとprivate strategyを返さない。
+
 `api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
 

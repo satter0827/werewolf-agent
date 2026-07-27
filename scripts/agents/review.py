@@ -20,9 +20,8 @@ from scripts._infra.artifacts import LAYOUT
 from scripts._infra.process import redact
 from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
-    build_game_definitions,
     build_llm_definitions,
-    build_player_setup_definitions,
+    build_setup_catalog,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.agents.models import (
@@ -30,13 +29,16 @@ from werewolf_agent.agents.models import (
     AgentGameContext,
     AgentScenario,
     DeliberationLevel,
+    PlayerProfile,
 )
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.application.players import generate_players
+from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import GameSetupDocument, setup_document_from_preset
-from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, RuleRegistry
+from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
 from werewolf_agent.settings import get_settings
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
@@ -298,8 +300,8 @@ def run_suite(
                 raise AgentReviewBlockedError(
                     f"Configured Local LLM model is not loaded: {config.model}"
                 )
-        definitions = build_game_definitions(get_settings())
-        available_presets = tuple(sorted(definitions.catalog.setup_presets))
+        setup_catalog = build_setup_catalog(get_settings())
+        available_presets = setup_catalog.template_order
         if selected_presets:
             if suite != "standard":
                 raise ValueError("--preset is available only for the standard suite.")
@@ -687,10 +689,9 @@ def _run_preset(
     trace_callback: Callable[[LlmInvocationTrace], None] | None = None,
 ) -> dict[str, object]:
     settings = get_settings()
-    game_definitions = build_game_definitions(settings)
-    player_definitions = build_player_setup_definitions(settings)
+    setup_catalog = build_setup_catalog(settings)
     llm_definitions = build_llm_definitions(settings)
-    setup = setup_document_from_preset(preset_id, game_definitions, player_definitions)
+    setup = setup_catalog.require_document(preset_id)
     mechanics = setup.mechanics
     rule_definition = rule_definition_from_values(
         player_count=sum(mechanics.role_counts.values()),
@@ -700,19 +701,24 @@ def _run_preset(
         abilities={
             key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
         },
-        composition=mechanics.composition.model_dump(mode="json"),
     )
-    rng = random.Random(seed)
-    characters = [setup.roster.characters[key] for key in sorted(setup.roster.characters)]
+    players = generate_players(
+        setup.player_generation,
+        player_count=sum(mechanics.role_counts.values()),
+        seed=seed,
+    )
+    profiles = {
+        player.player_id: PlayerProfile.model_validate(player.profile.model_dump(mode="json"))
+        for player in players
+    }
+    role_rng = random.Random(namespace_seed(seed, "role_assignment"))
+    gameplay_rng = random.Random(namespace_seed(seed, "gameplay"))
     game = Game.create(
         GameSetup(
-            players=tuple(
-                Player(id=f"player-{index + 1}", name=characters[index].name)
-                for index in range(sum(mechanics.role_counts.values()))
-            )
+            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
         ),
-        rules=RuleRegistry.standard().build(rule_definition),
-        random=rng,
+        rules=build_game_rules(rule_definition),
+        random=role_rng,
     )
     trace_sink = InMemoryTraceSink(trace_callback)
     contexts = _game_contexts(
@@ -721,6 +727,8 @@ def _run_preset(
     factory = langchain_agent_factory(
         config,
         definitions=llm_definitions,
+        profiles=profiles,
+        profile_ids_by_player={player_id: player_id for player_id in profiles},
         scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
         game_contexts=contexts,
         trace_sink=trace_sink,
@@ -760,7 +768,7 @@ def _run_preset(
                 break
         if stopped_for_preflight:
             break
-        emitted = game.advance(rng)
+        emitted = game.advance(gameplay_rng)
         public_timeline.extend(
             domain_to_data(event) for event in emitted if event.visibility is EventVisibility.PUBLIC
         )
@@ -773,6 +781,8 @@ def _run_preset(
         factory = langchain_agent_factory(
             config,
             definitions=llm_definitions,
+            profiles=profiles,
+            profile_ids_by_player={player_id: player_id for player_id in profiles},
             scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
             game_contexts=contexts,
             trace_sink=trace_sink,
@@ -944,13 +954,14 @@ def _game_contexts(
         for ability_id in role.abilities:
             ability = mechanics.abilities[ability_id]
             used = snapshot.ability_uses.get(player.id, {}).get(ability_id, 0)
-            remaining = None if ability.max_uses is None else max(0, ability.max_uses - used)
+            remaining = (
+                max(0, ability.max_uses - used) if isinstance(ability.max_uses, int) else None
+            )
             abilities.append(
                 AgentAbilityContext(
                     id=ability_id,
                     name=setup.theme.ability_names[ability_id],
-                    action=str(ability.action),
-                    effect=ability.effect,
+                    kind=ability.kind,
                     remaining_uses=remaining,
                 )
             )

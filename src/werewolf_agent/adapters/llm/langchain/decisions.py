@@ -10,14 +10,12 @@ from werewolf_agent.adapters.llm.langchain.constants import (
     LLM_SPEECH_MESSAGE_MAX_CHARS,
 )
 from werewolf_agent.adapters.llm.messages import (
-    MESSAGE_NO_ATTACK_TARGETS,
-    MESSAGE_NO_GUARD_TARGETS,
-    MESSAGE_NO_INSPECT_TARGETS,
     MESSAGE_NO_TARGET,
     MESSAGE_NO_VALID_VOTE_TARGETS,
 )
 from werewolf_agent.agents.models import (
     AgentActionType,
+    AgentAvailableAction,
     AgentDecision,
     AgentObservation,
     AgentPlayerStatus,
@@ -27,44 +25,44 @@ from werewolf_agent.agents.models import (
 
 def _target_for_action(
     observation: AgentObservation,
-    action_type: AgentActionType,
+    action: AgentAvailableAction,
 ) -> str | None:
-    candidates = _legal_targets_by_action(observation).get(action_type, [])
+    candidates = _legal_targets_by_action(observation).get(action.key, [])
     if not candidates:
         return None
-    selector = _deterministic_target_selector(observation.me.id, observation, action_type)
+    selector = _deterministic_target_selector(observation.me.id, observation, action.key)
     return candidates[selector % len(candidates)]
 
 
 def _legal_targets_by_action(
     observation: AgentObservation,
-) -> dict[AgentActionType, list[str]]:
+) -> dict[str, list[str]]:
     """Return legal target ids for available target-taking actions."""
-    targets: dict[AgentActionType, list[str]] = {}
-    for action_type in observation.available_actions:
-        if action_type not in AgentDecision.TARGET_TYPES:
+    targets: dict[str, list[str]] = {}
+    for action in observation.available_actions:
+        if action.type not in AgentDecision.TARGET_TYPES:
             continue
-        targets[action_type] = list(observation.legal_targets.get(action_type, []))
+        targets[action.key] = list(observation.legal_targets.get(action.key, []))
     return targets
 
 
 def _fallback_decision(
     player_id: str,
     observation: AgentObservation,
-    action_type: AgentActionType,
+    action: AgentAvailableAction,
     *,
     reason: str,
 ) -> AgentDecision:
-    if action_type is AgentActionType.SPEECH and action_type in observation.available_actions:
+    if action.type is AgentActionType.SPEECH and action in observation.available_actions:
         return AgentDecision.speech(player_id, _fallback_speech(observation))
-    if action_type in AgentDecision.TARGET_TYPES and action_type in observation.available_actions:
-        target_id = _target_for_action(observation, action_type)
+    if action.type in AgentDecision.TARGET_TYPES and action in observation.available_actions:
+        target_id = _target_for_action(observation, action)
         if target_id is None:
             return AgentDecision.pass_(
                 player_id=player_id,
-                reason=_missing_target_reason(action_type),
+                reason=_missing_target_reason(action.type),
             )
-        return _target_decision(player_id, action_type, target_id, reason=reason)
+        return _target_decision(player_id, action, target_id, reason=reason)
     return AgentDecision.pass_(player_id=player_id, reason=reason)
 
 
@@ -77,50 +75,30 @@ def _fallback_speech(observation: AgentObservation) -> str:
 
 def _target_decision(
     player_id: str,
-    action_type: AgentActionType,
+    action: AgentAvailableAction,
     target_id: str,
     *,
     reason: str,
 ) -> AgentDecision:
-    if action_type is AgentActionType.VOTE:
+    if action.type is AgentActionType.VOTE:
         return AgentDecision.vote(player_id, target_id, reason=reason)
-    if action_type is AgentActionType.WEREWOLF_ATTACK:
-        return AgentDecision.attack(player_id, target_id, reason=reason)
-    if action_type is AgentActionType.SEER_INSPECT:
-        return AgentDecision.inspect(player_id, target_id, reason=reason)
-    if action_type is AgentActionType.KNIGHT_GUARD:
-        return AgentDecision.guard(player_id, target_id, reason=reason)
-    if action_type in {
-        AgentActionType.APOTHECARY_HEAL,
-        AgentActionType.APOTHECARY_POISON,
-    }:
-        return AgentDecision(
-            type=action_type,
-            player_id=player_id,
-            target_id=target_id,
-            reason=reason,
-        )
+    if action.type is AgentActionType.USE_ABILITY and action.ability_id is not None:
+        return AgentDecision.use_ability(player_id, action.ability_id, target_id, reason=reason)
     return AgentDecision.pass_(player_id=player_id, reason=reason)
 
 
 def _missing_target_reason(action_type: AgentActionType) -> str:
     if action_type is AgentActionType.VOTE:
         return MESSAGE_NO_VALID_VOTE_TARGETS
-    if action_type is AgentActionType.WEREWOLF_ATTACK:
-        return MESSAGE_NO_ATTACK_TARGETS
-    if action_type is AgentActionType.SEER_INSPECT:
-        return MESSAGE_NO_INSPECT_TARGETS
-    if action_type is AgentActionType.KNIGHT_GUARD:
-        return MESSAGE_NO_GUARD_TARGETS
     return MESSAGE_NO_TARGET
 
 
 def _deterministic_target_selector(
     player_id: str,
     observation: AgentObservation,
-    action_type: AgentActionType,
+    action_key: str,
 ) -> int:
-    digest = sha256(f"{player_id}:{action_type.value}:{observation.day}:target".encode()).digest()
+    digest = sha256(f"{player_id}:{action_key}:{observation.day}:target".encode()).digest()
     return int.from_bytes(digest[:DETERMINISTIC_SELECTOR_BYTES], "big")
 
 
@@ -135,7 +113,7 @@ def _focus_player(observation: AgentObservation) -> VisiblePlayer | None:
     selector = _deterministic_target_selector(
         observation.me.id,
         observation,
-        AgentActionType.SPEECH,
+        AgentActionType.SPEECH.value,
     )
     return candidates[selector % len(candidates)]
 

@@ -20,14 +20,11 @@ from werewolf_agent.clients.cli.messages import (
 from werewolf_agent.clients.cli.output import (
     console,
     print_json,
-    print_setup_options,
 )
-from werewolf_agent.clients.requests import build_custom_setup_request
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     GameSetupDocumentRequest,
-    RuleCompositionSelection,
 )
 from werewolf_agent.settings import get_settings
 
@@ -40,42 +37,34 @@ def setup_options(
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
     ] = None,
 ) -> None:
-    """Print default game setup metadata."""
+    """Print available game setup metadata."""
     run_app_command(
-        lambda: print_setup_options(
-            build_public_client(get_settings()).get_runtime_config().setup,
+        lambda: print_json(
+            build_public_client(get_settings()).get_setup_catalog(),
             output_format=_output_format(output, get_settings()),
         )
     )
 
 
 def export_setup(
-    preset: Annotated[str, typer.Option("--preset", help="出力するsetup preset ID")],
+    template: Annotated[str, typer.Option("--template", help="出力するsetup template ID")],
     output_file: Annotated[Path, typer.Option("--output-file", help="出力先TOML file")],
 ) -> None:
-    """Export one preset as a complete editable TOML document."""
-    run_app_command(lambda: _export_setup(preset, output_file))
+    """Export one template as a complete editable TOML document."""
+    run_app_command(lambda: _export_setup(template, output_file))
 
 
-def _export_setup(preset_id: str, output_file: Path) -> None:
-    options = build_public_client(get_settings()).get_runtime_config().setup
+def _export_setup(template_id: str, output_file: Path) -> None:
+    client = build_public_client(get_settings())
     try:
-        preset = next(item for item in options.setup_presets if item.id == preset_id)
-    except StopIteration as exc:
+        document = client.get_setup_template(template_id).document
+    except AppError as exc:
         raise AppError(
-            f"setup presetが見つかりません: {preset_id}",
+            f"setup templateが見つかりません: {template_id}",
             code=ErrorCode.CONFIG_INVALID_VALUE,
         ) from exc
-    request = build_custom_setup_request(
-        setup_options=options,
-        role_counts=dict(preset.role_counts),
-        rules=options.default_rules,
-        scenario_id=preset.scenario_id,
-        character_assignments={},
-        rule_composition=RuleCompositionSelection(),
-    )
     output_file.write_text(
-        toml.dumps(request.setup.model_dump(mode="json")),
+        toml.dumps(document.model_dump(mode="json")),
         encoding="utf-8",
     )
     console.print(f"設定を出力しました: {output_file}")

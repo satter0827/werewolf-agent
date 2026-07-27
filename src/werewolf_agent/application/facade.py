@@ -135,10 +135,7 @@ class GameApplication:
         prepared: PreparedAdvanceGame,
     ) -> ComputedAdvanceGame:
         """Apply validated agent decisions without performing I/O."""
-        return handlers.compute_prepared_advance(
-            prepared,
-            game_definitions=self._dependencies.game_definitions,
-        )
+        return handlers.compute_prepared_advance(prepared)
 
     def commit_advance(
         self,

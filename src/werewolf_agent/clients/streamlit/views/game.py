@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, cast
+from typing import Any
 
 from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.components import (
@@ -12,39 +12,18 @@ from werewolf_agent.clients.streamlit.components import (
     status_grid_html,
     timeline_section_html,
 )
-from werewolf_agent.clients.streamlit.constants import (
-    DEFAULT_NARRATION_MODE,
-)
-from werewolf_agent.clients.streamlit.events import (
-    LOG_STREAMLIT_GAME_CREATE_FAILED,
-)
-from werewolf_agent.clients.streamlit.history import (
-    create_session_game_selection,
-)
 from werewolf_agent.clients.streamlit.i18n import (
     I18nCatalog,
     Language,
 )
 from werewolf_agent.clients.streamlit.operations import (
-    create_game_from_setup,
     load_advance_job,
     start_advance_step,
     submit_screen_action,
 )
 from werewolf_agent.clients.streamlit.setup import (
-    VIEW_GAME,
     VIEW_OBSERVE_SETUP,
     VIEW_PLAY_SETUP,
-    remember_character_assignment,
-    remember_deliberation_level,
-    remember_manual_player_id,
-    remember_narration_mode,
-    remember_role_counts,
-    remember_rules,
-    remember_scenario_id,
-    remember_seed_text,
-    remember_setup_preset_id,
-    seed_from_text,
     switch_view,
 )
 from werewolf_agent.clients.streamlit.state import (
@@ -56,9 +35,7 @@ from werewolf_agent.clients.streamlit.state import (
     consume_auto_advance_notice,
     pause_auto_advance,
     record_auto_advance_step,
-    remember_active_game_selection,
     remember_advance_job,
-    remember_selected_history,
     start_auto_advance,
 )
 from werewolf_agent.clients.streamlit.view_models import (
@@ -72,20 +49,6 @@ from werewolf_agent.contracts import (
     ADVANCE_JOB_STATUS_FAILED,
     AppError,
 )
-from werewolf_agent.contracts.error_catalog import get_error_spec
-from werewolf_agent.contracts.schemas import (
-    CustomCharacterDefinitionRequest,
-    CustomRoleDefinitionRequest,
-    DeliberationLevel,
-    LocalRulesSettings,
-    NarrationMode,
-    RuleCompositionSelection,
-)
-from werewolf_agent.observability.constants import (
-    EVENT_OUTCOME_FAILURE,
-)
-from werewolf_agent.observability.levels import log_level_number
-from werewolf_agent.security.redaction import redact_text
 from werewolf_agent.settings import (
     AppSettings,
 )
@@ -143,94 +106,6 @@ def _render_game_screen(
         column_count=4,
     )
     _render_timeline(st, screen, variant="primary", catalog=catalog, lang=lang)
-
-
-def _create_game(
-    st: Any,
-    *,
-    feedback: Any,
-    settings: AppSettings,
-    role_counts: dict[str, int],
-    rules: LocalRulesSettings,
-    seed_text: str,
-    manual_player_id: str | None,
-    screen_mode: str,
-    scenario_id: str | None = None,
-    setup_preset_id: str | None = None,
-    narration_mode: NarrationMode = DEFAULT_NARRATION_MODE,
-    deliberation_level: DeliberationLevel = "standard",
-    character_assignments: dict[str, str] | None = None,
-    custom_roles: list[CustomRoleDefinitionRequest] | None = None,
-    custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
-    rule_composition: RuleCompositionSelection | None = None,
-    catalog: I18nCatalog,
-    lang: Language,
-) -> None:
-    try:
-        created = create_game_from_setup(
-            settings=settings,
-            role_counts=role_counts,
-            rules=rules,
-            seed_text=seed_text,
-            manual_player_id=manual_player_id,
-            scenario_id=scenario_id,
-            setup_preset_id=setup_preset_id,
-            narration_mode=narration_mode,
-            deliberation_level=deliberation_level,
-            character_assignments=character_assignments or {},
-            custom_roles=custom_roles or [],
-            custom_characters=custom_characters or [],
-            rule_composition=rule_composition,
-        )
-    except (AppError, ValueError) as exc:
-        if isinstance(exc, AppError):
-            log_level = log_level_number(get_error_spec(exc.code).log_level)
-            error_extra = exc.log_extra()
-            error_message = exc.detail
-        else:
-            log_level = logging.INFO
-            error_extra = {}
-            error_message = str(exc)
-        logger.log(
-            log_level,
-            LOG_STREAMLIT_GAME_CREATE_FAILED,
-            extra={
-                **error_extra,
-                "error_message": redact_text(error_message),
-                "error.message": redact_text(error_message),
-                "event_action": LOG_STREAMLIT_GAME_CREATE_FAILED,
-                "event_outcome": EVENT_OUTCOME_FAILURE,
-                "manual_player_id": manual_player_id or "",
-                "screen_mode": screen_mode,
-            },
-        )
-        feedback.error(str(exc))
-        return
-
-    selection = create_session_game_selection(
-        created,
-        manual_player_id=manual_player_id,
-        role_counts=role_counts,
-        rules=rules,
-        seed=seed_from_text(seed_text),
-        scenario_id=scenario_id,
-        setup_preset_id=setup_preset_id,
-        narration_mode=narration_mode,
-        deliberation_level=deliberation_level,
-        character_assignments=character_assignments or {},
-        custom_roles=custom_roles or [],
-        custom_characters=custom_characters or [],
-        rule_composition=rule_composition,
-    )
-    remember_active_game_selection(st.session_state, selection)
-    remember_selected_history(st.session_state, f"session:{selection.selection_id}")
-    switch_view(st.session_state, VIEW_GAME)
-    clear_message(st.session_state)
-    success_key = (
-        "action.create_observer" if screen_mode == "observer" else "action.create_playable"
-    )
-    feedback.success(catalog.t(lang, success_key))
-    st.rerun()
 
 
 def _render_status_bar(st: Any, screen: GameScreenView) -> None:
@@ -298,90 +173,15 @@ def _render_next_actions(
 ) -> None:
     if not screen.is_completed:
         return
-    role_counts_value = selected_option.role_counts
-    rules_value = selected_option.rules
-    if not role_counts_value or rules_value is None:
-        st.caption(catalog.t(lang, "next_actions.saved_hint"))
-        return
-
     st.divider()
-    action_columns = st.columns(column_count)
-    first, second, third, fourth = action_columns[:4]
-    if first.button(catalog.t(lang, "next_actions.random_seed"), use_container_width=True):
-        _create_game(
-            st,
-            feedback=st,
-            settings=settings,
-            role_counts=role_counts_value,
-            rules=rules_value,
-            seed_text="",
-            manual_player_id=selected_option.manual_player_id
-            if selected_option.mode == "playable"
-            else None,
-            screen_mode=selected_option.mode,
-            scenario_id=selected_option.scenario_id,
-            setup_preset_id=selected_option.setup_preset_id,
-            narration_mode=cast(NarrationMode, selected_option.narration_mode),
-            deliberation_level=cast(DeliberationLevel, selected_option.deliberation_level),
-            character_assignments=selected_option.character_assignments or {},
-            custom_roles=selected_option.custom_roles or [],
-            custom_characters=selected_option.custom_characters or [],
-            rule_composition=selected_option.rule_composition,
-            catalog=catalog,
-            lang=lang,
-        )
-    seed_value = selected_option.seed if selected_option.seed is not None else screen.seed
-    same_seed_text = "" if seed_value is None else str(seed_value)
-    if second.button(catalog.t(lang, "next_actions.same_seed"), use_container_width=True):
-        _create_game(
-            st,
-            feedback=st,
-            settings=settings,
-            role_counts=role_counts_value,
-            rules=rules_value,
-            seed_text=same_seed_text,
-            manual_player_id=selected_option.manual_player_id
-            if selected_option.mode == "playable"
-            else None,
-            screen_mode=selected_option.mode,
-            scenario_id=selected_option.scenario_id,
-            setup_preset_id=selected_option.setup_preset_id,
-            narration_mode=cast(NarrationMode, selected_option.narration_mode),
-            deliberation_level=cast(DeliberationLevel, selected_option.deliberation_level),
-            character_assignments=selected_option.character_assignments or {},
-            custom_roles=selected_option.custom_roles or [],
-            custom_characters=selected_option.custom_characters or [],
-            rule_composition=selected_option.rule_composition,
-            catalog=catalog,
-            lang=lang,
-        )
-    if third.button(catalog.t(lang, "next_actions.return_setup"), use_container_width=True):
-        remember_role_counts(st.session_state, role_counts_value)
-        remember_rules(st.session_state, rules_value)
-        remember_seed_text(st.session_state, same_seed_text)
-        remember_scenario_id(st.session_state, selected_option.scenario_id)
-        remember_setup_preset_id(st.session_state, selected_option.setup_preset_id)
-        remember_narration_mode(
-            st.session_state,
-            cast(NarrationMode, selected_option.narration_mode),
-        )
-        remember_deliberation_level(
-            st.session_state,
-            cast(DeliberationLevel, selected_option.deliberation_level),
-        )
-        remember_manual_player_id(st.session_state, selected_option.manual_player_id)
-        for player_id, character_id in (selected_option.character_assignments or {}).items():
-            remember_character_assignment(
-                st.session_state,
-                player_id=player_id,
-                character_id=character_id,
-            )
+    first, second = st.columns(2)
+    if first.button(catalog.t(lang, "next_actions.return_setup"), use_container_width=True):
         switch_view(
             st.session_state,
             VIEW_PLAY_SETUP if selected_option.mode == "playable" else VIEW_OBSERVE_SETUP,
         )
         st.rerun()
-    if fourth.button(catalog.t(lang, "next_actions.saves"), use_container_width=True):
+    if second.button(catalog.t(lang, "next_actions.saves"), use_container_width=True):
         st.info(catalog.t(lang, "next_actions.saved_hint"))
 
 
@@ -532,6 +332,7 @@ def _render_action_form(
                 game_id=selected_option.game_id,
                 manual_player_id=manual_player_id,
                 action_type=selected_action.action_type,
+                ability_id=selected_action.ability_id,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
             )

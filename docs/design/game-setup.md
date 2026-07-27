@@ -2,60 +2,70 @@
 
 ## 正本
 
-ゲーム作成の正本は`GameSetupDocument`である。presetもcustom設定もworkerで同じdocumentへ
-解決し、domain設定、保存snapshot、replay、LLM contextはこのdocumentから生成する。
-乱数seed、manual player、LLM providerの選択は実行条件であり、setupには含めない。
+ゲーム作成の正本は`GameSetupDocument v2`である。documentは次の領域を必須で持つ。
 
-documentは次の3領域を持つ。
+- `mechanics`: 役職数、任意IDの役職、能力component、共通ルール
+- `theme`: 世界観、導入、用語、説明、ナレーション
+- `player_generation`: identity、公開persona、非公開strategyの候補
 
-- `mechanics`: 役職数、役職、能力、ローカルルール、policy composition
-- `theme`: 背景、導入、役職・陣営・能力・行動・phaseの表示名、narration
-- `roster`: 登場人物とseatへの固定割当
+同梱template、保存revision、inline documentはAPI受付時に完全なdocumentへ解決する。同じ時点で
+seedとplayerを確定し、setup、mechanics、rosterのchecksumを含む正規化済みcommandをqueueへ
+保存する。workerはtemplateや保存revisionを再解釈しない。
 
-`schema_version`、`setup_checksum`、`mechanics_checksum`を保存する。異なるversionの旧ゲームは
-暗黙変換せず、新しいゲームの作成を案内する。
+## 固定境界と可変要素
 
-## mechanicsと表現の境界
+phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`village`、`werewolf`、`fox`の
+勝敗判定はコードが所有する。役職ID、役職数、能力の組み合わせ、対象条件、開始日、使用回数、
+解決優先度、共通ルール、表示、player生成候補は設定が所有する。
 
-domainは`werewolf`や`seer`などの安定IDだけを扱う。宇宙船では`werewolf`を「擬態生命体」、
-江戸では「妖怪」と表示できるが、勝敗や能力は変わらない。themeは選択中の役職、能力、陣営、
-行動、phaseをすべて命名し、役職の目的も背景固有の文章で定義しなければならない。この完全性は
-setup validationで固定する。
+役職は`identity_faction`、`victory_team`、能力IDの集合だけを持つ。能力componentは`attack`、
+`inspect`、`protect`、`eliminate`、`knowledge`、`death_reaction`、`immunity`、
+`vulnerability`に限定する。外部コード、import path、汎用DSLは受け付けない。
 
-ナレーション方式はゲームごとに`standard`または`none`を選び、作成requestと保存snapshotへ
-記録する。`standard`の文章はtheme内のnarration templateから生成する。語り口の差はthemeが
-所有し、同じ出力になる別名のmodeは設けない。
+受動能力は実行系が意味を持つ組み合わせだけを受け付ける。`immunity`は夜の`attack`、
+`eliminate`、`inspect`、`vulnerability`は夜の`inspect`を発生元にできる。
+`death_reaction`は夜または投票で解決する。発生しないphaseや未対応の発生元は設定検証で拒否する。
 
-役職は`identity_faction`と`victory_team`を分離する。狂人は村側として判定され、人狼側の
-勝利に参加する。妖狐は独立した勝利陣営で、襲撃耐性と調査弱点を持つ。
+行動は`speech`、`vote`、`use_ability`、`pass`へ統一する。`use_ability`は能力IDを必須とし、
+合法対象、agent decision、HTTP action、復元、replayまで同じenvelopeを使用する。
 
-## ルールと能力
+## player生成
 
-利用者が選ぶルールは挙動を表す値であり、内部policy IDを画面へ出さない。同票処理、襲撃同票、
-占い・霊媒の情報粒度、開始phase、自己対象、再選択、初夜襲撃、死亡時公開を編集できる。
+ゲームごとに`p1`から始まるseatを生成する。identityは重複なしで抽選し、公開personaと非公開strategyは
+seed付きshuffleと巡回割当で分散する。identity不足、空の候補集合、重複名は設定エラーにする。
 
-能力はphase、action、effect、対象条件、開始日、使用上限、結果公開範囲、解決優先度を持つ。
-標準能力は襲撃、調査、護衛、霊媒、治療、毒、死亡時反撃、襲撃耐性、調査弱点である。
-治療と毒はそれぞれ一度だけ使え、同じplayerは一夜に一行動だけ選ぶ。猟師の反撃は死亡時に
-生存者からseedに基づいて自動解決し、連鎖も同じ規則で解決する。
+ゲームseedから`roster`、`role_assignment`、`gameplay`のseedをSHA-256で分離する。同じdocumentと
+seedは同じplayer、役職割当、ゲーム進行を再現する。previewはseat、名前、年齢、性別表現、性格、
+話し方だけを返し、役職と非公開strategyを返さない。
 
-## LLM context
+## themeと秘匿性
 
-LLMにはTOML全文や他playerのprivate情報を渡さない。`AgentGameContext`として背景の導入、
-本人のtheme上の役職名、identity faction名、victory team名、背景固有の目的、利用可能な能力と残り回数、
-現在の判断に関係するルール、theme上のaction・phase名を渡す。traceにはprompt version、
-setup checksum、mechanics checksum、observation checksumを記録する。
+themeは選択中の役職、能力、陣営、行動、phaseを漏れなく命名する。表示用の語彙をdomainの安定IDと
+分離し、公開状態、timeline、画面、LLM contextへ同じ表現を渡す。
 
-この分離により、背景変更による語彙の一貫性と、mechanics変更による挙動差を別々に追跡できる。
+ナレーションを有効にする場合は、対応する公開eventをすべて定義する。templateは公開済みの値だけを
+差し込み可能とし、未対応event、未知の差し込み項目、壊れたformatは設定検証で拒否する。
+
+公開状態とtimelineへ生存者の役職、未解決の投票、夜の行動、調査結果、非公開strategyを含めない。
+LLMには本人の役職、本人のprofile、観測から判明した情報、本人に関係する設定だけを渡す。
+
+## 保存revision
+
+利用者の設定は`private.user_setups`と`private.user_setup_revisions`へ保存する。revisionは追加専用で、
+保存時に親行をlockし、`expected_revision`と最新revisionが一致する場合だけ次版を追加する。競合は
+HTTP 409とする。
+
+repositoryの全取得は所有者IDで絞る。他利用者の設定は404、匿名利用者の保存とrevision参照は403に
+する。private tableはData APIへ公開せず、`anon`と`authenticated`へ直接権限を付与しない。
 
 ## 利用者導線
 
-Streamlitは「世界観」「役職」「登場人物」「ルール」の4段階で設定する。presetを起点に編集し、
-作成前に人数、参照、theme語彙、character割当を検証する。CLIは`setup show`、`setup export`、
-`setup validate`、`setup inspect`と`game create --setup-file`を提供する。
+Streamlitの「ゲーム設定」は「世界観」「役職と能力」「プレイヤー生成」「ルール」「確認」を編集する。
+同梱templateの編集は保存設定への複製として開始し、保存済み設定は「新しい版として保存」でrevisionを
+追加する。匿名利用者も編集中のinline documentをpreviewとゲーム作成に使用できる。
 
-`setup validate`と`setup inspect`は`POST /api/v1/setups/validate`を呼び、ゲーム作成と同じ
-application validatorで参照、余剰定義、theme網羅性を確認する。構文だけを確認して有効とは
-判定しない。
+ゲーム作成画面は設定、revision、再現用の番号、player preview、手動seat、agentの熟考度、最終確認だけを
+扱う。設定または番号が変わった場合は古いpreviewを使用しない。
 
-CLIとStreamlitは同じsetup metadataとpresetを使用し、詳細editorはStreamlitとCLI TOMLで提供する。
+CLIは`setup show`、`setup export`、`setup validate`、`setup inspect`と
+`game create --setup-file`を提供し、HTTP APIと同じ検証境界を使用する。

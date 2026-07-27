@@ -16,10 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
-    build_game_definitions,
-    build_player_setup_definitions,
+    build_setup_catalog,
 )
-from werewolf_agent.adapters.setup_options import get_local_setup_options
 from werewolf_agent.adapters.supabase.diagnostics import SupabaseAdminDiagnostics
 from werewolf_agent.adapters.supabase.operations import (
     SupabaseAccessPolicy,
@@ -33,9 +31,13 @@ from werewolf_agent.adapters.supabase.pool import (
 from werewolf_agent.adapters.supabase.repository import (
     SupabaseGameRepository,
 )
+from werewolf_agent.adapters.supabase.setup_repository import SupabaseSetupRepository
 from werewolf_agent.api.dependencies import (
     RequestServices,
+    get_optional_principal,
+    get_owned_setups,
     get_principal,
+    get_public_setups,
     get_services,
 )
 from werewolf_agent.api.errors import (
@@ -45,10 +47,11 @@ from werewolf_agent.api.errors import (
 )
 from werewolf_agent.api.middleware.limits import PrincipalRateLimiter, RequestLimitsMiddleware
 from werewolf_agent.api.middleware.security_headers import ApiSecurityHeadersMiddleware
-from werewolf_agent.api.routes import admin, config, games, operations
+from werewolf_agent.api.routes import admin, config, games, operations, setups
 from werewolf_agent.api.runtime import AvailabilityGuardedOperationQueue, RuntimeDependencies
 from werewolf_agent.application import GameApplication
 from werewolf_agent.application.models import ApplicationContext
+from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PublicRuntimeConfig,
@@ -141,11 +144,17 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
     install_error_handlers(app)
     app.include_router(config.router, prefix="/api/v1")
+    app.include_router(setups.router, prefix="/api/v1")
     app.include_router(games.router, prefix="/api/v1")
     app.include_router(operations.router, prefix="/api/v1")
     app.include_router(admin.router, prefix="/api/v1")
     install_openapi_error_contract(app)
     app.dependency_overrides[get_services] = _service_dependency(runtime, dependencies)
+    app.dependency_overrides[get_public_setups] = lambda: SetupApplication(
+        build_setup_catalog(runtime),
+        build_game_application_config(runtime),
+    )
+    app.dependency_overrides[get_owned_setups] = _owned_setup_dependency(runtime, dependencies)
 
     @app.get("/health", include_in_schema=False)
     def health() -> dict[str, str]:
@@ -176,14 +185,13 @@ def _service_dependency(
                 retryable=True,
             )
         with borrow_database_connection(pool) as connection, connection.transaction():
+            setup_catalog = build_setup_catalog(runtime)
             context = ApplicationContext(
                 repository=SupabaseGameRepository(
                     connection,
                     owner_user_id=principal.user_id,
                 ),
                 config=build_game_application_config(runtime),
-                game_definitions=build_game_definitions(runtime),
-                player_definitions=build_player_setup_definitions(runtime),
             )
             yield RequestServices(
                 games=GameApplication(
@@ -194,9 +202,42 @@ def _service_dependency(
                     ),
                     access_policy=SupabaseAccessPolicy(connection),
                 ),
+                setups=SetupApplication(
+                    setup_catalog,
+                    context.config,
+                    SupabaseSetupRepository(connection),
+                ),
                 message_max_chars=runtime.api_message_max_chars,
                 diagnostics=SupabaseAdminDiagnostics(connection),
                 reveal_api_enabled=runtime.reveal_api_enabled,
+            )
+
+    return dependency
+
+
+def _owned_setup_dependency(
+    runtime: AppSettings,
+    dependencies: RuntimeDependencies,
+) -> Callable[[Principal | None], Iterator[SetupApplication | None]]:
+    def dependency(
+        principal: Annotated[Principal | None, Depends(get_optional_principal)],
+    ) -> Iterator[SetupApplication | None]:
+        if principal is None:
+            yield None
+            return
+        dependencies.refresh()
+        pool = dependencies.pool
+        if pool is None or not dependencies.database_available:
+            raise AppError(
+                "データベースが設定されていません。",
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            )
+        with borrow_database_connection(pool) as connection, connection.transaction():
+            yield SetupApplication(
+                build_setup_catalog(runtime),
+                build_game_application_config(runtime),
+                SupabaseSetupRepository(connection),
             )
 
     return dependency
@@ -206,7 +247,6 @@ def _public_runtime_config(settings: AppSettings) -> PublicRuntimeConfig:
     return PublicRuntimeConfig(
         contract_version=settings.api_contract_version,
         config_revision=settings.api_config_revision,
-        setup=get_local_setup_options(settings),
         limits=PublicRuntimeLimits(
             game_min_players=settings.game_min_players,
             game_max_players=settings.game_max_players,

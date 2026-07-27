@@ -62,9 +62,6 @@ class StreamlitSettings(BaseModel):
         ge=1,
         validation_alias="WEREWOLF_STREAMLIT_RANDOM_SEED_MAX",
     )
-    streamlit_default_manual_player_id: str = Field(
-        validation_alias="WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID",
-    )
     streamlit_service_name: str = Field(
         validation_alias="WEREWOLF_STREAMLIT_SERVICE_NAME",
     )

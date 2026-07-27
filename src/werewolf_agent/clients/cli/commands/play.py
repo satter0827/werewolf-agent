@@ -104,7 +104,7 @@ def play(
         Path | None,
         typer.Option("--setup-file", help="完全なgame setupを記述したTOML file"),
     ] = None,
-    preset: Annotated[str | None, typer.Option("--preset", help="setup preset ID")] = None,
+    template: Annotated[str | None, typer.Option("--template", help="setup template ID")] = None,
     deliberation_level: Annotated[
         DeliberationLevel,
         typer.Option("--deliberation-level", help=HELP_DELIBERATION_LEVEL),
@@ -130,7 +130,7 @@ def play(
             seed=seed,
             manual_player=manual_player,
             setup_file=setup_file,
-            preset_id=preset,
+            template_id=template,
             deliberation_level=deliberation_level,
             max_steps=max_steps or settings.cli_max_steps,
             log_jsonl=log_jsonl,
@@ -148,7 +148,7 @@ def _play(
     seed: int | None,
     manual_player: str | None,
     setup_file: Path | None,
-    preset_id: str | None,
+    template_id: str | None,
     deliberation_level: DeliberationLevel = "standard",
     max_steps: int,
     log_jsonl: Path | None,
@@ -169,7 +169,7 @@ def _play(
         seed=seed,
         manual_player=manual_player,
         setup_file=setup_file,
-        preset_id=preset_id,
+        template_id=template_id,
         deliberation_level=deliberation_level,
     )
     api = client or _client()

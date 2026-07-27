@@ -23,6 +23,7 @@ from werewolf_agent.clients.streamlit.setup import (
     VIEW_ADMIN,
     VIEW_APP_SETTINGS,
     VIEW_GAME,
+    VIEW_GAME_SETTINGS,
     VIEW_HISTORY,
     VIEW_OBSERVE_SETUP,
     VIEW_PLAY_SETUP,
@@ -54,12 +55,13 @@ logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
 _WORKSPACE_NAVIGATION = {
     "play": ("nav.play", VIEW_PLAY_SETUP),
+    "game_settings": ("nav.game_settings", VIEW_GAME_SETTINGS),
     "observe": ("nav.observe", VIEW_OBSERVE_SETUP),
     "records": ("nav.records", VIEW_HISTORY),
     "admin": ("nav.admin", VIEW_ADMIN),
     "preferences": ("nav.preferences", VIEW_APP_SETTINGS),
 }
-_WORKSPACE_ORDER = ("play", "observe", "records", "admin", "preferences")
+_WORKSPACE_ORDER = ("play", "game_settings", "observe", "records", "admin", "preferences")
 
 
 class SessionStore(Protocol):

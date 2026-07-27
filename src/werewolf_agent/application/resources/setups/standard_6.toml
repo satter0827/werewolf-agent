@@ -1,0 +1,229 @@
+schema_version = 2
+
+[mechanics.role_counts]
+werewolf = 1
+seer = 1
+knight = 1
+villager = 3
+
+[mechanics.roles.werewolf]
+identity_faction = "werewolf"
+victory_team = "werewolf"
+abilities = ["night_attack", "pack_knowledge"]
+
+[mechanics.roles.seer]
+identity_faction = "village"
+victory_team = "village"
+abilities = ["inspect"]
+
+[mechanics.roles.knight]
+identity_faction = "village"
+victory_team = "village"
+abilities = ["guard"]
+
+[mechanics.roles.villager]
+identity_faction = "village"
+victory_team = "village"
+abilities = []
+
+[mechanics.abilities.night_attack]
+kind = "attack"
+phase = "night"
+target_policy = "other_alive_non_faction"
+start_day = 1
+max_uses = "unlimited"
+result_visibility = "none"
+resolution_priority = 100
+allow_repeat_target = true
+enabled_first_night = true
+tie_resolution = "random_target"
+
+[mechanics.abilities.pack_knowledge]
+kind = "knowledge"
+phase = "night"
+target_policy = "none"
+start_day = 1
+max_uses = "unlimited"
+result_visibility = "private"
+resolution_priority = 10
+allow_repeat_target = true
+enabled_first_night = true
+result_detail = "role"
+knowledge_mode = "allies"
+
+[mechanics.abilities.inspect]
+kind = "inspect"
+phase = "night"
+target_policy = "other_alive"
+start_day = 1
+max_uses = "unlimited"
+result_visibility = "private"
+resolution_priority = 200
+allow_repeat_target = true
+enabled_first_night = true
+result_detail = "faction"
+
+[mechanics.abilities.guard]
+kind = "protect"
+phase = "night"
+target_policy = "alive"
+start_day = 1
+max_uses = "unlimited"
+result_visibility = "none"
+resolution_priority = 50
+allow_repeat_target = true
+enabled_first_night = true
+
+[mechanics.rules]
+day_speech_limit_per_player = 1
+allow_self_vote = false
+allow_vote_revision = false
+allow_night_action_revision = false
+vote_tie_resolution = "no_elimination"
+starting_phase = "night"
+reveal_role_on_death = false
+require_all_actions_before_advance = true
+
+[theme]
+id = "classic_village"
+name = "古い村"
+summary = "静かな村で、隠れた人狼を探します。"
+premise = "舞台は小さな古い村です。参加者は発言と投票から隠れた人狼を探します。"
+narration_enabled = true
+
+[theme.role_names]
+werewolf = "人狼"
+seer = "占い師"
+knight = "騎士"
+villager = "村人"
+
+[theme.role_objectives]
+werewolf = "正体を隠して村人を減らし、人狼陣営を勝利させます。"
+seer = "占い結果を推理に生かし、人狼を特定します。"
+knight = "重要な村人を護衛し、村陣営の生存を助けます。"
+villager = "発言と投票から人狼を見つけ、村陣営を勝利させます。"
+
+[theme.role_descriptions]
+werewolf = "夜に襲撃し、昼は正体を隠して議論します。"
+seer = "夜にひとりを調べます。"
+knight = "夜にひとりを襲撃から守ります。"
+villager = "能力を持たず、発言と投票で推理します。"
+
+[theme.faction_names]
+village = "村陣営"
+werewolf = "人狼陣営"
+
+[theme.ability_names]
+night_attack = "襲撃"
+pack_knowledge = "仲間認識"
+inspect = "占い"
+guard = "護衛"
+
+[theme.ability_descriptions]
+night_attack = "夜に別陣営の生存者を襲撃します。"
+pack_knowledge = "同じ陣営の仲間を知ります。"
+inspect = "夜に生存者の陣営を調べます。"
+guard = "夜に生存者を襲撃から守ります。"
+
+[theme.action_names]
+speech = "発言"
+vote = "投票"
+use_ability = "能力を使う"
+pass = "見送る"
+
+[theme.phase_names]
+night = "夜"
+day_discussion = "昼の議論"
+voting = "投票"
+finished = "終幕"
+
+[theme.narration]
+game_started = ["静かな村に参加者が集まり、疑念の夜が始まりました。"]
+phase_started = ["次の時間へ進みます。"]
+night_resolved = ["夜が明けました。残された事実が議論を動かします。"]
+vote_resolved = ["投票の結果が示されました。"]
+game_finished = ["すべての決着がつきました。"]
+
+[[player_generation.identities]]
+name = "遥"
+age_min = 27
+age_max = 31
+gender = "女性"
+
+[[player_generation.identities]]
+name = "蓮"
+age_min = 28
+age_max = 34
+gender = "男性"
+
+[[player_generation.identities]]
+name = "葵"
+age_min = 23
+age_max = 29
+gender = "指定なし"
+
+[[player_generation.identities]]
+name = "湊"
+age_min = 30
+age_max = 38
+gender = "男性"
+
+[[player_generation.identities]]
+name = "結衣"
+age_min = 25
+age_max = 33
+gender = "女性"
+
+[[player_generation.identities]]
+name = "空"
+age_min = 21
+age_max = 28
+gender = "ノンバイナリー"
+
+[[player_generation.identities]]
+name = "芽衣"
+age_min = 24
+age_max = 31
+gender = "女性"
+
+[[player_generation.identities]]
+name = "樹"
+age_min = 31
+age_max = 39
+gender = "男性"
+
+[[player_generation.public_personas]]
+personality = "落ち着いて場を整理し、発言の食い違いを拾います。"
+speaking_style = "短く丁寧に確認します。"
+
+[[player_generation.public_personas]]
+personality = "疑いを早めに出して議論を動かします。"
+speaking_style = "率直に要点を話します。"
+
+[[player_generation.public_personas]]
+personality = "周囲の発言をつなげて穏やかに推理します。"
+speaking_style = "柔らかく問いかけます。"
+
+[[player_generation.public_personas]]
+personality = "少ない言葉から矛盾を探します。"
+speaking_style = "短文で慎重に話します。"
+
+[[player_generation.private_strategies]]
+reasoning_style = "時系列と投票理由を重視します。"
+risk_tolerance = "low"
+evidence_focus = "vote_consistency"
+
+[[player_generation.private_strategies]]
+reasoning_style = "反応の速さと防御感を重視します。"
+risk_tolerance = "high"
+evidence_focus = "reactions"
+
+[[player_generation.private_strategies]]
+reasoning_style = "発言の変化と便乗を重視します。"
+risk_tolerance = "medium"
+evidence_focus = "speech_changes"
+
+[[player_generation.private_strategies]]
+reasoning_style = "役職情報と盤面整合性を重視します。"
+risk_tolerance = "medium"
+evidence_focus = "role_information"

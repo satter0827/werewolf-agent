@@ -14,7 +14,11 @@ from werewolf_agent.contracts import AppError, ErrorCode, ResourceNotFoundError
 from werewolf_agent.contracts.api import (
     OperationResponse,
     PlayerActionOperationRequest,
+    SavedSetupListResponse,
+    SavedSetupRevisionResponse,
     SessionResponse,
+    SetupCreateRequest,
+    SetupRevisionCreateRequest,
 )
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
@@ -52,6 +56,53 @@ class HttpGameClient:
     def get_session(self) -> SessionResponse:
         """Return the current authenticated session capabilities."""
         return self._http.model(SessionResponse, "GET", "/api/v1/session")
+
+    def list_setups(self) -> SavedSetupListResponse:
+        """Return saved setups owned by the current user."""
+        return self._http.model(SavedSetupListResponse, "GET", "/api/v1/setups")
+
+    def create_setup(self, request: SetupCreateRequest) -> SavedSetupRevisionResponse:
+        """Create a saved setup with its first immutable revision."""
+        return self._http.model(
+            SavedSetupRevisionResponse,
+            "POST",
+            "/api/v1/setups",
+            json=request.model_dump(mode="json"),
+        )
+
+    def get_setup(self, setup_id: str) -> SavedSetupRevisionResponse:
+        """Return the latest owned revision for one setup."""
+        return self._http.model(
+            SavedSetupRevisionResponse,
+            "GET",
+            f"/api/v1/setups/{setup_id}",
+        )
+
+    def get_setup_revision(self, setup_id: str, revision: int) -> SavedSetupRevisionResponse:
+        """Return one immutable owned setup revision."""
+        return self._http.model(
+            SavedSetupRevisionResponse,
+            "GET",
+            f"/api/v1/setups/{setup_id}/revisions/{revision}",
+        )
+
+    def list_setup_revisions(self, setup_id: str) -> list[SavedSetupRevisionResponse]:
+        """Return revision history for one owned setup."""
+        response = self._http.json("GET", f"/api/v1/setups/{setup_id}/revisions")
+        return [SavedSetupRevisionResponse.model_validate(item) for item in response]
+
+    def create_setup_revision(
+        self,
+        setup_id: str,
+        request: SetupRevisionCreateRequest,
+    ) -> SavedSetupRevisionResponse:
+        """Append one immutable revision to an owned setup."""
+        return self._http.model(
+            SavedSetupRevisionResponse,
+            "POST",
+            f"/api/v1/setups/{setup_id}/revisions",
+            json=request.model_dump(mode="json"),
+        )
 
     def create_game(self, request: CreateGameRequest) -> GameResponse:
         """Create a game and wait for its asynchronous operation."""

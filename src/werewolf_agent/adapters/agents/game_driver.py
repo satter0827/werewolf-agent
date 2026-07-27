@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from importlib import import_module
 from typing import Any, Protocol
@@ -16,11 +17,8 @@ from werewolf_agent.adapters.agents.constants import (
     LLM_PROVIDER_OPENAI,
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
-from werewolf_agent.adapters.agents.mapping import to_player_profiles
 from werewolf_agent.adapters.agents.messages import (
     MESSAGE_MISSING_ATTACK_TARGET,
-    MESSAGE_MISSING_GUARD_TARGET,
-    MESSAGE_MISSING_INSPECT_TARGET,
     MESSAGE_MISSING_SPEECH_MESSAGE,
     MESSAGE_MISSING_VOTE_TARGET,
     message_langchain_openai_required,
@@ -39,6 +37,7 @@ from werewolf_agent.adapters.resources import LlmDefinitions
 from werewolf_agent.agents.models import (
     AgentAbilityContext,
     AgentActionType,
+    AgentAvailableAction,
     AgentDecision,
     AgentGameContext,
     AgentObservation,
@@ -72,7 +71,6 @@ from werewolf_agent.contracts import (
     LlmProviderError,
 )
 from werewolf_agent.domain import Action, GameView
-from werewolf_agent.domain import ActionType as DomainActionType
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +162,6 @@ def advance_game(
     prepared = prepare_advance_game(command, dependencies=context)
     driven = drive_prepared_game(
         prepared,
-        supported_agent_type=context.config.supported_agent_type,
         runtime=runtime,
     )
     computed = run_prepared_advance(driven, dependencies=context)
@@ -174,7 +171,6 @@ def advance_game(
 def drive_prepared_game(
     prepared: PreparedAdvanceGame,
     *,
-    supported_agent_type: str,
     runtime: AgentRuntime,
 ) -> PreparedAdvanceGame:
     """Generate automated actions without placing agent logic in application."""
@@ -200,6 +196,7 @@ def drive_prepared_game(
     factory = langchain_agent_factory(
         runtime.config,
         definitions=runtime.definitions,
+        profiles=_profiles_from_config(prepared.config),
         profile_ids_by_player=profile_ids,
         scenario=scenario,
         game_contexts=game_contexts,
@@ -227,7 +224,7 @@ def drive_prepared_game(
                 "game_phase": snapshot.phase.value,
                 "game_day": snapshot.day,
                 "game_version": prepared.version,
-                "agent_type": supported_agent_type,
+                "agent_type": "llm",
             },
         )
     return replace(prepared, domain_events=tuple(events))
@@ -237,6 +234,7 @@ def langchain_agent_factory(
     config: LlmProviderConfig,
     *,
     definitions: LlmDefinitions,
+    profiles: dict[str, PlayerProfile],
     profile_ids_by_player: dict[str, str] | None = None,
     scenario: AgentScenario | None = None,
     game_contexts: dict[str, AgentGameContext] | None = None,
@@ -244,7 +242,6 @@ def langchain_agent_factory(
     deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from application settings."""
-    profiles = to_player_profiles(definitions.players)
     return LlmAgentFactory(
         provider=_decision_provider(
             config,
@@ -252,11 +249,21 @@ def langchain_agent_factory(
             trace_sink=trace_sink,
             deliberation_level=deliberation_level,
         ),
-        profiles=profiles.profiles,
+        profiles=profiles,
         profile_ids_by_player=profile_ids_by_player or {},
         scenario=scenario,
         game_contexts=game_contexts or {},
     )
+
+
+def _profiles_from_config(config: Mapping[str, object]) -> dict[str, PlayerProfile]:
+    value = config.get("player_profiles")
+    if not isinstance(value, dict):
+        raise ValueError("player_profiles are required in normalized game config")
+    return {
+        str(player_id): PlayerProfile.model_validate(profile)
+        for player_id, profile in value.items()
+    }
 
 
 def _decision_provider(
@@ -403,11 +410,15 @@ def _agent_observation_from_game(
             "known_roles": dict(observation.known_roles),
             "known_factions": dict(observation.known_factions),
             "available_actions": [
-                AgentActionType(action_type.value) for action_type in observation.available_actions
+                AgentAvailableAction(
+                    type=AgentActionType(action.type.value),
+                    ability_id=action.ability_id,
+                )
+                for action in observation.available_actions
             ],
             "legal_targets": {
-                AgentActionType(action_type.value): list(player_ids)
-                for action_type, player_ids in observation.legal_targets.items()
+                str(action_key): list(player_ids)
+                for action_key, player_ids in observation.legal_targets.items()
             },
             "speeches": [
                 {
@@ -476,15 +487,19 @@ def _agent_game_contexts(
                 continue
             max_uses = ability.get("max_uses")
             used = snapshot.ability_uses.get(player.id, {}).get(str(ability_id), 0)
-            remaining = None if max_uses is None else max(0, int(max_uses) - used)
+            if max_uses == "unlimited":
+                remaining = None
+            elif isinstance(max_uses, int) and not isinstance(max_uses, bool):
+                remaining = max(0, max_uses - used)
+            else:
+                raise ValueError("ability max_uses must be an integer or unlimited")
             ability_contexts.append(
                 AgentAbilityContext(
                     id=str(ability_id),
                     name=str(
                         ability_names.get(str(ability_id)) or ability.get("label") or ability_id
                     ),
-                    action=str(ability.get("action") or "pass"),
-                    effect=str(ability.get("effect") or "pass"),
+                    kind=str(ability.get("kind") or ""),
                     remaining_uses=remaining,
                 )
             )
@@ -492,20 +507,12 @@ def _agent_game_contexts(
             "day_speech_limit_per_player",
             "allow_self_vote",
             "allow_vote_revision",
+            "allow_night_action_revision",
             "vote_tie_resolution",
+            "starting_phase",
+            "reveal_role_on_death",
+            "require_all_actions_before_advance",
         }
-        if snapshot.phase.value == "night":
-            relevant_keys = {
-                "allow_night_action_revision",
-                "enable_first_night_attack",
-                "wolf_attack_tie_resolution",
-                "seer_result_detail",
-                "medium_result_detail",
-                "allow_knight_self_guard",
-                "allow_knight_repeat_guard",
-                "allow_seer_self_inspect",
-                "allow_werewolf_friendly_fire",
-            }
         identity_faction = str(role.get("identity_faction") or "")
         victory_team = str(role.get("victory_team") or "")
         contexts[player.id] = AgentGameContext(
@@ -557,31 +564,13 @@ def _game_action_from_decision(decision: AgentDecision) -> Action:
             return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_VOTE_TARGET)
         return Action.vote(decision.player_id, decision.target_id, reason=decision.reason)
 
-    if decision.type is AgentActionType.WEREWOLF_ATTACK:
-        if decision.target_id is None:
+    if decision.type is AgentActionType.USE_ABILITY:
+        if decision.target_id is None or decision.ability_id is None:
             return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_ATTACK_TARGET)
-        return Action.attack(decision.player_id, decision.target_id, reason=decision.reason)
-
-    if decision.type is AgentActionType.SEER_INSPECT:
-        if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_INSPECT_TARGET)
-        return Action.inspect(decision.player_id, decision.target_id, reason=decision.reason)
-
-    if decision.type is AgentActionType.KNIGHT_GUARD:
-        if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_GUARD_TARGET)
-        return Action.guard(decision.player_id, decision.target_id, reason=decision.reason)
-
-    if decision.type in {
-        AgentActionType.APOTHECARY_HEAL,
-        AgentActionType.APOTHECARY_POISON,
-    }:
-        if decision.target_id is None:
-            return Action.pass_(decision.player_id, reason=decision.reason)
-        return Action(
-            type=DomainActionType(decision.type.value),
-            player_id=decision.player_id,
-            target_id=decision.target_id,
+        return Action.use_ability(
+            decision.player_id,
+            decision.ability_id,
+            decision.target_id,
             reason=decision.reason,
         )
 
