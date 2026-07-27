@@ -45,6 +45,10 @@ Werewolf AgentはLLM agentを人狼ゲームのplayerとして動かすPython ba
 5. 不要な旧path、fallback、重複を削除する。
 6. formatter、lint、型、対象テスト、品質profileを実行する。
 
+UI変更では自動Browser E2Eの成功後にBrowser画面確認スキルを使い、desktopとmobileの
+主要状態を操作して成果物と照合します。スキルを利用できない場合はAI画面レビューだけを
+`blocked`とし、自動E2Eの結果と混同しません。
+
 後方互換は要求された場合だけ維持します。可変値は設定または定義resourceへ置き、
 安定した識別子だけを所有module内で定数化します。
 

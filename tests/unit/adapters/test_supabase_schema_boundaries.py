@@ -6,7 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
-FRONTEND = ROOT / "frontend" / "src"
 
 
 def test_private_supabase_projections_are_not_data_api_tables() -> None:

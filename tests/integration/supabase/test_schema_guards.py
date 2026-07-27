@@ -16,6 +16,8 @@ from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker.service import process_worker_batch
 
+pytestmark = [pytest.mark.supabase]
+
 INSTANCE_ID = UUID(int=0)
 
 
@@ -428,3 +430,6 @@ def test_game_version_update_is_serialized_by_row_lock() -> None:
         setup.execute("delete from auth.users where id = %s", (owner_id,))
         setup.commit()
         setup.close()
+
+
+pytestmark = [pytest.mark.supabase]

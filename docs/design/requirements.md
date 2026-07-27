@@ -27,7 +27,7 @@
 | `REQ-GAME-010` | setupとmechanicsのchecksumを保存し、replayとLLM traceで追跡できる | persistence、LLM |
 | `REQ-GAME-002` | 行動受付、phase 進行、勝敗、可視性を domain が判定する | domain |
 | `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`、`fox`の正規IDで表す | domain、application |
-| `REQ-API-001` | React、CLI、Streamlit は同じ HTTP 契約でゲームを操作する | API |
+| `REQ-API-001` | CLIとStreamlitは同じHTTP契約でゲームを操作する | API |
 | `REQ-API-002` | 各clientは公開operationを分類し、対象となる利用者機能へ到達できる | API、clients |
 | `REQ-RUNTIME-001` | 外部依存の障害時もprocessのshellと安全な診断を返し、影響する機能だけを停止する | API、clients |
 | `REQ-RULE-001` | 登録済みrule policyの構成を選択し、gameとreplay snapshotへ保存できる | application、domain |
@@ -56,7 +56,7 @@
 - `villager`、`werewolf`、`seer`、`knight`、`medium`、`apothecary`、`hunter`、`madman`、`fox`の9役職
 - FakeListLLM による offline 実行
 - Supabase Auth、PostgreSQL 永続化、operation queue
-- FastAPI、React、CLI、Streamlit、worker
+- FastAPI、CLI、Streamlit、worker
 - replay、private LLM trace、管理診断
 - local と CI で共有する品質 profile
 

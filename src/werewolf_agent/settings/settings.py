@@ -160,7 +160,7 @@ class AppSettings(
 
     @property
     def api_cors_origin_values(self) -> list[str]:
-        """Return configured browser origins."""
+        """Return explicitly configured browser origins."""
         return split_csv(self.api_cors_origins)
 
     @property

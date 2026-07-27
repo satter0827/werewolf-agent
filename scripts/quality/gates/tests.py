@@ -1,4 +1,4 @@
-"""Python・Frontend test gate。"""
+"""Python unit・integration test gate。"""
 
 import os
 import sys
@@ -10,10 +10,11 @@ from pathlib import Path
 from scripts._infra.process import TEMPORARY_ROOT, CommandResult, run_command
 from scripts.quality.models import Gate, QualitySettings, RunContext
 
-UNIT_GATES = ("pytest", "vitest")
+UNIT_GATES = ("pytest",)
+INTEGRATION_GATES = ("integration",)
 COVERAGE_GATES = ("coverage",)
-DEEP_GATES = ("deep-tests", "deep-integration")
-GATES = (*UNIT_GATES, *COVERAGE_GATES, *DEEP_GATES)
+DEEP_GATES = ("deep-tests", "deep-integration", "deep-supabase")
+GATES = (*UNIT_GATES, *INTEGRATION_GATES, *COVERAGE_GATES, *DEEP_GATES)
 
 
 def build(
@@ -49,12 +50,41 @@ def build(
                 "--self-contained-html",
                 "--basetemp",
                 str(basetemp),
-                "tests",
+                "tests/unit",
             ),
             artifacts=(
                 "test-results/quick.xml",
                 "test-results/quick.json",
                 "test-results/quick.html",
+            ),
+        ),
+        Gate(
+            "integration",
+            "Offline code integration",
+            (
+                python,
+                "-m",
+                "pytest",
+                "--test-level=check",
+                "-m",
+                "not deep and not supabase",
+                "-n",
+                "0",
+                "--junitxml",
+                str(run_dir / "test-results" / "integration.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "integration.json"),
+                "--html",
+                str(run_dir / "test-results" / "integration.html"),
+                "--self-contained-html",
+                "tests/integration",
+            ),
+            dependencies=("package",),
+            artifacts=(
+                "test-results/integration.xml",
+                "test-results/integration.json",
+                "test-results/integration.html",
             ),
         ),
         Gate(
@@ -80,7 +110,7 @@ def build(
                 "--test-level=deep",
                 "--confirm-deep",
                 "-m",
-                "deep and not integration",
+                "deep",
                 "-n",
                 "0",
                 "--junitxml",
@@ -91,7 +121,7 @@ def build(
                 "--html",
                 str(run_dir / "test-results" / "deep.html"),
                 "--self-contained-html",
-                "tests",
+                "tests/unit",
             ),
             artifacts=(
                 "test-results/deep.xml",
@@ -101,7 +131,7 @@ def build(
         ),
         Gate(
             "deep-integration",
-            "Extended Supabase concurrency tests",
+            "Extended offline integration tests",
             (
                 python,
                 "-m",
@@ -109,7 +139,7 @@ def build(
                 "--test-level=deep",
                 "--confirm-deep",
                 "-m",
-                "deep and integration",
+                "deep and not supabase",
                 "-n",
                 "0",
                 "--junitxml",
@@ -120,14 +150,43 @@ def build(
                 "--html",
                 str(run_dir / "test-results" / "deep-integration.html"),
                 "--self-contained-html",
-                "tests",
+                "tests/integration",
             ),
-            dependencies=("supabase-preflight",),
-            exclusive_resources=("supabase",),
             artifacts=(
                 "test-results/deep-integration.xml",
                 "test-results/deep-integration.json",
                 "test-results/deep-integration.html",
+            ),
+        ),
+        Gate(
+            "deep-supabase",
+            "Extended Supabase integration tests",
+            (
+                python,
+                "-m",
+                "pytest",
+                "--test-level=deep",
+                "--confirm-deep",
+                "-m",
+                "deep and supabase",
+                "-n",
+                "0",
+                "--junitxml",
+                str(run_dir / "test-results" / "deep-supabase.xml"),
+                "--json-report",
+                "--json-report-file",
+                str(run_dir / "test-results" / "deep-supabase.json"),
+                "--html",
+                str(run_dir / "test-results" / "deep-supabase.html"),
+                "--self-contained-html",
+                "tests/integration/supabase",
+            ),
+            dependencies=("supabase-preflight",),
+            exclusive_resources=("supabase",),
+            artifacts=(
+                "test-results/deep-supabase.xml",
+                "test-results/deep-supabase.json",
+                "test-results/deep-supabase.html",
             ),
         ),
     ]
@@ -220,6 +279,7 @@ __all__ = [
     "COVERAGE_GATES",
     "DEEP_GATES",
     "GATES",
+    "INTEGRATION_GATES",
     "UNIT_GATES",
     "branch_coverage_contract",
     "build",

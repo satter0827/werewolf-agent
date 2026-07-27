@@ -25,10 +25,6 @@ repository内のcommandへ実装し、VS Code、CI、AIから同じ入口を使�
 
 ## 環境
 
-FrontendはNode.js 22を使用する。環境runnerは`WEREWOLF_NODE_HOME`、現在のPATH、Windowsの
-Scoop `nodejs22`の順に探索し、Node.js 22を子processのPATH先頭へ設定する。別majorの
-system Node.jsが先に存在しても品質判定へ混在させない。
-
 ```powershell
 uv run --no-project python -m scripts.environment setup check
 uv run --no-sync werewolf-agent system doctor
@@ -40,16 +36,20 @@ imageが失われていれば準備をやり直す。registry、browser配布元
 環境準備で許可する。明示的な`setup release`と`setup deep`は古いlocal Supabase schemaを
 引き継がず、既存stackを停止してbackupを残さず再作成する。
 
-VS Codeの「実行とデバッグ」では`Run: React Stack`、`Run: Streamlit Stack`、
+VS Codeの「実行とデバッグ」では`Run: Streamlit Stack`、
 `Run: CLI Play`、`Debug: API`、`Debug: Worker`を使う。`Verify: Quality`は
 Quick/Check/Release/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
 `Open: Latest Quality Report`と`Cleanup: Owned Resources`も同じ場所から実行する。
-選択は`pickString`で行い、commandや引数を手入力しない。Ensure、Supabase、Frontend
+選択は`pickString`で行い、commandや引数を手入力しない。EnsureとSupabaseの
 起動taskは内部実装として候補から隠す。stackはローカルSupabaseを含むprocessを所有し、
 debug sessionの終了時にまとめて停止する。
 
 個別gateはAI、CI、重点調査向けに`python -m scripts.quality gate <selector>`を使う。
 gateはpytest markerと公開commandだけを使い、test sourceを解析して選択しない。
+
+`tests/unit`は通常の単体テスト、`tests/integration`は複数moduleを接続したコード全体の
+テストを所有する。OSSとの連携はintegrationの対象に含める。Docker daemon、image、browser
+導入状態などの実行環境はtestで判定せず、環境準備と品質gateが事前条件として扱う。
 
 ## 検証
 

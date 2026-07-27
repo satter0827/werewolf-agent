@@ -55,5 +55,5 @@ def test_sdist_exposes_only_python_build_inputs() -> None:
     )[0]
 
     assert '"src",' in sdist
-    for private_surface in ('"docker",', '"docs",', '"frontend",', '"scripts",', '"tests",'):
+    for private_surface in ('"docker",', '"docs",', '"scripts",', '"tests",'):
         assert private_surface not in sdist

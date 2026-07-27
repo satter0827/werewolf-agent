@@ -43,15 +43,6 @@
       "console": "integratedTerminal"
     },
     {
-      "name": "Internal: React",
-      "type": "pwa-chrome",
-      "request": "launch",
-      "preLaunchTask": "Internal: Frontend Dev",
-      "url": "http://127.0.0.1:5173",
-      "webRoot": "${workspaceFolder}/frontend/src",
-      "presentation": { "hidden": true }
-    },
-    {
       "name": "Internal: Streamlit",
       "type": "debugpy",
       "request": "launch",
@@ -151,17 +142,6 @@
     }
   ],
   "compounds": [
-    {
-      "name": "Run: React Stack",
-      "configurations": [
-        "Internal: Supabase Stack",
-        "Debug: API",
-        "Debug: Worker",
-        "Internal: React"
-      ],
-      "preLaunchTask": "Internal: Supabase Preflight",
-      "stopAll": true
-    },
     {
       "name": "Run: Streamlit Stack",
       "configurations": [

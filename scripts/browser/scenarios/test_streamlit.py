@@ -1,0 +1,179 @@
+"""Streamlit主要導線のリリース前Browser検査。"""
+
+from __future__ import annotations
+
+import os
+import re
+from collections.abc import Callable
+from pathlib import Path
+
+import httpx
+from playwright.sync_api import Locator, Page, expect
+
+from scripts.browser.scenarios.api import create_authenticated_user, create_completed_game
+from scripts.browser.scenarios.quality import (
+    assert_no_horizontal_overflow,
+    assert_streamlit_quality,
+)
+
+
+def test_setup_sections_and_validation(
+    page: Page,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    page.goto(streamlit_url)
+    expect(page.get_by_text("Werewolf Agent", exact=True)).to_be_visible()
+    expect(page.get_by_role("heading", name="ゲーム開始設定")).to_be_visible()
+    for name in ("世界観", "役職", "登場人物", "ルール"):
+        expect(page.get_by_role("tab", name=name)).to_be_visible()
+    page.get_by_role("tab", name="役職").click()
+    villager_count = page.get_by_role("spinbutton", name="村人", exact=True)
+    villager_count.fill("0")
+    villager_count.press("Tab")
+    expect(page.get_by_text(re.compile(r"合計人数は .* 人にしてください"))).to_be_visible()
+    assert_streamlit_quality(page)
+    capture_public_screenshot(
+        page,
+        f"streamlit-setup-validation-{device_name}.png",
+    )
+
+
+def test_gameplay_waiting_speech_target_and_progress(
+    page: Page,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    page.goto(streamlit_url)
+    page.get_by_role("tab", name="役職").click()
+    villager_count = page.get_by_role("spinbutton", name="村人", exact=True)
+    villager_count.fill("2")
+    villager_count.press("Tab")
+    page.get_by_role("button", name="新しいゲームを始める").click()
+    expect(page.get_by_role("heading", name="月明かりの卓")).to_be_visible(timeout=30_000)
+    expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
+    expect(page.locator(".wa-status")).to_have_count(6)
+    expect(page.locator(".wa-seat")).to_have_count(5)
+    advance = page.get_by_role("button", name="1ステップ進める")
+    expect(advance).to_be_visible(timeout=30_000)
+    advance.focus()
+    page.keyboard.press("Enter")
+    message = page.get_by_label("発言内容")
+    expect(message).to_be_visible(timeout=30_000)
+    message.fill("公開情報を整理して話します。")
+    message.press("Tab")
+    submit = page.get_by_role("button", name="入力を送信")
+    expect(submit).to_be_enabled()
+    submit.click()
+    expect(page.locator('[data-testid="stStatusWidget"]')).to_have_count(1)
+    expect(page.get_by_label("対象を選ぶ")).to_be_visible(timeout=30_000)
+    assert_streamlit_quality(page)
+    capture_public_screenshot(
+        page,
+        f"streamlit-gameplay-{device_name}.png",
+    )
+
+
+def test_completed_game_presents_result_before_timeline(
+    page: Page,
+    api_client: httpx.Client,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    api_url = os.environ.get("PLAYWRIGHT_API_URL", "http://api:8000")
+    email, password, token = create_authenticated_user(
+        api_client,
+        os.environ["PLAYWRIGHT_SUPABASE_URL"],
+        os.environ["PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY"],
+    )
+    create_completed_game(api_client, api_url, token)
+    page.goto(streamlit_url)
+    _open_sidebar_if_needed(page)
+    login = page.locator('[data-testid="stExpander"] summary').filter(has_text="ログイン")
+    login.focus()
+    page.keyboard.press("Enter")
+    page.get_by_label("メールアドレス").fill(email)
+    page.get_by_label("パスワード").fill(password)
+    button = page.get_by_role("button", name="ログイン", exact=True).last
+    button.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_text(email)).to_be_visible(timeout=30_000)
+    record = page.get_by_role("button", name="記録を開く", exact=True)
+    record.focus()
+    page.keyboard.press("Enter")
+    result = page.get_by_text("結果サマリー", exact=True)
+    expect(result).to_be_visible(timeout=30_000)
+    result_box = result.bounding_box()
+    timeline_box = page.get_by_text("公開タイムライン", exact=True).first.bounding_box()
+    assert result_box is not None and timeline_box is not None
+    assert result_box["y"] < timeline_box["y"]
+    expect(page.get_by_role("button", name="1ステップ進める")).to_have_count(0)
+    assert_streamlit_quality(page)
+    capture_public_screenshot(
+        page,
+        f"streamlit-gameplay-complete-{device_name}.png",
+    )
+
+
+def test_observer_uses_public_presentation(
+    page: Page,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    page.goto(streamlit_url)
+    _open_navigation(page, "観戦")
+    expect(page.get_by_role("heading", name="観戦開始設定")).to_be_visible()
+    page.get_by_role("button", name="観戦を始める").click()
+    expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
+    expect(page.get_by_text("観戦モード", exact=True).first).to_be_visible()
+    assert_streamlit_quality(page)
+    capture_public_screenshot(
+        page,
+        f"streamlit-observer-{device_name}.png",
+    )
+
+
+def test_records_settings_and_narrow_layout(
+    page: Page,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    page.goto(streamlit_url)
+    _open_navigation(page, "記録")
+    expect(page.get_by_role("heading", name="ゲーム記録")).to_be_visible()
+    expect(page.get_by_role("button", name="プレイを始める")).to_be_visible()
+    expect(page.get_by_role("button", name="観戦を始める")).to_be_visible()
+    _open_navigation(page, "表示設定")
+    expect(page.get_by_role("heading", name="表示設定")).to_be_visible()
+    for name in ("表示", "役職定義", "人物定義"):
+        expect(page.get_by_role("tab", name=name)).to_be_visible()
+    assert_streamlit_quality(page)
+    if device_name == "desktop":
+        page.set_viewport_size({"width": 320, "height": 844})
+        assert_no_horizontal_overflow(page)
+        _open_navigation(page, "プレイ")
+        expect(page.get_by_role("heading", name="ゲーム開始設定")).to_be_visible()
+    capture_public_screenshot(
+        page,
+        f"streamlit-settings-{device_name}.png",
+    )
+
+
+def _open_navigation(page: Page, label: str) -> None:
+    _open_sidebar_if_needed(page)
+    button: Locator = page.get_by_role("button", name=label, exact=True).first
+    button.focus()
+    page.keyboard.press("Enter")
+
+
+def _open_sidebar_if_needed(page: Page) -> None:
+    button = page.get_by_role(
+        "button", name=re.compile(r"open sidebar|keyboard_double_arrow_right", re.I)
+    )
+    if button.is_visible():
+        button.click()

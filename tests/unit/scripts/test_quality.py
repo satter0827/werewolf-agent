@@ -22,7 +22,7 @@ from scripts._infra.process import (
 )
 from scripts.quality import retention
 from scripts.quality import runner as quality
-from scripts.quality.gates import distribution, frontend, repository, runtime
+from scripts.quality.gates import distribution, repository, runtime
 from scripts.quality.gates import environment as environment_gate
 from scripts.quality.gates import tests as test_gates
 
@@ -115,14 +115,12 @@ def test_profiles_have_expected_order_and_isolated_commands() -> None:
     deep = {gate.name for stage in quality._profile_stages("deep", 1) for gate in stage}
 
     assert quick < check < release < deep
-    assert {"pytest", "mypy", "eslint", "vitest"} <= quick
-    assert {"coverage", "docs", "package"} <= check
+    assert {"pytest", "mypy"} <= quick
+    assert {"coverage", "docs", "package", "integration"} <= check
     assert "benchmark" not in check
     assert "benchmark" in deep
-    assert "schemathesis-stateful" not in check
-    assert "schemathesis-stateful" in deep
-    assert {"supabase-preflight", "integration", "docker"} <= release
-    assert {"deep-tests", "deep-integration"} <= deep
+    assert {"supabase-preflight", "supabase-integration", "docker"} <= release
+    assert {"deep-tests", "deep-integration", "deep-supabase"} <= deep
     assert all(gate.command for stage in quality._profile_stages("deep", 1) for gate in stage)
 
 
@@ -190,48 +188,6 @@ def test_environment_gate_classifies_fingerprint_error_as_nonzero_result(
     assert "fingerprint" in result.output
 
 
-def test_frontend_gate_recognizes_windows_native_policy_block() -> None:
-    assert frontend._native_binding_blocked(
-        "Error: An Application Control policy has blocked this file."
-    )
-    assert frontend._native_binding_blocked(
-        "アプリケーション制御ポリシーによってこのファイルがブロックされました。"
-    )
-    assert not frontend._native_binding_blocked("AssertionError: expected true")
-
-
-def test_frontend_unit_gate_falls_back_to_current_e2e_image(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    results = iter(
-        (
-            support.CommandResult(
-                ("npm", "test"), 1, 0.1, "Application Control policy has blocked"
-            ),
-            support.CommandResult(("docker", "compose", "build"), 0, 0.2, "built\n"),
-            support.CommandResult(("docker", "compose", "run"), 0, 0.3, "25 passed\n"),
-        )
-    )
-    commands: list[list[str]] = []
-
-    def fake_run(command, **_kwargs):
-        commands.append(list(command))
-        return next(results)
-
-    monkeypatch.setattr(frontend, "npm_executable", lambda: "npm")
-    monkeypatch.setattr(frontend, "run_command", fake_run)
-    context = SimpleNamespace(timeout_seconds=60, environment={})
-
-    result = frontend._test_action(context, tmp_path)
-
-    assert result.returncode == 0
-    assert commands[0] == ["npm", "test"]
-    assert commands[1][-2:] == ["build", "e2e"]
-    assert commands[2][-3:] == ["e2e", "npm", "test"]
-    assert result.output == "built\n25 passed\n"
-
-
 def test_quality_environment_cannot_override_isolation_invariants() -> None:
     """追加する接続情報からもsecretを除き、provider隔離を最後に強制する。"""
 
@@ -261,18 +217,16 @@ def test_quality_environment_keeps_only_explicit_public_supabase_keys() -> None:
     environment = quality_environment(
         extra={
             "OPENAI_API_KEY": "paid-secret",
-            "VITE_SUPABASE_PUBLISHABLE_KEY": "local-public-key",
             "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "local-public-key",
         }
     )
 
     assert "OPENAI_API_KEY" not in environment
-    assert environment["VITE_SUPABASE_PUBLISHABLE_KEY"] == "local-public-key"
     assert environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"] == "local-public-key"
 
 
 def test_browser_e2e_uses_the_shared_isolated_environment() -> None:
-    """ReactとStreamlitの共通E2Eへ安全な子process環境だけを渡す。"""
+    """Streamlit E2Eへ安全な子process環境だけを渡す。"""
     source = (ROOT / "scripts" / "browser" / "e2e.py").read_text(encoding="utf-8")
 
     assert "quality_environment(" in source
@@ -568,7 +522,7 @@ def test_branch_coverage_contract_enforces_independent_threshold(tmp_path: Path)
                 "--collect-only",
                 "tests/integration/package/test_distribution.py",
             ],
-            "Selected tests require --test-level=release.",
+            "Selected tests require --test-level=check.",
         ),
         (
             [
@@ -777,7 +731,7 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         "Dependencies: Audit",
     }
     compounds = {compound["name"]: compound for compound in launch["compounds"]}
-    assert set(compounds) == {"Run: React Stack", "Run: Streamlit Stack"}
+    assert set(compounds) == {"Run: Streamlit Stack"}
     assert all(
         "Internal: Supabase Stack" in compound["configurations"] and compound["stopAll"] is True
         for compound in compounds.values()
@@ -788,11 +742,6 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         if configuration["name"] == "Internal: Supabase Stack"
     )
     assert supabase_launch["postDebugTask"] == "Internal: Supabase Stop"
-    frontend_task = next(
-        task for task in tasks["tasks"] if task["label"] == "Internal: Frontend Dev"
-    )
-    assert frontend_task["isBackground"] is True
-    assert frontend_task["problemMatcher"][0]["background"]["endsPattern"]
     inputs = {item["id"]: item for item in launch["inputs"]}
     assert inputs["qualityLevel"]["type"] == "pickString"
     assert inputs["qualityLevel"]["options"] == ["quick", "check", "release", "deep"]
@@ -816,12 +765,10 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert "include-hidden-files: true" in workflow
     assert ".werewolf-agent/build" in workflow
     assert not (ROOT / ".github" / "workflows" / "docker.yml").exists()
-    assert settings["python.testing.pytestArgs"] == ["--test-level=quick", "tests"]
+    assert settings["python.testing.pytestArgs"] == ["--test-level=quick", "tests/unit"]
     assert "flake8.enabled" not in settings
     assert "isort.serverEnabled" not in settings
     assert "ms-python.mypy-type-checker" in extensions["recommendations"]
-    assert "dbaeumer.vscode-eslint" in extensions["recommendations"]
-    assert "esbenp.prettier-vscode" in extensions["recommendations"]
 
 
 def test_runtime_docker_dependencies_are_cached_before_source_copy() -> None:

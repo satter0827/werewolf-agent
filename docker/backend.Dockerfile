@@ -22,7 +22,6 @@ FROM base AS dev
 COPY .github ./.github
 COPY docker ./docker
 COPY docs ./docs
-COPY frontend ./frontend
 COPY tests ./tests
 COPY .env.example AGENTS.md compose.yaml ./
 COPY contracts/openapi.json ./contracts/openapi.json

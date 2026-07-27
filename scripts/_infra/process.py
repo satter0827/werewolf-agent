@@ -17,8 +17,6 @@ from pathlib import Path
 from types import TracebackType
 from typing import Any, TextIO
 
-from scripts._infra.node import preferred_node_directory
-
 REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 ARTIFACT_ROOT = REPOSITORY_ROOT / ".werewolf-agent"
 QUALITY_ROOT = ARTIFACT_ROOT / "quality"
@@ -43,12 +41,7 @@ _SECRET_KEYS = (
     "service_role",
     "token",
 )
-_PUBLIC_ENVIRONMENT_KEYS = frozenset(
-    {
-        "vite_supabase_publishable_key",
-        "werewolf_supabase_publishable_key",
-    }
-)
+_PUBLIC_ENVIRONMENT_KEYS = frozenset({"werewolf_supabase_publishable_key"})
 _PRIVATE_KEYS = (
     "night_action",
     "private_state",
@@ -165,9 +158,6 @@ def quality_environment(
 ) -> dict[str, str]:
     """外部providerとtelemetryを無効にした子プロセス環境を返す。"""
     environment = dict(os.environ)
-    node_directory = preferred_node_directory()
-    if node_directory is not None:
-        environment["PATH"] = str(node_directory) + os.pathsep + environment.get("PATH", "")
     if extra:
         environment.update(extra)
     for name in tuple(environment):

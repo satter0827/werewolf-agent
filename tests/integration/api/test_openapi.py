@@ -1,4 +1,4 @@
-"""SchemathesisによるOpenAPI positive/negative contract探索。"""
+"""SchemathesisによるOpenAPIの正常系・異常系探索。"""
 
 import schemathesis
 from hypothesis import HealthCheck, settings
@@ -29,13 +29,13 @@ negative_schema.config.generation.update(
 
 @positive_schema.parametrize()
 @settings(suppress_health_check=[HealthCheck.filter_too_much])
-def test_authenticated_contract_handles_generated_positive_input(case) -> None:
+def test_authenticated_api_handles_generated_positive_input(case) -> None:
     case.headers = {"Authorization": "Bearer invalid"}
     case.call_and_validate()
 
 
 @negative_schema.parametrize()
 @settings(suppress_health_check=[HealthCheck.filter_too_much])
-def test_authenticated_contract_rejects_generated_negative_input(case) -> None:
+def test_authenticated_api_rejects_generated_negative_input(case) -> None:
     case.headers = {"Authorization": "Bearer invalid"}
     case.call_and_validate()

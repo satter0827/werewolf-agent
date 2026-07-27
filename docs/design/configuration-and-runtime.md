@@ -45,8 +45,7 @@ queue障害時も既存operationの参照を維持する。
 | API | `werewolf-agent-api` | HTTP、認証、application composition |
 | worker | `werewolf-agent-worker` | operation queue、自動進行、LLM |
 | CLI | `werewolf-agent` | 診断と HTTP client 操作 |
-| Streamlit | `streamlit run .../app.py` | 補助 UI |
-| React | frontend package scripts | 本番 browser UI |
+| Streamlit | `streamlit run .../app.py` | browser UI |
 
 起動は console entrypoint、VS Code task、Docker Compose のいずれでも同じ設定モデルを
 使う。起動手段ごとの設定コピーを作らない。

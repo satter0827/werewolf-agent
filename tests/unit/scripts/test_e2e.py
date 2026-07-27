@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from scripts._infra.process import EnvironmentBlockedError
 from scripts.browser import e2e
+from scripts.browser.scenarios.quality import FORBIDDEN_INTERNAL_TERMS
+from scripts.quality.gates import browser as browser_gate
 
 
 def _environment() -> dict[str, str]:
@@ -36,16 +38,41 @@ def test_commands_never_build_or_pull_images(tmp_path: Path) -> None:
     assert str(tmp_path.resolve()) in flattened
 
 
-def test_playwright_blocks_nonlocal_browser_requests() -> None:
-    """画面testからlocal service以外へのrequestを失敗させる。"""
-    fixture = (Path(__file__).resolve().parents[3] / "frontend" / "e2e" / "fixtures.ts").read_text(
+def test_e2e_image_installs_browser_before_source_and_excludes_code_tests() -> None:
+    """Browser取得layerをsource変更から分離し、品質scenarioだけを同梱する。"""
+    dockerfile = (Path(__file__).resolve().parents[3] / "docker" / "e2e.Dockerfile").read_text(
         encoding="utf-8"
     )
 
+    assert "--no-install-project" in dockerfile
+    assert dockerfile.index("playwright install") < dockerfile.index("COPY src")
+    assert "COPY tests" not in dockerfile
+
+
+def test_browser_gate_declares_public_contact_sheet() -> None:
+    """一覧画像をprivate成果物と混在しない公開pathで要求する。"""
+    gate = browser_gate.build()[0]
+
+    assert "browser/public/contact-sheet.png" in gate.artifacts
+    assert "browser/contact-sheet.png" not in gate.artifacts
+
+
+def test_playwright_blocks_nonlocal_browser_requests() -> None:
+    """画面testからlocal service以外へのrequestを失敗させる。"""
+    fixture = (
+        Path(__file__).resolve().parents[3] / "scripts" / "browser" / "scenarios" / "conftest.py"
+    ).read_text(encoding="utf-8")
+
     assert 'page.route("**/*"' in fixture
-    assert "route.abort" in fixture
+    assert 'route.abort("blockedbyclient")' in fixture
     assert "host.docker.internal" in fixture
-    assert "blockedHosts" in fixture
+    assert "blocked_hosts" in fixture
+
+
+def test_internal_term_pattern_rejects_terms_without_matching_identifiers() -> None:
+    """内部用語は単語として拒否し、UUIDやemailの一部を誤検知しない。"""
+    assert FORBIDDEN_INTERNAL_TERMS.search("API provider")
+    assert not FORBIDDEN_INTERNAL_TERMS.search("streamlit-e2e-2dbf@example.com")
 
 
 def test_run_e2e_rejects_missing_local_configuration(

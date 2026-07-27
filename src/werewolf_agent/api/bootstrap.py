@@ -54,7 +54,6 @@ from werewolf_agent.contracts.api import (
     PublicRuntimeConfig,
     PublicRuntimeFeatures,
     PublicRuntimeLimits,
-    PublicUiConfig,
 )
 from werewolf_agent.security.principal import Principal, SupabaseJwtAuthenticator
 from werewolf_agent.settings import AppSettings, get_settings
@@ -132,13 +131,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         max_concurrent_requests=runtime.api_max_concurrent_requests,
     )
     app.add_middleware(ApiSecurityHeadersMiddleware)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=runtime.api_cors_origin_values,
-        allow_credentials=False,
-        allow_methods=["GET", "POST"],
-        allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
-    )
+    if runtime.api_cors_origin_values:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=runtime.api_cors_origin_values,
+            allow_credentials=False,
+            allow_methods=["GET", "POST"],
+            allow_headers=["Authorization", "Content-Type", "Idempotency-Key"],
+        )
     install_error_handlers(app)
     app.include_router(config.router, prefix="/api/v1")
     app.include_router(games.router, prefix="/api/v1")
@@ -219,16 +219,6 @@ def _public_runtime_config(settings: AppSettings) -> PublicRuntimeConfig:
             paid_llm_for_members=True,
             admin_reveal=settings.reveal_api_enabled,
             admin_replay=True,
-        ),
-        ui=PublicUiConfig(
-            theme_id=settings.ui_theme_id,
-            spacing_unit=settings.ui_spacing_unit,
-            desktop_breakpoint=settings.ui_desktop_breakpoint,
-            motion=settings.ui_motion,
-            default_manual_player_id=settings.ui_default_manual_player_id,
-            default_setup_seed=settings.ui_default_setup_seed,
-            operation_poll_interval_ms=settings.ui_operation_poll_interval_ms,
-            operation_poll_timeout_ms=settings.ui_operation_poll_timeout_ms,
         ),
     )
 

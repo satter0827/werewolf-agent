@@ -7,12 +7,12 @@
 ## 現在地
 
 - 第二段階は`develope`の`c5427403`から分離worktreeで開始した
-- React、Streamlit、CLIのゲーム通信をHTTP APIへ統一した
+- StreamlitとCLIのゲーム通信をHTTP APIへ統一した
 - `api`を独立させ、workerは実行interfaceとして`interfaces/worker`へ配置した
 - Pythonのusecase公開面を`GameApplication`へ集約した
 - Supabaseへcommand、event、snapshot、projection、checksumを保存するbaselineを追加した
 - anonymous gameをFakeListLLM、ログインgameを有料providerへ作成時固定した
-- React本番UIとStreamlit MOCへゲスト、ログイン、ログアウト導線を追加した
+- Streamlitへゲスト、ログイン、ログアウト導線を追加した
 - JWT、認可、rate limit、body size、timeout、同時実行数、idempotency、version競合をAPI境界へ追加した
 - idempotency keyの異なるrequestへの再利用をrequest hashで拒否するようにした
 - 手動操作を含む全状態変更でversionを進め、履歴上書きを防止した
@@ -20,20 +20,16 @@
 - operation診断、LLM trace、利用量を管理APIへ隔離した
 - 通常UIの`GameClient`からadmin revealを除去し、観戦表示をpublic timelineだけで
   構築するようにした
-- Reactのprivate observation取得をプレイ画面だけへ限定し、観戦、履歴、設定では
-  ブラウザへ秘匿データを渡さないようにした
+- private observation取得をプレイ画面だけへ限定し、観戦、履歴、設定へ秘匿データを
+  渡さないようにした
 - API rate limitを認証前のIPとJWT検証後の利用者・gameへ分離し、token refreshや
   game IDの変更による上限回避、未検証claimの悪用、任意キーによるbucketの
   無制限増加とactive bucketの追い出しを防止した
-- Playwright testを`frontend/e2e`、migration・OpenAPI補助処理を`scripts`へ統合し、
-  トップ階層の`e2e`と`tools`が再作成されないよう構造テストで固定した
-- frontend開発依存を更新してnpm auditを0件にし、CIへ依存監査、生成client差分、
-  unit test、lint、buildを追加した
+- Browser品質scenario、migration、OpenAPI補助処理を`scripts`へ統合した
 - Dockerのtest imageへtestsを含め、test serviceをmigrationから独立させた。
   CIとローカルのunit testはSupabase未起動でも実際に収集・実行される
-- Reactへ観戦専用game作成と完了結果を開く導線を追加し、Streamlitとの機能差を解消した
-- 文章上限をAPIの型付き公開設定へ集約し、ReactとStreamlitが
-  `limits.message_max_chars`を取得して同じ受理条件を使うようにした
+- 文章上限をAPIの型付き公開設定へ集約し、Streamlitが`limits.message_max_chars`を
+  取得して同じ受理条件を使うようにした
 - 既存gameのoperationは保存済みLLM modeをqueueで再解決し、途中ログインによって
   監査値や冪等性hashが変化しないようにした
 - worker実行時にもgame参加権限とplayer seat所有を再検証し、queue待機中の権限失効を
@@ -83,7 +79,6 @@
 | `src/werewolf_agent/adapters/supabase/` | Auth、repository、operation、private trace sink |
 | `src/werewolf_agent/api/` | FastAPIとHTTP composition root |
 | `src/werewolf_agent/clients/` | CLI、Streamlit、非同期worker |
-| `frontend/` | generated clientを使うReact本番UI |
 | `src/werewolf_agent/settings/` | settings、TOML、resource検証 |
 | `src/werewolf_agent/observability/` | loggingと実行context |
 | `src/werewolf_agent/security/` | redaction |
@@ -167,12 +162,11 @@ pytest単体の既定levelは`quick`です。integration、monkey、benchmark、
 - Coverage対象: 359件成功、環境条件による1件skip
 - Integration: 6件成功
 - Deep: 4件成功
-- React unit test: 21件成功
-- Browser E2E: 15件成功、desktop対象外のmobile専用1件skip
+- Browser E2E: desktopとmobileの主要導線を確認
 - Coverage: 総合74.26%、line 79.32%、branch 49.03%
 - Core benchmark: 平均0.236ms
-- Ruff lint・format・docstring、mypy、Architecture、Prettier、TypeScript: 成功
-- OpenAPI JSON・TypeScript生成型、Sphinx warning-as-error、wheel・sdist: 成功
+- Ruff lint・format・docstring、mypy、Architecture: 成功
+- OpenAPI JSON、Sphinx warning-as-error、wheel・sdist: 成功
 - 隔離Supabase、API、worker、RLS、nonroot Docker runtime、外部通信遮断: 成功
 
 最新値は`.werewolf-agent/quality/latest`の`report.json`と`summary.md`を正とします。

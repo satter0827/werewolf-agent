@@ -11,7 +11,7 @@
 | Profile | 責務 |
 | --- | --- |
 | `quick` | architecture、format、lint、型、unit、軽量Hypothesis |
-| `check` | Quick、offline test、coverage観測、docs、OpenAPI、Schemathesis、build |
+| `check` | Quick、offline integration、coverage観測、docs、OpenAPI、Schemathesis、build |
 | `release` | Check、Supabase、API、worker、clients、browser、package、container |
 | `deep` | 長時間stateful、fault injection、性能観測 |
 | `review` | UI、Gameplay、Local LLMの読解用証拠。合否には含めない |
@@ -67,7 +67,7 @@ test結果、coverage、画面を含む一式でlatestを置換する。失敗ru
 Playwrightは操作、contract、accessibility、console、外部通信を判定する。見た目はpixel
 差分で合否を出さず、setup 4tabs、validation、待機、発言、対象選択、送信中、完了、観戦、
 Recordsの空・記録あり、Settings、縮退表示を含むdesktop/mobileの個別画像、2列の一覧画像、
-HTML/JSONを人が読む。320pxはStreamlit spec内で確認し、Reactのproject数は増やさない。
+HTML/JSONを人が読む。320pxはStreamlit scenario内で確認する。
 client fault testはAPI、Auth、database、operation queue、worker、LLM、翻訳overrideを個別に
 故障させ、停止範囲が依存するfeatureに限られることを確認する。packaged CSSとview構造はbuild時に
 固定し、外部overrideの故障経路を持たない。画面はkeyboard、
@@ -76,6 +76,8 @@ i18n overrideの正常系では言語catalogがrendererへ届くことを検証�
 packaged catalogへ戻ることを検証する。
 環境準備testはmarkerとimage cacheの不一致、Docker daemon停止、全必須imageありを個別に作り、
 release系profileだけが現在のDocker contextを検査することを確認する。
+品質runnerはinstalled distributionの正規化名、version、`RECORD` metadataを実行前後で比較し、
+品質判定中のPython環境変更を失敗にする。
 coverage、benchmark、面白さ、会話品質にも根拠のない閾値を置かず、観測値と証拠を残す。
 Gameplay reviewは現在のrules、roles、abilitiesからseed固定で一局を完走し、設定、操作列、
 公開timeline、終局を保存する。解決前の行動対象などprivate情報はreview証拠へ保存しない。
@@ -93,7 +95,6 @@ SHA-256 manifestを保存する。private traceにはpromptと本人のobservati
 `local-ui`は認証済みの専用利用者とAPI driverで一局を完走し、worker traceが`lmstudio`だけで
 あることをmodelを含めDBで照合する。品質用resourceを停止しない専用Compose projectを所有し、
 最新sourceのimageをbuildしてから起動する。Streamlitの作成直後、進行中、公開timeline、終了、
-異常表示を撮影し、contact sheet、console、networkをpublicへ保存する。Reactは現在の明示Local
-LLM画面確認の対象外とする。passwordや認証通信を含み得る
+異常表示を撮影し、contact sheet、console、networkをpublicへ保存する。passwordや認証通信を含み得る
 Playwright traceとnative reportはprivateへ保存し、通常の品質browser suiteからは明示Local specを
 除外する。品質子processは通常とworker paid modeの両方をFake adapterへ固定する。

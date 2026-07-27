@@ -6,7 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
-FRONTEND = ROOT / "frontend" / "src"
 
 
 def test_api_entrypoint_uses_the_shared_redacting_log_pipeline() -> None:

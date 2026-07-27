@@ -33,24 +33,16 @@ def test_local_ui_compose_environment_hard_locks_local_provider(
         "http://host.docker.internal:1234/v1"
     )
     assert environment["COMPOSE_PROJECT_NAME"] == "werewolf-agent-local-ui"
-    assert environment["PLAYWRIGHT_OUTPUT_DIR"].startswith(
-        "/tmp/werewolf-agent/playwright/private/"
-    )
-    assert int(environment["WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS"]) == (
-        ui.LOCAL_UI_OPERATION_TIMEOUT_MILLISECONDS
-    )
-    assert ui.LOCAL_UI_OPERATION_TIMEOUT_MILLISECONDS == 1_200_000
-    assert environment["WEREWOLF_UI_DEFAULT_SETUP_SEED"] == "7"
+    assert environment["PLAYWRIGHT_OUTPUT_DIR"] == "/tmp/werewolf-agent/playwright"
 
 
-def test_local_ui_builds_owned_images_before_start(tmp_path: Path) -> None:
+def test_local_ui_uses_environment_prepared_images(tmp_path: Path) -> None:
     commands = ui._commands(tmp_path)
 
-    assert commands[0][:5] == ("docker", "compose", "--profile", "e2e", "build")
-    assert commands[1][-4:] == ("migrate", "api", "worker", "streamlit")
-    assert "frontend-e2e" not in commands[0]
-    assert "frontend-e2e" not in commands[1]
-    assert commands[2][-7:] == ("e2e", "npm", "run", "test:e2e", "--", "--grep", "@local-llm")
+    assert commands[0][-4:] == ("migrate", "api", "worker", "streamlit")
+    assert "--no-build" in commands[0]
+    assert commands[1][-1] == "scripts/browser/scenarios/test_local_llm.py"
+    assert "pytest" in commands[1]
 
 
 def test_local_ui_result_rejects_fake_or_openai_trace() -> None:

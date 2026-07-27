@@ -29,4 +29,3 @@ SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({"llm"})
 
 StreamlitLanguage = Literal["ja", "en"]
 StreamlitSidebarState = Literal["auto", "expanded", "collapsed"]
-UiMotion = Literal["system", "reduced"]

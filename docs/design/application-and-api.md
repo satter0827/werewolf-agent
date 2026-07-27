@@ -31,6 +31,9 @@ FastAPI は application composition root として、設定、repository、認�
 - 安全な例外だけを Problem Details へ変換する。
 - stack trace と token を応答へ含めず、private state を通常応答へ含めない。
 
+CORSはAPIの一般的な外部境界として扱う。既定では無効とし、
+`WEREWOLF_API_CORS_ORIGINS`へ許可originを明示した場合だけmiddlewareを有効にする。
+
 完全状態を返す reveal は通常の game route と `GameClient` port から分離する。管理者
 認可と `reveal_api_enabled` の両方を満たす専用 route だけが reveal DTO を返す。
 整合性、operation、LLM 利用量の診断 API は private payload を返さない。
@@ -59,7 +62,7 @@ repositoryとstoreはtransactionを開始しない。
 ## 契約の管理
 
 外部契約は`werewolf_agent.contracts`に置き、`contracts/openapi.json`を正本とする。
-React clientはOpenAPIから生成し、
+公開HTTP schemaはOpenAPIから生成し、
 手書きの HTTP 型を並行して管理しない。CLI と Streamlit は `GameClient` port と
 public wire schema を使い、domain や repository を直接 import しない。
 winnerと公開factionは`village`、`werewolf`のenumを使い、clientだけの別名を持たない。

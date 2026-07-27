@@ -9,11 +9,14 @@ from scripts.quality.profiles import expand_selectors
 
 
 def select_stages(
-    all_stages: Sequence[Sequence[Gate]], selectors: Sequence[str]
+    all_stages: Sequence[Sequence[Gate]],
+    selectors: Sequence[str],
+    *,
+    expand_groups: bool = True,
 ) -> list[list[Gate]]:
     """Profile catalogから選択したgateの実行stageを返す。"""
     catalog = {gate.name: gate for stage in all_stages for gate in stage}
-    names = expand_selectors(selectors, set(catalog))
+    names = expand_selectors(selectors, set(catalog)) if expand_groups else set(selectors)
     pending = list(names)
     while pending:
         name = pending.pop()

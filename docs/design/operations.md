@@ -11,7 +11,7 @@ repository 内では起動前検証、migration、worker 実行、品質確認�
 2. migration job が schema を確認して必要な migration を適用する。
 3. API と worker が設定と packaged resource を検証して起動する。
 4. `/health` の`instance_id`、`started_at`、`config_fingerprint`が対象processを確認する。
-5. frontend が対応する API contract を使って公開される。
+5. Streamlitが対応するAPI contractを使って公開される。
 
 各 process と `doctor` は同じ `AppSettings` と resource loader を使う。VS Code、
 Docker、配布基盤で別の設定 validation を作らない。

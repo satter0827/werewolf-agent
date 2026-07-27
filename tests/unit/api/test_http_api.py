@@ -189,8 +189,7 @@ def test_public_config_contains_verifiable_values_without_secrets() -> None:
     payload = response.json()
     assert payload["contract_version"] == "v1"
     assert payload["config_revision"]
-    assert payload["ui"]["theme_id"] == "dawn-table"
-    assert payload["ui"]["desktop_breakpoint"] == 980
+    assert "ui" not in payload
     assert payload["features"]["admin_reveal"] is True
     serialized = response.text.lower()
     for forbidden in ("api_key", "service_key", "db_dsn", "password", "token"):
@@ -251,25 +250,6 @@ def test_problem_responses_use_the_same_security_headers() -> None:
     assert response.status_code == 401
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["x-content-type-options"] == "nosniff"
-
-
-def test_public_config_uses_validated_ui_settings() -> None:
-    app = create_app(
-        AppSettings(
-            _env_file=None,
-            ui_spacing_unit=6,
-            ui_desktop_breakpoint=1024,
-            ui_motion="reduced",
-            ui_operation_poll_interval_ms=500,
-        )
-    )
-
-    payload = TestClient(app).get("/api/v1/config").json()
-
-    assert payload["ui"]["spacing_unit"] == 6
-    assert payload["ui"]["desktop_breakpoint"] == 1024
-    assert payload["ui"]["motion"] == "reduced"
-    assert payload["ui"]["operation_poll_interval_ms"] == 500
 
 
 def test_api_documentation_is_not_part_of_the_default_public_surface() -> None:
@@ -452,6 +432,52 @@ def test_checked_in_openapi_matches_the_runtime_contract() -> None:
     assert checked_in == create_app().openapi()
 
 
+def test_cors_is_disabled_by_default() -> None:
+    client = TestClient(create_app())
+
+    response = client.options(
+        "/api/v1/config",
+        headers={
+            "Origin": "https://browser.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert response.status_code == 405
+    assert "access-control-allow-origin" not in response.headers
+
+
+def test_cors_allows_only_explicit_origins() -> None:
+    client = TestClient(
+        create_app(
+            AppSettings(
+                _env_file=None,
+                api_cors_origins="https://browser.example, https://admin.example",
+            )
+        )
+    )
+
+    allowed = client.options(
+        "/api/v1/config",
+        headers={
+            "Origin": "https://browser.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+    rejected = client.options(
+        "/api/v1/config",
+        headers={
+            "Origin": "https://untrusted.example",
+            "Access-Control-Request-Method": "GET",
+        },
+    )
+
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://browser.example"
+    assert rejected.status_code == 400
+    assert "access-control-allow-origin" not in rejected.headers
+
+
 def test_chunked_body_cannot_bypass_the_size_limit() -> None:
     app = create_app(AppSettings(_env_file=None, api_max_body_bytes=1024))
     client = TestClient(app, raise_server_exceptions=False)
@@ -461,14 +487,12 @@ def test_chunked_body_cannot_bypass_the_size_limit() -> None:
         headers={
             "Authorization": "Bearer invalid",
             "Idempotency-Key": "oversized-request",
-            "Origin": "http://localhost:5173",
         },
         content=(chunk for chunk in (b"x" * 700, b"y" * 700)),
     )
 
     assert response.status_code == 413
     assert response.json()["code"] == "request.body_too_large"
-    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
     assert response.headers["x-content-type-options"] == "nosniff"
 
 

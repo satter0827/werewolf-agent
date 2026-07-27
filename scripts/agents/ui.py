@@ -32,14 +32,6 @@ from scripts.supabase.preflight import SupabasePreflight, prepare_supabase, stop
 
 LOCAL_UI_PROJECT = "werewolf-agent-local-ui"
 LOCAL_UI_TIMEOUT_SECONDS = 3600
-LOCAL_UI_OPERATION_TIMEOUT_MILLISECONDS = 1_200_000
-LOCAL_UI_COMPOSE_SERVICES = (
-    "migrate",
-    "api",
-    "worker",
-    "streamlit",
-    "e2e",
-)
 REQUIRED_UI_SCREENSHOTS = frozenset(
     {
         "streamlit-created.png",
@@ -267,17 +259,15 @@ def _compose_environment(
             "PLAYWRIGHT_LOCAL_EMAIL": email,
             "PLAYWRIGHT_LOCAL_LLM": "1",
             "PLAYWRIGHT_LOCAL_PASSWORD": password,
-            "PLAYWRIGHT_OUTPUT_DIR": "/tmp/werewolf-agent/playwright/private/playwright",
+            "PLAYWRIGHT_API_URL": "http://api:8000",
+            "PLAYWRIGHT_OUTPUT_DIR": "/tmp/werewolf-agent/playwright",
             "PLAYWRIGHT_SCREENSHOT_DIR": "/tmp/werewolf-agent/playwright/public/screenshots",
             "PLAYWRIGHT_VISUAL_REGRESSION": "0",
+            "PLAYWRIGHT_STREAMLIT_URL": "http://streamlit:8501",
+            "PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY": base["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"],
+            "PLAYWRIGHT_SUPABASE_URL": container_supabase_url,
             "SUPABASE_TELEMETRY_DISABLED": "true",
-            "VITE_SUPABASE_PUBLISHABLE_KEY": base["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"],
-            "VITE_SUPABASE_URL": container_supabase_url,
-            "VITE_WEREWOLF_API_URL": "http://api:8000",
             "WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS": "1200",
-            "WEREWOLF_API_CORS_ORIGINS": (
-                "http://localhost:5173,http://localhost:8080,http://frontend-e2e:8080"
-            ),
             "WEREWOLF_API_INSTANCE_ID": "",
             "WEREWOLF_API_RATE_LIMIT_REQUESTS": "1000",
             "WEREWOLF_COMPOSE_SUPABASE_DB_DSN": container_dsn,
@@ -296,8 +286,6 @@ def _compose_environment(
             "WEREWOLF_SUPABASE_JWT_ISSUER": f"{supabase_url.rstrip('/')}/auth/v1",
             "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": base["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"],
             "WEREWOLF_SUPABASE_URL": container_supabase_url,
-            "WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS": str(LOCAL_UI_OPERATION_TIMEOUT_MILLISECONDS),
-            "WEREWOLF_UI_DEFAULT_SETUP_SEED": "7",
             "WEREWOLF_WORKER_PAID_LLM_BASE_URL": _replace_host(
                 local_base_url, "host.docker.internal"
             ),
@@ -313,14 +301,6 @@ def _compose_environment(
 def _commands(run_dir: Path) -> tuple[tuple[str, ...], ...]:
     mount = f"{run_dir.resolve()}:/tmp/werewolf-agent/playwright"
     return (
-        (
-            "docker",
-            "compose",
-            "--profile",
-            "e2e",
-            "build",
-            *LOCAL_UI_COMPOSE_SERVICES,
-        ),
         (
             "docker",
             "compose",
@@ -350,12 +330,29 @@ def _commands(run_dir: Path) -> tuple[tuple[str, ...], ...]:
             "--volume",
             mount,
             "e2e",
-            "npm",
-            "run",
-            "test:e2e",
-            "--",
-            "--grep",
-            "@local-llm",
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--browser",
+            "chromium",
+            "--tracing",
+            "off",
+            "--screenshot",
+            "only-on-failure",
+            "--output",
+            "/tmp/werewolf-agent/playwright/private/playwright",
+            "--junitxml",
+            "/tmp/werewolf-agent/playwright/results.xml",
+            "--json-report",
+            "--json-report-file",
+            "/tmp/werewolf-agent/playwright/results.json",
+            "--html",
+            "/tmp/werewolf-agent/playwright/html/index.html",
+            "--self-contained-html",
+            "scripts/browser/scenarios/test_local_llm.py",
         ),
     )
 

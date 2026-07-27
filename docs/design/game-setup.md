@@ -58,4 +58,4 @@ Streamlitは「世界観」「役職」「登場人物」「ルール」の4段�
 application validatorで参照、余剰定義、theme網羅性を確認する。構文だけを確認して有効とは
 判定しない。
 
-React clientは現時点ではsetup metadataの参照とpreset作成を担当し、詳細editorは提供しない。
+CLIとStreamlitは同じsetup metadataとpresetを使用し、詳細editorはStreamlitとCLI TOMLで提供する。

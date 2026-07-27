@@ -1,4 +1,4 @@
-"""事前構築済みDocker imageでReactとStreamlitのE2Eを実行する。"""
+"""事前構築済みPython imageでStreamlitのBrowser E2Eを実行する。"""
 
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ _REQUIRED_ENVIRONMENT = (
     "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
     "WEREWOLF_SUPABASE_URL",
 )
-_SERVICES = ("api", "worker", "frontend-e2e", "streamlit", "e2e")
+_SERVICES = ("api", "worker", "streamlit", "e2e")
 
 
 def run_e2e(
@@ -37,6 +37,7 @@ def run_e2e(
     artifact_directory: Path,
     timeout_seconds: int,
     visual_regression: bool,
+    suite: str = "streamlit",
 ) -> CommandResult:
     """品質専用Compose projectでbrowser E2Eを実行する。"""
     started = time.monotonic()
@@ -52,7 +53,7 @@ def run_e2e(
         visual_regression=visual_regression,
     )
     output: list[str] = []
-    commands = _commands(artifact_directory)
+    commands = _commands(artifact_directory, suite=suite)
     initial_cleanup = run_command(
         ["docker", "compose", "--profile", "e2e", "down", "--volumes", "--remove-orphans"],
         timeout_seconds=60,
@@ -71,7 +72,7 @@ def run_e2e(
             output.append(execution.output)
             if execution.returncode != 0:
                 break
-        create_contact_sheet(artifact_directory)
+        create_contact_sheet(artifact_directory / "public")
         if execution.returncode != 0:
             service_logs = run_command(
                 [
@@ -162,10 +163,11 @@ def _owned_resource_snapshot(environment: Mapping[str, str]) -> dict[str, list[s
     }
 
 
-def create_contact_sheet(artifact_directory: Path) -> Path | None:
-    """個別screenshotを人間レビュー用の一覧画像へまとめる。"""
+def create_contact_sheet(public_directory: Path) -> Path | None:
+    """公開screenshotだけを人間レビュー用の一覧画像へまとめる。"""
+    screenshot_directory = public_directory / "screenshots"
     images = sorted(
-        path for path in artifact_directory.rglob("*.png") if path.name != "contact-sheet.png"
+        path for path in screenshot_directory.glob("*.png") if path.name != "contact-sheet.png"
     )
     if not images:
         return None
@@ -191,11 +193,11 @@ def create_contact_sheet(artifact_directory: Path) -> Path | None:
         top = row * row_height
         draw.text(
             (left + 8, top + 8),
-            path.relative_to(artifact_directory).as_posix(),
+            path.relative_to(public_directory).as_posix(),
             fill="black",
         )
         sheet.paste(image, (left + (cell_width - image.width) // 2, top + label_height))
-    target = artifact_directory / "contact-sheet.png"
+    target = public_directory / "contact-sheet.png"
     sheet.save(target)
     return target
 
@@ -213,16 +215,17 @@ def _compose_environment(
     extra = {
         "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME,
         "PLAYWRIGHT_VISUAL_REGRESSION": "1" if visual_regression else "0",
+        "PLAYWRIGHT_OUTPUT_DIR": "/tmp/werewolf-agent/playwright",
+        "PLAYWRIGHT_SCREENSHOT_DIR": "/tmp/werewolf-agent/playwright/public/screenshots",
         "WEREWOLF_API_INSTANCE_ID": f"quality-{uuid4().hex}",
-        "VITE_SUPABASE_PUBLISHABLE_KEY": str(base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]),
-        "VITE_SUPABASE_URL": container_api_url,
-        "VITE_WEREWOLF_API_URL": "http://api:8000",
-        # Browser E2EはStreamlit fragmentとReactを同じlocal anonymous principalで検査する。
-        # 製品のrate limitを検査するgateではないため、外部環境値に依存しない余裕を持たせる。
-        "WEREWOLF_API_RATE_LIMIT_REQUESTS": "10000",
-        "WEREWOLF_API_CORS_ORIGINS": (
-            "http://localhost:5173,http://localhost:8080,http://frontend-e2e:8080"
+        "PLAYWRIGHT_API_URL": "http://api:8000",
+        "PLAYWRIGHT_STREAMLIT_URL": "http://streamlit:8501",
+        "PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY": str(
+            base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]
         ),
+        "PLAYWRIGHT_SUPABASE_URL": container_api_url,
+        # Browser E2Eは製品のrate limitを検査しないため、固定の余裕を持たせる。
+        "WEREWOLF_API_RATE_LIMIT_REQUESTS": "10000",
         "WEREWOLF_COMPOSE_SUPABASE_DB_DSN": container_database_dsn,
         "WEREWOLF_SUPABASE_JWKS_URL": (
             f"{container_api_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
@@ -259,9 +262,16 @@ def _replace_host(url: str, host: str) -> str:
     )
 
 
-def _commands(artifact_directory: Path) -> tuple[tuple[str, ...], ...]:
+def _commands(artifact_directory: Path, *, suite: str = "streamlit") -> tuple[tuple[str, ...], ...]:
     """buildやpullを許可しないE2E command列を返す。"""
+    if suite not in {"streamlit", "local-llm"}:
+        raise ValueError(f"未定義のBrowser suiteです: {suite}")
     mount = f"{artifact_directory.resolve()}:/tmp/werewolf-agent/playwright"
+    scenario = (
+        "scripts/browser/scenarios/test_streamlit.py"
+        if suite == "streamlit"
+        else "scripts/browser/scenarios/test_local_llm.py"
+    )
     return (
         (
             "docker",
@@ -277,7 +287,6 @@ def _commands(artifact_directory: Path) -> tuple[tuple[str, ...], ...]:
             "migrate",
             "api",
             "worker",
-            "frontend-e2e",
             "streamlit",
         ),
         (
@@ -293,6 +302,29 @@ def _commands(artifact_directory: Path) -> tuple[tuple[str, ...], ...]:
             "--volume",
             mount,
             "e2e",
+            "python",
+            "-m",
+            "pytest",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+            "--browser",
+            "chromium",
+            "--tracing",
+            "off",
+            "--screenshot",
+            "only-on-failure",
+            "--output",
+            "/tmp/werewolf-agent/playwright/private/playwright",
+            "--junitxml",
+            "/tmp/werewolf-agent/playwright/results.xml",
+            "--json-report",
+            "--json-report-file",
+            "/tmp/werewolf-agent/playwright/results.json",
+            "--html",
+            "/tmp/werewolf-agent/playwright/html/index.html",
+            "--self-contained-html",
+            scenario,
         ),
     )
 
@@ -307,6 +339,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--visual-regression", action="store_true")
+    parser.add_argument("--suite", choices=("streamlit", "local-llm"), default="streamlit")
     return parser
 
 
@@ -321,6 +354,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             artifact_directory=arguments.artifacts,
             timeout_seconds=arguments.timeout,
             visual_regression=arguments.visual_regression,
+            suite=arguments.suite,
         )
     except (EnvironmentBlockedError, ValueError) as error:
         print(str(error))

@@ -51,8 +51,8 @@ def pytest_configure(config: pytest.Config) -> None:
 
     for marker, description in (
         ("unit", "外部serviceを使わないunit test"),
-        ("contract", "OpenAPIから生成するAPI contract test"),
         ("integration", "local integration test"),
+        ("supabase", "local Supabaseを使うintegration test"),
         ("monkey", "seed固定の状態遷移探索"),
         ("benchmark", "性能退行の検出"),
         ("deep", "明示確認が必要な拡張test"),
@@ -118,9 +118,9 @@ def required_level(item: pytest.Item) -> str:
     required = "quick"
     parts = Path(str(item.path)).parts
     if "integration" in parts:
-        required = "release"
-    elif "contract" in parts:
         required = "check"
+    if item.get_closest_marker("supabase"):
+        required = "release"
     if item.get_closest_marker("monkey") or item.get_closest_marker("benchmark"):
         required = max(required, "check", key=LEVEL_INDEX.__getitem__)
     if item.get_closest_marker("deep"):

@@ -41,30 +41,14 @@ class PublicRuntimeFeatures(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PublicUiConfig(BaseModel):
-    """Browser-verifiable presentation settings."""
-
-    theme_id: str = Field(min_length=1)
-    spacing_unit: int = Field(ge=1)
-    desktop_breakpoint: int = Field(ge=1)
-    motion: Literal["system", "reduced"]
-    default_manual_player_id: str = Field(min_length=1)
-    default_setup_seed: str = Field(min_length=1)
-    operation_poll_interval_ms: int = Field(ge=1)
-    operation_poll_timeout_ms: int = Field(ge=1)
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-
 class PublicRuntimeConfig(BaseModel):
-    """Public, browser-verifiable runtime configuration."""
+    """Public runtime configuration shared by HTTP clients."""
 
     contract_version: str
     config_revision: str
     setup: GameSetupOptionsResponse
     limits: PublicRuntimeLimits
     features: PublicRuntimeFeatures
-    ui: PublicUiConfig
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -233,7 +217,6 @@ __all__ = [
     "PublicRuntimeConfig",
     "PublicRuntimeFeatures",
     "PublicRuntimeLimits",
-    "PublicUiConfig",
     "ReplayVerificationResponse",
     "RuntimeAvailability",
     "RuntimeComponentStatus",

@@ -66,27 +66,6 @@
       "problemMatcher": []
     },
     {
-      "label": "Internal: Frontend Dev",
-      "type": "npm",
-      "script": "dev",
-      "path": "frontend",
-      "dependsOn": ["Internal: Ensure Check"],
-      "dependsOrder": "sequence",
-      "isBackground": true,
-      "hide": true,
-      "problemMatcher": [
-        {
-          "owner": "frontend-dev",
-          "pattern": { "regexp": ".*" },
-          "background": {
-            "activeOnStart": true,
-            "beginsPattern": ".*",
-            "endsPattern": "Local:.*http://127\\.0\\.0\\.1:5173"
-          }
-        }
-      ]
-    },
-    {
       "label": "Project: Setup",
       "type": "process",
       "command": "uv",
@@ -174,18 +153,9 @@
       "problemMatcher": []
     },
     {
-      "label": "Dependencies: Frontend Audit",
-      "type": "process",
-      "command": "npm",
-      "args": ["audit"],
-      "options": { "cwd": "${workspaceFolder}/frontend" },
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
       "label": "Dependencies: Audit",
-      "dependsOn": ["Dependencies: Python Audit", "Dependencies: Frontend Audit"],
-      "dependsOrder": "parallel",
+      "dependsOn": ["Dependencies: Python Audit"],
+      "dependsOrder": "sequence",
       "problemMatcher": []
     }
   ]

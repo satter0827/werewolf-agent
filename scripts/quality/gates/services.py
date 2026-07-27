@@ -15,7 +15,7 @@ from scripts._infra.process import (
 from scripts.quality.models import Gate, ResourceLease, RunContext
 from scripts.supabase.preflight import isolated_project_id, prepare_supabase
 
-GATES = ("supabase-preflight", "integration")
+GATES = ("supabase-preflight", "supabase-integration")
 
 
 def build(run_dir: Path) -> list[Gate]:
@@ -29,33 +29,33 @@ def build(run_dir: Path) -> list[Gate]:
             exclusive_resources=("supabase",),
         ),
         Gate(
-            "integration",
-            "Package, Supabase and Streamlit integration",
+            "supabase-integration",
+            "Supabase code integration",
             (
                 sys.executable,
                 "-m",
                 "pytest",
                 "--test-level=release",
                 "-m",
-                "not deep",
+                "supabase and not deep",
                 "-n",
                 "0",
                 "--junitxml",
-                str(run_dir / "test-results" / "integration.xml"),
+                str(run_dir / "test-results" / "supabase-integration.xml"),
                 "--json-report",
                 "--json-report-file",
-                str(run_dir / "test-results" / "integration.json"),
+                str(run_dir / "test-results" / "supabase-integration.json"),
                 "--html",
-                str(run_dir / "test-results" / "integration.html"),
+                str(run_dir / "test-results" / "supabase-integration.html"),
                 "--self-contained-html",
-                "tests/integration",
+                "tests/integration/supabase",
             ),
             dependencies=("supabase-preflight",),
             exclusive_resources=("supabase",),
             artifacts=(
-                "test-results/integration.xml",
-                "test-results/integration.json",
-                "test-results/integration.html",
+                "test-results/supabase-integration.xml",
+                "test-results/supabase-integration.json",
+                "test-results/supabase-integration.html",
             ),
         ),
     ]

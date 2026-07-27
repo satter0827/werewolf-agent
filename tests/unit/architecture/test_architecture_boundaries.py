@@ -161,11 +161,11 @@ def test_legacy_domain_aliases_and_plural_faction_ids_do_not_return() -> None:
     for alias in ("GameSnapshot =", "Observation =", "DomainEvent ="):
         assert alias not in domain_source
 
-    runtime_roots = (PACKAGE, ROOT / "frontend" / "src", ROOT / "frontend" / "e2e")
+    runtime_roots = (PACKAGE, ROOT / "scripts")
     source = "\n".join(
         path.read_text(encoding="utf-8")
         for root in runtime_roots
-        for pattern in ("*.py", "*.ts", "*.tsx")
+        for pattern in ("*.py",)
         for path in root.rglob(pattern)
     )
     assert '"villagers"' not in source

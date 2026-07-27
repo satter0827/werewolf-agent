@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.metadata
 import json
+import re
 import shutil
 import subprocess
-import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from scripts._infra.node import node_executable, npm_executable
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     QUALITY_COMPOSE_PROJECT_NAME,
@@ -25,19 +25,9 @@ STATE_ROOT = ARTIFACT_ROOT / "runtime" / "environment"
 LOCK_PATH = STATE_ROOT / "setup.lock"
 PROFILES = ("quick", "check", "release", "deep")
 PYTHON_INPUTS = ("pyproject.toml", "uv.lock")
-FRONTEND_INPUTS = ("frontend/package.json", "frontend/package-lock.json")
-FRONTEND_BINARIES = (
-    "eslint",
-    "openapi-typescript",
-    "prettier",
-    "tsc",
-    "vite",
-    "vitest",
-)
 RELEASE_INPUTS = (
     "compose.yaml",
     "docker",
-    "frontend",
     "scripts",
     "src",
     "supabase",
@@ -45,8 +35,6 @@ RELEASE_INPUTS = (
 E2E_COMPOSE_SERVICES = (
     "api",
     "worker",
-    "frontend",
-    "frontend-e2e",
     "streamlit",
     "e2e",
     "migrate",
@@ -94,15 +82,14 @@ def _version(command: Sequence[str]) -> str:
 def dependency_fingerprint(profile: str) -> str:
     """Lock、tool version、release入力から依存環境fingerprintを返す。"""
     digest = hashlib.sha256()
-    inputs = [REPOSITORY_ROOT / relative for relative in (*PYTHON_INPUTS, *FRONTEND_INPUTS)]
+    inputs = [REPOSITORY_ROOT / relative for relative in PYTHON_INPUTS]
     if profile in {"release", "deep"}:
         for relative in RELEASE_INPUTS:
             path = REPOSITORY_ROOT / relative
             inputs.extend(
                 candidate
                 for candidate in ([path] if path.is_file() else path.rglob("*"))
-                if candidate.is_file()
-                and not {"__pycache__", "dist", "node_modules"}.intersection(candidate.parts)
+                if candidate.is_file() and not {"__pycache__", "dist"}.intersection(candidate.parts)
             )
     for path in sorted(set(inputs)):
         relative = path.relative_to(REPOSITORY_ROOT).as_posix()
@@ -111,8 +98,6 @@ def dependency_fingerprint(profile: str) -> str:
     for value in (
         profile,
         _version(("uv", "--version")),
-        _version((node_executable(), "--version")),
-        _version((npm_executable(), "--version")),
         _version(("docker", "--version")) if profile in {"release", "deep"} else "",
         _version(("supabase", "--version")) if profile in {"release", "deep"} else "",
     ):
@@ -120,28 +105,18 @@ def dependency_fingerprint(profile: str) -> str:
     return digest.hexdigest()
 
 
-def frontend_installation_fingerprint() -> str:
-    """Frontend直依存とlocal binaryの実体fingerprintを返す。"""
-    frontend = REPOSITORY_ROOT / "frontend"
-    package_json = frontend / "package.json"
-    document = json.loads(package_json.read_text(encoding="utf-8"))
-    names: set[str] = set()
-    for section in ("dependencies", "devDependencies"):
-        values = document.get(section)
-        if not isinstance(values, dict):
-            raise ValueError(f"package.jsonの{section}がobjectではありません。")
-        names.update(str(name) for name in values)
-    digest = hashlib.sha256(package_json.read_bytes())
-    modules = frontend / "node_modules"
-    for name in sorted(names):
-        metadata = modules.joinpath(*name.split("/"), "package.json")
-        digest.update(name.encode())
-        digest.update(metadata.read_bytes() if metadata.is_file() else b"MISSING")
-    binary_root = modules / ".bin"
-    for name in FRONTEND_BINARIES:
-        binary = _local_binary(binary_root, name)
-        digest.update(name.encode())
-        digest.update(binary.read_bytes() if binary.is_file() else b"MISSING")
+def python_installation_fingerprint() -> str:
+    """Installed distributionの名前・version・RECORDを固定順でhash化する。"""
+    digest = hashlib.sha256()
+    records: list[tuple[str, str, str]] = []
+    for distribution in importlib.metadata.distributions():
+        name = re.sub(r"[-_.]+", "-", distribution.metadata["Name"].casefold())
+        record_text = distribution.read_text("RECORD")
+        record_hash = hashlib.sha256((record_text or "MISSING").encode()).hexdigest()
+        records.append((name, distribution.version, record_hash))
+    for entry in sorted(records):
+        digest.update("\0".join(entry).encode())
+        digest.update(b"\n")
     return digest.hexdigest()
 
 
@@ -152,12 +127,6 @@ def _state_path(profile: str) -> Path:
 def _ready(profile: str, fingerprint: str) -> bool:
     state_path = _state_path(profile)
     if not (REPOSITORY_ROOT / ".venv").is_dir():
-        return False
-    frontend = REPOSITORY_ROOT / "frontend"
-    if not (frontend / "node_modules").is_dir():
-        return False
-    binary_root = frontend / "node_modules" / ".bin"
-    if not all(_local_binary(binary_root, name).is_file() for name in FRONTEND_BINARIES):
         return False
     if not state_path.is_file():
         return False
@@ -224,9 +193,7 @@ def setup(profile: str = "check") -> None:
 def _setup_locked(profile: str) -> None:
     """Process間lock内で指定profileの依存を準備する。"""
     uv = shutil.which("uv") or "uv"
-    npm = npm_executable()
     _run((uv, "sync", "--frozen", "--all-groups", "--all-extras"))
-    _run((npm, "ci", "--ignore-scripts"), cwd=REPOSITORY_ROOT / "frontend")
     if profile in {"release", "deep"}:
         docker = shutil.which("docker")
         supabase = shutil.which("supabase")
@@ -305,11 +272,6 @@ def is_ready(profile: str) -> bool:
     return _ready(profile, dependency_fingerprint(profile))
 
 
-def _local_binary(root: Path, name: str) -> Path:
-    """Platformに応じたFrontend local binaryのpathを返す。"""
-    return root / f"{name}.cmd" if sys.platform == "win32" else root / name
-
-
 def build_parser() -> argparse.ArgumentParser:
     """環境準備commandのparserを返す。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -336,14 +298,13 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
-    "FRONTEND_BINARIES",
     "PROFILES",
     "RUNTIME_IMAGE",
     "dependency_fingerprint",
     "ensure",
-    "frontend_installation_fingerprint",
     "is_ready",
     "main",
+    "python_installation_fingerprint",
     "required_release_images",
     "setup",
 ]

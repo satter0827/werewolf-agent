@@ -27,7 +27,6 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
         "python -m scripts.environment setup deep",
     ):
         assert command in workflow
-    assert "npm audit" not in workflow
     assert "--pull=false" not in workflow
 
 
@@ -36,7 +35,7 @@ def test_backend_dev_image_contains_the_test_suite() -> None:
     dockerfile = _read("docker/backend.Dockerfile")
 
     dev = dockerfile.split("FROM base AS dev", 1)[1].split("FROM base AS runtime", 1)[0]
-    for copied_path in (".github", "docker", "docs", "frontend", "tests"):
+    for copied_path in (".github", "docker", "docs", "tests"):
         assert f"COPY {copied_path}" in dev
     assert "contracts/openapi.json" in dev
 
@@ -54,9 +53,9 @@ def test_compose_exposes_isolated_runtime_and_test_services() -> None:
     assert "--browser.gatherUsageStats=false" in compose
     test_service = compose.split("\n  test:\n", 1)[1].split("\n  e2e:\n", 1)[0]
     assert "WEREWOLF_SUPABASE_" not in test_service
-    worker = compose.split("  worker:", 1)[1].split("  frontend:", 1)[0]
+    worker = compose.split("  worker:", 1)[1].split("  streamlit:", 1)[0]
     assert "OPENAI_API_KEY:" in worker
-    for service in ("api", "frontend", "streamlit"):
+    for service in ("api", "streamlit"):
         section = compose.split(f"  {service}:", 1)[1].split("\n  ", 1)[0]
         assert "OPENAI_API_KEY:" not in section
 

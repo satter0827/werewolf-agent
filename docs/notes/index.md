@@ -7,6 +7,8 @@
 :maxdepth: 1
 
 development
+design-qa
+retired-browser-ui-reintroduction
 streamlit-ui
 streamlit-ui-design-history
 streamlit-browser-qa

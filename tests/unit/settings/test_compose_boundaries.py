@@ -6,7 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
-FRONTEND = ROOT / "frontend" / "src"
 
 
 def test_paid_provider_secret_is_worker_only_in_compose() -> None:
@@ -20,7 +19,7 @@ def test_paid_provider_secret_is_worker_only_in_compose() -> None:
     assert all("OPENAI_API_KEY" in line for line in occurrences)
     worker_block = compose.split("worker:", maxsplit=1)[1]
     assert "OPENAI_API_KEY" in worker_block
-    for service in ("api:", "frontend:", "streamlit:"):
+    for service in ("api:", "streamlit:"):
         if service in compose:
             block = compose.split(service, maxsplit=1)[1].split("\n  ", maxsplit=1)[0]
             assert "OPENAI_API_KEY" not in block
@@ -29,10 +28,7 @@ def test_paid_provider_secret_is_worker_only_in_compose() -> None:
 def test_runtime_settings_are_wired_to_their_compose_services() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
     api_block = compose.split("  api:", maxsplit=1)[1].split("\n  worker:", maxsplit=1)[0]
-    worker_block = compose.split("  worker:", maxsplit=1)[1].split(
-        "\n  frontend:",
-        maxsplit=1,
-    )[0]
+    worker_block = compose.split("  worker:", maxsplit=1)[1].split("\n  streamlit:", maxsplit=1)[0]
     streamlit_block = compose.split("  streamlit:", maxsplit=1)[1].split(
         "\n  test:",
         maxsplit=1,
@@ -40,6 +36,7 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
     for setting in (
         "WEREWOLF_REVEAL_API_ENABLED",
         "WEREWOLF_API_DOCS_ENABLED",
+        "WEREWOLF_API_CORS_ORIGINS",
         "WEREWOLF_API_MAX_BODY_BYTES",
         "WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS",
         "WEREWOLF_API_TIMEOUT_SECONDS",

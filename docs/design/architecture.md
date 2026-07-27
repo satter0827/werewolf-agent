@@ -42,7 +42,7 @@
 - package resourceと外部定義fileのI/Oおよび相互参照検証はadapterに置く。
 - API routeはapplicationの公開contractだけを呼ぶ。
 - CLIとStreamlitはdomain、application、Supabaseを参照しない。
-- React、CLI、StreamlitはHTTP APIを通じてゲームを操作する。
+- CLIとStreamlitはHTTP APIを通じてゲームを操作する。
 - clientは未認証の`PublicClient`、通常操作の`GameClient`、管理操作の`AdminClient`へ分け、
   admin responseを通常clientへ追加しない。
 - `GET /health`はprocess livenessだけを示し、`GET /api/v1/status`は依存先の可用性、

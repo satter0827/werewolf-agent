@@ -2,8 +2,9 @@
 
 ## 目的
 
-`scripts`はローカルとCIで共有するPython製の品質実行基盤です。テスト実装は
-`tests`へ置き、scriptsからはpytestのCLIだけを呼び出します。
+`scripts`はローカルとCIで共有するPython製の品質実行基盤です。`tests/unit`は通常の
+単体テスト、`tests/integration`は複数moduleを接続したコード全体のテストを所有します。
+Browser、Compose、環境準備などのリリース品質scenarioは`scripts`が所有します。
 
 ## 実行方法
 
@@ -26,14 +27,14 @@ python -m scripts.agents local-ui
 ```
 
 - `quick`: architecture、format、lint、型、unit、軽量Hypothesis
-- `check`: Quick、offline test、coverage観測、docs、OpenAPI、Schemathesis、build
-- `release`: Check、local Supabase、integration、React／Streamlit E2E、Docker smoke
+- `check`: Quick、offline integration、coverage観測、docs、OpenAPI、Schemathesis、build
+- `release`: Check、local Supabase integration、Streamlit E2E、Docker smoke
 - `deep`: 長時間stateful、fault injection、benchmark観測
 - `clean`: 再生成可能なbuild、品質用一時cache、coverage、期限切れrun
 
 `scripts.agents`は品質判定から独立したAgent reviewです。通常は画面を使わず、同じAgent
 graphをFakeまたはLocal LLMで固定scenarioへ通します。`local-ui`だけが明示的にStreamlitを
-起動し、認証済みAPI driverでLocal LLM gameを進行します。Reactは現在の対象外です。結果は
+起動し、認証済みAPI driverでLocal LLM gameを進行します。結果は
 `passed`、`degraded`、`failed`、`blocked`、`error`で、
 修復またはfallbackを伴う完走は`degraded`です。standardは開始時とpreset完了時に
 checkpointを更新し、完了または中断時に最終状態を確定します。
@@ -45,9 +46,7 @@ CPU数と設定上限の小さい方です。worker数は設定上限以下、ti
 `tool.werewolf-quality`から読みます。coverageとbenchmarkは観測値として保存し、根拠の
 ない数値閾値では合否を決めません。
 
-`scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython、
-Frontend依存を同期します。FrontendはNode.js 22を使用し、`WEREWOLF_NODE_HOME`、PATH、
-WindowsのScoop `nodejs22`から対応toolchainを解決して子processへ固定します。
+`scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython依存を同期します。
 release環境ではSupabase image、E2E image、runtime imageも準備します。品質commandは不足物を
 取得せず`blocked`にします。release系の準備済み判定は保存済みmarkerだけでなく、現在の
 Docker contextでdaemonと全必須imageの実在も確認します。Docker Desktopのresetやcontext変更で
@@ -73,9 +72,9 @@ report、summary、event、log、test結果、coverage、画面、manifestを含
 browser成果物を収録します。成果物が壊れている場合もreport生成を止めず、
 `artifact_issues`へ解析理由を残し、`artifact-validation`を`error`としてCLI終了値へ
 反映します。
-profileごとのJUnit、coverage、benchmark、docs、frontend、package、browser成果物も
+profileごとのJUnit、coverage、benchmark、docs、package、browser成果物も
 必須契約として検証するため、コマンドの0終了だけでは合格になりません。
-必須成果物はrun開始後に更新されたことも検証します。docs、frontend、packageは
+必須成果物はrun開始後に更新されたことも検証します。docsとpackageは
 各ゲートで既存出力を除去してから再構築し、前回runの成果物を受理しません。
 
 ## 制約
@@ -84,8 +83,8 @@ profileごとのJUnit、coverage、benchmark、docs、frontend、package、brows
 子processからprovider用の秘密情報と外部base URLを除外し、`WEREWOLF_LLM_PROVIDER`
 を`fake`へ固定し、Local／OpenAI／worker provider設定も除去してtelemetryを無効化します。package registryとimage registryは
 環境準備で使用できます。Playwrightは外部requestの試行も
-失敗にし、Chromiumの背景通信と更新確認を無効化します。E2Eは既存のReact／Streamlit
-Playwright suiteをcontainer内で共有し、子processの出力と画像をrun固有領域へ保存して
+失敗にし、Chromiumの背景通信と更新確認を無効化します。E2EはPython PlaywrightのStreamlit
+scenarioをcontainer内で実行し、子processの出力と画像をrun固有領域へ保存して
 終了時に伏せ字化します。
 `preflight_supabase`は`.env`を変更せず、取得した接続情報をmigrationと`doctor`へだけ
 渡します。API起動が必要な`setup-options`はE2Eで確認します。

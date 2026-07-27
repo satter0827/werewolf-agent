@@ -1,4 +1,4 @@
-"""TypeScript client生成に使用するFastAPI contractを出力する。"""
+"""追跡対象のFastAPI OpenAPI contractを出力する。"""
 
 from __future__ import annotations
 

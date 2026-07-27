@@ -78,7 +78,10 @@ def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     gates = {gate.name: gate for stage in _profile_stages("deep", jobs=1) for gate in stage}
 
     assert gates["deep-tests"].dependencies == ()
-    assert "deep and not integration" in gates["deep-tests"].command
-    assert gates["deep-integration"].dependencies == ("supabase-preflight",)
-    assert gates["deep-integration"].exclusive_resources == ("supabase",)
-    assert "deep and integration" in gates["deep-integration"].command
+    assert "deep" in gates["deep-tests"].command
+    assert gates["deep-integration"].dependencies == ()
+    assert gates["deep-integration"].exclusive_resources == ()
+    assert "deep and not supabase" in gates["deep-integration"].command
+    assert gates["deep-supabase"].dependencies == ("supabase-preflight",)
+    assert gates["deep-supabase"].exclusive_resources == ("supabase",)
+    assert "deep and supabase" in gates["deep-supabase"].command

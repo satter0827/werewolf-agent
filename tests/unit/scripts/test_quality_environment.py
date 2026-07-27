@@ -5,62 +5,46 @@ from types import SimpleNamespace
 
 import pytest
 from scripts._infra.process import CommandResult
+from scripts.quality import runner
 from scripts.quality.gates import environment
 
 
-def test_environment_gate_checks_frozen_dependencies_and_runtime_versions(
+def test_environment_gate_checks_frozen_python_dependencies(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """検査時にlockを変更せずPython、Node.js、両依存環境を確認する。"""
+    """検査時にlockを変更せずPython依存環境を確認する。"""
     commands: list[tuple[str, ...]] = []
 
     def run(command: tuple[str, ...], **_kwargs: object) -> CommandResult:
         commands.append(command)
-        output = "v22.0.0\n" if "--version" in command else ""
-        return CommandResult(list(command), 0, 0.0, output)
+        return CommandResult(list(command), 0, 0.0, "")
 
     monkeypatch.setattr(environment, "run_command", run)
     monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
-    monkeypatch.setattr(environment, "node_executable", lambda: "node")
-    monkeypatch.setattr(environment, "npm_executable", lambda: "npm")
     context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
 
     assert result.returncode == 0
-    assert commands == [
-        (environment.sys.executable, "-c", "import werewolf_agent"),
-        ("node", "--version"),
-        (
-            "node",
-            "-e",
-            "const {spawnSync}=require('node:child_process');"
-            "const r=spawnSync(process.execPath,['--version']);"
-            "if(r.error) console.error(r.error.stack ?? String(r.error));"
-            "process.exit(r.error ? 2 : (r.status ?? 2));",
-        ),
-        ("npm", "ls", "--depth=0", "--ignore-scripts"),
-    ]
+    assert commands == [(environment.sys.executable, "-c", "import werewolf_agent")]
 
 
-def test_environment_gate_rejects_unsupported_node_version(
+def test_runner_rejects_dependency_environment_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Frontend標準と異なるNode.jsを依存同期済みでも受理しない。"""
+    """品質実行前後のinstalled distribution差分を失敗にする。"""
+    run_dir = tmp_path / "run"
+    (run_dir / "logs").mkdir(parents=True)
+    context = SimpleNamespace(
+        initial_dependency_fingerprint="before",
+        run_dir=run_dir,
+    )
+    monkeypatch.setattr(runner, "python_installation_fingerprint", lambda: "after")
 
-    def run(command: tuple[str, ...], **_kwargs: object) -> CommandResult:
-        output = "v24.0.0\n" if "--version" in command else ""
-        return CommandResult(list(command), 0, 0.0, output)
+    result = runner._environment_stability_result(context)
 
-    monkeypatch.setattr(environment, "run_command", run)
-    monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
-    monkeypatch.setattr(environment, "node_executable", lambda: "node")
-    monkeypatch.setattr(environment, "npm_executable", lambda: "npm")
-    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
-
-    result = environment.check_environment(context, tmp_path)
-
+    assert result.state == "failed"
     assert result.returncode == 1
-    assert "Node.js 22が必要" in result.output
+    assert "変更されました" in (result.message or "")

@@ -4,10 +4,8 @@ import sys
 import time
 from pathlib import Path
 
-from scripts._infra.node import REQUIRED_NODE_MAJOR, node_executable, npm_executable
 from scripts._infra.process import (
     ISOLATION_ENVIRONMENT,
-    REPOSITORY_ROOT,
     CommandResult,
     run_command,
 )
@@ -37,7 +35,7 @@ def build() -> list[Gate]:
 
 
 def check_environment(context: RunContext, _: Path) -> CommandResult:
-    """Python・Frontendの実行能力を外部接続なしで検査する。"""
+    """Lockに対応するPython実行能力を外部接続なしで検査する。"""
     started = time.monotonic()
     profile = context.profile if context.profile in PROFILES else "check"
     try:
@@ -57,23 +55,7 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             f"{profile}環境が現在のlock・source fingerprintに対応していません。"
             f"python -m scripts.environment ensure {profile}を実行してください。\n",
         )
-    npm = npm_executable()
-    node = node_executable()
-    commands = (
-        (sys.executable, "-c", "import werewolf_agent"),
-        (node, "--version"),
-        (
-            node,
-            "-e",
-            (
-                "const {spawnSync}=require('node:child_process');"
-                "const r=spawnSync(process.execPath,['--version']);"
-                "if(r.error) console.error(r.error.stack ?? String(r.error));"
-                "process.exit(r.error ? 2 : (r.status ?? 2));"
-            ),
-        ),
-        (npm, "ls", "--depth=0", "--ignore-scripts"),
-    )
+    commands = ((sys.executable, "-c", "import werewolf_agent"),)
     output = [f"Python {sys.version.split()[0]}\n"]
     supported_python = (3, 11) <= sys.version_info[:2] <= (3, 14)
     if not supported_python:
@@ -83,12 +65,10 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             time.monotonic() - started,
             "".join(output) + "Python 3.11から3.14が必要です。\n",
         )
-    for index, command in enumerate(commands):
-        cwd = REPOSITORY_ROOT / "frontend" if index >= 1 else REPOSITORY_ROOT
+    for command in commands:
         try:
             result = run_command(
                 command,
-                cwd=cwd,
                 timeout_seconds=min(context.timeout_seconds, 60),
                 environment=context.environment,
             )
@@ -107,16 +87,6 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
                 time.monotonic() - started,
                 "".join(output),
                 result.timed_out,
-            )
-        if (
-            index == 1
-            and int(result.output.strip().lstrip("v").split(".", 1)[0]) != REQUIRED_NODE_MAJOR
-        ):
-            return CommandResult(
-                list(command),
-                1,
-                time.monotonic() - started,
-                "".join(output) + "Node.js 22が必要です。\n",
             )
     return CommandResult(
         ["environment-check"],

@@ -14,19 +14,9 @@ def test_contract_comparison_ignores_platform_newline_difference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """同じ生成内容をWindows改行だけで品質違反にしない。"""
-    frontend = tmp_path / "frontend"
-    (frontend / "src" / "generated").mkdir(parents=True)
-    cli = frontend / "node_modules" / "openapi-typescript" / "bin" / "cli.js"
-    cli.parent.mkdir(parents=True)
-    cli.write_text("", encoding="utf-8")
     (tmp_path / "contracts").mkdir()
     (tmp_path / "contracts" / "openapi.json").write_text(
         "{\n}\n",
-        encoding="utf-8",
-        newline="\r\n",
-    )
-    (frontend / "src" / "generated" / "api.ts").write_text(
-        "export {};\n",
         encoding="utf-8",
         newline="\r\n",
     )
@@ -51,15 +41,10 @@ def test_contract_comparison_ignores_platform_newline_difference(
         if "--output" in command:
             Path(command[-1]).parent.mkdir(parents=True, exist_ok=True)
             Path(command[-1]).write_text("{\n}\n", encoding="utf-8", newline="\n")
-        else:
-            output = (cwd / command[-1]).resolve()
-            output.parent.mkdir(parents=True, exist_ok=True)
-            output.write_text("export {};\n", encoding="utf-8", newline="\n")
         return CommandResult(command, 0, 0.0, "")
 
     monkeypatch.setattr(contracts, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(contracts, "run_command", run)
-    monkeypatch.setattr(contracts, "node_executable", lambda: "node")
 
     result = contracts.check_openapi_contract(context, tmp_path / "log")
 
@@ -71,10 +56,3 @@ def test_contract_cli_defaults_to_tracked_repository_contract() -> None:
     output = openapi.build_parser().parse_args([]).output
 
     assert output == Path(__file__).resolve().parents[3] / "contracts" / "openapi.json"
-
-
-def test_stateful_contract_gate_requires_explicit_deep_confirmation() -> None:
-    gate = next(gate for gate in contracts.build() if gate.name == "schemathesis-stateful")
-
-    assert "--test-level=deep" in gate.command
-    assert "--confirm-deep" in gate.command

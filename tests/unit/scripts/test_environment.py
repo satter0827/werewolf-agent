@@ -11,6 +11,17 @@ from scripts.environment import manager
 from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 
+class _Distribution:
+    def __init__(self, name: str, version: str, record: str | None) -> None:
+        self.metadata = {"Name": name}
+        self.version = version
+        self._record = record
+
+    def read_text(self, filename: str) -> str | None:
+        assert filename == "RECORD"
+        return self._record
+
+
 def test_version_returns_unavailable_when_executable_is_blocked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -23,6 +34,28 @@ def test_version_returns_unavailable_when_executable_is_blocked(
     )
 
     assert manager._version(("uv", "--version")) == "unavailable"
+
+
+def test_python_installation_fingerprint_covers_name_version_and_record(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Installed distributionの同一性を順序に依存せず検査する。"""
+    distributions = [
+        _Distribution("Example_Package", "1.0", "example.py,sha256=first,1\n"),
+        _Distribution("Other", "2.0", None),
+    ]
+    monkeypatch.setattr(manager.importlib.metadata, "distributions", lambda: distributions)
+    baseline = manager.python_installation_fingerprint()
+
+    distributions.reverse()
+    assert manager.python_installation_fingerprint() == baseline
+
+    distributions[0]._record = "other.py,sha256=changed,2\n"
+    assert manager.python_installation_fingerprint() != baseline
+
+    distributions[0]._record = None
+    distributions[0].version = "2.1"
+    assert manager.python_installation_fingerprint() != baseline
 
 
 def test_ensure_skips_prepared_environment(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -51,13 +84,11 @@ def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(Path, "write_text", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(manager.shutil, "which", lambda command: command)
-    monkeypatch.setattr(manager, "npm_executable", lambda: "npm")
 
     manager._setup_locked("release")
 
     flattened = [" ".join(command) for command in commands]
     assert any(command.startswith("uv sync --frozen") for command in flattened)
-    assert any(command.startswith("npm ci") for command in flattened)
     assert any(command.startswith("docker compose") for command in flattened)
     assert any(manager.QUALITY_COMPOSE_PROJECT_NAME in command for command in flattened)
     assert all("--offline" not in command for command in flattened)
@@ -102,10 +133,6 @@ def test_release_marker_is_not_ready_when_required_images_are_missing(
     repository = tmp_path / "repository"
     state_root = repository / ".werewolf-agent" / "runtime" / "environment"
     (repository / ".venv").mkdir(parents=True)
-    binary_root = repository / "frontend" / "node_modules" / ".bin"
-    binary_root.mkdir(parents=True)
-    for name in manager.FRONTEND_BINARIES:
-        (binary_root / f"{name}.cmd").write_text("", encoding="utf-8")
     state_root.mkdir(parents=True)
     (state_root / "release.json").write_text(
         json.dumps({"fingerprint": "same", "profile": "release"}),

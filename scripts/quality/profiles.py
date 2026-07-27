@@ -10,35 +10,31 @@ from scripts.quality.gates import contracts as contracts_module
 from scripts.quality.gates import distribution as distribution_module
 from scripts.quality.gates import documentation as documentation_module
 from scripts.quality.gates import environment as environment_module
-from scripts.quality.gates import frontend as frontend_module
 from scripts.quality.gates import python as python_module
 from scripts.quality.gates import repository as repository_module
 from scripts.quality.gates import runtime as runtime_module
 from scripts.quality.gates import services as services_module
 from scripts.quality.gates import tests as tests_module
 from scripts.quality.gates.browser import GATES as BROWSER_GATES
-from scripts.quality.gates.contracts import DEEP_GATES as DEEP_CONTRACT_GATES
 from scripts.quality.gates.contracts import GATES as CONTRACT_GATES
 from scripts.quality.gates.distribution import BENCHMARK_GATES, PACKAGE_GATES
 from scripts.quality.gates.documentation import GATES as DOCS_GATES
-from scripts.quality.gates.frontend import STATIC_GATES as FRONTEND_STATIC_GATES
 from scripts.quality.gates.python import GATES as PYTHON_STATIC_GATES
 from scripts.quality.gates.runtime import GATES as RUNTIME_GATES
 from scripts.quality.gates.services import GATES as SERVICE_GATES
-from scripts.quality.gates.tests import DEEP_GATES, UNIT_GATES
+from scripts.quality.gates.tests import DEEP_GATES, INTEGRATION_GATES, UNIT_GATES
 from scripts.quality.models import Gate, QualitySettings
 
 PROFILE_ORDER = ("quick", "check", "release", "deep")
 
 GROUPS: dict[str, tuple[str, ...]] = {
     "python-static": ("repository", "architecture", *PYTHON_STATIC_GATES),
-    "frontend-static": FRONTEND_STATIC_GATES,
     "unit": UNIT_GATES,
     "docs": DOCS_GATES,
     "contracts": CONTRACT_GATES,
     "distribution": PACKAGE_GATES,
     "benchmark": BENCHMARK_GATES,
-    "integration": SERVICE_GATES,
+    "integration": (*PACKAGE_GATES, *INTEGRATION_GATES, *SERVICE_GATES),
     "browser": ("supabase-preflight", *BROWSER_GATES),
     "runtime": RUNTIME_GATES,
 }
@@ -58,7 +54,6 @@ def build_profile(
         *environment_module.build(),
         *repository_module.build(),
         *python_module.build(),
-        *frontend_module.build(),
         *tests_module.build(run_dir, settings, jobs),
         *documentation_module.build(),
         *contracts_module.build(),
@@ -72,7 +67,6 @@ def build_profile(
         "repository",
         "architecture",
         *PYTHON_STATIC_GATES,
-        *FRONTEND_STATIC_GATES,
         *UNIT_GATES,
         "isolation",
     }
@@ -81,19 +75,18 @@ def build_profile(
         "coverage",
         "docs",
         "openapi",
-        "schemathesis",
+        *INTEGRATION_GATES,
         "package",
-        "frontend-build",
         "clean-tree",
     }
-    release = {*check, "supabase-preflight", "integration", "e2e", "docker"}
+    release = {*check, "supabase-preflight", "supabase-integration", "e2e", "docker"}
     names = {
         "quick": quick,
         "check": check,
         "release": release,
-        "deep": {*release, *DEEP_GATES, *DEEP_CONTRACT_GATES, "benchmark"},
+        "deep": {*release, *DEEP_GATES, "benchmark"},
     }[profile]
-    return select_stages([catalog], sorted(names))
+    return select_stages([catalog], sorted(names), expand_groups=False)
 
 
 def expand_selectors(selectors: Iterable[str], available: set[str]) -> set[str]:

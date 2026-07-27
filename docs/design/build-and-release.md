@@ -7,7 +7,7 @@
 ## 入力
 
 - version 管理された source、設定 default、resource
-- `uv.lock` と frontend lock file
+- `uv.lock`
 - build に必要な toolchain と事前取得済み image
 - release 環境から注入される credential
 
@@ -17,7 +17,7 @@ credential、local `.env`、cache、品質 report は配布物へ含めない。
 
 1. lock file と generated OpenAPI client に差分がないことを確認する。
 2. `uv run --no-sync python -m scripts.quality release` を実行する。
-3. Python package、frontend、container image を同じ revision から作る。
+3. Python packageとcontainer imageを同じrevisionから作る。
 4. migration を対象環境へ適用できることを検証する。
 5. artifact の version、digest、検証 report を関連付ける。
 6. 承認された配布基盤が artifact を配置し、起動時検証を行う。

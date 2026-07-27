@@ -22,11 +22,10 @@ stateは終局後も全役職を公開せず、完全状態は管理者revealと
 
 Supabase adapter は repository port を実装し、公式Auth SDK、game state、PGMQ、
 trace の接続を担当する。APIとworkerは用途別のprocess所有connection poolを使う。
-React から Supabase へ直接接続する用途は Auth に限定し、
-ゲームテーブルは Data API から参照させない。
+Supabase Authとゲームテーブルを分離し、ゲームテーブルはData APIから参照させない。
 
 完全状態を返す reveal は、管理者認可と専用設定を通過する HTTP route に限定する。
-通常の `GameClient`とReactのgame data clientからは呼び出せない。CLIとStreamlitの
+通常の`GameClient`からは呼び出せない。CLIとStreamlitの
 管理者領域は、管理者認可を通過した`AdminClient`だけから呼び出す。完全情報を通常clientで
 取得してから画面で隠す実装は禁止する。
 

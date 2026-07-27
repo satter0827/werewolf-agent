@@ -37,16 +37,6 @@ def test_get_setup_options_uses_public_api_config_not_supabase_data_api() -> Non
                     "admin_reveal": True,
                     "admin_replay": True,
                 },
-                "ui": {
-                    "theme_id": "dawn-table",
-                    "spacing_unit": 4,
-                    "desktop_breakpoint": 980,
-                    "motion": "system",
-                    "default_manual_player_id": "player-1",
-                    "default_setup_seed": "1",
-                    "operation_poll_interval_ms": 250,
-                    "operation_poll_timeout_ms": 60_000,
-                },
             },
         )
 

@@ -27,7 +27,6 @@ class DiagramEdge:
 
 
 SYSTEM_NODES = (
-    DiagramNode("react", "React", "interface"),
     DiagramNode("streamlit", "Streamlit", "interface"),
     DiagramNode("cli", "CLI", "interface"),
     DiagramNode("administrator", "Administrator", "interface"),
@@ -40,7 +39,6 @@ SYSTEM_NODES = (
     DiagramNode("llm", "LLM Provider", "external"),
 )
 SYSTEM_EDGES = (
-    DiagramEdge("react", "api", "HTTP"),
     DiagramEdge("streamlit", "api", "HTTP"),
     DiagramEdge("cli", "api", "HTTP"),
     DiagramEdge("administrator", "api", "Privileged HTTP"),
@@ -53,10 +51,9 @@ SYSTEM_EDGES = (
     DiagramEdge("application", "domain"),
 )
 SYSTEM_POSITIONS = {
-    "react": (50, 50),
-    "streamlit": (50, 144),
+    "streamlit": (50, 97),
     "cli": (50, 238),
-    "administrator": (50, 332),
+    "administrator": (50, 379),
     "api": (320, 144),
     "worker": (320, 332),
     "application": (590, 238),

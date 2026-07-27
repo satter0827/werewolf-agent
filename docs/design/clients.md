@@ -1,17 +1,8 @@
 (clients)=
 # 利用者クライアント
 
-React、CLI、Streamlit は同じ HTTP API を通じてゲームを操作する。各画面は表示と
+CLIとStreamlitは同じHTTP APIを通じてゲームを操作する。各画面は表示と
 入力に集中し、ゲームルールや公開範囲を再実装しない。
-
-## React
-
-React は本番利用者向け UI である。ゲーム通信には OpenAPI から生成した client を
-使い、Supabase client は Auth だけに使う。画面状態は server response から導出し、
-合法手、フェーズ遷移、勝敗を browser 内で再計算しない。
-
-browser E2E はログイン、game 作成、操作、更新、エラー表示の主要導線を検証する。
-selector は見た目の階層ではなく role と利用者向けラベルを優先する。
 
 ## CLI
 
@@ -22,7 +13,7 @@ CLI は自動化、診断、開発確認の入口である。`system`、`setup`�
 
 ## Streamlit
 
-Streamlit は状況確認と操作を一続きに扱うゲーム卓 UI である。session state には画面上の選択だけを
+Streamlitは唯一のbrowser UIであり、状況確認と操作を一続きに扱うゲーム卓である。session stateには画面上の選択だけを
 保持し、完全な domain state や repository を埋め込まない。再実行時も API response
 を基準に表示 model を再構築する。
 

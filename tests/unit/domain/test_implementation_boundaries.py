@@ -6,7 +6,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
-FRONTEND = ROOT / "frontend" / "src"
 
 
 def test_domain_rules_and_fake_provider_remain_centralized() -> None:

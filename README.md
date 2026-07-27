@@ -5,13 +5,13 @@ core がゲームルールと完全状態を管理し、通常の HTTP API を�
 timeline、認証した player 本人の observation を提供します。完全状態を返す reveal
 は、設定で有効化した管理者専用 API に分離します。
 
-React、CLI、Streamlit は同じ API contract を使います。Supabase は Auth、永続化、
-operation queue を担当し、worker が自動進行と LLM provider を実行します。既定の
+CLIとStreamlitは同じAPI contractを使います。Streamlitが唯一のbrowser UIです。
+SupabaseはAuth、永続化、operation queueを担当し、workerが自動進行とLLM providerを実行します。既定の
 FakeListLLM は外部 API と credential を必要としません。
 
 ## セットアップ
 
-Python 3.11 以上 3.15 未満、uv、Node.js、Docker、Supabase CLI を使用します。
+Python 3.11以上3.15未満、uv、Docker、Supabase CLIを使用します。
 
 ```powershell
 uv run --no-project python -m scripts.environment setup check
@@ -48,8 +48,8 @@ uv run --no-sync streamlit run src/werewolf_agent/clients/streamlit/app.py
 docker compose --profile dev up --build
 ```
 
-React、API、worker、Supabaseは`React Stack`、Streamlit、API、worker、Supabaseは
-`Streamlit Stack`からまとめて起動できます。Stackを停止すると、Stackが使用した
+Streamlit、API、worker、Supabaseは`Streamlit Stack`からまとめて起動できます。
+Stackを停止すると、Stackが使用した
 ローカルSupabaseも停止します。
 
 ## 設計
@@ -65,7 +65,6 @@ React、API、worker、Supabaseは`React Stack`、Streamlit、API、worker、Sup
 | `src/werewolf_agent/clients` | CLI、Streamlit |
 | `src/werewolf_agent/contracts` | 外部 wire schema と安全な error |
 | `src/werewolf_agent/settings` | runtime設定、定義resourceの検証 |
-| `frontend` | React UI と generated OpenAPI client |
 
 `Game`だけがゲーム状態を変更します。applicationはdomain操作と保存を調整し、画面は
 合法手、フェーズ、勝敗を再計算しません。agentsとapplicationは互いに依存せず、
@@ -127,8 +126,7 @@ uv run --no-sync python -m scripts.agents local-ui
 
 `local-ui`だけがLocal LLM、Streamlitを専用Compose projectで統合します。認証済みAPI
 driverで作成・進行し、Streamlitの作成直後、進行中、timeline、終了、異常表示とDB照合を
-生成します。Reactは現在の明示Local LLM画面確認の対象外です。Playwright traceと認証を
-含み得るnative成果物はprivate領域へ保存します。OpenAIは
+生成します。Playwright traceと認証を含み得るnative成果物はprivate領域へ保存します。OpenAIは
 `run --provider openai --confirm-paid`を明示し、`OPENAI_API_KEY`を
 設定した場合だけ使用します。成果物は`.werewolf-agent/agents`へ保存されます。
 

@@ -4,14 +4,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from werewolf_agent.settings.constants import (
-    MAX_UI_OPERATION_POLL_TIMEOUT_MILLISECONDS,
-    MIN_PAGE_LIMIT,
-    MIN_TEXT_MAX_CHARS,
-)
-from werewolf_agent.settings.defaults import (
-    UiMotion,
-)
+from werewolf_agent.settings.constants import MIN_PAGE_LIMIT, MIN_TEXT_MAX_CHARS
 
 
 class ApiSettings(BaseModel):
@@ -85,39 +78,4 @@ class ApiSettings(BaseModel):
     api_max_concurrent_requests: int = Field(
         ge=1,
         validation_alias="WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
-    )
-    ui_theme_id: str = Field(
-        min_length=1,
-        validation_alias="WEREWOLF_UI_THEME_ID",
-    )
-    ui_spacing_unit: int = Field(
-        ge=1,
-        le=16,
-        validation_alias="WEREWOLF_UI_SPACING_UNIT",
-    )
-    ui_desktop_breakpoint: int = Field(
-        ge=640,
-        le=1920,
-        validation_alias="WEREWOLF_UI_DESKTOP_BREAKPOINT",
-    )
-    ui_motion: UiMotion = Field(
-        validation_alias="WEREWOLF_UI_MOTION",
-    )
-    ui_default_manual_player_id: str = Field(
-        min_length=1,
-        validation_alias="WEREWOLF_UI_DEFAULT_MANUAL_PLAYER_ID",
-    )
-    ui_default_setup_seed: str = Field(
-        min_length=1,
-        validation_alias="WEREWOLF_UI_DEFAULT_SETUP_SEED",
-    )
-    ui_operation_poll_interval_ms: int = Field(
-        ge=50,
-        le=10_000,
-        validation_alias="WEREWOLF_UI_OPERATION_POLL_INTERVAL_MS",
-    )
-    ui_operation_poll_timeout_ms: int = Field(
-        ge=1_000,
-        le=MAX_UI_OPERATION_POLL_TIMEOUT_MILLISECONDS,
-        validation_alias="WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS",
     )

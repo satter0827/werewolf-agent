@@ -2174,7 +2174,7 @@
       },
       "PublicRuntimeConfig": {
         "additionalProperties": false,
-        "description": "Public, browser-verifiable runtime configuration.",
+        "description": "Public runtime configuration shared by HTTP clients.",
         "properties": {
           "config_revision": {
             "title": "Config Revision",
@@ -2192,9 +2192,6 @@
           },
           "setup": {
             "$ref": "#/components/schemas/GameSetupOptionsResponse"
-          },
-          "ui": {
-            "$ref": "#/components/schemas/PublicUiConfig"
           }
         },
         "required": [
@@ -2202,8 +2199,7 @@
           "config_revision",
           "setup",
           "limits",
-          "features",
-          "ui"
+          "features"
         ],
         "title": "PublicRuntimeConfig",
         "type": "object"
@@ -2349,67 +2345,6 @@
           "phase_names"
         ],
         "title": "PublicTheme",
-        "type": "object"
-      },
-      "PublicUiConfig": {
-        "additionalProperties": false,
-        "description": "Browser-verifiable presentation settings.",
-        "properties": {
-          "default_manual_player_id": {
-            "minLength": 1,
-            "title": "Default Manual Player Id",
-            "type": "string"
-          },
-          "default_setup_seed": {
-            "minLength": 1,
-            "title": "Default Setup Seed",
-            "type": "string"
-          },
-          "desktop_breakpoint": {
-            "minimum": 1.0,
-            "title": "Desktop Breakpoint",
-            "type": "integer"
-          },
-          "motion": {
-            "enum": [
-              "system",
-              "reduced"
-            ],
-            "title": "Motion",
-            "type": "string"
-          },
-          "operation_poll_interval_ms": {
-            "minimum": 1.0,
-            "title": "Operation Poll Interval Ms",
-            "type": "integer"
-          },
-          "operation_poll_timeout_ms": {
-            "minimum": 1.0,
-            "title": "Operation Poll Timeout Ms",
-            "type": "integer"
-          },
-          "spacing_unit": {
-            "minimum": 1.0,
-            "title": "Spacing Unit",
-            "type": "integer"
-          },
-          "theme_id": {
-            "minLength": 1,
-            "title": "Theme Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "theme_id",
-          "spacing_unit",
-          "desktop_breakpoint",
-          "motion",
-          "default_manual_player_id",
-          "default_setup_seed",
-          "operation_poll_interval_ms",
-          "operation_poll_timeout_ms"
-        ],
-        "title": "PublicUiConfig",
         "type": "object"
       },
       "ReplayVerificationResponse": {

@@ -45,7 +45,7 @@ services:
       WEREWOLF_API_CONTRACT_VERSION: ${WEREWOLF_API_CONTRACT_VERSION:-v1}
       WEREWOLF_API_CONFIG_REVISION: ${WEREWOLF_API_CONFIG_REVISION:-2026-07-24}
       WEREWOLF_API_DOCS_ENABLED: ${WEREWOLF_API_DOCS_ENABLED:-false}
-      WEREWOLF_API_CORS_ORIGINS: ${WEREWOLF_API_CORS_ORIGINS:-http://localhost:5173,http://localhost:8080,http://frontend:8080}
+      WEREWOLF_API_CORS_ORIGINS: ${WEREWOLF_API_CORS_ORIGINS:-}
       WEREWOLF_API_MAX_BODY_BYTES: ${WEREWOLF_API_MAX_BODY_BYTES:-65536}
       WEREWOLF_API_MESSAGE_MAX_CHARS: ${WEREWOLF_API_MESSAGE_MAX_CHARS:-200}
       WEREWOLF_API_RATE_LIMIT_REQUESTS: ${WEREWOLF_API_RATE_LIMIT_REQUESTS:-120}
@@ -54,14 +54,6 @@ services:
       WEREWOLF_API_MAX_CONCURRENT_REQUESTS: ${WEREWOLF_API_MAX_CONCURRENT_REQUESTS:-32}
       WEREWOLF_GAME_DEFAULT_NARRATION_MODE: ${WEREWOLF_GAME_DEFAULT_NARRATION_MODE:-standard}
       WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID: ${WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID:-standard_6}
-      WEREWOLF_UI_THEME_ID: ${WEREWOLF_UI_THEME_ID:-dawn-table}
-      WEREWOLF_UI_SPACING_UNIT: ${WEREWOLF_UI_SPACING_UNIT:-4}
-      WEREWOLF_UI_DESKTOP_BREAKPOINT: ${WEREWOLF_UI_DESKTOP_BREAKPOINT:-980}
-      WEREWOLF_UI_MOTION: ${WEREWOLF_UI_MOTION:-system}
-      WEREWOLF_UI_DEFAULT_MANUAL_PLAYER_ID: ${WEREWOLF_UI_DEFAULT_MANUAL_PLAYER_ID:-player-1}
-      WEREWOLF_UI_DEFAULT_SETUP_SEED: ${WEREWOLF_UI_DEFAULT_SETUP_SEED:-1}
-      WEREWOLF_UI_OPERATION_POLL_INTERVAL_MS: ${WEREWOLF_UI_OPERATION_POLL_INTERVAL_MS:-250}
-      WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS: ${WEREWOLF_UI_OPERATION_POLL_TIMEOUT_MS:-60000}
       WEREWOLF_LOG_FILE_NAME: api.jsonl
       WEREWOLF_API_INSTANCE_ID: ${WEREWOLF_API_INSTANCE_ID:-}
     command: werewolf-agent-api
@@ -117,53 +109,6 @@ services:
       api:
         condition: service_healthy
 
-  frontend:
-    build:
-      context: .
-      dockerfile: docker/frontend.Dockerfile
-      target: runtime
-      args:
-        VITE_WEREWOLF_API_URL: ${VITE_WEREWOLF_API_URL:-http://localhost:8000}
-        VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-http://localhost:54321}
-        VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
-    profiles: ["dev", "e2e", "production"]
-    ports:
-      - "8080:8080"
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/ >/dev/null"]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
-  frontend-e2e:
-    build:
-      context: .
-      dockerfile: docker/e2e.Dockerfile
-    profiles: ["e2e"]
-    working_dir: /workspace/frontend
-    environment:
-      VITE_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
-      VITE_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-      VITE_WEREWOLF_API_URL: http://api:8000
-    command: npm run dev -- --host 0.0.0.0 --port 8080
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:8080').then(r => { if (!r.ok) process.exit(1) })",
-        ]
-      interval: 5s
-      timeout: 3s
-      retries: 20
-
   streamlit:
     build: *python-build
     profiles: ["dev", "e2e"]
@@ -217,9 +162,8 @@ services:
       context: .
       dockerfile: docker/e2e.Dockerfile
     profiles: ["e2e"]
-    working_dir: /workspace/frontend
+    working_dir: /workspace
     environment:
-      PLAYWRIGHT_BASE_URL: http://frontend-e2e:8080
       PLAYWRIGHT_API_URL: http://api:8000
       PLAYWRIGHT_OUTPUT_DIR: ${PLAYWRIGHT_OUTPUT_DIR:-/tmp/werewolf-agent/playwright}
       PLAYWRIGHT_STREAMLIT_URL: http://streamlit:8501
@@ -229,11 +173,9 @@ services:
       PLAYWRIGHT_LOCAL_LLM: ${PLAYWRIGHT_LOCAL_LLM:-0}
       PLAYWRIGHT_LOCAL_PASSWORD: ${PLAYWRIGHT_LOCAL_PASSWORD:-}
       PLAYWRIGHT_SCREENSHOT_DIR: ${PLAYWRIGHT_SCREENSHOT_DIR:-}
-      PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY: ${VITE_SUPABASE_PUBLISHABLE_KEY:-}
-      PLAYWRIGHT_SUPABASE_URL: ${VITE_SUPABASE_URL:-}
-    command: npm run test:e2e
+      PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
+      PLAYWRIGHT_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-}
+    command: python -m pytest scripts/browser/scenarios/test_streamlit.py
     depends_on:
-      frontend-e2e:
-        condition: service_healthy
       streamlit:
         condition: service_healthy

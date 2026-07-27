@@ -35,6 +35,17 @@ def test_split_csv_removes_empty_items_and_whitespace() -> None:
     ]
 
 
+def test_cors_origins_are_empty_by_default_and_split_when_configured() -> None:
+    assert AppSettings(_env_file=None).api_cors_origin_values == []
+    assert AppSettings(
+        _env_file=None,
+        api_cors_origins="https://browser.example, https://admin.example",
+    ).api_cors_origin_values == [
+        "https://browser.example",
+        "https://admin.example",
+    ]
+
+
 def test_split_mapping_parses_key_value_items() -> None:
     assert split_mapping("villager:村人, werewolf:人狼", field_name="names") == {
         "villager": "村人",
@@ -57,34 +68,6 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["game_roles_file"] == ""
     assert PACKAGED_DEFAULTS["game_default_setup_preset_id"] == "standard_6"
     assert PACKAGED_DEFAULTS["streamlit_random_seed_max"] == 1000000
-    assert PACKAGED_DEFAULTS["ui_theme_id"] == "dawn-table"
-    assert PACKAGED_DEFAULTS["ui_desktop_breakpoint"] == 980
-
-
-def test_browser_ui_settings_are_validated_runtime_values() -> None:
-    settings = AppSettings(
-        _env_file=None,
-        ui_theme_id="test-theme",
-        ui_spacing_unit=6,
-        ui_desktop_breakpoint=1024,
-        ui_operation_poll_interval_ms=500,
-        ui_operation_poll_timeout_ms=90_000,
-    )
-
-    assert settings.ui_theme_id == "test-theme"
-    assert settings.ui_spacing_unit == 6
-    assert settings.ui_desktop_breakpoint == 1024
-    assert settings.ui_operation_poll_interval_ms == 500
-    assert settings.ui_operation_poll_timeout_ms == 90_000
-
-
-def test_browser_ui_allows_explicit_long_running_local_agent_timeout() -> None:
-    settings = AppSettings(
-        _env_file=None,
-        ui_operation_poll_timeout_ms=1_200_000,
-    )
-
-    assert settings.ui_operation_poll_timeout_ms == 1_200_000
 
 
 def test_supabase_settings_default_to_unconfigured() -> None:

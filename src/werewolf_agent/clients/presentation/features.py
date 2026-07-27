@@ -8,7 +8,6 @@ from typing import Any, Final, Literal, TypeVar, cast
 
 FeatureAudience = Literal["public", "player", "admin"]
 FeatureDependency = Literal["api", "authentication", "database", "operation_queue"]
-ReactStatus = Literal["implemented", "deferred"]
 TCallable = TypeVar("TCallable", bound=Callable[..., Any])
 FEATURE_IDS_ATTRIBUTE: Final = "__werewolf_feature_ids__"
 
@@ -22,7 +21,6 @@ class FeatureSpec:
     dependencies: tuple[FeatureDependency, ...]
     cli_required: bool = True
     streamlit_required: bool = True
-    react_status: ReactStatus = "deferred"
 
 
 _FEATURES: Final[tuple[FeatureSpec, ...]] = (

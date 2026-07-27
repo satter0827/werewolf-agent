@@ -30,7 +30,7 @@ from scripts._infra.process import (
     run_command,
     utc_now,
 )
-from scripts.environment.manager import frontend_installation_fingerprint
+from scripts.environment.manager import python_installation_fingerprint
 from scripts.quality.gates import repository as repository_gate
 from scripts.quality.gates import services as services_gate
 from scripts.quality.models import (
@@ -334,7 +334,7 @@ def execute(
         stages = stages_override or _profile_stages(profile, jobs, run_dir, settings)
     try:
         context.initial_git_status = repository_gate.git_status(environment)
-        context.initial_dependency_fingerprint = frontend_installation_fingerprint()
+        context.initial_dependency_fingerprint = python_installation_fingerprint()
     except KeyboardInterrupt:
         message = "品質実行が初期化中に中断されました。"
         log_path = run_dir / "logs" / "runner-setup.log"
@@ -502,33 +502,33 @@ def execute(
 
 
 def _environment_stability_result(context: RunContext) -> GateResult:
-    """品質実行がFrontend依存環境を変更していないことを返す。"""
+    """品質実行がPython依存環境を変更していないことを返す。"""
     started = time.monotonic()
     log_path = context.run_dir / "logs" / "environment-stability.log"
     try:
-        current = frontend_installation_fingerprint()
+        current = python_installation_fingerprint()
         changed = current != context.initial_dependency_fingerprint
-        message = "品質実行によりFrontend依存環境が変更されました。" if changed else None
-        log_path.write_text((message or "Frontend依存環境は不変です。") + "\n", encoding="utf-8")
+        message = "品質実行によりPython依存環境が変更されました。" if changed else None
+        log_path.write_text((message or "Python依存環境は不変です。") + "\n", encoding="utf-8")
         return GateResult(
             "environment-stability",
             "Dependency environment unchanged",
             "failed" if changed else "passed",
             time.monotonic() - started,
-            command=["frontend-installation-fingerprint"],
+            command=["python-installation-fingerprint"],
             returncode=1 if changed else 0,
             log=log_path.relative_to(context.run_dir).as_posix(),
             message=message,
         )
     except (OSError, ValueError) as error:
-        message = f"Frontend依存環境を再確認できません: {error}"
+        message = f"Python依存環境を再確認できません: {error}"
         log_path.write_text(message + "\n", encoding="utf-8")
         return GateResult(
             "environment-stability",
             "Dependency environment unchanged",
             "error",
             time.monotonic() - started,
-            command=["frontend-installation-fingerprint"],
+            command=["python-installation-fingerprint"],
             log=log_path.relative_to(context.run_dir).as_posix(),
             message=message,
         )
