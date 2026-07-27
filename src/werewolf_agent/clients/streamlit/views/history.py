@@ -15,7 +15,7 @@ from werewolf_agent.clients.streamlit.operations import (
     list_recent_games,
     load_public_record,
 )
-from werewolf_agent.clients.streamlit.screens import ScreenCatalog
+from werewolf_agent.clients.streamlit.setup import VIEW_OBSERVE_SETUP, VIEW_PLAY_SETUP, switch_view
 from werewolf_agent.clients.streamlit.view_models import timeline_items
 from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.contracts import (
@@ -36,11 +36,10 @@ def _render_history_screen(
     settings: AppSettings,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
 ) -> None:
     """Render personal game history and compact result analysis."""
-    st.header(catalog.t(lang, "history.title"))
-    st.caption(catalog.t(lang, "settings.mode.supabase"))
+    st.title(catalog.t(lang, "history.title"))
+    st.caption(catalog.t(lang, "history.caption"))
     try:
         games = list_recent_games(settings=settings)
     except AppError as exc:
@@ -48,6 +47,13 @@ def _render_history_screen(
         return
     if not games:
         st.info(catalog.t(lang, "history.empty"))
+        actions = st.container(horizontal=True, key="records_empty_actions")
+        if actions.button(catalog.t(lang, "history.start_play"), type="primary"):
+            switch_view(st.session_state, VIEW_PLAY_SETUP)
+            st.rerun()
+        if actions.button(catalog.t(lang, "history.start_observe")):
+            switch_view(st.session_state, VIEW_OBSERVE_SETUP)
+            st.rerun()
         return
 
     selected = st.selectbox(
@@ -79,7 +85,7 @@ def _render_history_screen(
 
     with st.expander(
         catalog.t(lang, "records.analysis"),
-        expanded=not screens.analysis_collapsed,
+        expanded=False,
     ):
         _render_history_analysis(st, games=games, catalog=catalog, lang=lang)
 

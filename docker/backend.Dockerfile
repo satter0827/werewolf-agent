@@ -15,6 +15,7 @@ COPY pyproject.toml uv.lock README.md ./
 COPY src ./src
 COPY scripts ./scripts
 COPY supabase ./supabase
+COPY .streamlit ./.streamlit
 
 FROM base AS dev
 

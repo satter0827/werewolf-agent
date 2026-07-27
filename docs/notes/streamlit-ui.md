@@ -1,6 +1,6 @@
 # Streamlit UI
 
-Streamlit 画面の検討メモです。実装の正は A案をベースにした Play / Observe 共通設定画面です。
+Streamlit 画面の検討メモです。実装の正は「月明かりの卓」を基準にした Play / Observe 共通画面です。
 右側にプレイヤー状態を再掲せず、中央の `ゲーム卓` に集約します。右側は Play では `あなたの手番`、
 Observe では `観戦ログ` を主役にします。
 
@@ -57,23 +57,23 @@ mobile では `ゲーム卓`、右ペイン相当、`公開タイムライン` �
 
 ## 実装メモ
 
-- アイコンは当面、Streamlit 標準で扱える絵文字/記号を使う
+- 装飾画像、絵文字、gradient、外部fontを使わず、明るいアイボリー、藍、深緑、琥珀、鈍い赤を状態へ限定して使う
 - UI 文言とイベント種別、行動、フェーズ、役職の表示名は `clients/streamlit/resources/i18n.toml` に閉じる
 - `WEREWOLF_STREAMLIT_I18N_FILE` を指定すると外部 TOML で UI 文言を差し替えられる
-- CSS は `tokens`、`base`、`layout`、`components`、`streamlit`、`responsive` の固定順で読み、`WEREWOLF_STREAMLIT_CSS_FILE` は最後にoverrideとして追加する
-- 画面要素の表示有無、順序、配置、列数は `clients/streamlit/resources/screens.toml` に閉じ、`WEREWOLF_STREAMLIT_SCREENS_FILE` で差し替える
-- 画面定義体は表示構成だけを扱い、public / private 判定、action availability、API payload、game state 計算は持たない
+- CSS は `tokens`、`base`、`layout`、`components`、`streamlit`、`responsive` の固定順で読み、外部overrideを持たない
+- native widgetのthemeはrepository管理の`.streamlit/config.toml`を正とし、localとDockerで同じ設定を使う
+- 画面要素の表示有無、順序、配置、列数は各viewが所有し、public / private判定、action availability、API payload、game state計算はview modelとAPI responseを正とする
 - 画面起動時の初期言語とデータソース状態は `AppSettings` から読み、実行中の選択は `StreamlitPreferences` として Streamlit session state に保持する
 - `streamlit/icons.py` は icon metadata だけを持ち、label は i18n catalog から取得する
 - 後からログアイコンや専用画像に置き換える場合も、画面本体ではなくマップを差し替える
-- `app.py` は Streamlit widget と renderer registry だけを担当する
+- 各viewは製品仕様の構造を明示し、動的renderer registryを持たない
 - game 操作は `streamlit/operations.py` から `GameClient` protocol を直接使う
 - game 固有の開始設定は `GameSetupDraft` として `streamlit/setup.py` に閉じる
 - 発言・投票送信後は active client の `advance_game` を 1 回だけ呼び、次の手番へ進める
 - `入力待ちまで進める` は Streamlit session state と `st.fragment` で 1 step ずつ進め、`一時停止` で次 step 前に止める
 - 右ペインは `right_command_panel` container を操作盤の外枠とし、手番状態、秘匿観測、操作、観測メモを固定順に並べる
 - domain / usecase の `available_actions` を正とし、画面側だけで多重発言や多重投票を隠す実装にはしない
-- HTML 断片と escape は `streamlit/components.py` に閉じ、`app.py` に重複させない
+- HTML 断片とescapeはstatus ribbon、game tableau、公開timelineだけを`streamlit/components.py`に閉じる
 - `view_models.py` は表示用データ変換だけを担当し、Streamlit、domain、usecase、`api` に依存させない
 - `公開タイムライン` には `/timeline` の `GameTimelineItem` だけを使う
 - 右ペイン最下部の `観測メモ（公開情報）` は public state と public timeline だけから作り、private observation や reveal は混ぜない

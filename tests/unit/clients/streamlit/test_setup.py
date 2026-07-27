@@ -2,8 +2,8 @@ from typing import Any
 
 from werewolf_agent.clients.streamlit import setup
 from werewolf_agent.clients.streamlit.i18n import load_i18n
-from werewolf_agent.clients.streamlit.screens import load_screen_catalog
-from werewolf_agent.clients.streamlit.views.setup import SETUP_STEP_BY_ELEMENT, _select_policy
+from werewolf_agent.clients.streamlit.preferences import preferred_language, remember_language
+from werewolf_agent.clients.streamlit.views.setup import _select_policy
 from werewolf_agent.contracts.schemas import (
     GameSetupOptionsResponse,
     LocalRulesSettings,
@@ -63,6 +63,7 @@ def test_setup_validation_rejects_missing_faction_and_out_of_range_total() -> No
 
     assert validation.is_valid is False
     assert "合計人数は 5〜8 人にしてください。" in validation.messages
+    assert "人狼陣営を 1 人以上にしてください。" in validation.messages
 
 
 def test_setup_remembers_settings_and_parses_optional_seed() -> None:
@@ -84,14 +85,14 @@ def test_setup_draft_and_preferences_use_single_session_models() -> None:
     setup.remember_role_counts(session, {"werewolf": 1, "villager": 5})
     setup.remember_seed_text(session, "42")
     setup.remember_manual_player_id(session, "player-2")
-    setup.remember_preferred_language(session, "en")
+    remember_language(session, "en")
 
     assert set(session) == {
         setup.KEY_GAME_SETUP_DRAFT,
-        setup.KEY_STREAMLIT_PREFERENCES,
+        "werewolf_streamlit_preferences",
     }
     assert setup.game_setup_draft(session).manual_player_id == "player-2"
-    assert setup.preferred_language(session, "ja") == "en"
+    assert preferred_language(session, "ja") == "en"
 
 
 def test_phase_order_selector_matches_default_by_phase_sequence() -> None:
@@ -122,15 +123,6 @@ def test_phase_order_selector_matches_default_by_phase_sequence() -> None:
 
     assert selected == default_phases
     assert streamlit.selected_index == 1
-
-
-def test_every_configured_setup_main_element_is_assigned_to_a_step() -> None:
-    screens = load_screen_catalog(AppSettings(_env_file=None))
-    configured = {
-        element.id for element in screens.elements("setup", "main") if element.id != "header"
-    }
-
-    assert configured == set(SETUP_STEP_BY_ELEMENT)
 
 
 class _PolicySelectorStub:

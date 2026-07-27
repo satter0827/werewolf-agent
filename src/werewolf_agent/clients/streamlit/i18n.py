@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, MutableMapping
+import logging
+from collections.abc import Mapping
 from dataclasses import dataclass
-from typing import Any, Final, Literal, cast
+from typing import Final, Literal, cast
 
-from werewolf_agent.adapters.resources import load_streamlit_i18n
 from werewolf_agent.clients.streamlit.constants import UNKNOWN_VALUE_LABEL
 from werewolf_agent.clients.streamlit.messages import (
     message_field_must_be_non_empty_string,
@@ -14,12 +14,13 @@ from werewolf_agent.clients.streamlit.messages import (
     message_localized_keys_must_match_en,
     message_localized_label_kinds_must_match_en,
 )
-from werewolf_agent.clients.streamlit.state import KEY_STREAMLIT_PREFERENCES
+from werewolf_agent.clients.streamlit.resources import load_i18n_payload, load_packaged_i18n
 from werewolf_agent.contracts import ConfigError
 from werewolf_agent.settings import AppSettings
 
 Language = Literal["ja", "en"]
 SUPPORTED_LANGUAGES: Final[frozenset[Language]] = frozenset({"ja", "en"})
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -57,32 +58,25 @@ class I18nCatalog:
 
 def load_i18n(settings: AppSettings) -> I18nCatalog:
     """Load the Streamlit translation catalog from settings."""
-    payload = load_streamlit_i18n(settings.streamlit_i18n_path)
+    payload, rejected = load_i18n_payload(settings.streamlit_i18n_path)
+    if rejected:
+        logger.warning(
+            "streamlit.i18n_override.rejected",
+            extra={"event_action": "streamlit.i18n_override.rejected"},
+        )
     try:
         return _catalog_from_payload(payload)
-    except ConfigError:
+    except ConfigError as exc:
         if settings.streamlit_i18n_path is None:
             raise
-        return _catalog_from_payload(load_streamlit_i18n(None))
-
-
-def current_language(session: MutableMapping[str, Any], settings: AppSettings) -> Language:
-    """Return the current UI language, defaulting to settings only on first load."""
-    preferences = session.get(KEY_STREAMLIT_PREFERENCES)
-    raw_value = (
-        preferences.get("language", settings.streamlit_language)
-        if isinstance(preferences, dict)
-        else settings.streamlit_language
-    )
-    return normalize_language(raw_value)
-
-
-def remember_language(session: MutableMapping[str, Any], language: str) -> None:
-    """Store the current UI language in Streamlit session state."""
-    preferences = session.get(KEY_STREAMLIT_PREFERENCES)
-    next_preferences = dict(preferences) if isinstance(preferences, dict) else {}
-    next_preferences["language"] = normalize_language(language)
-    session[KEY_STREAMLIT_PREFERENCES] = next_preferences
+        logger.warning(
+            "streamlit.i18n_override.rejected",
+            extra={
+                "event_action": "streamlit.i18n_override.rejected",
+                "error_type": type(exc).__name__,
+            },
+        )
+        return _catalog_from_payload(load_packaged_i18n())
 
 
 def normalize_language(value: object) -> Language:

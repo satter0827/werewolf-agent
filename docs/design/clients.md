@@ -22,17 +22,20 @@ CLI は自動化、診断、開発確認の入口である。`system`、`setup`�
 
 ## Streamlit
 
-Streamlit は操作確認と可視化の補助 UI である。session state には画面上の選択だけを
+Streamlit は状況確認と操作を一続きに扱うゲーム卓 UI である。session state には画面上の選択だけを
 保持し、完全な domain state や repository を埋め込まない。再実行時も API response
 を基準に表示 model を再構築する。
 
 表示modelは型、game state、timeline、observation/actionのmoduleに分ける。screenは
 必要なprojectionだけをimportし、HTTP responseの変換をscreen本体へ重複させない。
 
-workspaceは`Play`、`Observe`、`Records`、`Admin`、`Preferences`の順に扱う。管理者と
-確認できない場合は`Admin`を表示しない。認証やdatabaseが利用できない場合もCSS、表示設定、
-navigation、依存状態を描画し、guestや管理者へ暗黙昇格しない。ゲーム情報を分析情報より先に
-置き、分析領域は初期状態で折りたたむ。`Records`は公開stateと解決済みtimelineを取得し、
+workspaceは`Play`、`Observe`、`Records`、`Admin`、`Preferences`の順に扱う。順序、tab、
+必須領域、列構造は各viewが製品仕様として所有し、外部定義で変更しない。管理者と確認できない
+場合は`Admin`を表示しない。認証や保存機能を利用できない場合も表示設定、navigation、現在可能な
+操作と復旧方法を描画し、guestや管理者へ暗黙昇格しない。ゲーム情報を分析情報より先に置き、分析
+領域は初期状態で折りたたむ。ゲーム画面はstatus ribbon、単一のtableau、native widgetの操作rail、
+公開timelineの順に描画する。独自HTMLはstatus ribbon、tableau、timelineだけに限定する。
+`Records`は公開stateと解決済みtimelineを取得し、
 物語としてのreplayと分析を同じ記録導線で分けて表示する。
 
 databaseが利用できない場合は権威あるstateを表示しない。operation queueだけが利用できない

@@ -12,10 +12,7 @@ from werewolf_agent.clients.streamlit.i18n import (
 from werewolf_agent.clients.streamlit.operations import (
     load_setup_options,
 )
-from werewolf_agent.clients.streamlit.screens import (
-    ScreenCatalog,
-    ScreenElement,
-)
+from werewolf_agent.clients.streamlit.preferences import remember_language
 from werewolf_agent.clients.streamlit.setup import (
     KEY_ROLE_COUNT_WIDGET_PREFIX,
     NARRATION_MODES,
@@ -27,7 +24,6 @@ from werewolf_agent.clients.streamlit.setup import (
     preset_counts,
     remember_character_assignment,
     remember_narration_mode,
-    remember_preferred_language,
     remember_role_counts,
     remember_rules,
     remember_scenario_id,
@@ -62,59 +58,45 @@ def _render_settings_screen(
     settings: AppSettings,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
 ) -> None:
     """Render Streamlit-wide preferences and definition management."""
-    st.header(catalog.t(lang, "settings.title"))
+    st.title(catalog.t(lang, "settings.title"))
     st.caption(catalog.t(lang, "settings.caption"))
-    elements = screens.elements("settings", "tabs")
-    if not elements:
-        return
-
-    tabs = st.tabs([_settings_tab_label(element, catalog, lang) for element in elements])
+    tab_ids = ("preferences", "role_definitions", "character_definitions")
+    tabs = st.tabs(
+        [catalog.t(lang, f"settings.tab.{tab_id}") for tab_id in tab_ids],
+        key="settings_tabs",
+    )
     setup_options: GameSetupOptionsResponse | None = None
     setup_error: AppError | None = None
-    if any(element.id in {"role_definitions", "character_definitions"} for element in elements):
-        try:
-            setup_options = setup_options_with_session_customs(
-                st.session_state,
-                load_setup_options(settings=settings),
-            )
-        except AppError as exc:
-            setup_error = exc
+    try:
+        setup_options = setup_options_with_session_customs(
+            st.session_state,
+            load_setup_options(settings=settings),
+        )
+    except AppError as exc:
+        setup_error = exc
 
-    for element, tab in zip(elements, tabs, strict=True):
+    for tab_id, tab in zip(tab_ids, tabs, strict=True):
         with tab:
-            if element.id == "preferences":
+            if tab_id == "preferences":
                 _render_common_settings(st, settings=settings, catalog=catalog, lang=lang)
             elif setup_error is not None:
                 st.error(setup_error.detail)
-            elif element.id == "role_definitions" and setup_options is not None:
+            elif tab_id == "role_definitions" and setup_options is not None:
                 _render_role_definition_settings(
                     st,
                     setup_options=setup_options,
                     catalog=catalog,
                     lang=lang,
                 )
-            elif element.id == "character_definitions" and setup_options is not None:
+            elif setup_options is not None:
                 _render_character_definition_settings(
                     st,
                     setup_options=setup_options,
                     catalog=catalog,
                     lang=lang,
                 )
-
-
-def _settings_tab_label(
-    element: ScreenElement,
-    catalog: I18nCatalog,
-    lang: Language,
-) -> str:
-    if element.id == "preferences":
-        return catalog.t(lang, "settings.tab.preferences")
-    if element.id == "role_definitions":
-        return catalog.t(lang, "settings.tab.role_definitions")
-    return catalog.t(lang, "settings.tab.character_definitions")
 
 
 def _render_common_settings(
@@ -133,10 +115,8 @@ def _render_common_settings(
         format_func=lambda value: catalog.languages[value],
     )
     if selected_language != lang:
-        remember_preferred_language(st.session_state, str(selected_language))
+        remember_language(st.session_state, str(selected_language))
         st.rerun()
-
-    st.caption(catalog.t(lang, "settings.mode.supabase"))
 
     if st.button(catalog.t(lang, "settings.clear_custom"), use_container_width=True):
         clear_custom_definitions(st.session_state)
@@ -219,7 +199,7 @@ def _render_role_definition_settings(
     lang: Language,
 ) -> None:
     """Render shared role definitions and custom role management."""
-    st.subheader(catalog.t(lang, "settings.role_catalog"))
+    st.header(catalog.t(lang, "settings.role_catalog"))
     for role in setup_options.roles:
         abilities = [
             _ability_name(setup_options, ability_id, catalog, lang) for ability_id in role.abilities
@@ -247,7 +227,7 @@ def _render_character_assignments(
         setup_options,
         player_count=total_players,
     )
-    st.subheader(catalog.t(lang, "settings.character_assignments"))
+    st.header(catalog.t(lang, "settings.character_assignments"))
     character_options: list[CharacterDefinitionView | None] = [None, *setup_options.characters]
     for player_id, seat_label in seat_options(counts):
         current_character_id = current_assignments.get(player_id)
@@ -282,7 +262,7 @@ def _render_character_definition_settings(
     lang: Language,
 ) -> None:
     """Render shared character definitions and custom character management."""
-    st.subheader(catalog.t(lang, "settings.character_catalog"))
+    st.header(catalog.t(lang, "settings.character_catalog"))
     for character in setup_options.characters:
         st.markdown(f"**{character.name}** / {character.age} / {character.gender}")
     _render_custom_character_form(st, setup_options=setup_options, catalog=catalog, lang=lang)
@@ -298,7 +278,7 @@ def _render_custom_role_form(
     with st.form("streamlit-custom-role"):
         name = st.text_input(
             catalog.t(lang, "settings.custom_role.name"),
-            value="新しい役職" if lang == "ja" else "New role",
+            value=catalog.t(lang, "settings.custom_role.default_name"),
         )
         faction_ids = sorted({role.identity_faction for role in setup_options.roles})
         identity_faction = st.radio(
@@ -308,14 +288,14 @@ def _render_custom_role_form(
             horizontal=True,
         )
         victory_team = st.radio(
-            "勝利陣営",
+            catalog.t(lang, "settings.custom_role.victory_team"),
             faction_ids,
             format_func=lambda value: catalog.label(lang, "faction", value),
             horizontal=True,
         )
         objective = st.text_area(
-            "目的",
-            value="所属する勝利陣営の条件達成を目指します。",
+            catalog.t(lang, "settings.custom_role.objective"),
+            value=catalog.t(lang, "settings.custom_role.default_objective"),
         )
         abilities = st.multiselect(
             catalog.t(lang, "settings.custom_role.abilities"),
@@ -353,11 +333,7 @@ def _render_custom_character_form(
     with st.form("streamlit-custom-character"):
         name = st.selectbox(
             catalog.t(lang, "settings.custom_character.name"),
-            _localized_options(
-                lang,
-                ja=["真央", "凛", "悠真", "詩乃", "拓海", "紬"],
-                en=["Mao", "Rin", "Yuma", "Shino", "Takumi", "Tsumugi"],
-            ),
+            _message_options(catalog, lang, "settings.character.name", 6),
         )
         age = st.number_input(
             catalog.t(lang, "settings.custom_character.age"),
@@ -368,45 +344,19 @@ def _render_custom_character_form(
         )
         gender = st.selectbox(
             catalog.t(lang, "settings.custom_character.gender"),
-            _localized_options(
-                lang,
-                ja=["指定なし", "女性", "男性", "ノンバイナリー"],
-                en=["Unspecified", "Female", "Male", "Non-binary"],
-            ),
+            _message_options(catalog, lang, "settings.character.gender", 4),
         )
         personality = st.selectbox(
             catalog.t(lang, "settings.custom_character.personality"),
-            _localized_options(
-                lang,
-                ja=["慎重", "率直", "穏やか", "好奇心旺盛"],
-                en=["Careful", "Direct", "Calm", "Curious"],
-            ),
+            _message_options(catalog, lang, "settings.character.personality", 4),
         )
         speaking_style = st.selectbox(
             catalog.t(lang, "settings.custom_character.speaking"),
-            _localized_options(
-                lang,
-                ja=["短く話す", "根拠から話す", "質問を重ねる", "柔らかく話す"],
-                en=[
-                    "Short statements",
-                    "Evidence first",
-                    "Asks questions",
-                    "Soft spoken",
-                ],
-            ),
+            _message_options(catalog, lang, "settings.character.speaking", 4),
         )
         reasoning_style = st.selectbox(
             catalog.t(lang, "settings.custom_character.reasoning"),
-            _localized_options(
-                lang,
-                ja=["矛盾重視", "投票重視", "発言重視", "バランス重視"],
-                en=[
-                    "Contradictions first",
-                    "Votes first",
-                    "Speech first",
-                    "Balanced",
-                ],
-            ),
+            _message_options(catalog, lang, "settings.character.reasoning", 4),
         )
         risk_tolerance = st.selectbox(
             catalog.t(lang, "settings.custom_character.risk"),
@@ -442,7 +392,7 @@ def _render_local_rules_settings(
 ) -> None:
     """Render local rules for the next game."""
     current_rules = rules(st.session_state, setup_options)
-    st.subheader(catalog.t(lang, "settings.local_rules"))
+    st.header(catalog.t(lang, "settings.local_rules"))
     day_speech_limit_per_player = st.number_input(
         catalog.t(lang, "settings.rule.day_speech_limit_per_player"),
         min_value=1,
@@ -502,28 +452,30 @@ def _render_local_rules_settings(
         ),
     )
     wolf_attack_tie_resolution = st.selectbox(
-        "襲撃先が同数の場合",
+        catalog.t(lang, "settings.rule.wolf_attack_tie_resolution"),
         ["random_target", "no_attack"],
         index=["random_target", "no_attack"].index(current_rules.wolf_attack_tie_resolution),
-        format_func=lambda value: "抽選で決める" if value == "random_target" else "襲撃しない",
+        format_func=lambda value: catalog.t(
+            lang, f"settings.rule.wolf_attack_tie_resolution.{value}"
+        ),
     )
     seer_result_detail = st.selectbox(
-        "調査で分かる情報",
+        catalog.t(lang, "settings.rule.seer_result_detail"),
         ["faction", "role"],
         index=["faction", "role"].index(current_rules.seer_result_detail),
-        format_func=lambda value: "陣営" if value == "faction" else "役職",
+        format_func=lambda value: catalog.t(lang, f"settings.rule.result_detail.{value}"),
     )
     medium_result_detail = st.selectbox(
-        "霊媒で分かる情報",
+        catalog.t(lang, "settings.rule.medium_result_detail"),
         ["faction", "role"],
         index=["faction", "role"].index(current_rules.medium_result_detail),
-        format_func=lambda value: "陣営" if value == "faction" else "役職",
+        format_func=lambda value: catalog.t(lang, f"settings.rule.result_detail.{value}"),
     )
     starting_phase = st.selectbox(
-        "開始する場面",
+        catalog.t(lang, "settings.rule.starting_phase"),
         ["night", "day_discussion"],
         index=["night", "day_discussion"].index(current_rules.starting_phase),
-        format_func=lambda value: "夜" if value == "night" else "昼の議論",
+        format_func=lambda value: catalog.t(lang, f"settings.rule.starting_phase.{value}"),
     )
     next_rules = LocalRulesSettings(
         day_speech_limit_per_player=int(day_speech_limit_per_player),
@@ -631,8 +583,14 @@ def _character_label(character: CharacterDefinitionView) -> str:
     return f"{character.name} / {character.age} / {character.gender}"
 
 
-def _localized_options(lang: Language, *, ja: list[str], en: list[str]) -> list[str]:
-    return ja if lang == "ja" else en
+def _message_options(
+    catalog: I18nCatalog,
+    lang: Language,
+    prefix: str,
+    count: int,
+) -> list[str]:
+    """Return localized form choices from the translation catalog."""
+    return [catalog.t(lang, f"{prefix}.{index}") for index in range(1, count + 1)]
 
 
 def _has_duplicate_values(values: dict[str, str]) -> bool:

@@ -1,22 +1,48 @@
-[data-testid="stSidebar"] {
-    background: #f8fafc;
-    border-right: 1px solid var(--wa-line);
+.stApp button,
+.stApp [role="tab"] {
+    min-height: var(--wa-control-min);
+    min-width: var(--wa-control-min);
 }
 
-[data-testid="stSidebar"] .stButton > button,
-[data-testid="stSidebar"] .stFormSubmitButton > button {
-    min-height: 40px;
-    border-radius: var(--wa-radius);
-    font-weight: 800;
+.stApp button:focus-visible,
+.stApp [role="tab"]:focus-visible,
+.stApp input:focus-visible,
+.stApp textarea:focus-visible,
+.stApp select:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--wa-info) 45%, transparent);
+    outline-offset: 2px;
 }
 
-[data-testid="stAlert"] {
-    border-radius: var(--wa-radius);
-}
-[data-testid="stVerticalBlock"] {
-    gap: var(--wa-density-block-gap);
+.stApp [data-testid="stCaptionContainer"],
+.stApp [data-testid="stCaptionContainer"] p {
+    color: var(--wa-text) !important;
+    opacity: 1 !important;
+    -webkit-text-fill-color: var(--wa-text) !important;
 }
 
-[data-testid="stMainBlockContainer"] > [data-testid="stVerticalBlock"] {
-    gap: var(--wa-density-section-gap);
+/* Streamlit 1.58 の既定状態色は淡色テーマ上で WCAG AA を下回る。
+   状態は背景と icon に残し、本文だけ読みやすい共通文字色へ補正する。 */
+[data-testid="stAlertContainer"] p,
+.stMarkdownBadge {
+    color: var(--wa-text) !important;
+}
+
+.stMarkdownBadge {
+    background-color: var(--wa-surface-secondary) !important;
+}
+
+.st-key-right_command_panel [data-testid="stButton"] button,
+.st-key-setup_execution [data-testid="stButton"] button,
+.st-key-records_empty_actions [data-testid="stButton"] button {
+    min-height: var(--wa-control-min);
+}
+
+[data-testid="stSidebar"] [data-testid="stButton"] button {
+    min-height: var(--wa-control-min);
+    justify-content: flex-start;
+}
+
+[data-testid="stSidebar"] [data-testid="stButton"] button:focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--wa-info) 38%, transparent);
+    outline-offset: 2px;
 }

@@ -4,6 +4,9 @@ const artifactRoot = process.env.PLAYWRIGHT_OUTPUT_DIR ?? "../.werewolf-agent/pl
 
 export default defineConfig({
   testDir: process.env.PLAYWRIGHT_TEST_DIR ?? "e2e",
+  // ReactとStreamlitは同じFake LLM backendと匿名principalを共有する。
+  // 状態遷移を競合させず、利用者導線を一つずつ再現する。
+  workers: 1,
   outputDir: `${artifactRoot}/test-results`,
   reporter: [
     ["json", { outputFile: `${artifactRoot}/results.json` }],

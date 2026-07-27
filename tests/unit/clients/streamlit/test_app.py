@@ -3,7 +3,6 @@ from types import SimpleNamespace
 from typing import Any
 
 from werewolf_agent.clients.streamlit.i18n import load_i18n
-from werewolf_agent.clients.streamlit.screens import ScreenCatalog, load_screen_catalog
 from werewolf_agent.clients.streamlit.setup import KEY_PENDING_VIEW_SCROLL, VIEW_PLAY_SETUP
 from werewolf_agent.clients.streamlit.views import game, sidebar
 from werewolf_agent.clients.streamlit.views import runtime as app
@@ -17,7 +16,6 @@ from werewolf_agent.settings import AppSettings
 def test_sidebar_navigation_order_is_play_observe_history_settings(monkeypatch) -> None:
     settings = AppSettings(_env_file=None)
     catalog = load_i18n(settings)
-    screens = load_screen_catalog(settings)
     streamlit = _StreamlitStub()
 
     monkeypatch.setattr(sidebar, "_render_sidebar_brand", lambda *args, **kwargs: None)
@@ -28,26 +26,14 @@ def test_sidebar_navigation_order_is_play_observe_history_settings(monkeypatch) 
         settings,
         catalog=catalog,
         lang="ja",
-        screens=screens,
     )
 
     assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
 
 
-def test_sidebar_navigation_uses_configured_workspace_order(monkeypatch) -> None:
+def test_sidebar_navigation_includes_admin_for_administrator(monkeypatch) -> None:
     settings = AppSettings(_env_file=None)
     catalog = load_i18n(settings)
-    screens = load_screen_catalog(settings).model_copy(
-        update={
-            "workspace_order": (
-                "records",
-                "play",
-                "observe",
-                "preferences",
-                "admin",
-            )
-        }
-    )
     streamlit = _StreamlitStub()
 
     monkeypatch.setattr(sidebar, "_render_sidebar_brand", lambda *args, **kwargs: None)
@@ -58,23 +44,21 @@ def test_sidebar_navigation_uses_configured_workspace_order(monkeypatch) -> None
         settings,
         catalog=catalog,
         lang="ja",
-        screens=screens,
         is_admin=True,
     )
 
     assert streamlit.sidebar.button_labels == [
-        "記録",
         "プレイ",
         "観戦",
-        "表示設定",
+        "記録",
         "管理",
+        "表示設定",
     ]
 
 
 def test_sidebar_definition_keeps_required_brand(monkeypatch) -> None:
     settings = AppSettings(_env_file=None)
     catalog = load_i18n(settings)
-    screens = load_screen_catalog(settings)
     streamlit = _StreamlitStub()
 
     rendered: list[str] = []
@@ -90,7 +74,6 @@ def test_sidebar_definition_keeps_required_brand(monkeypatch) -> None:
         settings,
         catalog=catalog,
         lang="ja",
-        screens=screens,
     )
 
     assert streamlit.sidebar.button_labels == ["プレイ", "観戦", "記録", "表示設定"]
@@ -169,10 +152,7 @@ def test_app_shows_supabase_config_error_before_rendering_game_views(
 
     assert streamlit.error_texts == []
     assert streamlit.info_texts == [
-        (
-            "現在の状態: 認証を利用できません。必要な対応: Supabase Authの設定を確認し、"
-            "接続の復旧後に画面を再読み込みしてください。"
-        )
+        ("ログインを一時的に利用できません。接続を確認してから、画面を再読み込みしてください。")
     ]
     records = [
         record
@@ -227,41 +207,6 @@ def _fail_renderer(name: str):
         raise AssertionError(f"{name} renderer called")
 
     return fail
-
-
-def _sidebar_catalog() -> ScreenCatalog:
-    return ScreenCatalog.model_validate(
-        {
-            "sidebar": {
-                "regions": {
-                    "main": {
-                        "elements": [
-                            {"id": "brand", "order": 10},
-                            {"id": "navigation", "order": 20},
-                        ]
-                    }
-                }
-            },
-            "setup": {
-                "layout": {"summary_columns": 3, "seed_columns": 2},
-                "regions": {
-                    "main": {"elements": []},
-                    "summary": {"elements": []},
-                    "action": {"elements": []},
-                },
-            },
-            "settings": {"regions": {"tabs": {"elements": []}}},
-            "game": {
-                "layout": {"columns": [1.55, 1.0], "next_action_columns": 4},
-                "regions": {
-                    "top": {"elements": []},
-                    "main": {"elements": []},
-                    "side": {"elements": []},
-                    "bottom": {"elements": []},
-                },
-            },
-        }
-    )
 
 
 def _rules() -> LocalRulesSettings:

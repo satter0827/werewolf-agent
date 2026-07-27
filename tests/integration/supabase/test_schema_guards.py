@@ -194,12 +194,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
                 Jsonb(
                     {
                         "seed": 1,
-                        "role_counts": {
-                            "werewolf": 1,
-                            "seer": 1,
-                            "knight": 1,
-                            "villager": 3,
-                        },
+                        "setup": {"mode": "preset", "preset_id": "standard_6"},
                     }
                 ),
             ),

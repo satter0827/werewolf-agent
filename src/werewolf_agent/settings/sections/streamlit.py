@@ -52,12 +52,6 @@ class StreamlitSettings(BaseModel):
     streamlit_i18n_file: str = Field(
         validation_alias="WEREWOLF_STREAMLIT_I18N_FILE",
     )
-    streamlit_css_file: str = Field(
-        validation_alias="WEREWOLF_STREAMLIT_CSS_FILE",
-    )
-    streamlit_screens_file: str = Field(
-        validation_alias="WEREWOLF_STREAMLIT_SCREENS_FILE",
-    )
     streamlit_page_title: str = Field(
         validation_alias="WEREWOLF_STREAMLIT_PAGE_TITLE",
     )

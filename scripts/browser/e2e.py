@@ -71,8 +71,42 @@ def run_e2e(
             output.append(execution.output)
             if execution.returncode != 0:
                 break
-        if execution.returncode == 0:
-            create_contact_sheet(artifact_directory)
+        create_contact_sheet(artifact_directory)
+        if execution.returncode != 0:
+            service_logs = run_command(
+                [
+                    "docker",
+                    "compose",
+                    "--profile",
+                    "e2e",
+                    "logs",
+                    "--no-color",
+                    "api",
+                    "worker",
+                    "streamlit",
+                ],
+                timeout_seconds=60,
+                environment=environment,
+            )
+            output.append("\n--- service logs ---\n")
+            output.append(service_logs.output)
+            worker_file_log = run_command(
+                [
+                    "docker",
+                    "compose",
+                    "--profile",
+                    "e2e",
+                    "exec",
+                    "-T",
+                    "worker",
+                    "cat",
+                    "/app/.werewolf-agent/logs/worker.jsonl",
+                ],
+                timeout_seconds=30,
+                environment=environment,
+            )
+            output.append("\n--- worker file log ---\n")
+            output.append(worker_file_log.output)
     finally:
         cleanup = run_command(
             [
@@ -135,23 +169,32 @@ def create_contact_sheet(artifact_directory: Path) -> Path | None:
     )
     if not images:
         return None
-    width = 520
+    columns = 2
+    cell_width = 520
+    thumbnail_height = 520
     label_height = 40
     thumbnails: list[tuple[Path, Image.Image]] = []
     for path in images:
         with Image.open(path) as source:
             image = source.convert("RGB")
-            image.thumbnail((width, 520))
+            image.thumbnail((cell_width, thumbnail_height))
             thumbnails.append((path, image.copy()))
-    height = sum(image.height + label_height for _path, image in thumbnails)
-    sheet = Image.new("RGB", (width, height), "white")
+    row_height = label_height + thumbnail_height
+    row_count = (len(thumbnails) + columns - 1) // columns
+    width = cell_width * columns
+    sheet = Image.new("RGB", (width, row_height * row_count), "white")
     draw = ImageDraw.Draw(sheet)
-    top = 0
-    for path, image in thumbnails:
-        draw.text((8, top + 8), path.relative_to(artifact_directory).as_posix(), fill="black")
-        top += label_height
-        sheet.paste(image, ((width - image.width) // 2, top))
-        top += image.height
+    for index, (path, image) in enumerate(thumbnails):
+        column = index % columns
+        row = index // columns
+        left = column * cell_width
+        top = row * row_height
+        draw.text(
+            (left + 8, top + 8),
+            path.relative_to(artifact_directory).as_posix(),
+            fill="black",
+        )
+        sheet.paste(image, (left + (cell_width - image.width) // 2, top + label_height))
     target = artifact_directory / "contact-sheet.png"
     sheet.save(target)
     return target
@@ -174,7 +217,9 @@ def _compose_environment(
         "VITE_SUPABASE_PUBLISHABLE_KEY": str(base_environment["WEREWOLF_SUPABASE_PUBLISHABLE_KEY"]),
         "VITE_SUPABASE_URL": container_api_url,
         "VITE_WEREWOLF_API_URL": "http://api:8000",
-        "WEREWOLF_API_RATE_LIMIT_REQUESTS": "1000",
+        # Browser E2EはStreamlit fragmentとReactを同じlocal anonymous principalで検査する。
+        # 製品のrate limitを検査するgateではないため、外部環境値に依存しない余裕を持たせる。
+        "WEREWOLF_API_RATE_LIMIT_REQUESTS": "10000",
         "WEREWOLF_API_CORS_ORIGINS": (
             "http://localhost:5173,http://localhost:8080,http://frontend-e2e:8080"
         ),

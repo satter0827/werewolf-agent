@@ -10,7 +10,6 @@ from pydantic import BaseModel
 from werewolf_agent.adapters.factory import build_admin_client
 from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
-from werewolf_agent.clients.streamlit.screens import ScreenCatalog
 from werewolf_agent.clients.streamlit.views.errors import render_app_error
 from werewolf_agent.contracts import AppError
 from werewolf_agent.settings import AppSettings
@@ -29,7 +28,6 @@ def _render_admin_screen(
     settings: AppSettings,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
 ) -> None:
     """Render admin operations without loading them through the normal game client."""
     st.title(catalog.t(lang, "admin.title"))
@@ -48,7 +46,7 @@ def _render_admin_screen(
 
     with st.expander(
         catalog.t(lang, "admin.llm_analysis"),
-        expanded=not screens.analysis_collapsed,
+        expanded=False,
     ):
         if st.button(catalog.t(lang, "admin.llm_traces"), disabled=not game_id):
             _show(st, lambda: client.list_llm_traces(game_id), lang=lang)

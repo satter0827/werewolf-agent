@@ -181,16 +181,6 @@ class AppSettings(
         return _optional_repository_path(self.streamlit_i18n_file)
 
     @property
-    def streamlit_css_path(self) -> Path | None:
-        """Return the configured external Streamlit CSS file, if any."""
-        return _optional_repository_path(self.streamlit_css_file)
-
-    @property
-    def streamlit_screens_path(self) -> Path | None:
-        """Return the configured external Streamlit screen definition file, if any."""
-        return _optional_repository_path(self.streamlit_screens_file)
-
-    @property
     def llm_prompt_path(self) -> Path | None:
         """Return the configured external LLM prompt file, if any."""
         return _optional_repository_path(self.llm_prompt_file)
@@ -335,8 +325,6 @@ class AppSettings(
 
     @field_validator(
         "streamlit_i18n_file",
-        "streamlit_css_file",
-        "streamlit_screens_file",
         mode="before",
     )
     @classmethod

@@ -21,17 +21,18 @@ applicationへは`GameApplicationConfig`、LLM adapterへは`LlmProviderConfig`�
 ファイルへ置かず、環境変数または実行基盤から渡す。
 
 packaged resourceは所有機能へ配置する。applicationはゲーム定義、agentsはpromptと
-FakeListLLM fixture、Streamlit clientはi18n、CSS、screen定義、settingsはruntime
+FakeListLLM fixture、Streamlit clientはi18nとCSS、settingsはruntime
 defaultを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと
 定義間の相互参照検証はadapterがcomposition時に行う。resourceはpackage APIから
 読み、作業directoryに依存しない。
 
-Streamlitのscreen定義はworkspace順序、region、column比、情報密度、分析領域の初期状態を
-扱い、必須機能の有効・無効は扱わない。CSSは`tokens`、`base`、`layout`、`components`、
-`streamlit`、`responsive`の固定順で読み、外部overrideを最後に追加する。CSS、翻訳、
-screen overrideの欠落または破損時はpackaged resourceへ戻す。rule、認証、秘匿設定には
-fallbackを設けない。workspace順序は通常時と縮退時のnavigationへ共通適用する。情報密度は
-spacing tokenを切り替え、分析領域の初期状態はRecordsとAdminのexpanderへ適用する。
+Streamlitのworkspace順序、tab、必須領域、column比は各viewの製品仕様とする。CSSは
+`tokens`、`base`、`layout`、`components`、`streamlit`、`responsive`の固定順で読み、外部から
+差し替えない。native widgetの色、文字、border、focusはrepository管理の`.streamlit/config.toml`
+を正とし、packaged CSSは固有表現とkey付きcontainerの配置だけを扱う。翻訳だけは運用上の
+外部overrideを許可し、欠落または破損時は理由を構造化logへ記録してpackaged catalogへ戻す。
+rule、認証、秘匿設定にはfallbackを設けない。workspace順序は通常時と縮退時のnavigationで同じ
+製品仕様を使う。表示密度は一つに固定し、分析領域はRecordsとAdminのexpanderで折りたたむ。
 
 runtime statusはdatabaseとoperation queueを独立した読取probeで判定する。probe失敗はprocessを
 停止せず、各requestで状態を再評価して復旧を反映する。queueへの追加は可用性guardを通し、

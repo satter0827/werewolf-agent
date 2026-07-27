@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Any, cast
+from typing import Any
 
 from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.i18n import (
@@ -13,9 +13,6 @@ from werewolf_agent.clients.streamlit.i18n import (
 )
 from werewolf_agent.clients.streamlit.operations import (
     load_setup_options,
-)
-from werewolf_agent.clients.streamlit.screens import (
-    ScreenCatalog,
 )
 from werewolf_agent.clients.streamlit.setup import (
     character_assignments,
@@ -67,16 +64,6 @@ from werewolf_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
-SETUP_STEP_BY_ELEMENT = {
-    "preset": 0,
-    "scenario": 0,
-    "narration": 0,
-    "role_counts": 1,
-    "character_assignments": 2,
-    "seed": 3,
-    "local_rules": 3,
-    "rule_composition": 3,
-}
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
 
 
@@ -88,7 +75,6 @@ def _render_setup_screen(
     catalog: I18nCatalog,
     lang: Language,
     observer: bool,
-    screens: ScreenCatalog,
     mutations_available: bool = True,
 ) -> None:
     try:
@@ -106,61 +92,37 @@ def _render_setup_screen(
     if not mutations_available:
         st.warning(catalog.t(lang, "runtime.queue_required"))
 
-    st.header(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
+    st.title(catalog.t(lang, "setup.title.observe" if observer else "setup.title.play"))
     st.caption(catalog.t(lang, "setup.mode.observe" if observer else "setup.mode.play"))
     steps = st.tabs(
-        [
-            "1. 世界観",
-            "2. 役職",
-            "3. 登場人物",
-            "4. ルール",
-        ]
+        [catalog.t(lang, f"setup.tab.{tab}") for tab in ("world", "roles", "characters", "rules")],
+        key="setup_tabs",
     )
-    for element in screens.elements("setup", "main"):
-        if element.id == "header":
-            continue
-        step_index = SETUP_STEP_BY_ELEMENT.get(element.id)
-        if step_index is None:
-            continue
-        with steps[step_index]:
-            if element.id == "preset":
-                _render_setup_preset_selector(
-                    st, setup_options=setup_options, catalog=catalog, lang=lang
-                )
-            elif element.id == "scenario":
-                _render_scenario_settings(
-                    st, setup_options=setup_options, catalog=catalog, lang=lang
-                )
-            elif element.id == "narration":
-                _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
-            elif element.id == "seed":
-                seed_value = _render_seed_controls(
-                    st,
-                    settings,
-                    catalog,
-                    lang,
-                    column_count=cast(int, screens.layout("setup").seed_columns),
-                )
-            elif element.id == "role_counts":
-                counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
-            elif element.id == "character_assignments":
-                _render_character_assignments(
-                    st,
-                    setup_options=setup_options,
-                    catalog=catalog,
-                    lang=lang,
-                )
-            elif element.id == "local_rules":
-                _render_local_rules_settings(
-                    st, setup_options=setup_options, catalog=catalog, lang=lang
-                )
-            elif element.id == "rule_composition":
-                rule_composition = _render_rule_composition(
-                    st,
-                    setup_options,
-                    catalog=catalog,
-                    lang=lang,
-                )
+    with steps[0]:
+        st.caption(catalog.t(lang, "setup.tab.world.description"))
+        _render_setup_preset_selector(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        _render_scenario_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        _render_narration_setup(st, setup_options=setup_options, catalog=catalog, lang=lang)
+    with steps[1]:
+        st.caption(catalog.t(lang, "setup.tab.roles.description"))
+        counts = _render_role_counts(st, setup_options, catalog=catalog, lang=lang)
+    with steps[2]:
+        st.caption(catalog.t(lang, "setup.tab.characters.description"))
+        _render_character_assignments(
+            st,
+            setup_options=setup_options,
+            catalog=catalog,
+            lang=lang,
+        )
+    with steps[3]:
+        st.caption(catalog.t(lang, "setup.tab.rules.description"))
+        _render_local_rules_settings(st, setup_options=setup_options, catalog=catalog, lang=lang)
+        rule_composition = _render_rule_composition(
+            st,
+            setup_options,
+            catalog=catalog,
+            lang=lang,
+        )
 
     counts = role_counts(st.session_state, setup_options)
     active_rules = rules(st.session_state, setup_options)
@@ -185,28 +147,29 @@ def _render_setup_screen(
         player_count=total_players,
     )
 
-    for element in screens.elements("setup", "summary"):
-        if element.id == "summary_metrics":
-            _render_setup_summary_metrics(
-                st,
-                setup_options=setup_options,
-                scenario_id=scenario_id,
-                preset_id=preset_id,
-                narration_mode_value=active_narration_mode,
-                total_players=total_players,
-                column_count=cast(int, screens.layout("setup").summary_columns),
-                catalog=catalog,
-                lang=lang,
-            )
-        elif element.id == "validation_messages":
-            _render_setup_validation_messages(
-                st,
-                validation=validation,
-                seed_value=seed_value,
-                catalog=catalog,
-                lang=lang,
-            )
-        elif element.id == "manual_seat" and not observer:
+    with st.container(key="setup_execution"):
+        st.header(catalog.t(lang, "setup.execution.title"))
+        st.caption(catalog.t(lang, "setup.execution.description"))
+        seed_value = _render_seed_controls(st, settings, catalog, lang, column_count=2)
+        _render_setup_summary_metrics(
+            st,
+            setup_options=setup_options,
+            scenario_id=scenario_id,
+            preset_id=preset_id,
+            narration_mode_value=active_narration_mode,
+            total_players=total_players,
+            column_count=3,
+            catalog=catalog,
+            lang=lang,
+        )
+        _render_setup_validation_messages(
+            st,
+            validation=validation,
+            seed_value=seed_value,
+            catalog=catalog,
+            lang=lang,
+        )
+        if not observer:
             manual_player_id = _render_manual_seat_selector(
                 st,
                 counts,
@@ -214,37 +177,33 @@ def _render_setup_screen(
                 catalog=catalog,
                 lang=lang,
             )
-        elif element.id == "setup_summary":
-            st.caption(
-                setup_summary(
-                    counts,
-                    rules=active_rules,
-                    setup_options=setup_options,
-                    catalog=catalog,
-                    lang=lang,
-                )
-            )
-
-    for element in screens.elements("setup", "action"):
-        if element.id == "submit":
-            _render_setup_submit(
-                st,
-                settings=settings,
-                counts=counts,
-                rules_value=active_rules,
-                seed_value=seed_value,
-                observer=observer,
-                manual_player_id=manual_player_id,
-                validation=validation,
-                scenario_id=scenario_id,
-                setup_preset_id=preset_id,
-                narration_mode_value=active_narration_mode,
-                character_assignments_value=active_assignments,
-                rule_composition=rule_composition,
+        st.caption(
+            setup_summary(
+                counts,
+                rules=active_rules,
+                setup_options=setup_options,
                 catalog=catalog,
                 lang=lang,
-                mutations_available=mutations_available,
             )
+        )
+        _render_setup_submit(
+            st,
+            settings=settings,
+            counts=counts,
+            rules_value=active_rules,
+            seed_value=seed_value,
+            observer=observer,
+            manual_player_id=manual_player_id,
+            validation=validation,
+            scenario_id=scenario_id,
+            setup_preset_id=preset_id,
+            narration_mode_value=active_narration_mode,
+            character_assignments_value=active_assignments,
+            rule_composition=rule_composition,
+            catalog=catalog,
+            lang=lang,
+            mutations_available=mutations_available,
+        )
 
 
 def _render_setup_summary_metrics(
@@ -439,7 +398,7 @@ def _render_role_counts(
     lang: Language,
 ) -> dict[str, int]:
     counts = role_counts(st.session_state, setup_options)
-    st.subheader(catalog.t(lang, "setup.role_counts"))
+    st.header(catalog.t(lang, "setup.role_counts"))
     next_counts: dict[str, int] = {}
     for role in setup_options.roles:
         widget_key = _role_count_key(role.id)

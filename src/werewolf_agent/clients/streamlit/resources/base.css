@@ -1,19 +1,41 @@
-html {
-    color-scheme: light;
-}
-
-.stApp {
-    background: linear-gradient(180deg, var(--wa-shell) 0, #d9e0ea 96px, var(--wa-bg) 224px);
+.stApp,
+[data-testid="stAppViewContainer"] {
+    background: var(--wa-page);
     color: var(--wa-text);
 }
 
-.block-container h1,
-.block-container h2,
-.block-container h3 {
-    color: var(--wa-text);
+[data-testid="stMain"] h1 {
+    font-size: var(--wa-font-28);
+    line-height: var(--wa-line-tight);
 }
 
-:focus-visible {
-    outline: 3px solid var(--wa-info) !important;
-    outline-offset: 2px;
+[data-testid="stMain"] h2 {
+    font-size: var(--wa-font-20);
+    line-height: var(--wa-line-tight);
+}
+
+[data-testid="stMain"] h3 {
+    font-size: var(--wa-font-16);
+    line-height: var(--wa-line-tight);
+}
+
+.wa-muted,
+.wa-status-detail,
+.wa-section-head p,
+.wa-timeline-day span {
+    color: var(--wa-muted);
+    font-size: var(--wa-font-12);
+    line-height: var(--wa-line-body);
+}
+
+.wa-section-head h2,
+.wa-section-head h3 {
+    color: var(--wa-text);
+    font-size: var(--wa-font-20);
+    line-height: var(--wa-line-tight);
+    margin: 0;
+}
+
+.wa-section-head p {
+    margin: var(--wa-space-2) 0 0;
 }

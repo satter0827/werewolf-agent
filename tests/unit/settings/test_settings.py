@@ -56,8 +56,6 @@ def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
     assert PACKAGED_DEFAULTS["game_roles_file"] == ""
     assert PACKAGED_DEFAULTS["game_default_setup_preset_id"] == "standard_6"
-    assert PACKAGED_DEFAULTS["streamlit_css_file"] == ""
-    assert PACKAGED_DEFAULTS["streamlit_screens_file"] == ""
     assert PACKAGED_DEFAULTS["streamlit_random_seed_max"] == 1000000
     assert PACKAGED_DEFAULTS["ui_theme_id"] == "dawn-table"
     assert PACKAGED_DEFAULTS["ui_desktop_breakpoint"] == 980
@@ -159,10 +157,6 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.streamlit_language == "ja"
     assert settings.streamlit_i18n_file == ""
     assert settings.streamlit_i18n_path is None
-    assert settings.streamlit_css_file == PACKAGED_DEFAULTS["streamlit_css_file"]
-    assert settings.streamlit_css_path is None
-    assert settings.streamlit_screens_file == PACKAGED_DEFAULTS["streamlit_screens_file"]
-    assert settings.streamlit_screens_path is None
     assert settings.streamlit_page_title == "Werewolf Agent"
     assert settings.streamlit_default_seed == 1
     assert settings.streamlit_random_seed_max == PACKAGED_DEFAULTS["streamlit_random_seed_max"]
@@ -370,8 +364,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_STREAMLIT_INITIAL_SIDEBAR_STATE", "collapsed")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_PAGE_TITLE", "Werewolf Console")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_SEED", "33")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_CSS_FILE", "tmp/streamlit/default.css")
-    monkeypatch.setenv("WEREWOLF_STREAMLIT_SCREENS_FILE", "tmp/streamlit/screens.toml")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_RANDOM_SEED_MAX", "999")
     monkeypatch.setenv("WEREWOLF_STREAMLIT_DEFAULT_MANUAL_PLAYER_ID", "player-2")
     monkeypatch.setenv("WEREWOLF_API_MESSAGE_MAX_CHARS", "120")
@@ -440,8 +432,6 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.streamlit_initial_sidebar_state == "collapsed"
     assert settings.streamlit_language == "en"
     assert settings.streamlit_i18n_path == repository_root() / "tmp/streamlit/i18n.toml"
-    assert settings.streamlit_css_path == repository_root() / "tmp/streamlit/default.css"
-    assert settings.streamlit_screens_path == repository_root() / "tmp/streamlit/screens.toml"
     assert settings.streamlit_page_title == "Werewolf Console"
     assert settings.streamlit_default_seed == 33
     assert settings.streamlit_random_seed_max == 999

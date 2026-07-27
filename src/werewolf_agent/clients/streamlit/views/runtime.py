@@ -29,10 +29,7 @@ from werewolf_agent.clients.streamlit.operations import (
     load_session,
     log_streamlit_rerun_started,
 )
-from werewolf_agent.clients.streamlit.screens import (
-    ScreenCatalog,
-    load_screen_catalog,
-)
+from werewolf_agent.clients.streamlit.preferences import preferred_language, remember_language
 from werewolf_agent.clients.streamlit.setup import (
     VIEW_ADMIN,
     VIEW_APP_SETTINGS,
@@ -40,7 +37,6 @@ from werewolf_agent.clients.streamlit.setup import (
     VIEW_HISTORY,
     VIEW_OBSERVE_SETUP,
     consume_pending_view_scroll,
-    preferred_language,
 )
 from werewolf_agent.clients.streamlit.state import (
     pause_auto_advance,
@@ -130,7 +126,6 @@ def main() -> None:
 def _render_app(st: Any, settings: AppSettings) -> None:
     """Render one Streamlit rerun with a bound observation context."""
     catalog = load_i18n(settings)
-    screens = load_screen_catalog(settings)
     lang = preferred_language(st.session_state, settings.streamlit_language)
     st.set_page_config(
         page_title=settings.streamlit_page_title,
@@ -138,7 +133,7 @@ def _render_app(st: Any, settings: AppSettings) -> None:
         initial_sidebar_state=settings.streamlit_initial_sidebar_state,
     )
     st.markdown(
-        load_style_tag(settings, information_density=screens.information_density),
+        load_style_tag(),
         unsafe_allow_html=True,
     )
     session_store = _StreamlitSessionStore(st.session_state)
@@ -152,7 +147,6 @@ def _render_app(st: Any, settings: AppSettings) -> None:
             settings,
             catalog=catalog,
             lang=lang,
-            screens=screens,
         )
     else:
         with bind_session(session):
@@ -161,7 +155,6 @@ def _render_app(st: Any, settings: AppSettings) -> None:
                 settings,
                 catalog=catalog,
                 lang=lang,
-                screens=screens,
                 session_store=session_store,
             )
 
@@ -172,10 +165,9 @@ def _render_degraded_shell(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
 ) -> None:
     """Keep diagnosis and display preferences available without authentication."""
-    _render_unavailable_navigation(st, catalog=catalog, lang=lang, screens=screens)
+    _render_unavailable_navigation(st, catalog=catalog, lang=lang)
     st.title(settings.streamlit_page_title)
     st.caption(catalog.t(lang, "runtime.degraded_caption"))
     try:
@@ -209,8 +201,6 @@ def _render_degraded_shell(
         key="degraded_language",
     )
     if selected != lang:
-        from werewolf_agent.clients.streamlit.i18n import remember_language
-
         remember_language(st.session_state, selected)
     st.info(catalog.t(lang, "runtime.auth_recovery"))
 
@@ -221,7 +211,6 @@ def _render_session_app(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
     session_store: _StreamlitSessionStore,
 ) -> None:
     """Render authenticated or guest content with a request-scoped HTTP token."""
@@ -240,7 +229,6 @@ def _render_session_app(
         settings,
         catalog=catalog,
         lang=lang,
-        screens=screens,
         session_store=session_store,
         is_admin=session_info.administrator if session_info is not None else False,
     )
@@ -257,7 +245,6 @@ def _render_session_app(
             settings=settings,
             catalog=catalog,
             lang=lang,
-            screens=screens,
         )
         return
     if view == VIEW_APP_SETTINGS:
@@ -266,7 +253,6 @@ def _render_session_app(
             settings=settings,
             catalog=catalog,
             lang=lang,
-            screens=screens,
         )
         return
     if view == VIEW_HISTORY:
@@ -278,7 +264,6 @@ def _render_session_app(
             settings=settings,
             catalog=catalog,
             lang=lang,
-            screens=screens,
         )
         return
     if view != VIEW_GAME or selected_option is None:
@@ -288,7 +273,6 @@ def _render_session_app(
             catalog=catalog,
             lang=lang,
             observer=view == VIEW_OBSERVE_SETUP,
-            screens=screens,
             mutations_available=database_available and queue_available,
         )
         return
@@ -322,7 +306,6 @@ def _render_session_app(
         catalog=catalog,
         lang=lang,
         message_max_chars=runtime_config.limits.message_max_chars,
-        screens=screens,
         mutations_available=queue_available,
     )
 

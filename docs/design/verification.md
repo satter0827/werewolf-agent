@@ -65,13 +65,15 @@ test結果、coverage、画面を含む一式でlatestを置換する。失敗ru
 削除せず成果物契約違反にする。完了記録のないrunは次回起動時にfailureへ回収する。
 
 Playwrightは操作、contract、accessibility、console、外部通信を判定する。見た目はpixel
-差分で合否を出さず、setup、進行中、観戦、空の履歴、完了結果を含むdesktop/mobileの
-個別画像、一覧画像、HTML/JSONを人が読む。
-client fault testはAPI、Auth、database、operation queue、worker、LLM、CSS、翻訳、screen
-定義を個別に故障させ、停止範囲が依存するfeatureに限られることを確認する。画面はkeyboard、
+差分で合否を出さず、setup 4tabs、validation、待機、発言、対象選択、送信中、完了、観戦、
+Recordsの空・記録あり、Settings、縮退表示を含むdesktop/mobileの個別画像、2列の一覧画像、
+HTML/JSONを人が読む。320pxはStreamlit spec内で確認し、Reactのproject数は増やさない。
+client fault testはAPI、Auth、database、operation queue、worker、LLM、翻訳overrideを個別に
+故障させ、停止範囲が依存するfeatureに限られることを確認する。packaged CSSとview構造はbuild時に
+固定し、外部overrideの故障経路を持たない。画面はkeyboard、
 focus保持、label、状態通知、200% zoom、reduced motion、contrastも確認する。
-screen overrideの正常系ではworkspace順序、情報密度、分析領域の初期状態がrendererへ届くことを
-検証し、異常系では必須Featureを含むpackaged defaultへ戻ることを検証する。
+i18n overrideの正常系では言語catalogがrendererへ届くことを検証し、異常系では理由をlogへ記録して
+packaged catalogへ戻ることを検証する。
 環境準備testはmarkerとimage cacheの不一致、Docker daemon停止、全必須imageありを個別に作り、
 release系profileだけが現在のDocker contextを検査することを確認する。
 coverage、benchmark、面白さ、会話品質にも根拠のない閾値を置かず、観測値と証拠を残す。

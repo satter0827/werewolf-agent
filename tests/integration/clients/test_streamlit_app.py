@@ -15,6 +15,6 @@ def test_streamlit_renders_safe_degraded_shell_without_crashing(monkeypatch) -> 
     assert not result.exception
     assert result.warning or result.info
     rendered = " ".join(message.value for message in (*result.warning, *result.info))
-    assert "認証を利用できません" in rendered
+    assert "ログインを一時的に利用できません" in rendered
     assert "token" not in rendered.casefold()
     assert "password" not in rendered.casefold()

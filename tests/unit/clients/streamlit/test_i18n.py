@@ -1,12 +1,11 @@
 from pathlib import Path
 
 from werewolf_agent.clients.streamlit.i18n import (
-    current_language,
     label_key_sets,
     load_i18n,
     message_key_sets,
-    remember_language,
 )
+from werewolf_agent.clients.streamlit.preferences import preferred_language, remember_language
 from werewolf_agent.settings import AppSettings
 
 
@@ -23,9 +22,9 @@ def test_language_state_defaults_to_settings_then_session_wins() -> None:
     session: dict[str, object] = {}
     settings = AppSettings(_env_file=None, streamlit_language="ja")
 
-    assert current_language(session, settings) == "ja"
+    assert preferred_language(session, settings.streamlit_language) == "ja"
     remember_language(session, "en")
-    assert current_language(session, settings) == "en"
+    assert preferred_language(session, settings.streamlit_language) == "en"
     assert session["werewolf_streamlit_preferences"] == {"language": "en"}
 
 
@@ -57,3 +56,12 @@ villager = "村人"
 
     assert catalog.t("ja", "hello", name="葵") == "こんにちは 葵"
     assert catalog.label("en", "role", "villager") == "Villager"
+
+
+def test_invalid_i18n_override_falls_back_to_packaged_catalog(tmp_path: Path) -> None:
+    i18n_file = tmp_path / "i18n.toml"
+    i18n_file.write_text("not = [valid", encoding="utf-8")
+
+    catalog = load_i18n(AppSettings(_env_file=None, streamlit_i18n_file=str(i18n_file)))
+
+    assert catalog.t("ja", "nav.play") == "プレイ"

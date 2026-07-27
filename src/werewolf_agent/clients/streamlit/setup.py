@@ -13,12 +13,7 @@ from werewolf_agent.clients.streamlit.constants import (
     NARRATION_MODE_NONE,
     NARRATION_MODE_STANDARD,
 )
-from werewolf_agent.clients.streamlit.i18n import (
-    I18nCatalog,
-    Language,
-    normalize_language,
-)
-from werewolf_agent.clients.streamlit.state import KEY_STREAMLIT_PREFERENCES
+from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
     CustomCharacterDefinitionRequest,
@@ -118,14 +113,6 @@ class GameSetupDraft(BaseModel):
         return str(value).strip()
 
 
-class StreamlitPreferences(BaseModel):
-    """Session-scoped preferences shared by every Streamlit game screen."""
-
-    language: Language | None = None
-
-    model_config = ConfigDict(extra="forbid")
-
-
 @dataclass(frozen=True)
 class SetupValidation:
     """Validation result for one setup draft."""
@@ -175,39 +162,6 @@ def remember_game_setup_draft(
 ) -> None:
     """Store the current game setup draft."""
     session[KEY_GAME_SETUP_DRAFT] = draft.model_dump(mode="json", exclude_none=True)
-
-
-def streamlit_preferences(session: MutableMapping[str, Any]) -> StreamlitPreferences:
-    """Return current Streamlit-wide preferences."""
-    raw_value = session.get(KEY_STREAMLIT_PREFERENCES)
-    if not isinstance(raw_value, dict):
-        return StreamlitPreferences()
-    try:
-        return StreamlitPreferences.model_validate(raw_value)
-    except ValueError:
-        return StreamlitPreferences()
-
-
-def remember_streamlit_preferences(
-    session: MutableMapping[str, Any],
-    preferences: StreamlitPreferences,
-) -> None:
-    """Store Streamlit-wide preferences."""
-    session[KEY_STREAMLIT_PREFERENCES] = preferences.model_dump(mode="json", exclude_none=True)
-
-
-def preferred_language(session: MutableMapping[str, Any], default_language: Language) -> Language:
-    """Return the session language, falling back to runtime settings."""
-    preferences = streamlit_preferences(session)
-    return preferences.language or default_language
-
-
-def remember_preferred_language(session: MutableMapping[str, Any], language: str) -> None:
-    """Store the session language preference."""
-    preferences = streamlit_preferences(session).model_copy(
-        update={"language": normalize_language(language)}
-    )
-    remember_streamlit_preferences(session, preferences)
 
 
 def setup_options_with_session_customs(
@@ -544,6 +498,14 @@ def validate_setup(
 
     if any(count < 0 for count in counts.values()):
         messages.append(catalog.t(lang, "setup.validation.negative"))
+
+    faction_totals = {"village": 0, "werewolf": 0}
+    for role in setup_options.roles:
+        if role.identity_faction in faction_totals:
+            faction_totals[role.identity_faction] += counts.get(role.id, 0)
+    for faction, count in faction_totals.items():
+        if count < 1:
+            messages.append(catalog.t(lang, f"setup.validation.faction.{faction}"))
 
     return SetupValidation(messages=messages)
 

@@ -19,9 +19,6 @@ from werewolf_agent.clients.streamlit.i18n import (
 from werewolf_agent.clients.streamlit.operations import (
     list_recent_games,
 )
-from werewolf_agent.clients.streamlit.screens import (
-    ScreenCatalog,
-)
 from werewolf_agent.clients.streamlit.setup import (
     VIEW_ADMIN,
     VIEW_APP_SETTINGS,
@@ -62,6 +59,7 @@ _WORKSPACE_NAVIGATION = {
     "admin": ("nav.admin", VIEW_ADMIN),
     "preferences": ("nav.preferences", VIEW_APP_SETTINGS),
 }
+_WORKSPACE_ORDER = ("play", "observe", "records", "admin", "preferences")
 
 
 class SessionStore(Protocol):
@@ -83,42 +81,31 @@ def _render_sidebar(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
     session_store: SessionStore | None = None,
     is_admin: bool = False,
 ) -> tuple[SavedGameOptionView | None, str]:
     selected_option: SavedGameOptionView | None = None
 
-    for element in screens.elements("sidebar", "main"):
-        if element.id == "brand":
-            _render_sidebar_brand(st, catalog=catalog, lang=lang)
-            if session_store is not None:
-                _render_sidebar_auth(
-                    st,
-                    settings=settings,
-                    session_store=session_store,
-                    catalog=catalog,
-                    lang=lang,
-                )
-        elif element.id == "history_selector":
-            st.sidebar.divider()
-            st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
-            selected_option = _render_history_selector(
-                st,
-                settings=settings,
-                catalog=catalog,
-                lang=lang,
-            )
-        elif element.id == "navigation":
-            st.sidebar.divider()
-            st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
-            _render_sidebar_navigation(
-                st,
-                catalog=catalog,
-                lang=lang,
-                screens=screens,
-                is_admin=is_admin,
-            )
+    _render_sidebar_brand(st, catalog=catalog, lang=lang)
+    if session_store is not None:
+        _render_sidebar_auth(
+            st,
+            settings=settings,
+            session_store=session_store,
+            catalog=catalog,
+            lang=lang,
+        )
+    st.sidebar.divider()
+    st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
+    selected_option = _render_history_selector(
+        st,
+        settings=settings,
+        catalog=catalog,
+        lang=lang,
+    )
+    st.sidebar.divider()
+    st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
+    _render_sidebar_navigation(st, catalog=catalog, lang=lang, is_admin=is_admin)
     return selected_option, current_view(st.session_state)
 
 
@@ -174,14 +161,14 @@ def _render_sidebar_navigation(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
     is_admin: bool = False,
 ) -> None:
     """Render sidebar navigation controls."""
-    for workspace, label_key, view in _navigation_items(screens, is_admin=is_admin):
+    for workspace, label_key, view in _navigation_items(is_admin=is_admin):
         if st.sidebar.button(
             catalog.t(lang, label_key),
             key=f"navigation_{workspace}",
+            type="primary" if current_view(st.session_state) == view else "secondary",
             use_container_width=True,
         ):
             switch_view(st.session_state, view)
@@ -193,11 +180,10 @@ def _render_unavailable_navigation(
     *,
     catalog: I18nCatalog,
     lang: Language,
-    screens: ScreenCatalog,
 ) -> None:
     """Render configured workspaces as disabled during degraded operation."""
     st.sidebar.subheader(catalog.t(lang, "sidebar.navigation"))
-    for workspace, label_key, _view in _navigation_items(screens, is_admin=False):
+    for workspace, label_key, _view in _navigation_items(is_admin=False):
         st.sidebar.button(
             catalog.t(lang, label_key),
             key=f"unavailable_navigation_{workspace}",
@@ -207,14 +193,10 @@ def _render_unavailable_navigation(
     st.sidebar.caption(catalog.t(lang, "runtime.navigation_unavailable"))
 
 
-def _navigation_items(
-    screens: ScreenCatalog,
-    *,
-    is_admin: bool,
-) -> list[tuple[str, str, str]]:
+def _navigation_items(*, is_admin: bool) -> list[tuple[str, str, str]]:
     return [
         (workspace, *_WORKSPACE_NAVIGATION[workspace])
-        for workspace in screens.workspace_order
+        for workspace in _WORKSPACE_ORDER
         if workspace != "admin" or is_admin
     ]
 
@@ -224,7 +206,7 @@ def _render_sidebar_brand(st: Any, *, catalog: I18nCatalog, lang: Language) -> N
         f"""
         <div class="wa-sidebar-brand">
                 <div>
-                    <h1 class="wa-brand-title">Werewolf Agent</h1>
+                    <div class="wa-brand-title">Werewolf Agent</div>
                     <div class="wa-brand-mode">{catalog.t(lang, "brand.mode")}</div>
                 </div>
         </div>

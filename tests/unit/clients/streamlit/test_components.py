@@ -1,33 +1,37 @@
 from werewolf_agent.clients.streamlit.components import (
-    action_header_html,
-    hand_panel_html,
-    observation_memo_html,
-    observation_panel_html,
+    game_table_html,
+    status_grid_html,
     timeline_section_html,
 )
 from werewolf_agent.clients.streamlit.view_models import (
+    GameScreenView,
     HandPanelView,
     ObservationMemoView,
-    ObservationView,
+    PlayerSeatView,
+    StatusMetricView,
     TimelineItemView,
 )
 
 
-def test_timeline_section_uses_responsive_variant_and_empty_state() -> None:
-    html = timeline_section_html(
-        [],
-        variant="mobile",
-        title="公開タイムライン",
-        description="公開情報だけです。",
-        empty_text="まだ表示できる出来事がありません。",
-    )
+def test_status_grid_escapes_values_without_decorative_icons() -> None:
+    markup = status_grid_html([StatusMetricView("phase", "🌙", "状態", "<夜>", "待機", "warning")])
 
-    assert 'class="wa-timeline-section wa-timeline-mobile"' in html
-    assert "まだ表示できる出来事がありません。" in html
+    assert "&lt;夜&gt;" in markup
+    assert "🌙" not in markup
+    assert "wa-status-warning" in markup
 
 
-def test_timeline_section_renders_public_rows() -> None:
-    html = timeline_section_html(
+def test_game_table_uses_initial_marker_and_escapes_player_name() -> None:
+    markup = game_table_html(_screen(), title="ゲーム卓", description="公開状態")
+
+    assert "wa-seat-marker" in markup
+    assert ">葵<" in markup
+    assert "👤" not in markup
+    assert "葵&lt;script&gt;" in markup
+
+
+def test_timeline_section_is_one_public_surface() -> None:
+    markup = timeline_section_html(
         [
             TimelineItemView(
                 sequence=1,
@@ -39,81 +43,45 @@ def test_timeline_section_renders_public_rows() -> None:
                 day_label="Day 1",
             )
         ],
-        variant="desktop",
+        variant="primary",
         title="公開タイムライン",
         description="公開情報だけです。",
         empty_text="空です。",
     )
 
-    assert 'class="wa-timeline-section wa-timeline-desktop"' in html
-    assert "朝になりました" in html
-    assert "公開情報だけです。" in html
+    assert 'class="wa-timeline-section wa-timeline-primary"' in markup
+    assert "朝になりました" in markup
+    assert "●" not in markup
 
 
-def test_observation_panel_escapes_private_lines() -> None:
-    html = observation_panel_html(
-        ObservationView(
-            role="村人",
-            available_actions=[],
-            action_choices=[],
-            known_role_lines=["P1: <secret>"],
-            target_candidates={},
-        ),
-        role_title="あなたの役職",
-        info_title="見えている情報",
-        role_note_template="あなただけに見えている情報です。",
-        empty_text="いま表示できる追加情報はありません。",
+def _screen() -> GameScreenView:
+    return GameScreenView(
+        game_id="game-1",
+        screen_mode="playable",
+        status="running",
+        phase="night",
+        phase_label="夜",
+        day_label="Day 1",
+        status_label="進行中",
+        alive_label="1 / 1",
+        turn_label="0",
+        player_label="葵",
+        updated_label="12:00",
+        winner_label="-",
+        player_count=1,
+        alive_count=1,
+        seed=1,
+        status_metrics=[],
+        table_legend=[],
+        seats=[PlayerSeatView("p1", "葵<script>", "生存", "待機", "safe", True, True, False)],
+        timeline=[],
+        hand_panel=HandPanelView("手番", "待機", "待機中", "warning", "進行", "進めます", True),
+        observation=None,
+        observer_log=None,
+        result_summary=None,
+        observation_memo=ObservationMemoView("メモ", "更新", []),
+        current_turn_title="待機",
+        current_turn_detail="待機中",
+        is_completed=False,
+        can_submit_action=False,
     )
-
-    assert "wa-private-summary" in html
-    assert "あなたの役職" in html
-    assert "村人" in html
-    assert "あなただけに見えている情報です。" in html
-    assert "wa-private-visible" in html
-    assert "P1: &lt;secret&gt;" in html
-    assert "<secret>" not in html
-    assert "wa-command-section" in html
-
-
-def test_hand_panel_renders_compact_status_card() -> None:
-    html = hand_panel_html(
-        HandPanelView(
-            heading="あなたの手番",
-            title="進行待ち",
-            detail="次の入力待ちまで進められます。",
-            tone="day",
-            advance_title="今できること",
-            advance_detail="次にあなたの入力が必要な場面までゲームを進められます。",
-            can_advance=True,
-        )
-    )
-
-    assert 'class="wa-hand-panel wa-command-section wa-hand-panel-day"' in html
-    assert "wa-hand-label" in html
-    assert "あなたの手番" in html
-    assert "進行待ち" in html
-
-
-def test_observation_memo_escapes_public_lines() -> None:
-    title = "観測メモ\uff08公開情報\uff09"
-    html = observation_memo_html(
-        ObservationMemoView(
-            title=title,
-            updated_label="12:00:00 更新",
-            lines=["直近: <script>", "生存プレイヤー: 6 / 6"],
-        )
-    )
-
-    assert title in html
-    assert "12:00:00 更新" in html
-    assert "直近: &lt;script&gt;" in html
-    assert "<script>" not in html
-    assert "wa-command-section" in html
-
-
-def test_action_header_escapes_label_and_uses_command_class() -> None:
-    html = action_header_html("あなたの<input>")
-
-    assert "wa-action-block wa-command-section" in html
-    assert "あなたの&lt;input&gt;" in html
-    assert "<input>" not in html

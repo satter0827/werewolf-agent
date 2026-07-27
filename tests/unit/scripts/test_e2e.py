@@ -22,6 +22,7 @@ def test_compose_environment_uses_container_hosts_and_fake_provider() -> None:
     assert "host.docker.internal:54321" in environment["WEREWOLF_SUPABASE_URL"]
     assert "host.docker.internal:54322" in environment["WEREWOLF_COMPOSE_SUPABASE_DB_DSN"]
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
+    assert environment["WEREWOLF_API_RATE_LIMIT_REQUESTS"] == "10000"
     assert environment["PLAYWRIGHT_VISUAL_REGRESSION"] == "1"
 
 

@@ -66,3 +66,10 @@ def test_compose_uses_a_container_reachable_database_dsn() -> None:
 
     assert compose.count("WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}") == 3
     assert "WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_SUPABASE_DB_DSN:-}" not in compose
+
+
+def test_worker_graph_limit_matches_packaged_default() -> None:
+    """Composeが有効なgraph上限を古い値で上書きしない。"""
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert "WEREWOLF_LLM_GRAPH_MAX_STEPS:-16" in compose
