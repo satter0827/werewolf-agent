@@ -46,7 +46,7 @@ def test_streamlit_rerun_startup_log_includes_runtime_paths(
     assert record.log_file_path == str(settings.log_file_path)
     assert record.log_third_party_level == "INFO"
     assert record.llm_provider == "fake"
-    assert record.llm_model == "fake-list-llm"
+    assert record.llm_model == "fake-list-chat-model"
     assert record.llm_base_url == "provider default"
     assert not hasattr(record, "seat_credential")
 

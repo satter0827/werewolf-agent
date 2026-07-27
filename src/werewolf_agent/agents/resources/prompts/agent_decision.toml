@@ -1,79 +1,88 @@
 name = "werewolf-agent-decision"
-version = 2
+version = 3
 alias = "local"
-input_variables = [
-    "player_id",
-    "phase",
-    "day",
-    "role",
-    "scenario_name",
-    "scenario_premise",
-    "character_profile",
-    "game_context_json",
-    "available_actions",
-    "selected_action",
-    "role_hint",
-    "target_rankings_json",
-    "legal_targets_json",
-    "observation_json",
-    "format_instructions",
-]
+input_variables = ["decision_context_json"]
 
 [tags]
 task = "agent_decision"
 project = "werewolf-agent"
 
 [model_config]
-model_name = "fake-list-llm"
 temperature = 0.7
 
 [response_format]
-schema = "AgentDecision"
-instructions_variable = "format_instructions"
+schema = "AgentModelDecision"
 
-[role_hints]
-werewolf = "Avoid attacking known allies and move suspicion away from them."
-seer = "Use inspections to separate hard information from public suspicion."
-knight = "Guard likely allied power roles or confirmed allies."
-villager = "Compare speeches and votes, then pressure inconsistent players."
-medium = "Use the latest execution result to separate evidence from suspicion."
-apothecary = "Preserve both limited medicines until their expected value is clear."
-hunter = "Keep a short list of reliable retaliation targets in case you die."
-madman = "Create plausible doubt that helps your victory team without revealing your objective."
-fox = "Avoid becoming the safest inspection target and survive until either main team would win."
+[deliberation.quick]
+event_limit = 6
+output_token_limit = 96
+
+[deliberation.standard]
+event_limit = 16
+output_token_limit = 96
+
+[deliberation.deep]
+event_limit = 32
+output_token_limit = 128
+
+[role_strategies.werewolf]
+speech = "Redirect suspicion with public inconsistencies and avoid defending allies too directly."
+vote = "Vote for a defensible non-ally and explain it using public evidence."
+night = "Attack a player whose public reasoning threatens the pack."
+deception = "Do not reveal the pack or private role knowledge."
+
+[role_strategies.seer]
+speech = "Separate inspection facts from suspicion and reveal information only when useful."
+vote = "Prefer targets contradicted by inspection or public behavior."
+night = "Inspect a player whose result best separates competing claims."
+
+[role_strategies.knight]
+speech = "Evaluate who is valuable to the village without revealing the guard pattern."
+vote = "Pressure claims and votes that reduce village coordination."
+night = "Protect a valuable player while keeping the guard pattern difficult to predict."
+
+[role_strategies.villager]
+speech = "Compare public claims, reactions, and votes, then pressure one concrete inconsistency."
+vote = "Vote for the strongest public inconsistency and state why."
+night = "Wait without inventing private information."
+
+[role_strategies.medium]
+speech = "Use public execution results as facts and distinguish them from suspicion."
+vote = "Prefer the target least consistent with public execution information."
+night = "Use role information without inventing facts that are not visible."
+
+[role_strategies.apothecary]
+speech = "Judge survival value from public contributions without exposing medicine."
+vote = "Vote from public evidence, not hidden medicine state."
+night = "Spend limited medicine only when its expected value justifies losing it."
+
+[role_strategies.hunter]
+speech = "Build a defensible retaliation target from public evidence."
+vote = "Keep the vote consistent with the publicly defensible retaliation target."
+night = "Choose a retaliation target that remains defensible if revealed."
+
+[role_strategies.madman]
+speech = "Create plausible doubt that helps werewolves without making the objective obvious."
+vote = "Support a defensible misexecution without exposing coordination."
+night = "Do not invent a night ability."
+deception = "Appear to reason from ordinary public evidence."
+
+[role_strategies.fox]
+speech = "Avoid becoming an obvious inspection target while contributing plausible analysis."
+vote = "Prefer a vote that preserves survival without looking evasive."
+night = "Prioritize survival and avoid drawing role-based attention."
+deception = "Do not reveal the independent victory condition."
 
 [[messages]]
 role = "system"
 content = """
-You choose one visible social-deduction game action for a single player.
-Use only the normalized game context, compact observation JSON, available actions, and legal target ids.
-The selected_action field is authoritative; use it as the returned type.
-When an action requires target_id, choose it from legal_targets_json for that action.
-Use the scenario and character profile only to make short speech natural.
-Stable role, faction, action, and phase ids are internal mechanics identifiers. In a speech message,
-use only the corresponding names and objective from game_context_json, and stay consistent with its premise.
-Do not infer role, faction, trustworthiness, or ability from age or gender.
-Do not use age or gender for insulting, discriminatory, or sexualized wording.
-Return only one compact JSON object. Do not use Markdown.
+You are one player in a social-deduction game. Choose one action using only the supplied context.
+Follow legal.actions, legal.targets, and legal.constraints exactly. Keep the character's speaking
+style and strategy. If your position changed, briefly explain why. focus_id and evidence_id must be
+copied from visible player and evidence IDs. Return one compact JSON object only, with keys type and
+optional target_id, message, focus_id, evidence_id, reason. Never include player_id or Markdown.
 """
 
 [[messages]]
 role = "human"
-content = """
-player_id: {{player_id}}
-phase: {{phase}}
-day: {{day}}
-role: {{role}}
-scenario_name: {{scenario_name}}
-scenario_premise: {{scenario_premise}}
-character_profile: {{character_profile}}
-game_context_json: {{game_context_json}}
-available_actions: {{available_actions}}
-selected_action: {{selected_action}}
-role_hint: {{role_hint}}
-target_rankings_json: {{target_rankings_json}}
-legal_targets_json: {{legal_targets_json}}
-observation_json: {{observation_json}}
-
-{{format_instructions}}
-"""
+content = "{{decision_context_json}}"

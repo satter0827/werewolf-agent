@@ -62,22 +62,6 @@ MIN_LLM_TEMPERATURE: Final = 0
 MAX_LLM_TEMPERATURE: Final = 2
 LlmProvider: TypeAlias = Literal["fake", "lmstudio", "openai"]
 
-LLM_STRUCTURED_OUTPUT_MODE_AUTO: Final = "auto"
-LLM_STRUCTURED_OUTPUT_MODE_DISABLED: Final = "disabled"
-LLM_STRUCTURED_OUTPUT_MODE_REQUIRED: Final = "required"
-LLM_STRUCTURED_OUTPUT_MODE_CHOICES: Final = (
-    LLM_STRUCTURED_OUTPUT_MODE_AUTO,
-    LLM_STRUCTURED_OUTPUT_MODE_DISABLED,
-    LLM_STRUCTURED_OUTPUT_MODE_REQUIRED,
-)
-LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET: Final = frozenset(LLM_STRUCTURED_OUTPUT_MODE_CHOICES)
-LlmStructuredOutputMode: TypeAlias = Literal["auto", "disabled", "required"]
-
-LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION: Final = "deterministic_legal_action"
-LLM_FALLBACK_POLICY_CHOICES: Final = (LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION,)
-LLM_FALLBACK_POLICY_CHOICE_SET: Final = frozenset(LLM_FALLBACK_POLICY_CHOICES)
-LlmFallbackPolicy: TypeAlias = Literal["deterministic_legal_action"]
-
 LOG_OUTPUT_FILE: Final = "file"
 LOG_OUTPUT_STDERR: Final = "stderr"
 LOG_OUTPUT_STDOUT: Final = "stdout"

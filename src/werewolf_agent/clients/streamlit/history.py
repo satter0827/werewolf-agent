@@ -19,6 +19,7 @@ from werewolf_agent.contracts.schemas import (
     GAME_STATUS_RUNNING,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    DeliberationLevel,
     GameResponse,
     LocalRulesSettings,
     NarrationMode,
@@ -40,6 +41,7 @@ class SessionGameSelection:
     scenario_id: str | None
     setup_preset_id: str | None
     narration_mode: NarrationMode
+    deliberation_level: DeliberationLevel
     character_assignments: dict[str, str]
     custom_roles: list[CustomRoleDefinitionRequest]
     custom_characters: list[CustomCharacterDefinitionRequest]
@@ -56,6 +58,7 @@ def create_session_game_selection(
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode: NarrationMode,
+    deliberation_level: DeliberationLevel = "standard",
     character_assignments: Mapping[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
     custom_characters: list[CustomCharacterDefinitionRequest],
@@ -72,6 +75,7 @@ def create_session_game_selection(
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
         narration_mode=narration_mode,
+        deliberation_level=deliberation_level,
         character_assignments={
             str(player_id): str(character_id)
             for player_id, character_id in character_assignments.items()
@@ -126,6 +130,7 @@ def build_history_options(
                 scenario_id=session_selection.scenario_id,
                 setup_preset_id=session_selection.setup_preset_id,
                 narration_mode=session_selection.narration_mode,
+                deliberation_level=session_selection.deliberation_level,
                 character_assignments=dict(session_selection.character_assignments),
                 custom_roles=list(session_selection.custom_roles),
                 custom_characters=list(session_selection.custom_characters),

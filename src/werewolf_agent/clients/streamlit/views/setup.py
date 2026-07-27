@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import secrets
-from typing import Any
+from typing import Any, cast
 
 from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.i18n import (
@@ -18,7 +18,9 @@ from werewolf_agent.clients.streamlit.setup import (
     character_assignments,
     custom_characters,
     custom_roles,
+    deliberation_level,
     narration_mode,
+    remember_deliberation_level,
     remember_manual_player_id,
     remember_role_counts,
     remember_seed_text,
@@ -54,6 +56,7 @@ from werewolf_agent.contracts import (
     AppError,
 )
 from werewolf_agent.contracts.schemas import (
+    DeliberationLevel,
     GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
@@ -129,6 +132,7 @@ def _render_setup_screen(
     scenario_id = selected_scenario_id(st.session_state, setup_options)
     preset_id = selected_setup_preset_id(st.session_state, setup_options)
     active_narration_mode = narration_mode(st.session_state, setup_options)
+    active_deliberation_level = deliberation_level(st.session_state)
     validation = validate_setup(counts, setup_options, catalog=catalog, lang=lang)
     total_players = sum(counts.values())
     manual_player_id = (
@@ -151,6 +155,12 @@ def _render_setup_screen(
         st.header(catalog.t(lang, "setup.execution.title"))
         st.caption(catalog.t(lang, "setup.execution.description"))
         seed_value = _render_seed_controls(st, settings, catalog, lang, column_count=2)
+        active_deliberation_level = _render_deliberation_selector(
+            st,
+            current=active_deliberation_level,
+            catalog=catalog,
+            lang=lang,
+        )
         _render_setup_summary_metrics(
             st,
             setup_options=setup_options,
@@ -198,6 +208,7 @@ def _render_setup_screen(
             scenario_id=scenario_id,
             setup_preset_id=preset_id,
             narration_mode_value=active_narration_mode,
+            deliberation_level_value=active_deliberation_level,
             character_assignments_value=active_assignments,
             rule_composition=rule_composition,
             catalog=catalog,
@@ -267,6 +278,7 @@ def _render_setup_submit(
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode_value: NarrationMode,
+    deliberation_level_value: DeliberationLevel,
     character_assignments_value: dict[str, str],
     rule_composition: RuleCompositionSelection,
     catalog: I18nCatalog,
@@ -300,6 +312,7 @@ def _render_setup_submit(
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
         narration_mode=narration_mode_value,
+        deliberation_level=deliberation_level_value,
         character_assignments=character_assignments_value,
         custom_roles=custom_roles(st.session_state),
         custom_characters=custom_characters(st.session_state),
@@ -307,6 +320,27 @@ def _render_setup_submit(
         catalog=catalog,
         lang=lang,
     )
+
+
+def _render_deliberation_selector(
+    st: Any,
+    *,
+    current: DeliberationLevel,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> DeliberationLevel:
+    """Render and remember the bounded automated-player deliberation level."""
+    levels: tuple[DeliberationLevel, ...] = ("quick", "standard", "deep")
+    selected = st.selectbox(
+        catalog.t(lang, "setup.deliberation"),
+        levels,
+        index=levels.index(current),
+        format_func=lambda value: catalog.t(lang, f"setup.deliberation.{value}"),
+        help=catalog.t(lang, "setup.deliberation.help"),
+    )
+    value = cast(DeliberationLevel, selected)
+    remember_deliberation_level(st.session_state, value)
+    return value
 
 
 def _render_rule_composition(

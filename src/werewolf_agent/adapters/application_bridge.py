@@ -74,10 +74,6 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         max_retries=app_settings.llm_max_retries,
         max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
-        structured_output_mode=app_settings.llm_structured_output_mode,
-        validation_retry_count=app_settings.llm_validation_retry_count,
-        graph_max_steps=app_settings.llm_graph_max_steps,
-        fallback_policy=app_settings.llm_fallback_policy,
     )
 
 
@@ -92,7 +88,7 @@ def build_worker_llm_provider_config(
         return replace(
             base,
             provider="fake",
-            model="fake-list-llm",
+            model="fake-list-chat-model",
             base_url="",
             api_key="",
         )

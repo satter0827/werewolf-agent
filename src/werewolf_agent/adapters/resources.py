@@ -10,10 +10,8 @@ from typing import TypeVar, cast
 
 from pydantic import BaseModel, ConfigDict
 
-from werewolf_agent.agents.definitions import (
-    FakeDecisionCatalog,
-    PromptDefinition,
-)
+from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
+from werewolf_agent.agents.definitions import PromptDefinition
 from werewolf_agent.application.definitions import (
     GameCatalogDefinitions,
     GameDefinitions,
@@ -27,6 +25,7 @@ TModel = TypeVar("TModel", bound=BaseModel)
 GAME_DEFINITIONS_PACKAGE = "werewolf_agent.application.resources.game"
 PRESENTATION_DEFINITIONS_PACKAGE = "werewolf_agent.application.resources.presentation"
 LLM_DEFINITIONS_PACKAGE = "werewolf_agent.agents.resources.llm"
+FAKE_DEFINITIONS_PACKAGE = "werewolf_agent.adapters.llm.resources"
 PROMPTS_PACKAGE = "werewolf_agent.agents.resources.prompts"
 RULES_FILE = "rules.toml"
 ROLES_FILE = "roles.toml"
@@ -157,7 +156,7 @@ def load_llm_definitions(
         ),
         fake_responses=load_toml_model(
             FakeDecisionCatalog,
-            package=LLM_DEFINITIONS_PACKAGE,
+            package=FAKE_DEFINITIONS_PACKAGE,
             file_name=FAKE_RESPONSES_FILE,
             override_path=fake_responses_path,
         ),

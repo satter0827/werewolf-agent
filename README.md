@@ -7,7 +7,7 @@ timeline、認証した player 本人の observation を提供します。完全
 
 CLIとStreamlitは同じAPI contractを使います。Streamlitが唯一のbrowser UIです。
 SupabaseはAuth、永続化、operation queueを担当し、workerが自動進行とLLM providerを実行します。既定の
-FakeListLLM は外部 API と credential を必要としません。
+FakeListChatModel は外部 API と credential を必要としません。
 
 ## セットアップ
 
@@ -117,12 +117,12 @@ Agentの安定性は画面を起動せず、専用runnerで確認します。Loc
 uv run --no-sync python -m scripts.agents preflight
 uv run --no-sync python -m scripts.agents run --provider fake --suite standard
 uv run --no-sync python -m scripts.agents run --provider local --suite smoke
-uv run --no-sync python -m scripts.agents run --provider local --suite standard
 uv run --no-sync python -m scripts.agents local-ui
 ```
 
-長時間のLocal標準は`--preset`を繰り返して対象presetを明示できます。Fake標準は全presetを
-維持し、Localだけ実行量を調整する場合に使用します。
+Local smokeは固定1 preset、最大3 model呼び出し、各40秒timeoutで停止します。model一覧確認を
+含めても約3分以内を上限とします。全presetの
+再現確認はFake標準、Local LLMによる一局完走は明示的な`local-ui`で実行します。
 
 `local-ui`だけがLocal LLM、Streamlitを専用Compose projectで統合します。認証済みAPI
 driverで作成・進行し、Streamlitの作成直後、進行中、timeline、終了、異常表示とDB照合を

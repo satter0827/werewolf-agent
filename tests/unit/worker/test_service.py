@@ -195,7 +195,7 @@ def test_fake_game_cannot_inherit_the_paid_provider_or_secret() -> None:
     config = build_worker_llm_provider_config("fake", settings)
 
     assert config.provider == "fake"
-    assert config.model == "fake-list-llm"
+    assert config.model == "fake-list-chat-model"
     assert config.base_url == ""
     assert config.api_key == ""
 

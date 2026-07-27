@@ -8,7 +8,6 @@ from werewolf_agent.settings.constants import (
     MAX_LLM_TEMPERATURE,
     MIN_LLM_TEMPERATURE,
     MIN_RETRY_COUNT,
-    MIN_STEP_LIMIT,
     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
 )
 
@@ -39,20 +38,6 @@ class LlmSettings(BaseModel):
         ge=MIN_LLM_TEMPERATURE,
         le=MAX_LLM_TEMPERATURE,
         validation_alias="WEREWOLF_LLM_TEMPERATURE",
-    )
-    llm_structured_output_mode: str = Field(
-        validation_alias="WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE",
-    )
-    llm_validation_retry_count: int = Field(
-        ge=MIN_RETRY_COUNT,
-        validation_alias="WEREWOLF_LLM_VALIDATION_RETRY_COUNT",
-    )
-    llm_graph_max_steps: int = Field(
-        ge=MIN_STEP_LIMIT,
-        validation_alias="WEREWOLF_LLM_GRAPH_MAX_STEPS",
-    )
-    llm_fallback_policy: str = Field(
-        validation_alias="WEREWOLF_LLM_FALLBACK_POLICY",
     )
     llm_prompt_file: str = Field(
         validation_alias="WEREWOLF_LLM_PROMPT_FILE",

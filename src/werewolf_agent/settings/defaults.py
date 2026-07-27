@@ -7,9 +7,7 @@ from typing import Final, Literal
 
 from werewolf_agent.settings.constants import (
     CLI_OUTPUT_FORMAT_CHOICE_SET,
-    LLM_FALLBACK_POLICY_CHOICE_SET,
     LLM_PROVIDER_CHOICE_SET,
-    LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET,
     LOG_OUTPUT_CHOICE_SET,
 )
 from werewolf_agent.settings.loading import load_packaged_defaults
@@ -23,8 +21,6 @@ CLI_OUTPUT_FORMAT_NAMES: Final = CLI_OUTPUT_FORMAT_CHOICE_SET
 STREAMLIT_LANGUAGE_NAMES: Final = frozenset({"ja", "en"})
 STREAMLIT_SIDEBAR_STATE_NAMES: Final = frozenset({"auto", "expanded", "collapsed"})
 LLM_PROVIDER_NAMES: Final = LLM_PROVIDER_CHOICE_SET
-LLM_STRUCTURED_OUTPUT_MODE_NAMES: Final = LLM_STRUCTURED_OUTPUT_MODE_CHOICE_SET
-LLM_FALLBACK_POLICY_NAMES: Final = LLM_FALLBACK_POLICY_CHOICE_SET
 SUPPORTED_AGENT_TYPE_NAMES: Final = frozenset({"llm"})
 
 StreamlitLanguage = Literal["ja", "en"]

@@ -10,16 +10,12 @@ from werewolf_agent.adapters.agents.game_driver import (
     langchain_agent_factory,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.adapters.llm.langchain.constants import ROUTE_FAILED, ROUTE_INVALID
 from werewolf_agent.adapters.llm.langchain.service import LangChainDecisionProvider
-from werewolf_agent.adapters.resources import load_llm_definitions
-from werewolf_agent.agents.models import (
-    AgentActionType,
-    AgentObservation,
-    AgentPhase,
-    AgentPlayerStatus,
-    VisiblePlayer,
+from werewolf_agent.adapters.llm.model_adapters import (
+    FakeDecisionModel,
+    LangChainChatDecisionModel,
 )
+from werewolf_agent.adapters.resources import load_llm_definitions
 from werewolf_agent.contracts import (
     ERROR_CONTEXT_LLM_BASE_URL,
     ERROR_CONTEXT_LLM_ERROR_TYPE,
@@ -50,10 +46,6 @@ def _lmstudio_auto_config() -> LlmProviderConfig:
         max_retries=3,
         max_tokens=128,
         temperature=0.2,
-        structured_output_mode="auto",
-        validation_retry_count=1,
-        graph_max_steps=16,
-        fallback_policy="deterministic_legal_action",
     )
 
 
@@ -155,78 +147,22 @@ def test_langchain_agent_factory_uses_fake_decision_fixture() -> None:
     factory = langchain_agent_factory(
         LlmProviderConfig(
             provider="fake",
-            model="fake-list-llm",
+            model="fake-list-chat-model",
             base_url="",
             api_key="",
             timeout_seconds=30.0,
             max_retries=2,
             max_tokens=96,
             temperature=0.7,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
-    assert factory.provider.fake_responses is definitions.fake_responses
-    assert factory.provider.model is None
+    assert isinstance(factory.provider.decision_model, FakeDecisionModel)
+    assert factory.provider.decision_model.catalog is definitions.fake_responses
     assert factory.provider.provider_name == "fake"
-    assert factory.provider.model_name == "fake-list-llm"
-
-
-def test_validation_repair_route_honors_configured_retry_count() -> None:
-    definitions = load_llm_definitions(
-        players_path=None,
-        prompt_path=None,
-        fake_responses_path=None,
-    )
-    factory = langchain_agent_factory(
-        LlmProviderConfig(
-            provider="fake",
-            model="fake-list-llm",
-            base_url="",
-            api_key="",
-            timeout_seconds=30.0,
-            max_retries=0,
-            max_tokens=96,
-            temperature=0.0,
-            structured_output_mode="auto",
-            validation_retry_count=2,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
-        ),
-        definitions=definitions,
-    )
-    observation = AgentObservation(
-        phase=AgentPhase.VOTING,
-        day=1,
-        me=VisiblePlayer(id="p1", name="Alice", status=AgentPlayerStatus.ALIVE),
-        players=[
-            VisiblePlayer(id="p1", name="Alice", status=AgentPlayerStatus.ALIVE),
-            VisiblePlayer(id="p2", name="Bob", status=AgentPlayerStatus.ALIVE),
-        ],
-        available_actions=[AgentActionType.VOTE],
-        legal_targets={AgentActionType.VOTE: ["p2"]},
-    )
-    base_state = {
-        "player_id": "p1",
-        "observation": observation,
-        "action_type": AgentActionType.VOTE,
-        "raw_output": "{}",
-    }
-
-    first_retry = factory.provider._node_validate_action(
-        {**base_state, "repair_attempts": 1}  # type: ignore[arg-type]
-    )
-    exhausted = factory.provider._node_validate_action(
-        {**base_state, "repair_attempts": 2}  # type: ignore[arg-type]
-    )
-
-    assert first_retry["route"] == ROUTE_INVALID
-    assert exhausted["route"] == ROUTE_FAILED
+    assert factory.provider.model_name == "fake-list-chat-model"
 
 
 def test_langchain_agent_factory_builds_lmstudio_chat_model(monkeypatch) -> None:
@@ -257,22 +193,18 @@ def test_langchain_agent_factory_builds_lmstudio_chat_model(monkeypatch) -> None
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
-    assert isinstance(factory.provider.model, FakeChatOpenAI)
-    assert factory.provider.fake_responses is None
+    assert isinstance(factory.provider.decision_model, LangChainChatDecisionModel)
+    assert isinstance(factory.provider.decision_model.model, FakeChatOpenAI)
     assert factory.provider.provider_name == "lmstudio"
     assert factory.provider.model_name == "local-model"
-    assert factory.provider.base_url == "http://127.0.0.1:1234/v1"
-    assert factory.provider.timeout_seconds == 45.0
-    assert factory.provider.max_tokens == 128
+    assert factory.provider.decision_model.base_url == "http://127.0.0.1:1234/v1"
+    assert factory.provider.decision_model.timeout_seconds == 45.0
+    assert factory.provider.decision_model.max_tokens == 128
     assert captured_kwargs == [
         {
             "model": "local-model",
@@ -315,10 +247,6 @@ def test_langchain_agent_factory_auto_discovers_lmstudio_model(monkeypatch) -> N
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
     )
@@ -440,10 +368,6 @@ def test_real_provider_invoke_error_uses_deterministic_fallback(monkeypatch) -> 
             max_retries=3,
             max_tokens=128,
             temperature=0.2,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
     )
@@ -489,21 +413,17 @@ def test_langchain_agent_factory_builds_openai_chat_model(monkeypatch) -> None:
             max_retries=2,
             max_tokens=96,
             temperature=0.7,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         ),
         definitions=definitions,
     )
 
     assert isinstance(factory.provider, LangChainDecisionProvider)
-    assert isinstance(factory.provider.model, FakeChatOpenAI)
-    assert factory.provider.fake_responses is None
+    assert isinstance(factory.provider.decision_model, LangChainChatDecisionModel)
+    assert isinstance(factory.provider.decision_model.model, FakeChatOpenAI)
     assert factory.provider.provider_name == "openai"
     assert factory.provider.model_name == "gpt-4.1-mini"
-    assert factory.provider.timeout_seconds == 30.0
-    assert factory.provider.max_tokens == 96
+    assert factory.provider.decision_model.timeout_seconds == 30.0
+    assert factory.provider.decision_model.max_tokens == 96
     assert captured_kwargs == [
         {
             "model": "gpt-4.1-mini",

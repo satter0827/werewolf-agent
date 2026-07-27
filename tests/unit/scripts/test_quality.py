@@ -208,7 +208,7 @@ def test_quality_environment_cannot_override_isolation_invariants() -> None:
     assert "WEREWOLF_LOCAL_LLM_BASE_URL" not in environment
     assert "WEREWOLF_LOCAL_LLM_MODEL" not in environment
     assert environment["WEREWOLF_WORKER_PAID_LLM_PROVIDER"] == "fake"
-    assert environment["WEREWOLF_WORKER_PAID_LLM_MODEL"] == "fake-list-llm"
+    assert environment["WEREWOLF_WORKER_PAID_LLM_MODEL"] == "fake-list-chat-model"
     assert environment["WEREWOLF_WORKER_PAID_LLM_BASE_URL"] == ""
 
 

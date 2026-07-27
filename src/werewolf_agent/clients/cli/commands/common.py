@@ -40,6 +40,7 @@ from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     CustomSetupRequest,
+    DeliberationLevel,
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
@@ -66,6 +67,7 @@ def _create_request(
     manual_player: str | None,
     setup_file: Path | None = None,
     preset_id: str | None = None,
+    deliberation_level: DeliberationLevel = "standard",
 ) -> CreateGameRequest:
     settings = get_settings()
     selection: GameSetupSelectionRequest
@@ -92,6 +94,7 @@ def _create_request(
         manual_player_id=manual_player,
         setup=selection,
         narration_mode=settings.game_default_narration_mode,
+        deliberation_level=deliberation_level,
     )
 
 

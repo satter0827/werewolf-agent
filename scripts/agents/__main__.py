@@ -18,6 +18,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     run.add_argument("--provider", choices=("fake", "local", "openai"), default="local")
     run.add_argument("--suite", choices=("smoke", "standard"), default="smoke")
     run.add_argument("--seed", type=int, default=7)
+    run.add_argument(
+        "--deliberation-level",
+        choices=("quick", "standard", "deep"),
+        default="standard",
+    )
     run.add_argument("--confirm-paid", action="store_true")
     run.add_argument("--preset", action="append", default=[])
     compare = subparsers.add_parser("compare")
@@ -36,6 +41,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.suite,
             confirm_paid=arguments.confirm_paid,
             seed=arguments.seed,
+            deliberation_level=arguments.deliberation_level,
             selected_presets=arguments.preset,
         )
         print(f"state: {state}")

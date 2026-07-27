@@ -17,6 +17,7 @@ from werewolf_agent.contracts.schemas import (
     CreateGameRequest,
     CustomCharacterDefinitionRequest,
     CustomSetupRequest,
+    DeliberationLevel,
     GameSetupDocumentRequest,
     GameSetupOptionsResponse,
     GameSetupSelectionRequest,
@@ -38,6 +39,7 @@ def build_create_game_request(
     manual_player_id: str | None,
     setup: GameSetupSelectionRequest,
     narration_mode: NarrationMode,
+    deliberation_level: DeliberationLevel = "standard",
 ) -> CreateGameRequest:
     """Build a public create-game request shared by CLI and Streamlit."""
     try:
@@ -46,6 +48,7 @@ def build_create_game_request(
             manual_player_id=manual_player_id,
             setup=setup,
             narration_mode=narration_mode,
+            deliberation_level=deliberation_level,
         )
     except ValidationError as exc:
         detail = "; ".join(

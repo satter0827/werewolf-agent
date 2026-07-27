@@ -1,4 +1,4 @@
-"""LangChain-backed decision services for visible player observations."""
+"""Explicit decision pipeline shared by fake and real chat-model adapters."""
 
 from __future__ import annotations
 
@@ -7,532 +7,173 @@ import json
 import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, cast
-
-from langchain_core.language_models.fake import FakeListLLM
-from langchain_core.output_parsers import PydanticOutputParser
+from typing import Literal, cast
 
 from werewolf_agent.adapters.llm.langchain.constants import (
-    DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT,
-    DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION,
-    DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
-    DECISION_GRAPH_NODE_INVOKE_MODEL,
-    DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION,
-    DECISION_GRAPH_NODE_RANK_TARGETS,
-    DECISION_GRAPH_NODE_REPAIR_ONCE,
-    DECISION_GRAPH_NODE_ROLE_HINT,
-    DECISION_GRAPH_NODE_VALIDATE_ACTION,
-    DECISION_GRAPH_REVISION,
-    ERROR_TYPE_GRAPH_INVOCATION,
-    ERROR_TYPE_STRUCTURED_OUTPUT_UNSUPPORTED,
-    FALLBACK_REASON_MODEL_ERROR,
-    FALLBACK_REASON_REPAIR_FAILED,
-    LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION,
-    LLM_STRUCTURED_OUTPUT_MODE_DISABLED,
-    LLM_STRUCTURED_OUTPUT_MODE_REQUIRED,
-    ROUTE_FAILED,
-    ROUTE_FALLBACK,
-    ROUTE_INVALID,
-    ROUTE_VALID,
-    VALIDATION_STATUS_FAILED,
+    LLM_SPEECH_MESSAGE_MAX_CHARS,
+    SECONDS_TO_MILLISECONDS,
     VALIDATION_STATUS_FALLBACK,
-    VALIDATION_STATUS_INVALID,
     VALIDATION_STATUS_VALID,
 )
 from werewolf_agent.adapters.llm.langchain.decisions import (
     _fallback_decision,
     _legal_targets_by_action,
-    _missing_target_reason,
-    _ranked_targets_by_action,
-    _selected_action,
-    _speech_too_long,
-    _target_for_action,
 )
-from werewolf_agent.adapters.llm.langchain.graph import (
-    _compile_decision_graph,
-    _preflight_decision,
-)
-from werewolf_agent.adapters.llm.langchain.models import _DecisionGraphState, _ModelDecisionPayload
-from werewolf_agent.adapters.llm.langchain.parsing import (
-    _is_invalid_validated_decision,
-    _parse_decision_output,
-    _repair_payload,
-    _validated_decision,
-)
-from werewolf_agent.adapters.llm.langchain.prompting import (
-    _elapsed_ms,
-    _json_mapping,
-    _prompt_hash,
-    _prompt_inputs,
-    _prompt_messages,
-    _to_chat_prompt,
-    _trace_error_payload,
-    _trace_request_payload,
-)
-from werewolf_agent.adapters.llm.messages import (
-    MESSAGE_LLM_MODEL_NOT_CONFIGURED,
-    message_invalid_llm_decision,
-)
-from werewolf_agent.agents.definitions import FakeDecisionCatalog, PromptDefinition
+from werewolf_agent.adapters.llm.messages import message_invalid_llm_decision
+from werewolf_agent.adapters.llm.model_adapters import LlmModelInvocationError
+from werewolf_agent.agents.definitions import PromptDefinition
 from werewolf_agent.agents.models import (
     AgentActionType,
     AgentDecision,
+    AgentModelDecision,
     AgentObservation,
+    AgentPhase,
+    AgentPlayerStatus,
+    DecisionTask,
+    DeliberationLevel,
+    ModelMessage,
+    ModelRequest,
+    ModelResponse,
 )
+from werewolf_agent.agents.ports import DecisionModel
 from werewolf_agent.agents.tracing import LlmInvocationTrace, LlmTraceSink
-from werewolf_agent.contracts.error_catalog import (
-    ERROR_CONTEXT_LLM_BASE_URL,
-    ERROR_CONTEXT_LLM_ERROR_TYPE,
-    ERROR_CONTEXT_LLM_MAX_TOKENS,
-    ERROR_CONTEXT_LLM_MODEL,
-    ERROR_CONTEXT_LLM_PROVIDER,
-    ERROR_CONTEXT_LLM_TIMEOUT_SECONDS,
-)
 
-
-class LlmModelInvocationError(RuntimeError):
-    """Raised when a configured real LLM model cannot be invoked."""
-
-    def __init__(
-        self,
-        error_type: str,
-        *,
-        context: Mapping[str, object] | None = None,
-    ) -> None:
-        """Initialize an invocation error with safe diagnostic context."""
-        self.error_type = error_type
-        self.context = dict(context or {})
-        super().__init__(error_type)
+PIPELINE_REVISION = "decision-v2"
+CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
 
 
 @dataclass(frozen=True)
 class LangChainDecisionProvider:
-    """Decision provider that renders a prompt and parses LangChain model output."""
+    """Turn one authorized observation into a validated game decision."""
 
     prompt: PromptDefinition
-    model: Any | None = None
-    fake_responses: FakeDecisionCatalog | None = None
-    provider_name: str = ""
-    model_name: str = ""
-    base_url: str = ""
-    timeout_seconds: float | None = None
-    max_tokens: int | None = None
-    structured_output_mode: str = "auto"
-    validation_retry_count: int = 1
-    graph_max_steps: int = 16
-    fallback_policy: str = LLM_FALLBACK_POLICY_DETERMINISTIC_LEGAL_ACTION
+    decision_model: DecisionModel
+    provider_name: str
+    model_name: str
+    max_output_tokens: int
+    deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD
     trace_sink: LlmTraceSink | None = field(default=None, repr=False, compare=False)
-    parser: PydanticOutputParser[AgentDecision] = field(
-        default_factory=lambda: PydanticOutputParser(pydantic_object=AgentDecision)
+    _compiled_messages: tuple[CompiledPromptMessage, ...] = field(
+        init=False, repr=False, compare=False
     )
-    _graph: Any = field(init=False, repr=False, compare=False)
 
     def __post_init__(self) -> None:
-        """Compile the configured decision graph once for this provider."""
-        object.__setattr__(self, "_graph", _compile_decision_graph(self))
+        """Compile static prompt fragments once for this provider."""
+        object.__setattr__(self, "_compiled_messages", _compile_prompt(self.prompt))
 
     def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
-        """Return one validated decision from visible player context."""
-        preflight_decision = _preflight_decision(player_id, observation)
-        if preflight_decision is not None:
-            return preflight_decision
-
-        try:
-            state = cast(
-                _DecisionGraphState,
-                self._graph.invoke(
-                    {
-                        "player_id": player_id,
-                        "observation": observation,
-                        "graph_revision": DECISION_GRAPH_REVISION,
-                        "started_at": time.perf_counter(),
-                        "validation_status": "",
-                        "route": "",
-                    },
-                    config={"recursion_limit": self.graph_max_steps},
-                ),
-            )
-        except Exception as exc:
-            normalized_observation = observation.model_copy(
-                update={"legal_targets": _legal_targets_by_action(observation)}
-            )
-            action_type = _selected_action(normalized_observation)
-            decision = _fallback_decision(
-                player_id,
-                normalized_observation,
-                action_type,
-                reason=message_invalid_llm_decision(ERROR_TYPE_GRAPH_INVOCATION),
-            )
-            self._record_trace(
-                player_id=player_id,
-                observation=normalized_observation,
-                prompt_messages=[],
-                request_payload=_trace_request_payload(
-                    action_type,
-                    None,
-                    state={
-                        "graph_revision": DECISION_GRAPH_REVISION,
-                        "graph_node": DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
-                        "validation_status": VALIDATION_STATUS_FALLBACK,
-                        "route": ROUTE_FALLBACK,
-                        "fallback_reason": type(exc).__name__,
-                    },
-                ),
-                parsed_decision=decision.model_dump(mode="json"),
-                error_payload={"error_type": type(exc).__name__},
-                latency_ms=0,
-            )
-            return decision
-
-        graph_observation = state.get("observation")
-        if not isinstance(graph_observation, AgentObservation):
-            graph_observation = observation
-        graph_action_type = state.get("action_type")
-        if not isinstance(graph_action_type, AgentActionType):
-            graph_action_type = AgentActionType.PASS
-        graph_target_id = state.get("target_id")
-        if graph_target_id is not None:
-            graph_target_id = str(graph_target_id)
-        prompt_messages = state.get("prompt_messages", [])
-        if not isinstance(prompt_messages, list):
-            prompt_messages = []
-        started_at = state.get("started_at")
-        started_at_value = (
-            started_at if isinstance(started_at, (int, float)) else time.perf_counter()
+        """Run the bounded decision pipeline once."""
+        preflight = _preflight_decision(player_id, observation)
+        if preflight is not None:
+            return preflight
+        normalized = observation.model_copy(
+            update={"legal_targets": _legal_targets_by_action(observation)}
         )
-        graph_decision = state.get("decision")
-        if isinstance(graph_decision, AgentDecision):
-            final_decision = graph_decision
-        else:
-            final_decision = _fallback_decision(
-                player_id,
-                graph_observation,
-                graph_action_type,
-                reason=message_invalid_llm_decision(FALLBACK_REASON_REPAIR_FAILED),
-            )
+        if normalized.available_actions == [AgentActionType.PASS]:
+            return AgentDecision.pass_(player_id, reason="only legal action")
+
+        started_at = time.perf_counter()
+        deliberation = self.prompt.deliberation[self.deliberation_level.value]
+        context = _decision_context(
+            player_id,
+            normalized,
+            role_strategy=_role_strategy(self.prompt, normalized),
+            event_limit=deliberation.event_limit,
+        )
+        context_text = json.dumps(
+            context,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        context_checksum = hashlib.sha256(context_text.encode("utf-8")).hexdigest()
+        messages = _render_prompt(self._compiled_messages, context_text)
+        prompt_checksum = _messages_checksum(messages)
+        task = DecisionTask(
+            player_id=player_id,
+            observation=normalized,
+            deliberation_level=self.deliberation_level,
+            output_token_limit=min(deliberation.output_token_limit, self.max_output_tokens),
+            context=context,
+            context_checksum=context_checksum,
+        )
+        request = ModelRequest(
+            task=task,
+            messages=messages,
+            response_schema=AgentModelDecision.model_json_schema(),
+            prompt_checksum=prompt_checksum,
+        )
+
+        response: ModelResponse | None = None
+        error_payload: Mapping[str, object] | None = None
+        try:
+            response = self.decision_model.invoke(request)
+            model_decision = _parse_model_decision(response.content)
+            decision = _validated_decision(player_id, normalized, model_decision, context)
+            validation_status = VALIDATION_STATUS_VALID
+            fallback_reason = ""
+        except LlmModelInvocationError as exc:
+            error_payload = dict(exc.context) or {"error_type": exc.error_type}
+            fallback_reason = message_invalid_llm_decision(exc.error_type)
+            decision = _fallback(player_id, normalized, context_checksum, fallback_reason)
+            validation_status = VALIDATION_STATUS_FALLBACK
+        except Exception as exc:
+            error_payload = {
+                "validation_error": type(exc).__name__,
+                "validation_detail": str(exc),
+            }
+            fallback_reason = message_invalid_llm_decision(type(exc).__name__)
+            decision = _fallback(player_id, normalized, context_checksum, fallback_reason)
+            validation_status = VALIDATION_STATUS_FALLBACK
+
         self._record_trace(
             player_id=player_id,
-            observation=graph_observation,
-            prompt_messages=prompt_messages,
-            request_payload=_trace_request_payload(
-                graph_action_type,
-                graph_target_id,
-                state=state,
+            observation=normalized,
+            request=request,
+            response=response,
+            decision=decision,
+            validation_status=validation_status,
+            fallback_reason=fallback_reason,
+            error_payload=error_payload,
+            latency_ms=round(
+                (time.perf_counter() - started_at) * SECONDS_TO_MILLISECONDS,
+                3,
             ),
-            raw_response=(
-                _json_mapping(state["provider_output"])
-                if "provider_output" in state
-                else _json_mapping(state["raw_output"])
-                if "raw_output" in state
-                else None
-            ),
-            parsed_decision=final_decision.model_dump(mode="json"),
-            error_payload=_trace_error_payload(state),
-            latency_ms=_elapsed_ms(float(started_at_value)),
         )
-        return final_decision
-
-    def _node_normalize_observation(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        observation = state["observation"].model_copy(
-            update={"legal_targets": _legal_targets_by_action(state["observation"])}
-        )
-        return {"observation": observation, "graph_node": DECISION_GRAPH_NODE_NORMALIZE_OBSERVATION}
-
-    def _node_choose_required_action(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        observation = state["observation"]
-        action_type = _selected_action(observation)
-        target_id = _target_for_action(observation, action_type)
-        return {
-            "action_type": action_type,
-            "target_id": target_id,
-            "graph_node": DECISION_GRAPH_NODE_CHOOSE_REQUIRED_ACTION,
-        }
-
-    def _node_role_hint(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        observation = state["observation"]
-        role = observation.role or ""
-        return {
-            "role_hint": self.prompt.role_hints.get(role, ""),
-            "graph_node": DECISION_GRAPH_NODE_ROLE_HINT,
-        }
-
-    def _node_rank_targets(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        observation = state["observation"]
-        action_type = state["action_type"]
-        rankings = _ranked_targets_by_action(observation, action_type)
-        if action_type not in AgentDecision.TARGET_TYPES:
-            return {
-                "target_rankings": rankings,
-                "graph_node": DECISION_GRAPH_NODE_RANK_TARGETS,
-            }
-        target_id = rankings.get(action_type.value, [state.get("target_id") or ""])[0] or None
-        next_observation = observation.model_copy(
-            update={
-                "legal_targets": {
-                    **observation.legal_targets,
-                    action_type: rankings.get(action_type.value, []),
-                }
-            }
-        )
-        return {
-            "observation": next_observation,
-            "target_id": target_id,
-            "target_rankings": rankings,
-            "graph_node": DECISION_GRAPH_NODE_RANK_TARGETS,
-        }
-
-    def _node_build_prompt_context(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        observation = state["observation"]
-        action_type = state["action_type"]
-        if action_type in AgentDecision.TARGET_TYPES and state.get("target_id") is None:
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED,
-                "route": ROUTE_FAILED,
-                "fallback_reason": _missing_target_reason(action_type),
-                "graph_node": DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT,
-            }
-        prompt_value = _to_chat_prompt(self.prompt).invoke(
-            _prompt_inputs(
-                state["player_id"],
-                observation,
-                selected_action=action_type,
-                parser=self.parser,
-                role_hint=state.get("role_hint", ""),
-                target_rankings=state.get("target_rankings"),
-            )
-        )
-        return {
-            "prompt_value": prompt_value,
-            "prompt_messages": _prompt_messages(prompt_value),
-            "graph_node": DECISION_GRAPH_NODE_BUILD_PROMPT_CONTEXT,
-        }
-
-    def _node_invoke_model(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        if "prompt_value" not in state:
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED,
-                "route": ROUTE_FAILED,
-                "fallback_reason": state.get("fallback_reason", FALLBACK_REASON_MODEL_ERROR),
-                "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
-            }
-        try:
-            raw_output = self._invoke_model(
-                state["prompt_value"],
-                state["action_type"],
-                state["player_id"],
-                state.get("target_id"),
-                state["observation"],
-            )
-        except LlmModelInvocationError as exc:
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED,
-                "route": ROUTE_FAILED,
-                "fallback_reason": FALLBACK_REASON_MODEL_ERROR,
-                "invoke_error_payload": dict(exc.context),
-                "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
-            }
-        except Exception as exc:
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED,
-                "route": ROUTE_FAILED,
-                "fallback_reason": FALLBACK_REASON_MODEL_ERROR,
-                "invoke_error_payload": {"error_type": type(exc).__name__},
-                "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
-            }
-        return {
-            "raw_output": raw_output,
-            "provider_output": raw_output,
-            "graph_node": DECISION_GRAPH_NODE_INVOKE_MODEL,
-        }
-
-    def _node_validate_action(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        if state.get("validation_status") == VALIDATION_STATUS_FAILED and "raw_output" not in state:
-            return {
-                "decision": _fallback_decision(
-                    state["player_id"],
-                    state["observation"],
-                    state["action_type"],
-                    reason=str(state.get("fallback_reason", "")),
-                ),
-                "route": ROUTE_FAILED,
-                "graph_node": DECISION_GRAPH_NODE_VALIDATE_ACTION,
-            }
-        try:
-            decision = _parse_decision_output(
-                state["raw_output"],
-                player_id=state["player_id"],
-                action_type=state["action_type"],
-                fallback_target_id=None,
-                legal_target_ids=state["observation"].legal_targets.get(
-                    state["action_type"],
-                    [],
-                ),
-                parser=self.parser,
-            )
-            if _speech_too_long(decision):
-                raise ValueError(message_invalid_llm_decision("speech_too_long"))
-            validated = _validated_decision(state["player_id"], state["observation"], decision)
-            if _is_invalid_validated_decision(decision, validated):
-                raise ValueError(validated.reason or "invalid_decision")
-        except Exception as exc:
-            failed = int(state.get("repair_attempts", 0)) >= self.validation_retry_count
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED
-                if failed
-                else VALIDATION_STATUS_INVALID,
-                "validation_error": type(exc).__name__,
-                "fallback_reason": message_invalid_llm_decision(type(exc).__name__),
-                "route": ROUTE_FAILED if failed else ROUTE_INVALID,
-                "graph_node": DECISION_GRAPH_NODE_VALIDATE_ACTION,
-            }
-        return {
-            "decision": validated,
-            "validation_status": VALIDATION_STATUS_VALID,
-            "route": ROUTE_VALID,
-            "graph_node": DECISION_GRAPH_NODE_VALIDATE_ACTION,
-        }
-
-    def _node_repair_once(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        repair_attempts = int(state.get("repair_attempts", 0)) + 1
-        repaired = _repair_payload(state)
-        if repaired is None:
-            return {
-                "validation_status": VALIDATION_STATUS_FAILED,
-                "fallback_reason": FALLBACK_REASON_REPAIR_FAILED,
-                "route": ROUTE_FAILED,
-                "repair_attempts": repair_attempts,
-                "graph_node": DECISION_GRAPH_NODE_REPAIR_ONCE,
-            }
-        return {
-            "raw_output": repaired,
-            "repair_attempts": repair_attempts,
-            "validation_status": "",
-            "route": "",
-            "graph_node": DECISION_GRAPH_NODE_REPAIR_ONCE,
-        }
-
-    def _node_deterministic_fallback(self, state: _DecisionGraphState) -> _DecisionGraphState:
-        decision = _fallback_decision(
-            state["player_id"],
-            state["observation"],
-            state.get("action_type", AgentActionType.PASS),
-            reason=str(state.get("fallback_reason", "")),
-        )
-        return {
-            "decision": decision,
-            "validation_status": VALIDATION_STATUS_FALLBACK,
-            "route": ROUTE_FALLBACK,
-            "graph_node": DECISION_GRAPH_NODE_DETERMINISTIC_FALLBACK,
-        }
-
-    def _invoke_model(
-        self,
-        prompt_value: Any,
-        action_type: AgentActionType,
-        player_id: str,
-        target_id: str | None,
-        observation: AgentObservation,
-    ) -> object:
-        if self.fake_responses is not None:
-            visible = {player.id: player.name for player in observation.players}
-            selector_payload = (
-                f"{player_id}:{observation.day}:{observation.phase.value}:{action_type.value}"
-            )
-            selector = int(hashlib.sha256(selector_payload.encode("utf-8")).hexdigest(), 16)
-            response = self.fake_responses.render(
-                action_type.value,
-                context={
-                    "player_id": player_id,
-                    "player_name": observation.me.name,
-                    "day": observation.day,
-                    "target_id": target_id or "",
-                    "target_name": visible.get(target_id or "", target_id or ""),
-                    "focus_name": visible.get(target_id or "", target_id or ""),
-                    "persona": (
-                        observation.profile.personality if observation.profile is not None else ""
-                    ),
-                },
-                selector=selector,
-            )
-            return FakeListLLM(responses=[response]).invoke(prompt_value)
-        if self.model is None:
-            raise LlmModelInvocationError(
-                MESSAGE_LLM_MODEL_NOT_CONFIGURED,
-                context=self._invocation_error_context(MESSAGE_LLM_MODEL_NOT_CONFIGURED),
-            )
-        invocation_model = self._invocation_model()
-        try:
-            return invocation_model.invoke(prompt_value)
-        except Exception as exc:
-            error_type = type(exc).__name__
-            raise LlmModelInvocationError(
-                error_type,
-                context=self._invocation_error_context(error_type),
-            ) from exc
-
-    def _invocation_model(self) -> Any:
-        if self.structured_output_mode == LLM_STRUCTURED_OUTPUT_MODE_DISABLED:
-            return self.model
-        structured_output = getattr(self.model, "with_structured_output", None)
-        if callable(structured_output):
-            try:
-                return structured_output(_ModelDecisionPayload, include_raw=True)
-            except TypeError:
-                return structured_output(_ModelDecisionPayload)
-        if self.structured_output_mode == LLM_STRUCTURED_OUTPUT_MODE_REQUIRED:
-            raise LlmModelInvocationError(
-                ERROR_TYPE_STRUCTURED_OUTPUT_UNSUPPORTED,
-                context=self._invocation_error_context(ERROR_TYPE_STRUCTURED_OUTPUT_UNSUPPORTED),
-            )
-        return self.model
-
-    def _invocation_error_context(self, error_type: str) -> dict[str, object]:
-        context: dict[str, object] = {ERROR_CONTEXT_LLM_ERROR_TYPE: error_type}
-        if self.provider_name:
-            context[ERROR_CONTEXT_LLM_PROVIDER] = self.provider_name
-        if self.model_name:
-            context[ERROR_CONTEXT_LLM_MODEL] = self.model_name
-        if self.base_url:
-            context[ERROR_CONTEXT_LLM_BASE_URL] = self.base_url
-        if self.timeout_seconds is not None:
-            context[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS] = self.timeout_seconds
-        if self.max_tokens is not None:
-            context[ERROR_CONTEXT_LLM_MAX_TOKENS] = self.max_tokens
-        return context
+        return decision
 
     def _record_trace(
         self,
         *,
         player_id: str,
         observation: AgentObservation,
-        prompt_messages: list[Mapping[str, object]],
-        request_payload: Mapping[str, object],
-        raw_response: Mapping[str, object] | None = None,
-        parsed_decision: Mapping[str, object] | None = None,
-        error_payload: Mapping[str, object] | None = None,
-        latency_ms: float | None = None,
+        request: ModelRequest,
+        response: ModelResponse | None,
+        decision: AgentDecision,
+        validation_status: str,
+        fallback_reason: str,
+        error_payload: Mapping[str, object] | None,
+        latency_ms: float,
     ) -> None:
         if self.trace_sink is None:
             return
-        normalized_raw = dict(raw_response or {}) if raw_response is not None else None
-        usage = _normalized_usage(normalized_raw)
-        prompt_text = json.dumps(prompt_messages, ensure_ascii=False, default=str)
-        response_text = (
-            json.dumps(normalized_raw, ensure_ascii=False, default=str)
-            if normalized_raw is not None
-            else ""
-        )
-        validation_status = str(request_payload.get("validation_status") or "")
-        fallback_reason = str(request_payload.get("fallback_reason") or "")
+        prompt_messages: list[Mapping[str, object]] = [
+            message.model_dump(mode="json") for message in request.messages
+        ]
+        prompt_text = json.dumps(prompt_messages, ensure_ascii=False, separators=(",", ":"))
+        raw_response = response.model_dump(mode="json") if response is not None else None
+        response_text = response.content if response is not None else ""
+        usage = response.usage if response is not None else {}
+        evidence_id, focus_id = _response_annotations(response)
         self.trace_sink.record_invocation(
             LlmInvocationTrace(
-                provider=self.provider_name,
-                model=self.model_name,
+                provider=response.provider if response is not None else self.provider_name,
+                model=response.model if response is not None else self.model_name,
                 player_id=player_id,
                 phase=observation.phase.value,
                 day=observation.day,
                 prompt_messages=prompt_messages,
-                prompt_hash=_prompt_hash(prompt_messages),
+                prompt_hash=request.prompt_checksum,
                 prompt_version=self.prompt.version,
                 setup_checksum=(
                     observation.game_context.setup_checksum
@@ -548,24 +189,45 @@ class LangChainDecisionProvider:
                     json.dumps(
                         observation.model_dump(mode="json"),
                         ensure_ascii=False,
-                        separators=(",", ":"),
                         sort_keys=True,
+                        separators=(",", ":"),
                     ).encode("utf-8")
                 ).hexdigest(),
-                request_payload=request_payload,
+                request_payload={
+                    "pipeline_revision": PIPELINE_REVISION,
+                    "normalization": _normalization_status(response),
+                    "stage": "validated"
+                    if validation_status == VALIDATION_STATUS_VALID
+                    else "fallback",
+                    "validation_status": validation_status,
+                    "fallback_reason": fallback_reason,
+                    "deliberation_level": self.deliberation_level.value,
+                    "decision_type": decision.type.value,
+                    "risk_tolerance": (
+                        observation.profile.risk_tolerance
+                        if observation.profile is not None
+                        else ""
+                    ),
+                    "evidence_focus": (
+                        observation.profile.evidence_focus
+                        if observation.profile is not None
+                        else ""
+                    ),
+                    "focus_id": focus_id,
+                    "evidence_id": evidence_id,
+                },
                 raw_response=raw_response,
-                parsed_decision=parsed_decision,
+                parsed_decision=decision.model_dump(mode="json"),
                 error_payload=error_payload,
                 latency_ms=latency_ms,
                 validation_status=validation_status,
-                repair_attempts=_non_negative_int(request_payload.get("repair_attempts")) or 0,
                 fallback_used=validation_status == VALIDATION_STATUS_FALLBACK,
                 fallback_reason=fallback_reason,
                 provider_error=_provider_error(error_payload),
-                input_tokens=usage[0],
-                output_tokens=usage[1],
-                total_tokens=usage[2],
-                usage_source=usage[3],
+                input_tokens=usage.get("input_tokens"),
+                output_tokens=usage.get("output_tokens"),
+                total_tokens=usage.get("total_tokens"),
+                usage_source="usage_metadata" if usage else "unavailable",
                 prompt_characters=len(prompt_text),
                 prompt_bytes=len(prompt_text.encode("utf-8")),
                 response_characters=len(response_text),
@@ -574,57 +236,357 @@ class LangChainDecisionProvider:
         )
 
 
-def _normalized_usage(
-    raw_response: Mapping[str, object] | None,
-) -> tuple[int | None, int | None, int | None, str]:
-    if raw_response is None:
-        return None, None, None, "unavailable"
-    candidates: list[tuple[object, str]] = [
-        (raw_response.get("usage_metadata"), "usage_metadata"),
-        (raw_response.get("usage"), "usage"),
-    ]
-    raw_message = raw_response.get("raw")
-    if isinstance(raw_message, Mapping):
-        candidates.extend(
-            [
-                (raw_message.get("usage_metadata"), "raw.usage_metadata"),
-                (raw_message.get("usage"), "raw.usage"),
-                (raw_message.get("response_metadata"), "raw.response_metadata"),
-            ]
-        )
-    for candidate, source in candidates:
-        if not isinstance(candidate, Mapping):
-            continue
-        input_tokens = _optional_non_negative_int(
-            candidate.get("input_tokens", candidate.get("prompt_tokens"))
-        )
-        output_tokens = _optional_non_negative_int(
-            candidate.get("output_tokens", candidate.get("completion_tokens"))
-        )
-        total_tokens = _optional_non_negative_int(candidate.get("total_tokens"))
-        if input_tokens is not None or output_tokens is not None or total_tokens is not None:
-            if total_tokens is None and input_tokens is not None and output_tokens is not None:
-                total_tokens = input_tokens + output_tokens
-            return input_tokens, output_tokens, total_tokens, source
-    return None, None, None, "unavailable"
+def _preflight_decision(
+    player_id: str,
+    observation: AgentObservation,
+) -> AgentDecision | None:
+    if observation.me.id != player_id:
+        return AgentDecision.pass_(player_id, reason="observation belongs to another player")
+    if observation.me.status is not AgentPlayerStatus.ALIVE:
+        return AgentDecision.pass_(player_id, reason="player is not alive")
+    if not observation.available_actions:
+        return AgentDecision.pass_(player_id, reason="no action is available")
+    return None
 
 
-def _optional_non_negative_int(value: object) -> int | None:
-    if value is None:
-        return None
+def _decision_context(
+    player_id: str,
+    observation: AgentObservation,
+    *,
+    role_strategy: str,
+    event_limit: int,
+) -> dict[str, object]:
+    game = observation.game_context
+    actions = list(observation.available_actions)
+    context: dict[str, object] = {
+        "phase": observation.phase.value,
+        "day": observation.day,
+        "seed": observation.decision_seed,
+        "me": {
+            "id": player_id,
+            "name": observation.me.name,
+            "role": game.role_name if game is not None else observation.role,
+            "objective": game.objective if game is not None else "",
+        },
+        "profile": _profile_context(observation),
+        "legal": {
+            "actions": [action.value for action in actions],
+            "targets": {
+                action.value: list(observation.legal_targets.get(action, []))
+                for action in actions
+                if action in AgentDecision.TARGET_TYPES
+            },
+            "constraints": {
+                "speech_max_chars": LLM_SPEECH_MESSAGE_MAX_CHARS,
+                "target_required_for": [
+                    action.value for action in actions if action in AgentDecision.TARGET_TYPES
+                ],
+                "message_required_for": [AgentActionType.SPEECH.value]
+                if AgentActionType.SPEECH in actions
+                else [],
+            },
+        },
+        "players": [
+            {"id": player.id, "name": player.name, "status": player.status.value}
+            for player in observation.players
+        ],
+        "known": {
+            "roles": dict(observation.known_roles),
+            "factions": dict(observation.known_factions),
+        },
+        "strategy": role_strategy,
+        "public_position": {
+            "current_suspicion_id": _current_suspicion_id(observation),
+        },
+        "candidate_signals": _candidate_signals(observation),
+        "evidence": _evidence(observation, event_limit=event_limit),
+    }
+    if game is not None:
+        context["setting"] = {
+            "theme": game.theme_name,
+            "premise": game.premise if observation.phase is AgentPhase.DAY_DISCUSSION else "",
+            "actions": {
+                action.value: game.action_names.get(action.value, action.value)
+                for action in actions
+            },
+            "abilities": [
+                {
+                    "id": ability.id,
+                    "name": ability.name,
+                    "remaining_uses": ability.remaining_uses,
+                }
+                for ability in game.abilities
+                if ability.action in {action.value for action in actions}
+            ],
+        }
+    return context
+
+
+def _profile_context(observation: AgentObservation) -> dict[str, object]:
+    profile = observation.profile
+    if profile is None:
+        return {}
+    return {
+        "personality": profile.personality,
+        "speaking_style": profile.speaking_style,
+        "reasoning_style": profile.reasoning_style,
+        "risk_tolerance": profile.risk_tolerance,
+        "evidence_focus": profile.evidence_focus,
+    }
+
+
+def _role_strategy(prompt: PromptDefinition, observation: AgentObservation) -> str:
+    strategies = prompt.role_strategies.get(observation.role or "", {})
+    purpose = {
+        AgentPhase.DAY_DISCUSSION: "speech",
+        AgentPhase.VOTING: "vote",
+        AgentPhase.NIGHT: "night",
+    }.get(observation.phase, "")
+    values = [strategies.get(purpose, ""), strategies.get("deception", "")]
+    return " ".join(value for value in values if value)
+
+
+def _candidate_signals(observation: AgentObservation) -> dict[str, dict[str, int]]:
+    """Return public comparison signals without selecting or ordering a target."""
+    target_ids = {
+        player_id
+        for action in observation.available_actions
+        for player_id in observation.legal_targets.get(action, [])
+    }
+    latest_counts = observation.vote_rounds[-1].counts if observation.vote_rounds else {}
+    speech_counts: dict[str, int] = {}
+    for speech in observation.speeches:
+        speech_counts[speech.player_id] = speech_counts.get(speech.player_id, 0) + 1
+    return {
+        player_id: {
+            "previous_votes": int(latest_counts.get(player_id, 0)),
+            "public_speeches": speech_counts.get(player_id, 0),
+        }
+        for player_id in sorted(target_ids)
+    }
+
+
+def _current_suspicion_id(observation: AgentObservation) -> str | None:
+    """Return the player's latest public speech focus or resolved vote target."""
+    for speech in reversed(observation.speeches):
+        if speech.player_id == observation.me.id and speech.focus_id is not None:
+            return speech.focus_id
+    for vote_round in reversed(observation.vote_rounds):
+        target_id = vote_round.votes.get(observation.me.id)
+        if target_id is not None:
+            return target_id
+    return None
+
+
+def _evidence(observation: AgentObservation, *, event_limit: int) -> list[dict[str, object]]:
+    ordered_events: list[tuple[int, int, int, dict[str, object]]] = []
+    previous_speech_by_player: dict[str, str] = {}
+    for index, speech in enumerate(observation.speeches):
+        previous_message = previous_speech_by_player.get(speech.player_id)
+        previous_speech_by_player[speech.player_id] = speech.message
+        ordered_events.append(
+            (
+                speech.day,
+                0,
+                index,
+                {
+                    "id": f"speech:d{speech.day}:{speech.player_id}:{index + 1}",
+                    "type": "my_speech" if speech.player_id == observation.me.id else "speech",
+                    "day": speech.day,
+                    "player_id": speech.player_id,
+                    "message": speech.message,
+                    "focus_id": speech.focus_id,
+                    "evidence_id": speech.evidence_id,
+                    "changed": (
+                        previous_message is not None and previous_message != speech.message
+                    ),
+                },
+            )
+        )
+    for round_index, vote_round in enumerate(observation.vote_rounds):
+        for vote_index, (voter_id, target_id) in enumerate(vote_round.votes.items()):
+            ordered_events.append(
+                (
+                    vote_round.day,
+                    1 + round_index * 2,
+                    vote_index,
+                    {
+                        "id": f"vote:d{vote_round.day}:r{round_index + 1}:{voter_id}",
+                        "type": "my_vote" if voter_id == observation.me.id else "vote",
+                        "day": vote_round.day,
+                        "player_id": voter_id,
+                        "target_id": target_id,
+                    },
+                )
+            )
+        ordered_events.append(
+            (
+                vote_round.day,
+                2 + round_index * 2,
+                0,
+                {
+                    "id": f"vote_result:d{vote_round.day}:r{round_index + 1}",
+                    "type": "vote_result",
+                    "day": vote_round.day,
+                    "counts": dict(vote_round.counts),
+                    "eliminated_player_id": vote_round.eliminated_player_id,
+                },
+            )
+        )
+    ordered_events.sort(key=lambda item: item[:3])
+    return [event for *_, event in ordered_events[-event_limit:]]
+
+
+def _compile_prompt(prompt: PromptDefinition) -> tuple[CompiledPromptMessage, ...]:
+    marker = "{{decision_context_json}}"
+    marker_count = sum(message.content.count(marker) for message in prompt.messages)
+    if marker_count != 1:
+        raise ValueError("prompt must contain decision_context_json exactly once")
+    compiled: list[CompiledPromptMessage] = []
+    for message in prompt.messages:
+        prefix, separator, suffix = message.content.partition(marker)
+        if not separator:
+            prefix, suffix = message.content, ""
+        compiled.append(
+            (
+                cast(Literal["system", "human", "ai"], message.role),
+                prefix,
+                suffix,
+                bool(separator),
+            )
+        )
+    return tuple(compiled)
+
+
+def _render_prompt(
+    compiled_messages: tuple[CompiledPromptMessage, ...], context_text: str
+) -> tuple[ModelMessage, ...]:
+    return tuple(
+        ModelMessage(role=role, content=f"{prefix}{context_text if dynamic else ''}{suffix}")
+        for role, prefix, suffix, dynamic in compiled_messages
+    )
+
+
+def _messages_checksum(messages: tuple[ModelMessage, ...]) -> str:
+    payload = json.dumps(
+        [message.model_dump(mode="json") for message in messages],
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _parse_model_decision(content: str) -> AgentModelDecision:
+    normalized = _normalize_json_response(content)
+    parsed = json.loads(normalized)
+    return AgentModelDecision.model_validate(parsed)
+
+
+def _normalize_json_response(content: str) -> str:
+    """Remove one complete Markdown fence without repairing response content."""
+    normalized = content.strip()
+    if not normalized.startswith("```"):
+        return normalized
+    lines = normalized.splitlines()
+    if len(lines) < 3 or lines[-1].strip() != "```":
+        raise ValueError("incomplete Markdown fence")
+    opening = lines[0].strip().lower()
+    if opening not in {"```", "```json"}:
+        raise ValueError("unsupported Markdown fence")
+    return "\n".join(lines[1:-1]).strip()
+
+
+def _normalization_status(response: ModelResponse | None) -> str:
+    if response is None:
+        return "not_applicable"
+    content = response.content.strip()
+    if not content.startswith("```"):
+        return "none"
     try:
-        return max(int(str(value)), 0)
-    except (TypeError, ValueError):
-        return None
+        _normalize_json_response(content)
+    except ValueError:
+        return "failed"
+    return "markdown_fence_removed"
 
 
-def _non_negative_int(value: object) -> int | None:
-    return _optional_non_negative_int(value)
+def _validated_decision(
+    player_id: str,
+    observation: AgentObservation,
+    model_decision: AgentModelDecision,
+    context: Mapping[str, object],
+) -> AgentDecision:
+    if model_decision.type not in observation.available_actions:
+        raise ValueError("action is not available")
+    if model_decision.type in AgentDecision.TARGET_TYPES:
+        legal_targets = observation.legal_targets.get(model_decision.type, [])
+        if model_decision.target_id not in legal_targets:
+            raise ValueError("target is not legal")
+    if model_decision.type is AgentActionType.VOTE and not model_decision.reason.strip():
+        raise ValueError("vote requires a public reason")
+    visible_ids = {player.id for player in observation.players}
+    if model_decision.focus_id is not None and (
+        model_decision.focus_id not in visible_ids or model_decision.focus_id == player_id
+    ):
+        raise ValueError("focus is not visible")
+    evidence_value = context.get("evidence")
+    evidence = evidence_value if isinstance(evidence_value, list) else []
+    evidence_ids = {
+        str(item["id"]) for item in evidence if isinstance(item, Mapping) and item.get("id")
+    }
+    if model_decision.evidence_id is not None and model_decision.evidence_id not in evidence_ids:
+        raise ValueError("evidence is not visible")
+    if (
+        model_decision.type is AgentActionType.SPEECH
+        and model_decision.message is not None
+        and len(model_decision.message) > LLM_SPEECH_MESSAGE_MAX_CHARS
+    ):
+        raise ValueError("speech is too long")
+    return AgentDecision(
+        type=model_decision.type,
+        player_id=player_id,
+        target_id=model_decision.target_id,
+        message=model_decision.message,
+        focus_id=model_decision.focus_id,
+        evidence_id=model_decision.evidence_id,
+        reason=model_decision.reason,
+    )
+
+
+def _fallback(
+    player_id: str,
+    observation: AgentObservation,
+    context_checksum: str,
+    reason: str,
+) -> AgentDecision:
+    actions = observation.available_actions
+    if not actions:
+        return AgentDecision.pass_(player_id, reason=reason)
+    selector = int(context_checksum[:16], 16)
+    action = actions[selector % len(actions)]
+    return _fallback_decision(player_id, observation, action, reason=reason)
+
+
+def _response_annotations(response: ModelResponse | None) -> tuple[str | None, str | None]:
+    if response is None:
+        return None, None
+    try:
+        parsed = json.loads(_normalize_json_response(response.content))
+    except Exception:
+        return None, None
+    if not isinstance(parsed, Mapping):
+        return None, None
+    evidence_id = str(parsed.get("evidence_id") or "").strip() or None
+    focus_id = str(parsed.get("focus_id") or "").strip() or None
+    return evidence_id, focus_id
 
 
 def _provider_error(error_payload: Mapping[str, object] | None) -> str:
-    if not error_payload or set(error_payload) <= {"validation_error"}:
+    if not error_payload or set(error_payload) <= {"validation_error", "validation_detail"}:
         return ""
     return str(
         error_payload.get("llm_error_type") or error_payload.get("error_type") or "provider_error"
     )
+
+
+__all__ = ["LangChainDecisionProvider", "LlmModelInvocationError"]

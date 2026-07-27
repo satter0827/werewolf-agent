@@ -5,6 +5,7 @@ from __future__ import annotations
 HELP_APP = "Werewolf Agentのゲーム操作と開発診断を行います。"
 HELP_OUTPUT_FORMAT = "出力形式をtable、json、jsonlから選びます。"
 HELP_SEED = "再現に使用するシードです。"
+HELP_DELIBERATION_LEVEL = "エージェントの思考レベルをquick、standard、deepから選びます。"
 HELP_MANUAL_PLAYER = "CLIで操作するプレイヤーIDです。"
 HELP_ROLE_COUNT = "役職人数をwerewolf=1の形式で指定します。"
 HELP_GAME_ID_INSPECT = "表示するゲームIDです。"

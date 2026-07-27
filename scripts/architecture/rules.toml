@@ -194,7 +194,7 @@ imports = ["fastapi", "starlette", "uvicorn"]
 roots = ["src/werewolf_agent/api"]
 
 [frameworks.langchain]
-imports = ["langchain", "langgraph"]
+imports = ["langchain"]
 roots = ["src/werewolf_agent/adapters/llm"]
 
 [frameworks.database]

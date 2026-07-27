@@ -528,6 +528,7 @@ class PlayerProfile(_DefinitionModel):
     speaking_style: str
     reasoning_style: str
     risk_tolerance: str
+    evidence_focus: str = "vote_consistency"
 
     @field_validator(
         "name",
@@ -536,6 +537,7 @@ class PlayerProfile(_DefinitionModel):
         "speaking_style",
         "reasoning_style",
         "risk_tolerance",
+        "evidence_focus",
     )
     @classmethod
     def validate_non_blank_text(cls, value: str, info: Any) -> str:
@@ -554,6 +556,7 @@ class CustomCharacterDefinition(_DefinitionModel):
     speaking_style: str
     reasoning_style: str
     risk_tolerance: str
+    evidence_focus: str = "vote_consistency"
 
     @field_validator(
         "id",
@@ -563,6 +566,7 @@ class CustomCharacterDefinition(_DefinitionModel):
         "speaking_style",
         "reasoning_style",
         "risk_tolerance",
+        "evidence_focus",
     )
     @classmethod
     def validate_non_blank_text(cls, value: str, info: Any) -> str:

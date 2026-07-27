@@ -83,15 +83,21 @@ Gameplay reviewは現在のrules、roles、abilitiesからseed固定で一局を
 公開timeline、終局を保存する。解決前の行動対象などprivate情報はreview証拠へ保存しない。
 Local LLM reviewは`WEREWOLF_LOCAL_LLM_BASE_URL`と`WEREWOLF_LOCAL_LLM_MODEL`を使い、
 base URLがloopbackである場合だけ実行する。`scripts.agents preflight`はmodel一覧と本番Agent
-graphの1 decision、`run`は固定scenarioの完走を検証する。Local LLM、FakeListLLMとも
-同じprompt、schema検証、合法手検証、修復、fallbackを通す。修復またはfallbackを伴う
-完走は`degraded`とし、品質profileの合格へ含めない。
+1回のdecision pipeline、`run`は固定1 presetを最大3呼び出し、各40秒timeoutで検証する。
+model一覧確認を含む上限は約3分とする。
+Local providerのstandard suiteとpreset指定は許可せず、一局完走は`local-ui`へ分離する。
+Local LLM、FakeListChatModelとも
+同じchat request、response正規化、schema検証、合法手検証、fallbackを通す。再問い合わせによる
+修復は行わない。fallbackを伴う完走は`degraded`とし、品質profileの合格へ含めない。
 
 Agent reviewは`.werewolf-agent/agents`へrun、metrics、event、public timeline、private trace、
 SHA-256 manifestを保存する。private traceにはpromptと本人のobservationを含め、公開成果物と
 分離する。standardはpreset完了ごとに`checkpoint.json`と関連成果物を更新し、長時間runが
 中断しても完了済みpresetを回収できるようにし、完了または中断時にはcheckpointも最終状態へ
 確定する。providerが返したtoken usageだけを記録し、取得できない値は推計しない。
+Fake standard reviewはpreset、seed、思考レベルごとに完走し、発言の完全重複、focus欠落、
+evidence不正、発言と投票の整合、対象固定、profile別の対象差、勝利陣営、ゲーム日数をJSONへ保存する。
+これらは観測値とし、根拠のない面白さや勝率の合否閾値を設けない。
 `local-ui`は認証済みの専用利用者とAPI driverで一局を完走し、worker traceが`lmstudio`だけで
 あることをmodelを含めDBで照合する。品質用resourceを停止しない専用Compose projectを所有し、
 最新sourceのimageをbuildしてから起動する。Streamlitの作成直後、進行中、公開timeline、終了、

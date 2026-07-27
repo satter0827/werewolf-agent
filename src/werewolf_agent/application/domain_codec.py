@@ -59,6 +59,8 @@ def action_from_data(data: Mapping[str, Any]) -> Action:
         reason=str(data.get("reason") or ""),
         target_id=_optional_text(data.get("target_id")),
         message=_optional_text(data.get("message")),
+        focus_id=_optional_text(data.get("focus_id")),
+        evidence_id=_optional_text(data.get("evidence_id")),
     )
 
 
@@ -142,6 +144,8 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
                 player_id=str(item["player_id"]),
                 message=str(item["message"]),
                 reason=str(item.get("reason") or ""),
+                focus_id=_optional_text(item.get("focus_id")),
+                evidence_id=_optional_text(item.get("evidence_id")),
             )
             for item in map(_mapping, _sequence(data.get("speeches")))
         ),

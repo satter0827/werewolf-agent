@@ -32,6 +32,7 @@ from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    DeliberationLevel,
     GameResponse,
     GameSetupOptionsResponse,
     GameTimelineItem,
@@ -129,6 +130,7 @@ def create_game_from_setup(
     scenario_id: str | None,
     setup_preset_id: str | None,
     narration_mode: NarrationMode,
+    deliberation_level: DeliberationLevel = "standard",
     character_assignments: dict[str, str],
     custom_roles: list[CustomRoleDefinitionRequest],
     custom_characters: list[CustomCharacterDefinitionRequest],
@@ -180,6 +182,7 @@ def create_game_from_setup(
         manual_player_id=manual_player_id,
         setup=setup_request,
         narration_mode=narration_mode,
+        deliberation_level=deliberation_level,
     )
     response = build_streamlit_client(settings).create_game(request)
     logger.info(

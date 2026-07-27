@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any, ClassVar, Self
+from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -50,6 +50,14 @@ class AgentActionType(StrEnum):
     PASS = "pass"
 
 
+class DeliberationLevel(StrEnum):
+    """Bounded context depth selected for one game."""
+
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
 class _LlmModel(BaseModel):
     """Base model for LLM domain values."""
 
@@ -73,14 +81,22 @@ class VisiblePlayer(_LlmModel):
 class _AgentSpeech(_LlmModel):
     """Public speech visible to a decision provider."""
 
+    day: int = Field(ge=1)
     player_id: str
     message: str
+    focus_id: str | None = None
+    evidence_id: str | None = None
 
     @field_validator("player_id", "message")
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
         return non_blank(value, str(info.field_name))
+
+    @field_validator("focus_id", "evidence_id")
+    @classmethod
+    def validate_optional_reference(cls, value: str | None, info: Any) -> str | None:
+        return optional_non_blank(value, str(info.field_name))
 
 
 class _AgentVoteRound(_LlmModel):
@@ -115,6 +131,95 @@ class _AgentVoteRound(_LlmModel):
 
 class PlayerProfile(PlayerProfileDefinition):
     """LLM-only player behavior profile."""
+
+
+class ModelMessage(_LlmModel):
+    """Provider-independent chat message."""
+
+    role: Literal["system", "human", "ai"]
+    content: str
+
+    @field_validator("content")
+    @classmethod
+    def validate_content(cls, value: str) -> str:
+        """Return a non-empty chat message."""
+        return non_blank(value, "model message content")
+
+
+class DecisionTask(_LlmModel):
+    """Authorized inputs for one automated-player decision."""
+
+    day: int = Field(default=1, ge=1)
+    player_id: str
+    observation: AgentObservation
+    deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD
+    output_token_limit: int = Field(ge=1)
+    context: dict[str, object]
+    context_checksum: str
+
+
+class ModelRequest(_LlmModel):
+    """One provider-independent model invocation."""
+
+    task: DecisionTask
+    messages: tuple[ModelMessage, ...]
+    response_schema: dict[str, object]
+    prompt_checksum: str
+
+
+class ModelResponse(_LlmModel):
+    """Normalized response returned by every decision-model adapter."""
+
+    content: str
+    provider: str
+    model: str
+    finish_reason: str = ""
+    usage: dict[str, int] = Field(default_factory=dict)
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class AgentModelDecision(_LlmModel):
+    """Untrusted decision payload returned by a model."""
+
+    type: AgentActionType
+    target_id: str | None = None
+    message: str | None = None
+    focus_id: str | None = None
+    evidence_id: str | None = None
+    reason: str = ""
+
+    @field_validator("target_id", "message", "focus_id", "evidence_id")
+    @classmethod
+    def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
+        """Return normalized optional output text."""
+        return optional_non_blank(value, str(info.field_name))
+
+    @model_validator(mode="after")
+    def validate_shape(self) -> Self:
+        """Ensure fields match the selected action shape."""
+        if self.type is AgentActionType.SPEECH:
+            if self.message is None:
+                raise ValueError(MESSAGE_SPEECH_DECISION_REQUIRES_MESSAGE)
+            if self.target_id is not None:
+                raise ValueError(MESSAGE_SPEECH_DECISION_FORBIDS_TARGET)
+            return self
+        if self.focus_id is not None:
+            raise ValueError("focus_id is allowed only for speech")
+        if self.type in AgentDecision.TARGET_TYPES:
+            if self.target_id is None:
+                raise ValueError(message_target_required(self.type.value, "model decisions"))
+            if self.message is not None:
+                raise ValueError(message_message_not_allowed(self.type.value, "model decisions"))
+            return self
+        if self.type is AgentActionType.PASS:
+            if (
+                self.target_id is not None
+                or self.message is not None
+                or self.evidence_id is not None
+            ):
+                raise ValueError(MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD)
+            return self
+        raise ValueError(message_unsupported_type(self.type.value, "model decision"))
 
 
 class AgentScenario(_LlmModel):
@@ -166,6 +271,7 @@ class AgentObservation(_LlmModel):
 
     phase: AgentPhase
     day: int
+    decision_seed: int = 0
     me: VisiblePlayer
     role: str | None = None
     profile: PlayerProfile | None = None
@@ -242,6 +348,8 @@ class AgentDecision(_LlmModel):
     player_id: str
     target_id: str | None = None
     message: str | None = None
+    focus_id: str | None = None
+    evidence_id: str | None = None
     reason: str = ""
 
     TARGET_TYPES: ClassVar[frozenset[AgentActionType]] = frozenset(
@@ -261,7 +369,7 @@ class AgentDecision(_LlmModel):
         """Return a trimmed non-empty player id."""
         return non_blank(value, "player_id")
 
-    @field_validator("target_id", "message")
+    @field_validator("target_id", "message", "focus_id", "evidence_id")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
@@ -277,6 +385,9 @@ class AgentDecision(_LlmModel):
                 raise ValueError(MESSAGE_SPEECH_DECISION_FORBIDS_TARGET)
             return self
 
+        if self.focus_id is not None:
+            raise ValueError("focus_id is allowed only for speech decisions")
+
         if self.type in self.TARGET_TYPES:
             if self.target_id is None:
                 raise ValueError(message_target_required(self.type.value, "decisions"))
@@ -285,16 +396,33 @@ class AgentDecision(_LlmModel):
             return self
 
         if self.type is AgentActionType.PASS:
-            if self.target_id is not None or self.message is not None:
+            if (
+                self.target_id is not None
+                or self.message is not None
+                or self.evidence_id is not None
+            ):
                 raise ValueError(MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD)
             return self
 
         raise ValueError(message_unsupported_type(self.type.value, "decision"))
 
     @classmethod
-    def speech(cls, player_id: str, message: str) -> Self:
+    def speech(
+        cls,
+        player_id: str,
+        message: str,
+        *,
+        focus_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> Self:
         """Create a speech decision."""
-        return cls(type=AgentActionType.SPEECH, player_id=player_id, message=message)
+        return cls(
+            type=AgentActionType.SPEECH,
+            player_id=player_id,
+            message=message,
+            focus_id=focus_id,
+            evidence_id=evidence_id,
+        )
 
     @classmethod
     def vote(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
@@ -347,10 +475,16 @@ __all__ = [
     "AgentActionType",
     "AgentDecision",
     "AgentGameContext",
+    "AgentModelDecision",
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
     "AgentScenario",
+    "DecisionTask",
+    "DeliberationLevel",
+    "ModelMessage",
+    "ModelRequest",
+    "ModelResponse",
     "PlayerProfile",
     "PlayerProfileCatalog",
     "VisiblePlayer",

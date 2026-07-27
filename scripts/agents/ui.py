@@ -271,14 +271,10 @@ def _compose_environment(
             "WEREWOLF_API_INSTANCE_ID": "",
             "WEREWOLF_API_RATE_LIMIT_REQUESTS": "1000",
             "WEREWOLF_COMPOSE_SUPABASE_DB_DSN": container_dsn,
-            "WEREWOLF_LLM_FALLBACK_POLICY": "deterministic_legal_action",
-            "WEREWOLF_LLM_GRAPH_MAX_STEPS": "16",
             "WEREWOLF_LLM_MAX_RETRIES": "0",
             "WEREWOLF_LLM_MAX_TOKENS": "256",
-            "WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE": "disabled",
             "WEREWOLF_LLM_TEMPERATURE": "0",
             "WEREWOLF_LLM_TIMEOUT_SECONDS": "120",
-            "WEREWOLF_LLM_VALIDATION_RETRY_COUNT": "1",
             "WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS": "1",
             "WEREWOLF_SUPABASE_JWKS_URL": (
                 f"{container_supabase_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
@@ -379,7 +375,6 @@ def _database_metrics(dsn: str, game_id: str) -> dict[str, object]:
         cursor.execute(
             """
             select count(*), array_agg(distinct provider), array_agg(distinct model),
-                   coalesce(sum(repair_attempts), 0),
                    count(*) filter (where fallback_used),
                    count(*) filter (where provider_error <> ''),
                    sum(input_tokens), sum(output_tokens), sum(total_tokens),
@@ -407,13 +402,12 @@ def _database_metrics(dsn: str, game_id: str) -> dict[str, object]:
         "invocations": trace[0],
         "providers": sorted(trace[1] or []),
         "models": sorted(trace[2] or []),
-        "repair_attempts": trace[3],
-        "fallbacks": trace[4],
-        "provider_errors": trace[5],
-        "input_tokens": trace[6],
-        "output_tokens": trace[7],
-        "total_tokens": trace[8],
-        "latency_ms": float(trace[9]),
+        "fallbacks": trace[3],
+        "provider_errors": trace[4],
+        "input_tokens": trace[5],
+        "output_tokens": trace[6],
+        "total_tokens": trace[7],
+        "latency_ms": float(trace[8]),
         "public_event_count": public_events[0],
         "public_last_sequence": public_events[1],
     }
@@ -445,7 +439,6 @@ def _failure_database_diagnostics(dsn: str) -> dict[str, object]:
         cursor.execute(
             """
             select count(*), array_agg(distinct provider), array_agg(distinct model),
-                   coalesce(sum(repair_attempts), 0),
                    count(*) filter (where fallback_used),
                    count(*) filter (where provider_error <> ''),
                    sum(input_tokens), sum(output_tokens), sum(total_tokens),
@@ -486,13 +479,12 @@ def _failure_database_diagnostics(dsn: str) -> dict[str, object]:
             "invocations": trace[0] if trace is not None else 0,
             "providers": sorted(trace[1] or []) if trace is not None else [],
             "models": sorted(trace[2] or []) if trace is not None else [],
-            "repair_attempts": trace[3] if trace is not None else 0,
-            "fallbacks": trace[4] if trace is not None else 0,
-            "provider_errors": trace[5] if trace is not None else 0,
-            "input_tokens": trace[6] if trace is not None else None,
-            "output_tokens": trace[7] if trace is not None else None,
-            "total_tokens": trace[8] if trace is not None else None,
-            "latency_ms": float(trace[9]) if trace is not None else 0.0,
+            "fallbacks": trace[3] if trace is not None else 0,
+            "provider_errors": trace[4] if trace is not None else 0,
+            "input_tokens": trace[5] if trace is not None else None,
+            "output_tokens": trace[6] if trace is not None else None,
+            "total_tokens": trace[7] if trace is not None else None,
+            "latency_ms": float(trace[8]) if trace is not None else 0.0,
         },
     }
 
@@ -506,7 +498,7 @@ def _state_from_metrics(metrics: dict[str, object], *, expected_model: str) -> R
         return "failed"
     if _integer(metrics["provider_errors"]) > 0:
         return "failed"
-    if _integer(metrics["repair_attempts"]) or _integer(metrics["fallbacks"]):
+    if _integer(metrics["fallbacks"]):
         return "degraded"
     return "passed"
 
@@ -673,8 +665,7 @@ def _ui_summary(
         f"- game status: `{metrics.get('game_status')}`",
         f"- winner: `{metrics.get('winner')}`",
         f"- invocations: `{metrics.get('invocations')}`",
-        f"- repairs/fallbacks/errors: `{metrics.get('repair_attempts')}` / "
-        f"`{metrics.get('fallbacks')}` / `{metrics.get('provider_errors')}`",
+        f"- fallbacks/errors: `{metrics.get('fallbacks')}` / `{metrics.get('provider_errors')}`",
         f"- input/output/total tokens: `{metrics.get('input_tokens')}` / "
         f"`{metrics.get('output_tokens')}` / `{metrics.get('total_tokens')}`",
         f"- latency: `{metrics.get('latency_ms')}` ms",

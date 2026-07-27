@@ -8,6 +8,7 @@ from typing import Annotated, Any, Final, Literal, Self
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator, model_validator
 
 from werewolf_agent.contracts.constants import (
+    DEFAULT_DELIBERATION_LEVEL,
     DEFAULT_NARRATION_MODE,
     MAX_CHARACTER_AGE,
     MAX_DIFFICULTY,
@@ -20,6 +21,7 @@ from werewolf_agent.contracts.constants import (
     MIN_ROLE_COUNT,
     MIN_SEQUENCE,
     MIN_VERSION,
+    DeliberationLevel,
     NarrationMode,
 )
 from werewolf_agent.contracts.definitions import (
@@ -258,6 +260,7 @@ class CreateGameRequest(BaseModel):
     setup: GameSetupSelectionRequest
     manual_player_id: str | None = None
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
 
     model_config = ConfigDict(extra="forbid")
 
@@ -753,6 +756,7 @@ class CharacterDefinitionView(BaseModel):
     speaking_style: str
     reasoning_style: str
     risk_tolerance: str
+    evidence_focus: str = "vote_consistency"
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -764,6 +768,7 @@ class CharacterDefinitionView(BaseModel):
         "speaking_style",
         "reasoning_style",
         "risk_tolerance",
+        "evidence_focus",
     )
     @classmethod
     def validate_non_blank(cls, value: str, info: ValidationInfo) -> str:
@@ -910,6 +915,7 @@ __all__ = [
     "CreateGameRequest",
     "CustomCharacterDefinitionRequest",
     "CustomRoleDefinitionRequest",
+    "DeliberationLevel",
     "ErrorEventPayload",
     "GameListQuery",
     "GameListResponse",

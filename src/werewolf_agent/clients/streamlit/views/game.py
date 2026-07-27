@@ -36,6 +36,7 @@ from werewolf_agent.clients.streamlit.setup import (
     VIEW_OBSERVE_SETUP,
     VIEW_PLAY_SETUP,
     remember_character_assignment,
+    remember_deliberation_level,
     remember_manual_player_id,
     remember_narration_mode,
     remember_role_counts,
@@ -75,6 +76,7 @@ from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    DeliberationLevel,
     LocalRulesSettings,
     NarrationMode,
     RuleCompositionSelection,
@@ -156,6 +158,7 @@ def _create_game(
     scenario_id: str | None = None,
     setup_preset_id: str | None = None,
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE,
+    deliberation_level: DeliberationLevel = "standard",
     character_assignments: dict[str, str] | None = None,
     custom_roles: list[CustomRoleDefinitionRequest] | None = None,
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None,
@@ -173,6 +176,7 @@ def _create_game(
             scenario_id=scenario_id,
             setup_preset_id=setup_preset_id,
             narration_mode=narration_mode,
+            deliberation_level=deliberation_level,
             character_assignments=character_assignments or {},
             custom_roles=custom_roles or [],
             custom_characters=custom_characters or [],
@@ -212,6 +216,7 @@ def _create_game(
         scenario_id=scenario_id,
         setup_preset_id=setup_preset_id,
         narration_mode=narration_mode,
+        deliberation_level=deliberation_level,
         character_assignments=character_assignments or {},
         custom_roles=custom_roles or [],
         custom_characters=custom_characters or [],
@@ -317,6 +322,7 @@ def _render_next_actions(
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
+            deliberation_level=cast(DeliberationLevel, selected_option.deliberation_level),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
             custom_characters=selected_option.custom_characters or [],
@@ -341,6 +347,7 @@ def _render_next_actions(
             scenario_id=selected_option.scenario_id,
             setup_preset_id=selected_option.setup_preset_id,
             narration_mode=cast(NarrationMode, selected_option.narration_mode),
+            deliberation_level=cast(DeliberationLevel, selected_option.deliberation_level),
             character_assignments=selected_option.character_assignments or {},
             custom_roles=selected_option.custom_roles or [],
             custom_characters=selected_option.custom_characters or [],
@@ -357,6 +364,10 @@ def _render_next_actions(
         remember_narration_mode(
             st.session_state,
             cast(NarrationMode, selected_option.narration_mode),
+        )
+        remember_deliberation_level(
+            st.session_state,
+            cast(DeliberationLevel, selected_option.deliberation_level),
         )
         remember_manual_player_id(st.session_state, selected_option.manual_player_id)
         for player_id, character_id in (selected_option.character_assignments or {}).items():

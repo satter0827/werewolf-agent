@@ -17,6 +17,19 @@ def test_local_review_rejects_credentials_in_loopback_endpoint() -> None:
         review.validate_loopback_base_url("http://user:password@127.0.0.1:1234/v1")
 
 
+def test_local_preflight_provider_error_is_blocked_before_bounded_stop() -> None:
+    state = review._classify_scenario_state(
+        stopped_for_preflight=True,
+        has_traces=True,
+        completed=False,
+        fallbacks=1,
+        provider_errors=1,
+        provider="lmstudio",
+    )
+
+    assert state == "blocked"
+
+
 def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_MODEL", "local-model")
@@ -27,8 +40,7 @@ def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     assert config.model == "local-model"
     assert config.temperature == 0
     assert config.max_tokens == 256
-    assert config.timeout_seconds == 120
-    assert config.structured_output_mode == "disabled"
+    assert config.timeout_seconds == 40
 
 
 def test_openai_review_requires_explicit_paid_confirmation(monkeypatch) -> None:
@@ -101,6 +113,22 @@ def test_local_run_blocks_before_game_when_model_is_not_loaded(tmp_path: Path, m
     assert run["error"]["type"] == "AgentReviewBlockedError"
 
 
+def test_local_standard_run_is_rejected_before_model_discovery(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setattr(review, "LAYOUT", ArtifactLayout(tmp_path))
+    monkeypatch.setattr(
+        review,
+        "_local_model_ids",
+        lambda _config: pytest.fail("unbounded Local review must stop before discovery"),
+    )
+
+    state, run_dir = review.run_suite("local", "standard")
+
+    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert state == "error"
+    assert run["error"]["type"] == "ValueError"
+    assert "bounded smoke suite" in run["error"]["message"]
+
+
 def test_fake_smoke_writes_reviewable_public_and_private_artifacts(
     tmp_path: Path,
     monkeypatch,
@@ -118,9 +146,11 @@ def test_fake_smoke_writes_reviewable_public_and_private_artifacts(
     summary = (run_dir / "summary.md").read_text(encoding="utf-8")
 
     assert run["provider"] == "fake"
+    assert run["deliberation_level"] == "standard"
     assert run["configuration_checksum"]
     assert metrics["completed_count"] == 1
     assert metrics["scenarios"][0]["preset_id"] == "standard_6"
+    assert metrics["scenarios"][0]["deliberation_level"] == "standard"
     assert metrics["scenarios"][0]["finished_day"] >= 1
     assert public[0]["completed"] is True
     assert private["standard_6"]
@@ -140,6 +170,7 @@ def test_fake_smoke_writes_reviewable_public_and_private_artifacts(
     assert event_artifact["mime_type"] == "application/x-ndjson"
     checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
     assert checkpoint["state"] == run["state"]
+    assert checkpoint["deliberation_level"] == "standard"
     assert checkpoint["finished_at"] == run["finished_at"]
     assert "input/output/total tokens" in summary
     assert "LLM latency" in summary
@@ -184,7 +215,6 @@ def test_standard_checkpoints_completed_presets_before_later_interruption(
             "completed": True,
             "action_count": 1,
             "invocations": 1,
-            "repair_attempts": 0,
             "fallbacks": 0,
             "provider_errors": 0,
             "usage_unavailable": 0,
@@ -229,6 +259,33 @@ def test_review_serializer_keeps_numeric_usage_but_redacts_credentials() -> None
     assert document["authorization"] == "[REDACTED]"
 
 
+def test_gameplay_metrics_distinguish_explained_public_position_changes() -> None:
+    metrics = review._gameplay_metrics(
+        [
+            {
+                "player_id": "p1",
+                "day": 1,
+                "parsed_decision": {"type": "speech", "message": "p2を疑う"},
+                "request_payload": {"focus_id": "p2"},
+            },
+            {
+                "player_id": "p1",
+                "day": 1,
+                "parsed_decision": {
+                    "type": "vote",
+                    "target_id": "p3",
+                    "reason": "公開情報で判断を更新した",
+                },
+                "request_payload": {},
+            },
+        ]
+    )
+
+    assert metrics["speech_vote_consistency_rate"] == 0.0
+    assert metrics["changed_vote_count"] == 1
+    assert metrics["changed_vote_reason_missing_count"] == 0
+
+
 def test_standard_suite_can_select_explicit_presets(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(review, "_new_run_dir", lambda *_args: tmp_path)
 
@@ -249,7 +306,7 @@ def test_compare_runs_records_execution_context(tmp_path: Path) -> None:
     baseline = tmp_path / "baseline"
     candidate = tmp_path / "candidate"
     for root, provider, model in (
-        (baseline, "fake", "fake-list-llm"),
+        (baseline, "fake", "fake-list-chat-model"),
         (candidate, "local", "local-model"),
     ):
         root.mkdir()

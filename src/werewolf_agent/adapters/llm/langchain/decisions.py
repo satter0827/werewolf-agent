@@ -5,7 +5,7 @@ from __future__ import annotations
 from hashlib import sha256
 
 from werewolf_agent.adapters.llm.langchain.constants import (
-    DEFAULT_REPAIRED_SPEECH,
+    DEFAULT_FALLBACK_SPEECH,
     DETERMINISTIC_SELECTOR_BYTES,
     LLM_SPEECH_MESSAGE_MAX_CHARS,
 )
@@ -20,35 +20,9 @@ from werewolf_agent.agents.models import (
     AgentActionType,
     AgentDecision,
     AgentObservation,
-    AgentPhase,
     AgentPlayerStatus,
     VisiblePlayer,
 )
-
-
-def _selected_action(observation: AgentObservation) -> AgentActionType:
-    if observation.phase is AgentPhase.DAY_DISCUSSION:
-        return _first_available(observation, AgentActionType.SPEECH)
-    if observation.phase is AgentPhase.VOTING:
-        return _first_available(observation, AgentActionType.VOTE)
-    if observation.phase is AgentPhase.NIGHT:
-        for action_type in (
-            AgentActionType.WEREWOLF_ATTACK,
-            AgentActionType.SEER_INSPECT,
-            AgentActionType.KNIGHT_GUARD,
-            AgentActionType.APOTHECARY_HEAL,
-            AgentActionType.APOTHECARY_POISON,
-        ):
-            if action_type in observation.available_actions:
-                return action_type
-    return AgentActionType.PASS
-
-
-def _first_available(
-    observation: AgentObservation,
-    action_type: AgentActionType,
-) -> AgentActionType:
-    return action_type if action_type in observation.available_actions else AgentActionType.PASS
 
 
 def _target_for_action(
@@ -60,41 +34,6 @@ def _target_for_action(
         return None
     selector = _deterministic_target_selector(observation.me.id, observation, action_type)
     return candidates[selector % len(candidates)]
-
-
-def _ranked_targets_by_action(
-    observation: AgentObservation,
-    action_type: AgentActionType,
-) -> dict[str, list[str]]:
-    candidates = list(observation.legal_targets.get(action_type, []))
-    if action_type not in AgentDecision.TARGET_TYPES or not candidates:
-        return {}
-    return {
-        action_type.value: sorted(
-            candidates,
-            key=lambda player_id: (
-                -_target_signal(observation, player_id),
-                _stable_target_rank(observation, action_type, player_id),
-            ),
-        )
-    }
-
-
-def _target_signal(observation: AgentObservation, player_id: str) -> int:
-    if not observation.vote_rounds:
-        return 0
-    return int(observation.vote_rounds[-1].counts.get(player_id, 0))
-
-
-def _stable_target_rank(
-    observation: AgentObservation,
-    action_type: AgentActionType,
-    player_id: str,
-) -> int:
-    digest = sha256(
-        f"{observation.me.id}:{action_type.value}:{observation.day}:{player_id}:rank".encode()
-    ).digest()
-    return int.from_bytes(digest[:DETERMINISTIC_SELECTOR_BYTES], "big")
 
 
 def _legal_targets_by_action(
@@ -132,7 +71,7 @@ def _fallback_decision(
 def _fallback_speech(observation: AgentObservation) -> str:
     focus = _focus_player(observation)
     if focus is None:
-        return DEFAULT_REPAIRED_SPEECH
+        return DEFAULT_FALLBACK_SPEECH
     return _bounded_speech(f"I want to compare {focus.name}'s claims with the votes.")
 
 
@@ -206,11 +145,3 @@ def _bounded_speech(message: str) -> str:
     if len(text) <= LLM_SPEECH_MESSAGE_MAX_CHARS:
         return text
     return text[:LLM_SPEECH_MESSAGE_MAX_CHARS].rstrip()
-
-
-def _speech_too_long(decision: AgentDecision) -> bool:
-    return (
-        decision.type is AgentActionType.SPEECH
-        and decision.message is not None
-        and len(decision.message) > LLM_SPEECH_MESSAGE_MAX_CHARS
-    )

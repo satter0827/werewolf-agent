@@ -55,14 +55,14 @@ class SupabaseLlmTraceSink:
               phase, day, state_version, prompt_messages, prompt_hash,
               prompt_version, setup_checksum, mechanics_checksum, observation_checksum,
               request_payload, raw_response, parsed_decision, error_payload, latency_ms,
-              validation_status, repair_attempts, fallback_used, fallback_reason, provider_error,
+              validation_status, fallback_used, fallback_reason, provider_error,
               input_tokens, output_tokens, total_tokens, usage_source,
               prompt_characters, prompt_bytes, response_characters, response_bytes
             )
             values (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             """,
             (
@@ -89,7 +89,6 @@ class SupabaseLlmTraceSink:
                 Jsonb(dict(trace.error_payload or {})) if trace.error_payload is not None else None,
                 trace.latency_ms,
                 trace.validation_status,
-                trace.repair_attempts,
                 trace.fallback_used,
                 trace.fallback_reason,
                 trace.provider_error,
@@ -103,29 +102,28 @@ class SupabaseLlmTraceSink:
                 trace.response_bytes,
             ),
         )
-        input_tokens = trace.input_tokens or 0
-        output_tokens = trace.output_tokens or 0
-        self._connection.execute(
-            """
-            insert into private.llm_usage (
-              actor_user_id, game_id, operation_id, provider, model,
-              input_tokens, output_tokens, cost_micros
+        if trace.input_tokens is not None and trace.output_tokens is not None:
+            self._connection.execute(
+                """
+                insert into private.llm_usage (
+                  actor_user_id, game_id, operation_id, provider, model,
+                  input_tokens, output_tokens, cost_micros
+                )
+                values (
+                  (select owner_user_id from public.game_operation_requests where request_id = %s),
+                  %s, %s, %s, %s, %s, %s, 0
+                )
+                """,
+                (
+                    self._request_id,
+                    self._game_id,
+                    self._request_id,
+                    trace.provider,
+                    trace.model,
+                    trace.input_tokens,
+                    trace.output_tokens,
+                ),
             )
-            values (
-              (select owner_user_id from public.game_operation_requests where request_id = %s),
-              %s, %s, %s, %s, %s, %s, 0
-            )
-            """,
-            (
-                self._request_id,
-                self._game_id,
-                self._request_id,
-                trace.provider,
-                trace.model,
-                input_tokens,
-                output_tokens,
-            ),
-        )
         if trace.parsed_decision is not None and self._game_id is not None:
             decision = dict(trace.parsed_decision)
             self._connection.execute(

@@ -18,5 +18,7 @@ def test_domain_rules_and_fake_provider_remain_centralized() -> None:
     service = (PACKAGE / "adapters" / "llm" / "langchain" / "service.py").read_text(
         encoding="utf-8"
     )
-    assert "from langchain_core.language_models.fake import FakeListLLM" in service
+    adapters = (PACKAGE / "adapters" / "llm" / "model_adapters.py").read_text(encoding="utf-8")
+    assert "FakeListChatModel" in adapters
+    assert "FakeListLLM" not in adapters
     assert "class Fake" not in service

@@ -52,7 +52,6 @@ def test_local_ui_result_rejects_fake_or_openai_trace() -> None:
         "invocations": 10,
         "providers": ["fake", "lmstudio"],
         "models": ["local-model"],
-        "repair_attempts": 0,
         "fallbacks": 0,
         "provider_errors": 0,
     }
@@ -60,15 +59,14 @@ def test_local_ui_result_rejects_fake_or_openai_trace() -> None:
     assert ui._state_from_metrics(metrics, expected_model="local-model") == "failed"
 
 
-def test_local_ui_result_marks_repaired_completion_degraded() -> None:
+def test_local_ui_result_marks_fallback_completion_degraded() -> None:
     metrics: dict[str, object] = {
         "game_status": "completed",
         "winner": "village",
         "invocations": 10,
         "providers": ["lmstudio"],
         "models": ["local-model"],
-        "repair_attempts": 1,
-        "fallbacks": 0,
+        "fallbacks": 1,
         "provider_errors": 0,
     }
 
@@ -82,7 +80,6 @@ def test_local_ui_result_rejects_unexpected_model() -> None:
         "invocations": 10,
         "providers": ["lmstudio"],
         "models": ["different-model"],
-        "repair_attempts": 0,
         "fallbacks": 0,
         "provider_errors": 0,
     }

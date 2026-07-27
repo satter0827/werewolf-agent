@@ -25,7 +25,12 @@ from werewolf_agent.adapters.application_bridge import (
     build_player_setup_definitions,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.agents.models import AgentAbilityContext, AgentGameContext, AgentScenario
+from werewolf_agent.agents.models import (
+    AgentAbilityContext,
+    AgentGameContext,
+    AgentScenario,
+    DeliberationLevel,
+)
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.replay import checksum_payload
@@ -38,8 +43,9 @@ ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
 LOCAL_BASE_URL_DEFAULT = "http://127.0.0.1:1234/v1"
 LOCAL_MODEL_DEFAULT = "google/gemma-3-4b"
-LOCAL_TIMEOUT_SECONDS = 120.0
+LOCAL_TIMEOUT_SECONDS = 40.0
 LOCAL_MAX_TOKENS = 256
+LOCAL_MAX_INVOCATIONS = 3
 MAX_PHASES = 64
 MAX_INVOCATIONS = 512
 SMOKE_PRESETS = ("standard_6",)
@@ -98,17 +104,13 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
     if provider == "fake":
         return LlmProviderConfig(
             provider="fake",
-            model="fake-list-llm",
+            model="fake-list-chat-model",
             base_url="",
             api_key="",
             timeout_seconds=12,
             max_retries=0,
-            max_tokens=96,
+            max_tokens=128,
             temperature=0,
-            structured_output_mode="disabled",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         )
     if provider == "local":
         base_url, model = local_settings()
@@ -124,10 +126,6 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             max_retries=0,
             max_tokens=LOCAL_MAX_TOKENS,
             temperature=0,
-            structured_output_mode="disabled",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         )
     if provider == "openai":
         if not confirm_paid:
@@ -144,10 +142,6 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             max_retries=0,
             max_tokens=LOCAL_MAX_TOKENS,
             temperature=0,
-            structured_output_mode="auto",
-            validation_retry_count=1,
-            graph_max_steps=16,
-            fallback_policy="deterministic_legal_action",
         )
     raise ValueError(f"Unsupported review provider: {provider}")
 
@@ -177,25 +171,25 @@ def preflight() -> tuple[ReviewState, dict[str, object]]:
         first_trace = traces[0] if traces else {}
         if not isinstance(first_trace, Mapping):
             first_trace = {}
-        repair_attempts = _as_int(first_trace.get("repair_attempts"))
         fallback_used = bool(first_trace.get("fallback_used"))
         provider_error = str(first_trace.get("provider_error") or "")
         state = (
             "failed"
             if not traces
+            else "blocked"
+            if provider_error
             else "degraded"
-            if repair_attempts or fallback_used or provider_error
+            if fallback_used
             else "passed"
             if first_trace.get("validation_status") == "valid"
             else "failed"
         )
         evidence = {
-            "message": "Local LLM reached the production Agent decision graph.",
+            "message": "Local LLM reached the production Agent decision pipeline.",
             "configured_model": config.model,
             "loaded_models": model_ids,
             "decision": first_trace.get("parsed_decision"),
             "validation_status": first_trace.get("validation_status"),
-            "repair_attempts": repair_attempts,
             "fallback_used": fallback_used,
             "provider_error": provider_error,
             "usage": {
@@ -233,7 +227,6 @@ def _write_preflight_artifacts(
     usage_values = usage if isinstance(usage, Mapping) else {}
     metrics = {
         "invocations": 1 if trace else 0,
-        "repair_attempts": _as_int(evidence.get("repair_attempts")),
         "fallbacks": int(bool(evidence.get("fallback_used"))),
         "provider_errors": int(bool(evidence.get("provider_error"))),
         "input_tokens": usage_values.get("input_tokens"),
@@ -264,8 +257,7 @@ def _write_preflight_artifacts(
         f"- state: `{state}`\n"
         f"- model: `{run_document['model']}`\n"
         f"- invocations: `{metrics['invocations']}`\n"
-        f"- repairs/fallbacks/errors: `{metrics['repair_attempts']}` / "
-        f"`{metrics['fallbacks']}` / `{metrics['provider_errors']}`\n"
+        f"- fallbacks/errors: `{metrics['fallbacks']}` / `{metrics['provider_errors']}`\n"
         f"- input/output/total tokens: `{metrics['input_tokens']}` / "
         f"`{metrics['output_tokens']}` / `{metrics['total_tokens']}`\n",
         encoding="utf-8",
@@ -279,6 +271,7 @@ def run_suite(
     *,
     confirm_paid: bool = False,
     seed: int = 7,
+    deliberation_level: str = "standard",
     selected_presets: Sequence[str] = (),
 ) -> tuple[ReviewState, Path]:
     """固定suiteを逐次実行し、review成果物を保存する。"""
@@ -295,6 +288,11 @@ def run_suite(
         config = provider_config(provider, confirm_paid=confirm_paid)
         configuration_checksum = _configuration_checksum(config)
         if provider == "local":
+            if suite != "smoke" or selected_presets:
+                raise ValueError(
+                    "Local LLM review supports only the bounded smoke suite; "
+                    "use local-ui for an explicitly requested full game."
+                )
             model_ids = _local_model_ids(config)
             if config.model not in model_ids:
                 raise AgentReviewBlockedError(
@@ -317,6 +315,7 @@ def run_suite(
             model=config.model,
             suite=suite,
             seed=seed,
+            deliberation_level=deliberation_level,
             configuration_checksum=configuration_checksum,
             started_at=started_at,
             scenarios=scenarios,
@@ -331,6 +330,7 @@ def run_suite(
                 model=config.model,
                 suite=suite,
                 seed=seed,
+                deliberation_level=deliberation_level,
                 configuration_checksum=configuration_checksum,
                 started_at=started_at,
                 scenarios=scenarios,
@@ -383,6 +383,10 @@ def run_suite(
                 config,
                 preset_id,
                 seed=seed,
+                deliberation_level=DeliberationLevel(deliberation_level),
+                invocation_limit=(
+                    LOCAL_MAX_INVOCATIONS if provider == "local" else MAX_INVOCATIONS
+                ),
                 trace_callback=persist_invocation,
             )
             traces = scenario.pop("private_traces")
@@ -415,6 +419,7 @@ def run_suite(
                 model=config.model,
                 suite=suite,
                 seed=seed,
+                deliberation_level=deliberation_level,
                 configuration_checksum=configuration_checksum,
                 started_at=started_at,
                 scenarios=scenarios,
@@ -430,11 +435,17 @@ def run_suite(
             "model": config.model,
             "suite": suite,
             "seed": seed,
+            "deliberation_level": deliberation_level,
             "state": state,
             "configuration_checksum": configuration_checksum,
             "started_at": started_at.isoformat(),
             "finished_at": datetime.now(UTC).isoformat(),
-            "limits": {"max_phases": MAX_PHASES, "max_invocations": MAX_INVOCATIONS},
+            "limits": {
+                "max_phases": MAX_PHASES,
+                "max_invocations": (
+                    LOCAL_MAX_INVOCATIONS if provider == "local" else MAX_INVOCATIONS
+                ),
+            },
             "presets": list(presets),
         }
         events.append(
@@ -454,6 +465,7 @@ def run_suite(
             model=config.model,
             suite=suite,
             seed=seed,
+            deliberation_level=deliberation_level,
             configuration_checksum=configuration_checksum,
             started_at=started_at,
             scenarios=scenarios,
@@ -477,6 +489,7 @@ def run_suite(
             model=config.model if config is not None else "",
             configuration_checksum=configuration_checksum,
             seed=seed,
+            deliberation_level=deliberation_level,
         )
     except (Exception, KeyboardInterrupt) as exc:
         state = "error"
@@ -493,6 +506,7 @@ def run_suite(
             model=config.model if config is not None else "",
             configuration_checksum=configuration_checksum,
             seed=seed,
+            deliberation_level=deliberation_level,
         )
     _write_manifest(run_dir)
     return state, run_dir
@@ -505,6 +519,7 @@ def _write_checkpoint(
     model: str,
     suite: str,
     seed: int,
+    deliberation_level: str,
     configuration_checksum: str,
     started_at: datetime,
     scenarios: Sequence[Mapping[str, object]],
@@ -522,6 +537,7 @@ def _write_checkpoint(
             "model": model,
             "suite": suite,
             "seed": seed,
+            "deliberation_level": deliberation_level,
             "state": state,
             "configuration_checksum": configuration_checksum,
             "started_at": started_at.isoformat(),
@@ -550,7 +566,6 @@ def compare_runs(baseline: Path, candidate: Path) -> dict[str, object]:
         "failed_count",
         "finished_day_total",
         "invocations",
-        "repair_attempts",
         "fallbacks",
         "provider_errors",
         "input_tokens",
@@ -635,6 +650,7 @@ def _comparison_context(
             "model",
             "suite",
             "seed",
+            "deliberation_level",
             "configuration_checksum",
         )
     } | {"scenario_ids": _scenario_ids(metrics)}
@@ -666,6 +682,7 @@ def _run_preset(
     preset_id: str,
     *,
     seed: int,
+    deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD,
     invocation_limit: int = MAX_INVOCATIONS,
     trace_callback: Callable[[LlmInvocationTrace], None] | None = None,
 ) -> dict[str, object]:
@@ -707,6 +724,7 @@ def _run_preset(
         scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
         game_contexts=contexts,
         trace_sink=trace_sink,
+        deliberation_level=deliberation_level,
     )
     public_timeline = [
         domain_to_data(event)
@@ -758,11 +776,11 @@ def _run_preset(
             scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
             game_contexts=contexts,
             trace_sink=trace_sink,
+            deliberation_level=deliberation_level,
         )
     snapshot = game.snapshot()
     traces = [_trace_document(trace) for trace in trace_sink.records]
     fallbacks = sum(bool(trace["fallback_used"]) for trace in traces)
-    repairs = sum(_as_int(trace["repair_attempts"]) for trace in traces)
     provider_errors = sum(bool(trace["provider_error"]) for trace in traces)
     input_tokens = _sum_available(trace["input_tokens"] for trace in traces)
     output_tokens = _sum_available(trace["output_tokens"] for trace in traces)
@@ -771,18 +789,21 @@ def _run_preset(
         sum(_as_float(trace["latency_ms"]) for trace in traces),
         3,
     )
+    prompt_characters = sum(_as_int(trace["prompt_characters"]) for trace in traces)
+    response_characters = sum(_as_int(trace["response_characters"]) for trace in traces)
     completed = snapshot.phase is Phase.FINISHED
-    if stopped_for_preflight:
-        state: ReviewState = "passed" if traces and not fallbacks else "degraded"
-    elif not completed:
-        state = "failed"
-    elif fallbacks or repairs or provider_errors:
-        state = "degraded"
-    else:
-        state = "passed"
+    state = _classify_scenario_state(
+        stopped_for_preflight=stopped_for_preflight,
+        has_traces=bool(traces),
+        completed=completed,
+        fallbacks=fallbacks,
+        provider_errors=provider_errors,
+        provider=config.provider,
+    )
     return {
         "preset_id": preset_id,
         "seed": seed,
+        "deliberation_level": deliberation_level.value,
         "state": state,
         "completed": completed,
         "phase_count": phase_count,
@@ -790,7 +811,6 @@ def _run_preset(
         "winner": snapshot.winner_id,
         "action_count": action_count,
         "invocations": len(traces),
-        "repair_attempts": repairs,
         "fallbacks": fallbacks,
         "provider_errors": provider_errors,
         "input_tokens": input_tokens,
@@ -798,10 +818,110 @@ def _run_preset(
         "total_tokens": total_tokens,
         "usage_unavailable": sum(trace["usage_source"] == "unavailable" for trace in traces),
         "latency_ms": latency_ms,
+        "prompt_characters": prompt_characters,
+        "average_prompt_characters": round(prompt_characters / len(traces), 3) if traces else 0,
+        "response_characters": response_characters,
+        "gameplay_metrics": _gameplay_metrics(traces),
         "setup_checksum": checksum_payload(setup.model_dump(mode="json")),
         "mechanics_checksum": checksum_payload(mechanics.model_dump(mode="json")),
         "public_timeline": public_timeline,
         "private_traces": traces,
+    }
+
+
+def _classify_scenario_state(
+    *,
+    stopped_for_preflight: bool,
+    has_traces: bool,
+    completed: bool,
+    fallbacks: int,
+    provider_errors: int,
+    provider: str,
+) -> ReviewState:
+    """Classify model availability before bounded-preflight completion."""
+    if provider_errors and provider == "lmstudio":
+        return "blocked"
+    if stopped_for_preflight:
+        return "passed" if has_traces and not fallbacks else "degraded"
+    if not completed:
+        return "failed"
+    if fallbacks or provider_errors:
+        return "degraded"
+    return "passed"
+
+
+def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    """Return descriptive gameplay observations without inventing pass/fail thresholds."""
+    speeches: list[str] = []
+    speech_focus: dict[tuple[str, int], str] = {}
+    vote_pairs: list[tuple[str, int, str]] = []
+    targets: list[str] = []
+    profile_choices: dict[str, set[str]] = {}
+    empty_focus = 0
+    invalid_evidence = 0
+    changed_votes = 0
+    changed_vote_reason_missing = 0
+    for trace in traces:
+        decision_value = trace.get("parsed_decision")
+        decision = decision_value if isinstance(decision_value, Mapping) else {}
+        request_value = trace.get("request_payload")
+        request = request_value if isinstance(request_value, Mapping) else {}
+        error_value = trace.get("error_payload")
+        error = error_value if isinstance(error_value, Mapping) else {}
+        invalid_evidence += str(error.get("validation_detail") or "") == "evidence is not visible"
+        action = str(decision.get("type") or "")
+        player_id = str(trace.get("player_id") or "")
+        day = _as_int(trace.get("day"))
+        target_id = str(decision.get("target_id") or "")
+        focus_id = str(request.get("focus_id") or "")
+        profile_key = f"{request.get('risk_tolerance', '')}:{request.get('evidence_focus', '')}"
+        if action == "speech":
+            message = str(decision.get("message") or "").strip()
+            if message:
+                speeches.append(message)
+            if focus_id:
+                speech_focus[(player_id, day)] = focus_id
+            else:
+                empty_focus += 1
+        if action == "vote" and target_id:
+            vote_pairs.append((player_id, day, target_id))
+            previous_focus = speech_focus.get((player_id, day))
+            if previous_focus is not None and previous_focus != target_id:
+                changed_votes += 1
+                changed_vote_reason_missing += not str(decision.get("reason") or "").strip()
+        if target_id:
+            targets.append(target_id)
+            profile_choices.setdefault(profile_key, set()).add(target_id)
+    duplicate_count = len(speeches) - len(set(speeches))
+    consistent_votes = sum(
+        speech_focus.get((player_id, day)) == target_id
+        for player_id, day, target_id in vote_pairs
+        if (player_id, day) in speech_focus
+    )
+    comparable_votes = sum(
+        (player_id, day) in speech_focus for player_id, day, _target_id in vote_pairs
+    )
+    fixed_target_rate = (
+        max(targets.count(target) for target in set(targets)) / len(targets) if targets else 0.0
+    )
+    return {
+        "speech_count": len(speeches),
+        "speech_exact_duplicate_rate": round(duplicate_count / len(speeches), 4)
+        if speeches
+        else 0.0,
+        "speech_empty_focus_count": empty_focus,
+        "invalid_evidence_count": invalid_evidence,
+        "speech_vote_comparable_count": comparable_votes,
+        "speech_vote_consistency_rate": round(consistent_votes / comparable_votes, 4)
+        if comparable_votes
+        else None,
+        "changed_vote_count": changed_votes,
+        "changed_vote_reason_missing_count": changed_vote_reason_missing,
+        "targeted_decision_count": len(targets),
+        "fixed_target_rate": round(fixed_target_rate, 4),
+        "profile_target_variety": {
+            profile: len(values) for profile, values in sorted(profile_choices.items())
+        },
     }
 
 
@@ -895,10 +1015,11 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
     numeric_keys = (
         "action_count",
         "invocations",
-        "repair_attempts",
         "fallbacks",
         "provider_errors",
         "usage_unavailable",
+        "prompt_characters",
+        "response_characters",
     )
     metrics: dict[str, object] = {
         "scenario_count": len(scenarios),
@@ -912,13 +1033,13 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
                 for key in (
                     "preset_id",
                     "seed",
+                    "deliberation_level",
                     "state",
                     "completed",
                     "finished_day",
                     "winner",
                     "action_count",
                     "invocations",
-                    "repair_attempts",
                     "fallbacks",
                     "provider_errors",
                     "input_tokens",
@@ -933,7 +1054,7 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
         ],
     }
     for key in numeric_keys:
-        metrics[key] = sum(_as_int(item[key]) for item in scenarios)
+        metrics[key] = sum(_as_int(item.get(key)) for item in scenarios)
     for key in ("latency_ms", "duration_seconds"):
         metrics[key] = round(sum(_as_float(item.get(key)) for item in scenarios), 3)
     for key in ("input_tokens", "output_tokens", "total_tokens"):
@@ -975,7 +1096,6 @@ def _summary_markdown(
             f"{scenario.get('state', 'unavailable')}, "
             f"day={scenario.get('finished_day', 'unavailable')}, "
             f"invocations={scenario.get('invocations', 'unavailable')}, "
-            f"repairs={scenario.get('repair_attempts', 'unavailable')}, "
             f"fallbacks={scenario.get('fallbacks', 'unavailable')}"
         )
     lines.extend(
@@ -1045,6 +1165,7 @@ def _write_failure(
     model: str,
     configuration_checksum: str,
     seed: int,
+    deliberation_level: str,
 ) -> None:
     error_document = {"type": type(error).__name__, "message": redact(str(error))}
     document = {
@@ -1054,6 +1175,7 @@ def _write_failure(
         "model": model,
         "suite": suite,
         "seed": seed,
+        "deliberation_level": deliberation_level,
         "state": state,
         "configuration_checksum": configuration_checksum,
         "started_at": started_at.isoformat(),
@@ -1078,6 +1200,7 @@ def _write_failure(
         model=model,
         suite=suite,
         seed=seed,
+        deliberation_level=deliberation_level,
         configuration_checksum=configuration_checksum,
         started_at=started_at,
         scenarios=scenarios,
@@ -1135,7 +1258,6 @@ def _invocation_progress(
         "completed": False,
         "updated_at": datetime.now(UTC).isoformat(),
         "invocations": len(traces),
-        "repair_attempts": sum(_as_int(trace.get("repair_attempts")) for trace in traces),
         "fallbacks": sum(bool(trace.get("fallback_used")) for trace in traces),
         "provider_errors": sum(bool(trace.get("provider_error")) for trace in traces),
         "input_tokens": _sum_available(trace.get("input_tokens") for trace in traces),

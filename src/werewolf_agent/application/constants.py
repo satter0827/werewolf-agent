@@ -27,6 +27,19 @@ DEFAULT_NARRATION_MODE: Final[Literal["standard"]] = NARRATION_MODE_STANDARD
 
 NarrationMode: TypeAlias = Literal["none", "standard"]
 
+DELIBERATION_LEVEL_QUICK: Final = "quick"
+DELIBERATION_LEVEL_STANDARD: Final = "standard"
+DELIBERATION_LEVEL_DEEP: Final = "deep"
+DELIBERATION_LEVELS: Final = (
+    DELIBERATION_LEVEL_QUICK,
+    DELIBERATION_LEVEL_STANDARD,
+    DELIBERATION_LEVEL_DEEP,
+)
+DELIBERATION_LEVEL_CHOICES: Final = frozenset(DELIBERATION_LEVELS)
+DEFAULT_DELIBERATION_LEVEL: Final[Literal["standard"]] = DELIBERATION_LEVEL_STANDARD
+
+DeliberationLevel: TypeAlias = Literal["quick", "standard", "deep"]
+
 
 MIN_ROLE_COUNT: Final = 0
 

@@ -412,6 +412,11 @@
             "title": "Age",
             "type": "integer"
           },
+          "evidence_focus": {
+            "default": "vote_consistency",
+            "title": "Evidence Focus",
+            "type": "string"
+          },
           "gender": {
             "title": "Gender",
             "type": "string"
@@ -458,6 +463,16 @@
         "additionalProperties": false,
         "description": "Payload for creating one game.",
         "properties": {
+          "deliberation_level": {
+            "default": "standard",
+            "enum": [
+              "quick",
+              "standard",
+              "deep"
+            ],
+            "title": "Deliberation Level",
+            "type": "string"
+          },
           "manual_player_id": {
             "anyOf": [
               {
@@ -523,6 +538,11 @@
             "minimum": 18.0,
             "title": "Age",
             "type": "integer"
+          },
+          "evidence_focus": {
+            "default": "vote_consistency",
+            "title": "Evidence Focus",
+            "type": "string"
           },
           "gender": {
             "title": "Gender",

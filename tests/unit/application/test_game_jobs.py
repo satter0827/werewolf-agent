@@ -11,11 +11,11 @@ from pydantic import ValidationError
 import werewolf_agent.application as application_api
 import werewolf_agent.application.handlers as usecases
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
 from werewolf_agent.adapters.resources import (
     LlmDefinitions,
 )
 from werewolf_agent.agents.definitions import (
-    FakeDecisionCatalog,
     PromptDefinition,
     PromptMessageDefinition,
 )
@@ -36,6 +36,7 @@ from werewolf_agent.application.definitions import (
     ScenarioDefinition,
     SetupPresetDefinition,
 )
+from werewolf_agent.application.messages import MESSAGE_MANUAL_INPUT_REQUIRED
 from werewolf_agent.application.models import (
     AdvanceGameCommand,
     ApplicationContext,
@@ -364,17 +365,13 @@ def dependencies(
 def _llm_provider_config() -> LlmProviderConfig:
     return LlmProviderConfig(
         provider="fake",
-        model="fake-list-llm",
+        model="fake-list-chat-model",
         base_url="",
         api_key="",
         timeout_seconds=30.0,
         max_retries=2,
         max_tokens=96,
         temperature=0.7,
-        structured_output_mode="auto",
-        validation_retry_count=1,
-        graph_max_steps=16,
-        fallback_policy="deterministic_legal_action",
     )
 
 
@@ -608,33 +605,17 @@ def llm_definitions() -> LlmDefinitions:
             name="test",
             version=1,
             alias="local",
-            input_variables=[
-                "player_id",
-                "phase",
-                "day",
-                "role",
-                "scenario_name",
-                "scenario_premise",
-                "character_profile",
-                "available_actions",
-                "selected_action",
-                "role_hint",
-                "target_rankings_json",
-                "legal_targets_json",
-                "observation_json",
-                "format_instructions",
-            ],
-            response_format={"schema": "AgentDecision"},
+            input_variables=["decision_context_json"],
+            response_format={"schema": "AgentModelDecision"},
+            deliberation={
+                "quick": {"event_limit": 6, "output_token_limit": 96},
+                "standard": {"event_limit": 16, "output_token_limit": 96},
+                "deep": {"event_limit": 32, "output_token_limit": 128},
+            },
             messages=[
                 PromptMessageDefinition(
                     role="human",
-                    content=(
-                        "{{player_id}} {{phase}} {{day}} {{role}} "
-                        "{{scenario_name}} {{scenario_premise}} {{character_profile}} "
-                        "{{available_actions}} {{selected_action}} {{role_hint}} "
-                        "{{target_rankings_json}} {{legal_targets_json}} "
-                        "{{observation_json}} {{format_instructions}}"
-                    ),
+                    content="{{decision_context_json}}",
                 )
             ],
         ),
@@ -643,20 +624,12 @@ def llm_definitions() -> LlmDefinitions:
             version=1,
             alias="local",
             templates={
-                "speech": (
-                    '{"type":"speech","player_id":"$player_id","message":"hello from $player_name"}'
-                ),
-                "vote": ('{"type":"vote","player_id":"$player_id","target_id":"$target_id"}'),
-                "werewolf_attack": (
-                    '{"type":"werewolf_attack","player_id":"$player_id","target_id":"$target_id"}'
-                ),
-                "seer_inspect": (
-                    '{"type":"seer_inspect","player_id":"$player_id","target_id":"$target_id"}'
-                ),
-                "knight_guard": (
-                    '{"type":"knight_guard","player_id":"$player_id","target_id":"$target_id"}'
-                ),
-                "pass": '{"type":"pass","player_id":"$player_id","reason":"fallback"}',
+                "speech": ('{"type":"speech","message":"hello from $player_name"}'),
+                "vote": ('{"type":"vote","target_id":"$target_id"}'),
+                "werewolf_attack": ('{"type":"werewolf_attack","target_id":"$target_id"}'),
+                "seer_inspect": ('{"type":"seer_inspect","target_id":"$target_id"}'),
+                "knight_guard": ('{"type":"knight_guard","target_id":"$target_id"}'),
+                "pass": '{"type":"pass","reason":"fallback"}',
             },
         ),
     )
@@ -711,8 +684,10 @@ def _advance_until_manual_input(
     for _ in range(max_steps):
         try:
             use_cases.advance_game(AdvanceGameCommand(game_id=game_id))
-        except GameError:
-            return
+        except GameError as exc:
+            if str(exc) == MESSAGE_MANUAL_INPUT_REQUIRED:
+                return
+            raise
     raise AssertionError("manual input was not required")
 
 
@@ -904,7 +879,7 @@ def test_submit_manual_action_returns_public_safe_result() -> None:
     deps, repository = dependencies()
     use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(
-        create_command(manual_player_id="player-1", seed=2),
+        create_command(manual_player_id="player-1", seed=7),
     )
     _advance_until_manual_input(use_cases, created.game_id)
     observation = use_cases.get_player_observation(
@@ -944,7 +919,7 @@ def test_manual_input_blocks_advance_and_duplicate_actions() -> None:
     deps, _repository = dependencies()
     use_cases = UsecaseHarness(deps)
     created = use_cases.create_game(
-        create_command(manual_player_id="player-1", seed=2),
+        create_command(manual_player_id="player-1", seed=7),
     )
 
     _advance_until_manual_input(use_cases, created.game_id)

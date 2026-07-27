@@ -25,6 +25,9 @@
 | `REQ-GAME-008` | ルール、役職、能力、背景、登場人物を一体の設定として編集できる | setup、clients |
 | `REQ-GAME-009` | 背景固有の名称を画面とLLMへ反映し、mechanicsの安定IDと分離する | projection、agents |
 | `REQ-GAME-010` | setupとmechanicsのchecksumを保存し、replayとLLM traceで追跡できる | persistence、LLM |
+| `REQ-GAME-011` | 自動playerが公開根拠に基づいて合法な行動と対象を選び、発言・投票・役職行動へ一貫して反映する | agents、gameplay review |
+| `REQ-LLM-001` | Fakeと実LLMが同じchat request、応答検証、fallbackを通り、意思決定ごとの呼び出しを最大1回にする | adapter contract、trace |
+| `REQ-LLM-002` | quick、standard、deepで参照履歴と出力上限を切り替え、ゲーム作成時の選択を保存する | API、worker、clients、persistence |
 | `REQ-GAME-002` | 行動受付、phase 進行、勝敗、可視性を domain が判定する | domain |
 | `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`、`fox`の正規IDで表す | domain、application |
 | `REQ-API-001` | CLIとStreamlitは同じHTTP契約でゲームを操作する | API |
@@ -54,7 +57,7 @@
 
 - 一つの manual player と自動 player を含むゲーム進行
 - `villager`、`werewolf`、`seer`、`knight`、`medium`、`apothecary`、`hunter`、`madman`、`fox`の9役職
-- FakeListLLM による offline 実行
+- FakeListChatModel による offline 実行
 - Supabase Auth、PostgreSQL 永続化、operation queue
 - FastAPI、CLI、Streamlit、worker
 - replay、private LLM trace、管理診断

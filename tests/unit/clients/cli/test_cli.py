@@ -286,7 +286,7 @@ def test_doctor_command_succeeds(monkeypatch: pytest.MonkeyPatch) -> None:
     assert result.exit_code == 0
     assert "Werewolf Agent 診断" in result.output
     assert "fake" in result.output
-    assert "fake-list-llm" in result.output
+    assert "fake-list-chat-model" in result.output
 
 
 def test_doctor_json_output_is_machine_readable(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -298,9 +298,9 @@ def test_doctor_json_output_is_machine_readable(monkeypatch: pytest.MonkeyPatch)
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["provider"] == "fake"
-    assert payload["model"] == "fake-list-llm"
+    assert payload["model"] == "fake-list-chat-model"
     assert payload["prompt file"] == "packaged"
-    assert payload["data source"] == "api"
+    assert payload["data source"] == "supabase"
 
 
 def test_doctor_command_redacts_supabase_worker_dsn(monkeypatch: pytest.MonkeyPatch) -> None:

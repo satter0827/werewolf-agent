@@ -542,10 +542,19 @@ def test_day_speech_is_only_recorded_during_discussion() -> None:
 
     complete_night(run)
     run.advance()
-    run.submit(Action.speech("p2", "I have a read."))
+    run.submit(
+        Action.speech(
+            "p2",
+            "I have a read.",
+            focus_id="p4",
+            evidence_id="speech:d1:p4:1",
+        )
+    )
 
     assert run.snapshot.history.speeches[-1].message == "I have a read."
     assert run.snapshot.history.speeches[-1].day == 1
+    assert run.snapshot.history.speeches[-1].focus_id == "p4"
+    assert run.snapshot.history.speeches[-1].evidence_id == "speech:d1:p4:1"
     assert run.observe("p2").available_actions == ()
     with pytest.raises(RuleViolation):
         run.submit(Action.speech("p2", "same day duplicate"))

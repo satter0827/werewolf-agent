@@ -30,6 +30,7 @@ from werewolf_agent.clients.cli.events import (
     LOG_CLI_PLAY_COMPLETED,
 )
 from werewolf_agent.clients.cli.messages import (
+    HELP_DELIBERATION_LEVEL,
     HELP_GAME_ID_ADVANCE,
     HELP_LOG_JSONL,
     HELP_MANUAL_PLAYER,
@@ -55,6 +56,7 @@ from werewolf_agent.clients.cli.output import (
 from werewolf_agent.contracts import GAME_STATUS_COMPLETED, AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
+    DeliberationLevel,
     GameTimelineItem,
 )
 from werewolf_agent.observability.constants import (
@@ -103,6 +105,10 @@ def play(
         typer.Option("--setup-file", help="完全なgame setupを記述したTOML file"),
     ] = None,
     preset: Annotated[str | None, typer.Option("--preset", help="setup preset ID")] = None,
+    deliberation_level: Annotated[
+        DeliberationLevel,
+        typer.Option("--deliberation-level", help=HELP_DELIBERATION_LEVEL),
+    ] = "standard",
     log_jsonl: Annotated[Path | None, typer.Option(help=HELP_LOG_JSONL)] = None,
     poll_interval: Annotated[
         float | None,
@@ -125,6 +131,7 @@ def play(
             manual_player=manual_player,
             setup_file=setup_file,
             preset_id=preset,
+            deliberation_level=deliberation_level,
             max_steps=max_steps or settings.cli_max_steps,
             log_jsonl=log_jsonl,
             poll_interval=(
@@ -142,6 +149,7 @@ def _play(
     manual_player: str | None,
     setup_file: Path | None,
     preset_id: str | None,
+    deliberation_level: DeliberationLevel = "standard",
     max_steps: int,
     log_jsonl: Path | None,
     poll_interval: float,
@@ -162,6 +170,7 @@ def _play(
         manual_player=manual_player,
         setup_file=setup_file,
         preset_id=preset_id,
+        deliberation_level=deliberation_level,
     )
     api = client or _client()
     created = api.create_game(request)

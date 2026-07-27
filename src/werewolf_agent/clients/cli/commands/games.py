@@ -24,6 +24,7 @@ from werewolf_agent.clients.cli.events import (
     LOG_CLI_GAME_CREATED,
 )
 from werewolf_agent.clients.cli.messages import (
+    HELP_DELIBERATION_LEVEL,
     HELP_GAME_ID_INSPECT,
     HELP_GAME_LIST_LIMIT,
     HELP_GAME_PAGE_OFFSET,
@@ -41,6 +42,7 @@ from werewolf_agent.clients.cli.output import (
     print_json,
     print_state,
 )
+from werewolf_agent.contracts.schemas import DeliberationLevel
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_SUCCESS,
 )
@@ -63,6 +65,10 @@ def new(
         ),
     ] = None,
     preset: Annotated[str | None, typer.Option("--preset", help="setup preset ID")] = None,
+    deliberation_level: Annotated[
+        DeliberationLevel,
+        typer.Option("--deliberation-level", help=HELP_DELIBERATION_LEVEL),
+    ] = "standard",
     output: Annotated[
         str | None,
         typer.Option("--output", help=HELP_OUTPUT_FORMAT),
@@ -75,6 +81,7 @@ def new(
             manual_player=manual_player,
             setup_file=setup_file,
             preset_id=preset,
+            deliberation_level=deliberation_level,
             output_format=_output_format(output, get_settings()),
         )
     )
@@ -86,6 +93,7 @@ def _new(
     manual_player: str | None,
     setup_file: Path | None = None,
     preset_id: str | None = None,
+    deliberation_level: DeliberationLevel = "standard",
     output_format: OutputFormat,
     client: GameClient | None = None,
 ) -> None:
@@ -94,6 +102,7 @@ def _new(
         manual_player=manual_player,
         setup_file=setup_file,
         preset_id=preset_id,
+        deliberation_level=deliberation_level,
     )
     api = client or _client()
     created = api.create_game(request)

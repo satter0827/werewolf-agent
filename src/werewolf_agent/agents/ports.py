@@ -4,7 +4,19 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from werewolf_agent.agents.models import AgentDecision, AgentObservation
+from werewolf_agent.agents.models import (
+    AgentDecision,
+    AgentObservation,
+    ModelRequest,
+    ModelResponse,
+)
+
+
+class DecisionModel(Protocol):
+    """Provider-independent boundary for one chat-model invocation."""
+
+    def invoke(self, request: ModelRequest) -> ModelResponse:
+        """Return one normalized model response."""
 
 
 class PlayerAgent(Protocol):
@@ -23,4 +35,4 @@ class PlayerAgent(Protocol):
         """
 
 
-__all__ = ["PlayerAgent"]
+__all__ = ["DecisionModel", "PlayerAgent"]

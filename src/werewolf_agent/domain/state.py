@@ -359,6 +359,8 @@ class Action:
     reason: str = ""
     target_id: str | None = None
     message: str | None = None
+    focus_id: str | None = None
+    evidence_id: str | None = None
 
     TARGET_TYPES: ClassVar[frozenset[ActionType]] = frozenset(
         {
@@ -387,18 +389,27 @@ class Action:
         object.__setattr__(self, "reason", self.reason.strip())
         object.__setattr__(self, "target_id", optional_non_blank(self.target_id, "target_id"))
         object.__setattr__(self, "message", optional_non_blank(self.message, "message"))
+        object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
+        object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
         if self.type is ActionType.SPEECH:
             if self.message is None:
                 raise ValueError(MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE)
             if self.target_id is not None:
                 raise ValueError(MESSAGE_SPEECH_ACTION_FORBIDS_TARGET)
         elif self.type in self.TARGET_TYPES:
+            if self.focus_id is not None or self.evidence_id is not None:
+                raise ValueError("Public speech references are allowed only for speech actions.")
             if self.target_id is None:
                 raise ValueError(message_target_required(self.type.value, "actions"))
             if self.message is not None:
                 raise ValueError(message_message_not_allowed(self.type.value, "actions"))
         elif self.type is ActionType.PASS:
-            if self.target_id is not None or self.message is not None:
+            if (
+                self.target_id is not None
+                or self.message is not None
+                or self.focus_id is not None
+                or self.evidence_id is not None
+            ):
                 raise ValueError(MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD)
         else:
             raise ValueError(message_unsupported_type(self.type.value, "action"))
@@ -409,9 +420,22 @@ class Action:
         return self.type in self.NIGHT_TYPES
 
     @classmethod
-    def speech(cls, player_id: str, message: str) -> Self:
+    def speech(
+        cls,
+        player_id: str,
+        message: str,
+        *,
+        focus_id: str | None = None,
+        evidence_id: str | None = None,
+    ) -> Self:
         """Create a public speech action."""
-        return cls(ActionType.SPEECH, player_id, message=message)
+        return cls(
+            ActionType.SPEECH,
+            player_id,
+            message=message,
+            focus_id=focus_id,
+            evidence_id=evidence_id,
+        )
 
     @classmethod
     def vote(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
@@ -500,12 +524,16 @@ class SpeechRecord:
     player_id: str
     message: str
     reason: str = ""
+    focus_id: str | None = None
+    evidence_id: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize speech identifiers and text."""
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
         object.__setattr__(self, "message", non_blank(self.message, "message"))
         object.__setattr__(self, "reason", self.reason.strip())
+        object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
+        object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
 
 
 @dataclass(frozen=True)

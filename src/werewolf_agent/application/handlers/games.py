@@ -90,6 +90,7 @@ def create_game(
                     speaking_style=character.speaking_style,
                     reasoning_style=character.reasoning_style,
                     risk_tolerance=character.risk_tolerance,
+                    evidence_focus=character.evidence_focus,
                 )
                 for character_id, character in setup.roster.characters.items()
             }
@@ -131,6 +132,7 @@ def create_game(
     run_config = {
         **scenario_config,
         "narration_mode": command.narration_mode,
+        "deliberation_level": command.deliberation_level,
         "llm_mode": command.llm_mode,
         "engine_schema_version": setup.schema_version,
         "definition_snapshot": setup_payload,

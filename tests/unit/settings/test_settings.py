@@ -56,12 +56,8 @@ def test_split_mapping_parses_key_value_items() -> None:
 def test_packaged_defaults_are_loaded_from_resources() -> None:
     assert PACKAGED_DEFAULTS["app_name"] == "werewolf-agent"
     assert PACKAGED_DEFAULTS["llm_provider"] == "fake"
-    assert PACKAGED_DEFAULTS["model"] == "fake-list-llm"
+    assert PACKAGED_DEFAULTS["model"] == "fake-list-chat-model"
     assert PACKAGED_DEFAULTS["llm_base_url"] == ""
-    assert PACKAGED_DEFAULTS["llm_structured_output_mode"] == "auto"
-    assert PACKAGED_DEFAULTS["llm_validation_retry_count"] == 1
-    assert PACKAGED_DEFAULTS["llm_graph_max_steps"] == 16
-    assert PACKAGED_DEFAULTS["llm_fallback_policy"] == "deterministic_legal_action"
     assert PACKAGED_DEFAULTS["llm_prompt_file"] == ""
     assert PACKAGED_DEFAULTS["llm_players_file"] == ""
     assert PACKAGED_DEFAULTS["game_rules_file"] == ""
@@ -153,12 +149,8 @@ def test_logging_settings_have_safe_defaults() -> None:
     assert settings.api_timeline_max_limit == 500
     assert settings.api_docs_enabled is False
     assert settings.llm_provider == "fake"
-    assert settings.model == "fake-list-llm"
+    assert settings.model == "fake-list-chat-model"
     assert settings.llm_base_url == ""
-    assert settings.llm_structured_output_mode == "auto"
-    assert settings.llm_validation_retry_count == 1
-    assert settings.llm_graph_max_steps == 16
-    assert settings.llm_fallback_policy == "deterministic_legal_action"
     assert settings.configured_openai_api_key == ""
     assert settings.llm_prompt_path is None
     assert settings.llm_fake_responses_path is None
@@ -197,17 +189,13 @@ def test_game_application_config_is_built_from_application_settings() -> None:
 
     llm_config = build_llm_provider_config(settings)
     assert llm_config.provider == "fake"
-    assert llm_config.model == "fake-list-llm"
+    assert llm_config.model == "fake-list-chat-model"
     assert llm_config.base_url == ""
     assert llm_config.api_key == ""
     assert llm_config.timeout_seconds == 12.0
     assert llm_config.max_retries == 0
-    assert llm_config.max_tokens == 96
+    assert llm_config.max_tokens == 128
     assert llm_config.temperature == 0.7
-    assert llm_config.structured_output_mode == "auto"
-    assert llm_config.validation_retry_count == 1
-    assert llm_config.graph_max_steps == 16
-    assert llm_config.fallback_policy == "deterministic_legal_action"
 
     game_definitions = build_game_definitions(settings)
     assert sorted(game_definitions.roles.roles) == [
@@ -240,7 +228,7 @@ def test_game_application_config_is_built_from_application_settings() -> None:
     assert len(names) >= 8
     assert len(set(names)) == len(names)
     assert all(" " not in name for name in names)
-    assert llm_definitions.prompt.response_format["schema"] == "AgentDecision"
+    assert llm_definitions.prompt.response_format["schema"] == "AgentModelDecision"
 
 
 def test_lmstudio_llm_provider_config_is_built_from_settings() -> None:
@@ -282,7 +270,7 @@ def test_openai_llm_provider_config_uses_secret_api_key() -> None:
     assert llm_config.model == "gpt-4.1-mini"
     assert llm_config.base_url == ""
     assert llm_config.api_key == "sk-test"
-    assert llm_config.max_tokens == 96
+    assert llm_config.max_tokens == 128
     assert "sk-test" not in repr(llm_config)
 
 
@@ -309,17 +297,13 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("WEREWOLF_LLM_MAX_RETRIES", "3")
     monkeypatch.setenv("WEREWOLF_LLM_MAX_TOKENS", "128")
     monkeypatch.setenv("WEREWOLF_LLM_TEMPERATURE", "0.2")
-    monkeypatch.setenv("WEREWOLF_LLM_STRUCTURED_OUTPUT_MODE", "disabled")
-    monkeypatch.setenv("WEREWOLF_LLM_VALIDATION_RETRY_COUNT", "2")
-    monkeypatch.setenv("WEREWOLF_LLM_GRAPH_MAX_STEPS", "12")
-    monkeypatch.setenv("WEREWOLF_LLM_FALLBACK_POLICY", "deterministic_legal_action")
     monkeypatch.setenv(
         "WEREWOLF_LLM_PROMPT_FILE",
         "src/werewolf_agent/agents/resources/prompts/agent_decision.toml",
     )
     monkeypatch.setenv(
         "WEREWOLF_LLM_FAKE_RESPONSES_FILE",
-        "src/werewolf_agent/agents/resources/llm/fake_responses.toml",
+        "src/werewolf_agent/adapters/llm/resources/fake_responses.toml",
     )
     monkeypatch.setenv(
         "WEREWOLF_LLM_PLAYERS_FILE",
@@ -379,17 +363,13 @@ def test_game_settings_load_from_environment(monkeypatch: pytest.MonkeyPatch) ->
     assert settings.llm_max_retries == 3
     assert settings.llm_max_tokens == 128
     assert settings.llm_temperature == 0.2
-    assert settings.llm_structured_output_mode == "disabled"
-    assert settings.llm_validation_retry_count == 2
-    assert settings.llm_graph_max_steps == 12
-    assert settings.llm_fallback_policy == "deterministic_legal_action"
     assert (
         settings.llm_prompt_path
         == repository_root() / "src/werewolf_agent/agents/resources/prompts/agent_decision.toml"
     )
     assert (
         settings.llm_fake_responses_path
-        == repository_root() / "src/werewolf_agent/agents/resources/llm/fake_responses.toml"
+        == repository_root() / "src/werewolf_agent/adapters/llm/resources/fake_responses.toml"
     )
     assert (
         settings.llm_players_path
@@ -541,8 +521,9 @@ age = 30
 gender = "Unspecified"
 personality = "Careful"
 speaking_style = "Short"
-reasoning_style = "Evidence first"
-risk_tolerance = "low"
+    reasoning_style = "Evidence first"
+    risk_tolerance = "low"
+    evidence_focus = "vote_consistency"
 """.strip(),
         encoding="utf-8",
     )
@@ -551,11 +532,20 @@ risk_tolerance = "low"
 name = "test"
 version = 1
 alias = "local"
-input_variables = ["player_id"]
-response_format = { schema = "AgentDecision" }
-[[messages]]
+    input_variables = ["decision_context_json"]
+    response_format = { schema = "AgentModelDecision" }
+    [deliberation.quick]
+    event_limit = 6
+    output_token_limit = 96
+    [deliberation.standard]
+    event_limit = 16
+    output_token_limit = 96
+    [deliberation.deep]
+    event_limit = 32
+    output_token_limit = 128
+    [[messages]]
 role = "human"
-content = "{{player_id}}"
+    content = "{{decision_context_json}}"
 """.strip(),
         encoding="utf-8",
     )
@@ -565,7 +555,7 @@ name = "test"
 version = 1
 alias = "local"
 [templates]
-pass = '{"type":"pass","player_id":"$player_id","reason":"fallback"}'
+    pass = '{"type":"pass","reason":"fallback"}'
 """.strip(),
         encoding="utf-8",
     )
@@ -794,8 +784,6 @@ def test_logging_settings_normalize_supported_values(tmp_path: Path) -> None:
         ("game_supported_agent_type", "bot"),
         ("game_default_narration_mode", "verbose"),
         ("llm_provider", "anthropic"),
-        ("llm_structured_output_mode", "json"),
-        ("llm_fallback_policy", "random"),
     ],
 )
 def test_choice_settings_reject_invalid_values(field_name: str, value: str) -> None:

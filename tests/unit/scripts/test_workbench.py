@@ -47,7 +47,7 @@ def test_local_llm_review_preserves_blocked_diagnostic(
     assert "slow local model" in transcript
 
 
-def test_local_llm_review_marks_repair_as_degraded(
+def test_local_llm_review_marks_fallback_as_degraded(
     tmp_path: Path,
     monkeypatch,
 ) -> None:

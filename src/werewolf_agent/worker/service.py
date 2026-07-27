@@ -246,7 +246,7 @@ def _execute_advance_request(
     settings: AppSettings,
     request: Mapping[str, Any],
 ) -> None:
-    """Run LangGraph without retaining a database connection or transaction."""
+    """Run the Agent decision pipeline without retaining a database transaction."""
     game_id = str(request.get("game_id") or "")
     user_id = str(request["owner_user_id"])
     with borrow_database_connection(pool) as connection, connection.transaction():
@@ -305,7 +305,7 @@ def _execute_advance_request(
 
 
 class _LeaseHeartbeat:
-    """Renew one PGMQ visibility timeout while LangGraph is running."""
+    """Renew one PGMQ visibility timeout while the Agent pipeline is running."""
 
     def __init__(self, pool: Any, settings: AppSettings, request: Mapping[str, Any]) -> None:
         self._pool = pool
@@ -369,6 +369,7 @@ def _create_command(
         manual_player_id=request.manual_player_id,
         llm_mode=service.create_llm_mode,
         narration_mode=request.narration_mode,
+        deliberation_level=request.deliberation_level,
     )
 
 

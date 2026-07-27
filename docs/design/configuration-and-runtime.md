@@ -20,8 +20,8 @@ applicationへは`GameApplicationConfig`、LLM adapterへは`LlmProviderConfig`�
 同じ値に複数の名前や暗黙 fallback を設けない。秘密値は version 管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
 
-packaged resourceは所有機能へ配置する。applicationはゲーム定義、agentsはpromptと
-FakeListLLM fixture、Streamlit clientはi18nとCSS、settingsはruntime
+packaged resourceは所有機能へ配置する。applicationはゲーム定義、agentsはprovider非依存prompt、
+LLM adapterはFakeListChatModel fixture、Streamlit clientはi18nとCSS、settingsはruntime
 defaultを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと
 定義間の相互参照検証はadapterがcomposition時に行う。resourceはpackage APIから
 読み、作業directoryに依存しない。

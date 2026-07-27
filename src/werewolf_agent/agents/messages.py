@@ -35,10 +35,8 @@ MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE = "input_variables must be unique"
 MESSAGE_PROMPT_MESSAGES_REQUIRED = "messages must include at least one prompt message"
 
 MESSAGE_RESPONSE_FORMAT_SCHEMA_MUST_BE_AGENT_DECISION = (
-    "response_format.schema must be AgentDecision"
+    "response_format.schema must be AgentModelDecision"
 )
-
-MESSAGE_FAKE_DECISION_PASS_TEMPLATE_REQUIRED = "templates.pass is required"
 
 
 def message_input_variables_not_used(names: str) -> str:
@@ -49,8 +47,3 @@ def message_input_variables_not_used(names: str) -> str:
 def message_message_variables_missing(names: str) -> str:
     """Return a prompt-template missing variable message."""
     return f"message variables missing from input_variables: {names}"
-
-
-def message_fake_decision_templates_required(action_type: str) -> str:
-    """Return a FakeListLLM template coverage message."""
-    return f"templates.{action_type} must include at least one item"

@@ -18,6 +18,7 @@ from werewolf_agent.contracts.schemas import (
     CharacterDefinitionView,
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
+    DeliberationLevel,
     GameSetupOptionsResponse,
     LocalRulesSettings,
     NarrationMode,
@@ -59,6 +60,7 @@ NARRATION_MODES: tuple[NarrationMode, ...] = (
     NARRATION_MODE_STANDARD,
     NARRATION_MODE_NONE,
 )
+DELIBERATION_LEVELS: tuple[DeliberationLevel, ...] = ("quick", "standard", "deep")
 
 
 class GameSetupDraft(BaseModel):
@@ -69,6 +71,7 @@ class GameSetupDraft(BaseModel):
     setup_preset_id: str | None = None
     scenario_id: str | None = None
     narration_mode: NarrationMode | None = None
+    deliberation_level: DeliberationLevel = "standard"
     character_assignments: dict[str, str] = Field(default_factory=dict)
     seed_text: str | None = None
     manual_player_id: str | None = None
@@ -310,6 +313,19 @@ def narration_mode(
 def remember_narration_mode(session: MutableMapping[str, Any], value: NarrationMode) -> None:
     """Store the selected public narration mode."""
     draft = game_setup_draft(session).model_copy(update={"narration_mode": value})
+    remember_game_setup_draft(session, draft)
+
+
+def deliberation_level(session: MutableMapping[str, Any]) -> DeliberationLevel:
+    """Return the selected automated-player deliberation level."""
+    return game_setup_draft(session).deliberation_level
+
+
+def remember_deliberation_level(
+    session: MutableMapping[str, Any], value: DeliberationLevel
+) -> None:
+    """Store the selected automated-player deliberation level."""
+    draft = game_setup_draft(session).model_copy(update={"deliberation_level": value})
     remember_game_setup_draft(session, draft)
 
 

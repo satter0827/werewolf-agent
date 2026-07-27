@@ -287,6 +287,7 @@ def setup_document_from_preset(
             speaking_style=profile.speaking_style,
             reasoning_style=profile.reasoning_style,
             risk_tolerance=profile.risk_tolerance,
+            evidence_focus=profile.evidence_focus,
         )
         for character_id, profile in player_definitions.players.players.items()
     }

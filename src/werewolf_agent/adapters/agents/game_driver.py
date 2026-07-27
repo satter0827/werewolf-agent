@@ -29,6 +29,10 @@ from werewolf_agent.adapters.agents.messages import (
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
+)
+from werewolf_agent.adapters.llm.model_adapters import (
+    FakeDecisionModel,
+    LangChainChatDecisionModel,
     LlmModelInvocationError,
 )
 from werewolf_agent.adapters.resources import LlmDefinitions
@@ -41,6 +45,7 @@ from werewolf_agent.agents.models import (
     AgentPhase,
     AgentPlayerStatus,
     AgentScenario,
+    DeliberationLevel,
     PlayerProfile,
     VisiblePlayer,
 )
@@ -102,6 +107,7 @@ class LlmAgent:
     player_id: str
     provider: DecisionProvider
     profile: PlayerProfile
+    decision_seed: int
     scenario: AgentScenario | None = None
     game_context: AgentGameContext | None = None
 
@@ -112,6 +118,7 @@ class LlmAgent:
             profile=self.profile,
             scenario=self.scenario,
             game_context=self.game_context,
+            decision_seed=self.decision_seed,
         )
         try:
             decision = self.provider.choose_decision(self.player_id, agent_observation)
@@ -141,6 +148,7 @@ class LlmAgentFactory:
             player_id=player_id,
             provider=self.provider,
             profile=profile,
+            decision_seed=seed,
             scenario=self.scenario,
             game_context=self.game_contexts.get(player_id),
         )
@@ -196,6 +204,7 @@ def drive_prepared_game(
         scenario=scenario,
         game_contexts=game_contexts,
         trace_sink=runtime.trace_sink,
+        deliberation_level=DeliberationLevel(str(prepared.config["deliberation_level"])),
     )
     events = []
     for index, player in enumerate(snapshot.players.values()):
@@ -232,6 +241,7 @@ def langchain_agent_factory(
     scenario: AgentScenario | None = None,
     game_contexts: dict[str, AgentGameContext] | None = None,
     trace_sink: LlmTraceSink | None = None,
+    deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD,
 ) -> LlmAgentFactory:
     """Return a LangChain-backed agent factory from application settings."""
     profiles = to_player_profiles(definitions.players)
@@ -240,6 +250,7 @@ def langchain_agent_factory(
             config,
             definitions=definitions,
             trace_sink=trace_sink,
+            deliberation_level=deliberation_level,
         ),
         profiles=profiles.profiles,
         profile_ids_by_player=profile_ids_by_player or {},
@@ -253,34 +264,37 @@ def _decision_provider(
     *,
     definitions: LlmDefinitions,
     trace_sink: LlmTraceSink | None,
+    deliberation_level: DeliberationLevel,
 ) -> LangChainDecisionProvider:
     if config.provider == LLM_PROVIDER_FAKE:
+        fake_model = FakeDecisionModel(catalog=definitions.fake_responses)
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
-            fake_responses=definitions.fake_responses,
+            decision_model=fake_model,
             provider_name=config.provider,
-            model_name=config.model,
+            model_name=fake_model.model_name,
+            max_output_tokens=config.max_tokens,
             trace_sink=trace_sink,
-            structured_output_mode=config.structured_output_mode,
-            validation_retry_count=config.validation_retry_count,
-            graph_max_steps=config.graph_max_steps,
-            fallback_policy=config.fallback_policy,
+            deliberation_level=deliberation_level,
         )
     if config.provider in {LLM_PROVIDER_LMSTUDIO, LLM_PROVIDER_OPENAI}:
         model_id = _openai_compatible_model_id(config)
-        return LangChainDecisionProvider(
-            prompt=definitions.prompt,
+        chat_model = LangChainChatDecisionModel(
             model=_openai_compatible_model(config, model_id=model_id),
             provider_name=config.provider,
             model_name=model_id,
             base_url=config.base_url,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+        )
+        return LangChainDecisionProvider(
+            prompt=definitions.prompt,
+            decision_model=chat_model,
+            provider_name=config.provider,
+            model_name=model_id,
+            max_output_tokens=config.max_tokens,
             trace_sink=trace_sink,
-            structured_output_mode=config.structured_output_mode,
-            validation_retry_count=config.validation_retry_count,
-            graph_max_steps=config.graph_max_steps,
-            fallback_policy=config.fallback_policy,
+            deliberation_level=deliberation_level,
         )
     raise ValueError(message_unsupported_llm_provider(config.provider))
 
@@ -373,11 +387,13 @@ def _agent_observation_from_game(
     profile: PlayerProfile | None = None,
     scenario: AgentScenario | None = None,
     game_context: AgentGameContext | None = None,
+    decision_seed: int = 0,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
         {
             "phase": AgentPhase(observation.phase.value),
             "day": observation.day,
+            "decision_seed": decision_seed,
             "me": _visible_player_from_game(observation.me),
             "role": observation.me.role if observation.me.role is not None else None,
             "profile": profile,
@@ -394,7 +410,13 @@ def _agent_observation_from_game(
                 for action_type, player_ids in observation.legal_targets.items()
             },
             "speeches": [
-                {"player_id": speech.player_id, "message": speech.message}
+                {
+                    "day": speech.day,
+                    "player_id": speech.player_id,
+                    "message": speech.message,
+                    "focus_id": speech.focus_id,
+                    "evidence_id": speech.evidence_id,
+                }
                 for speech in observation.history.speeches
                 if speech.message
             ],
@@ -523,7 +545,12 @@ def _game_action_from_decision(decision: AgentDecision) -> Action:
     if decision.type is AgentActionType.SPEECH:
         if decision.message is None:
             return Action.pass_(decision.player_id, reason=MESSAGE_MISSING_SPEECH_MESSAGE)
-        return Action.speech(decision.player_id, decision.message)
+        return Action.speech(
+            decision.player_id,
+            decision.message,
+            focus_id=decision.focus_id,
+            evidence_id=decision.evidence_id,
+        )
 
     if decision.type is AgentActionType.VOTE:
         if decision.target_id is None:

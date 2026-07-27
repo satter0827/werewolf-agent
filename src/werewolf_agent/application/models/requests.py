@@ -10,10 +10,12 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from werewolf_agent.application.constants import (
+    DEFAULT_DELIBERATION_LEVEL,
     DEFAULT_NARRATION_MODE,
     MIN_PAGE_LIMIT,
     MIN_PAGE_OFFSET,
     MIN_VERSION,
+    DeliberationLevel,
     NarrationMode,
 )
 from werewolf_agent.application.messages import (
@@ -42,6 +44,7 @@ class CreateGameCommand(ApplicationModel):
     manual_player_id: str | None = None
     llm_mode: Literal["fake", "paid"] = "fake"
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
+    deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
 
     @field_validator("manual_player_id")
     @classmethod

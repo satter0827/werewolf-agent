@@ -52,6 +52,20 @@
 `api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
 
+## Agent意思決定
+
+`agents`は`DecisionTask`、`ModelRequest`、`ModelResponse`、`DecisionModel`を所有する。
+workerのcomposition rootはゲーム作成時に固定したproviderから`FakeDecisionModel`または
+`LangChainChatDecisionModel`を一度だけ選ぶ。以後はproviderに関係なく、観測正規化、context構築、
+model呼び出し、JSON正規化、schema検証、合法手検証、決定的fallback、trace記録の順に処理する。
+
+modelには利用可能な行動、行動別の合法対象、発言長、参照可能なplayer IDと公開evidence IDを渡す。
+modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに
+生成させず、検証後にserverが付与する。行動が一意で対象や発言が不要な場合だけmodel呼び出しを省略する。
+
+ゲーム単位の`deliberation_level`は`quick`、`standard`、`deep`のいずれかとし、参照する公開event数と
+最大出力だけを変える。すべてのレベルで意思決定あたりのmodel呼び出しは最大1回とする。
+
 ## 公開面
 
 Pythonの公開moduleは`werewolf_agent.domain`と`werewolf_agent.application`に限定する。

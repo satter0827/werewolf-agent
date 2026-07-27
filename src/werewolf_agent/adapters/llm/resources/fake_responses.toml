@@ -1,0 +1,41 @@
+name = "werewolf-agent-fake-decisions"
+version = 1
+alias = "local"
+
+[tags]
+task = "agent_decision"
+provider = "fake-list-chat-model"
+
+[templates]
+speech = [
+'''{"type":"speech","message":"$player_nameです。Day $day は、発言の理由が薄い人を先に確認したいです。$focus_name の反応も見たいです。","reason":"$persona"}''',
+'''{"type":"speech","message":"$player_nameです。今は決め打たず、昨日から意見が変わった人の根拠を聞きたいです。","reason":"visible discussion pattern"}''',
+'''{"type":"speech","message":"$player_nameです。私は $focus_name の投票理由が少し気になります。説明があれば印象を更新します。","reason":"focus on public vote consistency"}''',
+'''{"type":"speech","message":"$player_nameです。強い誘導より、誰が何を根拠に疑っているかを揃えたいです。","reason":"keep public reasoning comparable"}''',
+]
+vote = [
+'''{"type":"vote","target_id":"$target_id","reason":"$target_name の発言と投票理由にずれを感じたため"}''',
+'''{"type":"vote","target_id":"$target_id","reason":"Day $day 時点で $target_name の根拠が一番薄く見えるため"}''',
+'''{"type":"vote","target_id":"$target_id","reason":"場への乗り方が中立に寄りすぎているため"}''',
+]
+werewolf_attack = [
+'''{"type":"werewolf_attack","target_id":"$target_id","reason":"$target_name が議論を整理していて村側の軸になりそうなため"}''',
+'''{"type":"werewolf_attack","target_id":"$target_id","reason":"$target_name の推理が伸びる前に盤面から外したいため"}''',
+]
+seer_inspect = [
+'''{"type":"seer_inspect","target_id":"$target_id","reason":"$target_name の色が分かると発言ラインを整理しやすいため"}''',
+'''{"type":"seer_inspect","target_id":"$target_id","reason":"Day $day の疑い先として判断材料が不足しているため"}''',
+]
+knight_guard = [
+'''{"type":"knight_guard","target_id":"$target_id","reason":"$target_name が公開議論の中心に近く、守る価値が高いため"}''',
+'''{"type":"knight_guard","target_id":"$target_id","reason":"$target_name の発言が村側の整理に見えるため"}''',
+]
+apothecary_heal = [
+'''{"type":"apothecary_heal","target_id":"$target_id","reason":"$target_name を生存させる価値が高いため"}''',
+]
+apothecary_poison = [
+'''{"type":"apothecary_poison","target_id":"$target_id","reason":"$target_name の公開行動が最も不自然なため"}''',
+]
+pass = [
+'''{"type":"pass","reason":"available actionがないため待機"}''',
+]

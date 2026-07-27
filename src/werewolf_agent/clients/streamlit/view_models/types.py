@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from werewolf_agent.clients.streamlit.constants import DEFAULT_NARRATION_MODE
+from werewolf_agent.contracts.constants import DEFAULT_DELIBERATION_LEVEL
 from werewolf_agent.contracts.schemas import (
     CustomCharacterDefinitionRequest,
     CustomRoleDefinitionRequest,
@@ -31,6 +32,7 @@ class SavedGameOptionView:
     scenario_id: str | None = None
     setup_preset_id: str | None = None
     narration_mode: str = DEFAULT_NARRATION_MODE
+    deliberation_level: str = DEFAULT_DELIBERATION_LEVEL
     character_assignments: dict[str, str] | None = None
     custom_roles: list[CustomRoleDefinitionRequest] | None = None
     custom_characters: list[CustomCharacterDefinitionRequest] | None = None

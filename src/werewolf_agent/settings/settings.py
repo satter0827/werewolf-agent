@@ -26,9 +26,7 @@ from werewolf_agent.settings.constants import (
 )
 from werewolf_agent.settings.defaults import (
     CLI_OUTPUT_FORMAT_NAMES,
-    LLM_FALLBACK_POLICY_NAMES,
     LLM_PROVIDER_NAMES,
-    LLM_STRUCTURED_OUTPUT_MODE_NAMES,
     LOG_LEVEL_NAMES,
     LOG_OUTPUT_NAMES,
     STREAMLIT_LANGUAGE_NAMES,
@@ -187,7 +185,7 @@ class AppSettings(
 
     @property
     def llm_fake_responses_path(self) -> Path | None:
-        """Return the configured external FakeListLLM response file, if any."""
+        """Return the configured external fake chat response file, if any."""
         return _optional_repository_path(self.llm_fake_responses_file)
 
     @property
@@ -382,28 +380,6 @@ class AppSettings(
     def normalize_llm_optional_file(cls, value: object) -> str:
         """Return an optional LLM resource override file path."""
         return "" if value is None else str(value).strip()
-
-    @field_validator("llm_structured_output_mode", mode="before")
-    @classmethod
-    def normalize_llm_structured_output_mode(cls, value: object) -> str:
-        """Return a validated structured-output mode."""
-        return normalize_choice(
-            value,
-            field_name="llm_structured_output_mode",
-            choices=LLM_STRUCTURED_OUTPUT_MODE_NAMES,
-            case="lower",
-        )
-
-    @field_validator("llm_fallback_policy", mode="before")
-    @classmethod
-    def normalize_llm_fallback_policy(cls, value: object) -> str:
-        """Return a validated fallback policy."""
-        return normalize_choice(
-            value,
-            field_name="llm_fallback_policy",
-            choices=LLM_FALLBACK_POLICY_NAMES,
-            case="lower",
-        )
 
     @field_validator("game_supported_agent_type", mode="before")
     @classmethod
