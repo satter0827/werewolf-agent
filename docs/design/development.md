@@ -12,7 +12,7 @@ repository内のcommandへ実装し、VS Code、CI、AIから同じ入口を使�
 2. 原因を所有責務と依存方向まで絞る。
 3. 境界変更をdesign文書とarchitecture manifestへ反映する。
 4. 再現テストを追加し、所有moduleへ実装する。
-5. generated contract、設定例、不要な旧構造を同じ変更で整える。
+5. OpenAPI contract、設定例、不要な旧構造を同じ変更で整える。
 6. 対象gateと品質profileを実行する。
 
 ## 境界
@@ -38,13 +38,13 @@ imageが失われていれば準備をやり直す。registry、browser配布元
 
 VS Codeの「実行とデバッグ」では`Run: Streamlit Stack`、
 `Run: CLI Play`、`Debug: API`、`Debug: Worker`を使う。`Verify: Quality`は
-Quick/Check/Release/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
+Auto/Focus/Check/Release/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
 `Open: Latest Quality Report`と`Cleanup: Owned Resources`も同じ場所から実行する。
 選択は`pickString`で行い、commandや引数を手入力しない。EnsureとSupabaseの
 起動taskは内部実装として候補から隠す。stackはローカルSupabaseを含むprocessを所有し、
 debug sessionの終了時にまとめて停止する。
 
-個別gateはAI、CI、重点調査向けに`python -m scripts.quality gate <selector>`を使う。
+個別gate、品質profile、Browser、Agent reviewの具体的なcommandは`scripts/README.md`を正本とする。
 gateはpytest markerと公開commandだけを使い、test sourceを解析して選択しない。
 
 `tests/unit`は通常の単体テスト、`tests/integration`は複数moduleを接続したコード全体の
@@ -53,5 +53,6 @@ gateはpytest markerと公開commandだけを使い、test sourceを解析して
 
 ## 検証
 
-formatter、lint、型、対象テストを先に実行し、変更範囲に応じてQuick、Check、
-Release、Deepへ広げる。完成した仕様は`docs/design`、調査と引継ぎは`docs/notes`に置く。
+formatter、lint、型、対象テストを先に実行し、変更範囲に応じてFocus、Check、
+Release、Deepへ広げる。完成した仕様は`docs/design`、再利用する調査と引継ぎだけを
+`docs/notes`へ置き、完了した一時記録と生成証拠は`.werewolf-agent`へ移す。

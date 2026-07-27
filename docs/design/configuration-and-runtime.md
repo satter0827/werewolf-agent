@@ -14,15 +14,15 @@ application settings の暗黙 override として扱わない。
 設定fieldはAPI、worker、client、database、LLM、logging、gameのsection modelが
 所有する。`AppSettings`はsectionを合成して環境変数を一度だけ解決するcomposition
 modelであり、個別fieldを直接定義しない。sectionの一覧はarchitecture manifestを
-正本とし、fieldの重複と未所属を構造テストで禁止する。applicationとagentsへは
-applicationへは`GameApplicationConfig`、LLM adapterへは`LlmProviderConfig`へ縮小して渡す。
+正本とし、fieldの重複と未所属を構造テストで禁止する。applicationへは
+`GameApplicationConfig`、LLM adapterへは`LlmProviderConfig`へ縮小して渡す。
 
 同じ値に複数の名前や暗黙 fallback を設けない。秘密値は version 管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
 
-packaged resourceは所有機能へ配置する。applicationはゲーム定義、agentsはprovider非依存prompt、
-LLM adapterはFakeListChatModel fixture、Streamlit clientはi18nとCSS、settingsはruntime
-defaultを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと
+packaged resourceは所有機能へ配置する。applicationは`resources/setups`のtemplateとcatalog、
+agentsはprovider非依存prompt、LLM adapterはFakeListChatModel fixture、Streamlit clientは
+i18nとCSS、settingsはruntime defaultを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと
 定義間の相互参照検証はadapterがcomposition時に行う。resourceはpackage APIから
 読み、作業directoryに依存しない。
 

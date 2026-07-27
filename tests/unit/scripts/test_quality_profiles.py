@@ -95,6 +95,22 @@ def test_document_only_change_selects_document_evidence() -> None:
     assert decision.selectors == ("docs", "repository")
 
 
+@pytest.mark.parametrize(
+    "path",
+    (
+        "scripts/README.md",
+        "scripts/AGENTS.md",
+        "src/werewolf_agent/domain/AGENTS.md",
+    ),
+)
+def test_documentation_guides_select_document_evidence(path: str) -> None:
+    """directory固有のguideも文書変更として判定する。"""
+    decision = decide((path,))
+
+    assert decision.profile == "focus"
+    assert decision.selectors == ("docs", "repository")
+
+
 def test_unknown_change_escalates_to_check() -> None:
     decision = decide(("new-system/unknown.ext",))
 

@@ -12,6 +12,7 @@ Werewolf AgentはLLM agentを人狼ゲームのplayerとして動かすPython ba
 ## 最初に読む文書
 
 - 利用と検証: `README.md`
+- 品質・環境・review操作: `scripts/README.md`
 - 要件: `docs/design/requirements.md`
 - 構造: `docs/design/architecture.md`
 - 開発: `docs/design/development.md`
@@ -75,6 +76,9 @@ browser配布元、image registryへの接続はenvironment準備で許可しま
 
 完成した仕様は`docs/design`、調査、比較、QA、引継ぎは`docs/notes`に置きます。
 説明は現在形の日本語を基本にし、コード識別子と外部API名は英語のまま扱います。
+利用開始だけを`README.md`へ置き、具体的な開発操作は`scripts/README.md`、設定のdefaultと
+環境変数はsettings model、`src/werewolf_agent/settings/resources/defaults.toml`、
+`.env.example`を正本とします。実測件数や最新結果を固定せず、品質reportへ誘導します。
 
 ## Commit
 

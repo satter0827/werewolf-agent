@@ -1,114 +1,106 @@
-# 品質管理スクリプト
+# Repository運用スクリプト
 
-## 目的
+`scripts`は、ローカル、CI、AIが共有する再現可能な開発操作を所有します。品質runnerは
+個別検査を再実装せず、環境準備、docs、architecture、contracts、Browser、Supabaseなどの
+専用入口を組み合わせます。
 
-`scripts`はローカルとCIで共有するPython製の品質実行基盤です。`tests/unit`は通常の
-単体テスト、`tests/integration`は複数moduleを接続したコード全体のテストを所有します。
-Browser、Compose、環境準備などのリリース品質scenarioは`scripts`が所有します。
+## 環境準備
 
-## 実行方法
+依存取得は`scripts.environment`だけが行います。`ensure`は現在のfingerprintを検査し、
+不足時だけ対応する`setup`を実行します。品質command自身はpackage、browser、imageを取得せず、
+前提が不足する場合は`blocked`にします。
 
-```bash
-python -m scripts.environment ensure auto
-python -m scripts.quality auto
-python -m scripts.environment ensure check
-python -m scripts.quality focus
-python -m scripts.quality check
-python -m scripts.quality release
-python -m scripts.quality deep --confirm-deep
-python -m scripts.quality gate python-static
-python -m scripts.quality gate ruff mypy
-python -m scripts.quality list
-python -m scripts.quality clean
-python -m scripts.quality auto --explain
-python -m scripts.supabase preflight
-python -m scripts.agents preflight
-python -m scripts.agents run --provider fake --suite standard
-python -m scripts.agents run --provider local --suite smoke
-python -m scripts.agents local-ui
-python -m scripts.browser --journey play --state finished --device desktop --capture gameplay-complete
+```powershell
+uv run --no-project python -m scripts.environment ensure auto
+uv run --no-project python -m scripts.environment ensure check
+uv run --no-project python -m scripts.environment ensure release
+uv run --no-project python -m scripts.environment ensure deep
 ```
 
-- `auto`: 変更pathから必要なprofileまたは部分gateを選択
-- `focus`: architecture、format、lint、型、unit、軽量statefulを常に固定実行
-- `check`: Focus、unit同時coverage、offline integration、docs、OpenAPI、Schemathesis、build
-- `release`: Check、local Supabase integration、Streamlit E2E、Docker smoke
-- `deep`: 長時間stateful、fault injection、benchmark観測
-- `clean`: 再生成可能な`outputs`、tool cache、品質用一時cache
+release系では現在のDocker context、daemon、Supabase、E2E、runtime imageの実在も確認します。
+明示的に環境を再構築する場合だけ`setup check|release|deep`を使用します。
 
-`scripts.agents`は品質判定から独立したAgent reviewです。通常は画面を使わず、同じAgent
-graphをFakeまたはLocal LLMで固定scenarioへ通します。`local-ui`だけが明示的にStreamlitを
-起動し、認証済みAPI driverでLocal LLM gameを進行します。結果は
-`passed`、`degraded`、`failed`、`blocked`、`error`で、
-修復またはfallbackを伴う完走は`degraded`です。standardは開始時とpreset完了時に
-checkpointを更新し、完了または中断時に最終状態を確定します。
-`run --suite standard --preset <id>`は指定presetだけを固定順で実行し、複数指定できます。
-Browserの`--capture`は論理名を使い、対応scenarioだけを実行します。複数の`--capture`と
-`--device`を指定でき、未定義名やjourney／stateと両立しない組合せは実行前に拒否します。
+## 品質profile
 
-`--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
-CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
-既定worker上限、保持件数、profile別timeout、benchmark反復下限は`pyproject.toml`の
-`tool.werewolf-quality`から読みます。coverageとbenchmarkは観測値として保存し、根拠の
-ない数値閾値では合否を決めません。
+```powershell
+uv run --no-sync python -m scripts.quality auto
+uv run --no-sync python -m scripts.quality focus
+uv run --no-sync python -m scripts.quality check --fresh
+uv run --no-sync python -m scripts.quality release --fresh
+uv run --no-sync python -m scripts.quality deep --confirm-deep --fresh
+uv run --no-sync python -m scripts.quality gate python-static
+uv run --no-sync python -m scripts.quality gate ruff mypy
+uv run --no-sync python -m scripts.quality list
+uv run --no-sync python -m scripts.quality auto --explain
+uv run --no-sync python -m scripts.quality clean
+```
 
-通常の反復確認には`auto`を使います。domainやunit変更はFocus、API・offline integrationは
-Check、Streamlit・Browser・Supabase・ComposeはReleaseへ昇格します。profile名を直接指定した
-場合は差分にかかわらず、そのlevel全体を実行します。`--explain`は選定理由、stage、再利用候補を
-表示して終了し、gateを実行しません。
+| Profile | 判定範囲 |
+| --- | --- |
+| `auto` | `scripts/quality/impact.toml`により変更pathからprofileまたは部分gateを選ぶ |
+| `focus` | architecture、format、lint、型、unit、軽量stateful |
+| `check` | Focus、coverage、offline integration、docs、OpenAPI、Schemathesis、package |
+| `release` | Check、local Supabase、API、worker、Streamlit E2E、container |
+| `deep` | 長時間stateful、fault injection、benchmark観測 |
 
-`scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython依存を同期します。
-release環境ではSupabase image、E2E image、runtime imageも準備します。品質commandは不足物を
-取得せず`blocked`にします。release系の準備済み判定は保存済みmarkerだけでなく、現在の
-Docker contextでdaemonと全必須imageの実在も確認します。Docker Desktopのresetやcontext変更で
-imageが失われた場合、次の`ensure`は自動的に再準備します。
+profile名を直接指定した場合は差分にかかわらず全体を実行します。`--fresh`は再利用可能な
+成功gateも実行し直します。`auto --explain`は選定理由、stage、再利用候補を表示して終了します。
 
-## 判定
-
-状態は`passed`、`failed`、`error`、`blocked`、`skipped`です。終了値は成功が0、
-品質違反が1、環境不備または実行基盤の異常が2です。`blocked`はDockerやSupabase
-CLIなど、選択profileに必要なローカル環境が不足した場合に使います。timeoutは
-品質違反にせず`error`として終了します。
+状態は`passed`、`failed`、`blocked`、`error`、`skipped`です。終了値は成功が0、品質違反が1、
+環境不備または実行基盤異常が2です。coverage、benchmark、ゲームバランスは観測値として保存し、
+根拠のない閾値だけで不合格にしません。
 
 ## 成果物
 
-最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current/`へ保存します。
-最終成功は`last-passed.json`が指し、以前のcurrentは
-`.werewolf-agent/quality/history/<profile>/<run-id>/`へ移動します。current、参照中の最終成功、
-直近2件の非成功runを保持します。report、summary、event、log、test結果、coverage、画面、
-manifestを含む一式をatomicに置き換えます。未実行gateも
-`skipped`として残すため、AIと人間が同じreportから調査を開始できます。Git状態の
-初期確認失敗やrunner中断も、実行済み・未完了・cleanupを含むreportを生成します。
-`report.json`の`metrics`にはtest件数、総合・line・branch coverage、benchmark、
-browser成果物を収録します。成果物が壊れている場合もreport生成を止めず、
-`artifact_issues`へ解析理由を残し、`artifact-validation`を`error`としてCLI終了値へ
-反映します。
-profileごとのJUnit、coverage、benchmark、docs、package、browser成果物も
-必須契約として検証するため、コマンドの0終了だけでは合格になりません。
-必須成果物はrun開始後に更新されたことも検証します。docsとpackageは
-各ゲートで既存出力を除去してから再構築し、前回runの成果物を受理しません。
+最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存します。
+以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は
+`profiles/<profile>/last-passed.json`が指します。
 
-## 制約
+各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`と、実行したgateのlog、
+test結果、coverage、Browser成果物を持ちます。manifestのproducer、分類、MIME、size、SHA-256で
+証拠の出所と実在を確認します。未完了gateも`skipped`として残し、runner中断や初期検査失敗も
+reportへ確定します。
 
-品質実行は依存install、browser download、Docker pull、外部API呼び出しを行いません。
-子processからprovider用の秘密情報と外部base URLを除外し、`WEREWOLF_LLM_PROVIDER`
-を`fake`へ固定し、Local／OpenAI／worker provider設定も除去してtelemetryを無効化します。package registryとimage registryは
-環境準備で使用できます。Playwrightは外部requestの試行も
-失敗にし、Chromiumの背景通信と更新確認を無効化します。E2EはPython PlaywrightのStreamlit
-scenarioをcontainer内で実行し、子processの出力と画像をrun固有領域へ保存して
-終了時に伏せ字化します。
-`preflight_supabase`は`.env`を変更せず、取得した接続情報をmigrationと`doctor`へだけ
-渡します。API起動が必要な`setup-options`はE2Eで確認します。
-品質runごとの一時`SUPABASE_HOME`を使い、通常開発用の認証profileや更新cacheを
-読みません。
-Supabase CLIの出力からは公開キー、URL、DB接続先だけを許可し、service-role値は
-引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageは
-environment準備で取得します。
-Release/Deepはhost排他lockと固定された品質用Compose projectを一組だけ使い、所有labelで識別した
-session、container、volumeを終了時に削除します。専用Buildx builderのcacheは8GiBを上限とし、
-global pruneを行いません。Docker buildは
-runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、
-品質用Supabaseと一時Docker imageのcleanupを試みます。次のrelease開始時にもDocker labelから
-過去runの品質専用Supabaseだけを回収します。OneDrive上の再生成可能な
-ディレクトリ削除は、一時的な競合に限って短時間再試行します。成功結果の置換と
-非成功結果の整理はrun確定時に実行します。
+## Browser E2E
+
+Browser journey、state、device、capture名の正本は`scripts/browser/catalog.toml`です。
+PlaywrightはPythonからStreamlitを操作し、外部request、console、accessibility、主要状態を検査します。
+
+```powershell
+uv run --no-sync python -m scripts.browser --journey play --state finished --device desktop
+uv run --no-sync python -m scripts.browser --capture gameplay-complete --device desktop
+```
+
+通常の直接実行は`.werewolf-agent/reviews/browser`へ保存します。品質profile内ではrun固有の
+Browser成果物としてmanifestへ登録されます。認証情報を含み得るtraceとnative reportはprivate、
+画面、console、network要約はpublicとして分離します。
+
+## Agent review
+
+Agent reviewは製品品質の合否から独立し、Fakeまたは明示したloopback Local LLMで会話、判断、
+ゲームバランスを読むための証拠を作ります。
+
+```powershell
+uv run --no-sync python -m scripts.agents preflight
+uv run --no-sync python -m scripts.agents run --provider fake --suite standard
+uv run --no-sync python -m scripts.agents run --provider local --suite smoke
+uv run --no-sync python -m scripts.agents local-ui
+```
+
+Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通ります。
+Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離します。
+結果は`.werewolf-agent/reviews/agents`へ保存し、public timelineとprivate traceを分離します。
+
+## 個別入口
+
+```powershell
+uv run --no-sync python -m scripts.docs inspect
+uv run --no-sync python -m scripts.docs build
+uv run --no-sync python -m scripts.architecture
+uv run --no-sync python -m scripts.contracts.openapi
+uv run --no-sync python -m scripts.supabase preflight
+```
+
+品質processはprovider credentialと外部base URLを除去し、Fake adapter、localhost、Compose内service
+だけを使用します。registryやbrowser配布元への接続は環境準備に限定します。品質用process、
+container、volumeだけを所有labelでcleanupし、開発用または他projectのresourceを変更しません。

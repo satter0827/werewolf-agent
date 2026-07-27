@@ -1,5 +1,8 @@
 # React再導入手順
 
+この文書は削除済みbrowser UIを参照するための非規範的な履歴である。現行製品のbrowser UIは
+Python製Streamlit、Browser E2EはPython Playwrightであり、React、Node.js、npmを使用しない。
+
 ## 復元元
 
 廃止前の基準revisionは`e865cf48c7fb63b0ff7b19e4b1e8ae0da2bd3863`である。現在のcheckoutへ
@@ -18,3 +21,5 @@ git worktree add ..\werewolf-agent-react-reference e865cf48c7fb63b0ff7b19e4b1e8a
 5. Streamlitとの役割分担と運用責任をdesign文書で決定してから公開する。
 
 旧package、生成client、containerをそのまま復帰させる互換手順は提供しない。
+撤去後に追加されたsetup revision、Agent deliberation、FeatureSpec、quality impact、Browser catalogを
+旧実装へ逆移植せず、現行契約に対する新しいclientとして実装する。

@@ -40,7 +40,7 @@ CORSはAPIの一般的な外部境界として扱う。既定では無効とし�
 
 ## 操作の流れ
 
-1. クライアントが generated contract に従って HTTP 要求を送る。
+1. クライアントがchecked-in OpenAPI contractに従ってHTTP要求を送る。
 2. API が認証と入力検証を行う。
 3. `GameApplication` が認可し、集約を取得して domain 操作を呼ぶ。
 4. repository が更新後の完全状態を保存する。
@@ -62,7 +62,7 @@ repositoryとstoreはtransactionを開始しない。
 ## 契約の管理
 
 外部契約は`werewolf_agent.contracts`に置き、`contracts/openapi.json`を正本とする。
-公開HTTP schemaはOpenAPIから生成し、
-手書きの HTTP 型を並行して管理しない。CLI と Streamlit は `GameClient` port と
+FastAPIから生成したschemaを`contracts/openapi.json`と比較し、差分を契約gateで拒否する。
+CLIとStreamlitは`GameClient` portと
 public wire schema を使い、domain や repository を直接 import しない。
-winnerと公開factionは`village`、`werewolf`のenumを使い、clientだけの別名を持たない。
+winnerと公開factionは`village`、`werewolf`、`fox`の正規IDを使い、clientだけの別名を持たない。

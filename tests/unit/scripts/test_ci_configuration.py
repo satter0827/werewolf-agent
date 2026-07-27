@@ -64,7 +64,14 @@ def test_compose_exposes_isolated_runtime_and_test_services() -> None:
 
 def test_documented_validation_commands_match_repo_tooling() -> None:
     """利用者向け文書から共通runnerへ到達できる。"""
-    docs = "\n".join([_read("README.md"), _read("docs/notes/development.md"), _read("AGENTS.md")])
+    docs = "\n".join(
+        [
+            _read("README.md"),
+            _read("docs/design/verification.md"),
+            _read("scripts/README.md"),
+            _read("AGENTS.md"),
+        ]
+    )
     pyproject = _read("pyproject.toml")
 
     for command in (

@@ -17,17 +17,8 @@
 | `deep` | 長時間stateful、fault injection、性能観測 |
 | `review` | UI、Gameplay、Local LLMの読解用証拠。合否には含めない |
 
-```powershell
-uv run --no-sync python -m scripts.quality auto
-uv run --no-sync python -m scripts.quality focus
-uv run --no-sync python -m scripts.quality check
-uv run --no-sync python -m scripts.quality release
-uv run --no-sync python -m scripts.quality deep --confirm-deep
-uv run --no-sync python -m scripts.quality gate python-static
-uv run --no-sync python -m scripts.quality list
-uv run --no-sync python -m scripts.quality clean
-uv run --no-sync python -m scripts.quality auto --explain
-```
+`auto`の変更pathと選定結果の対応は`scripts/quality/impact.toml`を正本とする。具体的な
+実行command、`--fresh`、個別gate、環境準備は`scripts/README.md`へ集約する。
 
 ## 外部接続境界
 
@@ -61,6 +52,10 @@ replay testはcommand、event、state、projection、rule snapshotの改変と�
 不一致versionで検出する。必須fieldが欠けた破損記録も例外を公開せずunsupportedとして扱う。
 domain testは復元snapshotのplayer数、役職構成、終局結果、pending action参照の不整合を拒否する。
 
+最新試行は`.werewolf-agent/quality/profiles/<profile>/current`、以前の試行は
+`.werewolf-agent/quality/history/<profile>/<run-id>`へ保存する。最終成功は
+`profiles/<profile>/last-passed.json`が指す。
+
 各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`を持つ。manifestには
 producer、分類、MIME、size、SHA-256、保持状態を記録する。成功runもlog、JSON/HTMLの
 test結果、coverage、画面を含む一式でcurrentを置換する。`last-passed.json`は最終成功を指し、
@@ -69,12 +64,12 @@ reportは要求したprofile、実際に選ばれたprofile、Autoの選定理�
 限る。必須証拠が容量上限を超えた場合は削除せず成果物契約違反にする。完了記録のないrunは
 次回起動時にhistoryへ回収する。
 
-Playwrightはjourney、state、deviceを個別選択し、操作、contract、accessibility、console、
-外部通信を判定する。screenshotはcapture名で選択し、traceは失敗時または明示指定時だけ保存する。
-見た目はpixel
-差分で合否を出さず、setup 4tabs、validation、待機、発言、対象選択、送信中、完了、観戦、
-Recordsの空・記録あり、Settings、縮退表示を含むdesktop/mobileの個別画像、2列の一覧画像、
-HTML/JSONを人が読む。320pxはStreamlit scenario内で確認する。
+Python Playwrightはjourney、state、deviceを個別選択し、操作、contract、accessibility、console、
+外部通信を判定する。選択肢とcapture filenameは`scripts/browser/catalog.toml`を正本とする。
+screenshotはcapture名で選択し、traceは失敗時または明示指定時だけ保存する。
+見た目はpixel差分で合否を出さず、setup、validation、待機、発言、対象選択、送信中、完了、
+観戦、Recordsの空・記録あり、Settings、縮退表示を含むdesktop/mobileの個別画像、一覧画像、
+HTML/JSONを人が読む。狭幅はStreamlit scenario内で独立して確認する。
 client fault testはAPI、Auth、database、operation queue、worker、LLM、翻訳overrideを個別に
 故障させ、停止範囲が依存するfeatureに限られることを確認する。packaged CSSとview構造はbuild時に
 固定し、外部overrideの故障経路を持たない。画面はkeyboard、
@@ -115,3 +110,6 @@ evidence不正、発言と投票の整合、対象固定、profile別の対象�
 異常表示を撮影し、contact sheet、console、networkをpublicへ保存する。passwordや認証通信を含み得る
 Playwright traceとnative reportはprivateへ保存し、通常の品質browser suiteからは明示Local specを
 除外する。品質子processは通常とworker paid modeの両方をFake adapterへ固定する。
+
+自動Browser E2Eの合格、保存済み画像の読解、対話的な画面確認は別の証拠として扱う。
+対話操作を実行できない場合はその確認だけを`blocked`とし、自動E2Eの結果を変更しない。

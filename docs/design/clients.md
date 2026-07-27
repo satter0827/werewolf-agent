@@ -40,6 +40,16 @@ scrollと入力focusを維持し、利用者の読解や入力を中断しない
 登録commandとStreamlit rendererは実装するFeature IDを宣言する。OpenAPI、CLI command、
 Streamlit workspace、renderer宣言の未知参照、未配置、重複を構造testで検出する。
 
+### 表示とaccessibility
+
+desktopはゲーム情報、tableau、操作、公開timelineの階層を明確にし、mobileは同じDOM順で
+一列へ積む。狭幅でhorizontal overflowを発生させず、主要操作、keyboard focus、heading順、
+入力label、状態通知、contrastをBrowser E2Eで確認する。完了時は結果をtimelineより前に示し、
+不要になった進行操作を表示しない。
+
+一般画面にはAPI、database、queueなどの内部構成や例外詳細を出さず、現在利用できる機能と
+復旧方法を表示する。現行画面の証拠は品質runのBrowser成果物を正本とし、設計書へ画像を固定しない。
+
 ## 共通境界
 
 - 内部例外と stack trace を利用者へ表示しない。

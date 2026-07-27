@@ -15,8 +15,8 @@ credential、local `.env`、cache、品質 report は配布物へ含めない。
 
 ## 手順
 
-1. lock file と generated OpenAPI client に差分がないことを確認する。
-2. `uv run --no-sync python -m scripts.quality release` を実行する。
+1. lock file、FastAPIから生成したOpenAPI、checked-in `contracts/openapi.json`が一致することを確認する。
+2. `scripts/README.md`に定義したrelease profileをfresh実行する。
 3. Python packageとcontainer imageを同じrevisionから作る。
 4. migration を対象環境へ適用できることを検証する。
 5. artifact の version、digest、検証 report を関連付ける。
@@ -24,8 +24,8 @@ credential、local `.env`、cache、品質 report は配布物へ含めない。
 
 ## Version と契約
 
-破壊的変更を許容する開発方針でも、同じ配布物内の API、generated client、
-database schema は一致させる。旧 schema の無期限な読み替えは設けず、必要な
+破壊的変更を許容する開発方針でも、同じ配布物内のAPI、OpenAPI contract、
+database schemaは一致させる。旧schemaの無期限な読み替えは設けず、必要な
 migration と切替条件を release 単位で定義する。
 
 ## 失敗時

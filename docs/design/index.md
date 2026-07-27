@@ -4,6 +4,9 @@
 運用されるかを説明する。コード、設定、生成契約、品質成果物を根拠とし、
 同じ事実を複数の章で定義しない。
 
+具体的なdefaultと環境変数はsettings、HTTP wire schemaは`contracts/openapi.json`、
+構造規則は`scripts/architecture/rules.toml`、開発操作は`scripts/README.md`を正本とする。
+
 ```{toctree}
 :maxdepth: 2
 

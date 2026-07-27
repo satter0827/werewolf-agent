@@ -1,8 +1,10 @@
 (runtime-configuration-reference)=
 # 実行時設定
 
-設定は `werewolf_agent.settings` が起動時に読み込み、型、範囲、相互参照を検証
-する。具体的な環境変数名と default は `.env.example` と settings model を正とする。
+設定は`werewolf_agent.settings`が起動時に読み込み、型、範囲、相互参照を検証する。
+具体的なfieldとdefaultは`src/werewolf_agent/settings/sections`と
+`src/werewolf_agent/settings/resources/defaults.toml`、環境変数の利用例は`.env.example`を
+正とする。このページには値を複製せず、設定領域と変更時の契約だけを示す。
 
 ## 設定領域
 
@@ -14,7 +16,11 @@
 | worker | polling、lease、retry、同時実行数 | なし |
 | LLM | provider、model、timeout、構造化出力 | API key |
 | observability | level、format、sink、trace | sink credential |
-| game | role、rule policy、制限値 | なし |
+| game | default template、narration、player数制限 | なし |
+
+ゲームごとのmechanics、theme、player generationはruntime設定ではなく
+`GameSetupDocument`が所有する。同梱templateとcatalogは
+`src/werewolf_agent/application/resources/setups`を正本とする。
 
 秘密値は `.env.example` に実値を記載しない。設定値をログへ出す場合は redaction 後の
 safe representation を使う。
@@ -22,7 +28,7 @@ safe representation を使う。
 ## 検証
 
 ```powershell
-uv run werewolf-agent system doctor
+uv run --no-sync werewolf-agent system doctor
 ```
 
 `system doctor`は設定とpackaged resourceを検証する。databaseやproviderへの外部接続を

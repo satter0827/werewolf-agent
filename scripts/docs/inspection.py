@@ -25,9 +25,61 @@ REQUIRED_LABELS = frozenset(
     }
 )
 PUBLIC_API_MODULES = frozenset(module.__name__ for module in PUBLIC_MODULES)
+CANONICAL_DOCUMENT_PATHS = (
+    REPOSITORY_ROOT / "README.md",
+    REPOSITORY_ROOT / "scripts" / "README.md",
+)
+QUALITY_COMMAND_OWNERS = frozenset({"README.md", "scripts/README.md"})
+OBSOLETE_REFERENCES = (
+    "src/werewolf_agent/interfaces",
+    "interfaces/worker",
+    "application/resources/game",
+    "application/resources/presentation",
+    ".werewolf-agent/quality/latest",
+    "generated openapi client",
+)
+OBSOLETE_REFERENCE_EXCLUSIONS = frozenset({"docs/notes/retired-browser-ui-reintroduction.md"})
+_REPOSITORY_PATH_PREFIXES = (
+    ".github/",
+    ".streamlit/",
+    ".vscode/",
+    "contracts/",
+    "docker/",
+    "docs/",
+    "scripts/",
+    "src/",
+    "supabase/",
+    "tests/",
+)
+_PACKAGE_PATH_PREFIXES = (
+    "adapters/",
+    "agents/",
+    "api/",
+    "application/",
+    "clients/",
+    "contracts/",
+    "domain/",
+    "observability/",
+    "security/",
+    "settings/",
+    "worker/",
+)
+_REPOSITORY_ROOT_FILES = frozenset(
+    {
+        ".env.example",
+        "AGENTS.md",
+        "README.md",
+        "compose.yaml",
+        "pyproject.toml",
+        "uv.lock",
+    }
+)
 _LABEL_PATTERN = re.compile(r"^\((?P<label>[a-z0-9][a-z0-9-]*)\)=$", re.MULTILINE)
 _TOCTREE_PATTERN = re.compile(r"```\{toctree\}\s*\n(?P<body>.*?)```", re.DOTALL)
 _AUTOMODULE_PATTERN = re.compile(r"```\{automodule\}\s+([a-zA-Z0-9_.]+)")
+_INLINE_CODE_PATTERN = re.compile(r"`(?P<value>[^`\n]+)`")
+_MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
+_QUALITY_COMMAND_PATTERN = re.compile(r"(?:python\s+-m\s+scripts\.quality|scripts\.quality\s)")
 _DOCSTRING_SUPPRESSION_PATTERN = re.compile(
     r"#\s*(?:(?:ruff|flake8):\s*)?noqa"
     r"(?:\s*$|\s*:[^#]*(?:\bD\d*\b|\bDOC\d*\b|\bALL\b))",
@@ -53,6 +105,7 @@ def inspect_documentation() -> dict[str, object]:
         for path in markdown_paths
         if "_generated" not in path.relative_to(DOCS_ROOT).parts and path.name != "AGENTS.md"
     ]
+    canonical_paths = [path for path in CANONICAL_DOCUMENT_PATHS if path.is_file()]
     relative_sources = {
         path.relative_to(DOCS_ROOT).with_suffix("").as_posix(): path for path in source_paths
     }
@@ -156,6 +209,58 @@ def inspect_documentation() -> dict[str, object]:
             )
         )
 
+    checked_reference_count = 0
+    for path in [*canonical_paths, *source_paths]:
+        text = path.read_text(encoding="utf-8")
+        relative_path = path.relative_to(REPOSITORY_ROOT).as_posix()
+        for reference, offset in _local_markdown_links(text):
+            checked_reference_count += 1
+            markdown_target = (path.parent / reference).resolve()
+            if markdown_target.exists() and _is_within_repository(markdown_target):
+                continue
+            findings.append(
+                DocumentationFinding(
+                    "DOC-PATH-001",
+                    f"Local Markdown target does not exist: {reference}",
+                    f"{relative_path}:{_line_number(text, offset)}",
+                )
+            )
+        for reference, offset in _repository_path_references(text):
+            checked_reference_count += 1
+            repository_target = _repository_reference_target(reference)
+            if repository_target is not None and repository_target.exists():
+                continue
+            findings.append(
+                DocumentationFinding(
+                    "DOC-PATH-002",
+                    f"Repository path does not exist: {reference}",
+                    f"{relative_path}:{_line_number(text, offset)}",
+                )
+            )
+        if relative_path not in OBSOLETE_REFERENCE_EXCLUSIONS:
+            lowered = text.lower()
+            for reference in OBSOLETE_REFERENCES:
+                offset = lowered.find(reference)
+                if offset < 0:
+                    continue
+                findings.append(
+                    DocumentationFinding(
+                        "DOC-STALE-001",
+                        f"Obsolete documentation reference: {reference}",
+                        f"{relative_path}:{_line_number(text, offset)}",
+                    )
+                )
+        if relative_path not in QUALITY_COMMAND_OWNERS:
+            command = _QUALITY_COMMAND_PATTERN.search(text)
+            if command is not None:
+                findings.append(
+                    DocumentationFinding(
+                        "DOC-COMMAND-001",
+                        "Quality commands must be owned by README.md or scripts/README.md.",
+                        f"{relative_path}:{_line_number(text, command.start())}",
+                    )
+                )
+
     return {
         "schema_version": 1,
         "status": "failed" if findings else "passed",
@@ -163,6 +268,8 @@ def inspect_documentation() -> dict[str, object]:
             "published_page_count": len(source_paths),
             "label_count": len(labels),
             "automodule_count": len(automodules),
+            "canonical_document_count": len(canonical_paths),
+            "checked_reference_count": checked_reference_count,
         },
         "documents": sorted(relative_sources),
         "navigation": {
@@ -208,6 +315,60 @@ def _reachable_documents(graph: dict[str, set[str]], root: str) -> set[str]:
             visited.add(target)
             pending.append(target)
     return visited
+
+
+def _local_markdown_links(text: str) -> list[tuple[str, int]]:
+    references: list[tuple[str, int]] = []
+    for match in _MARKDOWN_LINK_PATTERN.finditer(text):
+        target = match.group("target").strip().split("#", maxsplit=1)[0]
+        if not target or target.startswith("#"):
+            continue
+        if re.match(r"^[a-z][a-z0-9+.-]*://", target, re.IGNORECASE):
+            continue
+        references.append((target.replace("\\", "/"), match.start("target")))
+    return references
+
+
+def _repository_path_references(text: str) -> list[tuple[str, int]]:
+    references: list[tuple[str, int]] = []
+    for match in _INLINE_CODE_PATTERN.finditer(text):
+        value = match.group("value").strip().replace("\\", "/")
+        if "<" in value or ">" in value or "*" in value:
+            continue
+        if _is_repository_path(value):
+            references.append((value.rstrip("/"), match.start("value")))
+    return references
+
+
+def _is_repository_path(value: str) -> bool:
+    return (
+        value in _REPOSITORY_ROOT_FILES
+        or value.startswith(_REPOSITORY_PATH_PREFIXES)
+        or value.startswith(_PACKAGE_PATH_PREFIXES)
+    )
+
+
+def _repository_reference_target(reference: str) -> Path | None:
+    if reference in _REPOSITORY_ROOT_FILES or reference.startswith(_REPOSITORY_PATH_PREFIXES):
+        target = REPOSITORY_ROOT / reference
+    elif reference.startswith(_PACKAGE_PATH_PREFIXES):
+        target = REPOSITORY_ROOT / "src" / "werewolf_agent" / reference
+    else:
+        return None
+    resolved = target.resolve()
+    return resolved if _is_within_repository(resolved) else None
+
+
+def _is_within_repository(path: Path) -> bool:
+    try:
+        path.relative_to(REPOSITORY_ROOT.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def _line_number(text: str, offset: int) -> int:
+    return text.count("\n", 0, offset) + 1
 
 
 def _docstring_suppressions() -> list[tuple[str, int]]:

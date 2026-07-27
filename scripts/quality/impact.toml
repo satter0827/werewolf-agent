@@ -1,5 +1,5 @@
 [[rules]]
-patterns = ["docs/**", "README.md", "AGENTS.md"]
+patterns = ["docs/**", "README.md", "AGENTS.md", "scripts/README.md", "scripts/AGENTS.md", "src/**/AGENTS.md"]
 selectors = ["repository", "docs"]
 
 [[rules]]

@@ -12,6 +12,11 @@
 seedとplayerを確定し、setup、mechanics、rosterのchecksumを含む正規化済みcommandをqueueへ
 保存する。workerはtemplateや保存revisionを再解釈しない。
 
+同梱templateと一覧catalogは`src/werewolf_agent/application/resources/setups`、runtimeの
+既定template IDは`src/werewolf_agent/settings/resources/defaults.toml`を正本とする。
+外部file overrideのpathはsettingsが検証し、documentの読込みと相互参照はapplication側の
+setup loaderが検証する。
+
 ## 固定境界と可変要素
 
 phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`village`、`werewolf`、`fox`の

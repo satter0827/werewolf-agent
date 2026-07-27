@@ -94,6 +94,39 @@ Project <https://example.com/project>
     }
 
 
+def test_documentation_reference_detection_covers_links_and_repository_paths(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """local linkとsource pathを別々の基準位置から検査する。"""
+    root = tmp_path / "repository"
+    source = root / "src" / "werewolf_agent" / "domain" / "game.py"
+    contract = root / "contracts" / "openapi.json"
+    source.parent.mkdir(parents=True)
+    source.touch()
+    contract.parent.mkdir(parents=True)
+    contract.touch()
+    monkeypatch.setattr(docs, "REPOSITORY_ROOT", root)
+    text = "[Guide](guide.md) `domain/game.py` `src/missing.py`"
+
+    assert docs._local_markdown_links(text) == [("guide.md", 8)]
+    assert [reference for reference, _ in docs._repository_path_references(text)] == [
+        "domain/game.py",
+        "src/missing.py",
+    ]
+    assert docs._repository_reference_target("domain/game.py") == source.resolve()
+    assert docs._repository_reference_target("contracts/openapi.json") == contract.resolve()
+    assert not docs._repository_reference_target("src/missing.py").exists()
+
+
+def test_documentation_policy_identifies_obsolete_references_and_command_owners() -> None:
+    """旧構造と品質commandの正本を明示したpolicyとして固定する。"""
+    assert "interfaces/worker" in docs.OBSOLETE_REFERENCES
+    assert ".werewolf-agent/quality/latest" in docs.OBSOLETE_REFERENCES
+    assert frozenset({"README.md", "scripts/README.md"}) == docs.QUALITY_COMMAND_OWNERS
+    assert docs._QUALITY_COMMAND_PATTERN.search("python -m scripts.quality check")
+
+
 def test_docstring_suppression_detection_covers_source_and_configuration() -> None:
     """bare noqa、file-level noqa、Ruff設定によるD系回避を検出する。"""
     pattern = docs._DOCSTRING_SUPPRESSION_PATTERN

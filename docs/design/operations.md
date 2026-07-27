@@ -27,7 +27,8 @@ API request、worker operation、LLM provider call を correlation ID で追跡�
 error code、latency、queue 滞留、再試行、provider 使用量を外部監視基盤へ渡す。
 ログ本文に private state と credential を含めない。
 
-workerは`read_with_poll`で最大5件を取得する。中断はPGMQ visibility timeout後の再配送で
+workerは待機時間が正の場合だけ`read_with_poll`、0の場合は非pollingの`read`で設定件数を
+取得する。中断はPGMQ visibility timeout後の再配送で
 回復し、`read_ct`をledgerの`attempt_count`へ同期する。heartbeat、完了、再試行は
 `queue_message_id`、`worker_id`、`attempt_count`の一致で所有権を確認する。retryable errorは
 messageをarchiveせず再配送し、検証失敗、重複message、最大試行回数超過は業務処理を
@@ -43,6 +44,10 @@ messageをarchiveせず再配送し、検証失敗、重複message、最大試�
 
 architecture の `architecture.json` と品質 report は、AI と人が同じ構造と検証結果を
 参照する調査入力になる。
+
+品質reportの最新試行は`.werewolf-agent/quality/profiles/<profile>/current`、最終成功は
+同じprofileの`last-passed.json`から解決する。固定したtest件数や過去の画面画像を運用判断へ
+使用しない。BrowserとAgent reviewの成果物は`.werewolf-agent/reviews`に分離する。
 
 品質用Composeは固定project名と所有labelで一組だけ起動し、一時jobへ`--rm`を指定する。
 runnerは開始前後の子processと所有resourceを比較し、終了待機後も残る場合は異常とする。
