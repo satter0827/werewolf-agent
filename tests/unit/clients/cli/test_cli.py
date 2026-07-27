@@ -300,7 +300,7 @@ def test_doctor_json_output_is_machine_readable(monkeypatch: pytest.MonkeyPatch)
     assert payload["provider"] == "fake"
     assert payload["model"] == "fake-list-llm"
     assert payload["prompt file"] == "packaged"
-    assert payload["data source"] == "supabase"
+    assert payload["data source"] == "api"
 
 
 def test_doctor_command_redacts_supabase_worker_dsn(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -601,21 +601,22 @@ def test_setup_options_show_and_advance_commands_use_public_api_client(
     assert ("advance", "game-1") in fake_client.calls
 
 
-def test_setup_options_requires_supabase_client_env_before_building_client(
+def test_setup_options_uses_public_api_without_supabase_client_env(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail_build_game_client(_settings: object) -> FakeGameClient:
-        raise AssertionError("build_game_client should not be called without Supabase env")
-
-    monkeypatch.setattr(command_common, "build_game_client", fail_build_game_client)
+    fake_client = FakeGameClient()
+    public_client = SimpleNamespace(
+        get_runtime_config=lambda: SimpleNamespace(setup=fake_client.get_setup_options())
+    )
+    monkeypatch.setattr(setup_command, "build_public_client", lambda _settings: public_client)
     monkeypatch.setenv("WEREWOLF_SUPABASE_URL", "")
     monkeypatch.setenv("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "")
     get_settings.cache_clear()
 
     result = CliRunner().invoke(app, ["setup", "show"])
 
-    assert result.exit_code == 1
-    assert "APIへ接続できませんでした。" in result.output
+    assert result.exit_code == 0
+    assert ("setup_options", "default") in fake_client.calls
 
 
 def test_play_command_handles_data_source_problem_safely(monkeypatch: pytest.MonkeyPatch) -> None:

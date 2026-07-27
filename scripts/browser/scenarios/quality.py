@@ -9,7 +9,7 @@ from typing import Any
 from playwright.sync_api import Page, expect
 
 FORBIDDEN_INTERNAL_TERMS = re.compile(
-    r"\b(?:MOC|mock|provider|model|token|Supabase|DB|API)\b",
+    r"\b(?:MOC|mock|provider|model|token|Supabase|DB|API|Deploy)\b",
     re.I,
 )
 
@@ -18,6 +18,16 @@ def assert_no_horizontal_overflow(page: Page) -> None:
     """Viewportからの横方向はみ出しを拒否する。"""
     overflow = page.evaluate("document.documentElement.scrollWidth - window.innerWidth")
     assert float(overflow) <= 1, f"horizontal overflow: {overflow}px"
+
+
+def reset_streamlit_scroll(page: Page) -> None:
+    """Streamlitの内部scroll領域を先頭へ戻して証跡の起点を揃える。"""
+    page.evaluate(
+        """() => {
+          document.scrollingElement?.scrollTo(0, 0);
+          document.querySelector('[data-testid="stMain"]')?.scrollTo(0, 0);
+        }"""
+    )
 
 
 def assert_streamlit_quality(page: Page) -> None:
@@ -77,4 +87,8 @@ def _is_streamlit_number_step(node: dict[str, Any]) -> bool:
     )
 
 
-__all__ = ["assert_no_horizontal_overflow", "assert_streamlit_quality"]
+__all__ = [
+    "assert_no_horizontal_overflow",
+    "assert_streamlit_quality",
+    "reset_streamlit_scroll",
+]

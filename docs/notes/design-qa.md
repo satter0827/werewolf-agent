@@ -14,7 +14,9 @@
 - desktop、mobile、320px幅でhorizontal overflowを発生させない。
 - 可視buttonとtabは44px以上とし、keyboard focusを視認可能にする。
 - heading順、入力label、重大なAxe違反、外部network要求を自動Browser検査で確認する。
-- 開始設定、validation、待機、発言、対象選択、進行、完了、観戦、記録、設定を確認する。
+- 開始設定、validation、待機、発言、対象選択、進行、完了、観戦、記録の空・記録あり、設定、
+  縮退表示を独立して確認する。
+- 一般画面へDeployやAPI、databaseなどの実装メタ情報を表示しない。
 
 ## 判定
 

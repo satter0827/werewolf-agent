@@ -13,7 +13,7 @@ from werewolf_agent.adapters.auth import (
     ensure_session,
     require_supabase_client_config,
 )
-from werewolf_agent.clients.presentation import implements_features, present_error
+from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.events import (
     LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
 )
@@ -170,29 +170,8 @@ def _render_degraded_shell(
     _render_unavailable_navigation(st, catalog=catalog, lang=lang)
     st.title(settings.streamlit_page_title)
     st.caption(catalog.t(lang, "runtime.degraded_caption"))
-    try:
-        runtime_status = load_runtime_status(settings=settings)
-    except AppError as exc:
-        detail = present_error(exc, language=lang).detail
-        st.warning(catalog.t(lang, "runtime.api_unavailable", detail=detail))
-    else:
-        st.subheader(catalog.t(lang, "runtime.current_state"))
-        for component in runtime_status.components:
-            reason = (
-                catalog.label(lang, "runtime_reason", component.reason_code)
-                if component.reason_code
-                else catalog.t(lang, "common.none")
-            )
-            st.write(
-                catalog.t(
-                    lang,
-                    "runtime.component_state",
-                    component=catalog.label(lang, "runtime_component", component.component),
-                    status=catalog.label(lang, "runtime_status", component.status),
-                    reason=reason,
-                )
-            )
-    st.subheader(catalog.t(lang, "runtime.available_actions"))
+    st.warning(catalog.t(lang, "runtime.service_unavailable"))
+    st.header(catalog.t(lang, "runtime.available_actions"))
     selected = st.selectbox(
         catalog.t(lang, "settings.language"),
         options=list(catalog.languages),

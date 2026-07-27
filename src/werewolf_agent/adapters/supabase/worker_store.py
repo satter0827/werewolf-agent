@@ -53,14 +53,22 @@ class SupabaseWorkerStore:
         poll_seconds: int = 5,
     ) -> list[dict[str, Any]]:
         """Read a bounded PGMQ batch and bind each ledger row to this worker."""
-        messages = self._connection.execute(
-            """
-            select * from pgmq.read_with_poll(
-              'game_operations', %s, %s, %s, 100
-            )
-            """,
-            (claim_seconds, quantity, poll_seconds),
-        ).fetchall()
+        if poll_seconds > 0:
+            messages = self._connection.execute(
+                """
+                select * from pgmq.read_with_poll(
+                  'game_operations', %s, %s, %s, 100
+                )
+                """,
+                (claim_seconds, quantity, poll_seconds),
+            ).fetchall()
+        else:
+            messages = self._connection.execute(
+                """
+                select * from pgmq.read('game_operations', %s, %s)
+                """,
+                (claim_seconds, quantity),
+            ).fetchall()
         requests: list[dict[str, Any]] = []
         for message in messages:
             payload = message.get("message")

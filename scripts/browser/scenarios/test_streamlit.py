@@ -14,6 +14,7 @@ from scripts.browser.scenarios.api import create_authenticated_user, create_comp
 from scripts.browser.scenarios.quality import (
     assert_no_horizontal_overflow,
     assert_streamlit_quality,
+    reset_streamlit_scroll,
 )
 
 
@@ -27,12 +28,17 @@ def test_setup_sections_and_validation(
     expect(page.get_by_text("Werewolf Agent", exact=True)).to_be_visible()
     expect(page.get_by_role("heading", name="ゲーム開始設定")).to_be_visible()
     for name in ("世界観", "役職", "登場人物", "ルール"):
-        expect(page.get_by_role("tab", name=name)).to_be_visible()
+        tab = page.get_by_role("tab", name=name)
+        expect(tab).to_be_visible()
+        tab.click()
+        expect(tab).to_have_attribute("aria-selected", "true")
     page.get_by_role("tab", name="役職").click()
     villager_count = page.get_by_role("spinbutton", name="村人", exact=True)
     villager_count.fill("0")
     villager_count.press("Tab")
-    expect(page.get_by_text(re.compile(r"合計人数は .* 人にしてください"))).to_be_visible()
+    validation = page.get_by_text(re.compile(r"合計人数は .* 人にしてください"))
+    expect(validation).to_be_visible()
+    validation.scroll_into_view_if_needed()
     assert_streamlit_quality(page)
     capture_public_screenshot(
         page,
@@ -58,22 +64,27 @@ def test_gameplay_waiting_speech_target_and_progress(
     expect(page.locator(".wa-seat")).to_have_count(5)
     advance = page.get_by_role("button", name="1ステップ進める")
     expect(advance).to_be_visible(timeout=30_000)
+    _capture_state(page, capture_public_screenshot, f"streamlit-gameplay-waiting-{device_name}.png")
     advance.focus()
     page.keyboard.press("Enter")
     message = page.get_by_label("発言内容")
     expect(message).to_be_visible(timeout=30_000)
+    message.scroll_into_view_if_needed()
+    capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")
     message.fill("公開情報を整理して話します。")
     message.press("Tab")
     submit = page.get_by_role("button", name="入力を送信")
     expect(submit).to_be_enabled()
     submit.click()
     expect(page.locator('[data-testid="stStatusWidget"]')).to_have_count(1)
-    expect(page.get_by_label("対象を選ぶ")).to_be_visible(timeout=30_000)
+    status = page.locator('[data-testid="stStatusWidget"]')
+    status.scroll_into_view_if_needed()
+    capture_public_screenshot(page, f"streamlit-gameplay-progress-{device_name}.png")
+    target = page.get_by_label("対象を選ぶ")
+    expect(target).to_be_visible(timeout=30_000)
+    target.scroll_into_view_if_needed()
     assert_streamlit_quality(page)
-    capture_public_screenshot(
-        page,
-        f"streamlit-gameplay-{device_name}.png",
-    )
+    capture_public_screenshot(page, f"streamlit-gameplay-target-{device_name}.png")
 
 
 def test_completed_game_presents_result_before_timeline(
@@ -101,7 +112,15 @@ def test_completed_game_presents_result_before_timeline(
     button.focus()
     page.keyboard.press("Enter")
     expect(page.get_by_text(email)).to_be_visible(timeout=30_000)
+    _open_navigation(page, "記録")
+    _close_sidebar_if_needed(page)
     record = page.get_by_role("button", name="記録を開く", exact=True)
+    expect(record).to_be_visible(timeout=30_000)
+    _capture_state(
+        page,
+        capture_public_screenshot,
+        f"streamlit-records-populated-{device_name}.png",
+    )
     record.focus()
     page.keyboard.press("Enter")
     result = page.get_by_text("結果サマリー", exact=True)
@@ -112,8 +131,9 @@ def test_completed_game_presents_result_before_timeline(
     assert result_box["y"] < timeline_box["y"]
     expect(page.get_by_role("button", name="1ステップ進める")).to_have_count(0)
     assert_streamlit_quality(page)
-    capture_public_screenshot(
+    _capture_state(
         page,
+        capture_public_screenshot,
         f"streamlit-gameplay-complete-{device_name}.png",
     )
 
@@ -127,14 +147,12 @@ def test_observer_uses_public_presentation(
     page.goto(streamlit_url)
     _open_navigation(page, "観戦")
     expect(page.get_by_role("heading", name="観戦開始設定")).to_be_visible()
+    _close_sidebar_if_needed(page)
     page.get_by_role("button", name="観戦を始める").click()
     expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
     expect(page.get_by_text("観戦モード", exact=True).first).to_be_visible()
     assert_streamlit_quality(page)
-    capture_public_screenshot(
-        page,
-        f"streamlit-observer-{device_name}.png",
-    )
+    _capture_state(page, capture_public_screenshot, f"streamlit-observer-{device_name}.png")
 
 
 def test_records_settings_and_narrow_layout(
@@ -148,20 +166,45 @@ def test_records_settings_and_narrow_layout(
     expect(page.get_by_role("heading", name="ゲーム記録")).to_be_visible()
     expect(page.get_by_role("button", name="プレイを始める")).to_be_visible()
     expect(page.get_by_role("button", name="観戦を始める")).to_be_visible()
+    _close_sidebar_if_needed(page)
+    _capture_state(
+        page,
+        capture_public_screenshot,
+        f"streamlit-records-empty-{device_name}.png",
+    )
     _open_navigation(page, "表示設定")
+    _close_sidebar_if_needed(page)
     expect(page.get_by_role("heading", name="表示設定")).to_be_visible()
     for name in ("表示", "役職定義", "人物定義"):
-        expect(page.get_by_role("tab", name=name)).to_be_visible()
+        tab = page.get_by_role("tab", name=name)
+        expect(tab).to_be_visible()
+        tab.click()
+        expect(tab).to_have_attribute("aria-selected", "true")
     assert_streamlit_quality(page)
+    _capture_state(page, capture_public_screenshot, f"streamlit-settings-{device_name}.png")
     if device_name == "desktop":
         page.set_viewport_size({"width": 320, "height": 844})
         assert_no_horizontal_overflow(page)
         _open_navigation(page, "プレイ")
+        _close_sidebar_if_needed(page)
         expect(page.get_by_role("heading", name="ゲーム開始設定")).to_be_visible()
-    capture_public_screenshot(
-        page,
-        f"streamlit-settings-{device_name}.png",
+        assert_streamlit_quality(page)
+        _capture_state(page, capture_public_screenshot, "streamlit-setup-narrow-320.png")
+
+
+def test_degraded_shell_explains_recovery(
+    page: Page,
+    degraded_streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    page.goto(degraded_streamlit_url)
+    expect(page.get_by_text(re.compile(r"ログインを一時的に利用できません"))).to_be_visible(
+        timeout=30_000
     )
+    expect(page.get_by_text(re.compile(r"接続が復旧すると.*利用できます"))).to_be_visible()
+    assert_streamlit_quality(page)
+    _capture_state(page, capture_public_screenshot, f"streamlit-degraded-{device_name}.png")
 
 
 def _open_navigation(page: Page, label: str) -> None:
@@ -169,6 +212,24 @@ def _open_navigation(page: Page, label: str) -> None:
     button: Locator = page.get_by_role("button", name=label, exact=True).first
     button.focus()
     page.keyboard.press("Enter")
+
+
+def _close_sidebar_if_needed(page: Page) -> None:
+    button = page.get_by_role(
+        "button", name=re.compile(r"close sidebar|keyboard_double_arrow_left", re.I)
+    )
+    if button.is_visible():
+        button.focus()
+        page.keyboard.press("Enter")
+
+
+def _capture_state(
+    page: Page,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    filename: str,
+) -> None:
+    reset_streamlit_scroll(page)
+    capture_public_screenshot(page, filename)
 
 
 def _open_sidebar_if_needed(page: Page) -> None:

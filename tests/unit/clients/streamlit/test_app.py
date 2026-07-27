@@ -151,6 +151,9 @@ def test_app_shows_supabase_config_error_before_rendering_game_views(
         app._render_app(streamlit, settings)
 
     assert streamlit.error_texts == []
+    assert streamlit.warning_texts == [
+        "ゲーム機能を一時的に利用できません。接続を確認してから、画面を再読み込みしてください。"
+    ]
     assert streamlit.info_texts == [
         ("ログインを一時的に利用できません。接続を確認してから、画面を再読み込みしてください。")
     ]
@@ -262,6 +265,7 @@ class _AppStub(_StreamlitStub):
         self.error_texts: list[str] = []
         self.header_texts: list[str] = []
         self.info_texts: list[str] = []
+        self.warning_texts: list[str] = []
 
     def set_page_config(self, **kwargs: Any) -> None:
         pass
@@ -285,7 +289,7 @@ class _AppStub(_StreamlitStub):
         pass
 
     def warning(self, value: str) -> None:
-        pass
+        self.warning_texts.append(value)
 
     def selectbox(self, label: str, options: list[str], **kwargs: Any) -> str:
         return options[kwargs.get("index", 0)]

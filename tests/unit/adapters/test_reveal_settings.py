@@ -97,8 +97,8 @@ def test_worker_claim_delegates_visibility_and_redelivery_to_pgmq() -> None:
     SupabaseWorkerStore(connection).claim_request(worker_id="worker-1", claim_seconds=30)
 
     claim_sql = connection.calls[0][0].lower()
-    assert "pgmq.read_with_poll" in claim_sql
-    assert connection.calls[0][1] == (30, 1, 0)
+    assert "pgmq.read(" in claim_sql
+    assert connection.calls[0][1] == (30, 1)
     assert "claimed_until" not in claim_sql
 
 

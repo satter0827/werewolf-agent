@@ -4,6 +4,10 @@ from __future__ import annotations
 
 import os
 import re
+import socket
+import subprocess
+import sys
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
@@ -96,6 +100,63 @@ def page(context: BrowserContext) -> Iterator[Page]:
 def streamlit_url() -> str:
     """検査対象Streamlit URLを返す。"""
     return os.environ.get("PLAYWRIGHT_STREAMLIT_URL", "http://streamlit:8501")
+
+
+@pytest.fixture(scope="session")
+def degraded_streamlit_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator[str]:
+    """必須接続情報がない縮退画面を独立processで起動する。"""
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = int(probe.getsockname()[1])
+
+    log_directory = tmp_path_factory.mktemp("degraded-streamlit")
+    stdout_path = log_directory / "stdout.log"
+    stderr_path = log_directory / "stderr.log"
+    environment = os.environ.copy()
+    environment.pop("WEREWOLF_SUPABASE_URL", None)
+    environment.pop("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", None)
+    environment["WEREWOLF_API_BASE_URL"] = "http://127.0.0.1:9"
+    command = [
+        sys.executable,
+        "-m",
+        "streamlit",
+        "run",
+        "src/werewolf_agent/clients/streamlit/app.py",
+        "--server.address=127.0.0.1",
+        f"--server.port={port}",
+        "--server.headless=true",
+        "--browser.gatherUsageStats=false",
+    ]
+    with (
+        stdout_path.open("w", encoding="utf-8") as stdout,
+        stderr_path.open("w", encoding="utf-8") as stderr,
+    ):
+        process = subprocess.Popen(command, env=environment, stdout=stdout, stderr=stderr)
+        url = f"http://127.0.0.1:{port}"
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if process.poll() is not None:
+                raise AssertionError(
+                    "縮退画面のStreamlit起動に失敗しました: "
+                    f"{stderr_path.read_text(encoding='utf-8')}"
+                )
+            try:
+                if httpx.get(f"{url}/_stcore/health", timeout=1).status_code == 200:
+                    break
+            except httpx.HTTPError:
+                time.sleep(0.1)
+        else:
+            process.terminate()
+            raise AssertionError("縮退画面のStreamlit起動がtimeoutしました")
+        try:
+            yield url
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=10)
 
 
 @pytest.fixture
