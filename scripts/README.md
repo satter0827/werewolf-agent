@@ -9,8 +9,10 @@ Browser、Compose、環境準備などのリリース品質scenarioは`scripts`�
 ## 実行方法
 
 ```bash
+python -m scripts.environment ensure auto
+python -m scripts.quality auto
 python -m scripts.environment ensure check
-python -m scripts.quality quick
+python -m scripts.quality focus
 python -m scripts.quality check
 python -m scripts.quality release
 python -m scripts.quality deep --confirm-deep
@@ -18,19 +20,21 @@ python -m scripts.quality gate python-static
 python -m scripts.quality gate ruff mypy
 python -m scripts.quality list
 python -m scripts.quality clean
+python -m scripts.quality auto --explain
 python -m scripts.supabase preflight
 python -m scripts.agents preflight
 python -m scripts.agents run --provider fake --suite standard
 python -m scripts.agents run --provider local --suite smoke
-python -m scripts.agents run --provider local --suite standard
 python -m scripts.agents local-ui
+python -m scripts.browser --journey play --state finished --device desktop --capture gameplay-complete
 ```
 
-- `quick`: architecture、format、lint、型、unit、軽量Hypothesis
-- `check`: Quick、offline integration、coverage観測、docs、OpenAPI、Schemathesis、build
+- `auto`: 変更pathから必要なprofileまたは部分gateを選択
+- `focus`: architecture、format、lint、型、unit、軽量statefulを常に固定実行
+- `check`: Focus、unit同時coverage、offline integration、docs、OpenAPI、Schemathesis、build
 - `release`: Check、local Supabase integration、Streamlit E2E、Docker smoke
 - `deep`: 長時間stateful、fault injection、benchmark観測
-- `clean`: 再生成可能なbuild、品質用一時cache、coverage、期限切れrun
+- `clean`: 再生成可能な`outputs`、tool cache、品質用一時cache
 
 `scripts.agents`は品質判定から独立したAgent reviewです。通常は画面を使わず、同じAgent
 graphをFakeまたはLocal LLMで固定scenarioへ通します。`local-ui`だけが明示的にStreamlitを
@@ -39,12 +43,19 @@ graphをFakeまたはLocal LLMで固定scenarioへ通します。`local-ui`だ�
 修復またはfallbackを伴う完走は`degraded`です。standardは開始時とpreset完了時に
 checkpointを更新し、完了または中断時に最終状態を確定します。
 `run --suite standard --preset <id>`は指定presetだけを固定順で実行し、複数指定できます。
+Browserの`--capture`は論理名を使い、対応scenarioだけを実行します。複数の`--capture`と
+`--device`を指定でき、未定義名やjourney／stateと両立しない組合せは実行前に拒否します。
 
 `--jobs`で並列度、`--timeout`でgateごとの上限秒数を変更できます。既定の並列度は
 CPU数と設定上限の小さい方です。worker数は設定上限以下、timeoutは1以上、
 既定worker上限、保持件数、profile別timeout、benchmark反復下限は`pyproject.toml`の
 `tool.werewolf-quality`から読みます。coverageとbenchmarkは観測値として保存し、根拠の
 ない数値閾値では合否を決めません。
+
+通常の反復確認には`auto`を使います。domainやunit変更はFocus、API・offline integrationは
+Check、Streamlit・Browser・Supabase・ComposeはReleaseへ昇格します。profile名を直接指定した
+場合は差分にかかわらず、そのlevel全体を実行します。`--explain`は選定理由、stage、再利用候補を
+表示して終了し、gateを実行しません。
 
 `scripts.environment`はlockとtool versionのfingerprintを確認し、不足時だけPython依存を同期します。
 release環境ではSupabase image、E2E image、runtime imageも準備します。品質commandは不足物を
@@ -61,11 +72,11 @@ CLIなど、選択profileに必要なローカル環境が不足した場合に�
 
 ## 成果物
 
-成功結果は`.werewolf-agent/quality/latest/profiles/<profile>/`、個別gateは
-`.werewolf-agent/quality/latest/gates/<selector>/`へ保存します。成功履歴は増やさず、
-report、summary、event、log、test結果、coverage、画面、manifestを含む一式を
-置き換えます。非成功結果は
-`.werewolf-agent/quality/failures/<selector>/`へ直近3件だけ保存します。未実行gateも
+最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current/`へ保存します。
+最終成功は`last-passed.json`が指し、以前のcurrentは
+`.werewolf-agent/quality/history/<profile>/<run-id>/`へ移動します。current、参照中の最終成功、
+直近2件の非成功runを保持します。report、summary、event、log、test結果、coverage、画面、
+manifestを含む一式をatomicに置き換えます。未実行gateも
 `skipped`として残すため、AIと人間が同じreportから調査を開始できます。Git状態の
 初期確認失敗やrunner中断も、実行済み・未完了・cleanupを含むreportを生成します。
 `report.json`の`metrics`にはtest件数、総合・line・branch coverage、benchmark、
@@ -93,9 +104,11 @@ scenarioをcontainer内で実行し、子processの出力と画像をrun固有�
 Supabase CLIの出力からは公開キー、URL、DB接続先だけを許可し、service-role値は
 引き渡しません。Supabase CLIは`2.104.0`に固定し、対応するDocker imageは
 environment準備で取得します。
-Release/Deepは固定された品質用Compose projectを一組だけ使い、所有labelで識別した
-session、container、volumeを終了時に削除します。Docker buildは
+Release/Deepはhost排他lockと固定された品質用Compose projectを一組だけ使い、所有labelで識別した
+session、container、volumeを終了時に削除します。専用Buildx builderのcacheは8GiBを上限とし、
+global pruneを行いません。Docker buildは
 runner開始前に行い、runner中のsmokeはnetworkなしで実行します。timeoutやrunner割り込み時は子孫processを含めて停止し、
-品質用Supabaseと一時Docker imageのcleanupを試みます。OneDrive上の再生成可能な
+品質用Supabaseと一時Docker imageのcleanupを試みます。次のrelease開始時にもDocker labelから
+過去runの品質専用Supabaseだけを回収します。OneDrive上の再生成可能な
 ディレクトリ削除は、一時的な競合に限って短時間再試行します。成功結果の置換と
 非成功結果の整理はrun確定時に実行します。

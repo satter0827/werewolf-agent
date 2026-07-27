@@ -6,19 +6,21 @@ import os
 import shutil
 import socket
 import tempfile
+import tomllib
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
 import pytest
+from hypothesis import settings as hypothesis_settings
 
 os.environ.setdefault(
     "HYPOTHESIS_STORAGE_DIRECTORY",
     str(Path(__file__).resolve().parents[1] / ".werewolf-agent" / "cache" / "hypothesis"),
 )
 
-LEVELS = ("quick", "check", "release", "deep")
+LEVELS = ("focus", "check", "release", "deep")
 LEVEL_INDEX = {level: index for index, level in enumerate(LEVELS)}
 _REQUIRED_LEVEL_KEY = pytest.StashKey[str]()
 _SELECTED_COUNT_KEY = pytest.StashKey[int]()
@@ -33,8 +35,8 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     group.addoption(
         "--test-level",
         choices=LEVELS,
-        default="quick",
-        help="実行を許可するtest level。既定値はquick。",
+        default="focus",
+        help="実行を許可するtest level。既定値はfocus。",
     )
     group.addoption(
         "--confirm-deep",
@@ -61,6 +63,16 @@ def pytest_configure(config: pytest.Config) -> None:
         config.addinivalue_line("markers", f"{marker}: {description}")
     if config.getoption("--test-level") == "deep" and not config.getoption("--confirm-deep"):
         raise pytest.UsageError("deepの実行には--confirm-deepが必要です。")
+    selected_level = str(config.getoption("--test-level"))
+    with (Path(__file__).resolve().parents[1] / "pyproject.toml").open("rb") as stream:
+        hypothesis = tomllib.load(stream)["tool"]["werewolf-quality"]["hypothesis"]
+    hypothesis_settings.register_profile(
+        "werewolf-quality",
+        max_examples=int(hypothesis[f"{selected_level}_examples"]),
+        stateful_step_count=int(hypothesis[f"{selected_level}_steps"]),
+        deadline=None,
+    )
+    hypothesis_settings.load_profile("werewolf-quality")
     config.stash[_SELECTED_COUNT_KEY] = 0
     config.stash[_GATED_COUNT_KEY] = 0
     config.stash[_REQUIRED_LEVELS_KEY] = set()
@@ -115,13 +127,13 @@ def pytest_collection_modifyitems(
 def required_level(item: pytest.Item) -> str:
     """配置とmarkerからitemの最低test levelを返す。"""
 
-    required = "quick"
+    required = "focus"
     parts = Path(str(item.path)).parts
     if "integration" in parts:
         required = "check"
     if item.get_closest_marker("supabase"):
         required = "release"
-    if item.get_closest_marker("monkey") or item.get_closest_marker("benchmark"):
+    if item.get_closest_marker("benchmark"):
         required = max(required, "check", key=LEVEL_INDEX.__getitem__)
     if item.get_closest_marker("deep"):
         required = "deep"

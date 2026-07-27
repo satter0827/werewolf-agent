@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[3]
 def test_wheel_contains_entrypoints_and_packaged_resources() -> None:
     """wheelへCLI entrypointと実行時resourceを含める。"""
 
-    wheels = list((ROOT / ".werewolf-agent" / "build" / "package").glob("*.whl"))
+    wheels = list((ROOT / ".werewolf-agent" / "outputs" / "package").glob("*.whl"))
     assert len(wheels) == 1, "先にcheck profileで配布物を構築してください。"
 
     with ZipFile(wheels[0]) as wheel:

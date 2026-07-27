@@ -10,19 +10,40 @@ on:
 permissions:
   contents: read
 
-env:
-  QUALITY_RUNTIME_IMAGE: werewolf-agent-quality-runtime:latest
-
 jobs:
   check:
     if: github.event_name == 'pull_request'
-    name: Check / Python ${{ matrix.python-version }}
+    name: Check / Python 3.12
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --no-project python -m scripts.environment setup check
+      - run: uv run --no-sync python -m scripts.quality check --fresh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-check-python-3.12
+          path: |
+            .werewolf-agent/quality/profiles/check/current
+            .werewolf-agent/quality/profiles/check/last-passed.json
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  compatibility:
+    if: github.event_name == 'pull_request'
+    name: Compatibility / Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        python-version: ["3.11", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -30,16 +51,8 @@ jobs:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - run: uv run --no-project python -m scripts.environment setup check
-      - run: uv run --no-sync python -m scripts.quality check
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: quality-check-python-${{ matrix.python-version }}
-          path: |
-            .werewolf-agent/quality
-            .werewolf-agent/build
-          if-no-files-found: warn
-          include-hidden-files: true
+      - run: uv run --no-sync mypy src
+      - run: uv run --no-sync pytest --test-level=focus tests/unit
 
   release:
     if: github.event_name == 'push'
@@ -56,14 +69,15 @@ jobs:
         with:
           version: 2.104.0
       - run: uv run --no-project python -m scripts.environment setup release
-      - run: uv run --no-sync python -m scripts.quality release
+      - run: uv run --no-sync python -m scripts.quality release --fresh
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quality-release
           path: |
-            .werewolf-agent/quality
-            .werewolf-agent/build
+            .werewolf-agent/quality/profiles/release/current
+            .werewolf-agent/quality/profiles/release/last-passed.json
+            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
       - if: always()
@@ -90,8 +104,9 @@ jobs:
         with:
           name: quality-deep
           path: |
-            .werewolf-agent/quality
-            .werewolf-agent/build
+            .werewolf-agent/quality/profiles/deep/current
+            .werewolf-agent/quality/profiles/deep/last-passed.json
+            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
       - if: always()

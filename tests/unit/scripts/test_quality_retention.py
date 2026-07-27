@@ -19,7 +19,7 @@ def _run(root: Path, name: str, state: str) -> Path:
     return run
 
 
-def test_success_replaces_latest_without_growing_history(
+def test_success_updates_current_and_last_passed_without_growing_history(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -28,15 +28,18 @@ def test_success_replaces_latest_without_growing_history(
 
     first_run = _run(tmp_path, "first", "passed")
     (first_run / "events.jsonl").write_text("{}\n", encoding="utf-8")
-    first = retention.publish_run(first_run, "quick", "passed")
+    first = retention.publish_run(first_run, "focus", "passed")
     second_run = _run(tmp_path, "second", "passed")
     (second_run / "events.jsonl").write_text("{}\n", encoding="utf-8")
-    second = retention.publish_run(second_run, "quick", "passed")
+    second = retention.publish_run(second_run, "focus", "passed")
 
     assert first == second
     assert json.loads(second.read_text(encoding="utf-8"))["run_id"] == "second"
     assert (second.parent / "events.jsonl").is_file()
-    assert len(list(second.parent.iterdir())) == 3
+    pointer = json.loads((second.parent.parent / "last-passed.json").read_text(encoding="utf-8"))
+    assert pointer["run_id"] == "second"
+    history = tmp_path / "artifacts" / "quality" / "history" / "focus"
+    assert not history.exists() or list(history.iterdir()) == []
 
 
 def test_failures_are_bounded_per_selector(
@@ -49,12 +52,14 @@ def test_failures_are_bounded_per_selector(
     for index in range(retention.FAILURES_PER_SELECTOR + 2):
         retention.publish_run(
             _run(tmp_path, f"run-{index}", "failed"),
-            "quick",
+            "focus",
             "failed",
         )
 
-    failures = tmp_path / "artifacts" / "quality" / "failures" / "quick"
-    assert len(list(failures.iterdir())) == retention.FAILURES_PER_SELECTOR
+    history = tmp_path / "artifacts" / "quality" / "history" / "focus"
+    current = tmp_path / "artifacts" / "quality" / "profiles" / "focus" / "current"
+    assert len(list(history.iterdir())) == retention.FAILURES_PER_SELECTOR
+    assert current.is_dir()
 
 
 def test_failure_keeps_complete_review_context(
@@ -84,15 +89,29 @@ def test_failure_keeps_complete_review_context(
         encoding="utf-8",
     )
 
-    report = retention.publish_run(run, "quick", "failed")
+    report = retention.publish_run(run, "focus", "failed")
 
     assert (report.parent / "logs" / "failed.log").is_file()
     assert (report.parent / "test-results" / "unit.xml").is_file()
     assert (report.parent / "logs" / "passed.log").is_file()
     assert (report.parent / "events.jsonl").is_file()
-    retained = json.loads(report.read_text(encoding="utf-8"))["retention"]
-    assert retained["omitted_count"] == 0
-    assert retained["limit_exceeded"] is False
+    assert "retention" not in json.loads(report.read_text(encoding="utf-8"))
+
+
+def test_failure_updates_current_without_losing_last_passed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
+    retention.publish_run(_run(tmp_path, "passed-run", "passed"), "check", "passed")
+
+    current = retention.publish_run(_run(tmp_path, "failed-run", "failed"), "check", "failed")
+
+    assert json.loads(current.read_text(encoding="utf-8"))["run_id"] == "failed-run"
+    pointer_path = current.parent.parent / "last-passed.json"
+    pointer = json.loads(pointer_path.read_text(encoding="utf-8"))
+    assert pointer["run_id"] == "passed-run"
+    assert (tmp_path / "artifacts" / "quality" / pointer["report"]).is_file()
 
 
 def test_abandoned_run_is_recovered_before_next_execution(
@@ -100,7 +119,7 @@ def test_abandoned_run_is_recovered_before_next_execution(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     runtime = tmp_path / "runtime"
-    run = runtime / "quality" / "runs" / "20260726T000000Z-quick-1"
+    run = runtime / "quality" / "runs" / "20260726T000000Z-focus-1"
     (run / "logs").mkdir(parents=True)
     (run / "logs" / "partial.log").write_text("partial", encoding="utf-8")
     monkeypatch.setattr(retention, "TEMPORARY_ROOT", runtime)

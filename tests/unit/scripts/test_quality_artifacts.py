@@ -22,7 +22,7 @@ def test_manifest_records_review_evidence_and_diagnostics(tmp_path: Path) -> Non
     """人とAIが成果物の出所、分類、hashを追跡できる。"""
     (tmp_path / "test-results").mkdir()
     (tmp_path / "logs").mkdir()
-    (tmp_path / "test-results" / "quick.json").write_text("{}", encoding="utf-8")
+    (tmp_path / "test-results" / "unit.json").write_text("{}", encoding="utf-8")
     (tmp_path / "logs" / "pytest.log").write_text("passed", encoding="utf-8")
     results = [
         GateResult(
@@ -31,7 +31,7 @@ def test_manifest_records_review_evidence_and_diagnostics(tmp_path: Path) -> Non
             "passed",
             1.0,
             log="logs/pytest.log",
-            artifacts=["test-results/quick.json"],
+            artifacts=["test-results/unit.json"],
         )
     ]
 
@@ -39,13 +39,13 @@ def test_manifest_records_review_evidence_and_diagnostics(tmp_path: Path) -> Non
     document = json.loads(manifest.read_text(encoding="utf-8"))
     entries = {entry["path"]: entry for entry in document["artifacts"]}
 
-    assert entries["test-results/quick.json"]["category"] == "evidence"
-    assert entries["test-results/quick.json"]["producer"] == "pytest"
+    assert entries["test-results/unit.json"]["category"] == "evidence"
+    assert entries["test-results/unit.json"]["producer"] == "pytest"
     assert entries["logs/pytest.log"]["category"] == "diagnostic"
     assert len(entries["logs/pytest.log"]["sha256"]) == 64
     assert manifest_paths(manifest) == {
         "logs/pytest.log",
-        "test-results/quick.json",
+        "test-results/unit.json",
     }
 
 
@@ -58,7 +58,7 @@ def test_manifest_hashes_final_redacted_report(tmp_path: Path) -> None:
     for relative in ("test-results", "coverage", "benchmarks", "browser"):
         (tmp_path / relative).mkdir()
     context = RunContext(
-        profile="quick",
+        profile="focus",
         jobs=1,
         timeout_seconds=1,
         run_id="run",

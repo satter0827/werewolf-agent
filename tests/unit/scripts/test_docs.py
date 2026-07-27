@@ -55,7 +55,7 @@ def test_published_api_docstrings_use_an_unsuppressed_google_gate() -> None:
         pyproject = tomllib.load(stream)
     gates = [
         gate
-        for stage in quality._profile_stages("quick", jobs=1)
+        for stage in quality._profile_stages("focus", jobs=1)
         for gate in stage
         if gate.name == "docstrings"
     ]
@@ -63,7 +63,8 @@ def test_published_api_docstrings_use_an_unsuppressed_google_gate() -> None:
     assert pyproject["tool"]["ruff"]["lint"]["pydocstyle"]["convention"] == "google"
     assert len(gates) == 1
     command = gates[0].command
-    assert command[1:6] == ("-m", "ruff", "check", "--no-cache", "--select")
+    assert command[1:5] == ("-m", "ruff", "check", "--select")
+    assert "--no-cache" not in command
     assert "D" in command
     assert "src/werewolf_agent" in command
     assert "--ignore" not in command

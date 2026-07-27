@@ -39,6 +39,8 @@ class Gate:
     exclusive_resources: tuple[str, ...] = ()
     artifacts: tuple[str, ...] = ()
     diagnostics: tuple[str, ...] = ()
+    inputs: tuple[str, ...] = ()
+    reusable: bool = False
 
 
 @dataclass(slots=True)
@@ -54,6 +56,9 @@ class GateResult:
     log: str | None = None
     message: str | None = None
     artifacts: list[str] = field(default_factory=list)
+    execution_origin: Literal["executed", "reused"] = "executed"
+    source_run: str | None = None
+    fingerprint: str | None = None
 
 
 @dataclass(slots=True)
@@ -79,6 +84,9 @@ class RunContext:
     environment: dict[str, str]
     initial_git_status: str
     started_at: datetime
+    requested_profile: str | None = None
+    selection_reason: str = ""
+    fresh: bool = False
     initial_dependency_fingerprint: str = ""
     resources: dict[str, ResourceLease] = field(default_factory=dict)
 

@@ -25,7 +25,7 @@ from scripts.quality.gates.services import GATES as SERVICE_GATES
 from scripts.quality.gates.tests import DEEP_GATES, INTEGRATION_GATES, UNIT_GATES
 from scripts.quality.models import Gate, QualitySettings
 
-PROFILE_ORDER = ("quick", "check", "release", "deep")
+PROFILE_ORDER = ("focus", "check", "release", "deep")
 
 GROUPS: dict[str, tuple[str, ...]] = {
     "python-static": ("repository", "architecture", *PYTHON_STATIC_GATES),
@@ -35,7 +35,7 @@ GROUPS: dict[str, tuple[str, ...]] = {
     "distribution": PACKAGE_GATES,
     "benchmark": BENCHMARK_GATES,
     "integration": (*PACKAGE_GATES, *INTEGRATION_GATES, *SERVICE_GATES),
-    "browser": ("supabase-preflight", *BROWSER_GATES),
+    "browser": ("supabase-cleanup", "supabase-preflight", *BROWSER_GATES),
     "runtime": RUNTIME_GATES,
 }
 
@@ -46,23 +46,19 @@ def build_profile(
     run_dir: Path,
     settings: QualitySettings,
     jobs: int,
+    fresh: bool = False,
 ) -> list[list[Gate]]:
     """担当moduleのgateからprofileを構築し、schedulerでstageを導出する。"""
     from scripts.quality.scheduler import select_stages
 
-    catalog = [
-        *environment_module.build(),
-        *repository_module.build(),
-        *python_module.build(),
-        *tests_module.build(run_dir, settings, jobs),
-        *documentation_module.build(),
-        *contracts_module.build(),
-        *distribution_module.build(run_dir, settings),
-        *services_module.build(run_dir),
-        *browser_module.build(),
-        *runtime_module.build(),
-    ]
-    quick = {
+    catalog = build_catalog(
+        profile,
+        run_dir=run_dir,
+        settings=settings,
+        jobs=jobs,
+        fresh=fresh,
+    )
+    focus = {
         "environment",
         "repository",
         "architecture",
@@ -71,8 +67,7 @@ def build_profile(
         "isolation",
     }
     check = {
-        *quick,
-        "coverage",
+        *focus,
         "docs",
         "openapi",
         *INTEGRATION_GATES,
@@ -81,12 +76,35 @@ def build_profile(
     }
     release = {*check, "supabase-preflight", "supabase-integration", "e2e", "docker"}
     names = {
-        "quick": quick,
+        "focus": focus,
         "check": check,
         "release": release,
         "deep": {*release, *DEEP_GATES, "benchmark"},
     }[profile]
     return select_stages([catalog], sorted(names), expand_groups=False)
+
+
+def build_catalog(
+    profile: str,
+    *,
+    run_dir: Path,
+    settings: QualitySettings,
+    jobs: int,
+    fresh: bool = False,
+) -> list[Gate]:
+    """Selector実行にも使う全gate catalogを返す。"""
+    return [
+        *environment_module.build(),
+        *repository_module.build(),
+        *python_module.build(fresh=fresh),
+        *tests_module.build(run_dir, settings, jobs, profile=profile),
+        *documentation_module.build(),
+        *contracts_module.build(),
+        *distribution_module.build(run_dir, settings),
+        *services_module.build(run_dir),
+        *browser_module.build(),
+        *runtime_module.build(),
+    ]
 
 
 def expand_selectors(selectors: Iterable[str], available: set[str]) -> set[str]:
@@ -104,6 +122,7 @@ def expand_selectors(selectors: Iterable[str], available: set[str]) -> set[str]:
 __all__ = [
     "GROUPS",
     "PROFILE_ORDER",
+    "build_catalog",
     "build_profile",
     "expand_selectors",
 ]

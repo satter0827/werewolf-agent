@@ -45,7 +45,7 @@ def test_unrelated_gate_continues_after_failure(
     )
 
     state, report_path = quality.execute(
-        "quick",
+        "focus",
         jobs=1,
         timeout_seconds=1,
         stages_override=stages,

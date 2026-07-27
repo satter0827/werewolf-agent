@@ -16,6 +16,77 @@ from scripts.quality.models import ResourceLease
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def test_cleanup_orphaned_supabase_stops_only_quality_projects(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """過去runの品質projectだけを列挙して停止する。"""
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> support.CommandResult:
+        commands.append(command)
+        if command[:2] == ["docker", "ps"]:
+            return support.CommandResult(
+                command,
+                0,
+                0.0,
+                "development\nwerewolf-agent-quality-old\nwerewolf-agent-quality-old\n",
+            )
+        return support.CommandResult(command, 0, 0.0, "stopped\n")
+
+    monkeypatch.setattr(services, "run_command", fake_run)
+    context = quality.RunContext(
+        profile="release",
+        jobs=1,
+        timeout_seconds=60,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={},
+        initial_git_status="",
+        started_at=quality.utc_now(),
+    )
+
+    result = services.cleanup_orphaned_supabase(context, tmp_path)
+
+    assert result.returncode == 0
+    assert commands[1] == [
+        "supabase",
+        "stop",
+        "--project-id",
+        "werewolf-agent-quality-old",
+        "--no-backup",
+    ]
+    assert len(commands) == 2
+
+
+def test_repository_gate_rejects_undefined_artifact_areas(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """成果物rootへ旧構造や用途不明のlatestを再導入させない。"""
+    artifact_root = tmp_path / ".werewolf-agent"
+    (artifact_root / "diagnostic-architecture").mkdir(parents=True)
+    (artifact_root / "quality" / "manual").mkdir(parents=True)
+    monkeypatch.setattr(repository, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(repository, "LAYOUT", ArtifactLayout(artifact_root))
+    context = quality.RunContext(
+        profile="focus",
+        jobs=1,
+        timeout_seconds=60,
+        run_id="run",
+        run_dir=tmp_path / "run",
+        environment={},
+        initial_git_status="",
+        started_at=quality.utc_now(),
+    )
+
+    result = repository.check_artifact_placement(context, tmp_path)
+
+    assert result.returncode == 1
+    assert "diagnostic-architecture" in result.output
+    assert "manual" in result.output
+
+
 def test_execute_stops_owned_supabase_when_runner_is_interrupted(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -47,7 +118,7 @@ def test_execute_stops_owned_supabase_when_runner_is_interrupted(
     monkeypatch.setattr(quality, "create_run_directory", lambda _profile: ("run", tmp_path))
     monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
     monkeypatch.setattr(repository, "git_status", lambda _environment: "")
-    monkeypatch.setattr(quality, "_profile_stages", lambda *_args: stages)
+    monkeypatch.setattr(quality, "_profile_stages", lambda *_args, **_kwargs: stages)
     monkeypatch.setattr(quality, "_run_gate", run_gate)
 
     state, report_path = quality.execute(

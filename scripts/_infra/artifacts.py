@@ -19,11 +19,6 @@ class ArtifactLayout:
     root: Path = ARTIFACT_ROOT
 
     @property
-    def build(self) -> Path:
-        """検証済みbuild成果物の配置を返す。"""
-        return self.root / "build"
-
-    @property
     def cache(self) -> Path:
         """再利用可能なtool cacheの配置を返す。"""
         return self.root / "cache"
@@ -37,6 +32,16 @@ class ArtifactLayout:
     def quality(self) -> Path:
         """品質reportの配置を返す。"""
         return self.root / "quality"
+
+    @property
+    def reviews(self) -> Path:
+        """人間またはAIによるreview成果物の配置を返す。"""
+        return self.root / "reviews"
+
+    @property
+    def outputs(self) -> Path:
+        """文書、構造分析、package生成物の配置を返す。"""
+        return self.root / "outputs"
 
     @property
     def runtime(self) -> Path:

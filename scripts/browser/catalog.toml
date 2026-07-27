@@ -1,0 +1,30 @@
+[journeys]
+setup = ["test_setup_sections_and_validation"]
+play = ["test_gameplay_waiting_speech_target_and_progress", "test_completed_game_presents_result_before_timeline"]
+observe = ["test_observer_uses_public_presentation"]
+records = ["test_records_settings_and_narrow_layout"]
+degraded = ["test_degraded_shell_explains_recovery"]
+
+[states]
+waiting = ["test_gameplay_waiting_speech_target_and_progress"]
+active = ["test_gameplay_waiting_speech_target_and_progress", "test_observer_uses_public_presentation"]
+finished = ["test_completed_game_presents_result_before_timeline", "test_records_settings_and_narrow_layout"]
+error = ["test_degraded_shell_explains_recovery"]
+
+[devices]
+desktop = "Desktop Chrome"
+mobile = "Pixel 7"
+
+[captures]
+setup-validation = { scenario = "test_setup_sections_and_validation", filename = "streamlit-setup-validation-{device}.png" }
+gameplay-waiting = { scenario = "test_gameplay_waiting_speech_target_and_progress", filename = "streamlit-gameplay-waiting-{device}.png" }
+gameplay-speech = { scenario = "test_gameplay_waiting_speech_target_and_progress", filename = "streamlit-gameplay-speech-{device}.png" }
+gameplay-progress = { scenario = "test_gameplay_waiting_speech_target_and_progress", filename = "streamlit-gameplay-progress-{device}.png" }
+gameplay-target = { scenario = "test_gameplay_waiting_speech_target_and_progress", filename = "streamlit-gameplay-target-{device}.png" }
+gameplay-complete = { scenario = "test_completed_game_presents_result_before_timeline", filename = "streamlit-gameplay-complete-{device}.png" }
+observer = { scenario = "test_observer_uses_public_presentation", filename = "streamlit-observer-{device}.png" }
+records-empty = { scenario = "test_records_settings_and_narrow_layout", filename = "streamlit-records-empty-{device}.png" }
+records-populated = { scenario = "test_completed_game_presents_result_before_timeline", filename = "streamlit-records-populated-{device}.png" }
+settings = { scenario = "test_records_settings_and_narrow_layout", filename = "streamlit-settings-{device}.png" }
+setup-narrow-320 = { scenario = "test_records_settings_and_narrow_layout", filename = "streamlit-setup-narrow-320.png", devices = ["desktop"] }
+degraded = { scenario = "test_degraded_shell_explains_recovery", filename = "streamlit-degraded-{device}.png" }

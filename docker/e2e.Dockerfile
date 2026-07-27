@@ -15,11 +15,4 @@ COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
 RUN python -m playwright install --with-deps chromium
 
-COPY src ./src
-RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker
-COPY scripts ./scripts
-COPY contracts ./contracts
-COPY supabase ./supabase
-COPY .streamlit ./.streamlit
-
 CMD ["python", "-m", "pytest", "scripts/browser/scenarios/test_streamlit.py"]

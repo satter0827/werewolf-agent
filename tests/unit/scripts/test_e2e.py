@@ -38,15 +38,18 @@ def test_commands_never_build_or_pull_images(tmp_path: Path) -> None:
     assert str(tmp_path.resolve()) in flattened
 
 
-def test_e2e_image_installs_browser_before_source_and_excludes_code_tests() -> None:
-    """Browser取得layerをsource変更から分離し、品質scenarioだけを同梱する。"""
-    dockerfile = (Path(__file__).resolve().parents[3] / "docker" / "e2e.Dockerfile").read_text(
-        encoding="utf-8"
-    )
+def test_e2e_image_contains_only_stable_dependencies_and_mounts_current_source() -> None:
+    """Browser依存imageをsource変更から分離し、現在sourceをreadonlyで検査する。"""
+    root = Path(__file__).resolve().parents[3]
+    dockerfile = (root / "docker" / "e2e.Dockerfile").read_text(encoding="utf-8")
+    compose = (root / "compose.yaml").read_text(encoding="utf-8")
 
     assert "--no-install-project" in dockerfile
-    assert dockerfile.index("playwright install") < dockerfile.index("COPY src")
+    assert "playwright install" in dockerfile
+    assert "COPY src" not in dockerfile
+    assert "COPY scripts" not in dockerfile
     assert "COPY tests" not in dockerfile
+    assert ".:/workspace:ro" in compose
 
 
 def test_browser_gate_declares_public_contact_sheet() -> None:
@@ -89,3 +92,17 @@ def test_run_e2e_rejects_missing_local_configuration(
             timeout_seconds=30,
             visual_regression=False,
         )
+
+
+def test_owned_resource_snapshot_rejects_failed_docker_inspection(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Docker列挙失敗をresourceなしとして誤成功させない。"""
+
+    def failed(command: list[str], **_kwargs: object) -> e2e.CommandResult:
+        return e2e.CommandResult(command, 1, 0.0, "daemon unavailable")
+
+    monkeypatch.setattr(e2e, "run_command", failed)
+
+    with pytest.raises(EnvironmentBlockedError, match="確認できません"):
+        e2e._owned_resource_snapshot({})

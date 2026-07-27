@@ -12,7 +12,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 
-from scripts._infra.artifacts import publish_directory
+from scripts._infra.artifacts import LAYOUT, publish_directory
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     REPOSITORY_ROOT,
@@ -26,8 +26,8 @@ from scripts.architecture import write_outputs
 from scripts.docs.inspection import inspect_documentation
 
 DOCS_ROOT = REPOSITORY_ROOT / "docs"
-OUTPUT_ROOT = ARTIFACT_ROOT / "build" / "docs"
-INSPECTION_PATH = ARTIFACT_ROOT / "quality" / "manual" / "docs" / "report.json"
+OUTPUT_ROOT = ARTIFACT_ROOT / "outputs" / "docs"
+INSPECTION_PATH = LAYOUT.reviews / "docs" / "inspection" / "report.json"
 
 
 def build_documentation() -> tuple[int, Path]:

@@ -673,7 +673,7 @@ def resolve_run(value: str) -> Path:
     """run IDまたはpathを実在するrun directoryへ解決する。"""
     candidate = Path(value)
     if not candidate.is_dir():
-        candidate = LAYOUT.root / "agents" / "runs" / value
+        candidate = LAYOUT.reviews / "agents" / "runs" / value
     if not candidate.is_dir():
         raise FileNotFoundError(value)
     return candidate.resolve()
@@ -1139,7 +1139,7 @@ def _local_model_ids(config: LlmProviderConfig) -> list[str]:
 
 def _new_run_dir(provider: str, suite: str) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    base = LAYOUT.root / "agents" / "runs"
+    base = LAYOUT.reviews / "agents" / "runs"
     run_dir = base / f"{stamp}-{provider}-{suite}"
     suffix = 1
     while run_dir.exists():
@@ -1152,10 +1152,10 @@ def _new_run_dir(provider: str, suite: str) -> Path:
 
 def _new_preflight_dir() -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    root = LAYOUT.root / "agents" / "preflight" / stamp
+    root = LAYOUT.reviews / "agents" / "preflight" / stamp
     suffix = 1
     while root.exists():
-        root = LAYOUT.root / "agents" / "preflight" / f"{stamp}-{suffix}"
+        root = LAYOUT.reviews / "agents" / "preflight" / f"{stamp}-{suffix}"
         suffix += 1
     (root / "public").mkdir(parents=True)
     (root / "private").mkdir()

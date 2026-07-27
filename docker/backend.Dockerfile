@@ -12,13 +12,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
+
+FROM base AS runtime-dependencies
+
+RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
+
+FROM base AS dev-dependencies
+
+RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
+
+FROM dev-dependencies AS dev
+
 COPY src ./src
 COPY scripts ./scripts
 COPY supabase ./supabase
 COPY .streamlit ./.streamlit
-
-FROM base AS dev
-
 COPY .github ./.github
 COPY docker ./docker
 COPY docs ./docs
@@ -29,7 +37,14 @@ RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --ext
 
 CMD ["pytest"]
 
-FROM base AS runtime
+FROM runtime-dependencies AS runtime
+
+COPY src ./src
+COPY scripts/__init__.py ./scripts/__init__.py
+COPY scripts/_infra ./scripts/_infra
+COPY scripts/supabase ./scripts/supabase
+COPY supabase ./supabase
+COPY .streamlit ./.streamlit
 
 ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs \
     WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl \

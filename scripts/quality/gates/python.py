@@ -8,15 +8,25 @@ from scripts.quality.models import Gate
 GATES = ("ruff", "format", "docstrings", "mypy")
 
 
-def build() -> list[Gate]:
+def build(*, fresh: bool = False) -> list[Gate]:
     """各toolの正本設定を呼ぶPython静的gateを返す。"""
     python = sys.executable
+    ruff_cache = ("--no-cache",) if fresh else ()
+    mypy_cache = ("--no-incremental",) if fresh else ()
     return [
-        Gate("ruff", "Python lint", (python, "-m", "ruff", "check", "--no-cache", ".")),
+        Gate(
+            "ruff",
+            "Python lint",
+            (python, "-m", "ruff", "check", *ruff_cache, "."),
+            inputs=("src/**/*.py", "scripts/**/*.py", "tests/**/*.py", "pyproject.toml"),
+            reusable=True,
+        ),
         Gate(
             "format",
             "Python format",
-            (python, "-m", "ruff", "format", "--check", "--no-cache", "."),
+            (python, "-m", "ruff", "format", "--check", *ruff_cache, "."),
+            inputs=("src/**/*.py", "scripts/**/*.py", "tests/**/*.py", "pyproject.toml"),
+            reusable=True,
         ),
         Gate(
             "docstrings",
@@ -26,11 +36,13 @@ def build() -> list[Gate]:
                 "-m",
                 "ruff",
                 "check",
-                "--no-cache",
+                *ruff_cache,
                 "--select",
                 "D",
                 "src/werewolf_agent",
             ),
+            inputs=("src/**/*.py", "pyproject.toml"),
+            reusable=True,
         ),
         Gate(
             "mypy",
@@ -39,12 +51,14 @@ def build() -> list[Gate]:
                 python,
                 "-m",
                 "mypy",
-                "--no-incremental",
+                *mypy_cache,
                 "--cache-dir",
                 str(TEMPORARY_ROOT / "mypy"),
                 "src",
                 "scripts",
             ),
+            inputs=("src/**/*.py", "scripts/**/*.py", "pyproject.toml", "uv.lock"),
+            reusable=True,
         ),
     ]
 

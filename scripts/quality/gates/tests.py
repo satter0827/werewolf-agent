@@ -12,7 +12,7 @@ from scripts.quality.models import Gate, QualitySettings, RunContext
 
 UNIT_GATES = ("pytest",)
 INTEGRATION_GATES = ("integration",)
-COVERAGE_GATES = ("coverage",)
+COVERAGE_GATES: tuple[str, ...] = ()
 DEEP_GATES = ("deep-tests", "deep-integration", "deep-supabase")
 GATES = (*UNIT_GATES, *INTEGRATION_GATES, *COVERAGE_GATES, *DEEP_GATES)
 
@@ -21,42 +21,26 @@ def build(
     run_dir: Path,
     settings: QualitySettings,
     jobs: int,
+    *,
+    profile: str,
 ) -> list[Gate]:
     """pytestの選択規則と成果物契約を所有するtest gateを返す。"""
     python = sys.executable
-    workers = max(1, min(4, jobs))
-    basetemp = TEMPORARY_ROOT / "pytest" / f"{os.getpid()}-{time.time_ns()}"
+    unit_command = pytest_command(run_dir, profile=profile, jobs=jobs)
+    unit_artifacts = [
+        "test-results/unit.xml",
+        "test-results/unit.json",
+        "test-results/unit.html",
+    ]
+    if profile != "focus":
+        unit_artifacts.extend(("coverage/coverage.xml", "coverage/html/index.html"))
     return [
         Gate(
             "pytest",
-            "Python quick test",
-            (
-                python,
-                "-m",
-                "pytest",
-                "--test-level=quick",
-                "-n",
-                str(workers),
-                "--dist",
-                "loadscope",
-                "--benchmark-disable",
-                "--junitxml",
-                str(run_dir / "test-results" / "quick.xml"),
-                "--json-report",
-                "--json-report-file",
-                str(run_dir / "test-results" / "quick.json"),
-                "--html",
-                str(run_dir / "test-results" / "quick.html"),
-                "--self-contained-html",
-                "--basetemp",
-                str(basetemp),
-                "tests/unit",
-            ),
-            artifacts=(
-                "test-results/quick.xml",
-                "test-results/quick.json",
-                "test-results/quick.html",
-            ),
+            "Python unit test with profile coverage",
+            tuple(unit_command),
+            action=partial(run_unit, profile=profile, jobs=jobs),
+            artifacts=tuple(unit_artifacts),
         ),
         Gate(
             "integration",
@@ -85,19 +69,6 @@ def build(
                 "test-results/integration.xml",
                 "test-results/integration.json",
                 "test-results/integration.html",
-            ),
-        ),
-        Gate(
-            "coverage",
-            "Python total and branch coverage",
-            tuple(coverage_command(run_dir, settings)),
-            action=partial(run_coverage, settings=settings),
-            artifacts=(
-                "coverage/coverage.xml",
-                "coverage/html/index.html",
-                "test-results/coverage.xml",
-                "test-results/coverage.json",
-                "test-results/coverage.html",
             ),
         ),
         Gate(
@@ -192,27 +163,28 @@ def build(
     ]
 
 
-def run_coverage(
+def run_unit(
     context: RunContext,
     _: Path,
     *,
-    settings: QualitySettings,
+    profile: str,
+    jobs: int,
 ) -> CommandResult:
-    """総合coverageとbranch rateを判定せず観測する。"""
+    """Unit testを一度だけ実行し、check以上では同時にcoverageを採取する。"""
     started = time.monotonic()
-    command = coverage_command(context.run_dir, settings)
-    coverage = run_command(
+    command = pytest_command(context.run_dir, profile=profile, jobs=jobs)
+    result = run_command(
         command,
         timeout_seconds=context.timeout_seconds,
         environment=context.environment,
     )
-    if coverage.returncode != 0:
-        return coverage
+    if result.returncode != 0 or profile == "focus":
+        return result
     errors, branch_percentage = branch_coverage_contract(
         context.run_dir / "coverage" / "coverage.xml",
         minimum_percentage=0,
     )
-    output = [coverage.output]
+    output = [result.output]
     if branch_percentage is not None:
         output.append(f"branch coverage: {branch_percentage:.2f}% (観測値)\n")
     if errors:
@@ -226,32 +198,62 @@ def run_coverage(
     )
 
 
-def coverage_command(run_dir: Path, settings: QualitySettings) -> list[str]:
-    """Coverage成果物を同じrunへ保存するpytest commandを返す。"""
-    return [
+def pytest_command(run_dir: Path, *, profile: str, jobs: int) -> list[str]:
+    """Profileに応じた単一のunit test commandを返す。"""
+    workers = max(1, min(4, jobs))
+    basetemp = TEMPORARY_ROOT / "pytest" / f"{os.getpid()}-{time.time_ns()}"
+    command = [
         sys.executable,
         "-m",
         "pytest",
-        "--test-level=check",
-        "-m",
-        "not benchmark",
-        "--cov=werewolf_agent",
-        "--cov-branch",
-        "--cov-report",
-        f"xml:{run_dir / 'coverage' / 'coverage.xml'}",
-        "--cov-report",
-        f"html:{run_dir / 'coverage' / 'html'}",
-        "--cov-fail-under=0",
+        f"--test-level={profile}",
+        "-n",
+        str(workers),
+        "--dist",
+        "loadscope",
+        "--benchmark-disable",
         "--junitxml",
-        str(run_dir / "test-results" / "coverage.xml"),
+        str(run_dir / "test-results" / "unit.xml"),
         "--json-report",
         "--json-report-file",
-        str(run_dir / "test-results" / "coverage.json"),
+        str(run_dir / "test-results" / "unit.json"),
         "--html",
-        str(run_dir / "test-results" / "coverage.html"),
+        str(run_dir / "test-results" / "unit.html"),
         "--self-contained-html",
-        "tests/unit",
+        "--basetemp",
+        str(basetemp),
     ]
+    if profile != "focus":
+        command.extend(
+            (
+                "--cov=werewolf_agent",
+                "--cov-branch",
+                "--cov-report",
+                f"xml:{run_dir / 'coverage' / 'coverage.xml'}",
+                "--cov-report",
+                f"html:{run_dir / 'coverage' / 'html'}",
+                "--cov-fail-under=0",
+            )
+        )
+    command.extend(("tests/unit",))
+    return command
+
+
+def coverage_command(run_dir: Path, settings: QualitySettings) -> list[str]:
+    """旧helper名からcheck用の統合commandを返す。"""
+    del settings
+    return pytest_command(run_dir, profile="check", jobs=1)
+
+
+def run_coverage(
+    context: RunContext,
+    log_path: Path,
+    *,
+    settings: QualitySettings,
+) -> CommandResult:
+    """旧helper名からcheck用の統合実行を呼ぶ。"""
+    del settings
+    return run_unit(context, log_path, profile="check", jobs=1)
 
 
 def branch_coverage_contract(
@@ -284,5 +286,7 @@ __all__ = [
     "branch_coverage_contract",
     "build",
     "coverage_command",
+    "pytest_command",
     "run_coverage",
+    "run_unit",
 ]

@@ -3,6 +3,8 @@ x-python-build: &python-build
   dockerfile: docker/backend.Dockerfile
   target: runtime
 
+x-python-image: &python-image werewolf-agent-quality-app:latest
+
 x-auth-environment: &auth-environment
   WEREWOLF_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-http://host.docker.internal:54321}
   WEREWOLF_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
@@ -20,6 +22,7 @@ x-log-environment: &log-environment
 
 services:
   migrate:
+    image: *python-image
     build: *python-build
     profiles: ["dev", "test", "e2e", "production"]
     environment:
@@ -28,6 +31,7 @@ services:
     restart: "no"
 
   api:
+    image: *python-image
     build: *python-build
     profiles: ["dev", "test", "e2e", "production"]
     init: true
@@ -76,6 +80,7 @@ services:
       start_period: 5s
 
   worker:
+    image: *python-image
     build: *python-build
     profiles: ["dev", "e2e", "production"]
     init: true
@@ -106,6 +111,7 @@ services:
         condition: service_healthy
 
   streamlit:
+    image: *python-image
     build: *python-build
     profiles: ["dev", "e2e"]
     init: true
@@ -154,17 +160,23 @@ services:
     command: pytest
 
   e2e:
+    image: werewolf-agent-quality-e2e:latest
     build:
       context: .
       dockerfile: docker/e2e.Dockerfile
     profiles: ["e2e"]
     working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
     environment:
       PLAYWRIGHT_API_URL: http://api:8000
       PLAYWRIGHT_OUTPUT_DIR: ${PLAYWRIGHT_OUTPUT_DIR:-/tmp/werewolf-agent/playwright}
       PLAYWRIGHT_STREAMLIT_URL: http://streamlit:8501
       PLAYWRIGHT_VISUAL_REGRESSION: ${PLAYWRIGHT_VISUAL_REGRESSION:-0}
       PLAYWRIGHT_EXPECTED_INSTANCE_ID: ${WEREWOLF_API_INSTANCE_ID:-}
+      PLAYWRIGHT_DEVICES: ${PLAYWRIGHT_DEVICES:-desktop,mobile}
+      PLAYWRIGHT_CAPTURES: ${PLAYWRIGHT_CAPTURES:-}
+      PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-failure}
       PLAYWRIGHT_LOCAL_EMAIL: ${PLAYWRIGHT_LOCAL_EMAIL:-}
       PLAYWRIGHT_LOCAL_LLM: ${PLAYWRIGHT_LOCAL_LLM:-0}
       PLAYWRIGHT_LOCAL_PASSWORD: ${PLAYWRIGHT_LOCAL_PASSWORD:-}

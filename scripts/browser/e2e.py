@@ -22,6 +22,7 @@ from scripts._infra.process import (
     run_command,
     write_json,
 )
+from scripts.browser.catalog import capture_filenames, load_catalog, scenario_expression
 
 _REQUIRED_ENVIRONMENT = (
     "WEREWOLF_SUPABASE_DB_DSN",
@@ -38,6 +39,11 @@ def run_e2e(
     timeout_seconds: int,
     visual_regression: bool,
     suite: str = "streamlit",
+    journey: str | None = None,
+    state: str | None = None,
+    devices: Sequence[str] = ("desktop", "mobile"),
+    captures: Sequence[str] = (),
+    trace: str = "failure",
 ) -> CommandResult:
     """品質専用Compose projectでbrowser E2Eを実行する。"""
     started = time.monotonic()
@@ -52,8 +58,19 @@ def run_e2e(
         base_environment,
         visual_regression=visual_regression,
     )
+    selected_devices = tuple(devices)
+    selected_captures = tuple(captures)
+    environment["PLAYWRIGHT_DEVICES"] = ",".join(selected_devices)
+    environment["PLAYWRIGHT_CAPTURES"] = ",".join(
+        capture_filenames(selected_captures, selected_devices)
+    )
+    environment["PLAYWRIGHT_TRACE"] = "always" if trace == "always" else "failure"
     output: list[str] = []
-    commands = _commands(artifact_directory, suite=suite)
+    commands = _commands(
+        artifact_directory,
+        suite=suite,
+        scenario_filter=scenario_expression(journey, state, selected_captures),
+    )
     initial_cleanup = run_command(
         ["docker", "compose", "--profile", "e2e", "down", "--volumes", "--remove-orphans"],
         timeout_seconds=60,
@@ -157,6 +174,12 @@ def _owned_resource_snapshot(environment: Mapping[str, str]) -> dict[str, list[s
         timeout_seconds=30,
         environment=environment,
     )
+    failures = [result for result in (containers, volumes) if result.returncode != 0]
+    if failures:
+        details = "\n".join(result.output.strip() for result in failures if result.output.strip())
+        raise EnvironmentBlockedError(
+            "品質所有Docker resourceを確認できませんでした。" + (f"\n{details}" if details else "")
+        )
     return {
         "containers": sorted(line for line in containers.output.splitlines() if line.strip()),
         "volumes": sorted(line for line in volumes.output.splitlines() if line.strip()),
@@ -262,7 +285,12 @@ def _replace_host(url: str, host: str) -> str:
     )
 
 
-def _commands(artifact_directory: Path, *, suite: str = "streamlit") -> tuple[tuple[str, ...], ...]:
+def _commands(
+    artifact_directory: Path,
+    *,
+    suite: str = "streamlit",
+    scenario_filter: str | None = None,
+) -> tuple[tuple[str, ...], ...]:
     """buildやpullを許可しないE2E command列を返す。"""
     if suite not in {"streamlit", "local-llm"}:
         raise ValueError(f"未定義のBrowser suiteです: {suite}")
@@ -272,6 +300,45 @@ def _commands(artifact_directory: Path, *, suite: str = "streamlit") -> tuple[tu
         if suite == "streamlit"
         else "scripts/browser/scenarios/test_local_llm.py"
     )
+    pytest_command = [
+        "docker",
+        "compose",
+        "--profile",
+        "e2e",
+        "run",
+        "--rm",
+        "--no-deps",
+        "--pull",
+        "never",
+        "--volume",
+        mount,
+        "e2e",
+        "python",
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        "--browser",
+        "chromium",
+        "--tracing",
+        "off",
+        "--screenshot",
+        "only-on-failure",
+        "--output",
+        "/tmp/werewolf-agent/playwright/private/playwright",
+        "--junitxml",
+        "/tmp/werewolf-agent/playwright/results.xml",
+        "--json-report",
+        "--json-report-file",
+        "/tmp/werewolf-agent/playwright/results.json",
+        "--html",
+        "/tmp/werewolf-agent/playwright/html/index.html",
+        "--self-contained-html",
+    ]
+    if scenario_filter:
+        pytest_command.extend(("-k", scenario_filter))
+    pytest_command.append(scenario)
     return (
         (
             "docker",
@@ -289,57 +356,38 @@ def _commands(artifact_directory: Path, *, suite: str = "streamlit") -> tuple[tu
             "worker",
             "streamlit",
         ),
-        (
-            "docker",
-            "compose",
-            "--profile",
-            "e2e",
-            "run",
-            "--rm",
-            "--no-deps",
-            "--pull",
-            "never",
-            "--volume",
-            mount,
-            "e2e",
-            "python",
-            "-m",
-            "pytest",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-            "--browser",
-            "chromium",
-            "--tracing",
-            "off",
-            "--screenshot",
-            "only-on-failure",
-            "--output",
-            "/tmp/werewolf-agent/playwright/private/playwright",
-            "--junitxml",
-            "/tmp/werewolf-agent/playwright/results.xml",
-            "--json-report",
-            "--json-report-file",
-            "/tmp/werewolf-agent/playwright/results.json",
-            "--html",
-            "/tmp/werewolf-agent/playwright/html/index.html",
-            "--self-contained-html",
-            scenario,
-        ),
+        tuple(pytest_command),
     )
 
 
 def build_parser() -> argparse.ArgumentParser:
     """CLI parserを返す。"""
+    catalog = load_catalog()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--artifacts",
         type=Path,
-        default=ARTIFACT_ROOT / "qa" / "browser",
+        default=ARTIFACT_ROOT / "reviews" / "browser",
     )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--visual-regression", action="store_true")
     parser.add_argument("--suite", choices=("streamlit", "local-llm"), default="streamlit")
+    parser.add_argument("--journey", choices=tuple(catalog["journeys"]))
+    parser.add_argument("--state", choices=tuple(catalog["states"]))
+    parser.add_argument(
+        "--device",
+        action="append",
+        choices=tuple(catalog["devices"]),
+        dest="devices",
+    )
+    parser.add_argument(
+        "--capture",
+        action="append",
+        choices=tuple(catalog["captures"]),
+        default=[],
+        dest="captures",
+    )
+    parser.add_argument("--trace", choices=("failure", "always"), default="failure")
     return parser
 
 
@@ -355,6 +403,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=arguments.timeout,
             visual_regression=arguments.visual_regression,
             suite=arguments.suite,
+            journey=arguments.journey,
+            state=arguments.state,
+            devices=arguments.devices or ("desktop", "mobile"),
+            captures=arguments.captures,
+            trace=arguments.trace,
         )
     except (EnvironmentBlockedError, ValueError) as error:
         print(str(error))

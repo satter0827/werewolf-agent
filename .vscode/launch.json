@@ -159,8 +159,8 @@
       "id": "qualityLevel",
       "type": "pickString",
       "description": "品質levelを選択",
-      "options": ["quick", "check", "release", "deep"],
-      "default": "quick"
+      "options": ["auto", "focus", "check", "release", "deep"],
+      "default": "auto"
     },
     {
       "id": "reviewKind",

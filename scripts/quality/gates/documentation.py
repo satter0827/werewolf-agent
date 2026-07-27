@@ -44,7 +44,7 @@ def build() -> list[Gate]:
             (sys.executable, "-m", "scripts.docs", "build"),
             action=build_documentation_gate,
             dependencies=("architecture",),
-            artifacts=("build/docs/index.html", "build/docs/report.json"),
+            artifacts=("outputs/docs/index.html", "outputs/docs/report.json"),
             diagnostics=("docs/report.json",),
         )
     ]

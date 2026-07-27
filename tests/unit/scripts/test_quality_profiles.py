@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+from scripts.quality.impact import decide
 from scripts.quality.models import Gate
 from scripts.quality.profiles import expand_selectors
 from scripts.quality.runner import _profile_stages
@@ -85,3 +86,54 @@ def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     assert gates["deep-supabase"].dependencies == ("supabase-preflight",)
     assert gates["deep-supabase"].exclusive_resources == ("supabase",)
     assert "deep and supabase" in gates["deep-supabase"].command
+
+
+def test_document_only_change_selects_document_evidence() -> None:
+    decision = decide(("docs/design/verification.md",))
+
+    assert decision.profile == "focus"
+    assert decision.selectors == ("docs", "repository")
+
+
+def test_unknown_change_escalates_to_check() -> None:
+    decision = decide(("new-system/unknown.ext",))
+
+    assert decision.profile == "check"
+    assert decision.selectors == ()
+    assert "未登録path" in decision.reason
+
+
+def test_unknown_change_never_downgrades_a_release_boundary() -> None:
+    """未登録pathとの混在で既に選ばれた上位profileを下げない。"""
+    decision = decide(
+        (
+            "scripts/browser/e2e.py",
+            "new-system/unknown.ext",
+        )
+    )
+
+    assert decision.profile == "release"
+    assert decision.selectors == ()
+    assert "未登録path" in decision.reason
+
+
+@pytest.mark.parametrize(
+    ("path", "profile"),
+    [
+        ("tests/integration/clients/test_streamlit_app.py", "check"),
+        ("tests/integration/supabase/test_store.py", "release"),
+        ("scripts/browser/scenarios/test_streamlit.py", "release"),
+        ("src/werewolf_agent/clients/streamlit/app.py", "release"),
+        (".streamlit/config.toml", "release"),
+        ("src/werewolf_agent/api/app.py", "check"),
+    ],
+)
+def test_risk_boundaries_select_the_profile_that_exercises_the_change(
+    path: str,
+    profile: str,
+) -> None:
+    """変更したintegration境界を実行しない軽量profileへ割り当てない。"""
+    decision = decide((path,))
+
+    assert decision.profile == profile
+    assert decision.selectors == ()

@@ -141,17 +141,17 @@ uv run --extra streamlit streamlit run src/werewolf_agent/clients/streamlit/app.
 全検証:
 
 ```bash
-python -m scripts.quality quick
+python -m scripts.quality focus
 python -m scripts.quality check
 python -m scripts.quality release
 python -m scripts.quality deep --confirm-deep
 python -m scripts.quality clean
 ```
 
-pytest単体の既定levelは`quick`です。integration、monkey、benchmark、deepを意図せず
+pytest単体の既定levelは`focus`です。integration、monkey、benchmark、deepを意図せず
 選択した場合は必要な`--test-level`を表示して実行を拒否します。品質reportは
-成功結果は`.werewolf-agent/quality/latest`、非成功結果は
-`.werewolf-agent/quality/failures`へ保存します。
+最新試行は`.werewolf-agent/quality/profiles/<profile>/current`、最終成功への参照は
+`.werewolf-agent/quality/profiles/<profile>/last-passed.json`へ保存します。
 品質runnerはFake LLMと事前取得済み依存だけを使用し、外部APIへ接続しません。
 
 ## 直近の検証結果
@@ -169,7 +169,7 @@ pytest単体の既定levelは`quick`です。integration、monkey、benchmark、
 - OpenAPI JSON、Sphinx warning-as-error、wheel・sdist: 成功
 - 隔離Supabase、API、worker、RLS、nonroot Docker runtime、外部通信遮断: 成功
 
-最新値は`.werewolf-agent/quality/latest`の`report.json`と`summary.md`を正とします。
+最新値は`.werewolf-agent/quality/profiles/<profile>/current`の`report.json`と`summary.md`を正とします。
 
 ## 第一段階で削除した構造
 

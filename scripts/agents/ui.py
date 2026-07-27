@@ -610,10 +610,10 @@ def _finish_without_compose(
 
 def _new_run_dir() -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    root = LAYOUT.root / "agents" / "ui-local" / stamp
+    root = LAYOUT.reviews / "agents" / "ui-local" / stamp
     suffix = 1
     while root.exists():
-        root = LAYOUT.root / "agents" / "ui-local" / f"{stamp}-{suffix}"
+        root = LAYOUT.reviews / "agents" / "ui-local" / f"{stamp}-{suffix}"
         suffix += 1
     (root / "public" / "screenshots").mkdir(parents=True)
     (root / "private").mkdir()

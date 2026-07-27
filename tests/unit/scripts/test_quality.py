@@ -53,7 +53,7 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
     assert settings.max_jobs == 4
     assert settings.benchmark_min_rounds == 5
     assert settings.timeouts == {
-        "quick": 60,
+        "focus": 60,
         "check": 180,
         "release": 900,
         "deep": 1200,
@@ -81,7 +81,7 @@ def test_invalid_quality_settings_are_rejected(
 benchmark_min_rounds = 5
 max_jobs = 0
 [tool.werewolf-quality.timeouts]
-quick = 60
+focus = 60
 check = 180
 release = 600
 deep = 1200
@@ -109,19 +109,45 @@ def test_quality_settings_do_not_define_arbitrary_numeric_verdicts() -> None:
 def test_profiles_have_expected_order_and_isolated_commands() -> None:
     """profileは上位になるほど前levelを包含する。"""
 
-    quick = {gate.name for stage in quality._profile_stages("quick", 1) for gate in stage}
+    focus = {gate.name for stage in quality._profile_stages("focus", 1) for gate in stage}
     check = {gate.name for stage in quality._profile_stages("check", 1) for gate in stage}
     release = {gate.name for stage in quality._profile_stages("release", 1) for gate in stage}
     deep = {gate.name for stage in quality._profile_stages("deep", 1) for gate in stage}
 
-    assert quick < check < release < deep
-    assert {"pytest", "mypy"} <= quick
-    assert {"coverage", "docs", "package", "integration"} <= check
+    assert focus < check < release < deep
+    assert {"pytest", "mypy"} <= focus
+    assert {"docs", "package", "integration"} <= check
+    assert "coverage" not in check
     assert "benchmark" not in check
     assert "benchmark" in deep
     assert {"supabase-preflight", "supabase-integration", "docker"} <= release
     assert {"deep-tests", "deep-integration", "deep-supabase"} <= deep
     assert all(gate.command for stage in quality._profile_stages("deep", 1) for gate in stage)
+
+
+def test_auto_is_an_explicit_command_separate_from_fixed_focus() -> None:
+    """固定levelのFocusと差分選択を同じ名前で扱わない。"""
+    parser = quality.build_parser()
+
+    assert parser.parse_args(["auto"]).profile == "auto"
+    assert parser.parse_args(["focus"]).profile == "focus"
+
+
+def test_explain_reports_the_plan_without_executing(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """実行範囲の確認だけで品質gateを開始しない。"""
+    monkeypatch.setattr(
+        quality,
+        "execute",
+        lambda *_args, **_kwargs: pytest.fail("explain must not execute gates"),
+    )
+
+    assert quality.main(["focus", "--explain", "--jobs", "1"]) == 0
+    output = capsys.readouterr().out
+    assert "profile: focus" in output
+    assert "再利用候補:" in output
 
 
 def test_scripts_do_not_import_tests() -> None:
@@ -157,7 +183,7 @@ def test_environment_gate_classifies_blocked_executable_as_nonzero_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    context = SimpleNamespace(profile="quick", timeout_seconds=60, environment={})
+    context = SimpleNamespace(profile="focus", timeout_seconds=60, environment={})
     monkeypatch.setattr(environment_gate, "is_ready", lambda _profile: True)
     monkeypatch.setattr(
         environment_gate,
@@ -175,7 +201,7 @@ def test_environment_gate_classifies_fingerprint_error_as_nonzero_result(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    context = SimpleNamespace(profile="quick", timeout_seconds=60, environment={})
+    context = SimpleNamespace(profile="focus", timeout_seconds=60, environment={})
     monkeypatch.setattr(
         environment_gate,
         "is_ready",
@@ -349,7 +375,7 @@ def test_configuration_failure_returns_infrastructure_exit_code(
         lambda: (_ for _ in ()).throw(ValueError("invalid config")),
     )
 
-    assert quality.main(["quick"]) == 2
+    assert quality.main(["focus"]) == 2
     assert "品質設定を読み込めません" in capsys.readouterr().err
 
 
@@ -373,50 +399,46 @@ def test_clean_preserves_persistent_directories(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """cleanはDB、運用log、QA、最新runを保持する。"""
+    """cleanは再生成可能領域だけを削除し、実行証拠と環境状態を保持する。"""
 
     artifact_root = tmp_path / ".werewolf-agent"
-    build = artifact_root / "build"
-    cache = artifact_root / "cache" / "pytest"
-    coverage = artifact_root / "coverage"
+    outputs = artifact_root / "outputs"
+    cache = artifact_root / "cache"
     for path in (
-        build,
+        outputs,
         cache,
-        coverage,
-        artifact_root / "db",
         artifact_root / "logs",
-        artifact_root / "qa",
+        artifact_root / "quality",
+        artifact_root / "reviews",
+        artifact_root / "runtime",
     ):
         path.mkdir(parents=True)
-    package_cache = artifact_root / "cache" / "uv"
-    package_cache.mkdir(parents=True)
     temporary_root = tmp_path / "temporary" / "werewolf-agent"
     temporary_cache = temporary_root / "pytest"
     temporary_cache.mkdir(parents=True)
     monkeypatch.setattr(quality, "ARTIFACT_ROOT", artifact_root)
-    monkeypatch.setattr(quality, "BUILD_DIRECTORIES", (build, cache, coverage))
+    monkeypatch.setattr(quality, "BUILD_DIRECTORIES", (outputs, cache))
     monkeypatch.setattr(quality, "TEMPORARY_CACHE_DIRECTORIES", (temporary_cache,))
     monkeypatch.setattr("scripts._infra.process.ARTIFACT_ROOT", artifact_root)
     monkeypatch.setattr("scripts._infra.process.TEMPORARY_ROOT", temporary_root)
 
     quality.clean()
 
-    assert not build.exists()
+    assert not outputs.exists()
     assert not cache.exists()
-    assert not coverage.exists()
-    assert (artifact_root / "db").exists()
     assert (artifact_root / "logs").exists()
-    assert (artifact_root / "qa").exists()
-    assert package_cache.exists()
+    assert (artifact_root / "quality").exists()
+    assert (artifact_root / "reviews").exists()
+    assert (artifact_root / "runtime").exists()
     assert not temporary_cache.exists()
 
 
 @pytest.mark.parametrize(
     "arguments",
     [
-        ["quick", "--jobs", "0"],
-        ["quick", "--jobs", "5"],
-        ["quick", "--timeout", "0"],
+        ["focus", "--jobs", "0"],
+        ["focus", "--jobs", "5"],
+        ["focus", "--timeout", "0"],
     ],
 )
 def test_cli_rejects_unsafe_numeric_options(arguments: list[str]) -> None:
@@ -677,7 +699,7 @@ def test_runner_setup_failure_writes_machine_readable_report(
     )
 
     state, report_path = quality.execute(
-        "quick",
+        "focus",
         jobs=1,
         timeout_seconds=1,
         settings=settings,
@@ -722,7 +744,8 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     }
     assert visible_task_names == {
         "Project: Setup",
-        "Verify: Quick",
+        "Verify: Auto",
+        "Verify: Focus",
         "Verify: Check",
         "Verify: Release",
         "Verify: Deep",
@@ -744,12 +767,13 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert supabase_launch["postDebugTask"] == "Internal: Supabase Stop"
     inputs = {item["id"]: item for item in launch["inputs"]}
     assert inputs["qualityLevel"]["type"] == "pickString"
-    assert inputs["qualityLevel"]["options"] == ["quick", "check", "release", "deep"]
+    assert inputs["qualityLevel"]["options"] == ["auto", "focus", "check", "release", "deep"]
     assert inputs["reviewKind"]["type"] == "pickString"
     assert inputs["reviewKind"]["options"] == ["ui", "gameplay", "local-llm"]
     assert "promptString" not in json.dumps(launch)
     assert "promptString" not in json.dumps(tasks)
-    assert task_commands["Verify: Quick"][-4:] == ["python", "-m", "scripts.quality", "quick"]
+    assert task_commands["Verify: Auto"][-4:] == ["python", "-m", "scripts.quality", "auto"]
+    assert task_commands["Verify: Focus"][-4:] == ["python", "-m", "scripts.quality", "focus"]
     assert task_commands["Verify: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
     assert task_commands["Docs: Build"][-4:] == ["python", "-m", "scripts.docs", "build"]
     assert task_commands["Architecture: Analyze"][-3:] == [
@@ -760,12 +784,14 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" in workflow
     assert "python -m scripts.quality deep --confirm-deep" in workflow
-    assert 'python-version: ["3.11", "3.12", "3.13", "3.14"]' in workflow
+    assert 'python-version: ["3.11", "3.13", "3.14"]' in workflow
+    assert "scripts.quality check --fresh" in workflow
+    assert "scripts.quality release --fresh" in workflow
     assert "actions/upload-artifact@v4" in workflow
     assert "include-hidden-files: true" in workflow
-    assert ".werewolf-agent/build" in workflow
+    assert ".werewolf-agent/outputs" in workflow
     assert not (ROOT / ".github" / "workflows" / "docker.yml").exists()
-    assert settings["python.testing.pytestArgs"] == ["--test-level=quick", "tests/unit"]
+    assert settings["python.testing.pytestArgs"] == ["--test-level=focus", "tests/unit"]
     assert "flake8.enabled" not in settings
     assert "isort.serverEnabled" not in settings
     assert "ms-python.mypy-type-checker" in extensions["recommendations"]
@@ -776,7 +802,7 @@ def test_runtime_docker_dependencies_are_cached_before_source_copy() -> None:
 
     backend = (ROOT / "docker" / "backend.Dockerfile").read_text(encoding="utf-8")
 
-    assert "FROM base AS runtime" in backend
+    assert "FROM runtime-dependencies AS runtime" in backend
     assert "USER app" in backend
     commands = runtime.docker_commands("quality:test")
     assert len(commands) == 3

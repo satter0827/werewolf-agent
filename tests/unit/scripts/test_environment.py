@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 from scripts.environment import manager
+from scripts.quality import impact
 from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV
 
 
@@ -71,7 +72,29 @@ def test_ensure_skips_prepared_environment(monkeypatch: pytest.MonkeyPatch) -> N
     assert manager.ensure("check") is False
 
 
-def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_auto_environment_uses_the_change_impact_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """auto品質と環境準備が同じ実profileを選ぶ。"""
+    monkeypatch.setattr(
+        impact,
+        "decide",
+        lambda: impact.ImpactDecision("release", reason="UI change"),
+    )
+    observed: list[str] = []
+    monkeypatch.setattr(
+        manager, "dependency_fingerprint", lambda profile: observed.append(profile) or "x"
+    )
+    monkeypatch.setattr(manager, "_ready", lambda _profile, _fingerprint: True)
+
+    assert manager.ensure("auto") is False
+    assert observed == ["release"]
+
+
+def test_setup_allows_dependency_downloads(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """依存準備ではregistryとimage取得を禁止しない。"""
     commands: list[tuple[str, ...]] = []
     monkeypatch.setattr(
@@ -81,16 +104,29 @@ def test_setup_allows_dependency_downloads(monkeypatch: pytest.MonkeyPatch) -> N
     )
     monkeypatch.setattr(manager, "dependency_fingerprint", lambda _profile: "fingerprint")
     monkeypatch.setattr(manager, "STATE_ROOT", Path(".werewolf-agent/runtime/environment"))
+    monkeypatch.setattr(
+        manager,
+        "IMAGE_STATE_ROOT",
+        tmp_path / "images",
+    )
     monkeypatch.setattr(Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(Path, "write_text", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(manager.shutil, "which", lambda command: command)
+    monkeypatch.setattr(manager, "_command_succeeds", lambda _command: True)
+    monkeypatch.setattr(manager, "_image_id", lambda image: f"sha256:{image}")
 
     manager._setup_locked("release")
 
     flattened = [" ".join(command) for command in commands]
     assert any(command.startswith("uv sync --frozen") for command in flattened)
-    assert any(command.startswith("docker compose") for command in flattened)
-    assert any(manager.QUALITY_COMPOSE_PROJECT_NAME in command for command in flattened)
+    build_commands = [command for command in flattened if command.startswith("docker buildx build")]
+    assert len(build_commands) == 2
+    assert any(manager.RUNTIME_IMAGE in command for command in build_commands)
+    assert any(manager.E2E_IMAGE in command for command in build_commands)
+    assert any(
+        command.startswith("docker buildx prune") and "--max-used-space 8GB" in command
+        for command in flattened
+    )
     assert all("--offline" not in command for command in flattened)
     assert all("--pull=false" not in command for command in flattened)
     assert any(LOCAL_EXCLUDED_SERVICES_CSV in command for command in flattened)
@@ -151,6 +187,7 @@ def test_release_readiness_rejects_stopped_docker_daemon(
     """Docker CLIがあってもdaemonへ接続できなければ準備済みにしない。"""
     monkeypatch.setattr(manager.shutil, "which", lambda _command: "docker")
     monkeypatch.setattr(manager, "_command_succeeds", lambda _command: False)
+    monkeypatch.setattr(manager, "_image_marker_matches", lambda *_args: False)
 
     assert manager._release_environment_ready("release") is False
 
@@ -167,8 +204,32 @@ def test_release_readiness_requires_every_declared_image(
         return True
 
     monkeypatch.setattr(manager, "_command_succeeds", succeeds)
+    monkeypatch.setattr(manager, "_image_marker_matches", lambda *_args: True)
 
     assert manager._release_environment_ready("release") is True
     assert observed[0] == ("docker", "info")
-    assert [command[-1] for command in observed[1:]] == list(manager.required_release_images())
+    assert [command[-1] for command in observed[1:]] == list(manager.REQUIRED_LOCAL_IMAGES)
     assert manager._release_environment_ready("check") is True
+
+
+def test_image_marker_rejects_a_replaced_tag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同名tagが別imageを指す場合はfingerprint一致でも再利用しない。"""
+    marker_root = tmp_path / "images"
+    marker_root.mkdir()
+    (marker_root / "application.json").write_text(
+        json.dumps(
+            {
+                "fingerprint": "same",
+                "image": manager.RUNTIME_IMAGE,
+                "image_id": "sha256:expected",
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(manager, "IMAGE_STATE_ROOT", marker_root)
+    monkeypatch.setattr(manager, "_image_id", lambda _image: "sha256:replaced")
+
+    assert not manager._image_marker_matches(manager.RUNTIME_IMAGE, "application", "same")

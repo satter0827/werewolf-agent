@@ -44,7 +44,7 @@ def test_profile_commands_write_machine_readable_results_to_run_directory(
     settings = quality.load_quality_settings()
     commands.extend(distribution.benchmark_command(tmp_path, settings))
 
-    assert str(tmp_path / "test-results" / "quick.xml") in commands
+    assert str(tmp_path / "test-results" / "unit.xml") in commands
     assert f"xml:{tmp_path / 'coverage' / 'coverage.xml'}" in commands
     assert "--cov-fail-under=0" in commands
     assert "--benchmark-disable-gc" in commands

@@ -7,12 +7,14 @@ import concurrent.futures
 import os
 import shutil
 import sys
+import tempfile
 import time
 import tomllib
 from collections.abc import Sequence
 from pathlib import Path
 
 import psutil  # type: ignore[import-untyped]
+from filelock import FileLock, Timeout
 
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -48,14 +50,10 @@ from scripts.quality.reporting import (
     write_summary as _write_summary,
 )
 
-PROFILE_ORDER = ("quick", "check", "release", "deep")
+PROFILE_ORDER = ("focus", "check", "release", "deep")
 BUILD_DIRECTORIES = (
-    ARTIFACT_ROOT / "build",
-    ARTIFACT_ROOT / "coverage",
-    ARTIFACT_ROOT / "cache" / "mypy",
-    ARTIFACT_ROOT / "cache" / "pytest",
-    ARTIFACT_ROOT / "cache" / "ruff",
-    ARTIFACT_ROOT / "cache" / "sphinx",
+    ARTIFACT_ROOT / "outputs",
+    ARTIFACT_ROOT / "cache",
 )
 
 
@@ -117,6 +115,7 @@ def _profile_stages(
     jobs: int,
     run_dir: Path | None = None,
     settings: QualitySettings | None = None,
+    fresh: bool = False,
 ) -> list[list[Gate]]:
     """担当moduleのgateを依存関係と排他resourceから構成する。"""
     from scripts.quality.profiles import build_profile
@@ -128,6 +127,7 @@ def _profile_stages(
         run_dir=resolved_run_dir,
         settings=resolved_settings,
         jobs=jobs,
+        fresh=fresh,
     )
 
 
@@ -147,7 +147,10 @@ def clean() -> list[Path]:
 
 
 def _run_gate(context: RunContext, gate: Gate) -> GateResult:
+    from scripts.quality.reuse import gate_fingerprint
+
     log_path = context.run_dir / "logs" / f"{gate.name}.log"
+    log_path.parent.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     try:
         with log_path.open("w", encoding="utf-8") as stream:
@@ -176,8 +179,10 @@ def _run_gate(context: RunContext, gate: Gate) -> GateResult:
                     command_result.timed_out,
                 )
             artifacts = (
-                contract_artifacts if command_result.returncode == 0 else []
-            ) + _resolved_diagnostics(context, gate)
+                contract_artifacts
+                if command_result.returncode == 0
+                else _resolved_diagnostics(context, gate)
+            )
         state = _command_state(command_result, nonzero_state=gate.nonzero_state)
         message = "timeout" if command_result.timed_out else None
         return GateResult(
@@ -190,6 +195,7 @@ def _run_gate(context: RunContext, gate: Gate) -> GateResult:
             log=log_path.relative_to(context.run_dir).as_posix(),
             message=message,
             artifacts=artifacts,
+            fingerprint=gate_fingerprint(context, gate) if gate.reusable else None,
         )
     except EnvironmentBlockedError as error:
         log_path.write_text(redact(str(error)) + "\n", encoding="utf-8")
@@ -221,14 +227,19 @@ def _artifact_contract(context: RunContext, gate: Gate) -> tuple[list[str], list
     """Gate自身が宣言した成果物の欠落と鮮度を検査する。"""
     issues: list[str] = []
     artifacts: list[str] = []
+    seen_artifacts: set[str] = set()
     started = context.started_at.timestamp()
     for pattern in gate.artifacts:
-        root = ARTIFACT_ROOT if pattern.startswith("build/") else context.run_dir
+        root = ARTIFACT_ROOT if pattern.startswith("outputs/") else context.run_dir
         matches = sorted(path for path in root.glob(pattern) if path.is_file())
         if not matches:
             issues.append(f"成果物がありません: {pattern}")
             continue
-        artifacts.extend(_snapshot_artifact(path, context.run_dir) for path in matches)
+        for path in matches:
+            artifact = _snapshot_artifact(path, context.run_dir)
+            if artifact not in seen_artifacts:
+                artifacts.append(artifact)
+                seen_artifacts.add(artifact)
         if all(path.stat().st_mtime < started for path in matches):
             issues.append(f"成果物が現在runで更新されていません: {pattern}")
     return issues, artifacts
@@ -305,6 +316,9 @@ def execute(
     settings: QualitySettings | None = None,
     stages_override: list[list[Gate]] | None = None,
     selectors: Sequence[str] | None = None,
+    fresh: bool = False,
+    requested_profile: str | None = None,
+    selection_reason: str = "",
 ) -> tuple[State, Path]:
     """指定profileのgateを段階ごとに並列実行する。"""
     from scripts.quality.retention import mark_run_active, recover_abandoned_runs
@@ -322,16 +336,32 @@ def execute(
         environment=environment,
         initial_git_status="",
         started_at=utc_now(),
+        requested_profile=requested_profile or profile,
+        selection_reason=selection_reason,
+        fresh=fresh,
     )
     results: list[GateResult] = []
     event_path = run_dir / "events.jsonl"
     settings = settings or load_quality_settings()
     if selectors is not None:
+        from scripts.quality.profiles import build_catalog
         from scripts.quality.scheduler import select_stages
 
-        stages = select_stages(_profile_stages("deep", jobs, run_dir, settings), selectors)
+        catalog_profile = "deep" if profile.startswith("gate-") else profile
+        stages = select_stages(
+            [
+                build_catalog(
+                    catalog_profile,
+                    run_dir=run_dir,
+                    settings=settings,
+                    jobs=jobs,
+                    fresh=fresh,
+                )
+            ],
+            selectors,
+        )
     else:
-        stages = stages_override or _profile_stages(profile, jobs, run_dir, settings)
+        stages = stages_override or _profile_stages(profile, jobs, run_dir, settings, fresh=fresh)
     try:
         context.initial_git_status = repository_gate.git_status(environment)
         context.initial_dependency_fingerprint = python_installation_fingerprint()
@@ -435,7 +465,13 @@ def execute(
                         )
                     )
                 else:
-                    runnable.append(gate)
+                    from scripts.quality.reuse import reuse_gate
+
+                    reused = reuse_gate(context, gate)
+                    if reused is None:
+                        runnable.append(gate)
+                    else:
+                        skipped.append(reused)
             if skipped:
                 results.extend(skipped)
                 gate_states.update({result.name: result.state for result in skipped})
@@ -563,7 +599,7 @@ def build_parser(settings: QualitySettings | None = None) -> argparse.ArgumentPa
     """コマンドライン引数を構築する。"""
     settings = settings or load_quality_settings()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("profile", choices=(*PROFILE_ORDER, "clean"))
+    parser.add_argument("profile", choices=("auto", *PROFILE_ORDER, "clean"))
     parser.add_argument(
         "--jobs",
         type=lambda value: _bounded_positive_int(value, maximum=settings.max_jobs),
@@ -571,6 +607,8 @@ def build_parser(settings: QualitySettings | None = None) -> argparse.ArgumentPa
     )
     parser.add_argument("--timeout", type=_positive_int)
     parser.add_argument("--confirm-deep", action="store_true")
+    parser.add_argument("--fresh", action="store_true")
+    parser.add_argument("--explain", action="store_true")
     return parser
 
 
@@ -633,6 +671,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 timeout_seconds=arguments.timeout,
                 settings=settings,
                 selectors=arguments.selectors,
+                requested_profile="gate",
+                selection_reason="個別selectorを明示指定しました: "
+                + ", ".join(arguments.selectors),
             )
         except ValueError as error:
             print(str(error), file=sys.stderr)
@@ -652,17 +693,87 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         print(f"{len(removed)}件の再生成可能な成果物を削除しました。")
         return 0
+    requested_profile = arguments.profile
+    selectors: Sequence[str] | None = None
+    impact_reason = "profileを明示指定しました。"
+    if arguments.profile == "auto":
+        from scripts.quality.impact import decide
+
+        decision = decide()
+        arguments.profile = decision.profile
+        selectors = decision.selectors or None
+        impact_reason = decision.reason
     if arguments.profile == "deep" and not arguments.confirm_deep:
         print("deepの実行には--confirm-deepが必要です。", file=sys.stderr)
         return 2
-
     timeout = arguments.timeout or settings.timeouts[arguments.profile]
-    state, report_path = execute(
-        arguments.profile,
-        jobs=arguments.jobs,
-        timeout_seconds=timeout,
-        settings=settings,
-    )
+    if arguments.explain:
+        from scripts.quality.profiles import build_catalog
+        from scripts.quality.scheduler import select_stages
+
+        print(f"profile: {arguments.profile}")
+        print(f"選定理由: {impact_reason}")
+        explanation_stages = (
+            select_stages(
+                [
+                    build_catalog(
+                        arguments.profile,
+                        run_dir=TEMPORARY_ROOT / "quality" / "runs" / "explain",
+                        settings=settings,
+                        jobs=arguments.jobs,
+                        fresh=arguments.fresh,
+                    )
+                ],
+                selectors,
+            )
+            if selectors is not None
+            else _profile_stages(
+                arguments.profile,
+                arguments.jobs,
+                settings=settings,
+                fresh=arguments.fresh,
+            )
+        )
+        for stage_index, stage in enumerate(explanation_stages, start=1):
+            print(f"stage {stage_index}: {', '.join(gate.name for gate in stage)}")
+        reusable = sorted(
+            gate.name for stage in explanation_stages for gate in stage if gate.reusable
+        )
+        if arguments.fresh:
+            print("再利用: --fresh指定のため無効")
+        elif reusable:
+            print("再利用候補: " + ", ".join(reusable))
+        else:
+            print("再利用候補: なし")
+        return 0
+    try:
+        if arguments.profile in {"release", "deep"}:
+            lock_path = Path(tempfile.gettempdir()) / "werewolf-agent-quality-release.lock"
+            with FileLock(lock_path, timeout=1):
+                state, report_path = execute(
+                    arguments.profile,
+                    jobs=arguments.jobs,
+                    timeout_seconds=timeout,
+                    settings=settings,
+                    selectors=selectors,
+                    fresh=arguments.fresh,
+                    requested_profile=requested_profile,
+                    selection_reason=impact_reason,
+                )
+        else:
+            state, report_path = execute(
+                arguments.profile,
+                jobs=arguments.jobs,
+                timeout_seconds=timeout,
+                settings=settings,
+                selectors=selectors,
+                fresh=arguments.fresh,
+                requested_profile=requested_profile,
+                selection_reason=impact_reason,
+            )
+    except Timeout:
+        print("release/deepのhost排他lockを取得できませんでした。", file=sys.stderr)
+        return 2
     print(f"判定: {state}")
     print(f"レポート: {report_path}")
     if state == "passed":

@@ -102,7 +102,7 @@ only-include = [
 ]
 
 [tool.pytest.ini_options]
-addopts = "-q --strict-markers -p no:cacheprovider --benchmark-storage=file://.werewolf-agent/quality/manual/benchmark"
+addopts = "-q --strict-markers -p no:cacheprovider --benchmark-storage=file://.werewolf-agent/cache/pytest-benchmark"
 markers = [
     "unit: 外部serviceを使わないunit test",
     "integration: 複数moduleを接続するintegration test",
@@ -119,11 +119,22 @@ tmp_path_retention_policy = "failed"
 [tool.werewolf-quality]
 benchmark_min_rounds = 5
 max_jobs = 4
-failure_runs_per_selector = 3
+failure_runs_per_selector = 2
 failure_run_max_mib = 100
+docker_builder_cache_max_gib = 8
+
+[tool.werewolf-quality.hypothesis]
+focus_examples = 10
+check_examples = 30
+release_examples = 30
+deep_examples = 100
+focus_steps = 20
+check_steps = 40
+release_steps = 40
+deep_steps = 100
 
 [tool.werewolf-quality.timeouts]
-quick = 60
+focus = 60
 check = 180
 release = 900
 deep = 1200
@@ -155,7 +166,7 @@ warn_unused_ignores = true
 
 [tool.coverage.run]
 branch = true
-data_file = ".werewolf-agent/coverage/.coverage"
+data_file = ".werewolf-agent/cache/coverage/.coverage"
 source = ["werewolf_agent"]
 
 [tool.coverage.report]

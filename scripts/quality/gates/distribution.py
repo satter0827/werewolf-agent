@@ -24,9 +24,9 @@ def build(run_dir: Path, settings: QualitySettings) -> list[Gate]:
         Gate(
             "package",
             "wheel, sdist and distribution contract",
-            package_command(LAYOUT.build / "package"),
+            package_command(LAYOUT.outputs / "package"),
             action=build_package,
-            artifacts=("build/package/*.whl", "build/package/*.tar.gz"),
+            artifacts=("outputs/package/*.whl", "outputs/package/*.tar.gz"),
         ),
         Gate(
             "benchmark",
@@ -86,7 +86,7 @@ def build_package(context: RunContext, _: Path) -> CommandResult:
                 duration_seconds=time.monotonic() - started,
                 output="".join(output),
             )
-        publish_directory(output_directory, LAYOUT.build / "package")
+        publish_directory(output_directory, LAYOUT.outputs / "package")
         output.append("\n配布物のentrypointと全resourceを確認しました。\n")
         return CommandResult(
             command=list(command),

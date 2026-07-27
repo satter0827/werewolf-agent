@@ -4,6 +4,7 @@ import sys
 import time
 from pathlib import Path
 
+from scripts._infra.artifacts import LAYOUT
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
 from scripts.quality.models import Gate, RunContext
 
@@ -24,12 +25,12 @@ def build() -> list[Gate]:
             "Architecture analysis and visualization",
             (sys.executable, "-m", "scripts.architecture"),
             artifacts=(
-                "build/architecture/architecture.json",
-                "build/architecture/architecture.schema.json",
-                "build/architecture/assessment.md",
-                "build/architecture/system-context.svg",
-                "build/architecture/layer-dependencies.svg",
-                "build/architecture/domain-structure.svg",
+                "outputs/architecture/architecture.json",
+                "outputs/architecture/architecture.schema.json",
+                "outputs/architecture/assessment.md",
+                "outputs/architecture/system-context.svg",
+                "outputs/architecture/layer-dependencies.svg",
+                "outputs/architecture/domain-structure.svg",
             ),
         ),
         Gate(
@@ -53,6 +54,10 @@ _FORBIDDEN_ROOT_ARTIFACTS = (
     "htmlcov",
     "site",
 )
+_ALLOWED_ARTIFACT_CHILDREN = frozenset(
+    {"cache", "logs", "outputs", "quality", "reviews", "runtime"}
+)
+_ALLOWED_QUALITY_CHILDREN = frozenset({".publish.lock", "history", "profiles"})
 
 
 def git_status(environment: dict[str, str]) -> str:
@@ -88,16 +93,35 @@ def check_artifact_placement(_: RunContext, __: Path) -> CommandResult:
     """Repository直下へ漏れたローカル成果物を検出する。"""
     started = time.monotonic()
     found = [name for name in _FORBIDDEN_ROOT_ARTIFACTS if (REPOSITORY_ROOT / name).exists()]
-    output = ""
+    unknown_artifacts = _unknown_children(LAYOUT.root, _ALLOWED_ARTIFACT_CHILDREN)
+    unknown_quality = _unknown_children(LAYOUT.quality, _ALLOWED_QUALITY_CHILDREN)
+    output: list[str] = []
     if found:
-        output = "Repository直下に禁止した成果物があります:\n" + "".join(
-            f"- {name}\n" for name in found
-        )
+        output.append("Repository直下に禁止した成果物があります:\n")
+        output.extend(f"- {name}\n" for name in found)
+    if unknown_artifacts:
+        output.append(".werewolf-agent直下に未定義の領域があります:\n")
+        output.extend(f"- {name}\n" for name in unknown_artifacts)
+    if unknown_quality:
+        output.append("quality直下に未定義の領域があります:\n")
+        output.extend(f"- {name}\n" for name in unknown_quality)
+    message = "".join(output)
     return CommandResult(
         ["repository-artifacts"],
-        1 if found else 0,
+        1 if message else 0,
         time.monotonic() - started,
-        output,
+        message,
+    )
+
+
+def _unknown_children(root: Path, allowed: frozenset[str]) -> list[str]:
+    """管理root直下の未定義entry名を返す。"""
+    if not root.is_dir():
+        return []
+    return sorted(
+        entry.name
+        for entry in root.iterdir()
+        if entry.name not in allowed and not entry.name.startswith(".publish.lock.")
     )
 
 

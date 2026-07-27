@@ -34,7 +34,9 @@ def test_backend_dev_image_contains_the_test_suite() -> None:
     """container test用stageへ検証対象を含める。"""
     dockerfile = _read("docker/backend.Dockerfile")
 
-    dev = dockerfile.split("FROM base AS dev", 1)[1].split("FROM base AS runtime", 1)[0]
+    dev = dockerfile.split("FROM dev-dependencies AS dev", 1)[1].split(
+        "FROM runtime-dependencies AS runtime", 1
+    )[0]
     for copied_path in (".github", "docker", "docs", "tests"):
         assert f"COPY {copied_path}" in dev
     assert "contracts/openapi.json" in dev
@@ -66,7 +68,8 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
     pyproject = _read("pyproject.toml")
 
     for command in (
-        "python -m scripts.quality quick",
+        "python -m scripts.quality auto",
+        "python -m scripts.quality focus",
         "python -m scripts.quality check",
         "python -m scripts.quality release",
         "python -m scripts.quality deep --confirm-deep",

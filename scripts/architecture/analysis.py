@@ -24,7 +24,7 @@ from scripts.architecture.definition import (
 from scripts.architecture.rendering import write_diagrams
 
 PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "werewolf_agent"
-OUTPUT_ROOT = ARTIFACT_ROOT / "build" / "architecture"
+OUTPUT_ROOT = ARTIFACT_ROOT / "outputs" / "architecture"
 SCHEMA_VERSION = 1
 
 

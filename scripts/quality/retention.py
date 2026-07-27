@@ -19,7 +19,7 @@ from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
 from scripts._infra.process import TEMPORARY_ROOT, write_json
 from scripts.quality.artifacts import artifact_category
 
-FAILURES_PER_SELECTOR = 3
+FAILURES_PER_SELECTOR = 2
 FAILURE_BYTES_LIMIT = 100 * 1024 * 1024
 ABANDONED_RUN_AGE_SECONDS = 300
 RUN_OWNER_FILE = "run-owner.json"
@@ -47,13 +47,13 @@ def recover_abandoned_runs(*, now: float | None = None) -> list[Path]:
             if _is_active_run(run_dir):
                 continue
             selector = _selector_from_run_id(run_dir.name)
-            target = LAYOUT.quality / "failures" / selector / run_dir.name
+            target = LAYOUT.quality / "history" / selector / run_dir.name
             _ensure_interrupted_report(run_dir, selector)
             target.parent.mkdir(parents=True, exist_ok=True)
             _replace_directory(target)
             shutil.move(str(run_dir), target)
             _bound_failure(target, _retention_settings()[1])
-            _prune_failures(target.parent, _retention_settings()[0])
+            _prune_history(selector, _retention_settings()[0])
             recovered.append(target)
     return recovered
 
@@ -122,24 +122,39 @@ def _ensure_interrupted_report(run_dir: Path, selector: str) -> None:
 
 
 def publish_run(run_dir: Path, selector: str, state: str) -> Path:
-    """一時runを完全な最新成功または保持対象failureとして確定する。"""
-    failures_per_selector, failure_bytes_limit = _retention_settings()
+    """最新試行をcurrentへ公開し、最後の成功と履歴を独立管理する。"""
+    non_success_runs, failure_bytes_limit = _retention_settings()
     with _publication_lock():
+        profile_root = LAYOUT.quality / "profiles" / selector
+        current = profile_root / "current"
+        history = LAYOUT.quality / "history" / selector
+        if current.is_dir():
+            previous = _run_id(current)
+            archived = history / previous
+            history.mkdir(parents=True, exist_ok=True)
+            _replace_directory(archived)
+            current.replace(archived)
+            if _last_passed_run_id(selector) == previous:
+                write_json(
+                    profile_root / "last-passed.json",
+                    {
+                        "run_id": previous,
+                        "report": f"history/{selector}/{previous}/report.json",
+                    },
+                )
+            if _run_state(archived) != "passed":
+                _bound_failure(archived, failure_bytes_limit)
+        _publish_complete_bundle(run_dir, current)
         if state == "passed":
-            kind = "gates" if selector.startswith("gate-") else "profiles"
-            name = selector.removeprefix("gate-")
-            target = LAYOUT.quality / "latest" / kind / name
-            _publish_complete_bundle(run_dir, target)
-            return target / "report.json"
-
-        target = LAYOUT.quality / "failures" / selector / run_dir.name
-        target.parent.mkdir(parents=True, exist_ok=True)
-        _replace_directory(target)
-        shutil.copytree(run_dir, target)
-        _bound_failure(target, failure_bytes_limit)
-        shutil.rmtree(run_dir)
-        _prune_failures(target.parent, failures_per_selector)
-        return target / "report.json"
+            write_json(
+                profile_root / "last-passed.json",
+                {
+                    "run_id": _run_id(current),
+                    "report": f"profiles/{selector}/current/report.json",
+                },
+            )
+        _prune_history(selector, non_success_runs)
+        return current / "report.json"
 
 
 def _publish_complete_bundle(source: Path, target: Path) -> None:
@@ -151,6 +166,22 @@ def _publish_complete_bundle(source: Path, target: Path) -> None:
     _replace_directory(target)
     temporary.replace(target)
     shutil.rmtree(source)
+
+
+def _run_id(root: Path) -> str:
+    try:
+        document = json.loads((root / "report.json").read_text(encoding="utf-8"))
+        return str(document["run_id"])
+    except (KeyError, OSError, TypeError, json.JSONDecodeError):
+        return root.name
+
+
+def _run_state(root: Path) -> str:
+    try:
+        document = json.loads((root / "report.json").read_text(encoding="utf-8"))
+        return str(document["state"])
+    except (KeyError, OSError, TypeError, json.JSONDecodeError):
+        return "error"
 
 
 def _bound_failure(root: Path, limit_bytes: int = FAILURE_BYTES_LIMIT) -> None:
@@ -220,14 +251,33 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _prune_failures(root: Path, keep: int = FAILURES_PER_SELECTOR) -> None:
+def _prune_history(selector: str, keep_non_success: int = FAILURES_PER_SELECTOR) -> None:
+    root = LAYOUT.quality / "history" / selector
+    if not root.is_dir():
+        return
+    last_passed = _last_passed_run_id(selector)
     runs = sorted(
         (path for path in root.iterdir() if path.is_dir()),
         key=lambda path: (path.stat().st_mtime, path.name),
         reverse=True,
     )
-    for path in runs[keep:]:
+    non_success = 0
+    for path in runs:
+        if path.name == last_passed:
+            continue
+        if _run_state(path) != "passed" and non_success < keep_non_success:
+            non_success += 1
+            continue
         shutil.rmtree(path)
+
+
+def _last_passed_run_id(selector: str) -> str | None:
+    pointer = LAYOUT.quality / "profiles" / selector / "last-passed.json"
+    try:
+        document = json.loads(pointer.read_text(encoding="utf-8"))
+        return str(document["run_id"])
+    except (KeyError, OSError, TypeError, json.JSONDecodeError):
+        return None
 
 
 def _retention_settings() -> tuple[int, int]:

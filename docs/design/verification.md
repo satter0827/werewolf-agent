@@ -10,20 +10,23 @@
 
 | Profile | 責務 |
 | --- | --- |
-| `quick` | architecture、format、lint、型、unit、軽量Hypothesis |
-| `check` | Quick、offline integration、coverage観測、docs、OpenAPI、Schemathesis、build |
+| `auto` | 変更pathを責務境界へ対応付け、必要なprofileまたは部分gateを選ぶ |
+| `focus` | architecture、format、lint、型、unit、軽量stateful |
+| `check` | Focus、unit同時coverage、offline integration、docs、OpenAPI、Schemathesis、build |
 | `release` | Check、Supabase、API、worker、clients、browser、package、container |
 | `deep` | 長時間stateful、fault injection、性能観測 |
 | `review` | UI、Gameplay、Local LLMの読解用証拠。合否には含めない |
 
 ```powershell
-uv run --no-sync python -m scripts.quality quick
+uv run --no-sync python -m scripts.quality auto
+uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check
 uv run --no-sync python -m scripts.quality release
 uv run --no-sync python -m scripts.quality deep --confirm-deep
 uv run --no-sync python -m scripts.quality gate python-static
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality clean
+uv run --no-sync python -m scripts.quality auto --explain
 ```
 
 ## 外部接続境界
@@ -60,11 +63,15 @@ domain testは復元snapshotのplayer数、役職構成、終局結果、pending
 
 各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`を持つ。manifestには
 producer、分類、MIME、size、SHA-256、保持状態を記録する。成功runもlog、JSON/HTMLの
-test結果、coverage、画面を含む一式でlatestを置換する。失敗runは成功済みgateの証拠も
-保持し、削除可能なのは再生成可能な動画などに限る。必須証拠が容量上限を超えた場合は
-削除せず成果物契約違反にする。完了記録のないrunは次回起動時にfailureへ回収する。
+test結果、coverage、画面を含む一式でcurrentを置換する。`last-passed.json`は最終成功を指し、
+reportは要求したprofile、実際に選ばれたprofile、Autoの選定理由を記録する。
+履歴は参照中の最終成功と直近2件の非成功runを保持する。削除可能なのは再生成可能な動画などに
+限る。必須証拠が容量上限を超えた場合は削除せず成果物契約違反にする。完了記録のないrunは
+次回起動時にhistoryへ回収する。
 
-Playwrightは操作、contract、accessibility、console、外部通信を判定する。見た目はpixel
+Playwrightはjourney、state、deviceを個別選択し、操作、contract、accessibility、console、
+外部通信を判定する。screenshotはcapture名で選択し、traceは失敗時または明示指定時だけ保存する。
+見た目はpixel
 差分で合否を出さず、setup 4tabs、validation、待機、発言、対象選択、送信中、完了、観戦、
 Recordsの空・記録あり、Settings、縮退表示を含むdesktop/mobileの個別画像、2列の一覧画像、
 HTML/JSONを人が読む。320pxはStreamlit scenario内で確認する。
@@ -76,9 +83,13 @@ i18n overrideの正常系では言語catalogがrendererへ届くことを検証�
 packaged catalogへ戻ることを検証する。
 環境準備testはmarkerとimage cacheの不一致、Docker daemon停止、全必須imageありを個別に作り、
 release系profileだけが現在のDocker contextを検査することを確認する。
+release系profileは開始時にDocker labelから品質専用Supabase projectを列挙し、失敗した過去runの
+孤児containerとvolumeを回収する。開発用および他projectのSupabaseは対象にしない。
 品質runnerはinstalled distributionの正規化名、version、`RECORD` metadataを実行前後で比較し、
 品質判定中のPython環境変更を失敗にする。
 coverage、benchmark、面白さ、会話品質にも根拠のない閾値を置かず、観測値と証拠を残す。
+coverage reportは総合・line・branchに加え、未検証行が多いファイルから有効行数とともに表示し、
+少量ずつテストを追加する優先順位を示す。低被覆だけでは品質違反にしない。
 Gameplay reviewは現在のrules、roles、abilitiesからseed固定で一局を完走し、設定、操作列、
 公開timeline、終局を保存する。解決前の行動対象などprivate情報はreview証拠へ保存しない。
 Local LLM reviewは`WEREWOLF_LOCAL_LLM_BASE_URL`と`WEREWOLF_LOCAL_LLM_MODEL`を使い、
@@ -90,7 +101,7 @@ Local LLM、FakeListChatModelとも
 同じchat request、response正規化、schema検証、合法手検証、fallbackを通す。再問い合わせによる
 修復は行わない。fallbackを伴う完走は`degraded`とし、品質profileの合格へ含めない。
 
-Agent reviewは`.werewolf-agent/agents`へrun、metrics、event、public timeline、private trace、
+Agent reviewは`.werewolf-agent/reviews/agents`へrun、metrics、event、public timeline、private trace、
 SHA-256 manifestを保存する。private traceにはpromptと本人のobservationを含め、公開成果物と
 分離する。standardはpreset完了ごとに`checkpoint.json`と関連成果物を更新し、長時間runが
 中断しても完了済みpresetを回収できるようにし、完了または中断時にはcheckpointも最終状態へ

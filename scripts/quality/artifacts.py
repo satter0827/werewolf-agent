@@ -18,6 +18,7 @@ EVIDENCE_ROOTS = frozenset(
         "browser",
         "contracts",
         "coverage",
+        "outputs",
         "review",
         "test-results",
     }
@@ -122,7 +123,7 @@ def _reference_path(run_dir: Path, reference: str) -> Path:
     snapshot = run_dir / reference
     if snapshot.is_file():
         return snapshot
-    if reference.startswith("build/"):
+    if reference.startswith("outputs/"):
         return LAYOUT.root / reference
     return snapshot
 

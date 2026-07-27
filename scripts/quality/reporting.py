@@ -8,6 +8,7 @@ import xml.etree.ElementTree as ET
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
+from typing import TypedDict
 
 from scripts._infra.process import redact_artifacts, utc_now, write_json
 from scripts.quality.artifacts import (
@@ -16,6 +17,16 @@ from scripts.quality.artifacts import (
     write_manifest,
 )
 from scripts.quality.models import GateResult, RunContext, State
+
+
+class CoverageFileMetric(TypedDict):
+    """ファイル単位のline coverage観測値。"""
+
+    path: str
+    line_percent: float
+    covered: int
+    valid: int
+    missing: int
 
 
 def write_summary(
@@ -43,6 +54,11 @@ def write_summary(
         "schema_version": 2,
         "run_id": context.run_id,
         "profile": context.profile,
+        "selection": {
+            "requested_profile": context.requested_profile or context.profile,
+            "resolved_profile": context.profile,
+            "reason": context.selection_reason,
+        },
         "state": state,
         "jobs": context.jobs,
         "started_at": context.started_at.isoformat(),
@@ -64,6 +80,8 @@ def write_summary(
         "",
         f"- 判定: `{state}`",
         f"- Run ID: `{context.run_id}`",
+        f"- 選択: `{context.requested_profile or context.profile}` → `{context.profile}`",
+        f"- 選定理由: {context.selection_reason or 'profileを明示指定しました。'}",
         f"- 所要時間: `{duration_seconds:.2f}` 秒",
         "",
         "| Gate | 判定 | 秒 |",
@@ -128,7 +146,8 @@ def collect_run_metrics(run_dir: Path) -> tuple[dict[str, object], list[str]]:
     coverage_path = run_dir / "coverage" / "coverage.xml"
     if coverage_path.exists():
         try:
-            coverage = ET.parse(coverage_path).getroot().attrib
+            coverage_root = ET.parse(coverage_path).getroot()
+            coverage = coverage_root.attrib
             lines_valid = int(coverage["lines-valid"])
             lines_covered = int(coverage["lines-covered"])
             branches_valid = int(coverage["branches-valid"])
@@ -145,6 +164,7 @@ def collect_run_metrics(run_dir: Path) -> tuple[dict[str, object], list[str]]:
                 "branch_percent": round(float(coverage["branch-rate"]) * 100, 2),
                 "lines": {"covered": lines_covered, "valid": lines_valid},
                 "branches": {"covered": branches_covered, "valid": branches_valid},
+                "lowest_files": _lowest_coverage_files(coverage_root),
             }
         except (ET.ParseError, KeyError, OSError, ValueError) as error:
             issues.append(f"coverage.xmlを解析できません: {error}")
@@ -176,6 +196,37 @@ def collect_run_metrics(run_dir: Path) -> tuple[dict[str, object], list[str]]:
     return metrics, issues
 
 
+def _lowest_coverage_files(root: ET.Element, *, limit: int = 10) -> list[CoverageFileMetric]:
+    """未検証riskの優先順位を示す低line coverageファイルを返す。"""
+    files: list[CoverageFileMetric] = []
+    for class_element in root.iter("class"):
+        filename = class_element.attrib.get("filename")
+        if not filename:
+            continue
+        lines = list(class_element.iter("line"))
+        if not lines:
+            continue
+        covered = sum(int(line.attrib.get("hits", "0")) > 0 for line in lines)
+        valid = len(lines)
+        files.append(
+            {
+                "path": filename.replace("\\", "/"),
+                "line_percent": round(covered / valid * 100, 2),
+                "covered": covered,
+                "valid": valid,
+                "missing": valid - covered,
+            }
+        )
+    return sorted(
+        files,
+        key=lambda item: (
+            -item["missing"],
+            item["line_percent"],
+            item["path"],
+        ),
+    )[:limit]
+
+
 def _metric_summary(metrics: dict[str, object], artifact_issues: list[str]) -> list[str]:
     """構造化指標を人間向けsummaryへ変換する。"""
     summary = ["", "## 指標", ""]
@@ -197,6 +248,15 @@ def _metric_summary(metrics: dict[str, object], artifact_issues: list[str]) -> l
             f"line {coverage.get('line_percent')}%, "
             f"branch {coverage.get('branch_percent')}%"
         )
+        lowest_files = coverage.get("lowest_files")
+        if isinstance(lowest_files, list) and lowest_files:
+            summary.append("- coverage優先候補:")
+            for item in lowest_files[:5]:
+                if isinstance(item, dict):
+                    summary.append(
+                        f"  - `{item.get('path')}`: {item.get('line_percent')}% "
+                        f"({item.get('covered')}/{item.get('valid')})"
+                    )
     benchmarks = metrics.get("benchmarks")
     if isinstance(benchmarks, list):
         for benchmark in benchmarks:
@@ -229,6 +289,8 @@ def append_events(event_path: Path, results: Sequence[GateResult]) -> None:
                         "timestamp": utc_now().isoformat(),
                         "message": result.message,
                         "log": result.log,
+                        "execution_origin": result.execution_origin,
+                        "source_run": result.source_run,
                     },
                     ensure_ascii=False,
                 )

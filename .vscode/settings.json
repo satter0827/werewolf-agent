@@ -3,7 +3,7 @@
   "mypy-type-checker.importStrategy": "fromEnvironment",
   "mypy-type-checker.reportingScope": "custom",
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-  "python.testing.pytestArgs": ["--test-level=quick", "tests/unit"],
+  "python.testing.pytestArgs": ["--test-level=focus", "tests/unit"],
   "python.testing.pytestEnabled": true,
   "python.testing.unittestEnabled": false,
   "files.exclude": {

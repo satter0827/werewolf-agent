@@ -25,7 +25,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     verify = subparsers.add_parser("verify")
-    verify.add_argument("level", choices=("quick", "check", "release", "deep"))
+    verify.add_argument("level", choices=("auto", "focus", "check", "release", "deep"))
     review = subparsers.add_parser("review")
     review.add_argument("kind", choices=("ui", "gameplay", "local-llm"))
     subparsers.add_parser("open-report")
@@ -54,7 +54,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 def _review(kind: str) -> int:
     """主観判定を行わず、読解用の証拠を選択生成する。"""
-    root = LAYOUT.quality / "review" / f"{utc_now():%Y%m%dT%H%M%SZ}-{kind}"
+    root = LAYOUT.reviews / kind / f"{utc_now():%Y%m%dT%H%M%SZ}"
     root.mkdir(parents=True, exist_ok=True)
     if kind == "ui":
         command = [sys.executable, "-m", "scripts.quality", "gate", "browser"]
@@ -102,7 +102,7 @@ def _review_local_llm(root: Path) -> int:
 
 def _open_latest_report() -> int:
     reports = sorted(
-        (LAYOUT.quality / "latest").rglob("report.json"),
+        (LAYOUT.quality / "profiles").glob("*/current/report.json"),
         key=lambda path: path.stat().st_mtime,
         reverse=True,
     )

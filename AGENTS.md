@@ -56,11 +56,12 @@ UI変更では自動Browser E2Eの成功後にBrowser画面確認スキルを使
 
 ```powershell
 uv run --no-project python -m scripts.environment ensure check
+uv run --no-sync python -m scripts.quality auto
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check --no-cache .
 uv run --no-sync mypy --no-incremental src
 uv run --no-sync pytest
-uv run --no-sync python -m scripts.quality quick
+uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check
 uv run --no-sync python -m scripts.docs build
 uv run --no-sync python -m scripts.architecture

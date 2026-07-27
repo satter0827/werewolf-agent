@@ -15,17 +15,32 @@ from scripts._infra.process import (
 from scripts.quality.models import Gate, ResourceLease, RunContext
 from scripts.supabase.preflight import isolated_project_id, prepare_supabase
 
-GATES = ("supabase-preflight", "supabase-integration")
+QUALITY_SUPABASE_PREFIX = "werewolf-agent-quality-"
+GATES = ("supabase-cleanup", "supabase-preflight", "supabase-integration")
 
 
 def build(run_dir: Path) -> list[Gate]:
     """Supabaseの前提確認とintegration test gateを返す。"""
     return [
         Gate(
+            "supabase-cleanup",
+            "Orphaned quality Supabase cleanup",
+            (
+                "docker",
+                "ps",
+                "--all",
+                "--filter",
+                "label=com.supabase.cli.project",
+            ),
+            action=cleanup_orphaned_supabase,
+            exclusive_resources=("supabase",),
+        ),
+        Gate(
             "supabase-preflight",
             "Local Supabase preflight",
             (sys.executable, "-m", "scripts.supabase", "preflight"),
             action=start_supabase,
+            dependencies=("supabase-cleanup",),
             exclusive_resources=("supabase",),
         ),
         Gate(
@@ -59,6 +74,52 @@ def build(run_dir: Path) -> list[Gate]:
             ),
         ),
     ]
+
+
+def cleanup_orphaned_supabase(context: RunContext, _: Path) -> CommandResult:
+    """失敗した過去runが残した品質専用Supabaseを開始前に回収する。"""
+    started = time.monotonic()
+    command = [
+        "docker",
+        "ps",
+        "--all",
+        "--filter",
+        "label=com.supabase.cli.project",
+        "--format",
+        '{{.Label "com.supabase.cli.project"}}',
+    ]
+    discovered = run_command(command, timeout_seconds=30, environment=context.environment)
+    if discovered.returncode != 0:
+        return discovered
+    project_ids = sorted(
+        {
+            line.strip()
+            for line in discovered.output.splitlines()
+            if line.strip().startswith(QUALITY_SUPABASE_PREFIX)
+        }
+    )
+    outputs: list[str] = []
+    for project_id in project_ids:
+        stopped = run_command(
+            ["supabase", "stop", "--project-id", project_id, "--no-backup"],
+            timeout_seconds=60,
+            environment=context.environment,
+        )
+        outputs.append(stopped.output)
+        if stopped.returncode != 0:
+            return CommandResult(
+                command,
+                stopped.returncode,
+                time.monotonic() - started,
+                "".join(outputs),
+                stopped.timed_out,
+            )
+    message = (
+        f"品質用Supabaseの孤児projectを{len(project_ids)}件回収しました。\n"
+        if project_ids
+        else "品質用Supabaseの孤児projectはありません。\n"
+    )
+    return CommandResult(command, 0, time.monotonic() - started, message + "".join(outputs))
 
 
 def start_supabase(context: RunContext, _: Path) -> CommandResult:
@@ -134,4 +195,10 @@ def stop_supabase(context: RunContext, _: Path) -> CommandResult:
     )
 
 
-__all__ = ["GATES", "build", "start_supabase", "stop_supabase"]
+__all__ = [
+    "GATES",
+    "build",
+    "cleanup_orphaned_supabase",
+    "start_supabase",
+    "stop_supabase",
+]

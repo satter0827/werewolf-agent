@@ -82,14 +82,15 @@ uv run --no-sync python -m scripts.docs build
 uv run --no-sync python -m scripts.architecture
 ```
 
-HTMLは`.werewolf-agent/build/docs/index.html`、機械可読な依存graph、schema、評価、
-SVGは`.werewolf-agent/build/architecture`に生成されます。同じ操作をVS Codeの
+HTMLは`.werewolf-agent/outputs/docs/index.html`、機械可読な依存graph、schema、評価、
+SVGは`.werewolf-agent/outputs/architecture`に生成されます。同じ操作をVS Codeの
 `Docs: Build`、`Architecture: Analyze` taskから実行できます。
 
 ## 検証
 
 ```powershell
-uv run --no-sync python -m scripts.quality quick
+uv run --no-sync python -m scripts.quality auto
+uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check
 uv run --no-sync python -m scripts.quality release
 uv run --no-sync python -m scripts.quality deep --confirm-deep
@@ -99,6 +100,7 @@ uv run --no-sync python -m scripts.quality list
 
 `scripts.quality` は品質 gate 全体の順序、timeout、report を管理します。docs と
 architecture の個別処理は専用 script が所有し、品質 runner はその入口を呼びます。
+`auto`は変更pathから必要なlevelを選び、`focus`以降は指定levelを常に固定して実行します。
 結果は`.werewolf-agent/quality`に保存されます。最新成功runはreportだけでなく、event、
 log、JSON/HTML test結果、coverage、画面、manifestを含むreview bundleです。
 `manifest.json`のSHA-256とproducerから証拠の出所と実在を確認できます。
@@ -128,7 +130,7 @@ Local smokeは固定1 preset、最大3 model呼び出し、各40秒timeoutで停
 driverで作成・進行し、Streamlitの作成直後、進行中、timeline、終了、異常表示とDB照合を
 生成します。Playwright traceと認証を含み得るnative成果物はprivate領域へ保存します。OpenAIは
 `run --provider openai --confirm-paid`を明示し、`OPENAI_API_KEY`を
-設定した場合だけ使用します。成果物は`.werewolf-agent/agents`へ保存されます。
+設定した場合だけ使用します。成果物は`.werewolf-agent/reviews/agents`へ保存されます。
 
 環境準備はfile lockの内側でlockに従って依存、browser、imageを準備します。品質判定は
 fake、fixture、localhost、Compose内serviceだけを使用し、有料LLM providerや任意の

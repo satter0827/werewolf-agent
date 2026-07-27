@@ -8,7 +8,7 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Generator, Iterator
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlsplit
@@ -17,16 +17,41 @@ import httpx
 import pytest
 from playwright.sync_api import Browser, BrowserContext, Page, Playwright, Route, expect
 
+from scripts.browser.catalog import load_catalog
+
 LOCAL_HOSTS = frozenset(
     {"127.0.0.1", "::1", "api", "host.docker.internal", "localhost", "streamlit"}
 )
-DEVICES = {
-    "desktop": "Desktop Chrome",
-    "mobile": "Pixel 7",
-}
+
+DEVICES = {key: str(value) for key, value in load_catalog()["devices"].items()}
+_REPORTS = pytest.StashKey[dict[str, pytest.TestReport]]()
 
 
-@pytest.fixture(params=tuple(DEVICES))
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    """CLIから選択されたdeviceだけをscenarioへ適用する。"""
+    if "device_name" not in metafunc.fixturenames:
+        return
+    requested = os.environ.get("PLAYWRIGHT_DEVICES", "desktop,mobile").split(",")
+    devices = [name.strip() for name in requested if name.strip()]
+    unknown = set(devices) - set(DEVICES)
+    if unknown:
+        raise pytest.UsageError(f"未定義のBrowser deviceです: {sorted(unknown)}")
+    metafunc.parametrize("device_name", devices)
+
+
+@pytest.hookimpl(wrapper=True, tryfirst=True)
+def pytest_runtest_makereport(
+    item: pytest.Item,
+    call: pytest.CallInfo[None],
+) -> Generator[None, pytest.TestReport, pytest.TestReport]:
+    """Scenario失敗状態をtrace fixtureへ渡す。"""
+    report = yield
+    reports = item.stash.setdefault(_REPORTS, {})
+    reports[report.when] = report
+    return report
+
+
+@pytest.fixture
 def device_name(request: pytest.FixtureRequest) -> str:
     """Desktopとmobileを同じscenarioへ適用する。"""
     return str(request.param)
@@ -47,16 +72,21 @@ def context(
     browser: Browser,
     browser_context_args: dict[str, object],
     output_path: str,
+    request: pytest.FixtureRequest,
 ) -> Iterator[BrowserContext]:
-    """各scenarioを独立contextとtraceへ分離する。"""
+    """各scenarioを独立contextに分離し、失敗時だけtraceを保存する。"""
     context = browser.new_context(**cast(Any, browser_context_args))
     context.tracing.start(screenshots=True, snapshots=True, sources=True)
     try:
         yield context
     finally:
-        trace = Path(output_path) / "trace.zip"
-        trace.parent.mkdir(parents=True, exist_ok=True)
-        context.tracing.stop(path=trace)
+        failed = any(report.failed for report in request.node.stash.get(_REPORTS, {}).values())
+        if failed or os.environ.get("PLAYWRIGHT_TRACE") == "always":
+            trace = Path(output_path) / "trace.zip"
+            trace.parent.mkdir(parents=True, exist_ok=True)
+            context.tracing.stop(path=trace)
+        else:
+            context.tracing.stop()
         context.close()
 
 
@@ -116,6 +146,11 @@ def degraded_streamlit_url(tmp_path_factory: pytest.TempPathFactory) -> Iterator
     environment.pop("WEREWOLF_SUPABASE_URL", None)
     environment.pop("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", None)
     environment["WEREWOLF_API_BASE_URL"] = "http://127.0.0.1:9"
+    source_path = str(Path.cwd() / "src")
+    current_python_path = environment.get("PYTHONPATH")
+    environment["PYTHONPATH"] = os.pathsep.join(
+        part for part in (source_path, current_python_path) if part
+    )
     command = [
         sys.executable,
         "-m",
@@ -182,6 +217,13 @@ def capture_public_screenshot(
 
     def capture(page: Page, filename: str) -> Path:
         target = screenshot_directory / filename
+        selected = {
+            value.strip()
+            for value in os.environ.get("PLAYWRIGHT_CAPTURES", "").split(",")
+            if value.strip()
+        }
+        if selected and filename not in selected and Path(filename).stem not in selected:
+            return target
         sensitive_elements = [
             page.locator('input[type="email"]'),
             page.locator('input[type="password"]'),
