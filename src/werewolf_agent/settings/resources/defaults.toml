@@ -17,9 +17,9 @@ worker_paid_llm_base_url = ""
 
 log_level = "INFO"
 log_output = "file"
-log_dir = ".werewolf-agent/logs"
-log_file_name = "werewolf-agent.jsonl"
-log_retention_days = 14
+log_dir = ".werewolf-agent/logs/application"
+log_file_max_mib = 10
+log_file_backup_count = 3
 log_third_party_level = "WARNING"
 
 supabase_url = ""

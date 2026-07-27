@@ -70,7 +70,7 @@ def build_streamlit_public_client(settings: AppSettings) -> PublicClient:
 
 def log_streamlit_rerun_started(settings: AppSettings) -> None:
     """Log the Streamlit rerun context without private gameplay data."""
-    logger.info(
+    logger.debug(
         LOG_STREAMLIT_RERUN_STARTED,
         extra={
             "event_action": LOG_STREAMLIT_RERUN_STARTED,

@@ -274,6 +274,8 @@ def _command_state(result: CommandResult, *, nonzero_state: FailureState = "fail
         return "passed"
     if _is_pytest_command(result.command) and result.returncode != 1:
         return "error"
+    if result.returncode == 2:
+        return "blocked"
     return nonzero_state
 
 

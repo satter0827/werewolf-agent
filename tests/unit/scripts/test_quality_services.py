@@ -142,8 +142,8 @@ def test_supabase_cleanup_removes_isolated_cli_profile(
 ) -> None:
     """projectが既に停止済みでもrun固有SUPABASE_HOMEを削除する。"""
 
-    temporary_root = tmp_path / "temporary" / "werewolf-agent"
-    profile = temporary_root / "supabase" / "run"
+    artifact_root = tmp_path / ".werewolf-agent"
+    profile = artifact_root / "runtime" / "supabase-home" / "run"
     profile.mkdir(parents=True)
     context = quality.RunContext(
         profile="release",
@@ -163,12 +163,49 @@ def test_supabase_cleanup_removes_isolated_cli_profile(
             )
         },
     )
-    monkeypatch.setattr(support, "TEMPORARY_ROOT", temporary_root)
+    monkeypatch.setattr(support, "ARTIFACT_ROOT", artifact_root)
 
     result = services.stop_supabase(context, tmp_path / "log")
 
     assert result.returncode == 0
     assert not profile.exists()
+
+
+def test_supabase_cleanup_failure_keeps_lease_for_diagnostics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    workdir = tmp_path / ".werewolf-agent" / "runtime" / "supabase" / "run"
+    workdir.mkdir(parents=True)
+    lease = ResourceLease(
+        "supabase",
+        cleanup_required=True,
+        workdir=workdir,
+        identifier="werewolf-agent-quality-run",
+    )
+    context = quality.RunContext(
+        profile="release",
+        jobs=1,
+        timeout_seconds=1,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={},
+        initial_git_status="",
+        started_at=quality.utc_now(),
+        resources={"supabase": lease},
+    )
+    monkeypatch.setattr(
+        services,
+        "run_command",
+        lambda command, **_kwargs: support.CommandResult(command, 1, 0.0, "stop failed"),
+    )
+
+    result = services.stop_supabase(context, tmp_path / "log")
+
+    assert result.returncode == 1
+    assert lease.cleanup_required is True
+    assert lease.identifier == "werewolf-agent-quality-run"
+    assert lease.workdir == workdir
 
 
 def test_supabase_ownership_is_recorded_before_preflight(

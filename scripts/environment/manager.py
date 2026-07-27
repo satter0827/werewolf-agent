@@ -1,4 +1,4 @@
-"""Lock fileに従って必要な開発依存だけを準備する。"""
+"""Lock fileに従って開発環境を検査し、明示的に準備する。"""
 
 from __future__ import annotations
 
@@ -10,17 +10,26 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tomllib
 from collections.abc import Sequence
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from filelock import FileLock, Timeout
 
+from scripts._infra.artifacts import LAYOUT
+from scripts._infra.operations import operation_run_id, publish_operation
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     REPOSITORY_ROOT,
+    CommandResult,
+    redact,
+    remove_managed_path,
+    utc_now,
 )
-from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, REQUIRED_LOCAL_IMAGES
+from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, SUPPORTED_CLI_VERSION
+from scripts.supabase.preflight import prepare_isolated_project
 
 STATE_ROOT = ARTIFACT_ROOT / "runtime" / "environment"
 LOCK_PATH = STATE_ROOT / "setup.lock"
@@ -40,50 +49,60 @@ RELEASE_INPUTS = (
 RUNTIME_IMAGE = "werewolf-agent-quality-app:latest"
 E2E_IMAGE = "werewolf-agent-quality-e2e:latest"
 QUALITY_BUILDER = "werewolf-agent-quality"
-IMAGE_STATE_ROOT = STATE_ROOT / "images"
+SUPABASE_CLI_VERSION = SUPPORTED_CLI_VERSION
+
+ERROR_UV_UNAVAILABLE = "environment.uv_unavailable"
+ERROR_PYTHON_UNSUPPORTED = "environment.python_unsupported"
+ERROR_DOCKER_CLI_UNAVAILABLE = "environment.docker_cli_unavailable"
+ERROR_DOCKER_DAEMON_UNAVAILABLE = "environment.docker_daemon_unavailable"
+ERROR_BUILDX_UNAVAILABLE = "environment.buildx_unavailable"
+ERROR_SUPABASE_CLI_UNAVAILABLE = "environment.supabase_cli_unavailable"
+ERROR_SUPABASE_VERSION_MISMATCH = "environment.supabase_cli_version_mismatch"
+ERROR_COMMAND_FAILED = "environment.command_failed"
+ERROR_CLEANUP_FAILED = "environment.cleanup_failed"
+ERROR_FINGERPRINT_MISMATCH = "environment.fingerprint_mismatch"
 
 
-def _run(
-    command: Sequence[str],
-    *,
-    cwd: Path = REPOSITORY_ROOT,
-    quiet: bool = False,
-    environment: dict[str, str] | None = None,
-) -> None:
-    """準備commandを実行し、秘密値を含み得る出力だけ捕捉する。"""
-    completed = subprocess.run(
-        list(command),
-        cwd=cwd,
-        check=False,
-        capture_output=quiet,
-        text=quiet,
-        encoding="utf-8" if quiet else None,
-        errors="replace" if quiet else None,
-        env=environment,
-    )
-    if completed.returncode != 0:
-        raise RuntimeError(f"環境準備に失敗しました: {' '.join(command)}")
+@dataclass(frozen=True, slots=True)
+class EnvironmentCheck:
+    """環境を変更せずに得た一つの判定。"""
+
+    id: str
+    state: str
+    summary: str
+    evidence: dict[str, object] = field(default_factory=dict)
 
 
-def _version(command: Sequence[str]) -> str:
-    executable = shutil.which(command[0]) or command[0]
-    try:
-        completed = subprocess.run(
-            [executable, *command[1:]],
-            cwd=REPOSITORY_ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except (OSError, subprocess.TimeoutExpired):
-        return "unavailable"
-    return completed.stdout.strip() if completed.returncode == 0 else "unavailable"
+@dataclass(slots=True)
+class EnvironmentReport:
+    """人と機械が同じ根拠を参照する環境診断結果。"""
+
+    schema_version: int
+    run_id: str
+    command: str
+    requested_profile: str
+    resolved_profile: str
+    state: str
+    started_at: str
+    finished_at: str
+    checks: list[EnvironmentCheck]
+    observations: list[str]
+    confirmed_causes: list[str]
+    unconfirmed_scope: list[str]
+    next_actions: list[str]
+    related_artifacts: list[str]
+    error_code: str | None = None
+
+
+@dataclass(slots=True)
+class _ExecutionFailure:
+    stage: str
+    result: CommandResult
+    error_code: str = ERROR_COMMAND_FAILED
 
 
 def dependency_fingerprint(profile: str) -> str:
-    """Lock、tool version、release入力から依存環境fingerprintを返す。"""
+    """Lockとrelease入力から依存環境fingerprintを返す。"""
     digest = hashlib.sha256()
     inputs = [REPOSITORY_ROOT / relative for relative in PYTHON_INPUTS]
     if profile in {"release", "deep"}:
@@ -95,16 +114,9 @@ def dependency_fingerprint(profile: str) -> str:
                 if candidate.is_file() and not {"__pycache__", "dist"}.intersection(candidate.parts)
             )
     for path in sorted(set(inputs)):
-        relative = path.relative_to(REPOSITORY_ROOT).as_posix()
-        digest.update(relative.encode())
+        digest.update(path.relative_to(REPOSITORY_ROOT).as_posix().encode())
         digest.update(path.read_bytes())
-    for value in (
-        profile,
-        _version(("uv", "--version")),
-        _version(("docker", "--version")) if profile in {"release", "deep"} else "",
-        _version(("supabase", "--version")) if profile in {"release", "deep"} else "",
-    ):
-        digest.update(value.encode())
+    digest.update(profile.encode())
     return digest.hexdigest()
 
 
@@ -123,97 +135,168 @@ def python_installation_fingerprint() -> str:
     return digest.hexdigest()
 
 
-def _state_path(profile: str) -> Path:
-    return STATE_ROOT / f"{profile}.json"
-
-
-def _ready(profile: str, fingerprint: str) -> bool:
-    state_path = _state_path(profile)
-    if not (REPOSITORY_ROOT / ".venv").is_dir():
-        return False
-    if not state_path.is_file():
-        return False
-    try:
-        state = json.loads(state_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    state_matches = isinstance(state, dict) and state == {
-        "fingerprint": fingerprint,
-        "profile": profile,
-    }
-    return state_matches and _release_environment_ready(profile)
-
-
-def required_release_images() -> tuple[str, ...]:
-    """Release準備が現在のDocker contextへ作成するimageを返す。"""
-    return (*REQUIRED_LOCAL_IMAGES, RUNTIME_IMAGE, E2E_IMAGE)
-
-
-def _release_environment_ready(profile: str) -> bool:
-    """Release系profileのdaemonと必須imageが現在のcontextに存在するか返す。"""
-    if profile not in {"release", "deep"}:
-        return True
-    docker = shutil.which("docker")
-    if docker is None or not _command_succeeds((docker, "info")):
-        return False
-    if not all(
-        _command_succeeds((docker, "image", "inspect", image)) for image in REQUIRED_LOCAL_IMAGES
-    ):
-        return False
-    return _image_marker_matches(
-        RUNTIME_IMAGE,
-        "application",
-        _application_image_fingerprint(),
-    ) and _image_marker_matches(
-        E2E_IMAGE,
-        "browser-dependencies",
-        _e2e_image_fingerprint(),
+def inspect_environment(
+    profile: str = "check", *, command: str = "check", run_id: str | None = None
+) -> EnvironmentReport:
+    """resourceを変更せず、指定profileの準備状態を返す。"""
+    started = utc_now()
+    requested = profile
+    resolved = _resolve_profile(profile)
+    actual_run_id = run_id or operation_run_id("environment")
+    checks = _prerequisite_checks(resolved, actual_run_id)
+    if all(item.state == "passed" for item in checks):
+        try:
+            checks.append(_state_check(resolved))
+        except Exception as error:
+            checks.append(
+                EnvironmentCheck(
+                    ERROR_COMMAND_FAILED,
+                    "error",
+                    "環境状態の検査中に予期しない実行失敗が発生しました。",
+                    {"error_type": type(error).__name__, "detail": redact(str(error))},
+                )
+            )
+    failures = [item for item in checks if item.state != "passed"]
+    selected = next((item for item in failures if item.state == "error"), None)
+    selected = selected or (failures[0] if failures else None)
+    state = (
+        "error"
+        if any(item.state == "error" for item in failures)
+        else ("blocked" if failures else "passed")
+    )
+    return EnvironmentReport(
+        schema_version=1,
+        run_id=actual_run_id,
+        command=command,
+        requested_profile=requested,
+        resolved_profile=resolved,
+        state=state,
+        started_at=started.isoformat(),
+        finished_at=utc_now().isoformat(),
+        checks=checks,
+        observations=[item.summary for item in checks],
+        confirmed_causes=[item.summary for item in failures],
+        unconfirmed_scope=[] if state == "passed" else ["失敗した検査より後の項目は未確認です。"],
+        next_actions=_next_actions(selected.id if selected is not None else None, resolved),
+        related_artifacts=[_operation_report_path(actual_run_id)],
+        error_code=selected.id if selected is not None else None,
     )
 
 
-def _command_succeeds(command: Sequence[str]) -> bool:
-    """準備済み判定用の読取commandが成功したか返す。"""
-    try:
-        completed = subprocess.run(
-            list(command),
-            cwd=REPOSITORY_ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            timeout=30,
+def check(profile: str = "check") -> EnvironmentReport:
+    """指定profileを検査し、operation成果物を公開する。"""
+    report = inspect_environment(profile)
+    _publish_report(report)
+    return report
+
+
+def setup(profile: str = "check") -> EnvironmentReport:
+    """指定profileを事前検査後に準備し、operation成果物を公開する。"""
+    requested = profile
+    resolved = _resolve_profile(profile)
+    run_id = operation_run_id("environment")
+    started = utc_now()
+    prerequisite_checks = _prerequisite_checks(resolved, run_id)
+    prerequisite_failures = [item for item in prerequisite_checks if item.state != "passed"]
+    if prerequisite_failures:
+        selected = next(
+            (item for item in prerequisite_failures if item.state == "error"),
+            prerequisite_failures[0],
         )
-    except (OSError, subprocess.TimeoutExpired):
-        return False
-    return completed.returncode == 0
+        state = "error" if selected.state == "error" else "blocked"
+        report = EnvironmentReport(
+            1,
+            run_id,
+            "setup",
+            requested,
+            resolved,
+            state,
+            started.isoformat(),
+            utc_now().isoformat(),
+            prerequisite_checks,
+            [item.summary for item in prerequisite_checks],
+            [item.summary for item in prerequisite_failures],
+            ["変更処理は開始していません。"],
+            _next_actions(selected.id, resolved),
+            [_operation_report_path(run_id)],
+            selected.id,
+        )
+        _publish_report(report)
+        return report
 
-
-def setup(profile: str = "check") -> None:
-    """指定profileに必要な依存をlockに従って準備する。"""
-    profile = _resolve_profile(profile)
-    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    failure: _ExecutionFailure | None = None
+    cleanup_failure: _ExecutionFailure | None = None
     try:
+        STATE_ROOT.mkdir(parents=True, exist_ok=True)
         with FileLock(LOCK_PATH, timeout=600):
-            _setup_locked(profile)
-    except Timeout as error:
-        raise RuntimeError("依存環境の準備lockを取得できませんでした。") from error
+            failure, cleanup_failure = _setup_locked(resolved, run_id)
+    except Timeout:
+        failure = _synthetic_failure("lock", "依存環境の準備lockを取得できませんでした。")
+    except OSError as error:
+        failure = _synthetic_failure("setup", str(error))
+
+    checks = list(prerequisite_checks)
+    failure_logs: dict[str, str] = {}
+    for item in (failure, cleanup_failure):
+        if item is None:
+            continue
+        summary = (
+            "隔離Supabaseのcleanupに失敗しました。"
+            if item.error_code == ERROR_CLEANUP_FAILED
+            else f"{item.stage}に失敗しました。"
+        )
+        checks.append(
+            EnvironmentCheck(
+                item.error_code,
+                "error",
+                summary,
+                {
+                    "stage": item.stage,
+                    "exit_code": item.result.returncode,
+                    "duration_seconds": round(item.result.duration_seconds, 3),
+                    "log": f"logs/{item.stage}.log",
+                },
+            )
+        )
+        failure_logs[item.stage] = item.result.output
+    state = "passed" if failure is None and cleanup_failure is None else "error"
+    report = EnvironmentReport(
+        1,
+        run_id,
+        "setup",
+        requested,
+        resolved,
+        state,
+        started.isoformat(),
+        utc_now().isoformat(),
+        checks,
+        [item.summary for item in checks],
+        [item.summary for item in checks if item.state != "passed"],
+        [] if state == "passed" else ["失敗したstageより後の準備状態は未確認です。"],
+        []
+        if state == "passed"
+        else [f"原因を解消してenvironment setup {resolved}を再実行してください。"],
+        [_operation_report_path(run_id)],
+        None if state == "passed" else checks[-1].id,
+    )
+    _publish_report(report, failure_logs=failure_logs)
+    return report
 
 
-def _setup_locked(profile: str) -> None:
-    """Process間lock内で指定profileの依存を準備する。"""
+def _setup_locked(
+    profile: str, run_id: str
+) -> tuple[_ExecutionFailure | None, _ExecutionFailure | None]:
     uv = shutil.which("uv") or "uv"
-    _run((uv, "sync", "--frozen", "--all-groups", "--all-extras"))
+    synced = _execute((uv, "sync", "--frozen", "--all-groups", "--all-extras"), timeout=600)
+    if synced.returncode != 0:
+        return _ExecutionFailure("python-sync", synced), None
+    supabase_images: list[dict[str, str]] = []
+    pending_image_markers: list[tuple[str, str, str]] = []
+    cleanup_failure: _ExecutionFailure | None = None
     if profile in {"release", "deep"}:
-        docker = shutil.which("docker")
-        supabase = shutil.which("supabase")
-        if docker is None:
-            raise RuntimeError("releaseにはDockerが必要です。")
-        if supabase is None:
-            raise RuntimeError("releaseにはSupabase CLIが必要です。")
-        _run((supabase, "stop", "--no-backup"), quiet=True)
+        docker = shutil.which("docker") or "docker"
         if not _command_succeeds((docker, "buildx", "inspect", QUALITY_BUILDER)):
-            _run(
+            created = _execute(
                 (
                     docker,
                     "buildx",
@@ -224,18 +307,355 @@ def _setup_locked(profile: str) -> None:
                     "docker-container",
                 )
             )
+            if created.returncode != 0:
+                return _ExecutionFailure("buildx-create", created), None
         build_environment = {**os.environ, "BUILDX_BUILDER": QUALITY_BUILDER}
-        _run(
+        for image, key, fingerprint, command in _image_builds(docker):
+            if _image_marker_matches(image, key, fingerprint):
+                continue
+            built = _execute(command, environment=build_environment, timeout=1200)
+            if built.returncode != 0:
+                return _ExecutionFailure(f"{key}-image", built), None
+            pending_image_markers.append((image, key, fingerprint))
+        supabase_failure, cleanup_failure, supabase_images = _prepare_supabase_images(run_id)
+        if supabase_failure is not None:
+            return supabase_failure, cleanup_failure
+        if cleanup_failure is not None:
+            return None, cleanup_failure
+        pruned = _execute(
             (
-                supabase,
-                "start",
-                "--exclude",
-                LOCAL_EXCLUDED_SERVICES_CSV,
+                docker,
+                "buildx",
+                "prune",
+                "--builder",
+                QUALITY_BUILDER,
+                "--max-used-space",
+                f"{_docker_cache_max_gib()}GB",
+                "--force",
             ),
-            quiet=True,
+            timeout=300,
         )
-        _run((supabase, "stop", "--no-backup"), quiet=True)
-        _ensure_image(
+        if pruned.returncode != 0:
+            return _ExecutionFailure("buildx-prune", pruned), cleanup_failure
+        for image, key, fingerprint in pending_image_markers:
+            _write_image_marker(image, key, fingerprint)
+    _write_state(profile, supabase_images)
+    return None, cleanup_failure
+
+
+def _prepare_supabase_images(
+    run_id: str,
+) -> tuple[_ExecutionFailure | None, _ExecutionFailure | None, list[dict[str, str]]]:
+    workdir, project_id = prepare_isolated_project(
+        LAYOUT.runtime / "supabase" / f"environment-{run_id}"
+    )
+    profile = LAYOUT.runtime / "supabase-home" / run_id
+    environment = {
+        **os.environ,
+        "SUPABASE_HOME": str(profile),
+        "SUPABASE_TELEMETRY_DISABLED": "true",
+    }
+    start = _execute(
+        ("supabase", "start", "--exclude", LOCAL_EXCLUDED_SERVICES_CSV, "--workdir", str(workdir)),
+        environment=environment,
+        timeout=600,
+    )
+    images = _supabase_project_images(project_id, environment) if start.returncode == 0 else []
+    stopped = _execute(
+        ("supabase", "stop", "--project-id", project_id, "--no-backup", "--workdir", str(workdir)),
+        environment=environment,
+        timeout=120,
+    )
+    cleanup_results: list[CommandResult] = []
+    if stopped.returncode != 0:
+        cleanup_results.append(stopped)
+    elif workdir.exists():
+        cleanup_result = _remove_operation_path(workdir)
+        if cleanup_result is not None:
+            cleanup_results.append(cleanup_result)
+    if profile.exists():
+        cleanup_result = _remove_operation_path(profile)
+        if cleanup_result is not None:
+            cleanup_results.append(cleanup_result)
+    if start.returncode != 0:
+        failure = _ExecutionFailure("supabase-start", start)
+    elif not images:
+        failure = _synthetic_failure(
+            "supabase-images",
+            "起動したSupabase projectのimage IDを取得できませんでした。",
+        )
+    else:
+        failure = None
+    cleanup = _combined_cleanup_failure(cleanup_results)
+    return failure, cleanup, images
+
+
+def _remove_operation_path(path: Path) -> CommandResult | None:
+    import time
+
+    started = time.monotonic()
+    try:
+        remove_managed_path(path)
+    except OSError as error:
+        return CommandResult(
+            ["remove", str(path)],
+            1,
+            time.monotonic() - started,
+            str(error),
+        )
+    return None
+
+
+def _combined_cleanup_failure(results: list[CommandResult]) -> _ExecutionFailure | None:
+    if not results:
+        return None
+    combined = CommandResult(
+        ["cleanup"],
+        next(result.returncode for result in results if result.returncode != 0),
+        sum(result.duration_seconds for result in results),
+        "\n".join(result.output for result in results if result.output),
+        any(result.timed_out for result in results),
+    )
+    return _ExecutionFailure("cleanup", combined, ERROR_CLEANUP_FAILED)
+
+
+def _supabase_project_images(project_id: str, environment: dict[str, str]) -> list[dict[str, str]]:
+    listed = _execute(
+        (
+            "docker",
+            "ps",
+            "--all",
+            "--filter",
+            f"label=com.supabase.cli.project={project_id}",
+            "--format",
+            "{{.Image}}",
+        ),
+        environment=environment,
+    )
+    images: list[dict[str, str]] = []
+    for reference in sorted({line.strip() for line in listed.output.splitlines() if line.strip()}):
+        image_id = _image_id(reference)
+        if image_id is not None:
+            images.append({"reference": reference, "image_id": image_id})
+    return images
+
+
+def _prerequisite_checks(profile: str, run_id: str) -> list[EnvironmentCheck]:
+    uv = shutil.which("uv")
+    if uv is None:
+        return [EnvironmentCheck(ERROR_UV_UNAVAILABLE, "blocked", "uvを確認できません。")]
+    checks = [EnvironmentCheck("environment.uv", "passed", f"uvを確認しました: {uv}")]
+    if not (3, 11) <= sys.version_info[:2] <= (3, 14):
+        return [
+            *checks,
+            EnvironmentCheck(
+                ERROR_PYTHON_UNSUPPORTED,
+                "blocked",
+                "Python 3.11から3.14が必要です。",
+                {"actual": ".".join(str(item) for item in sys.version_info[:3])},
+            ),
+        ]
+    checks.append(
+        EnvironmentCheck(
+            "environment.python", "passed", f"Python {sys.version.split()[0]}を確認しました。"
+        )
+    )
+    if profile not in {"release", "deep"}:
+        return checks
+    docker = shutil.which("docker")
+    if docker is None:
+        return [
+            *checks,
+            EnvironmentCheck(
+                ERROR_DOCKER_CLI_UNAVAILABLE, "blocked", "Docker CLIを確認できません。"
+            ),
+        ]
+    checks.append(
+        EnvironmentCheck("environment.docker_cli", "passed", f"Docker CLIを確認しました: {docker}")
+    )
+    info = _execute((docker, "info"), timeout=30)
+    if info.returncode != 0:
+        return [
+            *checks,
+            EnvironmentCheck(
+                ERROR_DOCKER_DAEMON_UNAVAILABLE,
+                "blocked",
+                "Docker daemonへ接続できません。",
+                {"detail": _tail(info.output, lines=2)},
+            ),
+        ]
+    checks.append(
+        EnvironmentCheck("environment.docker_daemon", "passed", "Docker daemonへ接続できました。")
+    )
+    buildx = _execute((docker, "buildx", "version"), timeout=30)
+    if buildx.returncode != 0:
+        return [
+            *checks,
+            EnvironmentCheck(
+                ERROR_BUILDX_UNAVAILABLE, "blocked", "Docker Buildxを確認できません。"
+            ),
+        ]
+    checks.append(EnvironmentCheck("environment.buildx", "passed", "Docker Buildxを確認しました。"))
+    supabase = shutil.which("supabase")
+    if supabase is None:
+        return [
+            *checks,
+            EnvironmentCheck(
+                ERROR_SUPABASE_CLI_UNAVAILABLE, "blocked", "Supabase CLIを確認できません。"
+            ),
+        ]
+    profile_root = LAYOUT.runtime / "supabase-home" / f"inspect-{run_id}"
+    version = _execute(
+        (supabase, "--version"),
+        environment={
+            **os.environ,
+            "SUPABASE_HOME": str(profile_root),
+            "SUPABASE_TELEMETRY_DISABLED": "true",
+        },
+        timeout=30,
+    )
+    actual = version.output.strip()
+    if version.returncode != 0:
+        checks.append(
+            EnvironmentCheck(
+                ERROR_SUPABASE_CLI_UNAVAILABLE,
+                "blocked",
+                "Supabase CLIを実行できません。",
+                {"detail": _tail(version.output)},
+            )
+        )
+    elif actual != SUPABASE_CLI_VERSION:
+        checks.append(
+            EnvironmentCheck(
+                ERROR_SUPABASE_VERSION_MISMATCH,
+                "blocked",
+                f"Supabase CLIは{SUPABASE_CLI_VERSION}が必要です。",
+                {"actual": actual, "expected": SUPABASE_CLI_VERSION},
+            )
+        )
+    else:
+        checks.append(
+            EnvironmentCheck(
+                "environment.supabase_cli", "passed", f"Supabase CLI {actual}を確認しました。"
+            )
+        )
+    cleanup = _remove_operation_path(profile_root) if profile_root.exists() else None
+    if cleanup is not None:
+        checks.append(
+            EnvironmentCheck(
+                ERROR_CLEANUP_FAILED,
+                "error",
+                "Supabase CLI用の一時profileを削除できませんでした。",
+                {
+                    "stage": "supabase-profile-cleanup",
+                    "exit_code": cleanup.returncode,
+                    "duration_seconds": round(cleanup.duration_seconds, 3),
+                    "detail": _tail(cleanup.output),
+                },
+            )
+        )
+    return checks
+
+
+def _state_check(profile: str) -> EnvironmentCheck:
+    if not (REPOSITORY_ROOT / ".venv").is_dir():
+        return EnvironmentCheck(
+            ERROR_FINGERPRINT_MISMATCH, "blocked", "Python環境が準備されていません。"
+        )
+    state = _read_state(profile)
+    if state is None or state.get("fingerprint") != dependency_fingerprint(profile):
+        return EnvironmentCheck(
+            ERROR_FINGERPRINT_MISMATCH, "blocked", f"{profile}環境が現在の入力に対応していません。"
+        )
+    if profile in {"release", "deep"}:
+        recorded_context = state.get("docker_context")
+        current_context = _docker_context()
+        if recorded_context != current_context:
+            return EnvironmentCheck(
+                ERROR_FINGERPRINT_MISMATCH,
+                "blocked",
+                "Docker contextが準備時から変わっています。",
+                {"recorded": recorded_context, "current": current_context},
+            )
+        if state.get("supabase_cli_version") != SUPABASE_CLI_VERSION:
+            return EnvironmentCheck(
+                ERROR_FINGERPRINT_MISMATCH,
+                "blocked",
+                "Supabase CLIの準備記録が現在の固定versionと一致しません。",
+                {
+                    "recorded": state.get("supabase_cli_version"),
+                    "current": SUPABASE_CLI_VERSION,
+                },
+            )
+        if not _image_marker_matches(
+            RUNTIME_IMAGE, "application", _application_image_fingerprint()
+        ):
+            return EnvironmentCheck(
+                ERROR_FINGERPRINT_MISMATCH,
+                "blocked",
+                "application imageが現在のsourceに対応していません。",
+            )
+        if not _image_marker_matches(E2E_IMAGE, "browser-dependencies", _e2e_image_fingerprint()):
+            return EnvironmentCheck(
+                ERROR_FINGERPRINT_MISMATCH, "blocked", "E2E imageが現在の依存に対応していません。"
+            )
+        images = state.get("supabase_images")
+        if not isinstance(images, list) or not images:
+            return EnvironmentCheck(
+                ERROR_FINGERPRINT_MISMATCH, "blocked", "Supabase imageの準備記録がありません。"
+            )
+        for image in images:
+            if not isinstance(image, dict) or _image_id(
+                str(image.get("reference", ""))
+            ) != image.get("image_id"):
+                return EnvironmentCheck(
+                    ERROR_FINGERPRINT_MISMATCH,
+                    "blocked",
+                    "Supabase imageの構成が準備時から変わっています。",
+                )
+    return EnvironmentCheck("environment.ready", "passed", f"{profile}環境は準備済みです。")
+
+
+def _read_state(profile: str) -> dict[str, object] | None:
+    try:
+        value = json.loads(_state_path(profile).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _write_state(profile: str, supabase_images: list[dict[str, str]]) -> None:
+    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+    target = _state_path(profile)
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps(
+            {
+                "fingerprint": dependency_fingerprint(profile),
+                "profile": profile,
+                "docker_context": _docker_context() if profile in {"release", "deep"} else None,
+                "supabase_cli_version": SUPABASE_CLI_VERSION
+                if profile in {"release", "deep"}
+                else None,
+                "supabase_images": supabase_images,
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(target)
+
+
+def _state_path(profile: str) -> Path:
+    return STATE_ROOT / f"{profile}.json"
+
+
+def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+    return (
+        (
             RUNTIME_IMAGE,
             "application",
             _application_image_fingerprint(),
@@ -254,9 +674,8 @@ def _setup_locked(profile: str) -> None:
                 RUNTIME_IMAGE,
                 ".",
             ),
-            environment=build_environment,
-        )
-        _ensure_image(
+        ),
+        (
             E2E_IMAGE,
             "browser-dependencies",
             _e2e_image_fingerprint(),
@@ -273,110 +692,48 @@ def _setup_locked(profile: str) -> None:
                 E2E_IMAGE,
                 ".",
             ),
-            environment=build_environment,
-        )
-        _run(
-            (
-                docker,
-                "buildx",
-                "prune",
-                "--builder",
-                QUALITY_BUILDER,
-                "--max-used-space",
-                f"{_docker_cache_max_gib()}GB",
-                "--force",
-            )
-        )
-    fingerprint = dependency_fingerprint(profile)
-    STATE_ROOT.mkdir(parents=True, exist_ok=True)
-    _state_path(profile).write_text(
-        json.dumps(
-            {"fingerprint": fingerprint, "profile": profile},
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
+        ),
     )
 
 
-def _docker_cache_max_gib() -> int:
-    """専用builderのcache上限を品質設定から返す。"""
-    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as stream:
-        quality = tomllib.load(stream)["tool"]["werewolf-quality"]
-    value = int(quality["docker_builder_cache_max_gib"])
-    if value < 1:
-        raise ValueError("docker_builder_cache_max_gibには1以上を指定してください。")
-    return value
-
-
-def _ensure_image(
-    image: str,
-    key: str,
-    fingerprint: str,
-    command: Sequence[str],
-    *,
-    environment: dict[str, str],
-) -> None:
-    """内容fingerprintが変わったimageだけをbuildする。"""
-    marker = IMAGE_STATE_ROOT / f"{key}.json"
-    if _image_marker_matches(image, key, fingerprint):
-        return
-    _run(command, environment=environment)
+def _write_image_marker(image: str, key: str, fingerprint: str) -> None:
     image_id = _image_id(image)
     if image_id is None:
-        raise RuntimeError(f"build後のDocker image IDを確認できません: {image}")
-    IMAGE_STATE_ROOT.mkdir(parents=True, exist_ok=True)
-    marker.write_text(
-        json.dumps(
-            {"fingerprint": fingerprint, "image": image, "image_id": image_id},
-            indent=2,
-        )
+        raise OSError(f"build後のDocker image IDを確認できません: {image}")
+    root = STATE_ROOT / "images"
+    root.mkdir(parents=True, exist_ok=True)
+    target = root / f"{key}.json"
+    temporary = target.with_suffix(".tmp")
+    temporary.write_text(
+        json.dumps({"fingerprint": fingerprint, "image": image, "image_id": image_id}, indent=2)
         + "\n",
         encoding="utf-8",
     )
+    temporary.replace(target)
 
 
 def _image_marker_matches(image: str, key: str, fingerprint: str) -> bool:
-    """入力fingerprintと現在tagのimage IDが保存markerへ一致するか返す。"""
-    marker = IMAGE_STATE_ROOT / f"{key}.json"
     try:
-        state = json.loads(marker.read_text(encoding="utf-8"))
+        state = json.loads((STATE_ROOT / "images" / f"{key}.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     image_id = _image_id(image)
-    return isinstance(state, dict) and all(
-        (
-            state.get("fingerprint") == fingerprint,
-            state.get("image") == image,
-            state.get("image_id") == image_id,
-            image_id is not None,
-        )
+    return (
+        isinstance(state, dict)
+        and state == {"fingerprint": fingerprint, "image": image, "image_id": image_id}
+        and image_id is not None
     )
 
 
 def _image_id(image: str) -> str | None:
-    """現在のDocker contextでtagが指すimage IDを返す。"""
-    try:
-        completed = subprocess.run(
-            ["docker", "image", "inspect", "--format", "{{.Id}}", image],
-            cwd=REPOSITORY_ROOT,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-            timeout=30,
-        )
-    except (OSError, subprocess.TimeoutExpired):
+    if not image:
         return None
-    value = completed.stdout.strip()
-    return value if completed.returncode == 0 and value else None
+    result = _execute(("docker", "image", "inspect", "--format", "{{.Id}}", image), timeout=30)
+    value = result.output.strip()
+    return value if result.returncode == 0 and value else None
 
 
 def _application_image_fingerprint() -> str:
-    """Application imageだけへ影響する入力fingerprintを返す。"""
     return _paths_fingerprint(
         (
             "pyproject.toml",
@@ -394,49 +751,88 @@ def _application_image_fingerprint() -> str:
 
 
 def _e2e_image_fingerprint() -> str:
-    """Browser依存imageだけへ影響する入力fingerprintを返す。"""
     return _paths_fingerprint(("pyproject.toml", "uv.lock", "README.md", "docker/e2e.Dockerfile"))
 
 
 def _paths_fingerprint(relatives: Sequence[str]) -> str:
-    """指定path集合の内容hashを返す。"""
     digest = hashlib.sha256()
     files: list[Path] = []
     for relative in relatives:
         path = REPOSITORY_ROOT / relative
-        candidates = [path] if path.is_file() else path.rglob("*")
-        files.extend(item for item in candidates if item.is_file())
+        files.extend(
+            item for item in ([path] if path.is_file() else path.rglob("*")) if item.is_file()
+        )
     for path in sorted(set(files)):
         digest.update(path.relative_to(REPOSITORY_ROOT).as_posix().encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
 
 
-def ensure(profile: str = "check") -> bool:
-    """不足またはlock変更時だけ指定profileの依存を準備する。"""
-    profile = _resolve_profile(profile)
-    STATE_ROOT.mkdir(parents=True, exist_ok=True)
+def _docker_cache_max_gib() -> int:
+    with (REPOSITORY_ROOT / "pyproject.toml").open("rb") as stream:
+        return int(tomllib.load(stream)["tool"]["werewolf-quality"]["docker_builder_cache_max_gib"])
+
+
+def _docker_context() -> str:
+    result = _execute(("docker", "context", "show"), timeout=30)
+    return result.output.strip() if result.returncode == 0 else "unavailable"
+
+
+def _execute(
+    command: Sequence[str], *, environment: dict[str, str] | None = None, timeout: int = 60
+) -> CommandResult:
+    import time
+
+    started = time.monotonic()
     try:
-        with FileLock(LOCK_PATH, timeout=600):
-            fingerprint = dependency_fingerprint(profile)
-            if _ready(profile, fingerprint):
-                return False
-            _setup_locked(profile)
-            return True
-    except Timeout as error:
-        raise RuntimeError("依存環境の準備lockを取得できませんでした。") from error
+        completed = subprocess.run(
+            list(command),
+            cwd=REPOSITORY_ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+            timeout=timeout,
+        )
+        return CommandResult(
+            list(command),
+            completed.returncode,
+            time.monotonic() - started,
+            (completed.stdout or "") + (completed.stderr or ""),
+        )
+    except FileNotFoundError as error:
+        return CommandResult(list(command), 127, time.monotonic() - started, str(error))
+    except subprocess.TimeoutExpired as error:
+        stdout = _decode_subprocess_output(error.stdout)
+        stderr = _decode_subprocess_output(error.stderr)
+        return CommandResult(
+            list(command),
+            124,
+            time.monotonic() - started,
+            stdout + stderr,
+            True,
+        )
 
 
-def is_ready(profile: str) -> bool:
-    """現在のlock・source fingerprintに対応する環境が準備済みか返す。"""
-    if profile not in INPUT_PROFILES:
-        raise ValueError(f"未定義の環境profileです: {profile}")
-    profile = _resolve_profile(profile)
-    return _ready(profile, dependency_fingerprint(profile))
+def _decode_subprocess_output(output: str | bytes | None) -> str:
+    if isinstance(output, bytes):
+        return output.decode("utf-8", errors="replace")
+    return output or ""
+
+
+def _command_succeeds(command: Sequence[str]) -> bool:
+    return _execute(command, timeout=30).returncode == 0
+
+
+def _synthetic_failure(stage: str, message: str) -> _ExecutionFailure:
+    return _ExecutionFailure(stage, CommandResult([stage], 1, 0.0, message))
 
 
 def _resolve_profile(profile: str) -> str:
-    """autoを現在の変更影響に対応する実profileへ解決する。"""
+    if profile not in INPUT_PROFILES:
+        raise ValueError(f"未定義の環境profileです: {profile}")
     if profile != "auto":
         return profile
     from scripts.quality.impact import decide
@@ -444,39 +840,112 @@ def _resolve_profile(profile: str) -> str:
     return decide().profile
 
 
+def _next_actions(error_code: str | None, profile: str) -> list[str]:
+    if error_code is None:
+        return []
+    if error_code == ERROR_DOCKER_DAEMON_UNAVAILABLE:
+        return [
+            "Docker Desktopを起動してください。",
+            f"environment setup {profile}を再実行してください。",
+        ]
+    if error_code == ERROR_FINGERPRINT_MISMATCH:
+        return [f"environment setup {profile}を実行してください。"]
+    if error_code == ERROR_SUPABASE_VERSION_MISMATCH:
+        return [f"Supabase CLI {SUPABASE_CLI_VERSION}をインストールしてください。"]
+    return [f"{error_code}を解消してenvironment setup {profile}を再実行してください。"]
+
+
+def _tail(value: str, *, lines: int = 20) -> str:
+    return redact("\n".join(value.strip().splitlines()[-lines:]))
+
+
+def _operation_report_path(run_id: str) -> str:
+    return f"operations/environment/{run_id}/report.json"
+
+
+def _summary(report: EnvironmentReport) -> str:
+    lines = [
+        f"# 環境{('準備' if report.command == 'setup' else '検査')}: {report.resolved_profile}",
+        "",
+        f"- 判定: `{report.state}`",
+        f"- Run ID: `{report.run_id}`",
+        "",
+        "## 状況",
+        "",
+        *(f"- `{item.id}`: {item.summary}" for item in report.checks),
+    ]
+    for item in report.checks:
+        detail = item.evidence.get("detail")
+        if item.state != "passed" and isinstance(detail, str) and detail:
+            lines.extend([f"  - 詳細: {detail.replace(chr(10), chr(10) + '    ')}"])
+    if report.confirmed_causes:
+        lines.extend(
+            ["", "## 確認できた原因", "", *(f"- {item}" for item in report.confirmed_causes)]
+        )
+    if report.unconfirmed_scope:
+        lines.extend(["", "## 未確認範囲", "", *(f"- {item}" for item in report.unconfirmed_scope)])
+    if report.next_actions:
+        lines.extend(["", "## 次の操作", "", *(f"- {item}" for item in report.next_actions)])
+    return "\n".join(lines)
+
+
+def _publish_report(
+    report: EnvironmentReport, *, failure_logs: dict[str, str] | None = None
+) -> Path | None:
+    try:
+        return publish_operation(
+            "environment",
+            report.run_id,
+            asdict(report),
+            _summary(report),
+            failure_logs=failure_logs,
+        )
+    except Exception as error:
+        report.related_artifacts.clear()
+        print(
+            f"警告: 診断reportを保存できませんでした: {redact(str(error))}",
+            file=sys.stderr,
+        )
+        return None
+
+
 def build_parser() -> argparse.ArgumentParser:
-    """環境準備commandのparserを返す。"""
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("ensure", "setup"):
+    for command in ("check", "setup"):
         command_parser = subparsers.add_parser(command)
         command_parser.add_argument("profile", choices=INPUT_PROFILES, nargs="?", default="check")
     return parser
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    """環境準備commandを実行する。"""
     arguments = build_parser().parse_args(argv)
     try:
-        if arguments.command == "setup":
-            setup(arguments.profile)
-        else:
-            changed = ensure(arguments.profile)
-            print("依存を準備しました。" if changed else "依存は準備済みです。")
-    except (OSError, RuntimeError) as error:
-        print(str(error))
-        return 2
-    return 0
+        report = (
+            setup(arguments.profile) if arguments.command == "setup" else check(arguments.profile)
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        print(f"環境操作を記録できませんでした: {redact(str(error))}")
+        return 1
+    print(_summary(report))
+    if report.related_artifacts:
+        print(f"\n診断report: {REPOSITORY_ROOT / '.werewolf-agent' / report.related_artifacts[0]}")
+    if report.state == "passed":
+        return 0
+    return 2 if report.state == "blocked" else 1
 
 
 __all__ = [
+    "E2E_IMAGE",
     "PROFILES",
     "RUNTIME_IMAGE",
+    "SUPABASE_CLI_VERSION",
+    "EnvironmentCheck",
+    "EnvironmentReport",
+    "check",
     "dependency_fingerprint",
-    "ensure",
-    "is_ready",
+    "inspect_environment",
     "main",
     "python_installation_fingerprint",
-    "required_release_images",
     "setup",
 ]

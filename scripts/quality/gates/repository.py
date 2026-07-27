@@ -55,7 +55,7 @@ _FORBIDDEN_ROOT_ARTIFACTS = (
     "site",
 )
 _ALLOWED_ARTIFACT_CHILDREN = frozenset(
-    {"cache", "logs", "outputs", "quality", "reviews", "runtime"}
+    {"cache", "diagnostics", "logs", "operations", "outputs", "quality", "reviews", "runtime"}
 )
 _ALLOWED_QUALITY_CHILDREN = frozenset({".publish.lock", "history", "profiles"})
 

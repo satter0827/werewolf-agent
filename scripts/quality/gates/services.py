@@ -9,7 +9,6 @@ from scripts._infra.process import (
     CommandResult,
     EnvironmentBlockedError,
     remove_managed_path,
-    remove_temporary_path,
     run_command,
 )
 from scripts.quality.models import Gate, ResourceLease, RunContext
@@ -160,37 +159,58 @@ def stop_supabase(context: RunContext, _: Path) -> CommandResult:
     """品質用Supabaseと一時projectを停止・削除する。"""
     started = time.monotonic()
     lease = context.resources.get("supabase", ResourceLease("supabase"))
-    command = ["supabase", "stop", "--no-backup"]
-    if lease.identifier is not None:
-        command.extend(["--project-id", lease.identifier])
-    if lease.workdir is not None:
-        command.extend(["--workdir", str(lease.workdir)])
-        if not lease.workdir.exists():
-            result = CommandResult(
-                command,
-                0,
-                time.monotonic() - started,
-                "品質用Supabaseは既に停止・削除されています。\n",
-            )
-        else:
-            result = run_command(command, timeout_seconds=60, environment=context.environment)
+    if lease.identifier is None or lease.workdir is None:
+        lease.cleanup_required = False
+        return CommandResult(
+            ["supabase", "stop"],
+            0,
+            time.monotonic() - started,
+            "品質用Supabaseの所有resourceはありません。\n",
+        )
+    command = [
+        "supabase",
+        "stop",
+        "--project-id",
+        lease.identifier,
+        "--no-backup",
+        "--workdir",
+        str(lease.workdir),
+    ]
+    if not lease.workdir.exists():
+        result = CommandResult(
+            command,
+            0,
+            time.monotonic() - started,
+            "品質用Supabaseは既に停止・削除されています。\n",
+        )
     else:
         result = run_command(command, timeout_seconds=60, environment=context.environment)
-    try:
-        if result.returncode == 0 and lease.workdir is not None and lease.workdir.exists():
+    cleanup_returncode = result.returncode
+    outputs = [result.output]
+    if result.returncode == 0 and lease.workdir is not None and lease.workdir.exists():
+        try:
             remove_managed_path(lease.workdir)
-    finally:
-        supabase_home = context.environment.get("SUPABASE_HOME")
-        if supabase_home:
-            profile = Path(supabase_home)
-            if profile.exists():
-                remove_temporary_path(profile)
-        lease.cleanup_required = False
+        except OSError as error:
+            cleanup_returncode = 1
+            outputs.append(str(error))
+    supabase_home = context.environment.get("SUPABASE_HOME")
+    if supabase_home:
+        profile = Path(supabase_home)
+        if profile.exists():
+            try:
+                remove_managed_path(profile)
+            except OSError as error:
+                cleanup_returncode = 1
+                outputs.append(str(error))
+    lease.cleanup_required = cleanup_returncode != 0
+    if not lease.cleanup_required:
+        lease.identifier = None
+        lease.workdir = None
     return CommandResult(
         command,
-        result.returncode,
+        cleanup_returncode,
         time.monotonic() - started,
-        result.output,
+        "\n".join(output for output in outputs if output),
         result.timed_out,
     )
 

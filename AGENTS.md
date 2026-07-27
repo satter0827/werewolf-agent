@@ -56,7 +56,8 @@ UI変更では自動Browser E2Eの成功後にBrowser画面確認スキルを使
 ## コマンド
 
 ```powershell
-uv run --no-project python -m scripts.environment ensure check
+uv run --no-project python -m scripts.environment check check
+uv run --no-project python -m scripts.environment setup check
 uv run --no-sync python -m scripts.quality auto
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check --no-cache .

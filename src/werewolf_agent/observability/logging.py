@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from importlib import metadata
-from logging.handlers import TimedRotatingFileHandler
+from logging.handlers import RotatingFileHandler
 from typing import Any, Final, TextIO, cast
 
 import structlog
@@ -154,16 +154,14 @@ def _handlers(
 def _file_handler(
     settings: AppSettings,
     formatter: stdlib_logging.Formatter,
-) -> TimedRotatingFileHandler:
+) -> RotatingFileHandler:
     log_path = settings.log_file_path
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    handler = TimedRotatingFileHandler(
+    handler = RotatingFileHandler(
         log_path,
-        when="midnight",
-        interval=1,
-        backupCount=settings.log_retention_days,
+        maxBytes=settings.log_file_max_mib * 1024 * 1024,
+        backupCount=settings.log_file_backup_count,
         encoding=JSON_ENCODING,
-        utc=True,
         delay=True,
     )
     handler.setFormatter(formatter)
@@ -235,6 +233,7 @@ def _normalize_ecs_fields(
     _move_field(event_dict, "event_action", "event.action")
     _move_field(event_dict, "event_outcome", "event.outcome")
     _move_field(event_dict, "trace_id", "trace.id")
+    _move_field(event_dict, "operation_id", "operation.id")
     _move_field(event_dict, "method", "http.request.method")
     _move_field(event_dict, "http_method", "http.request.method")
     _move_field(event_dict, "path", "url.path")
@@ -278,6 +277,8 @@ def _normalize_ecs_fields(
     if logger_name is not None:
         event_dict.setdefault("event.dataset", str(logger_name))
     event_dict.setdefault("event.dataset", "werewolf_agent")
+    if event_dict.get("log.level") != "ERROR":
+        event_dict.pop("error.stack_trace", None)
     return event_dict
 
 

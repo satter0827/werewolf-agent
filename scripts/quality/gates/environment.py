@@ -9,7 +9,7 @@ from scripts._infra.process import (
     CommandResult,
     run_command,
 )
-from scripts.environment.manager import PROFILES, is_ready
+from scripts.environment.manager import PROFILES, inspect_environment
 from scripts.quality.models import Gate, RunContext
 
 GATES = ("environment", "isolation")
@@ -23,7 +23,7 @@ def build() -> list[Gate]:
             "Reproducible dependency environment",
             ("environment-check",),
             action=check_environment,
-            nonzero_state="blocked",
+            nonzero_state="error",
         ),
         Gate(
             "isolation",
@@ -39,7 +39,7 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
     started = time.monotonic()
     profile = context.profile if context.profile in PROFILES else "check"
     try:
-        ready = is_ready(profile)
+        report = inspect_environment(profile)
     except (OSError, RuntimeError) as error:
         return CommandResult(
             ["environment-check"],
@@ -47,24 +47,16 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             time.monotonic() - started,
             f"環境fingerprintを検査できません: {error}\n",
         )
-    if not ready:
+    if report.state != "passed":
+        detail = report.confirmed_causes[0] if report.confirmed_causes else "環境が未準備です。"
         return CommandResult(
             ["environment-check"],
-            1,
+            1 if report.state == "error" else 2,
             time.monotonic() - started,
-            f"{profile}環境が現在のlock・source fingerprintに対応していません。"
-            f"python -m scripts.environment ensure {profile}を実行してください。\n",
+            f"{detail} python -m scripts.environment setup {profile}を実行してください。\n",
         )
     commands = ((sys.executable, "-c", "import werewolf_agent"),)
     output = [f"Python {sys.version.split()[0]}\n"]
-    supported_python = (3, 11) <= sys.version_info[:2] <= (3, 14)
-    if not supported_python:
-        return CommandResult(
-            ["environment-check"],
-            1,
-            time.monotonic() - started,
-            "".join(output) + "Python 3.11から3.14が必要です。\n",
-        )
     for command in commands:
         try:
             result = run_command(

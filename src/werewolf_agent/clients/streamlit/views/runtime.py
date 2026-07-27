@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import atexit
 import importlib
 import logging
+import threading
 from typing import Any
 from uuid import uuid4
 
@@ -16,6 +18,8 @@ from werewolf_agent.adapters.auth import (
 from werewolf_agent.clients.presentation import implements_features
 from werewolf_agent.clients.streamlit.events import (
     LOG_STREAMLIT_APPLICATION_ERROR_HANDLED,
+    LOG_STREAMLIT_APPLICATION_STARTED,
+    LOG_STREAMLIT_APPLICATION_STOPPED,
 )
 from werewolf_agent.clients.streamlit.i18n import (
     I18nCatalog,
@@ -62,16 +66,18 @@ from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.observability import bind_observation_context, configure_entrypoint_logging
 from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_FAILURE,
+    EVENT_OUTCOME_SUCCESS,
 )
 from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.security.redaction import redact_text
 from werewolf_agent.settings import (
     AppSettings,
-    get_settings,
 )
 
 logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
+_PROCESS_LIFECYCLE_LOCK = threading.Lock()
+_PROCESS_STARTED = False
 _VIEW_SCROLL_SCRIPT = """
 <script>
 const resetViewScroll = () => {
@@ -113,15 +119,40 @@ class _StreamlitSessionStore:
 def main() -> None:
     """Render the Streamlit application."""
     st = _streamlit()
-    settings = get_settings()
-    configure_entrypoint_logging(
-        settings,
+    settings = configure_entrypoint_logging(
         default_log_file_name="streamlit.jsonl",
-        service_name=settings.streamlit_service_name,
+        service_name="werewolf-agent-streamlit",
     )
+    _log_process_started()
     with bind_observation_context(trace_id=str(uuid4())):
         log_streamlit_rerun_started(settings)
         _render_app(st, settings)
+
+
+def _log_process_started() -> None:
+    global _PROCESS_STARTED
+    with _PROCESS_LIFECYCLE_LOCK:
+        if _PROCESS_STARTED:
+            return
+        logger.info(
+            LOG_STREAMLIT_APPLICATION_STARTED,
+            extra={
+                "event_action": LOG_STREAMLIT_APPLICATION_STARTED,
+                "event_outcome": EVENT_OUTCOME_SUCCESS,
+            },
+        )
+        atexit.register(_log_process_stopped)
+        _PROCESS_STARTED = True
+
+
+def _log_process_stopped() -> None:
+    logger.info(
+        LOG_STREAMLIT_APPLICATION_STOPPED,
+        extra={
+            "event_action": LOG_STREAMLIT_APPLICATION_STOPPED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
+        },
+    )
 
 
 @implements_features("runtime_config_get", "runtime_status_get", "session_get")

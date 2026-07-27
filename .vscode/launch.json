@@ -9,20 +9,18 @@
       "args": ["serve", "--stop-on-exit"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "postDebugTask": "Internal: Supabase Stop",
       "presentation": { "hidden": true }
     },
     {
       "name": "Debug: API",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Ensure Check",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src",
-        "WEREWOLF_LOG_FILE_NAME": "api.jsonl"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
       "console": "integratedTerminal",
       "justMyCode": true
@@ -31,22 +29,51 @@
       "name": "Debug: Worker",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Ensure Check",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "werewolf_agent.worker.app",
       "args": ["run"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src",
-        "WEREWOLF_LOG_FILE_NAME": "worker.jsonl"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
       "console": "integratedTerminal"
+    },
+    {
+      "name": "Internal: Stack API",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "werewolf_agent.api.app",
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "presentation": { "hidden": true }
+    },
+    {
+      "name": "Internal: Stack Worker",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "werewolf_agent.worker.app",
+      "args": ["run"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
     },
     {
       "name": "Internal: Streamlit",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Ensure Check",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "streamlit",
       "args": [
         "run",
@@ -61,8 +88,7 @@
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/src",
-        "WEREWOLF_LOG_FILE_NAME": "streamlit.jsonl"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
       "console": "integratedTerminal",
       "presentation": { "hidden": true }
@@ -71,7 +97,7 @@
       "name": "Internal: CLI Doctor",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Ensure Check",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "werewolf_agent",
       "args": ["doctor"],
       "cwd": "${workspaceFolder}",
@@ -80,10 +106,34 @@
       "presentation": { "hidden": true }
     },
     {
+      "name": "Internal: Stack Streamlit",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "src/werewolf_agent/clients/streamlit/app.py",
+        "--server.address",
+        "127.0.0.1",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false"
+      ],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
+    },
+    {
       "name": "Run: CLI Play",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Ensure Check",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "werewolf_agent",
       "args": [
         "play",
@@ -146,11 +196,11 @@
       "name": "Run: Streamlit Stack",
       "configurations": [
         "Internal: Supabase Stack",
-        "Debug: API",
-        "Debug: Worker",
-        "Internal: Streamlit"
+        "Internal: Stack API",
+        "Internal: Stack Worker",
+        "Internal: Stack Streamlit"
       ],
-      "preLaunchTask": "Internal: Supabase Preflight",
+      "preLaunchTask": "Internal: Environment Check Release",
       "stopAll": true
     }
   ],

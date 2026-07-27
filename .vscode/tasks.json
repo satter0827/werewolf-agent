@@ -2,83 +2,45 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Internal: Ensure Auto",
+      "label": "Internal: Environment Check",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "ensure", "auto"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "check"],
       "options": { "cwd": "${workspaceFolder}" },
       "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Ensure Focus",
+      "label": "Internal: Environment Check Release",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "ensure", "focus"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "release"],
       "options": { "cwd": "${workspaceFolder}" },
       "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Ensure Check",
+      "label": "Internal: Supabase Ready",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "ensure", "check"],
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "wait", "--timeout", "180"],
       "options": { "cwd": "${workspaceFolder}" },
       "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Ensure Release",
+      "label": "Environment: Check",
       "type": "process",
       "command": "uv",
-      "args": [
-        "run",
-        "--no-project",
-        "python",
-        "-m",
-        "scripts.environment",
-        "ensure",
-        "release"
-      ],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "${input:environmentProfile}"],
       "options": { "cwd": "${workspaceFolder}" },
-      "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Ensure Deep",
+      "label": "Environment: Setup",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "ensure", "deep"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Internal: Supabase Preflight",
-      "type": "process",
-      "command": "uv",
-      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "preflight"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Release"],
-      "dependsOrder": "sequence",
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Internal: Supabase Stop",
-      "type": "process",
-      "command": "uv",
-      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "stop"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Project: Setup",
-      "type": "process",
-      "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "check"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "${input:environmentProfile}"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },
@@ -88,8 +50,6 @@
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "auto"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Auto"],
-      "dependsOrder": "sequence",
       "group": { "kind": "test", "isDefault": true },
       "problemMatcher": []
     },
@@ -99,8 +59,6 @@
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "focus"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Focus"],
-      "dependsOrder": "sequence",
       "problemMatcher": []
     },
     {
@@ -109,8 +67,6 @@
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "check"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Check"],
-      "dependsOrder": "sequence",
       "group": { "kind": "build", "isDefault": true },
       "problemMatcher": []
     },
@@ -120,62 +76,32 @@
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "release"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Release"],
-      "dependsOrder": "sequence",
       "problemMatcher": []
     },
     {
       "label": "Verify: Deep",
       "type": "process",
       "command": "uv",
-      "args": [
-        "run",
-        "--no-sync",
-        "python",
-        "-m",
-        "scripts.quality",
-        "deep",
-        "--confirm-deep"
-      ],
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "deep", "--confirm-deep"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Deep"],
-      "dependsOrder": "sequence",
       "problemMatcher": []
     },
     {
-      "label": "Docs: Build",
+      "label": "Diagnostics: Collect",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-sync", "python", "-m", "scripts.docs", "build"],
+      "args": ["run", "--no-sync", "python", "-m", "scripts.diagnostics", "collect"],
       "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Check"],
-      "dependsOrder": "sequence",
       "problemMatcher": []
-    },
+    }
+  ],
+  "inputs": [
     {
-      "label": "Architecture: Analyze",
-      "type": "process",
-      "command": "uv",
-      "args": ["run", "--no-sync", "python", "-m", "scripts.architecture"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "dependsOn": ["Internal: Ensure Focus"],
-      "dependsOrder": "sequence",
-      "problemMatcher": []
-    },
-    {
-      "label": "Dependencies: Python Audit",
-      "type": "process",
-      "command": "uv",
-      "args": ["tree", "--outdated"],
-      "options": { "cwd": "${workspaceFolder}" },
-      "hide": true,
-      "problemMatcher": []
-    },
-    {
-      "label": "Dependencies: Audit",
-      "dependsOn": ["Dependencies: Python Audit"],
-      "dependsOrder": "sequence",
-      "problemMatcher": []
+      "id": "environmentProfile",
+      "type": "pickString",
+      "description": "環境profileを選択",
+      "options": ["auto", "focus", "check", "release", "deep"],
+      "default": "check"
     }
   ]
 }

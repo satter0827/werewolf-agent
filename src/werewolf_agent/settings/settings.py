@@ -33,7 +33,6 @@ from werewolf_agent.settings.defaults import (
 )
 from werewolf_agent.settings.loading import packaged_defaults_path
 from werewolf_agent.settings.messages import (
-    MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME,
     MESSAGE_SUPABASE_CLIENT_SETTINGS_MUST_BE_PAIRED,
     MESSAGE_SUPABASE_URL_MUST_START_WITH_HTTP,
     message_field_must_be_le_field,
@@ -236,15 +235,6 @@ class AppSettings(
             choices=LOG_LEVEL_NAMES,
             case="upper",
         )
-
-    @field_validator("log_file_name", mode="before")
-    @classmethod
-    def normalize_log_file_name(cls, value: object) -> str:
-        """Return a safe non-empty operational log file name."""
-        file_name = normalize_non_blank(value, field_name="log_file_name")
-        if Path(file_name).name != file_name:
-            raise ValueError(MESSAGE_LOG_FILE_NAME_MUST_BE_FILE_NAME)
-        return file_name
 
     @field_validator("supabase_url", mode="before")
     @classmethod

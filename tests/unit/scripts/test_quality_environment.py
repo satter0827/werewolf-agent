@@ -21,7 +21,11 @@ def test_environment_gate_checks_frozen_python_dependencies(
         return CommandResult(list(command), 0, 0.0, "")
 
     monkeypatch.setattr(environment, "run_command", run)
-    monkeypatch.setattr(environment, "is_ready", lambda _profile: True)
+    monkeypatch.setattr(
+        environment,
+        "inspect_environment",
+        lambda _profile: SimpleNamespace(state="passed", confirmed_causes=[]),
+    )
     context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
 
     result = environment.check_environment(context, tmp_path)
@@ -48,3 +52,33 @@ def test_runner_rejects_dependency_environment_changes(
     assert result.state == "failed"
     assert result.returncode == 1
     assert "変更されました" in (result.message or "")
+
+
+def test_environment_gate_distinguishes_blocked_from_inspection_error(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
+    monkeypatch.setattr(
+        environment,
+        "inspect_environment",
+        lambda _profile: SimpleNamespace(state="blocked", confirmed_causes=["未準備"]),
+    )
+    blocked = environment.check_environment(context, tmp_path)
+    assert blocked.returncode == 2
+
+    monkeypatch.setattr(
+        environment,
+        "inspect_environment",
+        lambda _profile: SimpleNamespace(state="error", confirmed_causes=["検査基盤失敗"]),
+    )
+    reported_error = environment.check_environment(context, tmp_path)
+    assert reported_error.returncode == 1
+
+    monkeypatch.setattr(
+        environment,
+        "inspect_environment",
+        lambda _profile: (_ for _ in ()).throw(OSError("broken")),
+    )
+    error = environment.check_environment(context, tmp_path)
+    assert error.returncode == 1

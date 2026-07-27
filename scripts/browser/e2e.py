@@ -13,12 +13,18 @@ from uuid import uuid4
 
 from PIL import Image, ImageDraw
 
+from scripts._infra.operations import (
+    operation_run_id,
+    prune_review_runs,
+    write_bundle_manifest,
+)
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     QUALITY_COMPOSE_PROJECT_NAME,
     CommandResult,
     EnvironmentBlockedError,
     quality_environment,
+    redact,
     run_command,
     write_json,
 )
@@ -90,8 +96,11 @@ def run_e2e(
             if execution.returncode != 0:
                 break
         create_contact_sheet(artifact_directory / "public")
-        if execution.returncode != 0:
-            service_logs = run_command(
+    finally:
+        service_log_root = artifact_directory / "logs"
+        service_log_root.mkdir(parents=True, exist_ok=True)
+        for service in ("migrate", "api", "worker", "streamlit"):
+            service_log = run_command(
                 [
                     "docker",
                     "compose",
@@ -99,33 +108,18 @@ def run_e2e(
                     "e2e",
                     "logs",
                     "--no-color",
-                    "api",
-                    "worker",
-                    "streamlit",
+                    "--no-log-prefix",
+                    service,
                 ],
                 timeout_seconds=60,
                 environment=environment,
             )
-            output.append("\n--- service logs ---\n")
-            output.append(service_logs.output)
-            worker_file_log = run_command(
-                [
-                    "docker",
-                    "compose",
-                    "--profile",
-                    "e2e",
-                    "exec",
-                    "-T",
-                    "worker",
-                    "cat",
-                    "/app/.werewolf-agent/logs/worker.jsonl",
-                ],
-                timeout_seconds=30,
-                environment=environment,
+            (service_log_root / f"{service}.log").write_text(
+                redact(service_log.output), encoding="utf-8"
             )
-            output.append("\n--- worker file log ---\n")
-            output.append(worker_file_log.output)
-    finally:
+            if execution.returncode != 0:
+                output.append(f"\n--- {service} logs ---\n")
+                output.append(service_log.output)
         cleanup = run_command(
             [
                 "docker",
@@ -367,7 +361,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--artifacts",
         type=Path,
-        default=ARTIFACT_ROOT / "reviews" / "browser",
     )
     parser.add_argument("--timeout", type=int, default=600)
     parser.add_argument("--visual-regression", action="store_true")
@@ -396,10 +389,18 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     if arguments.timeout < 1:
         raise SystemExit("--timeoutには1以上を指定してください。")
+    artifact_directory = arguments.artifacts or (
+        ARTIFACT_ROOT / "reviews" / "browser" / operation_run_id("browser")
+    )
+    artifact_directory.mkdir(parents=True, exist_ok=True)
+    (artifact_directory / ".active").write_text("", encoding="utf-8")
+    state = "error"
+    message = "Browser E2Eで予期しない実行失敗が発生しました。"
+    return_code = 1
     try:
         result = run_e2e(
             base_environment=os.environ,
-            artifact_directory=arguments.artifacts,
+            artifact_directory=artifact_directory,
             timeout_seconds=arguments.timeout,
             visual_regression=arguments.visual_regression,
             suite=arguments.suite,
@@ -410,10 +411,43 @@ def main(argv: Sequence[str] | None = None) -> int:
             trace=arguments.trace,
         )
     except (EnvironmentBlockedError, ValueError) as error:
-        print(str(error))
-        return 2
-    print(result.output, end="")
-    return 0 if result.returncode == 0 else 1
+        state = "blocked"
+        message = str(error)
+        return_code = 2
+    except Exception as error:
+        message = redact(str(error)) or message
+    else:
+        print(result.output, end="")
+        state = "passed" if result.returncode == 0 else "failed"
+        message = (
+            "Browser E2Eが完了しました。" if state == "passed" else "Browser E2Eに失敗しました。"
+        )
+        return_code = 0 if result.returncode == 0 else 1
+    if return_code != 0:
+        print(message)
+    write_json(
+        artifact_directory / "report.json",
+        {
+            "schema_version": 1,
+            "run_id": artifact_directory.name,
+            "kind": "browser",
+            "state": state,
+            "confirmed_causes": [message] if state in {"blocked", "error"} else [],
+            "unconfirmed_scope": [] if state == "passed" else ["失敗後のscenarioは未確認です。"],
+            "next_actions": []
+            if state == "passed"
+            else ["reportとservice logを確認してください。"],
+        },
+    )
+    (artifact_directory / "summary.md").write_text(
+        f"# Browser E2E\n\n- 判定: `{state}`\n- 状況: {message}\n",
+        encoding="utf-8",
+    )
+    write_bundle_manifest(artifact_directory)
+    (artifact_directory / ".active").unlink(missing_ok=True)
+    prune_review_runs()
+    print(f"Browser review: {artifact_directory}")
+    return return_code
 
 
 if __name__ == "__main__":

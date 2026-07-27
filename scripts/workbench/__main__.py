@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.operations import prune_review_runs, write_bundle_manifest
 from scripts._infra.process import (
     QUALITY_COMPOSE_PROJECT_NAME,
     quality_environment,
@@ -33,17 +34,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = parser.parse_args(argv)
     if arguments.command == "verify":
         extra = ["--confirm-deep"] if arguments.level == "deep" else []
-        prepared = _run(
-            [
-                sys.executable,
-                "-m",
-                "scripts.environment",
-                "ensure",
-                arguments.level,
-            ]
-        )
-        if prepared != 0:
-            return prepared
         return _run([sys.executable, "-m", "scripts.quality", arguments.level, *extra])
     if arguments.command == "review":
         return _review(arguments.kind)
@@ -56,6 +46,7 @@ def _review(kind: str) -> int:
     """主観判定を行わず、読解用の証拠を選択生成する。"""
     root = LAYOUT.reviews / kind / f"{utc_now():%Y%m%dT%H%M%SZ}"
     root.mkdir(parents=True, exist_ok=True)
+    (root / ".active").write_text("", encoding="utf-8")
     if kind == "ui":
         command = [sys.executable, "-m", "scripts.quality", "gate", "browser"]
     elif kind == "gameplay":
@@ -63,6 +54,7 @@ def _review(kind: str) -> int:
         transcript = json.dumps(evidence, ensure_ascii=False, indent=2) + "\n"
         (root / "gameplay.json").write_text(transcript, encoding="utf-8")
         (root / "summary.md").write_text(gameplay_summary(evidence), encoding="utf-8")
+        _finalize_review(root, kind, "passed")
         print(f"レビュー証拠: {root}")
         return 0
     else:
@@ -79,6 +71,7 @@ def _review(kind: str) -> int:
     )
     transcript = result.stdout + result.stderr
     (root / "transcript.txt").write_text(transcript, encoding="utf-8")
+    _finalize_review(root, kind, "passed" if result.returncode == 0 else "failed")
     print(transcript, end="")
     print(f"レビュー証拠: {root}")
     return result.returncode
@@ -91,6 +84,7 @@ def _review_local_llm(root: Path) -> int:
     transcript = json.dumps(document, ensure_ascii=False, indent=2) + "\n"
     (root / "preflight.json").write_text(transcript, encoding="utf-8")
     (root / "transcript.txt").write_text(transcript, encoding="utf-8")
+    _finalize_review(root, "local-llm", state)
     print(transcript, end="")
     print(f"レビュー証拠: {root}")
     if state == "passed":
@@ -98,6 +92,30 @@ def _review_local_llm(root: Path) -> int:
     if state in {"degraded", "failed"}:
         return 1
     return 2
+
+
+def _finalize_review(root: Path, kind: str, state: str) -> None:
+    """Reviewを共通run bundleとして確定し、保持上限を適用する。"""
+    summary = root / "summary.md"
+    if not summary.exists():
+        summary.write_text(
+            f"# Review: {kind}\n\n- 判定: `{state}`\n",
+            encoding="utf-8",
+        )
+    report = {
+        "schema_version": 1,
+        "run_id": root.name,
+        "kind": kind,
+        "state": state,
+        "artifact_manifest": "manifest.json",
+    }
+    (root / "report.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    write_bundle_manifest(root)
+    (root / ".active").unlink(missing_ok=True)
+    prune_review_runs()
 
 
 def _open_latest_report() -> int:

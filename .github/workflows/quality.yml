@@ -31,6 +31,7 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/check/current
             .werewolf-agent/quality/profiles/check/last-passed.json
+            .werewolf-agent/operations
             .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
@@ -50,9 +51,19 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
-      - run: uv run --no-project python -m scripts.environment setup check
-      - run: uv run --no-sync mypy src
-      - run: uv run --no-sync pytest --test-level=focus tests/unit
+      - run: uv run --no-project python -m scripts.environment setup focus
+      - run: uv run --no-sync python -m scripts.quality focus --fresh
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-python-${{ matrix.python-version }}
+          path: |
+            .werewolf-agent/quality/profiles/focus/current
+            .werewolf-agent/quality/profiles/focus/last-passed.json
+            .werewolf-agent/operations
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true
 
   release:
     if: github.event_name == 'push'
@@ -77,11 +88,10 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/release/current
             .werewolf-agent/quality/profiles/release/last-passed.json
+            .werewolf-agent/operations
             .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
-      - if: always()
-        run: supabase stop --no-backup
 
   deep:
     if: github.event_name == 'workflow_dispatch'
@@ -106,8 +116,7 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/deep/current
             .werewolf-agent/quality/profiles/deep/last-passed.json
+            .werewolf-agent/operations
             .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
-      - if: always()
-        run: supabase stop --no-backup

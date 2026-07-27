@@ -24,7 +24,7 @@
 
 品質processからprovider credentialと外部base URLを除去し、fake providerとtelemetry
 無効化を強制する。Python test、Playwright、E2E containerは非loopback通信を拒否する。
-依存取得は`scripts.environment`、外部情報を使う監査は`Dependencies: Audit`へ分離する。
+依存取得は`scripts.environment`へ分離し、品質profileは実行中に依存環境を変更しない。
 利用者が運用設定として有料providerを選ぶことは許可するが、そのcredential、応答、
 可用性を品質判定やreviewの前提にしない。Local LLM reviewはloopbackだけを許可する。
 
@@ -37,6 +37,11 @@
 - `skipped`: 依存gateが完了していない。
 
 ## 構造と成果物
+
+`.werewolf-agent/logs/application`は常駐processの構造化log、`operations`は有限の環境・Supabase
+操作、`quality`は品質run、`reviews`は主観reviewを所有する。operation runは`report.json`、
+`summary.md`、`manifest.json`と失敗stageのredacted logを持つ。成功commandの全出力は保存しない。
+`diagnostics/current`はこれらを参照する再生成可能なviewであり、raw成果物を複製しない。
 
 architecture testは`scripts/architecture/rules.toml`を正本とし、grimpのimport graphから
 間接依存と循環を検査する。Hypothesisはdomain操作列の生成と縮小、Schemathesisは
@@ -96,7 +101,7 @@ Local LLM、FakeListChatModelとも
 同じchat request、response正規化、schema検証、合法手検証、fallbackを通す。再問い合わせによる
 修復は行わない。fallbackを伴う完走は`degraded`とし、品質profileの合格へ含めない。
 
-Agent reviewは`.werewolf-agent/reviews/agents`へrun、metrics、event、public timeline、private trace、
+Agent reviewは`.werewolf-agent/reviews/agents`へreport、metrics、event、public timeline、private trace、
 SHA-256 manifestを保存する。private traceにはpromptと本人のobservationを含め、公開成果物と
 分離する。standardはpreset完了ごとに`checkpoint.json`と関連成果物を更新し、長時間runが
 中断しても完了済みpresetを回収できるようにし、完了または中断時にはcheckpointも最終状態へ

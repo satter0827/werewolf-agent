@@ -87,11 +87,48 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
-        dependencies.open(timeout=runtime.supabase_pool_timeout_seconds)
+        api_logger = logging.getLogger("werewolf_agent.api")
+        try:
+            dependencies.open(timeout=runtime.supabase_pool_timeout_seconds)
+        except Exception:
+            api_logger.exception(
+                "api.application.start_failed",
+                extra={
+                    "event_action": "api.application.start_failed",
+                    "event_outcome": "failure",
+                    "error_code": ErrorCode.API_UNAVAILABLE.value,
+                },
+            )
+            raise
+        api_logger.info(
+            "api.application.started",
+            extra={
+                "event_action": "api.application.started",
+                "event_outcome": "success",
+            },
+        )
         try:
             yield
         finally:
-            dependencies.close()
+            try:
+                dependencies.close()
+            except Exception:
+                api_logger.exception(
+                    "api.application.stop_failed",
+                    extra={
+                        "event_action": "api.application.stop_failed",
+                        "event_outcome": "failure",
+                        "error_code": ErrorCode.INTERNAL_UNEXPECTED.value,
+                    },
+                )
+                raise
+            api_logger.info(
+                "api.application.stopped",
+                extra={
+                    "event_action": "api.application.stopped",
+                    "event_outcome": "success",
+                },
+            )
 
     app = FastAPI(
         title="Werewolf Agent API",

@@ -29,6 +29,16 @@ class ArtifactLayout:
         return self.root / "logs"
 
     @property
+    def operations(self) -> Path:
+        """有限の開発操作が残すrun成果物の配置を返す。"""
+        return self.root / "operations"
+
+    @property
+    def diagnostics(self) -> Path:
+        """既存成果物から生成する診断viewの配置を返す。"""
+        return self.root / "diagnostics"
+
+    @property
     def quality(self) -> Path:
         """品質reportの配置を返す。"""
         return self.root / "quality"

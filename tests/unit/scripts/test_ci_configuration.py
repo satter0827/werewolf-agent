@@ -22,12 +22,16 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     workflow = _read(".github/workflows/quality.yml")
 
     for command in (
+        "python -m scripts.environment setup focus",
         "python -m scripts.environment setup check",
         "python -m scripts.environment setup release",
         "python -m scripts.environment setup deep",
     ):
         assert command in workflow
+    assert "python -m scripts.quality focus --fresh" in workflow
     assert "--pull=false" not in workflow
+    assert "supabase stop --no-backup" not in workflow
+    assert ".werewolf-agent/operations" in workflow
 
 
 def test_backend_dev_image_contains_the_test_suite() -> None:
@@ -53,6 +57,7 @@ def test_compose_exposes_isolated_runtime_and_test_services() -> None:
     assert "test:" in compose
     assert "command: pytest" in compose
     assert "--browser.gatherUsageStats=false" in compose
+    assert "WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-stdout}" in compose
     test_service = compose.split("\n  test:\n", 1)[1].split("\n  e2e:\n", 1)[0]
     assert "WEREWOLF_SUPABASE_" not in test_service
     worker = compose.split("  worker:", 1)[1].split("  streamlit:", 1)[0]

@@ -11,8 +11,11 @@ def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -
         raise AssertionError("worker should not poll without WEREWOLF_SUPABASE_DB_DSN")
 
     monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
-    monkeypatch.setattr(worker_app, "get_settings", lambda: AppSettings(_env_file=None))
-    monkeypatch.setattr(worker_app, "configure_entrypoint_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker_app,
+        "configure_entrypoint_logging",
+        lambda *args, **kwargs: AppSettings(_env_file=None),
+    )
     monkeypatch.setattr(worker_app, "process_worker_batch", fail_process)
 
     with caplog.at_level(logging.INFO, logger=worker_app.__name__):
@@ -34,8 +37,11 @@ def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> N
         supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
     )
 
-    monkeypatch.setattr(worker_app, "get_settings", lambda: settings)
-    monkeypatch.setattr(worker_app, "configure_entrypoint_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        worker_app,
+        "configure_entrypoint_logging",
+        lambda *args, **kwargs: settings,
+    )
     monkeypatch.setattr(worker_app, "process_worker_batch", lambda _settings: 0)
 
     with caplog.at_level(logging.INFO, logger=worker_app.__name__):

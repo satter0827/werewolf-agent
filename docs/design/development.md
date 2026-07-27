@@ -27,22 +27,23 @@ repository内のcommandへ実装し、VS Code、CI、AIから同じ入口を使�
 
 ```powershell
 uv run --no-project python -m scripts.environment setup check
+uv run --no-project python -m scripts.environment check check
 uv run --no-sync werewolf-agent system doctor
 ```
 
-`ensure`はlockとtool versionのfingerprintに加え、release系profileでは現在のDocker
-contextのdaemonとSupabase、Compose E2E、品質runtimeの必須imageを確認する。markerが一致しても
-imageが失われていれば準備をやり直す。registry、browser配布元、image registryへの接続は
-環境準備で許可する。明示的な`setup release`と`setup deep`は古いlocal Supabase schemaを
-引き継がず、既存stackを停止してbackupを残さず再作成する。
+`check`はlockとsourceのfingerprint、現在のDocker context、準備時に記録したimage IDを
+読み取り専用で確認する。`setup`だけが依存取得、image build、隔離Supabaseの起動を行う。
+release系setupはDocker daemon、Buildx、Supabase CLIの固定versionを先に検査し、失敗時は
+変更を開始しない。隔離projectは固有IDとworkdirで所有し、利用者の開発stackを停止しない。
 
 VS Codeの「実行とデバッグ」では`Run: Streamlit Stack`、
 `Run: CLI Play`、`Debug: API`、`Debug: Worker`を使う。`Verify: Quality`は
 Auto/Focus/Check/Release/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
 `Open: Latest Quality Report`と`Cleanup: Owned Resources`も同じ場所から実行する。
-選択は`pickString`で行い、commandや引数を手入力しない。EnsureとSupabaseの
-起動taskは内部実装として候補から隠す。stackはローカルSupabaseを含むprocessを所有し、
-debug sessionの終了時にまとめて停止する。
+選択は`pickString`で行い、commandや引数を手入力しない。Environment CheckとSetupを分離し、
+Verifyは暗黙に環境を変更しない。stackはローカルSupabaseを含むprocessを所有し、debug sessionの
+終了時に自分が起動したprojectだけを停止する。API、worker、Streamlitはsupervisorがmigrationと
+接続確認を完了した状態を読み取り専用で待ってから起動する。
 
 個別gate、品質profile、Browser、Agent reviewの具体的なcommandは`scripts/README.md`を正本とする。
 gateはpytest markerと公開commandだけを使い、test sourceを解析して選択しない。

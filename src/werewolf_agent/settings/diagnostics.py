@@ -43,7 +43,8 @@ def build_entrypoint_diagnostics(
         "log output": settings.log_output,
         "log dir": str(settings.log_directory_path),
         "log file": str(settings.log_file_path),
-        "log retention days": str(settings.log_retention_days),
+        "log file max MiB": str(settings.log_file_max_mib),
+        "log file backup count": str(settings.log_file_backup_count),
         "log third party level": settings.log_third_party_level,
     }
 

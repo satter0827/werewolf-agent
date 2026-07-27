@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import atexit
 import logging
 from collections.abc import Callable
 from typing import Any, Final
@@ -32,6 +33,7 @@ from werewolf_agent.clients.cli.commands.setup import export_setup, inspect_setu
 from werewolf_agent.clients.cli.commands.system import status
 from werewolf_agent.clients.cli.events import (
     LOG_CLI_APPLICATION_STARTED,
+    LOG_CLI_APPLICATION_STOPPED,
 )
 from werewolf_agent.clients.cli.messages import (
     HELP_APP,
@@ -46,6 +48,7 @@ from werewolf_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
+_CLI_STOP_REGISTERED = False
 
 app = typer.Typer(
     help=HELP_APP,
@@ -75,6 +78,20 @@ def main(ctx: typer.Context) -> None:
             "log_output": settings.log_output,
             "log_file_path": str(settings.log_file_path),
             "log_third_party_level": settings.log_third_party_level,
+        },
+    )
+    global _CLI_STOP_REGISTERED
+    if not _CLI_STOP_REGISTERED:
+        atexit.register(_log_cli_stopped)
+        _CLI_STOP_REGISTERED = True
+
+
+def _log_cli_stopped() -> None:
+    logger.info(
+        LOG_CLI_APPLICATION_STOPPED,
+        extra={
+            "event_action": LOG_CLI_APPLICATION_STOPPED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
         },
     )
 

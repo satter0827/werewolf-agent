@@ -46,10 +46,11 @@ COPY scripts/supabase ./scripts/supabase
 COPY supabase ./supabase
 COPY .streamlit ./.streamlit
 
-ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs \
+ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs/application \
     WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl \
-    WEREWOLF_LOG_OUTPUT=file \
-    WEREWOLF_LOG_RETENTION_DAYS=14 \
+    WEREWOLF_LOG_OUTPUT=stdout \
+    WEREWOLF_LOG_FILE_MAX_MIB=10 \
+    WEREWOLF_LOG_FILE_BACKUP_COUNT=3 \
     WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 
 RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker

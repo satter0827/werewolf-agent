@@ -19,14 +19,15 @@ Auth、PostgreSQL永続化、PGMQ operation queueを担当します。
 
 ```powershell
 uv run --no-project python -m scripts.environment setup check
+uv run --no-project python -m scripts.environment check check
 uv run --no-sync werewolf-agent system doctor
 ```
 
 Supabaseを使う場合は`.env.example`を`.env`へコピーし、公開keyとworker用DB DSNを
-設定してからpreflightを実行します。秘密値はversion管理しません。
+設定してから所有権付きsupervisorを起動します。秘密値はversion管理しません。
 
 ```powershell
-uv run --no-sync python -m scripts.supabase preflight
+uv run --no-sync python -m scripts.supabase serve --stop-on-exit
 ```
 
 ## 最短実行
@@ -72,6 +73,12 @@ uv run --no-sync python -m scripts.docs build
 
 生成HTMLは`.werewolf-agent/outputs/docs/index.html`、構造分析は
 `.werewolf-agent/outputs/architecture`へ保存されます。生成物はGitへ追加しません。
+
+環境、application log、品質成果物をまとめて調べる場合は診断viewを生成します。
+
+```powershell
+uv run --no-sync python -m scripts.diagnostics collect
+```
 
 ## 検証
 

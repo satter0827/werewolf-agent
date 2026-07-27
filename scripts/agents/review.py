@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from scripts._infra.artifacts import LAYOUT
+from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
 from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
@@ -245,7 +246,7 @@ def _write_preflight_artifacts(
         "suite": "preflight",
         "state": state,
     }
-    _write_json(root / "run.json", run_document)
+    _write_json(root / "report.json", run_document)
     _write_json(root / "metrics.json", metrics)
     _write_json(root / "public" / "result.json", {"state": state, **public_evidence})
     if trace is not None:
@@ -264,7 +265,7 @@ def _write_preflight_artifacts(
         f"`{metrics['output_tokens']}` / `{metrics['total_tokens']}`\n",
         encoding="utf-8",
     )
-    _write_manifest(root)
+    _finalize_review_run(root)
 
 
 def run_suite(
@@ -453,7 +454,7 @@ def run_suite(
         events.append(
             {"event": "run.completed", "state": state, "finished_at": run_document["finished_at"]}
         )
-        _write_json(run_dir / "run.json", run_document)
+        _write_json(run_dir / "report.json", run_document)
         _write_json(run_dir / "metrics.json", _aggregate_metrics(scenarios))
         _write_json(run_dir / "public" / "scenarios.json", scenarios)
         _write_json(run_dir / "private" / "traces.json", private_traces)
@@ -510,7 +511,7 @@ def run_suite(
             seed=seed,
             deliberation_level=deliberation_level,
         )
-    _write_manifest(run_dir)
+    _finalize_review_run(run_dir)
     return state, run_dir
 
 
@@ -557,8 +558,8 @@ def _write_checkpoint(
 
 def compare_runs(baseline: Path, candidate: Path) -> dict[str, object]:
     """2 runの観測指標を同じfieldで比較する。"""
-    baseline_run = _read_json(baseline / "run.json")
-    candidate_run = _read_json(candidate / "run.json")
+    baseline_run = _read_json(baseline / "report.json")
+    candidate_run = _read_json(candidate / "report.json")
     baseline_metrics = _read_json(baseline / "metrics.json")
     candidate_metrics = _read_json(candidate / "metrics.json")
     keys = (
@@ -1147,6 +1148,7 @@ def _new_run_dir(provider: str, suite: str) -> Path:
         suffix += 1
     (run_dir / "public").mkdir(parents=True)
     (run_dir / "private").mkdir()
+    (run_dir / ".active").write_text("", encoding="utf-8")
     return run_dir
 
 
@@ -1159,6 +1161,7 @@ def _new_preflight_dir() -> Path:
         suffix += 1
     (root / "public").mkdir(parents=True)
     (root / "private").mkdir()
+    (root / ".active").write_text("", encoding="utf-8")
     return root
 
 
@@ -1194,7 +1197,7 @@ def _write_failure(
         "error": error_document,
     }
     events.append({"event": "run.failed", **error_document, "finished_at": document["finished_at"]})
-    _write_json(run_dir / "run.json", document)
+    _write_json(run_dir / "report.json", document)
     _write_json(run_dir / "metrics.json", _aggregate_metrics(scenarios))
     _write_json(run_dir / "public" / "scenarios.json", list(scenarios))
     _write_json(run_dir / "private" / "traces.json", private_traces)
@@ -1286,7 +1289,7 @@ def _invocation_progress(
 def _write_manifest(run_dir: Path) -> None:
     artifacts = []
     for path in sorted(run_dir.rglob("*")):
-        if not path.is_file() or path.name == "manifest.json":
+        if not path.is_file() or path.name in {".active", "manifest.json"}:
             continue
         relative = path.relative_to(run_dir).as_posix()
         content = path.read_bytes()
@@ -1305,6 +1308,12 @@ def _write_manifest(run_dir: Path) -> None:
         run_dir / "manifest.json",
         {"schema_version": 1, "run_id": run_dir.name, "artifacts": artifacts},
     )
+
+
+def _finalize_review_run(run_dir: Path) -> None:
+    _write_manifest(run_dir)
+    (run_dir / ".active").unlink(missing_ok=True)
+    prune_review_runs()
 
 
 def _read_json(path: Path) -> dict[str, object]:

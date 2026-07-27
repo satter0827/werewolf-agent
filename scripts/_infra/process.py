@@ -59,10 +59,10 @@ _JSON_SECRET_PATTERN = re.compile(
 )
 _SECRET_PATTERN = re.compile(
     rf"(?i)(\b(?P<key>{_SENSITIVE_KEY})\b\s*[:=]\s*)"
-    r"(SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}&]+)"
+    r"(Bearer\s+[^\s\"']+|SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}&]+)"
 )
 _URL_CREDENTIAL_PATTERN = re.compile(
-    r"(?i)([a-z][a-z0-9+.-]{0,31}+://[^\s:/@]{1,256}+:)([^\s@/]{1,256}+)(@)"
+    r"(?i)([a-z][a-z0-9+.-]{0,31}+://)([^\s:/@]{1,256}+):([^\s@/]{1,256}+)(@)"
 )
 _BEARER_PATTERN = re.compile(r"(?i)\bBearer\s+[^\s\"']+")
 _QUERY_SECRET_PATTERN = re.compile(
@@ -121,11 +121,11 @@ def create_run_directory(profile: str) -> tuple[str, Path]:
 
 def redact(value: str) -> str:
     """ログに含まれる代表的な秘密情報を伏せる。"""
-    redacted = _BEARER_PATTERN.sub("Bearer [REDACTED]", value)
-    redacted = _QUERY_SECRET_PATTERN.sub(r"\1[REDACTED]", redacted)
-    redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]\3", redacted)
+    redacted = _QUERY_SECRET_PATTERN.sub(r"\1[REDACTED]", value)
+    redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]\4", redacted)
     redacted = _JSON_SECRET_PATTERN.sub(_redact_json_secret, redacted)
-    return _SECRET_PATTERN.sub(_redact_text_secret, redacted)
+    redacted = _SECRET_PATTERN.sub(_redact_text_secret, redacted)
+    return _BEARER_PATTERN.sub("Bearer [REDACTED]", redacted)
 
 
 def _redact_json_secret(match: re.Match[str]) -> str:

@@ -17,6 +17,9 @@ from werewolf_agent.contracts import (
     problem_details_from_error,
     problem_details_from_spec,
 )
+from werewolf_agent.contracts.error_catalog import get_error_spec
+from werewolf_agent.observability.constants import EVENT_OUTCOME_FAILURE
+from werewolf_agent.observability.levels import log_level_number
 
 _PROBLEM_STATUSES = (400, 401, 403, 404, 409, 413, 429, 500, 503, 504)
 PROBLEM_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -37,11 +40,13 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
+        trace_id = _trace_id(request)
+        _log_handled_error(request, exc.code, trace_id, extra=exc.log_extra())
         return _response(
             problem_details_from_error(
                 exc,
                 instance=request.url.path,
-                trace_id=_trace_id(request),
+                trace_id=trace_id,
             )
         )
 
@@ -51,11 +56,13 @@ def install_error_handlers(app: FastAPI) -> None:
         exc: RequestValidationError,
     ) -> JSONResponse:
         del exc
+        trace_id = _trace_id(request)
+        _log_handled_error(request, ErrorCode.REQUEST_VALIDATION_FAILED, trace_id)
         return _response(
             problem_details_from_spec(
                 ErrorCode.REQUEST_VALIDATION_FAILED,
                 instance=request.url.path,
-                trace_id=_trace_id(request),
+                trace_id=trace_id,
             )
         )
 
@@ -65,11 +72,13 @@ def install_error_handlers(app: FastAPI) -> None:
         exc: GameNotFoundError,
     ) -> JSONResponse:
         del exc
+        trace_id = _trace_id(request)
+        _log_handled_error(request, ErrorCode.RESOURCE_NOT_FOUND, trace_id)
         return _response(
             problem_details_from_spec(
                 ErrorCode.RESOURCE_NOT_FOUND,
                 instance=request.url.path,
-                trace_id=_trace_id(request),
+                trace_id=trace_id,
             )
         )
 
@@ -79,26 +88,37 @@ def install_error_handlers(app: FastAPI) -> None:
         exc: InvalidGameIdError,
     ) -> JSONResponse:
         del exc
+        trace_id = _trace_id(request)
+        _log_handled_error(request, ErrorCode.REQUEST_VALIDATION_FAILED, trace_id)
         return _response(
             problem_details_from_spec(
                 ErrorCode.REQUEST_VALIDATION_FAILED,
                 instance=request.url.path,
-                trace_id=_trace_id(request),
+                trace_id=trace_id,
             )
         )
 
     @app.exception_handler(Exception)
     async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+        trace_id = _trace_id(request)
+        spec = get_error_spec(ErrorCode.INTERNAL_UNEXPECTED)
         request.app.state.api_logger.exception(
             "api.request.failed",
             exc_info=exc,
-            extra={"trace_id": _trace_id(request), "path": request.url.path},
+            extra={
+                "trace_id": trace_id,
+                "path": request.url.path,
+                "event_action": "api.request.failed",
+                "event_outcome": EVENT_OUTCOME_FAILURE,
+                "error_code": ErrorCode.INTERNAL_UNEXPECTED.value,
+                "error_message": spec.detail,
+            },
         )
         return _response(
             problem_details_from_spec(
                 ErrorCode.INTERNAL_UNEXPECTED,
                 instance=request.url.path,
-                trace_id=_trace_id(request),
+                trace_id=trace_id,
             )
         )
 
@@ -141,6 +161,29 @@ def _trace_id(request: Request) -> str:
         trace_id = str(uuid4())
         request.state.trace_id = trace_id
     return str(trace_id)
+
+
+def _log_handled_error(
+    request: Request,
+    code: ErrorCode,
+    trace_id: str,
+    *,
+    extra: dict[str, object] | None = None,
+) -> None:
+    spec = get_error_spec(code)
+    request.app.state.api_logger.log(
+        log_level_number(spec.log_level),
+        "api.application_error.handled",
+        extra={
+            **(extra or {}),
+            "trace_id": trace_id,
+            "path": request.url.path,
+            "event_action": "api.application_error.handled",
+            "event_outcome": EVENT_OUTCOME_FAILURE,
+            "error_code": code.value,
+            "error_message": spec.detail,
+        },
+    )
 
 
 __all__ = ["PROBLEM_RESPONSES", "install_error_handlers", "install_openapi_error_contract"]

@@ -1,5 +1,6 @@
 """container E2E orchestrationの安全境界を検査する。"""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -106,3 +107,26 @@ def test_owned_resource_snapshot_rejects_failed_docker_inspection(
 
     with pytest.raises(EnvironmentBlockedError, match="確認できません"):
         e2e._owned_resource_snapshot({})
+
+
+def test_browser_cli_publishes_a_completed_review_bundle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review = tmp_path / "browser-run"
+    monkeypatch.setattr(
+        e2e,
+        "run_e2e",
+        lambda **_kwargs: e2e.CommandResult(["pytest"], 0, 0.1, "passed\n"),
+    )
+    monkeypatch.setattr(e2e, "prune_review_runs", lambda: None)
+
+    result = e2e.main(["--artifacts", str(review), "--timeout", "1"])
+
+    assert result == 0
+    assert not (review / ".active").exists()
+    assert {"report.json", "summary.md", "manifest.json"}.issubset(
+        {path.name for path in review.iterdir()}
+    )
+    report = json.loads((review / "report.json").read_text(encoding="utf-8"))
+    assert report["state"] == "passed"

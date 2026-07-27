@@ -6,19 +6,22 @@
 
 ## 環境準備
 
-依存取得は`scripts.environment`だけが行います。`ensure`は現在のfingerprintを検査し、
-不足時だけ対応する`setup`を実行します。品質command自身はpackage、browser、imageを取得せず、
-前提が不足する場合は`blocked`にします。
+依存取得は`scripts.environment setup`だけが行います。`check`は現在のfingerprintと
+実行能力を読み取り専用で検査し、依存、image、containerを変更しません。品質command自身は
+package、browser、imageを取得せず、前提が不足する場合は`blocked`にします。
 
 ```powershell
-uv run --no-project python -m scripts.environment ensure auto
-uv run --no-project python -m scripts.environment ensure check
-uv run --no-project python -m scripts.environment ensure release
-uv run --no-project python -m scripts.environment ensure deep
+uv run --no-project python -m scripts.environment check auto
+uv run --no-project python -m scripts.environment check check
+uv run --no-project python -m scripts.environment check release
+uv run --no-project python -m scripts.environment setup check
+uv run --no-project python -m scripts.environment setup release
+uv run --no-project python -m scripts.environment setup deep
 ```
 
-release系では現在のDocker context、daemon、Supabase、E2E、runtime imageの実在も確認します。
-明示的に環境を再構築する場合だけ`setup check|release|deep`を使用します。
+release系では変更処理より先にDocker daemon、Buildx、Supabase CLI 2.104.0を確認します。
+`setup release|deep`は隔離Supabase projectを使ってCLIが要求するimageを準備し、project IDと
+workdirを指定して停止します。Docker Desktopは自動起動しません。
 
 ## 品質profile
 
@@ -51,6 +54,17 @@ profile名を直接指定した場合は差分にかかわらず全体を実行�
 根拠のない閾値だけで不合格にしません。
 
 ## 成果物
+
+有限の環境操作は`.werewolf-agent/operations/<kind>/<run-id>`へ`report.json`、`summary.md`、
+`manifest.json`、失敗stageのredacted logを保存します。常駐processのJSONLは
+`.werewolf-agent/logs/application`へ分離します。全体を調べる場合は次を実行します。
+
+```powershell
+uv run --no-sync python -m scripts.diagnostics collect
+```
+
+診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存logと成果物を複製せず
+pathとSHA-256で参照します。
 
 最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存します。
 以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は
@@ -89,7 +103,8 @@ uv run --no-sync python -m scripts.agents local-ui
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通ります。
 Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離します。
-結果は`.werewolf-agent/reviews/agents`へ保存し、public timelineとprivate traceを分離します。
+結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
+public timelineとprivate traceを分離します。active markerを持つ実行中runは保持処理の対象外です。
 
 ## 個別入口
 
@@ -98,7 +113,7 @@ uv run --no-sync python -m scripts.docs inspect
 uv run --no-sync python -m scripts.docs build
 uv run --no-sync python -m scripts.architecture
 uv run --no-sync python -m scripts.contracts.openapi
-uv run --no-sync python -m scripts.supabase preflight
+uv run --no-sync python -m scripts.supabase serve --stop-on-exit
 ```
 
 品質processはprovider credentialと外部base URLを除去し、Fake adapter、localhost、Compose内service

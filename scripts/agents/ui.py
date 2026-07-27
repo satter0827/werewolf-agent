@@ -22,13 +22,19 @@ from scripts._infra.process import (
 )
 from scripts.agents.review import (
     ReviewState,
+    _finalize_review_run,
     _write_manifest,
     local_settings,
     preflight,
     validate_loopback_base_url,
 )
 from scripts.browser.e2e import create_contact_sheet
-from scripts.supabase.preflight import SupabasePreflight, prepare_supabase, stop_supabase
+from scripts.supabase.preflight import (
+    SupabaseOperationError,
+    SupabasePreflight,
+    prepare_supabase,
+    stop_supabase,
+)
 
 LOCAL_UI_PROJECT = "werewolf-agent-local-ui"
 LOCAL_UI_TIMEOUT_SECONDS = 3600
@@ -91,7 +97,7 @@ def run_local_ui() -> tuple[ReviewState, Path]:
             try:
                 stop_supabase(prepared, base_environment=environment)
                 _write_json(run_dir / "private" / "cleanup.json", {"supabase": "stopped"})
-            except (EnvironmentBlockedError, OSError) as exc:
+            except (EnvironmentBlockedError, SupabaseOperationError, OSError) as exc:
                 _write_json(
                     run_dir / "private" / "cleanup.json",
                     {
@@ -100,7 +106,7 @@ def run_local_ui() -> tuple[ReviewState, Path]:
                         "message": str(exc),
                     },
                 )
-        _write_manifest(run_dir)
+        _finalize_review_run(run_dir)
     return outcome
 
 
@@ -177,7 +183,7 @@ def _execute_local_ui(run_dir: Path, environment: dict[str, str]) -> tuple[Revie
         metrics["evidence_issues"] = evidence_issues
     _write_json(run_dir / "metrics.json", metrics)
     _write_json(
-        run_dir / "run.json",
+        run_dir / "report.json",
         {
             "schema_version": 1,
             "run_id": run_dir.name,
@@ -591,7 +597,7 @@ def _finish_without_compose(
     detail: dict[str, object],
 ) -> tuple[ReviewState, Path]:
     _write_json(
-        run_dir / "run.json",
+        run_dir / "report.json",
         {"schema_version": 1, "run_id": run_dir.name, "state": state, **detail},
     )
     _write_jsonl(
@@ -617,6 +623,7 @@ def _new_run_dir() -> Path:
         suffix += 1
     (root / "public" / "screenshots").mkdir(parents=True)
     (root / "private").mkdir()
+    (root / ".active").write_text("", encoding="utf-8")
     return root
 
 

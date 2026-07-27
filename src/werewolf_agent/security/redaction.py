@@ -14,7 +14,8 @@ from werewolf_agent.security.constants import (
 )
 
 _SENSITIVE_ASSIGNMENT_PATTERN: Final = re.compile(
-    r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password)"
+    r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password|"
+    r"night_action|private_state|role|target|target_id)"
     r"(\s*[:=]\s*)((?:Bearer\s+)?[^,\s;]+)"
 )
 _URI_CREDENTIALS_PATTERN: Final = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@")

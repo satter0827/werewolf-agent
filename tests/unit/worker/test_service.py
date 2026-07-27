@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from contextlib import nullcontext
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -268,3 +269,40 @@ def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(
     problem = recorded[0]
     assert problem.code == ErrorCode.INTERNAL_UNEXPECTED
     assert "postgresql" not in problem.detail
+
+
+def test_retry_logs_state_change_once_and_each_attempt_at_debug(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog,
+) -> None:
+    connection = _Connection([])
+    request = {
+        "request_id": "operation-1",
+        "operation_type": "create_game",
+        "owner_user_id": "user-1",
+        "attempt_count": 1,
+        "worker_id": "worker-1",
+    }
+    retried: list[ProblemDetails] = []
+
+    def fail_execute(*_args: object, **_kwargs: object) -> None:
+        raise AppError(code=ErrorCode.API_UNAVAILABLE)
+
+    monkeypatch.setattr(service, "_execute_request", fail_execute)
+    store = SimpleNamespace(retry_request=lambda _request, problem: retried.append(problem))
+    monkeypatch.setattr(service, "SupabaseWorkerStore", lambda _connection: store)
+
+    with caplog.at_level(logging.DEBUG, logger=service.logger.name):
+        service._process_request(
+            _Pool(connection),
+            AppSettings(_env_file=None, supabase_worker_max_attempts=3),
+            request,
+        )
+
+    assert len(retried) == 1
+    records = [record for record in caplog.records if record.name == service.logger.name]
+    assert [record.levelno for record in records] == [logging.WARNING, logging.DEBUG]
+    assert [record.event_action for record in records] == [
+        service.LOG_WORKER_REQUEST_RETRY_STARTED,
+        service.LOG_WORKER_REQUEST_RETRY_SCHEDULED,
+    ]

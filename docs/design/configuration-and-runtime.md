@@ -55,12 +55,23 @@ APIとworkerのpool size、取得timeout、workerのvisibility timeout、heartbe
 
 ## ログと観測
 
-実行 context に request、game、operation の識別子を保持し、外部境界で構造化ログを
-記録する。ログファイルは `worker.jsonl`、`streamlit.jsonl`、`cli.jsonl` のように
-機能名で分ける。起動ツールや作業者の名前を含めない。
+実行contextにrequest、game、operationの識別子を保持し、外部境界で構造化ログを記録する。
+常駐processのlogは`.werewolf-agent/logs/application`で機能別fileに分ける。有限の環境操作、
+品質確認、reviewはlog directoryへ混在させず、run単位のreportとmanifestを所有する。
 
-時刻、level、event、context、error code を安定した field とし、秘密情報を
-redactionしてからsinkへ渡す。domainとapplicationはlogging設定に依存しない。
+`@timestamp`、`log.level`、`service.name`、`service.version`、`event.action`、
+`event.outcome`、`event.duration`、`trace.id`、`operation.id`、`error.code`、`error.type`、
+`error.message`を安定fieldとし、秘密情報をredactionしてからsinkへ渡す。ERRORは最終失敗、WARNINGは縮退と
+retry、INFOは重要な状態変化、DEBUGはpolling、rerun、health成功、判定過程に使用する。
+stack traceはERRORだけへ付与する。domainとapplicationはlogging設定に依存しない。
+
+local fileは10 MiBでrotateし、backupを3世代保持する。Composeとproductionはstdoutを使用し、
+長期保持、検索、通知は外部運用基盤が担当する。file名はprocess入口が所有し、API、worker、
+CLI、Streamlitを同じfileへ集約する設定は公開しない。
+
+operationはkindごとに10件、合計50 MiB、reviewはkindごとに3件、合計100 MiBを上限とする。
+private review evidenceは7日で削除し、active markerを持つrunは削除しない。保持値は
+`pyproject.toml`の`tool.werewolf-artifacts`を正本とする。
 
 ## 実行前検証
 

@@ -88,7 +88,7 @@ def test_preflight_records_blocked_model_evidence(tmp_path: Path, monkeypatch) -
     assert state == "blocked"
     assert (run_dir / "public" / "result.json").is_file()
     assert (run_dir / "manifest.json").is_file()
-    assert (run_dir / "run.json").is_file()
+    assert (run_dir / "report.json").is_file()
     assert (run_dir / "metrics.json").is_file()
     assert (run_dir / "events.jsonl").is_file()
     assert (run_dir / "summary.md").is_file()
@@ -107,7 +107,7 @@ def test_local_run_blocks_before_game_when_model_is_not_loaded(tmp_path: Path, m
 
     state, run_dir = review.run_suite("local", "smoke")
 
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     assert state == "blocked"
     assert run["state"] == "blocked"
     assert run["error"]["type"] == "AgentReviewBlockedError"
@@ -123,7 +123,7 @@ def test_local_standard_run_is_rejected_before_model_discovery(tmp_path: Path, m
 
     state, run_dir = review.run_suite("local", "standard")
 
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     assert state == "error"
     assert run["error"]["type"] == "ValueError"
     assert "bounded smoke suite" in run["error"]["message"]
@@ -138,7 +138,7 @@ def test_fake_smoke_writes_reviewable_public_and_private_artifacts(
     state, run_dir = review.run_suite("fake", "smoke", seed=7)
 
     assert state in {"passed", "degraded"}
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
     public = json.loads((run_dir / "public" / "scenarios.json").read_text(encoding="utf-8"))
     private = json.loads((run_dir / "private" / "traces.json").read_text(encoding="utf-8"))
@@ -226,7 +226,7 @@ def test_standard_checkpoints_completed_presets_before_later_interruption(
     state, run_dir = review.run_suite("fake", "standard")
 
     checkpoint = json.loads((run_dir / "checkpoint.json").read_text(encoding="utf-8"))
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     metrics = json.loads((run_dir / "metrics.json").read_text(encoding="utf-8"))
     public = json.loads((run_dir / "public" / "scenarios.json").read_text(encoding="utf-8"))
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
@@ -291,7 +291,7 @@ def test_standard_suite_can_select_explicit_presets(tmp_path: Path, monkeypatch)
         selected_presets=("standard_6",),
     )
 
-    run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     scenarios = json.loads((run_dir / "public" / "scenarios.json").read_text(encoding="utf-8"))
     assert state == "passed"
     assert run["presets"] == ["standard_6"]
@@ -306,7 +306,7 @@ def test_compare_runs_records_execution_context(tmp_path: Path) -> None:
         (candidate, "local", "local-model"),
     ):
         root.mkdir()
-        (root / "run.json").write_text(
+        (root / "report.json").write_text(
             json.dumps(
                 {
                     "provider": provider,

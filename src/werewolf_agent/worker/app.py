@@ -20,11 +20,11 @@ from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.security.redaction import redact_text
 from werewolf_agent.settings import (
     AppSettings,
-    get_settings,
 )
 from werewolf_agent.worker.events import (
     LOG_WORKER_APPLICATION_ERROR_HANDLED,
     LOG_WORKER_APPLICATION_STARTED,
+    LOG_WORKER_APPLICATION_STOPPED,
 )
 from werewolf_agent.worker.messages import (
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
@@ -50,9 +50,7 @@ def run() -> None:
 
 
 def _once() -> None:
-    settings = get_settings()
-    configure_entrypoint_logging(
-        settings,
+    settings = configure_entrypoint_logging(
         default_log_file_name="worker.jsonl",
         service_name="werewolf-agent-worker",
     )
@@ -60,12 +58,11 @@ def _once() -> None:
     _log_worker_started(settings, mode="once")
     processed = process_worker_batch(settings)
     typer.echo(f"processed={processed}")
+    _log_worker_stopped(mode="once")
 
 
 def _run() -> None:
-    settings = get_settings()
-    configure_entrypoint_logging(
-        settings,
+    settings = configure_entrypoint_logging(
         default_log_file_name="worker.jsonl",
         service_name="werewolf-agent-worker",
     )
@@ -90,6 +87,17 @@ def _log_worker_started(settings: AppSettings, *, mode: str) -> None:
             "worker_mode": mode,
             "worker_batch_size": settings.supabase_worker_batch_size,
             "worker_poll_interval_seconds": settings.supabase_worker_poll_interval_seconds,
+        },
+    )
+
+
+def _log_worker_stopped(*, mode: str) -> None:
+    logger.info(
+        LOG_WORKER_APPLICATION_STOPPED,
+        extra={
+            "event_action": LOG_WORKER_APPLICATION_STOPPED,
+            "event_outcome": EVENT_OUTCOME_SUCCESS,
+            "worker_mode": mode,
         },
     )
 

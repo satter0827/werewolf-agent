@@ -123,6 +123,14 @@ failure_runs_per_selector = 2
 failure_run_max_mib = 100
 docker_builder_cache_max_gib = 8
 
+[tool.werewolf-artifacts]
+operation_runs_per_kind = 10
+operation_max_mib = 50
+operation_failure_output_max_chars = 20000
+review_runs_per_kind = 3
+review_max_mib = 100
+review_private_retention_days = 7
+
 [tool.werewolf-quality.hypothesis]
 focus_examples = 10
 check_examples = 30

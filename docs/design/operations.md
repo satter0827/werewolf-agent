@@ -36,14 +36,16 @@ messageをarchiveせず再配送し、検証失敗、重複message、最大試�
 
 ## 問題調査
 
-1. 利用者向け error code と発生時刻から request または operation を特定する。
-2. 構造化ログと queue 状態で失敗した境界を絞る。
-3. 公開 state と認可された完全 state の不整合を確認する。
-4. 同じ設定と fixture で再現テストを作る。
-5. 修正後に対象 test と品質 profile を実行する。
+1. `python -m scripts.diagnostics collect`で最新成果物の参照viewを生成する。
+2. error code、run ID、trace ID、operation IDから対象reportとlogを特定する。
+3. 観測事実、確定原因、仮説、未確認範囲を分離して失敗境界を絞る。
+4. 同じ設定とfixtureで再現testを作る。
+5. 修正後に対象testと品質profileを実行する。
 
-architecture の `architecture.json` と品質 report は、AI と人が同じ構造と検証結果を
-参照する調査入力になる。
+diagnosticsはapplication log、operation、quality、reviewを複製せず、pathとhashで参照する。
+manifestが存在するreportはSHA-256を照合し、不一致を成果物破損として扱う。
+`report.json`を機械判定、`summary.md`を人間の初動調査に使用する。確定原因には直接検査した
+事実だけを記録し、subprocessの失敗だけから根本原因を推測しない。
 
 品質reportの最新試行は`.werewolf-agent/quality/profiles/<profile>/current`、最終成功は
 同じprofileの`last-passed.json`から解決する。固定したtest件数や過去の画面画像を運用判断へ

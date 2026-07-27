@@ -3,6 +3,7 @@ import logging
 import sys
 from pathlib import Path
 
+import pytest
 import structlog
 
 from werewolf_agent.observability import (
@@ -11,9 +12,15 @@ from werewolf_agent.observability import (
     configure_observability,
     get_observation_context,
 )
+from werewolf_agent.observability import bootstrap as observability_bootstrap
 from werewolf_agent.security.redaction import redact_mapping, redact_text
 from werewolf_agent.settings import AppSettings
-from werewolf_agent.settings.defaults import PACKAGED_DEFAULTS
+
+REDACTION_CASES = json.loads(
+    (Path(__file__).resolve().parents[2] / "fixtures" / "redaction_cases.json").read_text(
+        encoding="utf-8"
+    )
+)
 
 
 def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
@@ -25,7 +32,8 @@ def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
         "log_output": "file",
     }
     values.update(overrides)
-    return AppSettings(**values)
+    log_file_name = str(values.pop("log_file_name"))
+    return AppSettings(**values).with_log_file_name(log_file_name)
 
 
 def _flush_handlers() -> None:
@@ -40,13 +48,12 @@ def _read_log(path: Path) -> dict[str, object]:
     return json.loads(lines[0])
 
 
-def test_entrypoint_logging_uses_process_default_and_preserves_override(
+def test_entrypoint_logging_enforces_process_owned_file_name(
     tmp_path: Path,
 ) -> None:
     defaults = AppSettings(
         _env_file=None,
         log_dir=tmp_path,
-        log_file_name=str(PACKAGED_DEFAULTS["log_file_name"]),
         log_output="none",
     )
     resolved = configure_entrypoint_logging(
@@ -60,7 +67,17 @@ def test_entrypoint_logging_uses_process_default_and_preserves_override(
     )
 
     assert resolved.log_file_name == "cli.jsonl"
-    assert custom.log_file_name == "custom.jsonl"
+    assert custom.log_file_name == "cli.jsonl"
+
+
+def test_public_environment_cannot_merge_process_log_files(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("WEREWOLF_LOG_FILE_NAME", "shared.jsonl")
+
+    settings = AppSettings(_env_file=None)
+
+    assert settings.log_file_name == "werewolf-agent.jsonl"
 
 
 def test_configure_observability_writes_ecs_jsonl_with_context_and_extra(
@@ -205,6 +222,30 @@ def test_configure_logging_supports_both_and_none_outputs(
     assert not none_settings.log_file_path.exists()
 
 
+def test_file_logging_rotates_by_capacity(tmp_path: Path) -> None:
+    settings = _settings(tmp_path, log_file_max_mib=1, log_file_backup_count=1)
+    configure_observability(settings)
+    logger = logging.getLogger("werewolf_agent.tests")
+    logger.info("x" * 700_000)
+    logger.info("y" * 700_000)
+    _flush_handlers()
+    assert settings.log_file_path.with_name("test.jsonl.1").is_file()
+
+
+def test_bootstrap_failure_is_safe_json_on_stderr(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(
+        observability_bootstrap,
+        "load_app_settings",
+        lambda: (_ for _ in ()).throw(ValueError("api_key=secret")),
+    )
+    with pytest.raises(ValueError):
+        observability_bootstrap.configure_entrypoint_logging(service_name="werewolf-agent-api")
+    payload = json.loads(capsys.readouterr().err)
+    assert payload["error.code"] == "config.invalid"
+    assert payload["error.type"] == "ValueError"
+    assert "secret" not in json.dumps(payload)
+
+
 def test_observability_drops_private_gameplay_fields(tmp_path: Path) -> None:
     settings = _settings(tmp_path)
     configure_observability(settings)
@@ -275,6 +316,11 @@ def test_redact_text_masks_common_sensitive_assignments() -> None:
     assert redact_text("postgresql://db_user:db_password@db.example.test/game") == (
         "postgresql://[REDACTED]@db.example.test/game"
     )
+
+
+@pytest.mark.parametrize("case", REDACTION_CASES)
+def test_application_redaction_matches_shared_corpus(case: dict[str, str]) -> None:
+    assert redact_text(case["input"]) == case["expected"]
 
 
 def teardown_module() -> None:

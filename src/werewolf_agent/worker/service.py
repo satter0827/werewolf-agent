@@ -47,6 +47,7 @@ from werewolf_agent.contracts import (
     problem_details_from_error,
     problem_details_from_spec,
 )
+from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
@@ -61,12 +62,17 @@ from werewolf_agent.observability.constants import (
     EVENT_OUTCOME_FAILURE,
     EVENT_OUTCOME_SUCCESS,
 )
+from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker.events import (
+    LOG_WORKER_APPLICATION_STOPPED,
     LOG_WORKER_DATABASE_UNAVAILABLE,
     LOG_WORKER_REQUEST_CLAIMED,
     LOG_WORKER_REQUEST_COMPLETED,
     LOG_WORKER_REQUEST_FAILED,
+    LOG_WORKER_REQUEST_RETRY_EXHAUSTED,
+    LOG_WORKER_REQUEST_RETRY_SCHEDULED,
+    LOG_WORKER_REQUEST_RETRY_STARTED,
 )
 from werewolf_agent.worker.messages import (
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
@@ -98,7 +104,26 @@ def run_worker_forever(settings: AppSettings) -> None:
             if processed == 0:
                 time.sleep(settings.supabase_worker_poll_interval_seconds)
     finally:
-        pool.close()
+        try:
+            pool.close()
+        except Exception:
+            logger.exception(
+                "worker.application.stop_failed",
+                extra={
+                    "event_action": "worker.application.stop_failed",
+                    "event_outcome": EVENT_OUTCOME_FAILURE,
+                    "error_code": ErrorCode.INTERNAL_UNEXPECTED.value,
+                },
+            )
+            raise
+        logger.info(
+            LOG_WORKER_APPLICATION_STOPPED,
+            extra={
+                "event_action": LOG_WORKER_APPLICATION_STOPPED,
+                "event_outcome": EVENT_OUTCOME_SUCCESS,
+                "worker_mode": "run",
+            },
+        )
 
 
 def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> int:
@@ -141,6 +166,16 @@ def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> i
             )
             with borrow_database_connection(pool) as connection, connection.transaction():
                 SupabaseWorkerStore(connection).fail_request(request, problem)
+            logger.error(
+                LOG_WORKER_REQUEST_RETRY_EXHAUSTED,
+                extra={
+                    **_request_log_extra(request),
+                    "event_action": LOG_WORKER_REQUEST_RETRY_EXHAUSTED,
+                    "event_outcome": EVENT_OUTCOME_FAILURE,
+                    "error_code": ErrorCode.OPERATION_RETRY_EXHAUSTED.value,
+                    "error_message": problem.detail,
+                },
+            )
             processed += 1
             continue
         _process_request(pool, settings, request)
@@ -176,21 +211,46 @@ def _process_request(
                     request,
                 )
     except Exception as exc:
-        logger.exception(
-            LOG_WORKER_REQUEST_FAILED,
-            extra={
-                **_request_log_extra(request),
-                "event_action": LOG_WORKER_REQUEST_FAILED,
-                "event_outcome": EVENT_OUTCOME_FAILURE,
-            },
-        )
         problem = _problem_from_exception(exc)
+        attempt_count = int(request.get("attempt_count") or 0)
+        retry = _is_retryable(exc) and attempt_count < settings.supabase_worker_max_attempts
+        log_extra = {
+            **_request_log_extra(request),
+            "event_outcome": EVENT_OUTCOME_FAILURE,
+            "error_code": problem.code,
+            "error_message": problem.detail,
+        }
+        if retry:
+            if attempt_count <= 1:
+                logger.warning(
+                    LOG_WORKER_REQUEST_RETRY_STARTED,
+                    extra={
+                        **log_extra,
+                        "event_action": LOG_WORKER_REQUEST_RETRY_STARTED,
+                    },
+                )
+            logger.debug(
+                LOG_WORKER_REQUEST_RETRY_SCHEDULED,
+                extra={
+                    **log_extra,
+                    "event_action": LOG_WORKER_REQUEST_RETRY_SCHEDULED,
+                },
+            )
+        else:
+            level = (
+                log_level_number(get_error_spec(exc.code).log_level)
+                if isinstance(exc, AppError)
+                else logging.ERROR
+            )
+            logger.log(
+                level,
+                LOG_WORKER_REQUEST_FAILED,
+                exc_info=level >= logging.ERROR,
+                extra={**log_extra, "event_action": LOG_WORKER_REQUEST_FAILED},
+            )
         with borrow_database_connection(pool) as connection, connection.transaction():
             store = SupabaseWorkerStore(connection)
-            if (
-                _is_retryable(exc)
-                and int(request.get("attempt_count") or 0) < settings.supabase_worker_max_attempts
-            ):
+            if retry:
                 store.retry_request(request, problem)
             else:
                 store.fail_request(request, problem)

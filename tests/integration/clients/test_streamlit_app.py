@@ -53,8 +53,11 @@ def test_streamlit_routes_authenticated_workspaces_through_the_real_entrypoint(
         supabase_url="http://127.0.0.1:54321",
         supabase_publishable_key="publishable-test",
     )
-    monkeypatch.setattr(runtime, "get_settings", lambda: settings)
-    monkeypatch.setattr(runtime, "configure_entrypoint_logging", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        runtime,
+        "configure_entrypoint_logging",
+        lambda *args, **kwargs: settings,
+    )
     monkeypatch.setattr(runtime, "log_streamlit_rerun_started", lambda _settings: None)
     monkeypatch.setattr(runtime, "require_supabase_client_config", lambda _settings: None)
     monkeypatch.setattr(runtime, "ensure_session", lambda *args, **kwargs: object())

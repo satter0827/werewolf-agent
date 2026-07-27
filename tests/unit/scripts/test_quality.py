@@ -27,6 +27,9 @@ from scripts.quality.gates import environment as environment_gate
 from scripts.quality.gates import tests as test_gates
 
 ROOT = Path(__file__).resolve().parents[3]
+REDACTION_CASES = json.loads(
+    (ROOT / "tests" / "fixtures" / "redaction_cases.json").read_text(encoding="utf-8")
+)
 
 
 def _write_contract_sdist(path: Path) -> None:
@@ -184,7 +187,11 @@ def test_environment_gate_classifies_blocked_executable_as_nonzero_result(
     tmp_path: Path,
 ) -> None:
     context = SimpleNamespace(profile="focus", timeout_seconds=60, environment={})
-    monkeypatch.setattr(environment_gate, "is_ready", lambda _profile: True)
+    monkeypatch.setattr(
+        environment_gate,
+        "inspect_environment",
+        lambda _profile: SimpleNamespace(state="passed", confirmed_causes=[]),
+    )
     monkeypatch.setattr(
         environment_gate,
         "run_command",
@@ -204,7 +211,7 @@ def test_environment_gate_classifies_fingerprint_error_as_nonzero_result(
     context = SimpleNamespace(profile="focus", timeout_seconds=60, environment={})
     monkeypatch.setattr(
         environment_gate,
-        "is_ready",
+        "inspect_environment",
         lambda _profile: (_ for _ in ()).throw(OSError("blocked")),
     )
 
@@ -286,13 +293,18 @@ def test_redact_masks_secret_values() -> None:
     assert output.endswith("ordinary=value")
 
 
+@pytest.mark.parametrize("case", REDACTION_CASES)
+def test_script_redaction_matches_shared_corpus(case: dict[str, str]) -> None:
+    assert redact(case["input"]) == case["expected"]
+
+
 def test_redact_masks_credentials_embedded_in_url() -> None:
     """接続URLに埋め込まれたpasswordを成果物へ残さない。"""
 
     output = redact("dsn=postgresql://postgres:local-password@127.0.0.1:5432/postgres")
 
     assert "local-password" not in output
-    assert output == ("dsn=postgresql://postgres:[REDACTED]@127.0.0.1:5432/postgres")
+    assert output == ("dsn=postgresql://[REDACTED]@127.0.0.1:5432/postgres")
 
 
 def test_redact_masks_bearer_and_query_credentials() -> None:
@@ -660,6 +672,17 @@ def test_nonzero_infrastructure_command_is_classified_as_error() -> None:
     assert quality._command_state(result, nonzero_state="error") == "error"
 
 
+def test_nonpytest_exit_two_is_classified_as_blocked() -> None:
+    result = quality.CommandResult(
+        command=["environment-check"],
+        returncode=2,
+        duration_seconds=1.0,
+        output="",
+    )
+
+    assert quality._command_state(result, nonzero_state="error") == "blocked"
+
+
 def test_git_status_failure_is_not_treated_as_clean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -743,28 +766,54 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         "Cleanup: Owned Resources",
     }
     assert visible_task_names == {
-        "Project: Setup",
+        "Environment: Check",
+        "Environment: Setup",
+        "Diagnostics: Collect",
         "Verify: Auto",
         "Verify: Focus",
         "Verify: Check",
         "Verify: Release",
         "Verify: Deep",
-        "Docs: Build",
-        "Architecture: Analyze",
-        "Dependencies: Audit",
     }
     compounds = {compound["name"]: compound for compound in launch["compounds"]}
     assert set(compounds) == {"Run: Streamlit Stack"}
     assert all(
-        "Internal: Supabase Stack" in compound["configurations"] and compound["stopAll"] is True
+        "Internal: Supabase Stack" in compound["configurations"]
+        and compound["stopAll"] is True
+        and compound["preLaunchTask"] == "Internal: Environment Check Release"
         for compound in compounds.values()
     )
+    assert "Internal: Supabase Preflight" not in task_commands
+    assert task_commands["Internal: Supabase Ready"][-4:] == [
+        "scripts.supabase",
+        "wait",
+        "--timeout",
+        "180",
+    ]
     supabase_launch = next(
         configuration
         for configuration in launch["configurations"]
         if configuration["name"] == "Internal: Supabase Stack"
     )
-    assert supabase_launch["postDebugTask"] == "Internal: Supabase Stop"
+    assert "postDebugTask" not in supabase_launch
+    stack_configurations = {
+        configuration["name"]: configuration
+        for configuration in launch["configurations"]
+        if configuration["name"].startswith("Internal: Stack ")
+    }
+    assert set(stack_configurations) == {
+        "Internal: Stack API",
+        "Internal: Stack Worker",
+        "Internal: Stack Streamlit",
+    }
+    assert all(
+        configuration["preLaunchTask"] == "Internal: Supabase Ready"
+        for configuration in stack_configurations.values()
+    )
+    assert set(compounds["Run: Streamlit Stack"]["configurations"]) == {
+        "Internal: Supabase Stack",
+        *stack_configurations,
+    }
     inputs = {item["id"]: item for item in launch["inputs"]}
     assert inputs["qualityLevel"]["type"] == "pickString"
     assert inputs["qualityLevel"]["options"] == ["auto", "focus", "check", "release", "deep"]
@@ -775,12 +824,19 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert task_commands["Verify: Auto"][-4:] == ["python", "-m", "scripts.quality", "auto"]
     assert task_commands["Verify: Focus"][-4:] == ["python", "-m", "scripts.quality", "focus"]
     assert task_commands["Verify: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
-    assert task_commands["Docs: Build"][-4:] == ["python", "-m", "scripts.docs", "build"]
-    assert task_commands["Architecture: Analyze"][-3:] == [
-        "python",
+    assert task_commands["Environment: Check"][-4:-1] == [
         "-m",
-        "scripts.architecture",
+        "scripts.environment",
+        "check",
     ]
+    assert task_commands["Environment: Setup"][-4:-1] == [
+        "-m",
+        "scripts.environment",
+        "setup",
+    ]
+    assert all(
+        "dependsOn" not in task for task in tasks["tasks"] if task["label"].startswith("Verify:")
+    )
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" in workflow
     assert "python -m scripts.quality deep --confirm-deep" in workflow
