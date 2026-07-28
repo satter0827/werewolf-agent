@@ -47,6 +47,7 @@ RELEASE_INPUTS = (
 RUNTIME_IMAGE = "werewolf-agent-quality-app:latest"
 E2E_IMAGE = "werewolf-agent-quality-e2e:latest"
 QUALITY_BUILDER = "werewolf-agent-quality"
+IMAGE_FINGERPRINT_LABEL_PREFIX = "io.github.satter0827.werewolf-agent.quality"
 SUPABASE_CLI_VERSION = SUPPORTED_CLI_VERSION
 
 ERROR_UV_UNAVAILABLE = "environment.uv_unavailable"
@@ -296,7 +297,6 @@ def _setup_locked(
     if synced.returncode != 0:
         return _ExecutionFailure("python-sync", synced), None
     supabase_images: list[dict[str, str]] = []
-    pending_image_markers: list[tuple[str, str, str]] = []
     cleanup_failure: _ExecutionFailure | None = None
     if profile in {"release", "deep"}:
         docker = shutil.which("docker") or "docker"
@@ -316,12 +316,11 @@ def _setup_locked(
                 return _ExecutionFailure("buildx-create", created), None
         build_environment = {**os.environ, "BUILDX_BUILDER": QUALITY_BUILDER}
         for image, key, fingerprint, command in _image_builds(docker):
-            if _image_marker_matches(image, key, fingerprint):
+            if _image_fingerprint_matches(image, key, fingerprint):
                 continue
             built = _execute(command, environment=build_environment, timeout=1200)
             if built.returncode != 0:
                 return _ExecutionFailure(f"{key}-image", built), None
-            pending_image_markers.append((image, key, fingerprint))
         supabase_failure, cleanup_failure, supabase_images = _prepare_supabase_images(run_id)
         if supabase_failure is not None:
             return supabase_failure, cleanup_failure
@@ -342,8 +341,6 @@ def _setup_locked(
         )
         if pruned.returncode != 0:
             return _ExecutionFailure("buildx-prune", pruned), cleanup_failure
-        for image, key, fingerprint in pending_image_markers:
-            _write_image_marker(image, key, fingerprint)
     _write_state(profile, supabase_images)
     return None, cleanup_failure
 
@@ -592,7 +589,7 @@ def _state_check(profile: str) -> EnvironmentCheck:
                     "current": SUPABASE_CLI_VERSION,
                 },
             )
-        if not _image_marker_matches(
+        if not _image_fingerprint_matches(
             RUNTIME_IMAGE, "application", _application_image_fingerprint()
         ):
             return EnvironmentCheck(
@@ -600,7 +597,9 @@ def _state_check(profile: str) -> EnvironmentCheck:
                 "blocked",
                 "application imageが現在のsourceに対応していません。",
             )
-        if not _image_marker_matches(E2E_IMAGE, "browser-dependencies", _e2e_image_fingerprint()):
+        if not _image_fingerprint_matches(
+            E2E_IMAGE, "browser-dependencies", _e2e_image_fingerprint()
+        ):
             return EnvironmentCheck(
                 ERROR_FINGERPRINT_MISMATCH, "blocked", "E2E imageが現在の依存に対応していません。"
             )
@@ -659,11 +658,13 @@ def _state_path(profile: str) -> Path:
 
 
 def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], ...]:
+    application_fingerprint = _application_image_fingerprint()
+    browser_fingerprint = _e2e_image_fingerprint()
     return (
         (
             RUNTIME_IMAGE,
             "application",
-            _application_image_fingerprint(),
+            application_fingerprint,
             (
                 docker,
                 "buildx",
@@ -671,6 +672,8 @@ def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], .
                 "--builder",
                 QUALITY_BUILDER,
                 "--load",
+                "--label",
+                f"{_image_fingerprint_label('application')}={application_fingerprint}",
                 "--target",
                 "runtime",
                 "--file",
@@ -683,7 +686,7 @@ def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], .
         (
             E2E_IMAGE,
             "browser-dependencies",
-            _e2e_image_fingerprint(),
+            browser_fingerprint,
             (
                 docker,
                 "buildx",
@@ -691,6 +694,8 @@ def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], .
                 "--builder",
                 QUALITY_BUILDER,
                 "--load",
+                "--label",
+                f"{_image_fingerprint_label('browser-dependencies')}={browser_fingerprint}",
                 "--file",
                 "docker/e2e.Dockerfile",
                 "--tag",
@@ -701,33 +706,28 @@ def _image_builds(docker: str) -> tuple[tuple[str, str, str, tuple[str, ...]], .
     )
 
 
-def _write_image_marker(image: str, key: str, fingerprint: str) -> None:
-    image_id = _image_id(image)
-    if image_id is None:
-        raise OSError(f"build後のDocker image IDを確認できません: {image}")
-    root = STATE_ROOT / "images"
-    root.mkdir(parents=True, exist_ok=True)
-    target = root / f"{key}.json"
-    temporary = target.with_suffix(".tmp")
-    temporary.write_text(
-        json.dumps({"fingerprint": fingerprint, "image": image, "image_id": image_id}, indent=2)
-        + "\n",
-        encoding="utf-8",
-    )
-    temporary.replace(target)
+def _image_fingerprint_matches(image: str, key: str, fingerprint: str) -> bool:
+    return _image_label(image, _image_fingerprint_label(key)) == fingerprint
 
 
-def _image_marker_matches(image: str, key: str, fingerprint: str) -> bool:
-    try:
-        state = json.loads((STATE_ROOT / "images" / f"{key}.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return False
-    image_id = _image_id(image)
-    return (
-        isinstance(state, dict)
-        and state == {"fingerprint": fingerprint, "image": image, "image_id": image_id}
-        and image_id is not None
+def _image_fingerprint_label(key: str) -> str:
+    return f"{IMAGE_FINGERPRINT_LABEL_PREFIX}.{key}"
+
+
+def _image_label(image: str, label: str) -> str | None:
+    result = _execute(
+        (
+            "docker",
+            "image",
+            "inspect",
+            "--format",
+            f'{{{{ index .Config.Labels "{label}" }}}}',
+            image,
+        ),
+        timeout=30,
     )
+    value = result.output.strip()
+    return value if result.returncode == 0 and value and value != "<no value>" else None
 
 
 def _image_id(image: str) -> str | None:
