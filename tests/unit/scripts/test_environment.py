@@ -332,20 +332,25 @@ def test_supabase_image_preparation_stops_only_isolated_project(
     )
 
 
-def test_image_marker_rejects_replaced_tag(
-    tmp_path: Path,
+def test_image_fingerprint_is_bound_to_the_image_label(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    state_root = tmp_path / "environment"
-    marker = state_root / "images"
-    marker.mkdir(parents=True)
-    (marker / "application.json").write_text(
-        '{"fingerprint":"same","image":"image","image_id":"sha256:expected"}',
-        encoding="utf-8",
+    monkeypatch.setattr(manager, "_image_label", lambda _image, _label: "expected")
+
+    assert manager._image_fingerprint_matches("image", "application", "expected")
+    assert not manager._image_fingerprint_matches("image", "application", "replaced")
+
+
+def test_image_builds_embed_their_input_fingerprint(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(manager, "_application_image_fingerprint", lambda: "application-hash")
+    monkeypatch.setattr(manager, "_e2e_image_fingerprint", lambda: "browser-hash")
+
+    builds = manager._image_builds("docker")
+
+    assert f"{manager._image_fingerprint_label('application')}=application-hash" in builds[0][3]
+    assert (
+        f"{manager._image_fingerprint_label('browser-dependencies')}=browser-hash" in builds[1][3]
     )
-    monkeypatch.setattr(manager, "STATE_ROOT", state_root)
-    monkeypatch.setattr(manager, "_image_id", lambda _image: "sha256:replaced")
-    assert not manager._image_marker_matches("image", "application", "same")
 
 
 def test_release_check_rejects_changed_docker_context(
