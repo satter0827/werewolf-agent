@@ -310,6 +310,36 @@ def _skipped_gate_results(
     ]
 
 
+def _record_runner_error(
+    context: RunContext,
+    results: list[GateResult],
+    stages: Sequence[Sequence[Gate]],
+    *,
+    message: str,
+) -> None:
+    """runner内部異常を記録し、未完了gateを未検証として明示する。"""
+    sanitized = redact(message)
+    log_path = context.run_dir / "logs" / "runner.log"
+    log_path.write_text(sanitized + "\n", encoding="utf-8")
+    runner_result = GateResult(
+        "runner",
+        "Quality runner",
+        "error",
+        0.0,
+        log=log_path.relative_to(context.run_dir).as_posix(),
+        message=sanitized,
+    )
+    results.append(runner_result)
+    _append_events(context.run_dir / "events.jsonl", [runner_result])
+    skipped = _skipped_gate_results(
+        stages,
+        message="runnerが完了しなかったため検証結果を確定できませんでした。",
+        completed={result.name for result in results},
+    )
+    results.extend(skipped)
+    _append_events(context.run_dir / "events.jsonl", skipped)
+
+
 def execute(
     profile: str,
     *,
@@ -493,26 +523,21 @@ def execute(
             redact_artifacts(run_dir)
             _append_events(event_path, stage_results)
     except KeyboardInterrupt:
-        log_path = run_dir / "logs" / "runner.log"
-        log_path.write_text("品質実行が中断されました。\n", encoding="utf-8")
-        interrupted = GateResult(
-            "runner",
-            "Quality runner",
-            "error",
-            0.0,
-            log=log_path.relative_to(context.run_dir).as_posix(),
+        _record_runner_error(
+            context,
+            results,
+            stages,
             message="品質実行が中断されました。",
         )
-        results.append(interrupted)
-        _append_events(event_path, [interrupted])
-        completed = {result.name for result in results}
-        skipped_results = _skipped_gate_results(
+    except Exception as error:
+        _record_runner_error(
+            context,
+            results,
             stages,
-            message="runnerが中断されたため完了を確認できませんでした。",
-            completed=completed,
+            message=(
+                f"品質runnerがgate結果を確定できませんでした: {type(error).__name__}: {error}"
+            ),
         )
-        results.extend(skipped_results)
-        _append_events(event_path, skipped_results)
     finally:
         supabase_lease = context.resources.get("supabase")
         if supabase_lease is not None and supabase_lease.cleanup_required:

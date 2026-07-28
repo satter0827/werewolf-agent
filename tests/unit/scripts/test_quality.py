@@ -388,7 +388,14 @@ def test_redact_artifacts_keeps_json_valid_and_masks_failure_details(
 
     report = tmp_path / "result.json"
     report.write_text(
-        '{"openai_api_key":"paid-secret","role":"werewolf","state":"failed"}',
+        json.dumps(
+            {
+                "message": "runner failed: token=private-value\nnext diagnostic",
+                "openai_api_key": "paid-secret",
+                "role": "werewolf",
+                "state": "failed",
+            }
+        ),
         encoding="utf-8",
     )
     junit = tmp_path / "result.xml"
@@ -400,6 +407,7 @@ def test_redact_artifacts_keeps_json_valid_and_masks_failure_details(
     redact_artifacts(tmp_path)
 
     assert json.loads(report.read_text(encoding="utf-8")) == {
+        "message": "runner failed: token=[REDACTED]\nnext diagnostic",
         "openai_api_key": "[REDACTED]",
         "role": "[REDACTED]",
         "state": "failed",

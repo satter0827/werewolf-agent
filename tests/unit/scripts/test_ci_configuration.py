@@ -92,6 +92,10 @@ def test_rulesets_require_the_stable_workflow_checks() -> None:
         actual = {item["context"] for item in status_rule["parameters"]["required_status_checks"]}
         assert actual == contexts
         assert all(f"name: {context}" in workflow for context in contexts)
+        pull_request_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "pull_request"
+        )
+        assert pull_request_rule["parameters"]["allowed_merge_methods"] == ["merge"]
 
 
 def test_backend_dev_image_contains_the_test_suite() -> None:
