@@ -112,22 +112,36 @@ def lint_supabase(context: RunContext, _: Path) -> CommandResult:
 def cleanup_orphaned_supabase(context: RunContext, _: Path) -> CommandResult:
     """失敗した過去runが残した品質専用Supabaseを開始前に回収する。"""
     started = time.monotonic()
-    command = [
-        "docker",
-        "ps",
-        "--all",
-        "--filter",
-        "label=com.supabase.cli.project",
-        "--format",
-        '{{.Label "com.supabase.cli.project"}}',
+    discovery_commands = [
+        [
+            "docker",
+            "ps",
+            "--all",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.Label "com.supabase.cli.project"}}',
+        ],
+        [
+            "docker",
+            "volume",
+            "ls",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.Label "com.supabase.cli.project"}}',
+        ],
     ]
-    discovered = run_command(command, timeout_seconds=30, environment=context.environment)
-    if discovered.returncode != 0:
-        return discovered
+    discovered_projects: list[str] = []
+    for command in discovery_commands:
+        discovered = run_command(command, timeout_seconds=30, environment=context.environment)
+        if discovered.returncode != 0:
+            return discovered
+        discovered_projects.extend(discovered.output.splitlines())
     project_ids = sorted(
         {
             line.strip()
-            for line in discovered.output.splitlines()
+            for line in discovered_projects
             if line.strip().startswith(QUALITY_SUPABASE_PREFIX)
         }
     )
@@ -141,7 +155,7 @@ def cleanup_orphaned_supabase(context: RunContext, _: Path) -> CommandResult:
         outputs.append(stopped.output)
         if stopped.returncode != 0:
             return CommandResult(
-                command,
+                discovery_commands[0],
                 stopped.returncode,
                 time.monotonic() - started,
                 "".join(outputs),
@@ -152,7 +166,9 @@ def cleanup_orphaned_supabase(context: RunContext, _: Path) -> CommandResult:
         if project_ids
         else "品質用Supabaseの孤児projectはありません。\n"
     )
-    return CommandResult(command, 0, time.monotonic() - started, message + "".join(outputs))
+    return CommandResult(
+        discovery_commands[0], 0, time.monotonic() - started, message + "".join(outputs)
+    )
 
 
 def start_supabase(context: RunContext, _: Path) -> CommandResult:

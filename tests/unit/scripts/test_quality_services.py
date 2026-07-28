@@ -20,7 +20,7 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """過去runの品質projectだけを列挙して停止する。"""
+    """containerとvolumeから過去runの品質projectだけを列挙して停止する。"""
     commands: list[list[str]] = []
 
     def fake_run(command: list[str], **_kwargs: object) -> support.CommandResult:
@@ -31,6 +31,13 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
                 0,
                 0.0,
                 "development\nwerewolf-agent-quality-old\nwerewolf-agent-quality-old\n",
+            )
+        if command[:3] == ["docker", "volume", "ls"]:
+            return support.CommandResult(
+                command,
+                0,
+                0.0,
+                "development\nwerewolf-agent-quality-volume-only\n",
             )
         return support.CommandResult(command, 0, 0.0, "stopped\n")
 
@@ -48,14 +55,21 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
     result = services.cleanup_orphaned_supabase(context, tmp_path)
 
     assert result.returncode == 0
-    assert commands[1] == [
+    assert commands[2] == [
         "supabase",
         "stop",
         "--project-id",
         "werewolf-agent-quality-old",
         "--no-backup",
     ]
-    assert len(commands) == 2
+    assert commands[3] == [
+        "supabase",
+        "stop",
+        "--project-id",
+        "werewolf-agent-quality-volume-only",
+        "--no-backup",
+    ]
+    assert len(commands) == 4
 
 
 def test_repository_gate_rejects_undefined_artifact_areas(
