@@ -116,6 +116,16 @@ def test_playwright_blocks_nonlocal_browser_requests() -> None:
     assert "blocked_hosts" in fixture
 
 
+def test_streamlit_scenarios_do_not_scroll_rerendered_controls() -> None:
+    """full-page取得では再描画中の要素handleへscroll操作を行わない。"""
+    root = Path(__file__).resolve().parents[3] / "scripts" / "browser" / "scenarios"
+    scenarios = (root / "test_streamlit.py").read_text(encoding="utf-8")
+    fixture = (root / "conftest.py").read_text(encoding="utf-8")
+
+    assert "scroll_into_view_if_needed" not in scenarios
+    assert "full_page=True" in fixture
+
+
 def test_internal_term_pattern_rejects_terms_without_matching_identifiers() -> None:
     """内部用語は単語として拒否し、UUIDやemailの一部を誤検知しない。"""
     assert FORBIDDEN_INTERNAL_TERMS.search("API provider")
