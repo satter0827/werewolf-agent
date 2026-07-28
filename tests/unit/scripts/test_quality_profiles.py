@@ -90,6 +90,9 @@ def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     assert gates["deep-supabase"].dependencies == ("supabase-preflight",)
     assert gates["deep-supabase"].exclusive_resources == ("supabase",)
     assert "deep and supabase" in gates["deep-supabase"].command
+    assert gates["docker"].dependencies == ("environment",)
+    assert gates["supabase-preflight"].dependencies == ("environment", "supabase-cleanup")
+    assert gates["e2e"].dependencies == ("supabase-preflight",)
 
 
 def test_document_only_change_selects_document_evidence() -> None:
