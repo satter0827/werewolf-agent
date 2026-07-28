@@ -292,6 +292,7 @@ def test_success_uses_contract_artifacts_without_adding_failure_diagnostics(
         environment={},
         started_at=quality.utc_now(),
     )
+
     def generate_contract(*_args: object) -> quality.CommandResult:
         generated.write_text("{}", encoding="utf-8")
         return quality.CommandResult([], 0, 0.0, "")
