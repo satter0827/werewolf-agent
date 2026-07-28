@@ -58,6 +58,26 @@ def test_python_installation_fingerprint_covers_name_version_and_record(
     assert manager.python_installation_fingerprint() != baseline
 
 
+def test_path_fingerprint_ignores_generated_python_cache(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = tmp_path / "src"
+    cache = source / "__pycache__"
+    cache.mkdir(parents=True)
+    module = source / "module.py"
+    bytecode = cache / "module.pyc"
+    module.write_text("value = 1\n", encoding="utf-8")
+    bytecode.write_bytes(b"first")
+    monkeypatch.setattr(manager, "REPOSITORY_ROOT", tmp_path)
+
+    baseline = manager._paths_fingerprint(("src",))
+    bytecode.write_bytes(b"second")
+
+    assert manager._paths_fingerprint(("src",)) == baseline
+    module.write_text("value = 2\n", encoding="utf-8")
+    assert manager._paths_fingerprint(("src",)) != baseline
+
+
 def test_auto_environment_uses_change_impact_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         impact,
