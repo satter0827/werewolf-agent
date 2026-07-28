@@ -2,368 +2,222 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "CLI: doctor",
+      "name": "Internal: Supabase Stack",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent",
-      "args": ["doctor"],
+      "module": "scripts.supabase",
+      "args": ["serve", "--stop-on-exit"],
+      "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
+      "presentation": { "hidden": true }
+    },
+    {
+      "name": "Debug: API",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Environment Check",
+      "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
+      "console": "integratedTerminal",
       "justMyCode": true
     },
     {
-      "name": "CLI: ruleset",
+      "name": "Debug: Worker",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "ruleset",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
+      "preLaunchTask": "Internal: Environment Check",
+      "module": "werewolf_agent.worker.app",
+      "args": ["run"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
-      "justMyCode": true
+      "console": "integratedTerminal"
     },
     {
-      "name": "API: migrate",
+      "name": "Internal: Stack API",
       "type": "debugpy",
       "request": "launch",
-      "module": "alembic",
-      "args": ["upgrade", "head"],
-      "console": "integratedTerminal",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
-      "justMyCode": true
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "presentation": { "hidden": true }
     },
     {
-      "name": "API: uvicorn",
+      "name": "Internal: Stack Worker",
       "type": "debugpy",
       "request": "launch",
-      "module": "uvicorn",
-      "args": [
-        "werewolf_agent.interface.api.app:create_app",
-        "--factory",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8000"
-      ],
-      "console": "integratedTerminal",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "werewolf_agent.worker.app",
+      "args": ["run"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
-      "justMyCode": true
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "UI: Streamlit",
+      "name": "Internal: Streamlit",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "streamlit",
       "args": [
         "run",
-        "backend/src/werewolf_agent/interface/entrypoint/streamlit/app.py",
-        "--server.headless=true",
-        "--server.port",
-        "${input:streamlitPort}",
-        "--browser.gatherUsageStats=false"
+        "src/werewolf_agent/clients/streamlit/app.py",
+        "--server.address",
+        "127.0.0.1",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false"
       ],
-      "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
       "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src",
-        "WEREWOLF_STREAMLIT_API_URL": "http://127.0.0.1:8000/api/v1",
-        "WEREWOLF_STREAMLIT_LANGUAGE": "ja"
+        "PYTHONPATH": "${workspaceFolder}/src"
       },
-      "justMyCode": true
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
     },
     {
-      "name": "CLI: create",
+      "name": "Internal: CLI Doctor",
       "type": "debugpy",
       "request": "launch",
+      "preLaunchTask": "Internal: Environment Check",
+      "module": "werewolf_agent",
+      "args": ["doctor"],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
+    },
+    {
+      "name": "Internal: Stack Streamlit",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Supabase Ready",
+      "module": "streamlit",
+      "args": [
+        "run",
+        "src/werewolf_agent/clients/streamlit/app.py",
+        "--server.address",
+        "127.0.0.1",
+        "--server.headless",
+        "true",
+        "--browser.gatherUsageStats",
+        "false"
+      ],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "console": "integratedTerminal",
+      "presentation": { "hidden": true }
+    },
+    {
+      "name": "Run: CLI Play",
+      "type": "debugpy",
+      "request": "launch",
+      "preLaunchTask": "Internal: Environment Check",
       "module": "werewolf_agent",
       "args": [
-        "create",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
-        "--players",
-        "6",
+        "play",
+        "--role-count",
+        "werewolf=1",
+        "--role-count",
+        "seer=1",
+        "--role-count",
+        "knight=1",
+        "--role-count",
+        "villager=3",
         "--seed",
         "1"
       ],
-      "console": "integratedTerminal",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Verify: Quality",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "scripts.workbench",
+      "args": ["verify", "${input:qualityLevel}"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
       "justMyCode": true
     },
     {
-      "name": "CLI: state",
+      "name": "Review: Evidence",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "state",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
+      "module": "scripts.workbench",
+      "args": ["review", "${input:reviewKind}"],
       "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
+      "console": "integratedTerminal",
       "justMyCode": true
     },
     {
-      "name": "CLI: step",
+      "name": "Open: Latest Quality Report",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "step",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
+      "module": "scripts.workbench",
+      "args": ["open-report"],
       "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
+      "console": "integratedTerminal"
     },
     {
-      "name": "CLI: play",
+      "name": "Cleanup: Owned Resources",
       "type": "debugpy",
       "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
-        "--players",
-        "6",
-        "--seed",
-        "1"
-      ],
-      "console": "integratedTerminal",
+      "module": "scripts.workbench",
+      "args": ["cleanup"],
       "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: play (human player)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
-        "--players",
-        "6",
-        "--seed",
-        "1",
-        "--human-player",
-        "player-1"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: play (save replay log)",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "play",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1",
-        "--players",
-        "6",
-        "--seed",
-        "1",
-        "--log-jsonl",
-        "${input:eventLogPath}"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: runs",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "runs",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: watch",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "watch",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: turns",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "turns",
-        "${input:gameId}",
-        "--api-url",
-        "http://127.0.0.1:8000/api/v1"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "CLI: replay",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "werewolf_agent",
-      "args": [
-        "replay",
-        "--events",
-        "${input:eventLogPath}"
-      ],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "Pytest: all tests",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "pytest",
-      "args": ["tests"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "Pytest: API integration",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "pytest",
-      "args": ["tests/integration/api"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
-    },
-    {
-      "name": "Pytest: current file",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "pytest",
-      "args": ["${file}"],
-      "console": "integratedTerminal",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/backend/src"
-      },
-      "justMyCode": true
+      "console": "integratedTerminal"
     }
   ],
   "compounds": [
     {
-      "name": "App: API + Streamlit",
-      "configurations": ["API: uvicorn", "UI: Streamlit"],
-      "preLaunchTask": "API: migrate",
+      "name": "Run: Streamlit Stack",
+      "configurations": [
+        "Internal: Supabase Stack",
+        "Internal: Stack API",
+        "Internal: Stack Worker",
+        "Internal: Stack Streamlit"
+      ],
+      "preLaunchTask": "Internal: Environment Check Release",
       "stopAll": true
     }
   ],
   "inputs": [
     {
-      "id": "gameId",
-      "type": "promptString",
-      "description": "Game ID for CLI state / step / watch / turns",
-      "default": ""
+      "id": "qualityLevel",
+      "type": "pickString",
+      "description": "品質levelを選択",
+      "options": ["auto", "focus", "check", "release", "deep"],
+      "default": "auto"
     },
     {
-      "id": "eventLogPath",
-      "type": "promptString",
-      "description": "Public event JSONL path for CLI replay",
-      "default": ".werewolf-agent/logs/game-001.jsonl"
-    },
-    {
-      "id": "streamlitPort",
-      "type": "promptString",
-      "description": "Streamlit port",
-      "default": "8501"
+      "id": "reviewKind",
+      "type": "pickString",
+      "description": "読解用の証拠を選択",
+      "options": ["ui", "gameplay", "local-llm"],
+      "default": "ui"
     }
   ]
 }

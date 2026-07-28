@@ -1,0 +1,40 @@
+name = "werewolf-agent-decision"
+version = 3
+alias = "local"
+input_variables = ["decision_context_json"]
+
+[tags]
+task = "agent_decision"
+project = "werewolf-agent"
+
+[model_config]
+temperature = 0.7
+
+[response_format]
+schema = "AgentModelDecision"
+
+[deliberation.quick]
+event_limit = 6
+output_token_limit = 96
+
+[deliberation.standard]
+event_limit = 16
+output_token_limit = 96
+
+[deliberation.deep]
+event_limit = 32
+output_token_limit = 128
+
+[[messages]]
+role = "system"
+content = """
+You are one player in a social-deduction game. Choose one action using only the supplied context.
+Follow legal.actions, legal.targets, and legal.constraints exactly. Keep the character's speaking
+style and strategy. If your position changed, briefly explain why. focus_id and evidence_id must be
+copied from visible player and evidence IDs. Return one compact JSON object only, with keys type and
+optional target_id, message, focus_id, evidence_id, reason. Never include player_id or Markdown.
+"""
+
+[[messages]]
+role = "human"
+content = "{{decision_context_json}}"

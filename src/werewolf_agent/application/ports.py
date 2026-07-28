@@ -1,0 +1,187 @@
+"""Ports implemented by outer adapters."""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from typing import Protocol
+from uuid import UUID
+
+from werewolf_agent.application.models import (
+    GameEventCreate,
+    GameRecordCreate,
+    GameRecordUpdate,
+    StoredGame,
+    StoredGameEvent,
+    StoredGameSummary,
+    StoredGameTurn,
+)
+from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
+from werewolf_agent.application.types import GameStatus
+
+
+class GameRepository(Protocol):
+    """Persistence operations required by stateless game jobs."""
+
+    def create(self, game: GameRecordCreate) -> StoredGame:
+        """Persist a new game.
+
+        Args:
+            game: Full persistence payload for the new game.
+
+        Returns:
+            Stored game with repository-assigned timestamps.
+
+        """
+
+    def get(self, game_id: UUID) -> StoredGame | None:
+        """Return a game if it exists.
+
+        Args:
+            game_id: Game id.
+
+        Returns:
+            Stored game, or `None` when absent.
+
+        """
+
+    def get_for_update(self, game_id: UUID) -> StoredGame | None:
+        """Return a game locked for update if it exists.
+
+        Args:
+            game_id: Game id.
+
+        Returns:
+            Stored game, or `None` when absent.
+
+        """
+
+    def list_game_summaries(
+        self,
+        *,
+        user_id: str,
+        status: GameStatus | None,
+        limit: int,
+        offset: int,
+    ) -> list[StoredGameSummary]:
+        """Return a page of game summaries.
+
+        Args:
+            user_id: Verified user whose participant games are visible.
+            status: Optional public game status filter.
+            limit: Maximum number of summaries to return.
+            offset: Result offset for pagination.
+
+        Returns:
+            Public game summaries in display order.
+
+        """
+
+    def save(self, update: GameRecordUpdate) -> StoredGame:
+        """Persist mutable fields for one game.
+
+        Args:
+            update: Mutable game fields after an application step.
+
+        Returns:
+            Updated stored game.
+
+        """
+
+    def append_events(
+        self,
+        game_id: UUID,
+        events: Sequence[GameEventCreate],
+    ) -> list[StoredGameEvent]:
+        """Append events and assign stream sequence numbers.
+
+        Args:
+            game_id: Game id that owns the events.
+            events: Domain-derived events to persist.
+
+        Returns:
+            Stored events with assigned sequence numbers.
+
+        """
+
+    def latest_public_turn_sequence(self, game_id: UUID) -> int:
+        """Return the latest public timeline sequence for one game.
+
+        Args:
+            game_id: Game id that owns the timeline.
+
+        Returns:
+            Latest public timeline sequence, or `0` when the timeline is empty.
+
+        """
+
+    def list_public_turns(
+        self,
+        game_id: UUID,
+        *,
+        after: int,
+        limit: int,
+    ) -> list[StoredGameTurn]:
+        """Return public turn records after the sequence cursor.
+
+        Args:
+            game_id: Game id that owns the timeline.
+            after: Exclusive turn sequence cursor.
+            limit: Maximum number of turn records to return.
+
+        Returns:
+            Public turn records ordered by sequence.
+
+        """
+
+
+class SetupRepository(Protocol):
+    """Persistence operations for user-owned immutable setup revisions."""
+
+    def create(
+        self,
+        *,
+        owner_user_id: str,
+        display_name: str,
+        document: GameSetupDocument,
+        setup_checksum: str,
+        mechanics_checksum: str,
+    ) -> SavedSetupRevision:
+        """Create an owned setup and its first immutable revision."""
+        ...
+
+    def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
+        """List only setup summaries owned by the supplied user."""
+        ...
+
+    def get(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+        revision: int | None = None,
+    ) -> SavedSetupRevision | None:
+        """Return one owned revision or None without revealing foreign rows."""
+        ...
+
+    def list_revisions(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+    ) -> list[SavedSetupRevision]:
+        """List immutable revisions for one owned setup."""
+        ...
+
+    def add_revision(
+        self,
+        setup_id: str,
+        *,
+        owner_user_id: str,
+        expected_revision: int,
+        document: GameSetupDocument,
+        setup_checksum: str,
+        mechanics_checksum: str,
+    ) -> SavedSetupRevision:
+        """Append a revision after optimistic concurrency validation."""
+        ...

@@ -1,389 +1,420 @@
-import ast
-import inspect
-from pathlib import Path
-from types import ModuleType
+"""Application architectureの実行可能な制約。"""
 
-import werewolf_agent.domain.llm as llm_domain
-import werewolf_agent.usecase.jobs as game_jobs
+from __future__ import annotations
+
+import ast
+import importlib
+import sys
+import tomllib
+from pathlib import Path
+
+from scripts.architecture.analysis import (
+    graph_cycles,
+    imports_with_lines,
+    module_name,
+    project_import_edges,
+)
+from scripts.architecture.definition import (
+    ALLOWED_IMPORTS,
+    ALLOWED_MODULE_IMPORTS,
+    CALL_RULES,
+    CANONICAL_OPENAPI,
+    ENTRYPOINTS,
+    FORBIDDEN_PATHS,
+    FRAMEWORK_RULES,
+    LAYERS,
+    PATH_RULES,
+    ROOT_ENTRIES,
+    SETTINGS_SECTIONS,
+    THIN_MODULES,
+)
+
+import werewolf_agent.application as application
+import werewolf_agent.domain as domain
 
 ROOT = Path(__file__).resolve().parents[3]
-PACKAGE = ROOT / "backend" / "src" / "werewolf_agent"
+PACKAGE = ROOT / "src" / "werewolf_agent"
+IGNORED_ROOT_ENTRIES = {
+    ".env",
+    ".git",
+    ".venv",
+    ".werewolf-agent",
+    "__pycache__",
+}
 
 
-def test_interface_entrypoints_do_not_import_domain_or_usecase_directly() -> None:
-    forbidden_prefixes = (
-        "werewolf_agent.domain",
-        "werewolf_agent.usecase",
-        "werewolf_agent.llm",
-    )
-
-    entrypoint_path = PACKAGE / "interface" / "entrypoint"
-    imported = _imports_under(entrypoint_path / "api")
-    imported.extend(_imports_under(entrypoint_path / "cui"))
-    imported.extend(_imports_under(entrypoint_path / "streamlit"))
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
-    ]
-
-
-def test_interface_imports_only_public_usecase_jobs_from_application_bridge() -> None:
-    imported = _imports_under(PACKAGE / "interface")
-    application_path = PACKAGE / "interface" / "application"
-    allowed_module = "werewolf_agent.usecase.jobs"
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if (module == "werewolf_agent.usecase" or module.startswith("werewolf_agent.usecase."))
-        and (not path.is_relative_to(application_path) or module != allowed_module)
-    ]
+def test_repository_layout_matches_the_architecture_manifest() -> None:
+    """Repository rootとruntime境界をmanifestどおりに保つ。"""
+    root_entries = {path.name for path in ROOT.iterdir() if path.name not in IGNORED_ROOT_ENTRIES}
+    assert root_entries == ROOT_ENTRIES
+    for layer in LAYERS:
+        assert (PACKAGE / layer).is_dir(), layer
+    assert (ROOT / CANONICAL_OPENAPI).is_file()
+    assert (PACKAGE / "worker" / "app.py").is_file()
+    assert (PACKAGE / "clients" / "cli" / "app.py").is_file()
+    assert (PACKAGE / "clients" / "streamlit" / "app.py").is_file()
+    for forbidden in FORBIDDEN_PATHS:
+        assert not (ROOT / forbidden).exists(), forbidden
+    for thin_module in THIN_MODULES:
+        tree = ast.parse((ROOT / thin_module).read_text(encoding="utf-8"))
+        assert not any(
+            isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef))
+            for node in tree.body
+        ), thin_module
 
 
-def test_api_routes_leave_game_id_parsing_to_usecase() -> None:
-    router_source = (PACKAGE / "interface" / "api" / "routers.py").read_text(encoding="utf-8")
-
-    assert "game_id: UUID" not in router_source
-    assert "game_id: str" in router_source
-
-
-def test_usecase_jobs_public_surface_is_minimal() -> None:
-    _assert_public_surface(
-        game_jobs,
-        {
-            "AdvanceGameRunCommand",
-            "AdvanceGameRunResult",
-            "ActionTypeId",
-            "CreateGameRunCommand",
-            "GameEventCreate",
-            "GamePhase",
-            "GameRepository",
-            "GameRunCreate",
-            "GameRunResult",
-            "GameRunUpdate",
-            "GameStatus",
-            "GameUseCaseConfig",
-            "GameUseCaseDependencies",
-            "GetGameRunQuery",
-            "GetPlayerObservationQuery",
-            "ListGameRunsQuery",
-            "ListGameRunsResult",
-            "ListPublicGameEventsQuery",
-            "ListPublicGameTurnsQuery",
-            "ListPublicGameTurnsResult",
-            "LlmProviderConfig",
-            "PlayerObservationResult",
-            "PublicGameEventsResult",
-            "PublicGameRunSummary",
-            "PublicGameTurn",
-            "RulesetResult",
-            "StoredGameEvent",
-            "StoredGameRun",
-            "StoredGameRunSummary",
-            "StoredGameTurn",
-            "SubmitPlayerActionCommand",
-            "SubmitPlayerActionResult",
-            "advance_game_run",
-            "create_game_run",
-            "get_default_ruleset",
-            "get_player_observation",
-            "get_game_run",
-            "list_game_runs",
-            "list_public_game_events",
-            "list_public_game_turns",
-            "submit_player_action",
-        },
-    )
-
-
-def test_old_usecase_jobs_names_are_not_public() -> None:
-    removed_names = {
-        "AdvanceGameCommand",
+def test_public_surfaces_are_minimal_and_explicit() -> None:
+    """Pythonの公開面をdomainとapplicationに限定する。"""
+    for module in (domain, application):
+        assert module.__all__
+        assert all(hasattr(module, name) for name in module.__all__)
+    assert set(domain.__all__) == {
+        "AbilityDefinition",
+        "Action",
+        "ActionType",
+        "AvailableAction",
+        "EventVisibility",
+        "Game",
+        "GameConfig",
+        "GameEvent",
+        "GameSetup",
+        "GameState",
+        "GameView",
+        "LocalRules",
+        "Phase",
+        "Player",
+        "PlayerStatus",
+        "RoleCatalog",
+        "RoleDefinition",
+        "RuleSet",
+        "RuleSetDefinition",
+        "RuleViolation",
+        "WinResult",
+        "build_game_rules",
+    }
+    assert set(application.__all__) == {
+        "AccessPolicy",
+        "Actor",
         "AdvanceGameResult",
+        "ApplicationContext",
         "CreateGameCommand",
+        "ComputedAdvanceGame",
+        "GameApplication",
+        "GameApplicationConfig",
+        "GameListResult",
+        "GameRepository",
         "GameResult",
-        "GameRunsResult",
-        "GameTurnsResult",
-        "GetGameQuery",
-        "GetPrivateObservationQuery",
-        "ListGameTurnsQuery",
-        "ListGamesQuery",
-        "ListPublicEventsQuery",
-        "PrivateObservationResult",
-        "PublicEventsResult",
-        "advance_game",
-        "create_game",
-        "get_game",
-        "get_private_observation",
-        "list_game_turns",
-        "list_games",
-        "list_public_events",
+        "GameRevealResult",
+        "GameTimelineResult",
+        "GameSetupDocument",
+        "LocalRulesDefinition",
+        "OperationQueue",
+        "PlayerActionCommand",
+        "PlayerActionResult",
+        "PlayerObservationResult",
+        "PreparedAdvanceGame",
+        "ReplayVerificationResult",
+        "SetupValidationResult",
+        "SetupApplication",
+        "SetupRepository",
+        "validate_setup_document",
     }
 
-    assert not [name for name in removed_names if hasattr(game_jobs, name)]
 
-
-def test_domain_llm_public_surface_is_minimal() -> None:
-    _assert_public_surface(
-        llm_domain,
-        {
-            "AgentActionType",
-            "AgentDecision",
-            "AgentObservation",
-            "AgentPhase",
-            "AgentPlayerStatus",
-            "AgentRole",
-            "FakeResponseResource",
-            "LangChainDecisionProvider",
-            "LlmDecisionProvider",
-            "PromptMessage",
-            "PromptResource",
-            "VisiblePlayer",
-            "build_fake_decision_provider",
-            "load_fake_response_resource",
-            "load_prompt_resource",
-        },
+def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
+    owners = (
+        PACKAGE / "application" / "handlers" / "games.py",
+        PACKAGE / "application" / "handlers" / "common.py",
+        PACKAGE / "application" / "replay.py",
     )
 
-
-def test_usecase_jobs_are_stateless_command_or_query_functions() -> None:
-    for function_name in (
-        "create_game_run",
-        "get_game_run",
-        "get_player_observation",
-        "submit_player_action",
-        "advance_game_run",
-        "list_game_runs",
-        "list_public_game_events",
-        "list_public_game_turns",
-    ):
-        signature = inspect.signature(getattr(game_jobs, function_name))
-        parameters = list(signature.parameters.values())
-
-        assert len(parameters) == 2
-        assert parameters[0].kind is inspect.Parameter.POSITIONAL_OR_KEYWORD
-        assert parameters[1].name == "dependencies"
-        assert parameters[1].kind is inspect.Parameter.KEYWORD_ONLY
-
-    ruleset_signature = inspect.signature(game_jobs.get_default_ruleset)
-    assert list(ruleset_signature.parameters) == ["config"]
-    assert ruleset_signature.parameters["config"].kind is inspect.Parameter.KEYWORD_ONLY
+    for owner in owners:
+        source = owner.read_text(encoding="utf-8")
+        assert "build_game_rules(" in source, owner
+        assert "RuleRegistry" not in source, owner
 
 
-def test_usecase_imports_domain_only_from_internal_boundary() -> None:
-    allowed_domain_modules = {
-        "werewolf_agent.domain.game.models",
-        "werewolf_agent.domain.game.service",
-        "werewolf_agent.domain.llm.models",
-        "werewolf_agent.domain.llm.ports",
-        "werewolf_agent.domain.llm.service",
+def test_replay_verifies_every_create_command_checksum() -> None:
+    worker_store = (PACKAGE / "adapters" / "supabase" / "worker_store.py").read_text(
+        encoding="utf-8"
+    )
+    replay = (PACKAGE / "application" / "replay.py").read_text(encoding="utf-8")
+
+    for checksum in ("setup_checksum", "mechanics_checksum", "roster_checksum"):
+        assert f'"{checksum}": stored_config.get("{checksum}")' in worker_store
+        assert f'genesis["{checksum}"]' in replay
+
+
+def test_domain_uses_only_the_standard_library_and_domain_modules() -> None:
+    """Domainへvalidation frameworkや他layerを持ち込まない。"""
+    offenders = [
+        (path.relative_to(ROOT), imported)
+        for path in (PACKAGE / "domain").rglob("*.py")
+        for imported in _imports(path)
+        if imported.split(".", maxsplit=1)[0] not in sys.stdlib_module_names
+        and not imported.startswith("werewolf_agent.domain")
+    ]
+    assert not offenders
+
+
+def test_api_routes_do_not_invoke_access_or_queue_adapters_directly() -> None:
+    """認可とcommand受付をapplication facadeへ集約する。"""
+    source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (PACKAGE / "api" / "routes").glob("*.py")
+    )
+    assert "services.access" not in source
+    assert "services.operations" not in source
+
+
+def test_worker_invokes_application_through_the_public_facade() -> None:
+    """Workerからapplication handlerの直接実行を禁止する。"""
+    worker = PACKAGE / "worker" / "service.py"
+    imports = _imports(worker)
+    assert "werewolf_agent.application.handlers" not in imports
+    assert "build_setup_catalog" not in worker.read_text(encoding="utf-8")
+
+
+def test_persisted_game_versions_are_append_only() -> None:
+    """保存済みversionをrepositoryのupsertで書き換えない。"""
+    source = (PACKAGE / "adapters" / "supabase" / "repository.py").read_text(encoding="utf-8")
+    insert_state_version = source.split("def _insert_state_version", maxsplit=1)[1].split(
+        "def _append_state_event", maxsplit=1
+    )[0]
+    assert "on conflict" not in insert_state_version.lower()
+
+
+def test_legacy_domain_aliases_and_plural_faction_ids_do_not_return() -> None:
+    """同義domain型とclient固有のfaction IDを再導入しない。"""
+    domain_source = "\n".join(
+        path.read_text(encoding="utf-8") for path in (PACKAGE / "domain").rglob("*.py")
+    )
+    for alias in ("GameSnapshot =", "Observation =", "DomainEvent ="):
+        assert alias not in domain_source
+
+    runtime_roots = (PACKAGE, ROOT / "scripts")
+    source = "\n".join(
+        path.read_text(encoding="utf-8")
+        for root in runtime_roots
+        for pattern in ("*.py",)
+        for path in root.rglob(pattern)
+    )
+    assert '"villagers"' not in source
+    assert '"werewolves"' not in source
+    assert "'villagers'" not in source
+    assert "'werewolves'" not in source
+
+    assert "CreateGameRequest" not in application.__all__
+    assert "PlayerActionRequest" not in application.__all__
+
+
+def test_runtime_settings_are_owned_by_disjoint_manifest_sections() -> None:
+    """Runtime設定fieldを変更理由ごとのsectionへ分離する。"""
+    section_fields: dict[str, set[str]] = {}
+    for name, target in SETTINGS_SECTIONS.items():
+        module_name_value, class_name = target.split(":", maxsplit=1)
+        section = getattr(importlib.import_module(module_name_value), class_name)
+        section_fields[name] = set(section.model_fields)
+
+    owners: dict[str, list[str]] = {}
+    for section_name, fields in section_fields.items():
+        for field in fields:
+            owners.setdefault(field, []).append(section_name)
+
+    from werewolf_agent.settings import AppSettings
+
+    assert set(AppSettings.model_fields) == set(owners)
+    assert all(len(field_owners) == 1 for field_owners in owners.values())
+
+    tree = ast.parse((PACKAGE / "settings" / "settings.py").read_text(encoding="utf-8"))
+    app_settings = next(
+        node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "AppSettings"
+    )
+    assert not any(isinstance(node, ast.AnnAssign) for node in app_settings.body)
+
+
+def test_log_event_names_are_owned_by_the_recording_boundary() -> None:
+    """横断的なsettings文言集へprocess固有eventを戻さない。"""
+    tree = ast.parse((PACKAGE / "settings" / "messages.py").read_text(encoding="utf-8"))
+    assigned_names = {
+        target.id
+        for node in tree.body
+        if isinstance(node, (ast.Assign, ast.AnnAssign))
+        for target in (node.targets if isinstance(node, ast.Assign) else [node.target])
+        if isinstance(target, ast.Name)
     }
-
-    imported = _imports_under(PACKAGE / "usecase")
-    internal_path = PACKAGE / "usecase" / "internal"
-    bad_imports = []
-    for path, module in imported:
-        if not module.startswith("werewolf_agent.domain"):
-            continue
-        if not path.is_relative_to(internal_path) or module not in allowed_domain_modules:
-            bad_imports.append((path, module))
-
-    assert not bad_imports
+    assert not {name for name in assigned_names if name.startswith("LOG_")}
 
 
-def test_usecase_internal_does_not_import_interface_or_wire_contracts() -> None:
-    forbidden_prefixes = (
-        "werewolf_agent.interface",
-        "werewolf_agent.contracts.schemas",
-        "fastapi",
-        "starlette",
-        "sse_starlette",
-    )
-
-    imported = _imports_under(PACKAGE / "usecase" / "internal")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
+def test_layer_imports_follow_the_allowed_matrix() -> None:
+    """Layer間importをmanifestの許可方向に限定する。"""
+    offenders = [
+        (edge.path, edge.source_layer, edge.target_layer)
+        for edge in project_import_edges()
+        if edge.target_layer not in ALLOWED_IMPORTS[edge.source_layer]
+        and (edge.source_module, edge.target_layer) not in ALLOWED_MODULE_IMPORTS
     ]
+    assert not offenders
 
 
-def test_interface_application_bridge_is_stateless() -> None:
-    app_source = (PACKAGE / "interface" / "api" / "app.py").read_text(encoding="utf-8")
-    bridge_source = (PACKAGE / "interface" / "application" / "games.py").read_text(encoding="utf-8")
+def test_layer_and_module_graphs_have_no_cycles() -> None:
+    """Layerとmoduleの循環依存を禁止する。"""
+    layer_graph: dict[str, set[str]] = {layer: set() for layer in LAYERS}
+    for edge in project_import_edges():
+        if edge.source_layer != edge.target_layer:
+            layer_graph[edge.source_layer].add(edge.target_layer)
+    assert not graph_cycles(layer_graph)
 
-    assert "class GameApplication" not in bridge_source
-    assert "app.state.game_application" not in app_source
-
-
-def test_game_and_llm_subdomains_do_not_import_each_other() -> None:
-    imported_by_game = _imports_under(PACKAGE / "domain" / "game")
-    imported_by_llm = _imports_under(PACKAGE / "domain" / "llm")
-
-    assert not [
-        (path, module)
-        for path, module in imported_by_game
-        if module == "werewolf_agent.domain.llm" or module.startswith("werewolf_agent.domain.llm.")
-    ]
-    assert not [
-        (path, module)
-        for path, module in imported_by_llm
-        if module == "werewolf_agent.domain.game"
-        or module.startswith("werewolf_agent.domain.game.")
-    ]
-
-
-def test_commons_do_not_import_usecase_or_interfaces() -> None:
-    forbidden_prefixes = (
-        "werewolf_agent.usecase",
-        "werewolf_agent.interface",
-    )
-
-    imported = _imports_under(PACKAGE / "commons")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
-    ]
-
-
-def test_external_wire_schemas_are_imported_from_contracts() -> None:
-    imported = _imports_under(PACKAGE / "interface")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if module == "werewolf_agent.interface.shared.schemas"
-        or module.startswith("werewolf_agent.interface.shared.schemas.")
-    ]
-
-
-def test_interface_shared_does_not_import_entrypoint_ui_libraries() -> None:
-    forbidden_modules = (
-        "rich",
-        "streamlit",
-        "typer",
-        "werewolf_agent.interface.entrypoint",
-    )
-
-    imported = _imports_under(PACKAGE / "interface" / "shared")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
-    ]
-
-
-def test_streamlit_view_models_do_not_import_ui_or_inner_layers() -> None:
-    forbidden_modules = (
-        "rich",
-        "streamlit",
-        "typer",
-        "werewolf_agent.domain",
-        "werewolf_agent.interface.shared",
-        "werewolf_agent.usecase",
-    )
-
-    imported = _imports_under(PACKAGE / "interface" / "entrypoint" / "streamlit")
-    view_model_imports = [
-        (path, module) for path, module in imported if path.name == "view_models.py"
-    ]
-
-    assert not [
-        (path, module)
-        for path, module in view_model_imports
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
-    ]
-
-
-def test_contracts_do_not_import_api_frameworks() -> None:
-    forbidden_modules = (
-        "fastapi",
-        "starlette",
-        "sse_starlette",
-    )
-
-    imported = _imports_under(PACKAGE / "contracts")
-
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_modules)
-    ]
-
-
-def test_domain_does_not_import_outer_layers() -> None:
-    allowed_commons_modules = {
-        "werewolf_agent.commons.shared.messages",
-        "werewolf_agent.commons.shared.validation",
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
+    module_graph = {
+        module: {
+            imported for imported in _imports(path) if imported in modules and imported != module
+        }
+        for module, path in modules.items()
     }
-    forbidden_prefixes = (
-        "werewolf_agent.usecase",
-        "werewolf_agent.interface",
-        "werewolf_agent.commons",
-        "werewolf_agent.llm",
-    )
+    assert not graph_cycles(module_graph)
 
-    imported = _imports_under(PACKAGE / "domain")
 
-    assert not [
-        (path, module)
-        for path, module in imported
-        if any(module == prefix or module.startswith(f"{prefix}.") for prefix in forbidden_prefixes)
-        and module not in allowed_commons_modules
+def test_frameworks_stay_in_manifest_owned_roots() -> None:
+    """外部frameworkをmanifestで宣言したadapterまたはprocessに隔離する。"""
+    offenders: list[tuple[Path, str, str]] = []
+    for path in PACKAGE.rglob("*.py"):
+        relative = path.relative_to(ROOT)
+        for imported in _imports(path):
+            for name, rule in FRAMEWORK_RULES.items():
+                if any(
+                    imported == prefix or imported.startswith(f"{prefix}.")
+                    for prefix in rule.imports
+                ) and not any(relative.is_relative_to(root) for root in rule.roots):
+                    offenders.append((relative, imported, name))
+    assert not offenders
+
+
+def test_agent_contract_layer_contains_no_langchain_specific_surface() -> None:
+    """Provider非依存のagents層へLangChain固有名を公開しない。"""
+    offenders = [
+        path.relative_to(ROOT)
+        for path in (PACKAGE / "agents").rglob("*.py")
+        if "langchain" in path.read_text(encoding="utf-8").lower()
+        or "langgraph" in path.read_text(encoding="utf-8").lower()
     ]
+    assert not offenders
 
 
-def test_removed_import_paths_do_not_exist() -> None:
-    assert not (PACKAGE / "interface" / "entrypoint" / "api").exists()
-    assert not (PACKAGE / "interface" / "entrypoint" / "cli").exists()
-    assert not (PACKAGE / "interface" / "cui").exists()
-    assert not (PACKAGE / "interface" / "streamlit").exists()
-    assert not list((PACKAGE / "configuration").glob("*.py"))
-    assert not (PACKAGE / "configuration" / "defaults.toml").exists()
-    assert not (PACKAGE / "contracts" / "codes.py").exists()
-    assert not (PACKAGE / "contracts" / "http.py").exists()
-    assert not (PACKAGE / "commons" / "shared" / "codes.py").exists()
-    assert not list((PACKAGE / "commons" / "events").glob("*.py"))
-    assert not list((PACKAGE / "interface" / "events").glob("*.py"))
-    assert not (PACKAGE / "interface" / "shared" / "schemas.py").exists()
-    assert not (PACKAGE / "interface" / "api" / "errors.py").exists()
-    assert not (PACKAGE / "interface" / "application" / "errors.py").exists()
-    assert not (PACKAGE / "interface" / "application" / "agents.py").exists()
-    assert not (PACKAGE / "default_settings").exists()
-    assert not (PACKAGE / "domain" / "llm" / "rules").exists()
-    assert not (PACKAGE / "usecase" / "jobs" / "models.py").exists()
-    assert not [
-        path for path in (PACKAGE / "usecase" / "jobs").glob("_*.py") if path.name != "__init__.py"
-    ]
-
-
-def test_static_checks_do_not_broadly_ignore_application_or_api_layers() -> None:
-    pyproject = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
-
-    assert "ignore_errors = true" not in pyproject
-
-
-def _assert_public_surface(module: ModuleType, expected: set[str]) -> None:
-    actual = set(module.__all__)
-
-    assert actual == expected
-    assert not [name for name in actual if name.startswith("_")]
-    assert not [name for name in actual if not hasattr(module, name)]
-
-
-def _imports_under(path: Path) -> list[tuple[Path, str]]:
-    imported: list[tuple[Path, str]] = []
-    for source_path in path.rglob("*.py"):
-        tree = ast.parse(source_path.read_text(encoding="utf-8"))
+def test_packaged_toml_owns_non_secret_runtime_defaults() -> None:
+    """Settings sectionへTOMLと重複するdefault値を戻さない。"""
+    offenders: list[tuple[Path, int]] = []
+    for path in (PACKAGE / "settings" / "sections").glob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
-            if isinstance(node, ast.Import):
-                imported.extend((source_path, alias.name) for alias in node.names)
-            elif isinstance(node, ast.ImportFrom) and node.module is not None:
-                imported.append((source_path, node.module))
-    return imported
+            if not isinstance(node, ast.AnnAssign) or not isinstance(node.target, ast.Name):
+                continue
+            if node.target.id == "openai_api_key" or not isinstance(node.value, ast.Call):
+                continue
+            if any(keyword.arg == "default" for keyword in node.value.keywords):
+                offenders.append((path.relative_to(ROOT), node.lineno))
+    assert not offenders
+
+
+def test_api_routes_only_use_application_contracts() -> None:
+    """Path単位のimport制約をmanifestから評価する。"""
+    offenders = [
+        (name, path.relative_to(ROOT), imported)
+        for name, rule in PATH_RULES.items()
+        for source_root in rule.roots
+        for path in (ROOT / source_root).rglob("*.py")
+        for imported in _imports(path)
+        if imported.startswith(rule.forbidden)
+    ]
+    assert not offenders
+
+
+def test_processes_do_not_execute_adapter_owned_operations() -> None:
+    """Processからdatabase methodを直接呼ばない。"""
+    offenders: list[tuple[str, Path, str]] = []
+    for name, rule in CALL_RULES.items():
+        for source_root in rule.roots:
+            for path in (ROOT / source_root).rglob("*.py"):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if (
+                        isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Attribute)
+                        and node.func.attr in rule.forbidden
+                    ):
+                        offenders.append((name, path.relative_to(ROOT), node.func.attr))
+    assert not offenders
+
+
+def test_clients_use_the_http_game_client_factory() -> None:
+    """Client用factoryをSupabase実装から分離する。"""
+    factory_imports = _imports(PACKAGE / "adapters" / "factory.py")
+    assert "werewolf_agent.adapters.http" in factory_imports
+    assert not any(name.startswith("werewolf_agent.adapters.supabase") for name in factory_imports)
+
+
+def test_console_entrypoints_match_the_architecture_manifest() -> None:
+    """配布するconsole commandの実装先をmanifestと一致させる。"""
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)["project"]
+    assert project["scripts"] == {
+        "werewolf-agent": ENTRYPOINTS["cli"],
+        "werewolf-agent-api": ENTRYPOINTS["api"],
+        "werewolf-agent-worker": ENTRYPOINTS["worker"],
+    }
+
+
+def test_domain_and_application_have_no_io_or_logging_dependencies() -> None:
+    """Domainとapplicationを外部I/Oおよびloggingから分離する。"""
+    forbidden = (
+        "httpx",
+        "langchain",
+        "langgraph",
+        "logging",
+        "os",
+        "pathlib",
+        "psycopg",
+        "sqlalchemy",
+        "structlog",
+        "tomllib",
+    )
+    offenders = [
+        (path.relative_to(ROOT), imported)
+        for root in (PACKAGE / "domain", PACKAGE / "application")
+        for path in root.rglob("*.py")
+        for imported in _imports(path)
+        if any(imported == prefix or imported.startswith(f"{prefix}.") for prefix in forbidden)
+    ]
+    assert not offenders
+
+
+def test_environment_access_stays_at_configuration_and_process_boundaries() -> None:
+    """環境変数の読込みをsettingsとentrypointへ限定する。"""
+    allowed = {
+        PACKAGE / "api" / "app.py",
+        PACKAGE / "clients" / "cli" / "app.py",
+        PACKAGE / "clients" / "streamlit" / "app.py",
+        PACKAGE / "settings" / "settings.py",
+        PACKAGE / "worker" / "app.py",
+    }
+    offenders: list[tuple[Path, int]] = []
+    for path in PACKAGE.rglob("*.py"):
+        if path in allowed or path.is_relative_to(PACKAGE / "settings"):
+            continue
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if (
+                isinstance(node, ast.Attribute)
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "os"
+                and node.attr in {"environ", "getenv"}
+            ) or (
+                isinstance(node, ast.ImportFrom)
+                and node.module == "os"
+                and any(name.name in {"environ", "getenv"} for name in node.names)
+            ):
+                offenders.append((path.relative_to(ROOT), node.lineno))
+    assert not offenders
+
+
+def _imports(path: Path) -> set[str]:
+    return {imported for imported, _ in imports_with_lines(path, module_name(path))}

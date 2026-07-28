@@ -2,22 +2,106 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "API: migrate",
-      "type": "shell",
+      "label": "Internal: Environment Check",
+      "type": "process",
       "command": "uv",
-      "args": ["run", "--extra", "api", "alembic", "upgrade", "head"],
-      "options": {
-        "cwd": "${workspaceFolder}",
-        "env": {
-          "PYTHONPATH": "${workspaceFolder}/backend/src"
-        }
-      },
-      "presentation": {
-        "reveal": "always",
-        "panel": "dedicated",
-        "clear": true
-      },
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
       "problemMatcher": []
+    },
+    {
+      "label": "Internal: Environment Check Release",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "release"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Internal: Supabase Ready",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "wait", "--timeout", "180"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Check",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "${input:environmentProfile}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Environment: Setup",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "${input:environmentProfile}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify: Auto",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "auto"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify: Focus",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "focus"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify: Check",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "check"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify: Release",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "release"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Verify: Deep",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "deep", "--confirm-deep"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Diagnostics: Collect",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.diagnostics", "collect"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "environmentProfile",
+      "type": "pickString",
+      "description": "環境profileを選択",
+      "options": ["auto", "focus", "check", "release", "deep"],
+      "default": "check"
     }
   ]
 }

@@ -1,0 +1,109 @@
+from typing import cast
+
+import pytest
+
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.application.checksums import checksum_payload
+from werewolf_agent.application.errors import AppError, ConfigError, ErrorCode
+from werewolf_agent.application.facade import Actor
+from werewolf_agent.application.models import GameApplicationConfig
+from werewolf_agent.application.ports import SetupRepository
+from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.application.setup_facade import SetupApplication
+from werewolf_agent.application.setup_options import prepare_create_command, preview_players
+
+
+def test_create_command_contains_a_complete_resolved_setup_and_generated_players() -> None:
+    setup = build_setup_catalog().require_document("standard_6")
+
+    command = prepare_create_command(
+        setup,
+        seed=17,
+        manual_player_id="p1",
+        llm_mode="fake",
+        deliberation_level="standard",
+    )
+
+    assert command.seed == 17
+    assert command.setup == setup
+    assert [player.player_id for player in command.players] == [f"p{i}" for i in range(1, 7)]
+    assert command.players[0].reasoning_style
+    assert command.setup_checksum == checksum_payload(setup.model_dump(mode="json"))
+    assert command.mechanics_checksum == checksum_payload(setup.mechanics.model_dump(mode="json"))
+    assert command.roster_checksum == checksum_payload(
+        [player.model_dump(mode="json") for player in command.players]
+    )
+
+
+def test_preview_omits_private_strategy_and_role() -> None:
+    setup = build_setup_catalog().require_document("standard_6")
+
+    preview = preview_players(setup, seed=17)
+    payload = preview.model_dump(mode="json")
+
+    assert payload["players"]
+    assert all("reasoning_style" not in player for player in payload["players"])
+    assert all("role" not in player for player in payload["players"])
+
+    command = prepare_create_command(
+        setup,
+        seed=preview.seed,
+        manual_player_id=None,
+        llm_mode="fake",
+        deliberation_level="standard",
+    )
+    assert preview.roster_checksum == command.roster_checksum
+
+
+def test_anonymous_actor_cannot_persist_a_setup() -> None:
+    setup = build_setup_catalog().require_document("standard_6")
+    application = SetupApplication(
+        build_setup_catalog(),
+        GameApplicationConfig(
+            min_players=5,
+            max_players=20,
+            game_list_default_limit=20,
+            game_list_max_limit=100,
+            timeline_default_limit=100,
+            timeline_max_limit=500,
+        ),
+        cast(SetupRepository, object()),
+    )
+
+    with pytest.raises(AppError) as raised:
+        application.create(
+            Actor(user_id="anonymous", is_anonymous=True),
+            display_name="保存不可",
+            document=setup,
+        )
+
+    assert raised.value.code is ErrorCode.AUTHORIZATION_FAILED
+
+
+def test_setup_runtime_limits_are_checked_before_preview_or_queue_preparation() -> None:
+    payload = build_setup_catalog().require_document("standard_6").model_dump(mode="json")
+    payload["mechanics"]["role_counts"]["villager"] = 1
+    setup = GameSetupDocument.model_validate(payload)
+    application = SetupApplication(
+        build_setup_catalog(),
+        GameApplicationConfig(
+            min_players=5,
+            max_players=8,
+            game_list_default_limit=20,
+            game_list_max_limit=100,
+            timeline_default_limit=100,
+            timeline_max_limit=500,
+        ),
+        cast(SetupRepository, object()),
+    )
+
+    with pytest.raises(ConfigError, match="player_count must be between 5 and 8"):
+        application.preview(setup, seed=1)
+    with pytest.raises(ConfigError, match="player_count must be between 5 and 8"):
+        application.prepare_create(
+            setup,
+            seed=1,
+            manual_player_id=None,
+            llm_mode="fake",
+            deliberation_level="standard",
+        )

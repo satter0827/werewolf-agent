@@ -1,0 +1,175 @@
+name: Quality
+
+on:
+  pull_request:
+    branches:
+      - develope
+      - main
+  schedule:
+    - cron: "0 18 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  develope-check:
+    if: github.event_name == 'pull_request' && github.base_ref == 'develope'
+    name: Develope / Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --no-project python -m scripts.environment setup check
+      - run: >-
+          uv run --no-sync python -m scripts.quality check
+          --base-ref origin/develope
+          --head-ref ${{ github.event.pull_request.head.sha }}
+          --fresh
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-develope-check
+          path: |
+            .werewolf-agent/quality/profiles/check/current
+            .werewolf-agent/quality/profiles/check/last-passed.json
+            .werewolf-agent/operations
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  main-source:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    name: Main / Source Branch
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require develope as the source branch
+        run: test "${{ github.head_ref }}" = "develope"
+
+  main-readiness:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    name: Main / Readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          version: 2.104.0
+      - run: uv run --no-project python -m scripts.environment setup deep
+      - run: >-
+          uv run --no-sync python -m scripts.quality deep
+          --base-ref origin/main
+          --head-ref ${{ github.event.pull_request.head.sha }}
+          --confirm-deep
+          --fresh
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-main-readiness
+          path: |
+            .werewolf-agent/quality/profiles/deep/current
+            .werewolf-agent/quality/profiles/deep/last-passed.json
+            .werewolf-agent/operations
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  main-compatibility-matrix:
+    if: github.event_name == 'pull_request' && github.base_ref == 'main'
+    name: Main / Compatibility / Python ${{ matrix.python-version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv run --no-project python -m scripts.environment setup focus
+      - run: >-
+          uv run --no-sync python -m scripts.quality focus
+          --base-ref origin/main
+          --head-ref ${{ github.event.pull_request.head.sha }}
+          --fresh
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: compatibility-python-${{ matrix.python-version }}
+          path: |
+            .werewolf-agent/quality/profiles/focus/current
+            .werewolf-agent/quality/profiles/focus/last-passed.json
+            .werewolf-agent/operations
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true
+
+  main-compatibility:
+    if: always() && github.event_name == 'pull_request' && github.base_ref == 'main'
+    name: Main / Compatibility
+    needs:
+      - main-compatibility-matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require every supported Python job to pass
+        run: test "${{ needs.main-compatibility-matrix.result }}" = "success"
+
+  scheduled-deep:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    name: Scheduled / Deep
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: develope
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+        with:
+          version: 2.104.0
+      - run: uv run --no-project python -m scripts.environment setup deep
+      - run: >-
+          uv run --no-sync python -m scripts.quality deep
+          --base-ref origin/main
+          --head-ref HEAD
+          --confirm-deep
+          --fresh
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-scheduled-deep
+          path: |
+            .werewolf-agent/quality/profiles/deep/current
+            .werewolf-agent/quality/profiles/deep/last-passed.json
+            .werewolf-agent/operations
+            .werewolf-agent/outputs
+          if-no-files-found: warn
+          include-hidden-files: true

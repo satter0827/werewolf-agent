@@ -1,134 +1,53 @@
-# Domain
+(domain-model)=
+# ドメインモデル
 
-この文書は、Sphinx で公開する完成版の domain 設計書です。
-作業途中の判断、handoff、未確定メモは `docs/notes/` に置きます。
+`werewolf_agent.domain`はゲームルールと状態遷移を所有する。外部サービス、永続化、
+画面、LLM providerの都合を持ち込まず、同じ初期状態と操作から同じ結果を返す。
 
-`werewolf_agent.domain` は game と LLM decision の bounded context を置く入れ物です。
-`domain.game` は人狼ゲームの deterministic core です。
-同じ config、players、seed、action なら同じ snapshot と event になります。
-`domain.llm` は provider 非依存の agent 観測 DTO、意思決定 DTO、LangChain provider、prompt loader を持ちます。
+## 集約
 
-## 持つもの
+`Game`がゲーム状態を変更できる唯一の集約である。参加者、役職、フェーズ、投票、
+夜行動、勝敗を一貫した単位として検証し、成功した操作をイベントとして記録する。
+applicationやclientは合法手や勝敗を再計算しない。
+状態、設定、action、event、viewは凍結dataclass、tuple、読み取り専用mappingで表し、
+snapshotを受け取った側から変更できない。`player_id`はゲーム内で一意な非空文字列であり、
+domainはID生成規則とuserの所有関係を扱わない。
+復元時にもプレイヤー数、mapping key、役職構成、終局結果、pending actionの参照整合を検証する。
+プレイヤー mappingはID順へ正規化し、保存形式のobject順序に状態遷移を依存させない。
 
-- role、phase、player status
-- speech、vote、night action を表す構造化 `Action`
-- observer ごとの `Observation`
-- phase transition
-- win condition
-- visibility 付き `DomainEvent`
-- MLflow-compatible prompt file を LangChain prompt に変換する loader
-- LangChain output を `AgentDecision` に検証する provider
-
-## 持たないもの
-
-- `.env` / `get_settings()`
-- ORM model / HTTP DTO
-- DB
-- logging 設定
-- 認証
-- interface / usecase 呼び出し
-- MVP の 5〜8 人制約など product / interface 固有の制約
-
-## 公開境界
-
-外側が参照してよい domain module は次だけです。
-
-- `werewolf_agent.domain.game.models`
-- `werewolf_agent.domain.game.service`
-- `werewolf_agent.domain.llm.models`
-- `werewolf_agent.domain.llm.ports`
-- `werewolf_agent.domain.llm.service`
-
-`domain.game.rules` は内部実装です。
-`domain.game` と `domain.llm` は互いに import しません。
-両者の接続、game observation から llm observation への変換、llm decision から game action への変換は `usecase.internal` が担当します。
-`interface/api` と `interface/entrypoint/cui` は domain を直接 import しません。
-interface 層から usecase を呼ぶ場所は `interface/application` に限定し、呼び出し先は `usecase.jobs` の top-level facade だけにします。
-`usecase.jobs` は domain を import せず、公開 DTO と stateless facade に限定します。
-domain へ入る usecase code は `usecase.internal` 配下に限定します。
-
-この境界は `tests/unit/architecture/test_architecture_boundaries.py` で検査します。
-
-## game 主要型
-
-| 型 | 意味 |
-| --- | --- |
-| `GameConfig` | player count、role count、seed、投票 rule |
-| `Player` | setup、snapshot、observation で共通して使う player 表現 |
-| `Action` | `speech`、`vote`、`werewolf_attack`、`seer_inspect`、`knight_guard`、`pass` をまとめた構造化 action |
-| `GameSnapshot` | 永続化できる完全状態 |
-| `PendingActions` | 投票や夜行動のように phase 解決まで保留する action |
-| `Observation` | 1 player に見せてよい情報 |
-| `GameHistory` | 発話、投票結果、夜結果の append-only history |
-| `DomainEvent` | 保存・公開・redaction される event の元データ |
-
-## game 主要 service
-
-| 関数 | 意味 |
-| --- | --- |
-| `start_game(config, players, rng)` | 初期 snapshot と開始 event を返す |
-| `observe(snapshot, player_id)` | 1 player の observation を返す |
-| `submit_action(snapshot, pending, action)` | action を検証し、snapshot / pending / event を返す |
-| `advance_phase(snapshot, pending, rng)` | phase を 1 つ進め、snapshot / pending / event を返す |
-
-## llm 主要型 / service
-
-| 型 / 関数 | 意味 |
-| --- | --- |
-| `AgentObservation` | LLM provider に渡せる provider 非依存の可視情報 |
-| `AgentDecision` | LLM provider が返す構造化 decision |
-| `AgentObservation.speeches` / `vote_rounds` | LLM に渡してよい公開履歴 |
-| `PromptResource` | MLflow Prompt Registry を意識した local prompt metadata / messages |
-| `FakeResponseResource` | LangChain `FakeListLLM` 用の local response fixture |
-| `LangChainDecisionProvider` | prompt、LangChain model、Pydantic parser をつなぐ provider |
-| `LlmDecisionProvider` | real / fake provider を差し替える port |
-
-## 進行
-
-```text
-start_game -> night -> day_discussion -> voting -> night -> ... -> finished
+```{image} ../_generated/architecture/domain-structure.svg
+:alt: Game集約とルール、状態、イベントの関係
+:class: architecture-diagram
 ```
 
-- 夜: 人狼は村側を襲撃、占い師は検査、騎士は護衛
-- 昼: 生存者が `Action.speech(...)` を出す
-- 投票: 生存者が `Action.vote(...)` を出す
-- 勝敗: 人狼全滅で村勝利、生存人狼数が生存村側数以上で人狼勝利
+## 状態と公開情報
 
-同票は `no_elimination` または `random_elimination`。
-自投票は `allow_self_vote` で制御します。
+完全なゲーム状態には役職や夜行動などの秘匿情報を含む。通常の外部出力は公開状態と
+public timelineに射影し、プレイヤー observationは認証した本人が知り得る範囲へ
+絞る。完全状態の管理者reveal、ゲーム終了後の完全リプレイ、LLM traceは、公開
+DTOとは別の認可された経路で扱う。
+`reveal_role_on_death`が有効な場合だけ、死亡が確定したプレイヤーのroleとfactionをpublic stateと
+対応する解決済みeventへ含める。生存者、未解決投票、夜行動、占い結果は公開しない。
 
-## Observation
+## ルール
 
-`Observation` は observer ごとに生成します。
+ルールの可変部分は登録済みpolicy IDと設定値で選択する。設定ファイルにPython
+import pathや独自DSLを記述しない。policyは状態を保持せず、状態変更は`Game`
+へ集約する。
 
-- 自分の role は見える
-- 人狼は仲間の人狼を知る
-- 占い師は自分の検査結果だけを知る
-- 公開 speech / vote history は見える
-- 他 role、夜行動、private event、debug event は見えない
+設定読み込み時には、役職、フェーズ、policy ID、数値範囲、相互参照を検証する。
+不正な定義をゲーム開始後まで持ち越さない。
 
-API は `GameSnapshot` をそのまま返しません。
-`usecase.internal` が public state / public event の業務 payload に変換し、
-interface が HTTP / CLI / 画面向け schema に整えます。
+## イベント
 
-## 乱数
+イベントは状態遷移の結果を表し、完全リプレイと公開timelineの入力になる。
+コマンドの意図と結果を区別し、失敗した操作を成功イベントとして残さない。
 
-乱数は外側から `random.Random` を注入します。
-seed は role assignment と tie break に使います。
+## 保証
 
-## 拡張先
-
-- 新 role / rule: `domain.game.models`、`domain.game.rules`
-- LLM provider 非依存の decision 型: `domain.llm.models`
-- Prompt / LangChain provider: `domain.llm.service`
-- LLM provider adapter port: `domain.llm.ports`
-- 公開 usecase facade / DTO / repository port: `usecase.jobs` の top-level API
-- usecase workflow / projection / domain adapter: `usecase.internal`
-- 複数 human / external agent action API: `usecase` に要件を置き、`interface/application` は接続、`interface/api` は入出力に寄せる
-
-## 検証
-
-```bash
-uv run pytest tests/unit/domain
-uv run pytest tests/unit/architecture/test_architecture_boundaries.py
-```
+- domainは他のプロジェクト層へ依存しない。
+- domainはPydanticを含む第三者packageへ依存しない。
+- file I/O、環境変数、logging、database、HTTP、LLM providerに依存しない。
+- ランダム性を使う処理はseedまたは明示した乱数源で再現できる。
+- public stateとpublic timelineは秘匿情報を含まない。
+- ルール、勝敗、投票、夜行動はunitテストで状態遷移を直接検証する。

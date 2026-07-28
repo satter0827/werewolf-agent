@@ -1,0 +1,61 @@
+sentence_style = "plain"
+
+[[terms]]
+preferred = "プレイヤー"
+variants = ["player"]
+
+[[terms]]
+preferred = "リポジトリ"
+variants = ["repository"]
+
+[[terms]]
+preferred = "コマンド"
+variants = ["command"]
+
+[[terms]]
+preferred = "プロファイル"
+variants = ["profile"]
+
+[[terms]]
+preferred = "テスト"
+variants = ["test"]
+
+[[terms]]
+preferred = "ログ"
+variants = ["log"]
+
+[[terms]]
+preferred = "ソースコード"
+variants = ["source"]
+
+[[terms]]
+preferred = "アダプター"
+variants = ["adapter"]
+
+[[terms]]
+preferred = "プロセス"
+variants = ["process"]
+
+[[terms]]
+preferred = "レビュー"
+variants = ["review"]
+
+[[terms]]
+preferred = "リリース"
+variants = ["release"]
+
+[[terms]]
+preferred = "バックエンド"
+variants = ["backend"]
+
+[[terms]]
+preferred = "モジュール"
+variants = ["module"]
+
+[[terms]]
+preferred = "デフォルト"
+variants = ["default"]
+
+[[terms]]
+preferred = "ブラウザー"
+variants = ["browser"]

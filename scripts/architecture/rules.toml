@@ -1,0 +1,213 @@
+schema_version = 1
+canonical_openapi = "contracts/openapi.json"
+public_modules = [
+  "werewolf_agent.application",
+  "werewolf_agent.domain",
+]
+root_entries = [
+  ".dockerignore",
+  ".env.example",
+  ".github",
+  ".gitignore",
+  ".python-version",
+  ".streamlit",
+  ".vscode",
+  "AGENTS.md",
+  "LICENSE",
+  "README.md",
+  "compose.yaml",
+  "contracts",
+  "docker",
+  "docs",
+  "pyproject.toml",
+  "scripts",
+  "src",
+  "supabase",
+  "tests",
+  "uv.lock",
+]
+forbidden_paths = [
+  "compose.postgres.yaml",
+  "openapi.json",
+  "src/werewolf_agent/application/handlers.py",
+  "src/werewolf_agent/application/models.py",
+  "src/werewolf_agent/agents/langchain",
+  "src/werewolf_agent/agents/mapping.py",
+  "src/werewolf_agent/clients/cli/commands.py",
+  "src/werewolf_agent/clients/streamlit/view_models.py",
+  "src/werewolf_agent/configuration",
+  "src/werewolf_agent/interfaces",
+  "src/werewolf_agent/resources",
+  "src/werewolf_agent/settings/definitions.py",
+  "src/werewolf_agent/usecase",
+]
+thin_modules = [
+  "src/werewolf_agent/clients/streamlit/app.py",
+]
+
+[settings_sections]
+api = "werewolf_agent.settings.sections.api:ApiSettings"
+cli = "werewolf_agent.settings.sections.cli:CliSettings"
+database = "werewolf_agent.settings.sections.database:DatabaseSettings"
+game = "werewolf_agent.settings.sections.game:GameSettings"
+llm = "werewolf_agent.settings.sections.llm:LlmSettings"
+logging = "werewolf_agent.settings.sections.logging:LoggingSettings"
+streamlit = "werewolf_agent.settings.sections.streamlit:StreamlitSettings"
+worker = "werewolf_agent.settings.sections.worker:WorkerSettings"
+
+[entrypoints]
+cli = "werewolf_agent.clients.cli.app:app"
+api = "werewolf_agent.api.app:run"
+worker = "werewolf_agent.worker.app:app"
+
+[path_rules.api_routes]
+roots = ["src/werewolf_agent/api/routes"]
+forbidden = [
+  "werewolf_agent.adapters",
+  "werewolf_agent.agents",
+  "werewolf_agent.application.handlers",
+  "werewolf_agent.application.models",
+  "werewolf_agent.application.ports",
+  "werewolf_agent.domain",
+]
+
+[path_rules.clients]
+roots = [
+  "src/werewolf_agent/clients/cli",
+  "src/werewolf_agent/clients/streamlit",
+]
+forbidden = [
+  "werewolf_agent.adapters.supabase",
+  "werewolf_agent.application",
+  "werewolf_agent.domain",
+]
+
+[path_rules.owned_messages]
+roots = [
+  "src/werewolf_agent/adapters",
+  "src/werewolf_agent/agents",
+  "src/werewolf_agent/api",
+  "src/werewolf_agent/application",
+  "src/werewolf_agent/clients",
+  "src/werewolf_agent/contracts",
+  "src/werewolf_agent/domain",
+  "src/werewolf_agent/observability",
+  "src/werewolf_agent/security",
+  "src/werewolf_agent/worker",
+]
+forbidden = [
+  "werewolf_agent.settings.constants",
+  "werewolf_agent.settings.messages",
+]
+
+[path_rules.resource_io]
+roots = [
+  "src/werewolf_agent/agents",
+  "src/werewolf_agent/api/routes",
+  "src/werewolf_agent/application",
+  "src/werewolf_agent/contracts",
+  "src/werewolf_agent/domain",
+  "src/werewolf_agent/observability",
+  "src/werewolf_agent/security",
+  "src/werewolf_agent/worker",
+]
+forbidden = ["werewolf_agent.settings.loading"]
+
+[path_rules.domain_frameworks]
+roots = ["src/werewolf_agent/domain"]
+forbidden = ["pydantic"]
+
+[call_rules.worker_database]
+roots = ["src/werewolf_agent/worker"]
+forbidden = ["execute", "executemany"]
+
+[layers.domain]
+allowed = ["domain"]
+
+[layers.settings]
+allowed = ["settings"]
+
+[layers.contracts]
+allowed = ["application", "contracts", "security"]
+
+[layers.security]
+allowed = ["contracts", "security", "settings"]
+
+[layers.observability]
+allowed = ["contracts", "observability", "security", "settings"]
+
+[layers.agents]
+allowed = ["agents", "contracts"]
+
+[layers.application]
+allowed = ["application", "domain"]
+
+[layers.adapters]
+allowed = [
+  "adapters",
+  "agents",
+  "application",
+  "contracts",
+  "domain",
+  "observability",
+  "security",
+  "settings",
+]
+
+[layers.api]
+allowed = [
+  "api",
+  "application",
+  "contracts",
+  "observability",
+  "security",
+  "settings",
+]
+
+[layers.worker]
+allowed = [
+  "adapters",
+  "agents",
+  "application",
+  "contracts",
+  "observability",
+  "security",
+  "settings",
+  "worker",
+]
+
+[layers.clients]
+allowed = [
+  "adapters",
+  "clients",
+  "contracts",
+  "observability",
+  "security",
+  "settings",
+]
+
+[dependency_exceptions."werewolf_agent.api.bootstrap|adapters"]
+reason = "HTTP composition rootがadapter実装を構築する。"
+
+[frameworks.fastapi]
+imports = ["fastapi", "starlette", "uvicorn"]
+roots = ["src/werewolf_agent/api"]
+
+[frameworks.langchain]
+imports = ["langchain"]
+roots = ["src/werewolf_agent/adapters/llm"]
+
+[frameworks.database]
+imports = ["psycopg", "sqlalchemy"]
+roots = ["src/werewolf_agent/adapters/supabase"]
+
+[frameworks.streamlit]
+imports = ["streamlit"]
+roots = ["src/werewolf_agent/clients/streamlit"]
+
+[frameworks.typer]
+imports = ["typer"]
+roots = [
+  "src/werewolf_agent/clients/cli",
+  "src/werewolf_agent/worker",
+]

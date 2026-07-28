@@ -1,0 +1,14 @@
+[
+  {
+    "input": "api_key=abc token:xyz role=werewolf target_id=p2 ordinary=value",
+    "expected": "api_key=[REDACTED] token:[REDACTED] role=[REDACTED] target_id=[REDACTED] ordinary=value"
+  },
+  {
+    "input": "dsn=postgresql://postgres:local-password@127.0.0.1:5432/postgres",
+    "expected": "dsn=postgresql://[REDACTED]@127.0.0.1:5432/postgres"
+  },
+  {
+    "input": "Authorization: Bearer secret-value",
+    "expected": "Authorization: [REDACTED]"
+  }
+]

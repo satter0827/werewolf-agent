@@ -15,18 +15,22 @@ __pycache__/
 /.env.*
 !.env.example
 /.envrc
+/supabase/**/.env
+/supabase/**/signing_keys.json
+/supabase/**/secrets.*
 
 # Werewolf Agent local generated artifacts
 /.werewolf-agent/
 
-# Django and local databases
+# Supabase local runtime state
+/supabase/.branches/
+/supabase/.temp/
+
+# Local databases
 *.sqlite3
 *.sqlite3-journal
 db.sqlite3
 db.sqlite3-journal
-local_settings.py
-/media/
-/staticfiles/
 
 # Logs
 *.log
@@ -59,7 +63,6 @@ MANIFEST
 
 # Documentation builds
 /docs/_build/
-/docs/sphinx/_build/
 /site/
 
 # JavaScript/web artifacts
@@ -69,6 +72,10 @@ node_modules/
 /front-web/dist/
 /front-web/build/
 /front-web/coverage/
+/frontend/node_modules/
+/frontend/dist/
+/frontend/build/
+/frontend/coverage/
 
 # Editor and OS noise
 /.idea/

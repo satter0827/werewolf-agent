@@ -2,8 +2,8 @@
 .env.*
 !.env.example
 .git
-.github
 .werewolf-agent
+**/.werewolf-agent
 .venv
 __pycache__
 *.py[cod]
@@ -18,8 +18,6 @@ dist
 htmlcov
 docs/_build
 docs/sphinx/_build
-node_modules
-front-web/node_modules
 coverage.xml
 .coverage
 .coverage.*

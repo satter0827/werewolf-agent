@@ -1,0 +1,12 @@
+.content code.literal {
+  overflow-wrap: anywhere;
+}
+
+.sd-card {
+  border-color: #d8d2c6;
+  border-radius: 0.75rem;
+}
+
+.sd-card:hover {
+  border-color: #a9a294;
+}

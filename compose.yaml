@@ -1,84 +1,196 @@
-x-api-environment: &api-environment
-  WEREWOLF_LLM_PROVIDER: ${WEREWOLF_LLM_PROVIDER:-fake_llm}
-  WEREWOLF_MODEL: ${WEREWOLF_MODEL:-fake-llm-local}
-  WEREWOLF_LLM_TIMEOUT_SECONDS: ${WEREWOLF_LLM_TIMEOUT_SECONDS:-30}
-  WEREWOLF_LLM_MAX_RETRIES: ${WEREWOLF_LLM_MAX_RETRIES:-2}
-  WEREWOLF_LLM_TEMPERATURE: ${WEREWOLF_LLM_TEMPERATURE:-0.7}
-  WEREWOLF_FAKE_LLM_STRATEGY: ${WEREWOLF_FAKE_LLM_STRATEGY:-seeded}
-  WEREWOLF_FAKE_LLM_RANDOMNESS: ${WEREWOLF_FAKE_LLM_RANDOMNESS:-0.7}
-  WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES: ${WEREWOLF_FAKE_LLM_SPEECH_TEMPLATES:-I want to hear more from {target_name}.|{target_name}'s vote history looks worth checking.|I will compare today's claims before voting.}
-  WEREWOLF_LOG_LEVEL: ${WEREWOLF_LOG_LEVEL:-INFO}
-  WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-file}
-  WEREWOLF_LOG_DIR: ${WEREWOLF_LOG_DIR:-.werewolf-agent/logs}
-  WEREWOLF_LOG_FILE_NAME: ${WEREWOLF_LOG_FILE_NAME:-werewolf-agent.jsonl}
-  WEREWOLF_LOG_RETENTION_DAYS: ${WEREWOLF_LOG_RETENTION_DAYS:-14}
-  WEREWOLF_LOG_THIRD_PARTY_LEVEL: ${WEREWOLF_LOG_THIRD_PARTY_LEVEL:-WARNING}
-  WEREWOLF_GAME_MIN_PLAYERS: ${WEREWOLF_GAME_MIN_PLAYERS:-5}
-  WEREWOLF_GAME_MAX_PLAYERS: ${WEREWOLF_GAME_MAX_PLAYERS:-8}
-  WEREWOLF_GAME_DEFAULT_PLAYER_COUNT: ${WEREWOLF_GAME_DEFAULT_PLAYER_COUNT:-6}
-  WEREWOLF_GAME_SUPPORTED_AGENT_TYPE: ${WEREWOLF_GAME_SUPPORTED_AGENT_TYPE:-llm}
-  WEREWOLF_GAME_SUPPORTED_AGENT_NAME: ${WEREWOLF_GAME_SUPPORTED_AGENT_NAME:-LLM Agent}
-  WEREWOLF_GAME_DEFAULT_RULESET_ID: ${WEREWOLF_GAME_DEFAULT_RULESET_ID:-default}
-  WEREWOLF_GAME_DEFAULT_RULESET_NAME: ${WEREWOLF_GAME_DEFAULT_RULESET_NAME:-MVP Default}
-  WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE: ${WEREWOLF_GAME_RULESET_DESCRIPTION_TEMPLATE:-{min_players}〜{max_players}人向けの最小同期 API ルールセットです。}
-  WEREWOLF_GAME_ROLE_NAMES: ${WEREWOLF_GAME_ROLE_NAMES:-villager:村人,werewolf:人狼,seer:占い師,knight:騎士}
-  WEREWOLF_GAME_PHASE_NAMES: ${WEREWOLF_GAME_PHASE_NAMES:-night:夜,day_discussion:昼チャット,voting:投票,finished:終了}
-  WEREWOLF_API_TITLE: ${WEREWOLF_API_TITLE:-Werewolf Agent API}
-  WEREWOLF_API_VERSION: ${WEREWOLF_API_VERSION:-0.1.0}
-  WEREWOLF_API_DEBUG: ${WEREWOLF_API_DEBUG:-true}
-  WEREWOLF_CORS_ALLOWED_ORIGINS: ${WEREWOLF_CORS_ALLOWED_ORIGINS:-http://localhost:8000,http://127.0.0.1:8000}
-  WEREWOLF_CORS_ALLOWED_METHODS: ${WEREWOLF_CORS_ALLOWED_METHODS:-GET,POST}
-  WEREWOLF_CORS_ALLOWED_HEADERS: ${WEREWOLF_CORS_ALLOWED_HEADERS:-*}
-  WEREWOLF_SQLITE_PATH: /data/db.sqlite3
-  WEREWOLF_DATABASE_URL: ${WEREWOLF_DATABASE_URL:-}
-  OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-  ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-  GOOGLE_API_KEY: ${GOOGLE_API_KEY:-}
-
-x-backend-build: &backend-build
+x-python-build: &python-build
   context: .
   dockerfile: docker/backend.Dockerfile
-  target: dev
+  target: runtime
 
-x-backend-volumes: &backend-volumes
-  - .:/app
-  - werewolf-sqlite:/data
+x-python-image: &python-image werewolf-agent-quality-app:latest
+
+x-host-access: &host-access
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+x-auth-environment: &auth-environment
+  WEREWOLF_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-http://host.docker.internal:54321}
+  WEREWOLF_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
+
+x-api-client-environment: &api-client-environment
+  <<: *auth-environment
+  WEREWOLF_API_BASE_URL: http://api:8000
+
+x-log-environment: &log-environment
+  WEREWOLF_LOG_LEVEL: ${WEREWOLF_LOG_LEVEL:-INFO}
+  WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-stdout}
+  WEREWOLF_LOG_DIR: ${WEREWOLF_LOG_DIR:-.werewolf-agent/logs/application}
+  WEREWOLF_LOG_FILE_MAX_MIB: ${WEREWOLF_LOG_FILE_MAX_MIB:-10}
+  WEREWOLF_LOG_FILE_BACKUP_COUNT: ${WEREWOLF_LOG_FILE_BACKUP_COUNT:-3}
+  WEREWOLF_LOG_THIRD_PARTY_LEVEL: ${WEREWOLF_LOG_THIRD_PARTY_LEVEL:-WARNING}
 
 services:
+  migrate:
+    <<: *host-access
+    image: *python-image
+    build: *python-build
+    profiles: ["dev", "test", "e2e", "production"]
+    environment:
+      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+    command: python -m scripts.supabase migrate
+    restart: "no"
+
   api:
-    build: *backend-build
+    <<: *host-access
+    image: *python-image
+    build: *python-build
+    profiles: ["dev", "test", "e2e", "production"]
     init: true
-    environment: *api-environment
-    volumes: *backend-volumes
+    environment:
+      <<: [*auth-environment, *log-environment]
+      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+      WEREWOLF_SUPABASE_JWT_AUDIENCE: ${WEREWOLF_SUPABASE_JWT_AUDIENCE:-authenticated}
+      WEREWOLF_SUPABASE_JWT_ISSUER: ${WEREWOLF_SUPABASE_JWT_ISSUER:-}
+      WEREWOLF_SUPABASE_JWKS_URL: ${WEREWOLF_SUPABASE_JWKS_URL:-}
+      WEREWOLF_REVEAL_API_ENABLED: ${WEREWOLF_REVEAL_API_ENABLED:-true}
+      WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT: ${WEREWOLF_API_GAME_LIST_DEFAULT_LIMIT:-20}
+      WEREWOLF_API_GAME_LIST_MAX_LIMIT: ${WEREWOLF_API_GAME_LIST_MAX_LIMIT:-100}
+      WEREWOLF_API_TIMELINE_DEFAULT_LIMIT: ${WEREWOLF_API_TIMELINE_DEFAULT_LIMIT:-100}
+      WEREWOLF_API_TIMELINE_MAX_LIMIT: ${WEREWOLF_API_TIMELINE_MAX_LIMIT:-500}
+      WEREWOLF_API_CONTRACT_VERSION: ${WEREWOLF_API_CONTRACT_VERSION:-v1}
+      WEREWOLF_API_CONFIG_REVISION: ${WEREWOLF_API_CONFIG_REVISION:-2026-07-24}
+      WEREWOLF_API_DOCS_ENABLED: ${WEREWOLF_API_DOCS_ENABLED:-false}
+      WEREWOLF_API_CORS_ORIGINS: ${WEREWOLF_API_CORS_ORIGINS:-}
+      WEREWOLF_API_MAX_BODY_BYTES: ${WEREWOLF_API_MAX_BODY_BYTES:-65536}
+      WEREWOLF_API_MESSAGE_MAX_CHARS: ${WEREWOLF_API_MESSAGE_MAX_CHARS:-200}
+      WEREWOLF_API_RATE_LIMIT_REQUESTS: ${WEREWOLF_API_RATE_LIMIT_REQUESTS:-120}
+      WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS: ${WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS:-60}
+      WEREWOLF_API_TIMEOUT_SECONDS: ${WEREWOLF_API_TIMEOUT_SECONDS:-15}
+      WEREWOLF_API_MAX_CONCURRENT_REQUESTS: ${WEREWOLF_API_MAX_CONCURRENT_REQUESTS:-32}
+      WEREWOLF_GAME_DEFAULT_NARRATION_MODE: ${WEREWOLF_GAME_DEFAULT_NARRATION_MODE:-standard}
+      WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID: ${WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID:-standard_6}
+      WEREWOLF_API_INSTANCE_ID: ${WEREWOLF_API_INSTANCE_ID:-}
+    command: werewolf-agent-api
     ports:
       - "8000:8000"
-    command: uvicorn werewolf_agent.interface.api.app:create_app --factory --host 0.0.0.0 --port 8000
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=5).read()",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=2)",
         ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 10s
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
 
-  migrate:
-    build: *backend-build
-    profiles: ["tools"]
-    environment: *api-environment
-    volumes: *backend-volumes
-    command: alembic upgrade head
+  worker:
+    <<: *host-access
+    image: *python-image
+    build: *python-build
+    profiles: ["dev", "e2e", "production"]
+    init: true
+    environment:
+      <<: *log-environment
+      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+      WEREWOLF_REVEAL_API_ENABLED: ${WEREWOLF_REVEAL_API_ENABLED:-true}
+      WEREWOLF_SUPABASE_WORKER_ID: ${WEREWOLF_SUPABASE_WORKER_ID:-worker-default}
+      WEREWOLF_SUPABASE_WORKER_POLL_INTERVAL_SECONDS: ${WEREWOLF_SUPABASE_WORKER_POLL_INTERVAL_SECONDS:-1}
+      WEREWOLF_SUPABASE_WORKER_BATCH_SIZE: ${WEREWOLF_SUPABASE_WORKER_BATCH_SIZE:-5}
+      WEREWOLF_SUPABASE_WORKER_CLAIM_SECONDS: ${WEREWOLF_SUPABASE_WORKER_CLAIM_SECONDS:-60}
+      WEREWOLF_GAME_DEFAULT_NARRATION_MODE: ${WEREWOLF_GAME_DEFAULT_NARRATION_MODE:-standard}
+      WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID: ${WEREWOLF_GAME_DEFAULT_SETUP_PRESET_ID:-standard_6}
+      WEREWOLF_LLM_TIMEOUT_SECONDS: ${WEREWOLF_LLM_TIMEOUT_SECONDS:-12}
+      WEREWOLF_LLM_MAX_RETRIES: ${WEREWOLF_LLM_MAX_RETRIES:-0}
+      WEREWOLF_LLM_MAX_TOKENS: ${WEREWOLF_LLM_MAX_TOKENS:-96}
+      WEREWOLF_LLM_TEMPERATURE: ${WEREWOLF_LLM_TEMPERATURE:-0.7}
+      WEREWOLF_WORKER_PAID_LLM_PROVIDER: ${WEREWOLF_WORKER_PAID_LLM_PROVIDER:-openai}
+      WEREWOLF_WORKER_PAID_LLM_MODEL: ${WEREWOLF_WORKER_PAID_LLM_MODEL:-gpt-4.1-mini}
+      WEREWOLF_WORKER_PAID_LLM_BASE_URL: ${WEREWOLF_WORKER_PAID_LLM_BASE_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    command: werewolf-agent-worker run
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      api:
+        condition: service_healthy
+
+  streamlit:
+    <<: *host-access
+    image: *python-image
+    build: *python-build
+    profiles: ["dev", "e2e"]
+    init: true
+    environment:
+      <<: [*api-client-environment, *log-environment]
+      WEREWOLF_SUPABASE_AUTH_TIMEOUT_SECONDS: ${WEREWOLF_SUPABASE_AUTH_TIMEOUT_SECONDS:-10}
+      WEREWOLF_SUPABASE_REST_TIMEOUT_SECONDS: ${WEREWOLF_SUPABASE_REST_TIMEOUT_SECONDS:-10}
+      WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS: ${WEREWOLF_ADVANCE_JOB_POLL_INTERVAL_SECONDS:-0.25}
+      WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS: ${WEREWOLF_ADVANCE_JOB_POLL_TIMEOUT_SECONDS:-60}
+      WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS: ${WEREWOLF_STREAMLIT_AUTO_ADVANCE_INTERVAL_SECONDS:-1}
+      WEREWOLF_STREAMLIT_LANGUAGE: ${WEREWOLF_STREAMLIT_LANGUAGE:-ja}
+      WEREWOLF_STREAMLIT_RANDOM_SEED_MAX: ${WEREWOLF_STREAMLIT_RANDOM_SEED_MAX:-1000000}
+    command:
+      [
+        "streamlit",
+        "run",
+        "src/werewolf_agent/clients/streamlit/app.py",
+        "--server.address=0.0.0.0",
+        "--server.port=8501",
+        "--browser.gatherUsageStats=false",
+      ]
+    ports:
+      - "8501:8501"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=2)",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
   test:
-    build: *backend-build
-    profiles: ["tools"]
-    environment: *api-environment
-    volumes: *backend-volumes
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+      target: dev
+    profiles: ["test"]
     command: pytest
 
-volumes:
-  werewolf-sqlite:
+  e2e:
+    <<: *host-access
+    image: werewolf-agent-quality-e2e:latest
+    build:
+      context: .
+      dockerfile: docker/e2e.Dockerfile
+    profiles: ["e2e"]
+    working_dir: /workspace
+    volumes:
+      - .:/workspace:ro
+    environment:
+      PLAYWRIGHT_API_URL: http://api:8000
+      PLAYWRIGHT_OUTPUT_DIR: ${PLAYWRIGHT_OUTPUT_DIR:-/tmp/werewolf-agent/playwright}
+      PLAYWRIGHT_STREAMLIT_URL: http://streamlit:8501
+      PLAYWRIGHT_VISUAL_REGRESSION: ${PLAYWRIGHT_VISUAL_REGRESSION:-0}
+      PLAYWRIGHT_EXPECTED_INSTANCE_ID: ${WEREWOLF_API_INSTANCE_ID:-}
+      PLAYWRIGHT_DEVICES: ${PLAYWRIGHT_DEVICES:-desktop,mobile}
+      PLAYWRIGHT_CAPTURES: ${PLAYWRIGHT_CAPTURES:-}
+      PLAYWRIGHT_TRACE: ${PLAYWRIGHT_TRACE:-failure}
+      PLAYWRIGHT_LOCAL_EMAIL: ${PLAYWRIGHT_LOCAL_EMAIL:-}
+      PLAYWRIGHT_LOCAL_LLM: ${PLAYWRIGHT_LOCAL_LLM:-0}
+      PLAYWRIGHT_LOCAL_PASSWORD: ${PLAYWRIGHT_LOCAL_PASSWORD:-}
+      PLAYWRIGHT_SCREENSHOT_DIR: ${PLAYWRIGHT_SCREENSHOT_DIR:-}
+      PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
+      PLAYWRIGHT_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-}
+    command: python -m pytest scripts/browser/scenarios/test_streamlit.py
+    depends_on:
+      streamlit:
+        condition: service_healthy

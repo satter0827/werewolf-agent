@@ -1,0 +1,26 @@
+[data-testid="stMainBlockContainer"] {
+    max-width: 90rem;
+    padding-top: var(--wa-space-8);
+    padding-bottom: var(--wa-space-12);
+}
+
+.st-key-setup_tabs,
+.st-key-settings_tabs,
+.st-key-setup_execution,
+.st-key-right_command_panel,
+.st-key-game_result_summary {
+    margin-top: var(--wa-space-6);
+}
+
+.st-key-setup_execution,
+.st-key-right_command_panel {
+    padding: var(--wa-space-6);
+    border: 1px solid var(--wa-border);
+    border-radius: var(--wa-radius-md);
+    background: var(--wa-surface);
+}
+
+.st-key-records_empty_actions {
+    gap: var(--wa-space-3);
+    margin-top: var(--wa-space-4);
+}

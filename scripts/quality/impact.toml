@@ -1,0 +1,27 @@
+[[rules]]
+patterns = ["docs/**", "README.md", "AGENTS.md", "scripts/README.md", "scripts/AGENTS.md", "src/**/AGENTS.md"]
+selectors = ["repository", "docs"]
+
+[[rules]]
+patterns = ["src/**/*.py", "tests/unit/**/*.py"]
+selectors = ["python-static", "unit"]
+
+[[rules]]
+patterns = ["src/werewolf_agent/api/**", "src/werewolf_agent/contracts/**", "tests/integration/api/**", "tests/integration/package/**"]
+profile = "check"
+
+[[rules]]
+patterns = ["tests/integration/**"]
+profile = "check"
+
+[[rules]]
+patterns = ["scripts/**/*.py", "scripts/**/*.toml", "pyproject.toml", "uv.lock"]
+profile = "check"
+
+[[rules]]
+patterns = ["src/werewolf_agent/clients/streamlit/**", "scripts/browser/**", "tests/integration/supabase/**", "docker/**", "compose.yaml", "supabase/**", ".streamlit/**"]
+profile = "release"
+
+[[rules]]
+patterns = [".github/**", ".vscode/**", "contracts/**"]
+profile = "check"

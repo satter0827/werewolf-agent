@@ -1,0 +1,87 @@
+app_name = "werewolf-agent"
+
+generated_dir = ".werewolf-agent"
+
+llm_provider = "fake"
+model = "fake-list-chat-model"
+llm_base_url = ""
+llm_timeout_seconds = 12.0
+llm_max_retries = 0
+llm_max_tokens = 128
+llm_temperature = 0.7
+llm_prompt_file = ""
+llm_fake_responses_file = ""
+worker_paid_llm_provider = "openai"
+worker_paid_llm_model = "gpt-4.1-mini"
+worker_paid_llm_base_url = ""
+
+log_level = "INFO"
+log_output = "file"
+log_dir = ".werewolf-agent/logs/application"
+log_file_max_mib = 10
+log_file_backup_count = 3
+log_third_party_level = "WARNING"
+
+supabase_url = ""
+supabase_publishable_key = ""
+supabase_db_dsn = ""
+supabase_auth_timeout_seconds = 10.0
+supabase_rest_timeout_seconds = 10.0
+supabase_api_pool_min_size = 1
+supabase_api_pool_max_size = 8
+supabase_pool_timeout_seconds = 5.0
+supabase_worker_id = "worker-default"
+supabase_worker_poll_interval_seconds = 1.0
+supabase_worker_batch_size = 5
+supabase_worker_claim_seconds = 60
+supabase_worker_pool_min_size = 1
+supabase_worker_pool_max_size = 2
+supabase_worker_heartbeat_seconds = 20
+supabase_worker_max_attempts = 3
+
+advance_job_poll_interval_seconds = 0.25
+advance_job_poll_timeout_seconds = 60.0
+cli_max_steps = 64
+cli_poll_interval_seconds = 0.0
+cli_event_limit = 100
+cli_output_format = "table"
+
+streamlit_refresh_interval_seconds = 5.0
+streamlit_turn_limit = 100
+streamlit_run_limit = 20
+streamlit_max_auto_steps = 64
+streamlit_auto_advance_interval_seconds = 1.0
+streamlit_initial_sidebar_state = "auto"
+streamlit_language = "ja"
+streamlit_i18n_file = ""
+streamlit_default_seed = 1
+streamlit_random_seed_max = 1000000
+streamlit_page_title = "Werewolf Agent"
+streamlit_service_name = "werewolf-agent-streamlit"
+
+reveal_api_enabled = true
+api_game_list_default_limit = 20
+api_game_list_max_limit = 100
+api_timeline_default_limit = 100
+api_timeline_max_limit = 500
+api_host = "0.0.0.0"
+api_port = 8000
+api_base_url = "http://127.0.0.1:8000"
+api_contract_version = "v1"
+api_config_revision = "2026-07-24"
+api_instance_id = ""
+api_docs_enabled = false
+api_cors_origins = ""
+api_max_body_bytes = 65536
+api_message_max_chars = 200
+api_rate_limit_requests = 120
+api_rate_limit_window_seconds = 60
+api_timeout_seconds = 15.0
+api_max_concurrent_requests = 32
+supabase_jwt_audience = "authenticated"
+supabase_jwt_issuer = ""
+supabase_jwks_url = ""
+
+game_min_players = 5
+game_max_players = 8
+game_supported_agent_name = "LLM Agent"

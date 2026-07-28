@@ -1,0 +1,37 @@
+:root {
+    --wa-page: #f6f3ec;
+    --wa-surface: #fffdf8;
+    --wa-surface-secondary: #eee9de;
+    --wa-text: #17243a;
+    --wa-muted: #647083;
+    --wa-brand: #263a5b;
+    --wa-wait: #8a5416;
+    --wa-success: #28745c;
+    --wa-danger: #a33b44;
+    --wa-info: #315f9f;
+    --wa-border: #d8d2c6;
+    --wa-border-interactive: #a9a294;
+
+    --wa-font-12: 0.75rem;
+    --wa-font-14: 0.875rem;
+    --wa-font-16: 1rem;
+    --wa-font-20: 1.25rem;
+    --wa-font-28: 1.75rem;
+    --wa-weight-regular: 400;
+    --wa-weight-semibold: 600;
+    --wa-weight-bold: 700;
+    --wa-line-tight: 1.3;
+    --wa-line-body: 1.5;
+    --wa-line-reading: 1.65;
+
+    --wa-space-1: 0.25rem;
+    --wa-space-2: 0.5rem;
+    --wa-space-3: 0.75rem;
+    --wa-space-4: 1rem;
+    --wa-space-6: 1.5rem;
+    --wa-space-8: 2rem;
+    --wa-space-12: 3rem;
+    --wa-radius-sm: 0.5rem;
+    --wa-radius-md: 0.75rem;
+    --wa-control-min: 2.75rem;
+}

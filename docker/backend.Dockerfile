@@ -12,37 +12,52 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
-COPY backend ./backend
 
-FROM base AS dev
+FROM base AS runtime-dependencies
 
-RUN uv sync --frozen --group dev --extra api
+RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
 
-EXPOSE 8000
+FROM base AS dev-dependencies
 
-CMD ["uvicorn", "werewolf_agent.interface.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
 
-FROM base AS runtime
+FROM dev-dependencies AS dev
 
-ENV WEREWOLF_API_DEBUG=false \
-    WEREWOLF_LOG_DIR=.werewolf-agent/logs \
+COPY src ./src
+COPY scripts ./scripts
+COPY supabase ./supabase
+COPY .streamlit ./.streamlit
+COPY .github ./.github
+COPY docker ./docker
+COPY docs ./docs
+COPY tests ./tests
+COPY .env.example AGENTS.md compose.yaml ./
+COPY contracts/openapi.json ./contracts/openapi.json
+RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker
+
+CMD ["pytest"]
+
+FROM runtime-dependencies AS runtime
+
+COPY src ./src
+COPY scripts/__init__.py ./scripts/__init__.py
+COPY scripts/_infra ./scripts/_infra
+COPY scripts/supabase ./scripts/supabase
+COPY supabase ./supabase
+COPY .streamlit ./.streamlit
+
+ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs/application \
     WEREWOLF_LOG_FILE_NAME=werewolf-agent.jsonl \
-    WEREWOLF_LOG_OUTPUT=file \
-    WEREWOLF_LOG_RETENTION_DAYS=14 \
-    WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING \
-    WEREWOLF_SQLITE_PATH=/data/db.sqlite3 \
-    PORT=8000
+    WEREWOLF_LOG_OUTPUT=stdout \
+    WEREWOLF_LOG_FILE_MAX_MIB=10 \
+    WEREWOLF_LOG_FILE_BACKUP_COUNT=3 \
+    WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 
-RUN uv sync --frozen --no-dev --extra api
+RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
-    && mkdir -p /data \
-    && chown -R app:app /app /data
+    && chown -R app:app /app
 
 USER app
 
-EXPOSE 8000
-
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 CMD python -c "import os, urllib.request; port = os.environ.get('PORT', '8000'); urllib.request.urlopen('http://127.0.0.1:%s/api/v1/health' % port, timeout=5).read()" || exit 1
-
-CMD ["sh", "-c", "uvicorn werewolf_agent.interface.api.app:create_app --factory --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["werewolf-agent-worker", "run"]
