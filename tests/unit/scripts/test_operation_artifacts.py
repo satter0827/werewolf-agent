@@ -39,6 +39,8 @@ def test_operation_bundle_contains_redacted_report_summary_log_and_manifest(
     )
 
     root = report.parent
+    assert root.parent == layout.operations / "environment"
+    assert not list(root.parent.glob("*.staging"))
     assert {path.name for path in root.iterdir()} == {
         "logs",
         "manifest.json",

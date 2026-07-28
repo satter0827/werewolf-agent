@@ -135,7 +135,7 @@ def required_level(item: pytest.Item) -> str:
         required = "release"
     if item.get_closest_marker("benchmark"):
         required = max(required, "check", key=LEVEL_INDEX.__getitem__)
-    if item.get_closest_marker("deep"):
+    if item.get_closest_marker("deep") or item.get_closest_marker("monkey"):
         required = "deep"
     return required
 

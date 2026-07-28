@@ -86,10 +86,19 @@ def _ensure_interrupted_report(run_dir: Path, selector: str) -> None:
     write_json(
         run_dir / "report.json",
         {
-            "schema_version": 2,
+            "schema_version": 3,
             "run_id": run_dir.name,
             "profile": selector,
             "state": "error",
+            "execution": {"revision": None, "tree": None},
+            "change": {
+                "base_ref": None,
+                "base_revision": None,
+                "head_revision": None,
+                "merge_base_revision": None,
+                "changed_paths": [],
+            },
+            "workspace": {"dirty": None, "fingerprint": None},
             "artifact_manifest": "manifest.json",
             "results": [
                 {

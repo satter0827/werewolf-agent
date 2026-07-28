@@ -20,11 +20,13 @@ from scripts._infra.process import (
     redact_artifacts,
     run_command,
 )
+from scripts.quality import repository as repository_state
 from scripts.quality import retention
 from scripts.quality import runner as quality
-from scripts.quality.gates import distribution, repository, runtime
+from scripts.quality.gates import distribution, runtime
 from scripts.quality.gates import environment as environment_gate
 from scripts.quality.gates import tests as test_gates
+from scripts.quality.repository import RepositorySnapshot
 
 ROOT = Path(__file__).resolve().parents[3]
 REDACTION_CASES = json.loads(
@@ -123,7 +125,7 @@ def test_profiles_have_expected_order_and_isolated_commands() -> None:
     assert "coverage" not in check
     assert "benchmark" not in check
     assert "benchmark" in deep
-    assert {"supabase-preflight", "supabase-integration", "docker"} <= release
+    assert {"supabase-preflight", "supabase-lint", "supabase-integration", "docker"} <= release
     assert {"deep-tests", "deep-integration", "deep-supabase"} <= deep
     assert all(gate.command for stage in quality._profile_stages("deep", 1) for gate in stage)
 
@@ -134,6 +136,45 @@ def test_auto_is_an_explicit_command_separate_from_fixed_focus() -> None:
 
     assert parser.parse_args(["auto"]).profile == "auto"
     assert parser.parse_args(["focus"]).profile == "focus"
+
+
+def test_quality_cli_accepts_explicit_change_refs() -> None:
+    """CIがbaseとsource headを品質reportへ明示できる。"""
+    arguments = quality.build_parser().parse_args(
+        ["check", "--base-ref", "origin/develope", "--head-ref", "feature"]
+    )
+
+    assert arguments.base_ref == "origin/develope"
+    assert arguments.head_ref == "feature"
+
+
+def test_repository_stability_detects_changes_after_all_gates(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """runner終了時のsnapshot差分を品質違反として返す。"""
+    (tmp_path / "logs").mkdir()
+    initial = RepositorySnapshot("head", "tree", "index", False, "before")
+    context = quality.RunContext(
+        profile="check",
+        jobs=1,
+        timeout_seconds=60,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={},
+        started_at=quality.utc_now(),
+        initial_repository_snapshot=initial,
+    )
+    monkeypatch.setattr(
+        quality,
+        "capture_snapshot",
+        lambda: RepositorySnapshot("head", "tree", "index", True, "after"),
+    )
+
+    result = quality._repository_stability_result(context)
+
+    assert result.state == "failed"
+    assert result.name == "repository-stability"
 
 
 def test_explain_reports_the_plan_without_executing(
@@ -561,6 +602,15 @@ def test_branch_coverage_contract_enforces_independent_threshold(tmp_path: Path)
         (
             [
                 "--collect-only",
+                "-m",
+                "monkey",
+                "tests/unit/domain/test_domain_stateful.py",
+            ],
+            "Selected tests require --test-level=deep.",
+        ),
+        (
+            [
+                "--collect-only",
                 "--test-level=deep",
                 "-m",
                 "deep",
@@ -683,19 +733,19 @@ def test_nonpytest_exit_two_is_classified_as_blocked() -> None:
     assert quality._command_state(result, nonzero_state="error") == "blocked"
 
 
-def test_git_status_failure_is_not_treated_as_clean(
+def test_repository_snapshot_failure_is_not_treated_as_clean(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Git検査失敗を空のworking treeとして扱わない。"""
 
     monkeypatch.setattr(
-        repository,
-        "run_command",
-        lambda *_args, **_kwargs: quality.CommandResult(["git"], 1, 0.0, ""),
+        repository_state,
+        "_git_bytes",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("git unavailable")),
     )
 
-    with pytest.raises(RuntimeError, match="状態を取得できません"):
-        repository.git_status({})
+    with pytest.raises(RuntimeError, match="git unavailable"):
+        repository_state.capture_snapshot()
 
 
 def test_runner_setup_failure_writes_machine_readable_report(
@@ -716,9 +766,9 @@ def test_runner_setup_failure_writes_machine_readable_report(
     monkeypatch.setattr(quality, "create_run_directory", lambda _profile: ("run", tmp_path))
     monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
     monkeypatch.setattr(
-        repository,
-        "git_status",
-        lambda _environment: (_ for _ in ()).throw(RuntimeError("git unavailable")),
+        quality,
+        "resolve_changes",
+        lambda *_args: (_ for _ in ()).throw(RuntimeError("git unavailable")),
     )
 
     state, report_path = quality.execute(
@@ -838,12 +888,13 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         "dependsOn" not in task for task in tasks["tasks"] if task["label"].startswith("Verify:")
     )
     assert "python -m scripts.quality check" in workflow
-    assert "python -m scripts.quality release" in workflow
-    assert "python -m scripts.quality deep --confirm-deep" in workflow
+    assert "python -m scripts.quality release" not in workflow
+    assert "python -m scripts.quality deep" in workflow
+    assert "--confirm-deep" in workflow
     assert 'python-version: ["3.11", "3.13", "3.14"]' in workflow
-    assert "scripts.quality check --fresh" in workflow
-    assert "scripts.quality release --fresh" in workflow
-    assert "actions/upload-artifact@v4" in workflow
+    assert "--base-ref origin/develope" in workflow
+    assert "--base-ref origin/main" in workflow
+    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
     assert "include-hidden-files: true" in workflow
     assert ".werewolf-agent/outputs" in workflow
     assert not (ROOT / ".github" / "workflows" / "docker.yml").exists()

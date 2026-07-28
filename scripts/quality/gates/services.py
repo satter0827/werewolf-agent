@@ -15,7 +15,12 @@ from scripts.quality.models import Gate, ResourceLease, RunContext
 from scripts.supabase.preflight import isolated_project_id, prepare_supabase
 
 QUALITY_SUPABASE_PREFIX = "werewolf-agent-quality-"
-GATES = ("supabase-cleanup", "supabase-preflight", "supabase-integration")
+GATES = (
+    "supabase-cleanup",
+    "supabase-preflight",
+    "supabase-lint",
+    "supabase-integration",
+)
 
 
 def build(run_dir: Path) -> list[Gate]:
@@ -40,6 +45,14 @@ def build(run_dir: Path) -> list[Gate]:
             (sys.executable, "-m", "scripts.supabase", "preflight"),
             action=start_supabase,
             dependencies=("supabase-cleanup",),
+            exclusive_resources=("supabase",),
+        ),
+        Gate(
+            "supabase-lint",
+            "Local Supabase schema lint",
+            ("supabase", "db", "lint", "--local", "--fail-on", "error"),
+            action=lint_supabase,
+            dependencies=("supabase-preflight",),
             exclusive_resources=("supabase",),
         ),
         Gate(
@@ -73,6 +86,27 @@ def build(run_dir: Path) -> list[Gate]:
             ),
         ),
     ]
+
+
+def lint_supabase(context: RunContext, _: Path) -> CommandResult:
+    """品質runが所有するlocal DBだけをlintする。"""
+    lease = context.resources.get("supabase")
+    if lease is None or lease.workdir is None:
+        raise EnvironmentBlockedError("品質用Supabase workdirを取得できません。")
+    return run_command(
+        [
+            "supabase",
+            "db",
+            "lint",
+            "--local",
+            "--fail-on",
+            "error",
+            "--workdir",
+            str(lease.workdir),
+        ],
+        timeout_seconds=min(context.timeout_seconds, 120),
+        environment=context.environment,
+    )
 
 
 def cleanup_orphaned_supabase(context: RunContext, _: Path) -> CommandResult:
@@ -219,6 +253,7 @@ __all__ = [
     "GATES",
     "build",
     "cleanup_orphaned_supabase",
+    "lint_supabase",
     "start_supabase",
     "stop_supabase",
 ]

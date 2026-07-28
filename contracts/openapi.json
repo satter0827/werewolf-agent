@@ -1035,6 +1035,7 @@
         "type": "object"
       },
       "InlineSetupRequest": {
+        "additionalProperties": false,
         "properties": {
           "document": {
             "$ref": "#/components/schemas/GameSetupDocumentRequest"
@@ -1285,6 +1286,7 @@
         "type": "object"
       },
       "PlayerGenerationSettings": {
+        "additionalProperties": false,
         "properties": {
           "identities": {
             "items": {
@@ -1317,6 +1319,7 @@
         "type": "object"
       },
       "PlayerIdentitySettings": {
+        "additionalProperties": false,
         "properties": {
           "age_max": {
             "maximum": 120.0,
@@ -1447,6 +1450,7 @@
         "type": "object"
       },
       "PrivateStrategySettings": {
+        "additionalProperties": false,
         "properties": {
           "evidence_focus": {
             "title": "Evidence Focus",
@@ -1942,6 +1946,7 @@
         "type": "object"
       },
       "PublicPersonaSettings": {
+        "additionalProperties": false,
         "properties": {
           "personality": {
             "title": "Personality",
@@ -2372,6 +2377,7 @@
         "type": "object"
       },
       "SavedSetupRequest": {
+        "additionalProperties": false,
         "properties": {
           "mode": {
             "const": "saved",
@@ -3640,6 +3646,7 @@
         "type": "object"
       },
       "TemplateSetupRequest": {
+        "additionalProperties": false,
         "properties": {
           "mode": {
             "const": "template",

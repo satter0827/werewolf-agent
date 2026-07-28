@@ -28,7 +28,6 @@ def test_failed_docs_build_keeps_structured_diagnostic_in_run(
         run_id="run",
         run_dir=run_dir,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     monkeypatch.setattr(

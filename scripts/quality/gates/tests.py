@@ -26,7 +26,8 @@ def build(
 ) -> list[Gate]:
     """pytestの選択規則と成果物契約を所有するtest gateを返す。"""
     python = sys.executable
-    unit_command = pytest_command(run_dir, profile=profile, jobs=jobs)
+    unit_profile = "check" if profile == "deep" else profile
+    unit_command = pytest_command(run_dir, profile=unit_profile, jobs=jobs)
     unit_artifacts = [
         "test-results/unit.xml",
         "test-results/unit.json",
@@ -39,7 +40,7 @@ def build(
             "pytest",
             "Python unit test with profile coverage",
             tuple(unit_command),
-            action=partial(run_unit, profile=profile, jobs=jobs),
+            action=partial(run_unit, profile=unit_profile, jobs=jobs),
             artifacts=tuple(unit_artifacts),
         ),
         Gate(
@@ -81,7 +82,7 @@ def build(
                 "--test-level=deep",
                 "--confirm-deep",
                 "-m",
-                "deep",
+                "monkey",
                 "-n",
                 "0",
                 "--junitxml",

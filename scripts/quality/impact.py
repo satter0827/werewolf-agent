@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import fnmatch
-import subprocess
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from scripts._infra.process import REPOSITORY_ROOT
+from scripts.quality.repository import resolve_changes
 
 POLICY_PATH = Path(__file__).with_name("impact.toml")
 PROFILE_ORDER = ("focus", "check", "release", "deep")
@@ -26,25 +25,7 @@ class ImpactDecision:
 
 def changed_paths() -> tuple[str, ...]:
     """HEADとの差分と未追跡fileをrepository相対pathで返す。"""
-    commands = (
-        ("git", "diff", "--name-only", "HEAD"),
-        ("git", "ls-files", "--others", "--exclude-standard"),
-    )
-    paths: set[str] = set()
-    for command in commands:
-        completed = subprocess.run(
-            command,
-            cwd=REPOSITORY_ROOT,
-            check=False,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
-        if completed.returncode != 0:
-            raise RuntimeError("変更影響を判定するGit情報を取得できません。")
-        paths.update(line.strip().replace("\\", "/") for line in completed.stdout.splitlines())
-    return tuple(sorted(path for path in paths if path))
+    return resolve_changes(None).changed_paths
 
 
 def decide(paths: tuple[str, ...] | None = None) -> ImpactDecision:

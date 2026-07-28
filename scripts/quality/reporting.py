@@ -51,13 +51,36 @@ def write_summary(
         append_events(context.run_dir / "events.jsonl", [artifact_result])
     state = result_state(results)
     report = {
-        "schema_version": 2,
+        "schema_version": 3,
         "run_id": context.run_id,
         "profile": context.profile,
         "selection": {
             "requested_profile": context.requested_profile or context.profile,
             "resolved_profile": context.profile,
             "reason": context.selection_reason,
+        },
+        "execution": {
+            "revision": context.initial_repository_snapshot.revision
+            if context.initial_repository_snapshot
+            else None,
+            "tree": context.initial_repository_snapshot.tree
+            if context.initial_repository_snapshot
+            else None,
+        },
+        "change": {
+            "base_ref": context.change.base_ref,
+            "base_revision": context.change.base_revision,
+            "head_revision": context.change.head_revision or None,
+            "merge_base_revision": context.change.merge_base_revision,
+            "changed_paths": list(context.change.changed_paths),
+        },
+        "workspace": {
+            "dirty": context.initial_repository_snapshot.dirty
+            if context.initial_repository_snapshot
+            else None,
+            "fingerprint": context.initial_repository_snapshot.fingerprint
+            if context.initial_repository_snapshot
+            else None,
         },
         "state": state,
         "jobs": context.jobs,
@@ -82,6 +105,13 @@ def write_summary(
         f"- Run ID: `{context.run_id}`",
         f"- 選択: `{context.requested_profile or context.profile}` → `{context.profile}`",
         f"- 選定理由: {context.selection_reason or 'profileを明示指定しました。'}",
+        f"- 実行revision: `{context.initial_repository_snapshot.revision}`"
+        if context.initial_repository_snapshot
+        else "- 実行revision: 取得できませんでした。",
+        f"- 実行tree: `{context.initial_repository_snapshot.tree}`"
+        if context.initial_repository_snapshot
+        else "- 実行tree: 取得できませんでした。",
+        f"- 変更path: `{len(context.change.changed_paths)}` 件",
         f"- 所要時間: `{duration_seconds:.2f}` 秒",
         "",
         "| Gate | 判定 | 秒 |",
@@ -153,7 +183,7 @@ def collect_run_metrics(run_dir: Path) -> tuple[dict[str, object], list[str]]:
             branches_valid = int(coverage["branches-valid"])
             branches_covered = int(coverage["branches-covered"])
             total_valid = lines_valid + branches_valid
-            metrics["coverage"] = {
+            metrics["unit_coverage"] = {
                 "total_percent": round(
                     (lines_covered + branches_covered) / total_valid * 100,
                     2,
@@ -240,10 +270,10 @@ def _metric_summary(metrics: dict[str, object], artifact_issues: list[str]) -> l
                     f"{value.get('errors', 0)} errors, "
                     f"{value.get('skipped', 0)} skipped"
                 )
-    coverage = metrics.get("coverage")
+    coverage = metrics.get("unit_coverage")
     if isinstance(coverage, dict):
         summary.append(
-            "- coverage: "
+            "- unit coverage: "
             f"total {coverage.get('total_percent')}%, "
             f"line {coverage.get('line_percent')}%, "
             f"branch {coverage.get('branch_percent')}%"

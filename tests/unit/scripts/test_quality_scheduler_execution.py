@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 from scripts.quality import retention
 from scripts.quality import runner as quality
-from scripts.quality.gates import repository
 
 
 def test_unrelated_gate_continues_after_failure(
@@ -36,7 +35,6 @@ def test_unrelated_gate_continues_after_failure(
         lambda _profile: ("run", tmp_path),
     )
     monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
-    monkeypatch.setattr(repository, "git_status", lambda _environment: "")
     monkeypatch.setattr(quality, "_run_gate", run_gate)
     monkeypatch.setattr(
         retention,

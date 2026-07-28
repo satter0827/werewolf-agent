@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from scripts.quality import reporting
 from scripts.quality import runner as quality
+from scripts.quality.repository import ChangeSet, RepositorySnapshot
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -90,7 +91,7 @@ def test_run_metrics_are_machine_readable_and_human_summarized(tmp_path: Path) -
         "skipped": 1,
         "passed": 4,
     }
-    assert metrics["coverage"] == {
+    assert metrics["unit_coverage"] == {
         "total_percent": 74.0,
         "line_percent": 80.0,
         "branch_percent": 50.0,
@@ -108,7 +109,7 @@ def test_run_metrics_are_machine_readable_and_human_summarized(tmp_path: Path) -
     }
     assert metrics["benchmarks"] == [{"name": "core", "mean_ms": 1.25, "rounds": 8}]
     assert metrics["browser_artifacts"] == ["browser/desktop.png"]
-    assert "coverage: total 74.0%, line 80.0%, branch 50.0%" in summary
+    assert "unit coverage: total 74.0%, line 80.0%, branch 50.0%" in summary
     assert "`domain/game.py`: 50.0% (1/2)" in summary
     assert "benchmark `core`: mean 1.25ms, 8 rounds" in summary
 
@@ -151,10 +152,13 @@ def test_artifact_issues_change_final_state_and_exit_contract(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
         requested_profile="auto",
         selection_reason="差分からfocusを選択しました。",
+        change=ChangeSet("origin/main", "base", "head", "merge-base", ("src/app.py",)),
+        initial_repository_snapshot=RepositorySnapshot(
+            "merge-commit", "tree", "index", True, "fingerprint"
+        ),
     )
     results = [
         quality.GateResult(
@@ -179,6 +183,16 @@ def test_artifact_issues_change_final_state_and_exit_contract(
         "resolved_profile": "focus",
         "reason": "差分からfocusを選択しました。",
     }
+    assert report["schema_version"] == 3
+    assert report["execution"] == {"revision": "merge-commit", "tree": "tree"}
+    assert report["change"] == {
+        "base_ref": "origin/main",
+        "base_revision": "base",
+        "head_revision": "head",
+        "merge_base_revision": "merge-base",
+        "changed_paths": ["src/app.py"],
+    }
+    assert report["workspace"] == {"dirty": True, "fingerprint": "fingerprint"}
     assert report["results"][-1]["name"] == "artifact-validation"
     assert report["results"][-1]["state"] == "error"
     assert events[-1]["gate"] == "artifact-validation"
@@ -195,7 +209,6 @@ def test_profiles_require_their_declared_artifacts(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     gate = quality.Gate(
@@ -226,7 +239,6 @@ def test_required_artifacts_must_be_updated_by_the_current_run(tmp_path: Path) -
         run_id="run",
         run_dir=run_dir,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     gate = quality.Gate("pytest", "Python unit test", artifacts=("test-results/unit.xml",))
@@ -248,7 +260,6 @@ def test_overlapping_artifact_patterns_do_not_duplicate_report_references(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     screenshot = tmp_path / "browser" / "public" / "contact-sheet.png"
@@ -279,7 +290,6 @@ def test_success_uses_contract_artifacts_without_adding_failure_diagnostics(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     generated.write_text("{}", encoding="utf-8")
