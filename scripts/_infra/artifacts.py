@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import shutil
+import time
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -60,6 +62,8 @@ class ArtifactLayout:
 
 
 LAYOUT = ArtifactLayout()
+WINDOWS_REPLACE_ATTEMPTS = 20
+WINDOWS_REPLACE_DELAY_SECONDS = 0.05
 
 
 @contextmanager
@@ -83,15 +87,27 @@ def publish_directory(source: Path, target: Path) -> None:
     if backup.exists():
         shutil.rmtree(backup)
     if target.exists():
-        target.replace(backup)
+        replace_directory(target, backup)
     try:
-        source.replace(target)
+        replace_directory(source, target)
     except BaseException:
         if backup.exists() and not target.exists():
-            backup.replace(target)
+            replace_directory(backup, target)
         raise
     if backup.exists():
         shutil.rmtree(backup)
+
+
+def replace_directory(source: Path, target: Path) -> Path:
+    """Windowsの短時間lockだけを待ち、directoryを同一filesystem内で置換する。"""
+    for attempt in range(WINDOWS_REPLACE_ATTEMPTS):
+        try:
+            return source.replace(target)
+        except PermissionError:
+            if os.name != "nt" or attempt == WINDOWS_REPLACE_ATTEMPTS - 1:
+                raise
+            time.sleep(WINDOWS_REPLACE_DELAY_SECONDS)
+    raise AssertionError("directory置換の試行回数を超えました。")
 
 
 __all__ = [
@@ -101,5 +117,6 @@ __all__ = [
     "TEMPORARY_ROOT",
     "ArtifactLayout",
     "publish_directory",
+    "replace_directory",
     "staged_directory",
 ]

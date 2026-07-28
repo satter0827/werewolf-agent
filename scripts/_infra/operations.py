@@ -14,7 +14,7 @@ from uuid import uuid4
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
-from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT, replace_directory
 from scripts._infra.process import redact, utc_now, write_json
 
 
@@ -60,7 +60,7 @@ def publish_operation(
     (scratch / "summary.md").write_text(summary.rstrip() + "\n", encoding="utf-8")
     write_bundle_manifest(scratch)
     (scratch / ".active").unlink()
-    scratch.replace(root)
+    replace_directory(scratch, root)
     _prune_operations()
     return root / "report.json"
 
