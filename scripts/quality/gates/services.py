@@ -44,7 +44,7 @@ def build(run_dir: Path) -> list[Gate]:
             "Local Supabase preflight",
             (sys.executable, "-m", "scripts.supabase", "preflight"),
             action=start_supabase,
-            dependencies=("supabase-cleanup",),
+            dependencies=("environment", "supabase-cleanup"),
             exclusive_resources=("supabase",),
         ),
         Gate(

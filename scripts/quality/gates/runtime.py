@@ -19,6 +19,7 @@ def build() -> list[Gate]:
             "Docker non-root runtime",
             tuple(docker_commands(RUNTIME_IMAGE)[0]),
             action=check_docker_runtime,
+            dependencies=("environment",),
             exclusive_resources=("docker",),
         )
     ]

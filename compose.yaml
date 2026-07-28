@@ -5,6 +5,10 @@ x-python-build: &python-build
 
 x-python-image: &python-image werewolf-agent-quality-app:latest
 
+x-host-access: &host-access
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+
 x-auth-environment: &auth-environment
   WEREWOLF_SUPABASE_URL: ${WEREWOLF_SUPABASE_URL:-http://host.docker.internal:54321}
   WEREWOLF_SUPABASE_PUBLISHABLE_KEY: ${WEREWOLF_SUPABASE_PUBLISHABLE_KEY:-}
@@ -23,6 +27,7 @@ x-log-environment: &log-environment
 
 services:
   migrate:
+    <<: *host-access
     image: *python-image
     build: *python-build
     profiles: ["dev", "test", "e2e", "production"]
@@ -32,6 +37,7 @@ services:
     restart: "no"
 
   api:
+    <<: *host-access
     image: *python-image
     build: *python-build
     profiles: ["dev", "test", "e2e", "production"]
@@ -80,6 +86,7 @@ services:
       start_period: 5s
 
   worker:
+    <<: *host-access
     image: *python-image
     build: *python-build
     profiles: ["dev", "e2e", "production"]
@@ -110,6 +117,7 @@ services:
         condition: service_healthy
 
   streamlit:
+    <<: *host-access
     image: *python-image
     build: *python-build
     profiles: ["dev", "e2e"]
@@ -158,6 +166,7 @@ services:
     command: pytest
 
   e2e:
+    <<: *host-access
     image: werewolf-agent-quality-e2e:latest
     build:
       context: .

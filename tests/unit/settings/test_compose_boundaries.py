@@ -65,6 +65,14 @@ def test_compose_uses_a_container_reachable_database_dsn() -> None:
     assert "WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_SUPABASE_DB_DSN:-}" not in compose
 
 
+def test_host_services_resolve_the_host_gateway_on_every_platform() -> None:
+    """Docker DesktopとLinux runnerで同じhost名からlocal Supabaseへ接続する。"""
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    assert '"host.docker.internal:host-gateway"' in compose
+    assert compose.count("<<: *host-access") == 5
+
+
 def test_worker_graph_limit_matches_packaged_default() -> None:
     """Composeが有効なgraph上限を古い値で上書きしない。"""
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
