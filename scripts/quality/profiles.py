@@ -72,9 +72,15 @@ def build_profile(
         "openapi",
         *INTEGRATION_GATES,
         "package",
-        "clean-tree",
     }
-    release = {*check, "supabase-preflight", "supabase-integration", "e2e", "docker"}
+    release = {
+        *check,
+        "supabase-preflight",
+        "supabase-lint",
+        "supabase-integration",
+        "e2e",
+        "docker",
+    }
     names = {
         "focus": focus,
         "check": check,

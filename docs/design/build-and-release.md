@@ -15,12 +15,13 @@ credential、local `.env`、cache、品質reportは配布物へ含めない。
 
 ## 手順
 
-1. lock file、FastAPIから生成したOpenAPI、checked-in `contracts/openapi.json`が一致することを確認する。
-2. `scripts/README.md`に定義したリリースプロファイルをfresh実行する。
-3. Python packageとcontainer imageを同じrevisionから作る。
-4. migrationを対象環境へ適用できることを検証する。
-5. artifactのversion、digest、検証reportを関連付ける。
-6. 承認された配布基盤がartifactを配置し、起動時検証を行う。
+1. `develope`から`main`へのPRであることを確認する。
+2. lock file、FastAPIから生成したOpenAPI、checked-in `contracts/openapi.json`が一致することを確認する。
+3. PRのテスト用merge commitに対してDeepと対応Python版の互換性検査を実行する。
+4. Python packageとcontainer imageを同じrevisionから作る。
+5. migrationを対象環境へ適用できることを検証する。
+6. artifactのversion、digest、検証reportを関連付ける。
+7. 承認された配布基盤がartifactを配置し、起動時検証を行う。
 
 ## Versionと契約
 

@@ -9,11 +9,12 @@ import tomllib
 from dataclasses import asdict, is_dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
+from uuid import uuid4
 
 if TYPE_CHECKING:
     from _typeshed import DataclassInstance
 
-from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT, replace_directory
 from scripts._infra.process import redact, utc_now, write_json
 
 
@@ -37,7 +38,8 @@ def publish_operation(
     root = LAYOUT.operations / kind / run_id
     if root.exists():
         raise FileExistsError(root)
-    scratch = LAYOUT.runtime / "operations" / kind / run_id
+    root.parent.mkdir(parents=True, exist_ok=True)
+    scratch = root.with_name(f".{run_id}.{uuid4().hex}.staging")
     scratch.mkdir(parents=True, exist_ok=False)
     (scratch / ".active").write_text("", encoding="utf-8")
     (scratch / "logs").mkdir()
@@ -58,8 +60,7 @@ def publish_operation(
     (scratch / "summary.md").write_text(summary.rstrip() + "\n", encoding="utf-8")
     write_bundle_manifest(scratch)
     (scratch / ".active").unlink()
-    root.parent.mkdir(parents=True, exist_ok=True)
-    scratch.replace(root)
+    replace_directory(scratch, root)
     _prune_operations()
     return root / "report.json"
 

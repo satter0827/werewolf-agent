@@ -1,20 +1,35 @@
 """CIとcontainer構成が品質runnerの公開契約に従うことを検査する。"""
 
+import json
+import re
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_quality_workflow_keeps_pr_main_and_manual_coverage() -> None:
-    """PR、main、手動実行へ適切なprofileを割り当てる。"""
+def test_quality_workflow_separates_develope_and_main_boundaries() -> None:
+    """日常統合はCheck、main境界はDeepと互換性を要求する。"""
     workflow = _read(".github/workflows/quality.yml")
 
     assert "pull_request:" in workflow
-    assert "push:" in workflow
+    assert "      - develope" in workflow
+    assert "      - main" in workflow
+    assert "push:" not in workflow
+    assert 'cron: "0 18 * * 0"' in workflow
     assert "workflow_dispatch:" in workflow
+    assert "name: Develope / Check" in workflow
+    assert "name: Main / Source Branch" in workflow
+    assert "name: Main / Readiness" in workflow
+    assert "name: Main / Compatibility" in workflow
     assert "python -m scripts.quality check" in workflow
-    assert "python -m scripts.quality release" in workflow
-    assert "python -m scripts.quality deep --confirm-deep" in workflow
+    assert "python -m scripts.quality release" not in workflow
+    assert "python -m scripts.quality deep" in workflow
+    assert "--confirm-deep" in workflow
+    assert "--base-ref origin/develope" in workflow
+    assert "--base-ref origin/main" in workflow
+    assert "--head-ref ${{ github.event.pull_request.head.sha }}" in workflow
+    assert "fetch-depth: 0" in workflow
 
 
 def test_quality_workflow_uses_the_repository_environment_command() -> None:
@@ -24,14 +39,59 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     for command in (
         "python -m scripts.environment setup focus",
         "python -m scripts.environment setup check",
-        "python -m scripts.environment setup release",
         "python -m scripts.environment setup deep",
     ):
         assert command in workflow
-    assert "python -m scripts.quality focus --fresh" in workflow
+    assert "python -m scripts.environment setup release" not in workflow
+    assert "python -m scripts.quality focus" in workflow
     assert "--pull=false" not in workflow
     assert "supabase stop --no-backup" not in workflow
     assert ".werewolf-agent/operations" in workflow
+
+
+def test_workflow_actions_are_pinned_and_dependabot_targets_develope() -> None:
+    """必須CIの実装をmutable tagへ依存させない。"""
+    workflow = _read(".github/workflows/quality.yml")
+    actions = re.findall(r"uses:\s+[^@\s]+@([^\s]+)", workflow)
+
+    assert actions
+    assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for revision in actions)
+    dependabot = _read(".github/dependabot.yml")
+    assert "package-ecosystem: github-actions" in dependabot
+    assert "target-branch: develope" in dependabot
+
+
+def test_main_compatibility_matches_supported_python_versions() -> None:
+    """primary Python以外の対応版をmain互換性matrixへ含める。"""
+    workflow = _read(".github/workflows/quality.yml")
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)["project"]
+    supported = {
+        classifier.rsplit("::", maxsplit=1)[-1].strip()
+        for classifier in project["classifiers"]
+        if re.fullmatch(r"Programming Language :: Python :: 3\.\d+", classifier)
+    }
+
+    assert supported == {"3.11", "3.12", "3.13", "3.14"}
+    for version in supported - {"3.12"}:
+        assert f'"{version}"' in workflow
+
+
+def test_rulesets_require_the_stable_workflow_checks() -> None:
+    """version管理したrulesetとworkflowの必須check名を一致させる。"""
+    workflow = _read(".github/workflows/quality.yml")
+    expected = {
+        "develope.json": {"Develope / Check"},
+        "main.json": {"Main / Source Branch", "Main / Readiness", "Main / Compatibility"},
+    }
+    for filename, contexts in expected.items():
+        document = json.loads(_read(f".github/rulesets/{filename}"))
+        status_rule = next(
+            rule for rule in document["rules"] if rule["type"] == "required_status_checks"
+        )
+        actual = {item["context"] for item in status_rule["parameters"]["required_status_checks"]}
+        assert actual == contexts
+        assert all(f"name: {context}" in workflow for context in contexts)
 
 
 def test_backend_dev_image_contains_the_test_suite() -> None:

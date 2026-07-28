@@ -64,7 +64,6 @@ def test_manifest_hashes_final_redacted_report(tmp_path: Path) -> None:
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="token=secret-value",
         started_at=utc_now(),
     )
     result = GateResult("gate", "Gate", "failed", 0.0, message="token=secret-value")

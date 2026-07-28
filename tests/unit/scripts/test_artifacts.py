@@ -3,7 +3,8 @@
 from pathlib import Path
 
 import pytest
-from scripts._infra.artifacts import publish_directory, staged_directory
+from scripts._infra import artifacts
+from scripts._infra.artifacts import publish_directory, replace_directory, staged_directory
 
 
 def test_staged_directory_uses_repository_runtime_and_cleans_up(
@@ -61,3 +62,29 @@ def test_publish_directory_restores_previous_build_on_failure(
         publish_directory(staging, target)
 
     assert (target / "index.html").read_text(encoding="utf-8") == "old"
+
+
+def test_replace_directory_retries_transient_permission_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Windowsの短時間lockを待って同一filesystem内の公開を完了する。"""
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    attempts = 0
+    original_replace = Path.replace
+
+    def transient_replace(path: Path, destination: Path) -> Path:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise PermissionError("temporarily locked")
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", transient_replace)
+    monkeypatch.setattr(artifacts.os, "name", "nt")
+    monkeypatch.setattr(artifacts.time, "sleep", lambda _seconds: None)
+
+    assert replace_directory(source, target) == target
+    assert attempts == 2
+    assert target.is_dir()

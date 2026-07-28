@@ -52,7 +52,6 @@ def _game(preset_id: str, seed: int) -> Game:
     )
 
 
-@pytest.mark.monkey
 class GameStateMachine(RuleBasedStateMachine):
     """公開capabilityだけから有効操作を組み立てる。"""
 
@@ -129,7 +128,7 @@ class GameStateMachine(RuleBasedStateMachine):
         assert self.game.snapshot() == before
 
 
-TestGameStateMachine = GameStateMachine.TestCase
+TestGameStateMachine = pytest.mark.monkey(GameStateMachine.TestCase)
 
 
 def test_public_actions_do_not_accept_ability_ids() -> None:

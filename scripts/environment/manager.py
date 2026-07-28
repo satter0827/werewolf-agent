@@ -29,7 +29,6 @@ from scripts._infra.process import (
     utc_now,
 )
 from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, SUPPORTED_CLI_VERSION
-from scripts.supabase.preflight import prepare_isolated_project
 
 STATE_ROOT = ARTIFACT_ROOT / "runtime" / "environment"
 LOCK_PATH = STATE_ROOT / "setup.lock"
@@ -61,6 +60,13 @@ ERROR_SUPABASE_VERSION_MISMATCH = "environment.supabase_cli_version_mismatch"
 ERROR_COMMAND_FAILED = "environment.command_failed"
 ERROR_CLEANUP_FAILED = "environment.cleanup_failed"
 ERROR_FINGERPRINT_MISMATCH = "environment.fingerprint_mismatch"
+
+
+def prepare_isolated_project(isolated_root: Path) -> tuple[Path, str]:
+    """Deep環境が必要になった時点でSupabase用依存を読み込む。"""
+    from scripts.supabase.preflight import prepare_isolated_project as prepare
+
+    return prepare(isolated_root)
 
 
 @dataclass(frozen=True, slots=True)

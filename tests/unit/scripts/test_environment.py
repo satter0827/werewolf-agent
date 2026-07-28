@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -10,6 +12,24 @@ from scripts._infra.artifacts import ArtifactLayout
 from scripts._infra.process import CommandResult
 from scripts.environment import manager
 from scripts.quality import impact
+
+
+def test_environment_manager_import_does_not_load_deep_supabase_dependencies() -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; import scripts.environment.manager; "
+                "assert 'scripts.supabase.preflight' not in sys.modules"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 class _Distribution:

@@ -22,7 +22,6 @@ def _context(root: Path) -> RunContext:
         run_id="current",
         run_dir=run,
         environment={},
-        initial_git_status="",
         started_at=datetime.now(UTC),
         initial_dependency_fingerprint="dependencies",
     )

@@ -78,8 +78,12 @@ def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     """local DB不足時も外部serviceへ依存しないdeep testを実行できる。"""
     gates = {gate.name: gate for stage in _profile_stages("deep", jobs=1) for gate in stage}
 
+    assert "--test-level=check" in gates["pytest"].command
+    assert "--confirm-deep" not in gates["pytest"].command
     assert gates["deep-tests"].dependencies == ()
-    assert "deep" in gates["deep-tests"].command
+    assert "--test-level=deep" in gates["deep-tests"].command
+    assert "--confirm-deep" in gates["deep-tests"].command
+    assert "monkey" in gates["deep-tests"].command
     assert gates["deep-integration"].dependencies == ()
     assert gates["deep-integration"].exclusive_resources == ()
     assert "deep and not supabase" in gates["deep-integration"].command

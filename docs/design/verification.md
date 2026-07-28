@@ -21,6 +21,9 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 `auto`の変更pathと選定結果の対応は`scripts/quality/impact.toml`を正本とする。具体的な
 実行コマンド、`--fresh`、個別gate、環境準備は`scripts/README.md`が所有する。
 
+`--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
+現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
+
 ## 外部接続境界
 
 品質プロセスからprovider credentialと外部base URLを除去し、fake providerとtelemetryの
@@ -51,6 +54,16 @@ domainテストは状態遷移、復元snapshot、役職構成、終局結果、
 client faultテストはAPI、Auth、database、operation queue、worker、LLM、翻訳overrideを個別に
 故障させ、停止範囲が依存するfeatureに限られることを確認する。環境準備テストはfingerprint、
 Docker、image、隔離Supabase projectを独立して検証する。
+
+リリースとDeepはlocal Supabaseのschema lint、Data API grant、RLS、policy、公開view、privileged
+functionを検査する。認証user間のbehaviorテストは、本人の操作を許可し、他利用者と匿名userの
+操作を拒否することを確認する。
+
+runnerはgate開始前後のGit revision、tree、index、tracked差分、非ignore未追跡fileを比較する。
+品質実行がリポジトリを変更した場合は`repository-stability`として不合格にする。
+
+品質reportは実行revisionとtree、base、head、merge-base、変更path、workspace fingerprintを持つ。
+PRではテスト用merge commitを実行revisionとして記録し、検証した内容をcommit名だけに依存せず追跡する。
 
 coverage、benchmark、ゲームバランス、会話品質には、根拠のない合否閾値を設けない。観測値と
 読解用証拠の契約は、{ref}`evidence-diagnostics`で定義する。

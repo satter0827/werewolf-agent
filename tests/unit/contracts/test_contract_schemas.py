@@ -21,3 +21,16 @@ def test_setup_selection_is_discriminated_by_mode() -> None:
     )
 
     assert selection.mode == "template"
+
+
+def test_setup_wire_models_reject_unknown_fields() -> None:
+    """未知fieldを無視してschema適合入力へ見せない。"""
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        SavedSetupRequest.model_validate(
+            {
+                "mode": "saved",
+                "setup_id": "setup-1",
+                "revision": 3,
+                "unknown": True,
+            }
+        )

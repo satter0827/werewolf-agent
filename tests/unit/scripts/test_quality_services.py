@@ -20,7 +20,7 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """過去runの品質projectだけを列挙して停止する。"""
+    """containerとvolumeから過去runの品質projectだけを列挙して停止する。"""
     commands: list[list[str]] = []
 
     def fake_run(command: list[str], **_kwargs: object) -> support.CommandResult:
@@ -32,6 +32,13 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
                 0.0,
                 "development\nwerewolf-agent-quality-old\nwerewolf-agent-quality-old\n",
             )
+        if command[:3] == ["docker", "volume", "ls"]:
+            return support.CommandResult(
+                command,
+                0,
+                0.0,
+                "development\nwerewolf-agent-quality-volume-only\n",
+            )
         return support.CommandResult(command, 0, 0.0, "stopped\n")
 
     monkeypatch.setattr(services, "run_command", fake_run)
@@ -42,21 +49,27 @@ def test_cleanup_orphaned_supabase_stops_only_quality_projects(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
 
     result = services.cleanup_orphaned_supabase(context, tmp_path)
 
     assert result.returncode == 0
-    assert commands[1] == [
+    assert commands[2] == [
         "supabase",
         "stop",
         "--project-id",
         "werewolf-agent-quality-old",
         "--no-backup",
     ]
-    assert len(commands) == 2
+    assert commands[3] == [
+        "supabase",
+        "stop",
+        "--project-id",
+        "werewolf-agent-quality-volume-only",
+        "--no-backup",
+    ]
+    assert len(commands) == 4
 
 
 def test_repository_gate_rejects_undefined_artifact_areas(
@@ -76,7 +89,6 @@ def test_repository_gate_rejects_undefined_artifact_areas(
         run_id="run",
         run_dir=tmp_path / "run",
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
 
@@ -117,7 +129,6 @@ def test_execute_stops_owned_supabase_when_runner_is_interrupted(
 
     monkeypatch.setattr(quality, "create_run_directory", lambda _profile: ("run", tmp_path))
     monkeypatch.setattr(quality, "quality_environment", lambda **_kwargs: {})
-    monkeypatch.setattr(repository, "git_status", lambda _environment: "")
     monkeypatch.setattr(quality, "_profile_stages", lambda *_args, **_kwargs: stages)
     monkeypatch.setattr(quality, "_run_gate", run_gate)
 
@@ -152,7 +163,6 @@ def test_supabase_cleanup_removes_isolated_cli_profile(
         run_id="run",
         run_dir=tmp_path,
         environment={"SUPABASE_HOME": str(profile)},
-        initial_git_status="",
         started_at=quality.utc_now(),
         resources={
             "supabase": ResourceLease(
@@ -190,7 +200,6 @@ def test_supabase_cleanup_failure_keeps_lease_for_diagnostics(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
         resources={"supabase": lease},
     )
@@ -221,7 +230,6 @@ def test_supabase_ownership_is_recorded_before_preflight(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     monkeypatch.setattr(services, "LAYOUT", ArtifactLayout(tmp_path / ".werewolf-agent"))
@@ -252,7 +260,6 @@ def test_blocked_supabase_preflight_releases_local_ownership(
         run_id="run",
         run_dir=tmp_path,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
     monkeypatch.setattr(services, "LAYOUT", ArtifactLayout(tmp_path / ".werewolf-agent"))
@@ -271,3 +278,43 @@ def test_blocked_supabase_preflight_releases_local_ownership(
     assert lease.cleanup_required is False
     assert lease.workdir is None
     assert lease.identifier is None
+
+
+def test_supabase_lint_uses_the_owned_local_project(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """schema lintを品質run固有workdirへ限定する。"""
+    context = quality.RunContext(
+        profile="release",
+        jobs=1,
+        timeout_seconds=120,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={"QUALITY": "1"},
+        started_at=quality.utc_now(),
+    )
+    context.resources["supabase"] = ResourceLease("supabase", workdir=tmp_path / "project")
+    captured: dict[str, object] = {}
+
+    def run(command: list[str], **kwargs: object) -> quality.CommandResult:
+        captured["command"] = command
+        captured["environment"] = kwargs["environment"]
+        return quality.CommandResult(command, 0, 0.0, "No schema errors found")
+
+    monkeypatch.setattr(services, "run_command", run)
+
+    result = services.lint_supabase(context, tmp_path)
+
+    assert result.returncode == 0
+    assert captured["command"] == [
+        "supabase",
+        "db",
+        "lint",
+        "--local",
+        "--fail-on",
+        "error",
+        "--workdir",
+        str(tmp_path / "project"),
+    ]
+    assert captured["environment"] == context.environment

@@ -1,14 +1,14 @@
-"""Repository構造とcleanlinessのgate。"""
+"""Repository構造のgate。"""
 
 import sys
 import time
 from pathlib import Path
 
 from scripts._infra.artifacts import LAYOUT
-from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
+from scripts._infra.process import REPOSITORY_ROOT, CommandResult
 from scripts.quality.models import Gate, RunContext
 
-GATES = ("repository", "architecture", "clean-tree")
+GATES = ("repository", "architecture")
 
 
 def build() -> list[Gate]:
@@ -33,12 +33,6 @@ def build() -> list[Gate]:
                 "outputs/architecture/domain-structure.svg",
             ),
         ),
-        Gate(
-            "clean-tree",
-            "Tracked file unchanged",
-            ("git", "status", "--porcelain=v1"),
-            action=check_clean_tree,
-        ),
     ]
 
 
@@ -58,35 +52,6 @@ _ALLOWED_ARTIFACT_CHILDREN = frozenset(
     {"cache", "diagnostics", "logs", "operations", "outputs", "quality", "reviews", "runtime"}
 )
 _ALLOWED_QUALITY_CHILDREN = frozenset({".publish.lock", "history", "profiles"})
-
-
-def git_status(environment: dict[str, str]) -> str:
-    """Git working treeのporcelain状態を返す。"""
-    result = run_command(
-        ["git", "status", "--porcelain=v1"],
-        timeout_seconds=30,
-        environment=environment,
-    )
-    if result.timed_out:
-        raise RuntimeError("Git working treeの確認がtimeoutしました。")
-    if result.returncode != 0:
-        raise RuntimeError("Git working treeの状態を取得できませんでした。")
-    return result.output
-
-
-def check_clean_tree(context: RunContext, _: Path) -> CommandResult:
-    """品質実行がtracked fileを変更していないことを検査する。"""
-    started = time.monotonic()
-    current = git_status(context.environment)
-    output = ""
-    if current != context.initial_git_status:
-        output = "品質実行によりtracked fileが変更されました。\n" + current
-    return CommandResult(
-        ["git", "status", "--porcelain=v1"],
-        0 if not output else 1,
-        time.monotonic() - started,
-        output,
-    )
 
 
 def check_artifact_placement(_: RunContext, __: Path) -> CommandResult:
@@ -129,6 +94,4 @@ __all__ = [
     "GATES",
     "build",
     "check_artifact_placement",
-    "check_clean_tree",
-    "git_status",
 ]

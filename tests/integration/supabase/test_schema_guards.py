@@ -89,6 +89,119 @@ def test_rls_is_enabled_for_public_user_tables() -> None:
 
 
 @pytest.mark.serial
+def test_exposed_data_api_objects_have_matching_rls_policies() -> None:
+    """Data API grantに必要なRLS policyが実DBに残っていることを確認する。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        violations = connection.execute(
+            """
+            with exposed_grants as (
+              select distinct table_name, grantee, privilege_type
+              from information_schema.role_table_grants
+              where table_schema = 'public'
+                and grantee in ('anon', 'authenticated')
+            ), policy_contract as (
+              select tablename, cmd, roles, qual, with_check
+              from pg_policies
+              where schemaname = 'public'
+            )
+            select grant_row.table_name, grant_row.grantee, grant_row.privilege_type
+            from exposed_grants grant_row
+            join pg_class relation on relation.relname = grant_row.table_name
+            join pg_namespace namespace on namespace.oid = relation.relnamespace
+              and namespace.nspname = 'public'
+            where relation.relkind = 'r'
+              and (
+                not relation.relrowsecurity
+                or not exists (
+                  select 1
+                  from policy_contract policy
+                  where policy.tablename = grant_row.table_name
+                    and (
+                      grant_row.grantee::name = any(policy.roles)
+                      or 'public'::name = any(policy.roles)
+                    )
+                    and policy.cmd in ('ALL', grant_row.privilege_type)
+                    and case grant_row.privilege_type
+                      when 'SELECT' then policy.qual is not null
+                      when 'INSERT' then policy.with_check is not null
+                      when 'UPDATE' then policy.qual is not null and policy.with_check is not null
+                      when 'DELETE' then policy.qual is not null
+                      else true
+                    end
+                )
+                or (
+                  grant_row.privilege_type = 'UPDATE'
+                  and not exists (
+                    select 1
+                    from policy_contract policy
+                    where policy.tablename = grant_row.table_name
+                      and (
+                        grant_row.grantee::name = any(policy.roles)
+                        or 'public'::name = any(policy.roles)
+                      )
+                      and policy.cmd in ('ALL', 'SELECT')
+                      and policy.qual is not null
+                  )
+                )
+              )
+            order by grant_row.table_name, grant_row.grantee, grant_row.privilege_type
+            """
+        ).fetchall()
+
+    assert violations == []
+
+
+@pytest.mark.serial
+def test_exposed_schema_has_no_unsafe_policy_or_privileged_function() -> None:
+    """編集可能claimと公開privileged functionを認可境界へ持ち込まない。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        unsafe_policies = connection.execute(
+            """
+            select tablename, policyname
+            from pg_policies
+            where schemaname = 'public'
+              and concat_ws(' ', qual, with_check) ~*
+                '(user_metadata|raw_user_meta_data|auth\\.role)'
+            order by tablename, policyname
+            """
+        ).fetchall()
+        unsafe_functions = connection.execute(
+            """
+            select routine.proname
+            from pg_proc routine
+            join pg_namespace namespace on namespace.oid = routine.pronamespace
+            where namespace.nspname = 'public'
+              and routine.prosecdef
+              and (
+                has_function_privilege('anon', routine.oid, 'EXECUTE')
+                or has_function_privilege('authenticated', routine.oid, 'EXECUTE')
+              )
+            order by routine.proname
+            """
+        ).fetchall()
+        unsafe_views = connection.execute(
+            """
+            select relation.relname
+            from pg_class relation
+            join pg_namespace namespace on namespace.oid = relation.relnamespace
+            where namespace.nspname = 'public'
+              and relation.relkind = 'v'
+              and (
+                has_table_privilege('anon', relation.oid, 'SELECT')
+                or has_table_privilege('authenticated', relation.oid, 'SELECT')
+              )
+              and not coalesce(relation.reloptions, array[]::text[])
+                @> array['security_invoker=true']
+            order by relation.relname
+            """
+        ).fetchall()
+
+    assert unsafe_policies == []
+    assert unsafe_functions == []
+    assert unsafe_views == []
+
+
+@pytest.mark.serial
 def test_operation_request_has_idempotency_constraint() -> None:
     """同一利用者の同一要求をDB境界で重複登録させない。"""
 
@@ -103,6 +216,32 @@ def test_operation_request_has_idempotency_constraint() -> None:
         ).fetchall()
 
     assert any("owner_user_id, idempotency_key" in definition for (definition,) in definitions)
+
+
+@pytest.mark.serial
+def test_data_api_roles_cannot_access_game_tables_directly() -> None:
+    """匿名・認証済みuserのgame操作をFastAPI境界へ限定する。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        privileges = connection.execute(
+            """
+            select role_name, table_name, privilege_name,
+                   has_table_privilege(role_name, 'public.' || table_name, privilege_name)
+            from (values ('anon'), ('authenticated')) roles(role_name)
+            cross join (values
+              ('games'),
+              ('game_summaries'),
+              ('game_participants'),
+              ('game_public_turns'),
+              ('game_operation_requests')
+            ) tables(table_name)
+            cross join (values ('SELECT'), ('INSERT'), ('UPDATE'), ('DELETE'))
+              privileges(privilege_name)
+            order by role_name, table_name, privilege_name
+            """
+        ).fetchall()
+
+    assert privileges
+    assert all(not granted for *_contract, granted in privileges)
 
 
 @pytest.mark.serial

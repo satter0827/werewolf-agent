@@ -28,7 +28,6 @@ def test_contract_comparison_ignores_platform_newline_difference(
         run_id="run",
         run_dir=run_dir,
         environment={},
-        initial_git_status="",
         started_at=quality.utc_now(),
     )
 

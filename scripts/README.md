@@ -30,6 +30,7 @@ workdirを指定して停止する。Docker Desktopは自動起動しない。
 uv run --no-sync python -m scripts.quality auto
 uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check --fresh
+uv run --no-sync python -m scripts.quality check --base-ref origin/develope --head-ref HEAD --fresh
 uv run --no-sync python -m scripts.quality release --fresh
 uv run --no-sync python -m scripts.quality deep --confirm-deep --fresh
 uv run --no-sync python -m scripts.quality gate python-static
@@ -44,11 +45,12 @@ uv run --no-sync python -m scripts.quality clean
 | `auto` | `scripts/quality/impact.toml`により変更pathからプロファイルまたは部分gateを選ぶ |
 | `focus` | architecture、format、lint、型、unit、軽量stateful |
 | `check` | Focus、coverage、offline integration、docs、OpenAPI、Schemathesis、package |
-| `release` | Check、local Supabase、API、worker、Streamlit E2E、container |
+| `release` | Check、local Supabase lint、API、worker、Streamlit E2E、container |
 | `deep` | 長時間stateful、fault injection、benchmark観測 |
 
 プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
 成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
+`--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
@@ -75,6 +77,19 @@ pathとSHA-256で参照する。
 テスト結果、coverage、ブラウザー成果物を持つ。manifestのproducer、分類、MIME、size、SHA-256で
 証拠の出所と実在を確認する。未完了gateも`skipped`として残し、runner中断や初期検査失敗も
 reportへ確定する。
+
+`report.json`は検証したrevisionとtree、base、head、merge-base、変更path、workspace fingerprintを
+保持する。runnerは全gateとresource cleanupの終了後にリポジトリ状態を再取得し、実行中の副作用を
+`repository-stability`で判定する。
+
+## BranchとCI
+
+短期branchは`develope`から作成し、PRで取り込む。`develope`向けPRはPython 3.12のCheckだけを
+必須とする。`main`向けPRは`develope`から作成し、Deepと対応Python版の互換性検査を必須とする。
+
+すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
+適用した後にGitHub APIから読み戻して確認する。週次Deepは`develope`の早期検知に使用し、通常の
+merge条件には含めない。
 
 ## ブラウザーE2E
 

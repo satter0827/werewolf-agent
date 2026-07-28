@@ -22,6 +22,9 @@ schema.config.generation.update(
     modes=[GenerationMode.POSITIVE],
     deterministic=True,
 )
+# JSON Schemaはrequest全体のencode後byte数を表現できない。schema適合bodyでも
+# transport上限を超えた場合の413はAPI contractに沿った受理可能な結果とする。
+schema.config.checks.positive_data_acceptance.expected_statuses.append("413")
 BaseWorkflow = schema.as_state_machine()
 
 

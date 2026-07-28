@@ -15,6 +15,14 @@
 5. OpenAPI contract、設定例、不要な旧構造を同じ変更で整える。
 6. 対象gateと品質プロファイルを実行する。
 
+## Branch
+
+`develope`は日常の統合、`main`はリリース可能な状態を所有する。短期branchは`develope`から
+作成し、PRで`develope`へ取り込む。リリースは`develope`から`main`へのPRだけで行う。
+
+すべてのPRはmerge commitで取り込む。squash mergeとrebase mergeは使用せず、共有branchを
+force-pushしない。正常なリリース後に`main`を`develope`へ逆mergeしない。
+
 ## 境界
 
 - domain ruleはdomain、利用者要求の調整はapplicationに置く。
@@ -53,3 +61,6 @@ gateはpytest markerと公開コマンドだけを使い、テストソースコ
 formatter、lint、型、対象テストを先に実行し、変更範囲に応じてFocus、Check、
 リリース、Deepへ広げる。完成した仕様は`docs/design`、再利用する調査と引継ぎだけを
 `docs/notes`へ置き、完了した一時記録と生成証拠は`.werewolf-agent`へ移す。
+
+`develope`向けPRはCheckを必須とする。`main`向けPRはheadを`develope`に限定し、Deepと
+対応Python版の互換性検査を必須とする。`main`へのpushでは同じ検査を再実行しない。

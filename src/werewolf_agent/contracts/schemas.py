@@ -188,10 +188,14 @@ class PlayerIdentitySettings(BaseModel):
     age_max: int = Field(ge=18, le=120)
     gender: str
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
 
 class PublicPersonaSettings(BaseModel):
     personality: str
     speaking_style: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class PrivateStrategySettings(BaseModel):
@@ -199,11 +203,15 @@ class PrivateStrategySettings(BaseModel):
     risk_tolerance: Literal["low", "medium", "high"]
     evidence_focus: str
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
 
 class PlayerGenerationSettings(BaseModel):
     identities: tuple[PlayerIdentitySettings, ...]
     public_personas: tuple[PublicPersonaSettings, ...]
     private_strategies: tuple[PrivateStrategySettings, ...]
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class GameSetupDocumentRequest(BaseModel):
@@ -219,16 +227,22 @@ class TemplateSetupRequest(BaseModel):
     mode: Literal["template"]
     template_id: str
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
 
 class SavedSetupRequest(BaseModel):
     mode: Literal["saved"]
     setup_id: str
     revision: int = Field(ge=1)
 
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
 
 class InlineSetupRequest(BaseModel):
     mode: Literal["inline"]
     document: GameSetupDocumentRequest
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 GameSetupSelectionRequest = Annotated[

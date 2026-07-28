@@ -33,7 +33,6 @@ from scripts._infra.process import (
     utc_now,
 )
 from scripts.environment.manager import python_installation_fingerprint
-from scripts.quality.gates import repository as repository_gate
 from scripts.quality.gates import services as services_gate
 from scripts.quality.models import (
     FailureState,
@@ -49,6 +48,7 @@ from scripts.quality.reporting import (
 from scripts.quality.reporting import (
     write_summary as _write_summary,
 )
+from scripts.quality.repository import ChangeSet, capture_snapshot, resolve_changes
 
 PROFILE_ORDER = ("focus", "check", "release", "deep")
 BUILD_DIRECTORIES = (
@@ -321,6 +321,9 @@ def execute(
     fresh: bool = False,
     requested_profile: str | None = None,
     selection_reason: str = "",
+    base_ref: str | None = None,
+    head_ref: str = "HEAD",
+    change: ChangeSet | None = None,
 ) -> tuple[State, Path]:
     """指定profileのgateを段階ごとに並列実行する。"""
     from scripts.quality.retention import mark_run_active, recover_abandoned_runs
@@ -336,8 +339,8 @@ def execute(
         run_id=run_id,
         run_dir=run_dir,
         environment=environment,
-        initial_git_status="",
         started_at=utc_now(),
+        change=change or ChangeSet(base_ref, None, "", None, ()),
         requested_profile=requested_profile or profile,
         selection_reason=selection_reason,
         fresh=fresh,
@@ -365,7 +368,8 @@ def execute(
     else:
         stages = stages_override or _profile_stages(profile, jobs, run_dir, settings, fresh=fresh)
     try:
-        context.initial_git_status = repository_gate.git_status(environment)
+        context.change = change or resolve_changes(base_ref, head_ref)
+        context.initial_repository_snapshot = capture_snapshot()
         context.initial_dependency_fingerprint = python_installation_fingerprint()
     except KeyboardInterrupt:
         message = "品質実行が初期化中に中断されました。"
@@ -525,6 +529,9 @@ def execute(
             results.append(stopped)
             _append_events(event_path, [stopped])
 
+    repository_stability = _repository_stability_result(context)
+    results.append(repository_stability)
+    _append_events(event_path, [repository_stability])
     stability = _environment_stability_result(context)
     results.append(stability)
     _append_events(event_path, [stability])
@@ -537,6 +544,39 @@ def execute(
     from scripts.quality.retention import publish_run
 
     return state, publish_run(run_dir, context.profile, state)
+
+
+def _repository_stability_result(context: RunContext) -> GateResult:
+    """品質実行全体がrepository状態を変更していないことを返す。"""
+    started = time.monotonic()
+    log_path = context.run_dir / "logs" / "repository-stability.log"
+    try:
+        current = capture_snapshot()
+        changed = current != context.initial_repository_snapshot
+        message = "品質実行によりrepository状態が変更されました。" if changed else None
+        log_path.write_text((message or "Repository状態は不変です。") + "\n", encoding="utf-8")
+        return GateResult(
+            "repository-stability",
+            "Repository state unchanged",
+            "failed" if changed else "passed",
+            time.monotonic() - started,
+            command=["git-repository-snapshot"],
+            returncode=1 if changed else 0,
+            log=log_path.relative_to(context.run_dir).as_posix(),
+            message=message,
+        )
+    except (OSError, RuntimeError) as error:
+        message = f"Repository状態を再確認できません: {error}"
+        log_path.write_text(message + "\n", encoding="utf-8")
+        return GateResult(
+            "repository-stability",
+            "Repository state unchanged",
+            "error",
+            time.monotonic() - started,
+            command=["git-repository-snapshot"],
+            log=log_path.relative_to(context.run_dir).as_posix(),
+            message=message,
+        )
 
 
 def _environment_stability_result(context: RunContext) -> GateResult:
@@ -611,6 +651,8 @@ def build_parser(settings: QualitySettings | None = None) -> argparse.ArgumentPa
     parser.add_argument("--confirm-deep", action="store_true")
     parser.add_argument("--fresh", action="store_true")
     parser.add_argument("--explain", action="store_true")
+    parser.add_argument("--base-ref")
+    parser.add_argument("--head-ref", default="HEAD")
     return parser
 
 
@@ -698,10 +740,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     requested_profile = arguments.profile
     selectors: Sequence[str] | None = None
     impact_reason = "profileを明示指定しました。"
+    change: ChangeSet | None = None
+    try:
+        change = resolve_changes(arguments.base_ref, arguments.head_ref)
+    except RuntimeError as error:
+        print(str(error), file=sys.stderr)
+        return 2
     if arguments.profile == "auto":
         from scripts.quality.impact import decide
 
-        decision = decide()
+        decision = decide(change.changed_paths)
         arguments.profile = decision.profile
         selectors = decision.selectors or None
         impact_reason = decision.reason
@@ -761,6 +809,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                     fresh=arguments.fresh,
                     requested_profile=requested_profile,
                     selection_reason=impact_reason,
+                    base_ref=arguments.base_ref,
+                    head_ref=arguments.head_ref,
+                    change=change,
                 )
         else:
             state, report_path = execute(
@@ -772,6 +823,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 fresh=arguments.fresh,
                 requested_profile=requested_profile,
                 selection_reason=impact_reason,
+                base_ref=arguments.base_ref,
+                head_ref=arguments.head_ref,
+                change=change,
             )
     except Timeout:
         print("release/deepのhost排他lockを取得できませんでした。", file=sys.stderr)

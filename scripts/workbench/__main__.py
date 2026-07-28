@@ -129,7 +129,11 @@ def _open_latest_report() -> int:
         return 2
     report = reports[0]
     if os.name == "nt":
-        os.startfile(report)
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            print("この環境では品質reportを開けません。", file=sys.stderr)
+            return 1
+        startfile(report)
     else:
         print(report)
     return 0

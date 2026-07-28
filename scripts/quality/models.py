@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Literal
 
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult
+from scripts.quality.repository import ChangeSet, RepositorySnapshot
 
 State = Literal["passed", "failed", "error", "blocked", "skipped"]
 FailureState = Literal["failed", "error", "blocked"]
@@ -82,8 +83,9 @@ class RunContext:
     run_id: str
     run_dir: Path
     environment: dict[str, str]
-    initial_git_status: str
     started_at: datetime
+    change: ChangeSet = field(default_factory=lambda: ChangeSet(None, None, "", None, ()))
+    initial_repository_snapshot: RepositorySnapshot | None = None
     requested_profile: str | None = None
     selection_reason: str = ""
     fresh: bool = False
@@ -97,6 +99,7 @@ __all__ = [
     "Gate",
     "GateResult",
     "QualitySettings",
+    "RepositorySnapshot",
     "ResourceLease",
     "RunContext",
     "State",
