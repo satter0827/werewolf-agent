@@ -84,3 +84,16 @@ def test_catalog_scenarios_reference_real_streamlit_tests() -> None:
     )
 
     assert referenced == functions
+
+
+def test_catalog_captures_only_stable_application_states() -> None:
+    """完了時刻に左右される一過性statusを必須captureにしない。"""
+    catalog = load_catalog()
+
+    assert "gameplay-progress" not in catalog["captures"]
+    assert {
+        "gameplay-waiting",
+        "gameplay-speech",
+        "gameplay-target",
+        "gameplay-complete",
+    }.issubset(catalog["captures"])
