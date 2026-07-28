@@ -28,7 +28,7 @@ from scripts.agents.review import (
     preflight,
     validate_loopback_base_url,
 )
-from scripts.browser.e2e import create_contact_sheet
+from scripts.browser.e2e import create_contact_sheet, restore_container_artifact_ownership
 from scripts.supabase.preflight import (
     SupabaseOperationError,
     SupabasePreflight,
@@ -129,6 +129,12 @@ def _execute_local_ui(run_dir: Path, environment: dict[str, str]) -> tuple[Revie
                 execution_returncode = result.returncode
                 break
     finally:
+        ownership = restore_container_artifact_ownership(
+            run_dir,
+            environment=compose_environment,
+        )
+        transcript.append(ownership.output)
+        execution_returncode = execution_returncode or ownership.returncode
         if execution_returncode != 0:
             try:
                 _write_json(

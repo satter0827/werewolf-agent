@@ -85,6 +85,7 @@ def run_e2e(
     output.append(initial_cleanup.output)
     before = _owned_resource_snapshot(environment)
     execution = CommandResult([], 0, 0.0, "")
+    ownership = CommandResult([], 0, 0.0, "")
     try:
         for command in commands:
             execution = run_command(
@@ -95,8 +96,14 @@ def run_e2e(
             output.append(execution.output)
             if execution.returncode != 0:
                 break
-        create_contact_sheet(artifact_directory / "public")
     finally:
+        ownership = restore_container_artifact_ownership(
+            artifact_directory,
+            environment=environment,
+        )
+        output.append(ownership.output)
+        if ownership.returncode == 0:
+            create_contact_sheet(artifact_directory / "public")
         service_log_root = artifact_directory / "logs"
         service_log_root.mkdir(parents=True, exist_ok=True)
         for service in ("migrate", "api", "worker", "streamlit"):
@@ -148,11 +155,56 @@ def run_e2e(
             )
     return CommandResult(
         command=execution.command or list(commands[-1]),
-        returncode=execution.returncode or cleanup.returncode,
+        returncode=execution.returncode or ownership.returncode or cleanup.returncode,
         duration_seconds=time.monotonic() - started,
         output="".join(output),
         timed_out=execution.timed_out or cleanup.timed_out,
     )
+
+
+def restore_container_artifact_ownership(
+    artifact_directory: Path,
+    *,
+    environment: Mapping[str, str],
+) -> CommandResult:
+    """Linux containerが生成したbind mount成果物をhost利用者の所有へ戻す。"""
+    identity = _host_identity()
+    if identity is None:
+        return CommandResult([], 0, 0.0, "")
+    uid, gid = identity
+    mount_target = "/tmp/werewolf-agent/playwright"
+    mount = f"{artifact_directory.resolve()}:{mount_target}"
+    return run_command(
+        [
+            "docker",
+            "compose",
+            "--profile",
+            "e2e",
+            "run",
+            "--rm",
+            "--no-deps",
+            "--pull",
+            "never",
+            "--volume",
+            mount,
+            "e2e",
+            "chown",
+            "-R",
+            f"{uid}:{gid}",
+            mount_target,
+        ],
+        timeout_seconds=60,
+        environment=environment,
+    )
+
+
+def _host_identity() -> tuple[int, int] | None:
+    """POSIX hostのUID/GIDを返し、Windowsでは所有権調整を無効にする。"""
+    getuid = getattr(os, "getuid", None)
+    getgid = getattr(os, "getgid", None)
+    if getuid is None or getgid is None:
+        return None
+    return int(getuid()), int(getgid())
 
 
 def _owned_resource_snapshot(environment: Mapping[str, str]) -> dict[str, list[str]]:
