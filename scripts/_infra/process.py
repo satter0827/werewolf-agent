@@ -140,13 +140,69 @@ def _redact_text_secret(match: re.Match[str]) -> str:
     return f"{match.group(1)}[REDACTED]"
 
 
+def _is_sensitive_key(key: str) -> bool:
+    normalized = key.casefold()
+    return normalized not in _TOKEN_METRIC_KEYS and any(
+        fragment in normalized for fragment in (*_SECRET_KEYS, *_PRIVATE_KEYS)
+    )
+
+
+def _redact_json_value(value: Any) -> Any:
+    """JSONの構造を保ったまま秘密値とprivate stateを伏せる。"""
+    if isinstance(value, dict):
+        return {
+            key: "[REDACTED]" if _is_sensitive_key(str(key)) else _redact_json_value(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_json_value(item) for item in value]
+    if isinstance(value, str):
+        return redact(value)
+    return value
+
+
+def _redact_json_document(content: str) -> str:
+    document = json.loads(content)
+    sanitized = _redact_json_value(document)
+    if sanitized == document:
+        return content
+    return json.dumps(sanitized, ensure_ascii=False, indent=2) + "\n"
+
+
+def _redact_json_lines(content: str) -> str:
+    trailing_newline = content.endswith("\n")
+    sanitized_lines: list[str] = []
+    for line in content.splitlines():
+        if not line.strip():
+            sanitized_lines.append(line)
+            continue
+        try:
+            document = json.loads(line)
+        except json.JSONDecodeError:
+            sanitized_lines.append(redact(line))
+        else:
+            sanitized_lines.append(
+                json.dumps(_redact_json_value(document), ensure_ascii=False, separators=(",", ":"))
+            )
+    sanitized = "\n".join(sanitized_lines)
+    return sanitized + "\n" if trailing_newline else sanitized
+
+
 def redact_artifacts(root: Path) -> None:
     """機械可読成果物に含まれる秘密値とprivate stateを伏せる。"""
     for path in root.rglob("*"):
         if not path.is_file() or path.suffix.casefold() not in _TEXT_ARTIFACT_SUFFIXES:
             continue
         content = path.read_text(encoding="utf-8")
-        sanitized = redact(content)
+        try:
+            if path.suffix.casefold() == ".json":
+                sanitized = _redact_json_document(content)
+            elif path.suffix.casefold() == ".jsonl":
+                sanitized = _redact_json_lines(content)
+            else:
+                sanitized = redact(content)
+        except json.JSONDecodeError:
+            sanitized = redact(content)
         if sanitized != content:
             path.write_text(sanitized, encoding="utf-8")
 
