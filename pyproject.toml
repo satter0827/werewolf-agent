@@ -82,8 +82,11 @@ dev = [
     "schemathesis>=4,<5",
 ]
 docs = [
+    "furo>=2024.8.6,<2026",
     "myst-parser>=4,<5",
     "sphinx>=8,<9",
+    "sphinx-copybutton>=0.5.2,<1",
+    "sphinx-design>=0.6.1,<1",
 ]
 
 [build-system]

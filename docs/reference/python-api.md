@@ -1,7 +1,7 @@
 (python-api-reference)=
 # Python API
 
-以下を library 利用者向けの公開 module とする。列挙されない内部 module の互換性は
+以下をlibrary利用者向けの公開モジュールとする。列挙されない内部モジュールの互換性は
 保証しない。
 
 ## Domain

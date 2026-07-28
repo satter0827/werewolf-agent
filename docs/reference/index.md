@@ -8,5 +8,5 @@ python-api
 runtime-configuration
 ```
 
-公開 Python API と実行時設定の参照情報をまとめる。内部 module は設計書と source を
+公開Python APIと実行時設定の参照情報をまとめる。内部モジュールは設計書とソースコードを
 参照し、公開契約として固定しない。

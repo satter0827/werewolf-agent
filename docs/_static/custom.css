@@ -1,15 +1,12 @@
-body {
-  color: #243b53;
-}
-
-div.document {
-  max-width: 74rem;
-}
-
-table.docutils {
-  width: 100%;
-}
-
-code {
+.content code.literal {
   overflow-wrap: anywhere;
+}
+
+.sd-card {
+  border-color: #d8d2c6;
+  border-radius: 0.75rem;
+}
+
+.sd-card:hover {
+  border-color: #a9a294;
 }

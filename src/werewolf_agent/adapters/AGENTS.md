@@ -1,6 +1,6 @@
 # Adapters
 
-adaptersはHTTP、Supabase、LLM frameworkなどの外部技術を実装します。
+`adapters`はHTTP、Supabase、LLM frameworkなどの外部技術を実装する。
 
 - application、agents、contractsが定義する境界を実装する。
 - provider固有型をcoreへ漏らさない。

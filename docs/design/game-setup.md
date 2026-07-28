@@ -9,7 +9,7 @@
 - `player_generation`: identity、公開persona、非公開strategyの候補
 
 同梱template、保存revision、inline documentはAPI受付時に完全なdocumentへ解決する。同じ時点で
-seedとplayerを確定し、setup、mechanics、rosterのchecksumを含む正規化済みcommandをqueueへ
+seedとプレイヤーを確定し、setup、mechanics、rosterのchecksumを含む正規化済みコマンドをqueueへ
 保存する。workerはtemplateや保存revisionを再解釈しない。
 
 同梱templateと一覧catalogは`src/werewolf_agent/application/resources/setups`、runtimeの
@@ -21,7 +21,7 @@ setup loaderが検証する。
 
 phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`village`、`werewolf`、`fox`の
 勝敗判定はコードが所有する。役職ID、役職数、能力の組み合わせ、対象条件、開始日、使用回数、
-解決優先度、共通ルール、表示、player生成候補は設定が所有する。
+解決優先度、共通ルール、表示、プレイヤー生成候補は設定が所有する。
 
 役職は`identity_faction`、`victory_team`、能力IDの集合だけを持つ。能力componentは`attack`、
 `inspect`、`protect`、`eliminate`、`knowledge`、`death_reaction`、`immunity`、
@@ -34,13 +34,13 @@ phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`v
 行動は`speech`、`vote`、`use_ability`、`pass`へ統一する。`use_ability`は能力IDを必須とし、
 合法対象、agent decision、HTTP action、復元、replayまで同じenvelopeを使用する。
 
-## player生成
+## プレイヤー生成
 
 ゲームごとに`p1`から始まるseatを生成する。identityは重複なしで抽選し、公開personaと非公開strategyは
 seed付きshuffleと巡回割当で分散する。identity不足、空の候補集合、重複名は設定エラーにする。
 
 ゲームseedから`roster`、`role_assignment`、`gameplay`のseedをSHA-256で分離する。同じdocumentと
-seedは同じplayer、役職割当、ゲーム進行を再現する。previewはseat、名前、年齢、性別表現、性格、
+seedは同じプレイヤー、役職割当、ゲーム進行を再現する。previewはseat、名前、年齢、性別表現、性格、
 話し方だけを返し、役職と非公開strategyを返さない。
 
 ## themeと秘匿性
@@ -52,7 +52,7 @@ themeは選択中の役職、能力、陣営、行動、phaseを漏れなく命�
 差し込み可能とし、未対応event、未知の差し込み項目、壊れたformatは設定検証で拒否する。
 
 公開状態とtimelineへ生存者の役職、未解決の投票、夜の行動、調査結果、非公開strategyを含めない。
-LLMには本人の役職、本人のprofile、観測から判明した情報、本人に関係する設定だけを渡す。
+LLMには本人の役職、本人のプロファイル、観測から判明した情報、本人に関係する設定だけを渡す。
 
 ## 保存revision
 
@@ -60,7 +60,7 @@ LLMには本人の役職、本人のprofile、観測から判明した情報、�
 保存時に親行をlockし、`expected_revision`と最新revisionが一致する場合だけ次版を追加する。競合は
 HTTP 409とする。
 
-repositoryの全取得は所有者IDで絞る。他利用者の設定は404、匿名利用者の保存とrevision参照は403に
+リポジトリの全取得は所有者IDで絞る。他利用者の設定は404、匿名利用者の保存とrevision参照は403に
 する。private tableはData APIへ公開せず、`anon`と`authenticated`へ直接権限を付与しない。
 
 ## 利用者導線
@@ -69,7 +69,7 @@ Streamlitの「ゲーム設定」は「世界観」「役職と能力」「プ�
 同梱templateの編集は保存設定への複製として開始し、保存済み設定は「新しい版として保存」でrevisionを
 追加する。匿名利用者も編集中のinline documentをpreviewとゲーム作成に使用できる。
 
-ゲーム作成画面は設定、revision、再現用の番号、player preview、手動seat、agentの熟考度、最終確認だけを
+ゲーム作成画面は設定、revision、再現用の番号、プレイヤー preview、手動seat、agentの熟考度、最終確認だけを
 扱う。設定または番号が変わった場合は古いpreviewを使用しない。
 
 CLIは`setup show`、`setup export`、`setup validate`、`setup inspect`と

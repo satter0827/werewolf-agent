@@ -13,14 +13,54 @@ from scripts.quality import runner as quality
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_documentation_structure_passes_without_constraining_prose() -> None:
-    """lifecycle、到達性、公開APIだけを安定した構造として検査する。"""
+def test_documentation_structure_and_style_pass() -> None:
+    """lifecycle、到達性、公開API、表記規則を安定した契約として検査する。"""
     report = docs.inspect_documentation()
 
     assert report["status"] == "passed"
     assert report["findings"] == []
     assert set(report["labels"]) >= docs.REQUIRED_LABELS
     assert set(report["automodules"]) == docs.PUBLIC_API_MODULES
+
+
+def test_sphinx_configuration_uses_japanese_furo_contract() -> None:
+    """生成HTMLのtheme、言語、検索、標準extensionを固定する。"""
+    configuration = (ROOT / "docs" / "conf.py").read_text(encoding="utf-8")
+
+    assert 'html_theme = "furo"' in configuration
+    assert 'language = "ja"' in configuration
+    assert 'html_search_language = "ja"' in configuration
+    assert 'myst_enable_extensions = ["colon_fence"]' in configuration
+    assert '"sphinx_copybutton"' in configuration
+    assert '"sphinx_design"' in configuration
+    assert '"On this page": "このページ内"' in configuration
+    assert "alabaster" not in configuration
+
+
+def test_documentation_style_removes_code_and_link_targets() -> None:
+    """表記検査は説明文だけを対象とし、識別子とlink targetを変更しない。"""
+    text = """
+repositoryを説明します。
+`repository command`
+[source](docs/source.md)
+```powershell
+python -m scripts.quality profile
+```
+"""
+
+    prose = docs._style_prose(text)
+
+    assert "repositoryを説明します。" in prose
+    assert "repository command" not in prose
+    assert "docs/source.md" not in prose
+    assert "scripts.quality profile" not in prose
+
+
+def test_documentation_style_detects_polite_and_split_japanese_prose() -> None:
+    """常体と日本語の語間空白を機械検査できるようにする。"""
+    assert docs._POLITE_SENTENCE_PATTERN.search("設計書を参照してください。")
+    assert docs._JAPANESE_WORD_SPACING_PATTERN.search("公開 モジュール を説明する。")
+    assert not docs._JAPANESE_WORD_SPACING_PATTERN.search("Local LLMを使う。")
 
 
 def test_documentation_runner_is_independent_from_quality_orchestration() -> None:
@@ -123,8 +163,18 @@ def test_documentation_policy_identifies_obsolete_references_and_command_owners(
     """旧構造と品質commandの正本を明示したpolicyとして固定する。"""
     assert "interfaces/worker" in docs.OBSOLETE_REFERENCES
     assert ".werewolf-agent/quality/latest" in docs.OBSOLETE_REFERENCES
-    assert frozenset({"README.md", "scripts/README.md"}) == docs.QUALITY_COMMAND_OWNERS
-    assert docs._QUALITY_COMMAND_PATTERN.search("python -m scripts.quality check")
+    assert frozenset({"AGENTS.md", "README.md", "scripts/README.md"}) == (
+        docs.QUALITY_COMMAND_OWNERS
+    )
+    assert "react" in docs.OBSOLETE_REFERENCES
+    assert docs._obsolete_reference_offset("react client", "react") == 0
+    assert docs._obsolete_reference_offset("death_reaction", "react") == -1
+    assert docs._obsolete_reference_offset("npmを使う", "npm") == 0
+    allowed = docs.OBSOLETE_REFERENCE_ALLOWLIST["docs/notes/retired-browser-ui-reintroduction.md"]
+    assert "react" in allowed
+    assert ".werewolf-agent/quality/latest" not in allowed
+    assert docs._VERIFICATION_COMMAND_PATTERN.search("python -m scripts.quality check")
+    assert docs._VERIFICATION_COMMAND_PATTERN.search("werewolf-agent system doctor")
 
 
 def test_docstring_suppression_detection_covers_source_and_configuration() -> None:

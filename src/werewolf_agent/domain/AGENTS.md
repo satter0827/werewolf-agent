@@ -1,6 +1,6 @@
 # Domain
 
-domainはゲームの完全状態、event、rule、`Game` aggregateを所有します。
+`domain`はゲームの完全状態、event、rule、`Game` aggregateを所有する。
 
 - stdlibとdomain内部だけに依存する。
 - I/O、設定読込み、Pydantic、logging、database、LLMを持ち込まない。

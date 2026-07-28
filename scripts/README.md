@@ -1,14 +1,14 @@
-# Repository運用スクリプト
+# リポジトリ運用スクリプト
 
-`scripts`は、ローカル、CI、AIが共有する再現可能な開発操作を所有します。品質runnerは
-個別検査を再実装せず、環境準備、docs、architecture、contracts、Browser、Supabaseなどの
-専用入口を組み合わせます。
+`scripts`は、ローカル、CI、AIが共有する再現可能な開発操作を所有する。品質runnerは
+個別検査を再実装せず、環境準備、docs、architecture、contracts、ブラウザー、Supabaseなどの
+専用入口を組み合わせる。
 
 ## 環境準備
 
-依存取得は`scripts.environment setup`だけが行います。`check`は現在のfingerprintと
-実行能力を読み取り専用で検査し、依存、image、containerを変更しません。品質command自身は
-package、browser、imageを取得せず、前提が不足する場合は`blocked`にします。
+依存取得は`scripts.environment setup`だけが行う。`check`は現在のfingerprintと
+実行能力を読み取り専用で検査し、依存、image、containerを変更しない。品質コマンド自身は
+package、ブラウザー、imageを取得せず、前提が不足する場合は`blocked`にする。
 
 ```powershell
 uv run --no-project python -m scripts.environment check auto
@@ -19,11 +19,12 @@ uv run --no-project python -m scripts.environment setup release
 uv run --no-project python -m scripts.environment setup deep
 ```
 
-release系では変更処理より先にDocker daemon、Buildx、Supabase CLI 2.104.0を確認します。
+リリース系では変更処理より先にDocker daemon、Buildx、要求されたSupabase CLI版を確認する。
+要求版は`scripts/supabase/constants.py`を正本とする。
 `setup release|deep`は隔離Supabase projectを使ってCLIが要求するimageを準備し、project IDと
-workdirを指定して停止します。Docker Desktopは自動起動しません。
+workdirを指定して停止する。Docker Desktopは自動起動しない。
 
-## 品質profile
+## 品質プロファイル
 
 ```powershell
 uv run --no-sync python -m scripts.quality auto
@@ -38,61 +39,61 @@ uv run --no-sync python -m scripts.quality auto --explain
 uv run --no-sync python -m scripts.quality clean
 ```
 
-| Profile | 判定範囲 |
+| プロファイル | 判定範囲 |
 | --- | --- |
-| `auto` | `scripts/quality/impact.toml`により変更pathからprofileまたは部分gateを選ぶ |
+| `auto` | `scripts/quality/impact.toml`により変更pathからプロファイルまたは部分gateを選ぶ |
 | `focus` | architecture、format、lint、型、unit、軽量stateful |
 | `check` | Focus、coverage、offline integration、docs、OpenAPI、Schemathesis、package |
 | `release` | Check、local Supabase、API、worker、Streamlit E2E、container |
 | `deep` | 長時間stateful、fault injection、benchmark観測 |
 
-profile名を直接指定した場合は差分にかかわらず全体を実行します。`--fresh`は再利用可能な
-成功gateも実行し直します。`auto --explain`は選定理由、stage、再利用候補を表示して終了します。
+プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
+成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
 
-状態は`passed`、`failed`、`blocked`、`error`、`skipped`です。終了値は成功が0、品質違反が1、
-環境不備または実行基盤異常が2です。coverage、benchmark、ゲームバランスは観測値として保存し、
-根拠のない閾値だけで不合格にしません。
+状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
+環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
+根拠のない閾値だけで不合格にしない。
 
 ## 成果物
 
 有限の環境操作は`.werewolf-agent/operations/<kind>/<run-id>`へ`report.json`、`summary.md`、
-`manifest.json`、失敗stageのredacted logを保存します。常駐processのJSONLは
-`.werewolf-agent/logs/application`へ分離します。全体を調べる場合は次を実行します。
+`manifest.json`、失敗stageのredactedログを保存する。常駐プロセスのJSONLは
+`.werewolf-agent/logs/application`へ分離する。全体を調べる場合は次を実行する。
 
 ```powershell
 uv run --no-sync python -m scripts.diagnostics collect
 ```
 
-診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存logと成果物を複製せず
-pathとSHA-256で参照します。
+診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存ログと成果物を複製せず
+pathとSHA-256で参照する。
 
-最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存します。
+最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存する。
 以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は
-`profiles/<profile>/last-passed.json`が指します。
+`profiles/<profile>/last-passed.json`が指す。
 
-各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`と、実行したgateのlog、
-test結果、coverage、Browser成果物を持ちます。manifestのproducer、分類、MIME、size、SHA-256で
-証拠の出所と実在を確認します。未完了gateも`skipped`として残し、runner中断や初期検査失敗も
-reportへ確定します。
+各runは`report.json`、`summary.md`、`events.jsonl`、`manifest.json`と、実行したgateのログ、
+テスト結果、coverage、ブラウザー成果物を持つ。manifestのproducer、分類、MIME、size、SHA-256で
+証拠の出所と実在を確認する。未完了gateも`skipped`として残し、runner中断や初期検査失敗も
+reportへ確定する。
 
-## Browser E2E
+## ブラウザーE2E
 
-Browser journey、state、device、capture名の正本は`scripts/browser/catalog.toml`です。
-PlaywrightはPythonからStreamlitを操作し、外部request、console、accessibility、主要状態を検査します。
+ブラウザーjourney、state、device、capture名の正本は`scripts/browser/catalog.toml`である。
+PlaywrightはPythonからStreamlitを操作し、外部request、console、accessibility、主要状態を検査する。
 
 ```powershell
 uv run --no-sync python -m scripts.browser --journey play --state finished --device desktop
 uv run --no-sync python -m scripts.browser --capture gameplay-complete --device desktop
 ```
 
-通常の直接実行は`.werewolf-agent/reviews/browser`へ保存します。品質profile内ではrun固有の
-Browser成果物としてmanifestへ登録されます。認証情報を含み得るtraceとnative reportはprivate、
-画面、console、network要約はpublicとして分離します。
+通常の直接実行は`.werewolf-agent/reviews/browser`へ保存する。品質プロファイル内ではrun固有の
+ブラウザー成果物としてmanifestへ登録される。認証情報を含み得るtraceとnative reportはprivate、
+画面、console、network要約はpublicとして分離する。
 
-## Agent review
+## エージェントレビュー
 
-Agent reviewは製品品質の合否から独立し、Fakeまたは明示したloopback Local LLMで会話、判断、
-ゲームバランスを読むための証拠を作ります。
+エージェントレビューは製品品質の合否から独立し、Fakeまたは明示したloopback Local LLMで会話、判断、
+ゲームバランスを読むための証拠を作る。
 
 ```powershell
 uv run --no-sync python -m scripts.agents preflight
@@ -101,14 +102,15 @@ uv run --no-sync python -m scripts.agents run --provider local --suite smoke
 uv run --no-sync python -m scripts.agents local-ui
 ```
 
-Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通ります。
-Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離します。
+Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。
+Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
-public timelineとprivate traceを分離します。active markerを持つ実行中runは保持処理の対象外です。
+public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。
 
 ## 個別入口
 
 ```powershell
+uv run --no-sync werewolf-agent system doctor
 uv run --no-sync python -m scripts.docs inspect
 uv run --no-sync python -m scripts.docs build
 uv run --no-sync python -m scripts.architecture
@@ -116,6 +118,6 @@ uv run --no-sync python -m scripts.contracts.openapi
 uv run --no-sync python -m scripts.supabase serve --stop-on-exit
 ```
 
-品質processはprovider credentialと外部base URLを除去し、Fake adapter、localhost、Compose内service
-だけを使用します。registryやbrowser配布元への接続は環境準備に限定します。品質用process、
-container、volumeだけを所有labelでcleanupし、開発用または他projectのresourceを変更しません。
+品質プロセスはprovider credentialと外部base URLを除去し、Fakeアダプター、localhost、Compose内service
+だけを使用する。registryやブラウザー配布元への接続は環境準備に限定する。品質用プロセス、
+container、volumeだけを所有labelでcleanupし、開発用または他projectのresourceを変更しない。
