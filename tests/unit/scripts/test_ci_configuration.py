@@ -61,6 +61,18 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develope() -> None:
     assert "target-branch: develope" in dependabot
 
 
+def test_workflow_javascript_actions_use_node24_releases() -> None:
+    """GitHub runnerが廃止済みNode runtimeを強制置換しない。"""
+    workflow = _read(".github/workflows/quality.yml")
+    expected = {
+        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+        "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+    }
+
+    assert all(action in workflow for action in expected)
+
+
 def test_main_compatibility_matches_supported_python_versions() -> None:
     """primary Python以外の対応版をmain互換性matrixへ含める。"""
     workflow = _read(".github/workflows/quality.yml")

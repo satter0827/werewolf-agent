@@ -902,7 +902,7 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert 'python-version: ["3.11", "3.13", "3.14"]' in workflow
     assert "--base-ref origin/develope" in workflow
     assert "--base-ref origin/main" in workflow
-    assert "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02" in workflow
+    assert "actions/upload-artifact@" in workflow
     assert "include-hidden-files: true" in workflow
     assert ".werewolf-agent/outputs" in workflow
     assert not (ROOT / ".github" / "workflows" / "docker.yml").exists()
