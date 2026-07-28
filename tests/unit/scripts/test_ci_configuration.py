@@ -68,6 +68,7 @@ def test_workflow_javascript_actions_use_node24_releases() -> None:
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
+        "supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520",
     }
 
     assert all(action in workflow for action in expected)
