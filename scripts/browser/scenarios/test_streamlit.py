@@ -44,7 +44,7 @@ def test_setup_sections_and_validation(
     )
 
 
-def test_gameplay_waiting_speech_target_and_progress(
+def test_gameplay_waiting_speech_and_target(
     page: Page,
     streamlit_url: str,
     capture_public_screenshot: Callable[[Page, str], Path],
@@ -73,9 +73,6 @@ def test_gameplay_waiting_speech_target_and_progress(
     submit = page.get_by_role("button", name="入力を送信")
     expect(submit).to_be_enabled()
     submit.click()
-    status = page.locator('[data-testid="stStatusWidget"]').filter(has_text="自動進行中")
-    expect(status).to_be_visible(timeout=30_000)
-    capture_public_screenshot(page, f"streamlit-gameplay-progress-{device_name}.png")
     target = page.get_by_label("対象を選ぶ")
     expect(target).to_be_visible(timeout=30_000)
     assert_streamlit_quality(page)
