@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from scripts._infra.process import CommandResult
 from scripts.agents import ui
 
 
@@ -43,6 +44,33 @@ def test_local_ui_uses_environment_prepared_images(tmp_path: Path) -> None:
     assert "--no-build" in commands[0]
     assert commands[1][-1] == "scripts/browser/scenarios/test_local_llm.py"
     assert "pytest" in commands[1]
+
+
+def test_local_ui_restores_container_artifact_ownership(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """Local UIも成果物を読む前にhost利用者へ所有権を戻す。"""
+    (tmp_path / "private").mkdir()
+    calls: list[Path] = []
+    monkeypatch.setattr(ui, "_create_review_user", lambda _environment: ("user", "password"))
+    monkeypatch.setattr(
+        ui,
+        "_compose_environment",
+        lambda environment, _run_dir, _email, _password: environment,
+    )
+    monkeypatch.setattr(ui, "_commands", lambda _run_dir: ())
+    monkeypatch.setattr(ui, "_compose_down", lambda _environment, _transcript: 0)
+    monkeypatch.setattr(
+        ui,
+        "restore_container_artifact_ownership",
+        lambda path, **_kwargs: (calls.append(path) or CommandResult([], 0, 0.0, "")),
+    )
+
+    state, _report = ui._execute_local_ui(tmp_path, _environment())
+
+    assert state == "error"
+    assert calls == [tmp_path]
 
 
 def test_local_ui_result_rejects_fake_or_openai_trace() -> None:

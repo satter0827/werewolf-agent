@@ -39,6 +39,49 @@ def test_commands_never_build_or_pull_images(tmp_path: Path) -> None:
     assert str(tmp_path.resolve()) in flattened
 
 
+def test_container_artifact_ownership_is_restored_to_posix_host_user(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """container成果物をredaction前にhost利用者へ返す。"""
+    recorded: list[list[str]] = []
+
+    def successful(command: list[str], **_kwargs: object) -> e2e.CommandResult:
+        recorded.append(command)
+        return e2e.CommandResult(command, 0, 0.1, "")
+
+    monkeypatch.setattr(e2e, "_host_identity", lambda: (1001, 127))
+    monkeypatch.setattr(e2e, "run_command", successful)
+
+    result = e2e.restore_container_artifact_ownership(tmp_path, environment={})
+
+    assert result.returncode == 0
+    assert recorded[0][-4:] == [
+        "chown",
+        "-R",
+        "1001:127",
+        "/tmp/werewolf-agent/playwright",
+    ]
+    assert f"{tmp_path.resolve()}:/tmp/werewolf-agent/playwright" in recorded[0]
+
+
+def test_container_artifact_ownership_is_a_noop_without_posix_identity(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windows hostではDocker Desktopの所有権変換に介入しない。"""
+    monkeypatch.setattr(e2e, "_host_identity", lambda: None)
+    monkeypatch.setattr(
+        e2e,
+        "run_command",
+        lambda *_args, **_kwargs: pytest.fail("dockerを実行してはいけません"),
+    )
+
+    result = e2e.restore_container_artifact_ownership(tmp_path, environment={})
+
+    assert result.returncode == 0
+
+
 def test_e2e_image_contains_only_stable_dependencies_and_mounts_current_source() -> None:
     """Browser依存imageをsource変更から分離し、現在sourceをreadonlyで検査する。"""
     root = Path(__file__).resolve().parents[3]
