@@ -16,9 +16,8 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-from filelock import FileLock, Timeout
-
 from scripts._infra.artifacts import LAYOUT
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.operations import operation_run_id, publish_operation
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -234,9 +233,9 @@ def setup(profile: str = "check") -> EnvironmentReport:
     cleanup_failure: _ExecutionFailure | None = None
     try:
         STATE_ROOT.mkdir(parents=True, exist_ok=True)
-        with FileLock(LOCK_PATH, timeout=600):
+        with exclusive_file_lock(LOCK_PATH, timeout_seconds=600):
             failure, cleanup_failure = _setup_locked(resolved, run_id)
-    except Timeout:
+    except LockTimeoutError:
         failure = _synthetic_failure("lock", "依存環境の準備lockを取得できませんでした。")
     except OSError as error:
         failure = _synthetic_failure("setup", str(error))
