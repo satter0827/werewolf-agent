@@ -60,6 +60,20 @@ ERROR_SUPABASE_VERSION_MISMATCH = "environment.supabase_cli_version_mismatch"
 ERROR_COMMAND_FAILED = "environment.command_failed"
 ERROR_CLEANUP_FAILED = "environment.cleanup_failed"
 ERROR_FINGERPRINT_MISMATCH = "environment.fingerprint_mismatch"
+FINGERPRINT_EXCLUDED_PARTS = frozenset(
+    {
+        ".cache",
+        ".mypy_cache",
+        ".pytest_cache",
+        ".ruff_cache",
+        ".venv",
+        ".werewolf-agent",
+        "__pycache__",
+        "build",
+        "dist",
+        "htmlcov",
+    }
+)
 
 
 def prepare_isolated_project(isolated_root: Path) -> tuple[Path, str]:
@@ -117,7 +131,7 @@ def dependency_fingerprint(profile: str) -> str:
             inputs.extend(
                 candidate
                 for candidate in ([path] if path.is_file() else path.rglob("*"))
-                if candidate.is_file() and not {"__pycache__", "dist"}.intersection(candidate.parts)
+                if candidate.is_file() and _is_fingerprint_input(candidate)
             )
     for path in sorted(set(inputs)):
         digest.update(path.relative_to(REPOSITORY_ROOT).as_posix().encode())
@@ -765,12 +779,21 @@ def _paths_fingerprint(relatives: Sequence[str]) -> str:
     for relative in relatives:
         path = REPOSITORY_ROOT / relative
         files.extend(
-            item for item in ([path] if path.is_file() else path.rglob("*")) if item.is_file()
+            item
+            for item in ([path] if path.is_file() else path.rglob("*"))
+            if item.is_file() and _is_fingerprint_input(item)
         )
     for path in sorted(set(files)):
         digest.update(path.relative_to(REPOSITORY_ROOT).as_posix().encode())
         digest.update(path.read_bytes())
     return digest.hexdigest()
+
+
+def _is_fingerprint_input(path: Path) -> bool:
+    return not FINGERPRINT_EXCLUDED_PARTS.intersection(path.parts) and path.suffix not in {
+        ".pyc",
+        ".pyo",
+    }
 
 
 def _docker_cache_max_gib() -> int:
