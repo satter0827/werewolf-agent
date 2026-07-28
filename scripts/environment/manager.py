@@ -790,7 +790,11 @@ def _paths_fingerprint(relatives: Sequence[str]) -> str:
 
 
 def _is_fingerprint_input(path: Path) -> bool:
-    return not FINGERPRINT_EXCLUDED_PARTS.intersection(path.parts) and path.suffix not in {
+    try:
+        parts = path.relative_to(REPOSITORY_ROOT).parts
+    except ValueError:
+        parts = path.parts
+    return not FINGERPRINT_EXCLUDED_PARTS.intersection(parts) and path.suffix not in {
         ".pyc",
         ".pyo",
     }
