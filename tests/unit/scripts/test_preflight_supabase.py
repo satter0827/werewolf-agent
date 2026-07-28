@@ -2,6 +2,8 @@
 
 import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,22 @@ from scripts.supabase.preflight import (
     parse_status_environment,
     select_status_environment,
 )
+
+
+def test_preflight_import_does_not_load_process_monitor_dependency() -> None:
+    """隔離project生成はprocess監視dependencyなしで読み込める。"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            ("import sys; import scripts.supabase.preflight; assert 'psutil' not in sys.modules"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
 
 
 def test_application_preflight_uses_the_current_cli_command() -> None:

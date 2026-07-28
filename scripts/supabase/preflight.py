@@ -19,8 +19,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import psutil  # type: ignore[import-untyped]
-
 from scripts._infra.operations import operation_run_id, publish_operation
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -489,6 +487,8 @@ def wait_for_supervisor(*, timeout_seconds: int = 180) -> int:
 
 
 def _is_live_supervisor(pid: int) -> bool:
+    import psutil  # type: ignore[import-untyped]
+
     try:
         process = psutil.Process(pid)
         command = " ".join(process.cmdline())
