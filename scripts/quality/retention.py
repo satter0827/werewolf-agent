@@ -13,9 +13,9 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import psutil  # type: ignore[import-untyped]
-from filelock import FileLock, Timeout
 
 from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import TEMPORARY_ROOT, write_json
 from scripts.quality.artifacts import artifact_category
 
@@ -308,9 +308,9 @@ def _publication_lock() -> Iterator[None]:
     """成果物確定とretentionの区間だけprocess間lockを取得する。"""
     LAYOUT.quality.mkdir(parents=True, exist_ok=True)
     try:
-        with FileLock(LAYOUT.quality / ".publish.lock", timeout=10):
+        with exclusive_file_lock(LAYOUT.quality / ".publish.lock", timeout_seconds=10):
             yield
-    except Timeout as error:
+    except LockTimeoutError as error:
         raise TimeoutError("品質成果物の公開lockを取得できませんでした。") from error
 
 

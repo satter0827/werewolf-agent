@@ -62,7 +62,6 @@ werewolf-agent-worker = "werewolf_agent.worker.app:app"
 dev = [
     "axe-playwright-python>=0.1.8,<0.2",
     "build>=1.2,<2",
-    "filelock>=3.18,<4",
     "hatchling>=1.27,<2",
     "hypothesis>=6.130,<7",
     "jsonschema>=4.23,<5",

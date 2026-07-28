@@ -14,8 +14,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 import psutil  # type: ignore[import-untyped]
-from filelock import FileLock, Timeout
 
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import (
     ARTIFACT_ROOT,
     REPOSITORY_ROOT,
@@ -799,7 +799,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         if arguments.profile in {"release", "deep"}:
             lock_path = Path(tempfile.gettempdir()) / "werewolf-agent-quality-release.lock"
-            with FileLock(lock_path, timeout=1):
+            with exclusive_file_lock(lock_path, timeout_seconds=1):
                 state, report_path = execute(
                     arguments.profile,
                     jobs=arguments.jobs,
@@ -827,7 +827,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 head_ref=arguments.head_ref,
                 change=change,
             )
-    except Timeout:
+    except LockTimeoutError:
         print("release/deepのhost排他lockを取得できませんでした。", file=sys.stderr)
         return 2
     print(f"判定: {state}")
