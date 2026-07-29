@@ -174,6 +174,105 @@ def test_status_parse_failure_does_not_stop_preexisting_project(
     assert not any(command[:2] == ["supabase", "stop"] for command in commands)
 
 
+def test_preflight_blocks_when_dotenv_connection_does_not_match_local_supabase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / ".werewolf-agent"
+    monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    doctor_calls = 0
+
+    def fake_run(command: list[str], **_kwargs: object) -> CommandResult:
+        nonlocal doctor_calls
+        if command == ["supabase", "--version"]:
+            return CommandResult(command, 0, 0.0, "2.104.0\n")
+        if command == ["docker", "info"]:
+            return CommandResult(command, 0, 0.0, "ready")
+        if command[:2] == ["supabase", "status"]:
+            return CommandResult(
+                command,
+                0,
+                0.0,
+                'API_URL="http://127.0.0.1:54321"\n'
+                'PUBLISHABLE_KEY="local-key"\n'
+                'DB_URL="postgresql://postgres:local@127.0.0.1:54322/postgres"\n',
+            )
+        if command[:3] == ["supabase", "migration", "up"]:
+            return CommandResult(command, 0, 0.0, "migrated")
+        if command[1:3] == ["-m", "werewolf_agent"]:
+            doctor_calls += 1
+            return CommandResult(command, 0 if doctor_calls == 1 else 1, 0.0, "unreachable")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(preflight_supabase, "run_command", fake_run)
+
+    with pytest.raises(preflight_supabase.EnvironmentBlockedError, match=r"\.envの接続設定"):
+        preflight_supabase.prepare_supabase(base_environment={})
+
+    assert doctor_calls == 2
+
+
+def test_isolated_quality_preflight_does_not_use_repository_dotenv(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / ".werewolf-agent"
+    isolated_root = artifact_root / "runtime" / "supabase" / "quality"
+    monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr(
+        preflight_supabase,
+        "prepare_isolated_project",
+        lambda _root: (isolated_root, "werewolf-agent-quality-test"),
+    )
+    doctor_calls = 0
+
+    def fake_run(command: list[str], **_kwargs: object) -> CommandResult:
+        nonlocal doctor_calls
+        if command == ["supabase", "--version"]:
+            return CommandResult(command, 0, 0.0, "2.104.0\n")
+        if command == ["docker", "info"]:
+            return CommandResult(command, 0, 0.0, "ready")
+        if command[:2] == ["supabase", "status"]:
+            return CommandResult(
+                command,
+                0,
+                0.0,
+                'API_URL="http://127.0.0.1:54321"\n'
+                'PUBLISHABLE_KEY="local-key"\n'
+                'DB_URL="postgresql://postgres:local@127.0.0.1:54322/postgres"\n',
+            )
+        if command[:3] == ["supabase", "migration", "up"]:
+            return CommandResult(command, 0, 0.0, "migrated")
+        if command[1:3] == ["-m", "werewolf_agent"]:
+            doctor_calls += 1
+            return CommandResult(command, 0, 0.0, "ready")
+        raise AssertionError(command)
+
+    monkeypatch.setattr(preflight_supabase, "run_command", fake_run)
+
+    prepared = preflight_supabase.prepare_supabase(isolated_root=isolated_root)
+
+    assert prepared.project_id == "werewolf-agent-quality-test"
+    assert doctor_calls == 1
+
+
+def test_supervisor_rejects_second_lifetime_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        preflight_supabase,
+        "exclusive_file_lock",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            preflight_supabase.LockTimeoutError(Path("session.lock"))
+        ),
+    )
+    monkeypatch.setattr(
+        preflight_supabase,
+        "prepare_supabase",
+        lambda **_kwargs: pytest.fail("二重ownerは準備を開始してはいけません。"),
+    )
+
+    assert preflight_supabase.serve_supabase() == 2
+
+
 def test_stop_preserves_project_failure_and_still_removes_profile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -291,3 +390,52 @@ def test_wait_for_supervisor_propagates_startup_state(
     monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
 
     assert preflight_supabase.wait_for_supervisor(timeout_seconds=1) == expected
+
+
+def test_development_session_reservation_rejects_active_owner(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / ".werewolf-agent"
+    monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr(preflight_supabase, "_api_port_is_available", lambda: True)
+
+    assert preflight_supabase.reserve_development_session("backend") == 0
+    assert preflight_supabase.reserve_development_session("api") == 2
+
+    state = json.loads(preflight_supabase._supervisor_state_path().read_text(encoding="utf-8"))
+    assert state["state"] == "reserved"
+    assert state["session"] == "backend"
+    assert "environment" not in state
+
+
+def test_development_session_reclaims_stale_reservation(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    artifact_root = tmp_path / ".werewolf-agent"
+    monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr(preflight_supabase, "_api_port_is_available", lambda: True)
+    path = preflight_supabase._supervisor_state_path()
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        json.dumps({"run_id": "old", "state": "reserved", "pid": 0, "session": "api"}),
+        encoding="utf-8",
+    )
+    old = preflight_supabase.time.time() - preflight_supabase.SESSION_RESERVATION_SECONDS - 1
+    preflight_supabase.os.utime(path, (old, old))
+
+    assert preflight_supabase.reserve_development_session("worker") == 0
+    state = json.loads(path.read_text(encoding="utf-8"))
+    assert state["session"] == "worker"
+
+
+def test_development_session_checks_api_port_before_reserving(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", tmp_path / ".werewolf-agent")
+    monkeypatch.setattr(preflight_supabase, "_api_port_is_available", lambda: False)
+
+    assert preflight_supabase.reserve_development_session("full-stack") == 2
+    assert not preflight_supabase._supervisor_state_path().exists()

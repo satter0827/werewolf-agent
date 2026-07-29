@@ -38,6 +38,7 @@ def build(run_dir: Path) -> list[Gate]:
             ),
             action=cleanup_orphaned_supabase,
             exclusive_resources=("supabase",),
+            environment_target="quality",
         ),
         Gate(
             "supabase-preflight",
@@ -46,6 +47,7 @@ def build(run_dir: Path) -> list[Gate]:
             action=start_supabase,
             dependencies=("environment", "supabase-cleanup"),
             exclusive_resources=("supabase",),
+            environment_target="quality",
         ),
         Gate(
             "supabase-lint",
@@ -54,6 +56,7 @@ def build(run_dir: Path) -> list[Gate]:
             action=lint_supabase,
             dependencies=("supabase-preflight",),
             exclusive_resources=("supabase",),
+            environment_target="quality",
         ),
         Gate(
             "supabase-integration",
@@ -84,6 +87,7 @@ def build(run_dir: Path) -> list[Gate]:
                 "test-results/supabase-integration.json",
                 "test-results/supabase-integration.html",
             ),
+            environment_target="quality",
         ),
     ]
 

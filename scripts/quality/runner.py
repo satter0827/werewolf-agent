@@ -18,6 +18,7 @@ import psutil  # type: ignore[import-untyped]
 from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import (
     ARTIFACT_ROOT,
+    QUALITY_COMPOSE_PROJECT_NAME,
     REPOSITORY_ROOT,
     TEMPORARY_CACHE_DIRECTORIES,
     TEMPORARY_ROOT,
@@ -144,6 +145,101 @@ def clean() -> list[Path]:
             removed.append(path)
 
     return removed
+
+
+def open_latest_report() -> int:
+    """最新の品質reportをOS既定のviewerで開く。"""
+    reports = sorted(
+        (ARTIFACT_ROOT / "quality" / "profiles").glob("*/current/report.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not reports:
+        print("最新の品質reportがありません。先に品質検証を実行してください。", file=sys.stderr)
+        return 2
+    report = reports[0]
+    if os.name == "nt":
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            print("この環境では品質reportを開けません。", file=sys.stderr)
+            return 1
+        startfile(report)
+    else:
+        print(report)
+    return 0
+
+
+def cleanup_owned_resources(*, confirm: bool) -> int:
+    """品質runnerが識別子で所有するDocker resourceだけを削除する。"""
+    docker = shutil.which("docker")
+    if docker is None:
+        print("Docker CLIを確認できません。", file=sys.stderr)
+        return 2
+    environment = {**os.environ, "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME}
+    discovery = (
+        (
+            docker,
+            "ps",
+            "--all",
+            "--filter",
+            f"label=com.docker.compose.project={QUALITY_COMPOSE_PROJECT_NAME}",
+        ),
+        (
+            docker,
+            "volume",
+            "ls",
+            "--filter",
+            f"label=com.docker.compose.project={QUALITY_COMPOSE_PROJECT_NAME}",
+        ),
+        (
+            docker,
+            "ps",
+            "--all",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.Label "com.supabase.cli.project"}}',
+        ),
+    )
+    outputs: list[str] = []
+    for command in discovery:
+        result = run_command(command, timeout_seconds=30, environment=environment)
+        if result.returncode != 0:
+            print(redact(result.output), file=sys.stderr)
+            return 1
+        outputs.append(result.output)
+    quality_projects = sorted(
+        {
+            line.strip()
+            for line in outputs[-1].splitlines()
+            if line.strip().startswith(services_gate.QUALITY_SUPABASE_PREFIX)
+        }
+    )
+    print("削除対象:")
+    print(f"- Compose project: {QUALITY_COMPOSE_PROJECT_NAME}")
+    for project_id in quality_projects:
+        print(f"- Supabase project: {project_id}")
+    if not confirm:
+        print("削除する場合は--confirmを付けて再実行してください。")
+        return 2
+    compose = run_command(
+        (docker, "compose", "--profile", "e2e", "down", "--volumes", "--remove-orphans"),
+        timeout_seconds=180,
+        environment=environment,
+    )
+    if compose.returncode != 0:
+        print(redact(compose.output), file=sys.stderr)
+        return 1
+    for project_id in quality_projects:
+        stopped = run_command(
+            ("supabase", "stop", "--project-id", project_id, "--no-backup"),
+            timeout_seconds=60,
+            environment=environment,
+        )
+        if stopped.returncode != 0:
+            print(redact(stopped.output), file=sys.stderr)
+            return 1
+    return 0
 
 
 def _run_gate(context: RunContext, gate: Gate) -> GateResult:
@@ -397,6 +493,11 @@ def execute(
         )
     else:
         stages = stages_override or _profile_stages(profile, jobs, run_dir, settings, fresh=fresh)
+    context.environment_target = (
+        "quality"
+        if any(gate.environment_target == "quality" for stage in stages for gate in stage)
+        else "python"
+    )
     try:
         context.change = change or resolve_changes(base_ref, head_ref)
         context.initial_repository_snapshot = capture_snapshot()
@@ -700,6 +801,18 @@ def _bounded_positive_int(value: str, *, maximum: int) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """品質profileまたはcleanupを実行する。"""
     raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    if raw_arguments and raw_arguments[0] == "report":
+        parser = argparse.ArgumentParser(description="品質reportを操作します。")
+        parser.add_argument("command", choices=("report",))
+        parser.add_argument("action", choices=("open",))
+        parser.parse_args(raw_arguments)
+        return open_latest_report()
+    if raw_arguments and raw_arguments[0] == "cleanup":
+        parser = argparse.ArgumentParser(description="品質所有resourceを削除します。")
+        parser.add_argument("command", choices=("cleanup",))
+        parser.add_argument("--confirm", action="store_true")
+        cleanup_arguments = parser.parse_args(raw_arguments)
+        return cleanup_owned_resources(confirm=cleanup_arguments.confirm)
     try:
         settings = load_quality_settings()
     except (OSError, tomllib.TOMLDecodeError, ValueError) as error:

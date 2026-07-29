@@ -37,12 +37,13 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     workflow = _read(".github/workflows/quality.yml")
 
     for command in (
-        "python -m scripts.environment setup focus",
-        "python -m scripts.environment setup check",
-        "python -m scripts.environment setup deep",
+        "python -m scripts.environment setup python",
+        "python -m scripts.environment setup quality",
     ):
         assert command in workflow
-    assert "python -m scripts.environment setup release" not in workflow
+    assert "python -m scripts.environment setup focus" not in workflow
+    assert "python -m scripts.environment setup check" not in workflow
+    assert "python -m scripts.environment setup deep" not in workflow
     assert "python -m scripts.quality focus" in workflow
     assert "--pull=false" not in workflow
     assert "supabase stop --no-backup" not in workflow

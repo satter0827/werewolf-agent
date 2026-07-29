@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.operations import operation_run_id, publish_operation
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -38,6 +39,8 @@ _ENV_LINE = re.compile(r'^([A-Z][A-Z0-9_]*)="?(.*?)"?$')
 _ALLOWED_STATUS_KEYS = frozenset({"ANON_KEY", "API_URL", "DB_URL", "PUBLISHABLE_KEY"})
 APPLICATION_PREFLIGHT_ARGUMENTS = ("system", "doctor")
 SUPERVISOR_STATE_FILE = "supervisor-state.json"
+SESSION_LOCK_FILE = "development-session.lock"
+SESSION_RESERVATION_SECONDS = 15
 
 
 class SupabaseOperationError(RuntimeError):
@@ -244,6 +247,31 @@ def prepare_supabase(
                 cleanup,
             )
         )
+    configured = (
+        run_command(
+            command,
+            timeout_seconds=60,
+            environment=environment,
+        )
+        if isolated_root is None
+        else None
+    )
+    if configured is not None and configured.returncode != 0:
+        cleanup = _cleanup_preflight_resources(
+            workdir,
+            project_id,
+            environment,
+            supabase_home,
+            stop_project=started_by_process,
+        )
+        raise EnvironmentBlockedError(
+            _with_cleanup_failure(
+                ".envの接続設定でローカルSupabaseを確認できませんでした。"
+                " WEREWOLF_SUPABASE_URL、WEREWOLF_SUPABASE_PUBLISHABLE_KEY、"
+                "WEREWOLF_SUPABASE_DB_DSNを確認してください。",
+                cleanup,
+            )
+        )
     local_environment.update(
         {
             "SUPABASE_HOME": str(supabase_home),
@@ -419,10 +447,16 @@ def _supervisor_state_path() -> Path:
     return ARTIFACT_ROOT / "runtime" / "supabase" / SUPERVISOR_STATE_FILE
 
 
+def _session_lock_path() -> Path:
+    return ARTIFACT_ROOT / "runtime" / "supabase" / SESSION_LOCK_FILE
+
+
 def _write_supervisor_state(
     run_id: str,
     state: str,
     *,
+    session: str | None = None,
+    pid: int | None = None,
     report: Path | None = None,
 ) -> None:
     write_json(
@@ -430,12 +464,71 @@ def _write_supervisor_state(
         {
             "schema_version": 1,
             "run_id": run_id,
-            "pid": os.getpid(),
+            "pid": os.getpid() if pid is None else pid,
             "state": state,
+            "session": session,
+            "started_at": utc_now().isoformat(),
             "updated_at": utc_now().isoformat(),
             "report": str(report) if report is not None else None,
         },
     )
+
+
+def _read_supervisor_state() -> dict[str, object] | None:
+    try:
+        value = json.loads(_supervisor_state_path().read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _state_is_active(document: Mapping[str, object]) -> bool:
+    state = str(document.get("state", ""))
+    updated = _supervisor_state_path().stat().st_mtime
+    if state == "reserved":
+        return time.time() - updated <= SESSION_RESERVATION_SECONDS
+    if state not in {"starting", "ready"}:
+        return False
+    pid = document.get("pid")
+    if not isinstance(pid, int):
+        return False
+    return _is_live_supervisor(pid)
+
+
+def _api_port_is_available() -> bool:
+    from werewolf_agent.settings import get_settings
+
+    port = get_settings().api_port
+    probe = socket.socket()
+    probe.settimeout(0.25)
+    try:
+        return probe.connect_ex(("127.0.0.1", port)) != 0
+    finally:
+        probe.close()
+
+
+def reserve_development_session(session: str) -> int:
+    """Backend系compoundの開始前に単一の開発セッションを予約する。"""
+    try:
+        with exclusive_file_lock(_session_lock_path(), timeout_seconds=1):
+            current = _read_supervisor_state()
+            if current is not None and _state_is_active(current):
+                active = current.get("session") or "unknown"
+                print(f"開発セッション `{active}` が既に実行中です。", file=sys.stderr)
+                return 2
+            if session in {"full-stack", "backend", "api"} and not _api_port_is_available():
+                print(
+                    "API portが既に使用されています。既存のBackendを停止してください。",
+                    file=sys.stderr,
+                )
+                return 2
+            run_id = operation_run_id("supabase")
+            _write_supervisor_state(run_id, "reserved", session=session, pid=0)
+    except (LockTimeoutError, OSError) as error:
+        print(f"開発セッションを予約できませんでした: {redact(str(error))}", file=sys.stderr)
+        return 1
+    print(f"開発セッション `{session}` を予約しました。")
+    return 0
 
 
 def _clear_supervisor_state(run_id: str) -> None:
@@ -473,6 +566,9 @@ def wait_for_supervisor(*, timeout_seconds: int = 180) -> int:
             if report:
                 print(f"Supabase operation report: {report}", file=sys.stderr)
             return 2 if state == "blocked" else 1
+        if state == "reserved" and fresh:
+            time.sleep(0.25)
+            continue
         if state in {"starting", "ready"} and not live and fresh:
             first_seen = dead_since.setdefault(run_id, time.monotonic())
             if time.monotonic() - first_seen >= 5:
@@ -497,12 +593,50 @@ def _is_live_supervisor(pid: int) -> bool:
         return False
 
 
-def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) -> int:
+def serve_supabase(
+    *,
+    timeout_seconds: int = 180,
+    stop_on_exit: bool = False,
+    reserved: bool = False,
+) -> int:
+    """単一lockの所有中だけSupabase supervisorを実行する。"""
+    try:
+        with exclusive_file_lock(_session_lock_path(), timeout_seconds=1):
+            return _serve_supabase_owned(
+                timeout_seconds=timeout_seconds,
+                stop_on_exit=stop_on_exit,
+                reserved=reserved,
+            )
+    except LockTimeoutError:
+        print("別の開発セッションが既に実行中です。", file=sys.stderr)
+        return 2
+
+
+def _serve_supabase_owned(
+    *,
+    timeout_seconds: int,
+    stop_on_exit: bool,
+    reserved: bool,
+) -> int:
     """VS Code stackの生存期間に合わせてローカルSupabaseを管理する。"""
-    run_id = operation_run_id("supabase")
+    session: str | None = None
+    current = _read_supervisor_state() if reserved else None
+    if reserved:
+        if current is None or current.get("state") != "reserved" or not _state_is_active(current):
+            print(
+                "有効な開発セッション予約がありません。起動をやり直してください。", file=sys.stderr
+            )
+            return 2
+        run_id = str(current.get("run_id", ""))
+        session = str(current.get("session", ""))
+        if not run_id or not session:
+            print("開発セッション予約が破損しています。", file=sys.stderr)
+            return 1
+    else:
+        run_id = operation_run_id("supabase")
     started_at = utc_now().isoformat()
     try:
-        _write_supervisor_state(run_id, "starting")
+        _write_supervisor_state(run_id, "starting", session=session)
     except OSError as error:
         print("Supabase supervisorの状態を保存できませんでした。", file=sys.stderr)
         _publish_supabase_report(run_id, "serve", "error", started_at, error)
@@ -512,20 +646,20 @@ def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) ->
     except EnvironmentBlockedError as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "blocked", started_at, error)
-        _write_supervisor_state(run_id, "blocked", report=report)
+        _write_supervisor_state(run_id, "blocked", session=session, report=report)
         return 2
     except SupabaseOperationError as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     except Exception as error:
         print("Supabase準備中に予期しない実行失敗が発生しました。", file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     try:
-        _write_supervisor_state(run_id, "ready")
+        _write_supervisor_state(run_id, "ready", session=session)
     except OSError as error:
         cleanup_error: BaseException | None = None
         if stop_on_exit:
@@ -541,7 +675,7 @@ def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) ->
         )
         report = _publish_supabase_report(run_id, "serve", "error", started_at, combined)
         with suppress(OSError):
-            _write_supervisor_state(run_id, "error", report=report)
+            _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     print("ローカルSupabaseの準備が完了しました。停止するにはCtrl+Cを押してください。", flush=True)
     stop_event = threading.Event()
@@ -568,7 +702,7 @@ def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) ->
     except (EnvironmentBlockedError, SupabaseOperationError) as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     _publish_supabase_report(run_id, "serve", "passed", started_at)
     _clear_supervisor_state(run_id)

@@ -13,6 +13,7 @@ from scripts.quality.repository import ChangeSet, RepositorySnapshot
 
 State = Literal["passed", "failed", "error", "blocked", "skipped"]
 FailureState = Literal["failed", "error", "blocked"]
+EnvironmentTarget = Literal["python", "quality"]
 Action = Callable[["RunContext", Path], CommandResult]
 
 
@@ -42,6 +43,7 @@ class Gate:
     diagnostics: tuple[str, ...] = ()
     inputs: tuple[str, ...] = ()
     reusable: bool = False
+    environment_target: EnvironmentTarget = "python"
 
 
 @dataclass(slots=True)
@@ -90,11 +92,13 @@ class RunContext:
     selection_reason: str = ""
     fresh: bool = False
     initial_dependency_fingerprint: str = ""
+    environment_target: EnvironmentTarget = "python"
     resources: dict[str, ResourceLease] = field(default_factory=dict)
 
 
 __all__ = [
     "Action",
+    "EnvironmentTarget",
     "FailureState",
     "Gate",
     "GateResult",
