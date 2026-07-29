@@ -28,6 +28,7 @@ COPY scripts ./scripts
 COPY supabase ./supabase
 COPY .streamlit ./.streamlit
 COPY .github ./.github
+COPY .codex ./.codex
 COPY docker ./docker
 COPY docs ./docs
 COPY tests ./tests

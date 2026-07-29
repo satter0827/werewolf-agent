@@ -8,6 +8,7 @@ public_alias_modules = ["werewolf_agent"]
 root_entries = [
   ".dockerignore",
   ".env.example",
+  ".codex",
   ".github",
   ".gitignore",
   ".python-version",

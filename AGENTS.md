@@ -61,7 +61,7 @@ uv run --no-project python -m scripts.environment setup python
 uv run --no-sync python -m scripts.quality auto
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check --no-cache .
-uv run --no-sync mypy --no-incremental src
+uv run --no-sync mypy --no-incremental
 uv run --no-sync pytest
 uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check
@@ -80,6 +80,14 @@ uv run --no-sync python -m scripts.architecture
 利用開始だけを`README.md`へ置き、具体的な開発操作は`scripts/README.md`、設定のデフォルトと
 環境変数はsettings model、`src/werewolf_agent/settings/resources/defaults.toml`、
 `.env.example`を正本とする。実測件数や最新結果を固定せず、品質reportへ誘導する。
+
+## Pull Requestガバナンス
+
+AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`までを担当する。AIによるレビューは
+助言であり、正式な`APPROVE`、`REQUEST_CHANGES`、レビュー却下、レビュー会話の解決または
+再オープン、auto-merge、mergeを行わない。`.codex/hooks.json`の`PreToolUse` hookをCLI、API、
+ブラウザーなどの別経路で回避しない。禁止操作が必要な場合は、対象PRと必要な判断を人間へ
+引き渡す。
 
 ## Commit
 

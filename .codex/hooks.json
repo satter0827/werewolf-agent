@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|mcp__.+__github_.+)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.codex/hooks/github_pr_governance.py\"",
+            "commandWindows": "powershell -NoProfile -NonInteractive -Command \"$root = git rev-parse --show-toplevel; python (Join-Path $root '.codex/hooks/github_pr_governance.py')\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
