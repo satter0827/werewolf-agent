@@ -11,18 +11,18 @@
 package、ブラウザー、imageを取得せず、前提が不足する場合は`blocked`にする。
 
 ```powershell
-uv run --no-project python -m scripts.environment check auto
-uv run --no-project python -m scripts.environment check check
-uv run --no-project python -m scripts.environment check release
-uv run --no-project python -m scripts.environment setup check
-uv run --no-project python -m scripts.environment setup release
-uv run --no-project python -m scripts.environment setup deep
+uv run --no-project python -m scripts.environment check python
+uv run --no-project python -m scripts.environment check development
+uv run --no-project python -m scripts.environment check quality
+uv run --no-project python -m scripts.environment setup python
+uv run --no-project python -m scripts.environment setup development
+uv run --no-project python -m scripts.environment setup quality
 ```
 
-リリース系では変更処理より先にDocker daemon、Buildx、要求されたSupabase CLI版を確認する。
-要求版は`scripts/supabase/constants.py`を正本とする。
-`setup release|deep`は隔離Supabase projectを使ってCLIが要求するimageを準備し、project IDと
-workdirを指定して停止する。Docker Desktopは自動起動しない。
+`python`はPython依存、`development`はDockerと開発用Supabase、`quality`はBuildx、品質用image、
+隔離Supabaseまでを対象にする。要求するSupabase CLI版は`scripts/supabase/constants.py`を正本とする。
+`setup development|quality`は隔離Supabase projectで必要imageを準備し、project IDとworkdirを
+指定して停止する。Docker Desktopは自動起動しない。
 
 ## 品質プロファイル
 
@@ -38,6 +38,9 @@ uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality auto --explain
 uv run --no-sync python -m scripts.quality clean
+uv run --no-sync python -m scripts.quality report open
+uv run --no-sync python -m scripts.quality cleanup
+uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 ```
 
 | プロファイル | 判定範囲 |
@@ -68,6 +71,10 @@ uv run --no-sync python -m scripts.diagnostics collect
 
 診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存ログと成果物を複製せず
 pathとSHA-256で参照する。
+
+`clean`は品質reportを含む再生成可能な成果物だけを削除する。`cleanup`は品質所有のCompose project、
+container、volume、隔離Supabaseのcontainer、volume、networkを列挙し、
+`--confirm DELETE`がある場合だけ削除する。
 
 最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存する。
 以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は
@@ -115,6 +122,9 @@ uv run --no-sync python -m scripts.agents preflight
 uv run --no-sync python -m scripts.agents run --provider fake --suite standard
 uv run --no-sync python -m scripts.agents run --provider local --suite smoke
 uv run --no-sync python -m scripts.agents local-ui
+uv run --no-sync python -m scripts.review ui
+uv run --no-sync python -m scripts.review gameplay
+uv run --no-sync python -m scripts.review local-llm
 ```
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。

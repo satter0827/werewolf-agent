@@ -78,3 +78,15 @@ def test_worker_graph_limit_matches_packaged_default() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
 
     assert "WEREWOLF_LLM_GRAPH_MAX_STEPS" not in compose
+
+
+def test_streamlit_compose_only_overrides_the_container_address() -> None:
+    compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+    streamlit_block = compose.split("  streamlit:", maxsplit=1)[1].split(
+        "\n  test:",
+        maxsplit=1,
+    )[0]
+
+    assert '"--server.address=0.0.0.0"' in streamlit_block
+    assert "--server.port" not in streamlit_block
+    assert "--browser.gatherUsageStats" not in streamlit_block

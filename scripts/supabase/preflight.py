@@ -13,12 +13,13 @@ import socket
 import sys
 import threading
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.operations import operation_run_id, publish_operation
 from scripts._infra.process import (
     ARTIFACT_ROOT,
@@ -36,8 +37,14 @@ from scripts.supabase.constants import LOCAL_EXCLUDED_SERVICES_CSV, SUPPORTED_CL
 
 _ENV_LINE = re.compile(r'^([A-Z][A-Z0-9_]*)="?(.*?)"?$')
 _ALLOWED_STATUS_KEYS = frozenset({"ANON_KEY", "API_URL", "DB_URL", "PUBLISHABLE_KEY"})
-APPLICATION_PREFLIGHT_ARGUMENTS = ("system", "doctor")
+_RUNTIME_CONNECTION_KEYS = (
+    "WEREWOLF_SUPABASE_URL",
+    "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
+    "WEREWOLF_SUPABASE_DB_DSN",
+)
 SUPERVISOR_STATE_FILE = "supervisor-state.json"
+SESSION_LOCK_FILE = "development-session.lock"
+SESSION_RESERVATION_SECONDS = 15
 
 
 class SupabaseOperationError(RuntimeError):
@@ -85,11 +92,163 @@ def select_status_environment(output: str) -> dict[str, str]:
     }
 
 
+def verify_supabase_connection(
+    environment: Mapping[str, str],
+    *,
+    timeout_seconds: int = 10,
+) -> None:
+    """Data APIとPostgreSQLへ接続し、CLI由来の接続情報を実証する。"""
+    url = environment.get("WEREWOLF_SUPABASE_URL", "").strip().rstrip("/")
+    key = environment.get("WEREWOLF_SUPABASE_PUBLISHABLE_KEY", "").strip()
+    dsn = environment.get("WEREWOLF_SUPABASE_DB_DSN", "").strip()
+    missing = [
+        name
+        for name, value in zip(_RUNTIME_CONNECTION_KEYS, (url, key, dsn), strict=True)
+        if not value
+    ]
+    if missing:
+        raise SupabaseOperationError("Supabase接続情報が不足しています: " + ", ".join(missing))
+    timeout = max(1, min(timeout_seconds, 30))
+    _probe_data_api(url, key, timeout_seconds=timeout)
+    _probe_database(dsn, timeout_seconds=timeout)
+
+
+def verify_runtime_settings_connection(
+    expected_environment: Mapping[str, str],
+    *,
+    timeout_seconds: int = 10,
+) -> None:
+    """実プロセスと同じsettings sourceで接続先一致と到達性を確認する。"""
+    from pydantic import ValidationError
+
+    from werewolf_agent.settings import AppSettings
+
+    try:
+        settings = AppSettings()  # type: ignore[call-arg]
+    except ValidationError as error:
+        fields = sorted(
+            {
+                str(item["loc"][0])
+                for item in error.errors(
+                    include_url=False,
+                    include_context=False,
+                    include_input=False,
+                )
+                if item.get("loc")
+            }
+        )
+        suffix = f": {', '.join(fields)}" if fields else ""
+        raise EnvironmentBlockedError(
+            f"runtime settingsを検証できません。設定名を確認してください{suffix}"
+        ) from error
+    runtime_environment = {
+        "WEREWOLF_SUPABASE_URL": settings.supabase_url,
+        "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": settings.supabase_publishable_key_value,
+        "WEREWOLF_SUPABASE_DB_DSN": settings.supabase_db_dsn_value,
+    }
+    mismatched = [
+        name
+        for name in _RUNTIME_CONNECTION_KEYS
+        if _normalized_connection_value(name, runtime_environment[name])
+        != _normalized_connection_value(name, expected_environment.get(name, ""))
+    ]
+    if mismatched:
+        raise EnvironmentBlockedError(
+            "runtime接続設定がローカルSupabaseと一致しません: " + ", ".join(mismatched)
+        )
+    try:
+        verify_supabase_connection(runtime_environment, timeout_seconds=timeout_seconds)
+    except SupabaseOperationError as error:
+        raise EnvironmentBlockedError(
+            "runtime接続設定でローカルSupabaseへ接続できません: "
+            + ", ".join(_RUNTIME_CONNECTION_KEYS)
+        ) from error
+
+
+def _normalized_connection_value(name: str, value: str) -> str:
+    return value.strip().rstrip("/") if name == "WEREWOLF_SUPABASE_URL" else value.strip()
+
+
+def _probe_data_api(url: str, key: str, *, timeout_seconds: int) -> None:
+    import httpx
+
+    try:
+        response = httpx.get(
+            f"{url}/rest/v1/",
+            headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            timeout=timeout_seconds,
+        )
+        response.raise_for_status()
+    except httpx.HTTPError as error:
+        raise SupabaseOperationError("Supabase Data APIへ接続できませんでした。") from error
+
+
+def _probe_database(dsn: str, *, timeout_seconds: int) -> None:
+    import psycopg
+
+    try:
+        with psycopg.connect(dsn, connect_timeout=timeout_seconds) as connection:
+            connection.execute("select 1").fetchone()
+    except psycopg.Error as error:
+        raise SupabaseOperationError("Supabase PostgreSQLへ接続できませんでした。") from error
+
+
+def verify_supabase_platform_schema(
+    environment: Mapping[str, str],
+    *,
+    timeout_seconds: int = 10,
+) -> None:
+    """Application migrationが前提にするSupabase管理schemaを確認する。"""
+    dsn = environment.get("WEREWOLF_SUPABASE_DB_DSN", "").strip()
+    if not dsn:
+        raise SupabaseOperationError("Supabase接続情報が不足しています: WEREWOLF_SUPABASE_DB_DSN")
+    timeout = max(1, min(timeout_seconds, 30))
+    deadline = time.monotonic() + timeout
+    while True:
+        jwt_function, users_table = _platform_schema_state(
+            dsn,
+            timeout_seconds=timeout,
+        )
+        if jwt_function and users_table:
+            return
+        if time.monotonic() >= deadline:
+            break
+        time.sleep(0.25)
+    missing = []
+    if not jwt_function:
+        missing.append("auth.jwt()")
+    if not users_table:
+        missing.append("auth.users")
+    if missing:
+        raise EnvironmentBlockedError(
+            "ローカルSupabase基盤が固定CLI版と互換ではありません。"
+            f"不足: {', '.join(missing)}。"
+            "必要な開発データをbackupしてからlocal projectを明示的に再作成してください。"
+        )
+
+
+def _platform_schema_state(dsn: str, *, timeout_seconds: int) -> tuple[bool, bool]:
+    import psycopg
+
+    try:
+        with psycopg.connect(dsn, connect_timeout=timeout_seconds) as connection:
+            row = connection.execute(
+                "select to_regprocedure('auth.jwt()') is not null, "
+                "to_regclass('auth.users') is not null"
+            ).fetchone()
+    except psycopg.Error as error:
+        raise SupabaseOperationError("Supabase管理schemaを確認できませんでした。") from error
+    if row is None:
+        raise SupabaseOperationError("Supabase管理schemaの確認結果を取得できませんでした。")
+    return bool(row[0]), bool(row[1])
+
+
 def prepare_supabase(
     *,
     timeout_seconds: int = 180,
     isolated_root: Path | None = None,
     base_environment: Mapping[str, str] | None = None,
+    ownership_callback: Callable[[bool], None] | None = None,
 ) -> SupabasePreflight:
     """Supabaseを起動してmigrationとアプリ側の事前確認を行う。"""
     for executable in ("docker", "supabase"):
@@ -136,6 +295,8 @@ def prepare_supabase(
     )
     started_by_process = False
     if status.returncode != 0:
+        if ownership_callback is not None:
+            ownership_callback(True)
         started = run_command(
             _supabase_command(
                 [
@@ -168,6 +329,8 @@ def prepare_supabase(
             timeout_seconds=30,
             environment=environment,
         )
+    elif ownership_callback is not None:
+        ownership_callback(False)
     local_environment = select_status_environment(status.output)
     if not local_environment:
         cleanup = _cleanup_preflight_resources(
@@ -180,15 +343,15 @@ def prepare_supabase(
         raise SupabaseOperationError(
             _with_cleanup_failure("Supabaseのローカル接続情報を取得できませんでした。", cleanup)
         )
-    aliases = {
-        "API_URL": "WEREWOLF_SUPABASE_URL",
-        "PUBLISHABLE_KEY": "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
-        "ANON_KEY": "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
-        "DB_URL": "WEREWOLF_SUPABASE_DB_DSN",
-    }
-    for source, target in aliases.items():
-        if source in local_environment:
-            local_environment[target] = local_environment[source]
+    local_environment.update(
+        {
+            "WEREWOLF_SUPABASE_URL": local_environment.get("API_URL", ""),
+            "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": local_environment.get(
+                "PUBLISHABLE_KEY", local_environment.get("ANON_KEY", "")
+            ),
+            "WEREWOLF_SUPABASE_DB_DSN": local_environment.get("DB_URL", ""),
+        }
+    )
 
     child_extra = dict(local_environment)
     if isolated_root is not None:
@@ -201,6 +364,23 @@ def prepare_supabase(
             }
         )
     child_environment = quality_environment(extra=child_extra)
+    try:
+        verify_supabase_platform_schema(
+            local_environment,
+            timeout_seconds=min(timeout_seconds, 30),
+        )
+    except (EnvironmentBlockedError, SupabaseOperationError) as error:
+        cleanup = _cleanup_preflight_resources(
+            workdir,
+            project_id,
+            environment,
+            supabase_home,
+            stop_project=started_by_process,
+        )
+        message = _with_cleanup_failure(str(error), cleanup)
+        if isinstance(error, EnvironmentBlockedError):
+            raise EnvironmentBlockedError(message) from error
+        raise SupabaseOperationError(message) from error
     migration = run_command(
         _supabase_command(["migration", "up", "--local"], workdir),
         timeout_seconds=timeout_seconds,
@@ -221,13 +401,9 @@ def prepare_supabase(
             )
         )
 
-    command = [sys.executable, "-m", "werewolf_agent", *APPLICATION_PREFLIGHT_ARGUMENTS]
-    checked = run_command(
-        command,
-        timeout_seconds=60,
-        environment=child_environment,
-    )
-    if checked.returncode != 0:
+    try:
+        verify_supabase_connection(local_environment, timeout_seconds=min(timeout_seconds, 30))
+    except SupabaseOperationError as error:
         cleanup = _cleanup_preflight_resources(
             workdir,
             project_id,
@@ -237,13 +413,30 @@ def prepare_supabase(
         )
         raise SupabaseOperationError(
             _with_cleanup_failure(
-                _failure_message(
-                    "アプリケーションの接続事前確認に失敗しました: " + " ".join(command[2:]),
-                    checked,
-                ),
+                str(error),
                 cleanup,
             )
+        ) from error
+    try:
+        if isolated_root is None:
+            verify_runtime_settings_connection(
+                local_environment,
+                timeout_seconds=min(timeout_seconds, 30),
+            )
+    except (EnvironmentBlockedError, ValueError) as error:
+        cleanup = _cleanup_preflight_resources(
+            workdir,
+            project_id,
+            environment,
+            supabase_home,
+            stop_project=started_by_process,
         )
+        raise EnvironmentBlockedError(
+            _with_cleanup_failure(
+                f".envとsettings modelの接続確認に失敗しました。{error}",
+                cleanup,
+            )
+        ) from error
     local_environment.update(
         {
             "SUPABASE_HOME": str(supabase_home),
@@ -326,31 +519,24 @@ def _supabase_command(arguments: Sequence[str], workdir: Path | None) -> list[st
     return command
 
 
-def _stop_isolated_project(
+def _stop_owned_project(
     workdir: Path | None,
     project_id: str | None,
     environment: dict[str, str],
 ) -> CommandResult | None:
     if workdir is None or project_id is None:
         return None
+    managed_isolated = ARTIFACT_ROOT.resolve() in workdir.resolve().parents
+    command = ["supabase", "stop", "--project-id", project_id]
+    if managed_isolated:
+        command.append("--no-backup")
+    command.extend(["--workdir", str(workdir)])
     stopped = run_command(
-        [
-            "supabase",
-            "stop",
-            "--project-id",
-            project_id,
-            "--no-backup",
-            "--workdir",
-            str(workdir),
-        ],
+        command,
         timeout_seconds=60,
         environment=environment,
     )
-    if (
-        stopped.returncode == 0
-        and workdir.exists()
-        and ARTIFACT_ROOT.resolve() in workdir.resolve().parents
-    ):
+    if stopped.returncode == 0 and workdir.exists() and managed_isolated:
         remove_managed_path(workdir)
     return stopped
 
@@ -370,7 +556,7 @@ def stop_supabase(
         if preflight.workdir is None or preflight.project_id is None:
             failures.append("停止対象のSupabase projectを特定できませんでした。")
         else:
-            stopped = _stop_isolated_project(preflight.workdir, preflight.project_id, environment)
+            stopped = _stop_owned_project(preflight.workdir, preflight.project_id, environment)
             if stopped is not None and stopped.returncode != 0:
                 failures.append(
                     _failure_message("ローカルSupabaseを停止できませんでした。", stopped)
@@ -394,7 +580,7 @@ def _cleanup_preflight_resources(
 ) -> str:
     failures: list[str] = []
     if stop_project:
-        stopped = _stop_isolated_project(workdir, project_id, environment)
+        stopped = _stop_owned_project(workdir, project_id, environment)
         if stopped is not None and stopped.returncode != 0:
             failures.append(
                 _failure_message("所有するSupabase projectを停止できませんでした。", stopped)
@@ -419,23 +605,108 @@ def _supervisor_state_path() -> Path:
     return ARTIFACT_ROOT / "runtime" / "supabase" / SUPERVISOR_STATE_FILE
 
 
+def _session_lock_path() -> Path:
+    return ARTIFACT_ROOT / "runtime" / "supabase" / SESSION_LOCK_FILE
+
+
 def _write_supervisor_state(
     run_id: str,
     state: str,
     *,
+    session: str | None = None,
+    pid: int | None = None,
     report: Path | None = None,
+    started_by_process: bool | None = None,
 ) -> None:
+    now = utc_now().isoformat()
+    current = _read_supervisor_state()
+    started_at = (
+        str(current.get("started_at"))
+        if current is not None and current.get("run_id") == run_id and current.get("started_at")
+        else now
+    )
+    owns_project = (
+        bool(current.get("started_by_process"))
+        if started_by_process is None and current is not None and current.get("run_id") == run_id
+        else bool(started_by_process)
+    )
     write_json(
         _supervisor_state_path(),
         {
             "schema_version": 1,
             "run_id": run_id,
-            "pid": os.getpid(),
+            "pid": os.getpid() if pid is None else pid,
             "state": state,
-            "updated_at": utc_now().isoformat(),
+            "session": session,
+            "started_at": started_at,
+            "updated_at": now,
             "report": str(report) if report is not None else None,
+            "started_by_process": owns_project,
         },
     )
+
+
+def _read_supervisor_state() -> dict[str, object] | None:
+    try:
+        value = json.loads(_supervisor_state_path().read_text(encoding="utf-8"))
+    except (FileNotFoundError, OSError, json.JSONDecodeError):
+        return None
+    return value if isinstance(value, dict) else None
+
+
+def _state_is_active(document: Mapping[str, object]) -> bool:
+    state = str(document.get("state", ""))
+    try:
+        updated = _supervisor_state_path().stat().st_mtime
+    except OSError:
+        return False
+    if state == "reserved":
+        return time.time() - updated <= SESSION_RESERVATION_SECONDS
+    if state not in {"starting", "ready"}:
+        return False
+    pid = document.get("pid")
+    if not isinstance(pid, int):
+        return False
+    return _is_live_supervisor(pid)
+
+
+def _api_port_is_available() -> bool:
+    from werewolf_agent.settings import get_settings
+
+    port = get_settings().api_port
+    probe = socket.socket()
+    probe.settimeout(0.25)
+    try:
+        return probe.connect_ex(("127.0.0.1", port)) != 0
+    finally:
+        probe.close()
+
+
+def reserve_development_session(session: str) -> int:
+    """Backend系compoundの開始前に単一の開発セッションを予約する。"""
+    try:
+        with exclusive_file_lock(_session_lock_path(), timeout_seconds=1):
+            current = _read_supervisor_state()
+            if current is not None and _state_is_active(current):
+                active = current.get("session") or "unknown"
+                print(f"開発セッション `{active}` が既に実行中です。", file=sys.stderr)
+                return 2
+            if session in {"full-stack", "backend", "api"} and not _api_port_is_available():
+                print(
+                    "API portが既に使用されています。既存のBackendを停止してください。",
+                    file=sys.stderr,
+                )
+                return 2
+            run_id = operation_run_id("supabase")
+            _write_supervisor_state(run_id, "reserved", session=session)
+    except LockTimeoutError:
+        print("別の開発セッションが既に実行中です。", file=sys.stderr)
+        return 2
+    except OSError as error:
+        print(f"開発セッションを予約できませんでした: {redact(str(error))}", file=sys.stderr)
+        return 1
+    print(f"開発セッション `{session}` を予約しました。")
+    return 0
 
 
 def _clear_supervisor_state(run_id: str) -> None:
@@ -446,6 +717,47 @@ def _clear_supervisor_state(run_id: str) -> None:
         return
     if document.get("run_id") == run_id:
         path.unlink(missing_ok=True)
+
+
+def cleanup_development_session() -> int:
+    """終了したsupervisorが所有する開発Supabaseだけを停止する。"""
+    try:
+        with exclusive_file_lock(_session_lock_path(), timeout_seconds=5):
+            current = _read_supervisor_state()
+            if current is None:
+                print("停止対象の開発セッションはありません。")
+                return 0
+            if _state_is_active(current):
+                print("実行中の開発セッションは停止できません。", file=sys.stderr)
+                return 2
+            run_id = str(current.get("run_id", ""))
+            if not run_id:
+                print("開発セッション状態が破損しています。", file=sys.stderr)
+                return 1
+            owner_pid = current.get("pid")
+            if not isinstance(owner_pid, int) or owner_pid < 1:
+                print("開発セッション状態が破損しています。", file=sys.stderr)
+                return 1
+            owns_project = bool(current.get("started_by_process"))
+            prepared = SupabasePreflight(
+                environment={},
+                started_by_process=owns_project,
+                workdir=REPOSITORY_ROOT if owns_project else None,
+                project_id=configured_project_id(REPOSITORY_ROOT) if owns_project else None,
+                supabase_home=(
+                    ARTIFACT_ROOT / "runtime" / "supabase-home" / f"preflight-{owner_pid}"
+                ),
+            )
+            stop_supabase(prepared)
+            _clear_supervisor_state(run_id)
+    except LockTimeoutError:
+        print("実行中の開発セッションは停止できません。", file=sys.stderr)
+        return 2
+    except (EnvironmentBlockedError, OSError, SupabaseOperationError) as error:
+        print(f"開発セッションを停止できませんでした: {redact(str(error))}", file=sys.stderr)
+        return 1
+    print("開発セッションの所有resourceを停止しました。")
+    return 0
 
 
 def wait_for_supervisor(*, timeout_seconds: int = 180) -> int:
@@ -459,7 +771,6 @@ def wait_for_supervisor(*, timeout_seconds: int = 180) -> int:
             state = str(document["state"])
             pid = int(document["pid"])
             run_id = str(document["run_id"])
-            fresh = time.time() - path.stat().st_mtime <= 10
         except (FileNotFoundError, KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
             time.sleep(0.25)
             continue
@@ -467,17 +778,26 @@ def wait_for_supervisor(*, timeout_seconds: int = 180) -> int:
         if state == "ready" and live:
             print("ローカルSupabaseの準備完了を確認しました。")
             return 0
-        if state in {"blocked", "error"} and fresh:
+        if state in {"blocked", "error"}:
             report = document.get("report")
             print("ローカルSupabaseを準備できませんでした。", file=sys.stderr)
             if report:
                 print(f"Supabase operation report: {report}", file=sys.stderr)
             return 2 if state == "blocked" else 1
-        if state in {"starting", "ready"} and not live and fresh:
+        if state == "reserved":
+            if _state_is_active(document):
+                time.sleep(0.25)
+                continue
+            print("開発セッション予約の有効期限が切れました。", file=sys.stderr)
+            return 1
+        if state in {"starting", "ready"} and not live:
             first_seen = dead_since.setdefault(run_id, time.monotonic())
             if time.monotonic() - first_seen >= 5:
                 print("Supabase supervisorが準備完了前に終了しました。", file=sys.stderr)
                 return 1
+        if state not in {"starting", "ready"}:
+            print("Supabase supervisorの状態が不正です。", file=sys.stderr)
+            return 1
         time.sleep(0.25)
     print(
         f"{timeout_seconds}秒以内にローカルSupabaseの準備が完了しませんでした。",
@@ -497,35 +817,86 @@ def _is_live_supervisor(pid: int) -> bool:
         return False
 
 
-def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) -> int:
+def serve_supabase(
+    *,
+    timeout_seconds: int = 180,
+    stop_on_exit: bool = False,
+    reserved: bool = False,
+) -> int:
+    """単一lockの所有中だけSupabase supervisorを実行する。"""
+    try:
+        with exclusive_file_lock(_session_lock_path(), timeout_seconds=1):
+            return _serve_supabase_owned(
+                timeout_seconds=timeout_seconds,
+                stop_on_exit=stop_on_exit,
+                reserved=reserved,
+            )
+    except LockTimeoutError:
+        print("別の開発セッションが既に実行中です。", file=sys.stderr)
+        return 2
+
+
+def _serve_supabase_owned(
+    *,
+    timeout_seconds: int,
+    stop_on_exit: bool,
+    reserved: bool,
+) -> int:
     """VS Code stackの生存期間に合わせてローカルSupabaseを管理する。"""
-    run_id = operation_run_id("supabase")
+    session: str | None = None
+    current = _read_supervisor_state() if reserved else None
+    if reserved:
+        if current is None or current.get("state") != "reserved" or not _state_is_active(current):
+            print(
+                "有効な開発セッション予約がありません。起動をやり直してください。", file=sys.stderr
+            )
+            return 2
+        run_id = str(current.get("run_id", ""))
+        session = str(current.get("session", ""))
+        if not run_id or not session:
+            print("開発セッション予約が破損しています。", file=sys.stderr)
+            return 1
+    else:
+        run_id = operation_run_id("supabase")
     started_at = utc_now().isoformat()
     try:
-        _write_supervisor_state(run_id, "starting")
+        _write_supervisor_state(run_id, "starting", session=session)
     except OSError as error:
         print("Supabase supervisorの状態を保存できませんでした。", file=sys.stderr)
         _publish_supabase_report(run_id, "serve", "error", started_at, error)
         return 1
     try:
-        prepared = prepare_supabase(timeout_seconds=timeout_seconds)
+        prepared = prepare_supabase(
+            timeout_seconds=timeout_seconds,
+            ownership_callback=lambda owns: _write_supervisor_state(
+                run_id,
+                "starting",
+                session=session,
+                started_by_process=owns,
+            ),
+        )
     except EnvironmentBlockedError as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "blocked", started_at, error)
-        _write_supervisor_state(run_id, "blocked", report=report)
+        _write_supervisor_state(run_id, "blocked", session=session, report=report)
         return 2
     except SupabaseOperationError as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     except Exception as error:
         print("Supabase準備中に予期しない実行失敗が発生しました。", file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     try:
-        _write_supervisor_state(run_id, "ready")
+        _write_supervisor_state(
+            run_id,
+            "ready",
+            session=session,
+            started_by_process=prepared.started_by_process,
+        )
     except OSError as error:
         cleanup_error: BaseException | None = None
         if stop_on_exit:
@@ -541,7 +912,7 @@ def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) ->
         )
         report = _publish_supabase_report(run_id, "serve", "error", started_at, combined)
         with suppress(OSError):
-            _write_supervisor_state(run_id, "error", report=report)
+            _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     print("ローカルSupabaseの準備が完了しました。停止するにはCtrl+Cを押してください。", flush=True)
     stop_event = threading.Event()
@@ -568,7 +939,7 @@ def serve_supabase(*, timeout_seconds: int = 180, stop_on_exit: bool = False) ->
     except (EnvironmentBlockedError, SupabaseOperationError) as error:
         print(str(error), file=sys.stderr)
         report = _publish_supabase_report(run_id, "serve", "error", started_at, error)
-        _write_supervisor_state(run_id, "error", report=report)
+        _write_supervisor_state(run_id, "error", session=session, report=report)
         return 1
     _publish_supabase_report(run_id, "serve", "passed", started_at)
     _clear_supervisor_state(run_id)

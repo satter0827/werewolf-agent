@@ -95,6 +95,15 @@ def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     assert gates["e2e"].dependencies == ("supabase-preflight",)
 
 
+def test_profiles_declare_the_required_environment_capability() -> None:
+    check = [gate for stage in _profile_stages("check", jobs=1) for gate in stage]
+    release = [gate for stage in _profile_stages("release", jobs=1) for gate in stage]
+
+    assert all(gate.environment_target == "python" for gate in check)
+    assert any(gate.environment_target == "quality" for gate in release)
+    assert next(gate for gate in release if gate.name == "e2e").environment_target == "quality"
+
+
 def test_document_only_change_selects_document_evidence() -> None:
     decision = decide(("docs/design/verification.md",))
 

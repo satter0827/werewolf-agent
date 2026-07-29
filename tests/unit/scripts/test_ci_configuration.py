@@ -37,12 +37,13 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     workflow = _read(".github/workflows/quality.yml")
 
     for command in (
-        "python -m scripts.environment setup focus",
-        "python -m scripts.environment setup check",
-        "python -m scripts.environment setup deep",
+        "python -m scripts.environment setup python",
+        "python -m scripts.environment setup quality",
     ):
         assert command in workflow
-    assert "python -m scripts.environment setup release" not in workflow
+    assert "python -m scripts.environment setup focus" not in workflow
+    assert "python -m scripts.environment setup check" not in workflow
+    assert "python -m scripts.environment setup deep" not in workflow
     assert "python -m scripts.quality focus" in workflow
     assert "--pull=false" not in workflow
     assert "supabase stop --no-backup" not in workflow
@@ -133,7 +134,9 @@ def test_compose_exposes_isolated_runtime_and_test_services() -> None:
     assert 'profiles: ["test"]' in compose
     assert "test:" in compose
     assert "command: pytest" in compose
-    assert "--browser.gatherUsageStats=false" in compose
+    streamlit_config = _read(".streamlit/config.toml")
+    assert "gatherUsageStats = false" in streamlit_config
+    assert "--browser.gatherUsageStats" not in compose
     assert "WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-stdout}" in compose
     test_service = compose.split("\n  test:\n", 1)[1].split("\n  e2e:\n", 1)[0]
     assert "WEREWOLF_SUPABASE_" not in test_service

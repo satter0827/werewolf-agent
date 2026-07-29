@@ -26,7 +26,12 @@ def test_environment_gate_checks_frozen_python_dependencies(
         "inspect_environment",
         lambda _profile: SimpleNamespace(state="passed", confirmed_causes=[]),
     )
-    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
+    context = SimpleNamespace(
+        timeout_seconds=60,
+        environment={},
+        profile="check",
+        environment_target="python",
+    )
 
     result = environment.check_environment(context, tmp_path)
 
@@ -58,7 +63,12 @@ def test_environment_gate_distinguishes_blocked_from_inspection_error(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    context = SimpleNamespace(timeout_seconds=60, environment={}, profile="check")
+    context = SimpleNamespace(
+        timeout_seconds=60,
+        environment={},
+        profile="check",
+        environment_target="python",
+    )
     monkeypatch.setattr(
         environment,
         "inspect_environment",

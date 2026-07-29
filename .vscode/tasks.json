@@ -2,25 +2,25 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Internal: Environment Check",
+      "label": "内部: Python環境を確認",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "check"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "python"],
       "options": { "cwd": "${workspaceFolder}" },
       "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Environment Check Release",
+      "label": "内部: 開発環境を確認",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "release"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "development"],
       "options": { "cwd": "${workspaceFolder}" },
       "hide": true,
       "problemMatcher": []
     },
     {
-      "label": "Internal: Supabase Ready",
+      "label": "内部: Supabaseの準備完了を待つ",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "wait", "--timeout", "180"],
@@ -29,23 +29,92 @@
       "problemMatcher": []
     },
     {
-      "label": "Environment: Check",
+      "label": "内部: Supabaseセッションを停止",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "${input:environmentProfile}"],
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "stop-session"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "内部: Full Stackを予約",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "reserve", "full-stack"],
+      "dependsOn": ["内部: 開発環境を確認"],
+      "dependsOrder": "sequence",
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "内部: Backendを予約",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "reserve", "backend"],
+      "dependsOn": ["内部: 開発環境を確認"],
+      "dependsOrder": "sequence",
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "内部: APIを予約",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "reserve", "api"],
+      "dependsOn": ["内部: 開発環境を確認"],
+      "dependsOrder": "sequence",
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "内部: Workerを予約",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "reserve", "worker"],
+      "dependsOn": ["内部: 開発環境を確認"],
+      "dependsOrder": "sequence",
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "環境: Pythonを準備",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "python"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },
     {
-      "label": "Environment: Setup",
+      "label": "環境: 開発環境を準備",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "${input:environmentProfile}"],
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "development"],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },
     {
-      "label": "Verify: Auto",
+      "label": "環境: 品質環境を準備",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "setup", "quality"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "環境: 状態を確認",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-project", "python", "-m", "scripts.environment", "check", "${input:environmentTarget}"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "品質: Auto",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "auto"],
@@ -54,7 +123,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Verify: Focus",
+      "label": "品質: Focus",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "focus"],
@@ -62,16 +131,15 @@
       "problemMatcher": []
     },
     {
-      "label": "Verify: Check",
+      "label": "品質: Check",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "check"],
       "options": { "cwd": "${workspaceFolder}" },
-      "group": { "kind": "build", "isDefault": true },
       "problemMatcher": []
     },
     {
-      "label": "Verify: Release",
+      "label": "品質: Release",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "release"],
@@ -79,7 +147,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Verify: Deep",
+      "label": "品質: Deep",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "deep", "--confirm-deep"],
@@ -87,7 +155,58 @@
       "problemMatcher": []
     },
     {
-      "label": "Diagnostics: Collect",
+      "label": "品質: 最新Reportを開く",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "report", "open"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "品質: 生成物を削除",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "clean"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "品質: 所有Resourcesを削除",
+      "type": "process",
+      "command": "uv",
+      "args": [
+        "run", "--no-sync", "python", "-m", "scripts.quality", "cleanup",
+        "--confirm", "${input:qualityResourceCleanupConfirmation}"
+      ],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "レビュー: UI",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.review", "ui"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "レビュー: Gameplay",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.review", "gameplay"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "レビュー: Local LLM",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.review", "local-llm"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "診断: 情報を収集",
       "type": "process",
       "command": "uv",
       "args": ["run", "--no-sync", "python", "-m", "scripts.diagnostics", "collect"],
@@ -97,11 +216,17 @@
   ],
   "inputs": [
     {
-      "id": "environmentProfile",
+      "id": "environmentTarget",
       "type": "pickString",
-      "description": "環境profileを選択",
-      "options": ["auto", "focus", "check", "release", "deep"],
-      "default": "check"
+      "description": "確認する環境を選択",
+      "options": ["python", "development", "quality"],
+      "default": "python"
+    },
+    {
+      "id": "qualityResourceCleanupConfirmation",
+      "type": "promptString",
+      "description": "品質所有Resourcesを削除する場合は DELETE と入力",
+      "default": ""
     }
   ]
 }

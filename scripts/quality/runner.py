@@ -18,6 +18,7 @@ import psutil  # type: ignore[import-untyped]
 from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import (
     ARTIFACT_ROOT,
+    QUALITY_COMPOSE_PROJECT_NAME,
     REPOSITORY_ROOT,
     TEMPORARY_CACHE_DIRECTORIES,
     TEMPORARY_ROOT,
@@ -54,7 +55,9 @@ PROFILE_ORDER = ("focus", "check", "release", "deep")
 BUILD_DIRECTORIES = (
     ARTIFACT_ROOT / "outputs",
     ARTIFACT_ROOT / "cache",
+    ARTIFACT_ROOT / "quality",
 )
+QUALITY_RESOURCE_CONFIRMATION = "DELETE"
 
 
 def load_quality_settings() -> QualitySettings:
@@ -144,6 +147,159 @@ def clean() -> list[Path]:
             removed.append(path)
 
     return removed
+
+
+def open_latest_report() -> int:
+    """最新の品質reportをOS既定のviewerで開く。"""
+    reports = sorted(
+        (ARTIFACT_ROOT / "quality" / "profiles").glob("*/current/report.json"),
+        key=lambda path: path.stat().st_mtime,
+        reverse=True,
+    )
+    if not reports:
+        print("最新の品質reportがありません。先に品質検証を実行してください。", file=sys.stderr)
+        return 2
+    report = reports[0]
+    if os.name == "nt":
+        startfile = getattr(os, "startfile", None)
+        if startfile is None:
+            print("この環境では品質reportを開けません。", file=sys.stderr)
+            return 1
+        startfile(report)
+    else:
+        print(report)
+    return 0
+
+
+def cleanup_owned_resources(*, confirmation: str | None) -> int:
+    """品質runnerが識別子で所有するDocker resourceだけを削除する。"""
+    docker = shutil.which("docker")
+    if docker is None:
+        print("Docker CLIを確認できません。", file=sys.stderr)
+        return 2
+    environment = {**os.environ, "COMPOSE_PROJECT_NAME": QUALITY_COMPOSE_PROJECT_NAME}
+    discovery = {
+        "compose_containers": (
+            docker,
+            "ps",
+            "--all",
+            "--filter",
+            f"label=com.docker.compose.project={QUALITY_COMPOSE_PROJECT_NAME}",
+            "--format",
+            "{{.ID}}\t{{.Names}}",
+        ),
+        "compose_volumes": (
+            docker,
+            "volume",
+            "ls",
+            "--filter",
+            f"label=com.docker.compose.project={QUALITY_COMPOSE_PROJECT_NAME}",
+            "--format",
+            "{{.Name}}",
+        ),
+        "supabase_containers": (
+            docker,
+            "ps",
+            "--all",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.ID}}\t{{.Names}}\t{{.Label "com.supabase.cli.project"}}',
+        ),
+        "supabase_volumes": (
+            docker,
+            "volume",
+            "ls",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.Name}}\t{{.Label "com.supabase.cli.project"}}',
+        ),
+        "supabase_networks": (
+            docker,
+            "network",
+            "ls",
+            "--filter",
+            "label=com.supabase.cli.project",
+            "--format",
+            '{{.ID}}\t{{.Name}}\t{{.Label "com.supabase.cli.project"}}',
+        ),
+    }
+    outputs: dict[str, str] = {}
+    for name, command in discovery.items():
+        result = run_command(command, timeout_seconds=30, environment=environment)
+        if result.returncode != 0:
+            print(redact(result.output), file=sys.stderr)
+            return 1
+        outputs[name] = result.output
+    compose_containers = _resource_rows(outputs["compose_containers"])
+    compose_volumes = _resource_rows(outputs["compose_volumes"])
+    supabase_containers = _quality_supabase_rows(outputs["supabase_containers"], fields=3)
+    supabase_volumes = _quality_supabase_rows(outputs["supabase_volumes"], fields=2)
+    supabase_networks = _quality_supabase_rows(outputs["supabase_networks"], fields=3)
+    print("削除対象:")
+    print(f"- Compose project: {QUALITY_COMPOSE_PROJECT_NAME}")
+    _print_resource_rows("Compose container", compose_containers)
+    _print_resource_rows("Compose volume", compose_volumes)
+    _print_resource_rows("Supabase container", supabase_containers)
+    _print_resource_rows("Supabase volume", supabase_volumes)
+    _print_resource_rows("Supabase network", supabase_networks)
+    if confirmation != QUALITY_RESOURCE_CONFIRMATION:
+        print(f"削除する場合は--confirm {QUALITY_RESOURCE_CONFIRMATION}を指定してください。")
+        return 2
+    compose = run_command(
+        (docker, "compose", "--profile", "e2e", "down", "--volumes", "--remove-orphans"),
+        timeout_seconds=180,
+        environment=environment,
+    )
+    if compose.returncode != 0:
+        print(redact(compose.output), file=sys.stderr)
+        return 1
+    removals = (
+        ("container", "rm", "--force", [row[0] for row in supabase_containers]),
+        ("volume", "rm", "", [row[0] for row in supabase_volumes]),
+        ("network", "rm", "", [row[0] for row in supabase_networks]),
+    )
+    for resource_type, action, option, identifiers in removals:
+        if not identifiers:
+            continue
+        removal_command = [docker, action]
+        if resource_type != "container":
+            removal_command.insert(1, resource_type)
+        if option:
+            removal_command.append(option)
+        removal_command.extend(identifiers)
+        removed = run_command(
+            tuple(removal_command),
+            timeout_seconds=60,
+            environment=environment,
+        )
+        if removed.returncode != 0:
+            print(redact(removed.output), file=sys.stderr)
+            return 1
+    return 0
+
+
+def _resource_rows(output: str) -> list[tuple[str, ...]]:
+    return [
+        tuple(part.strip() for part in line.split("\t")) for line in output.splitlines() if line
+    ]
+
+
+def _quality_supabase_rows(output: str, *, fields: int) -> list[tuple[str, ...]]:
+    return [
+        row
+        for row in _resource_rows(output)
+        if len(row) == fields and row[-1].startswith(services_gate.QUALITY_SUPABASE_PREFIX)
+    ]
+
+
+def _print_resource_rows(label: str, rows: list[tuple[str, ...]]) -> None:
+    if not rows:
+        print(f"- {label}: なし")
+        return
+    for row in rows:
+        print(f"- {label}: {' / '.join(row)}")
 
 
 def _run_gate(context: RunContext, gate: Gate) -> GateResult:
@@ -397,6 +553,11 @@ def execute(
         )
     else:
         stages = stages_override or _profile_stages(profile, jobs, run_dir, settings, fresh=fresh)
+    context.environment_target = (
+        "quality"
+        if any(gate.environment_target == "quality" for stage in stages for gate in stage)
+        else "python"
+    )
     try:
         context.change = change or resolve_changes(base_ref, head_ref)
         context.initial_repository_snapshot = capture_snapshot()
@@ -700,6 +861,18 @@ def _bounded_positive_int(value: str, *, maximum: int) -> int:
 def main(argv: Sequence[str] | None = None) -> int:
     """品質profileまたはcleanupを実行する。"""
     raw_arguments = list(argv) if argv is not None else sys.argv[1:]
+    if raw_arguments and raw_arguments[0] == "report":
+        parser = argparse.ArgumentParser(description="品質reportを操作します。")
+        parser.add_argument("command", choices=("report",))
+        parser.add_argument("action", choices=("open",))
+        parser.parse_args(raw_arguments)
+        return open_latest_report()
+    if raw_arguments and raw_arguments[0] == "cleanup":
+        parser = argparse.ArgumentParser(description="品質所有resourceを削除します。")
+        parser.add_argument("command", choices=("cleanup",))
+        parser.add_argument("--confirm")
+        cleanup_arguments = parser.parse_args(raw_arguments)
+        return cleanup_owned_resources(confirmation=cleanup_arguments.confirm)
     try:
         settings = load_quality_settings()
     except (OSError, tomllib.TOMLDecodeError, ValueError) as error:
