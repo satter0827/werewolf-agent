@@ -7,9 +7,9 @@ HTTP APIは認証、wire schema、エラー応答を受け持つ。ユースケ�
 
 ## アプリケーション境界
 
-Python利用者向けの公開面はstatelessな`GameApplication`、`Actor`、application固有の
-コマンド、result、portと、作成コマンドに必要な`LocalRulesDefinition`である。
-HTTP request schemaは公開面に含めない。
+Python利用者向けの公開面は`werewolf_agent.domain`と`werewolf_agent.application`の
+`__all__`で定義する。公開署名から到達するproject内の型と、利用者が捕捉する例外は同じfacadeから
+importできる。HTTP request schemaと内部handlerは公開Python APIに含めない。
 handlerはリポジトリportから集約を読み、domainの操作を呼び、結果を保存して
 公開DTOへ射影する。application自身はログやtelemetryを出力しない。
 seed未指定の作成要求はapplicationが具体的なseedへ確定し、その値を結果、状態、コマンド記録へ
@@ -49,6 +49,10 @@ middlewareを有効にする。設定fieldと環境変数名はsettings modelと
 
 同一操作の再送、競合、存在しないgame、許可されない操作は、domainエラーと
 infrastructureエラーを混同せず、安定したerror codeで表す。
+
+公開Python serviceは認可拒否を`AUTHORIZATION_FAILED`、resource不存在を
+`RESOURCE_NOT_FOUND`、portの構成不足を`ConfigError`、ゲーム操作違反を`GameError`系で表す。
+入力modelとdomain値の構築時検証は`ValueError`で表す。
 
 ## worker
 

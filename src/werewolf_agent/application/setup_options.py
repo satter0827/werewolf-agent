@@ -56,7 +56,7 @@ def setup_catalog_options(
 
 
 def validate_setup_document(payload: Mapping[str, object]) -> SetupValidationResult:
-    """Validate and normalize one complete setup without creating a game."""
+    """ゲームを作成せず、一つの完全setupを検証して正規化する。"""
     try:
         setup = GameSetupDocument.model_validate(payload)
     except ValidationError as exc:

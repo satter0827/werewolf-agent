@@ -38,7 +38,7 @@ class ApplicationModel(BaseModel):
 
 
 class RoleDefinition(ApplicationModel):
-    """Faction membership and ability composition for one role."""
+    """一つの役職のfaction所属とability構成を表す。"""
 
     identity_faction: FactionId
     victory_team: FactionId
@@ -49,7 +49,7 @@ class RoleDefinition(ApplicationModel):
     @field_validator("abilities")
     @classmethod
     def normalize_abilities(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        """Return unique normalized ability references."""
+        """重複のない正規化済みability参照を返す。"""
         abilities = tuple(non_blank(item, "ability id") for item in value)
         if len(set(abilities)) != len(abilities):
             raise ValueError("role abilities must be unique")
@@ -94,34 +94,48 @@ class AbilityComponent(ApplicationModel):
 
 
 class AttackAbility(AbilityComponent):
+    """Night phaseに対象を攻撃するabilityを表す。"""
+
     kind: Literal["attack"]
     tie_resolution: Literal["random_target", "no_action"]
 
 
 class InspectAbility(AbilityComponent):
+    """対象のfactionまたは役職を調査するabilityを表す。"""
+
     kind: Literal["inspect"]
     result_detail: Literal["faction", "role"]
 
 
 class ProtectAbility(AbilityComponent):
+    """対象を攻撃から保護するabilityを表す。"""
+
     kind: Literal["protect"]
 
 
 class EliminateAbility(AbilityComponent):
+    """対象を除外するabilityを表す。"""
+
     kind: Literal["eliminate"]
 
 
 class KnowledgeAbility(AbilityComponent):
+    """開始時または進行中に知識を与えるabilityを表す。"""
+
     kind: Literal["knowledge"]
     knowledge_mode: Literal["allies", "last_eliminated"]
     result_detail: Literal["faction", "role"]
 
 
 class DeathReactionAbility(AbilityComponent):
+    """死亡時の追加処理を定義するabilityを表す。"""
+
     kind: Literal["death_reaction"]
 
 
 class ImmunityAbility(AbilityComponent):
+    """指定した作用元への耐性を定義するabilityを表す。"""
+
     kind: Literal["immunity"]
     source_kinds: Annotated[tuple[ImmunitySourceKind, ...], Field(min_length=1)]
 
@@ -130,12 +144,15 @@ class ImmunityAbility(AbilityComponent):
     def validate_source_kinds(
         cls, value: tuple[ImmunitySourceKind, ...]
     ) -> tuple[ImmunitySourceKind, ...]:
+        """重複のない耐性元種別を返す。"""
         if len(value) != len(set(value)):
             raise ValueError("immunity source_kinds must be unique")
         return value
 
 
 class VulnerabilityAbility(AbilityComponent):
+    """指定した作用元への弱点を定義するabilityを表す。"""
+
     kind: Literal["vulnerability"]
     source_kinds: Annotated[tuple[VulnerabilitySourceKind, ...], Field(min_length=1)]
 
@@ -144,6 +161,7 @@ class VulnerabilityAbility(AbilityComponent):
     def validate_source_kinds(
         cls, value: tuple[VulnerabilitySourceKind, ...]
     ) -> tuple[VulnerabilitySourceKind, ...]:
+        """重複のない弱点元種別を返す。"""
         if len(value) != len(set(value)):
             raise ValueError("vulnerability source_kinds must be unique")
         return value
@@ -163,7 +181,7 @@ AbilityDefinition = Annotated[
 
 
 class LocalRulesDefinition(ApplicationModel):
-    """Game-wide behavior that is not owned by an ability component."""
+    """Ability componentが所有しないゲーム全体の動作を表す。"""
 
     day_speech_limit_per_player: int = Field(ge=0, le=100)
     allow_self_vote: bool
@@ -178,7 +196,7 @@ class LocalRulesDefinition(ApplicationModel):
 
 
 class MechanicsDefinition(ApplicationModel):
-    """Deterministic mechanics selected for one game."""
+    """一つのゲームで選択する決定的なmechanicsを表す。"""
 
     role_counts: dict[str, RoleCount]
     roles: dict[str, RoleDefinition]
@@ -190,18 +208,18 @@ class MechanicsDefinition(ApplicationModel):
     @field_validator("role_counts")
     @classmethod
     def normalize_role_counts(cls, value: dict[str, int]) -> dict[str, int]:
-        """Return role counts keyed by normalized role IDs."""
+        """正規化済み役職IDをkeyとする役職数を返す。"""
         return {non_blank(str(key), "role id"): count for key, count in value.items()}
 
     @field_validator("roles", "abilities")
     @classmethod
     def normalize_definition_ids(cls, value: dict[str, object]) -> dict[str, object]:
-        """Return component definitions keyed by normalized IDs."""
+        """正規化済みIDをkeyとするcomponent定義を返す。"""
         return {non_blank(str(key), "definition id"): item for key, item in value.items()}
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
-        """Validate role counts, ability references, and component semantics."""
+        """役職数、ability参照、componentの意味を検証する。"""
         if not self.role_counts:
             raise ValueError("role_counts must select at least one player")
         selected_roles = set(self.role_counts)
@@ -217,7 +235,7 @@ class MechanicsDefinition(ApplicationModel):
 
 
 class ThemeDefinition(ApplicationModel):
-    """Presentation-only terminology and public narration."""
+    """表示専用の用語と公開narrationを表す。"""
 
     id: str
     name: str
@@ -239,7 +257,7 @@ class ThemeDefinition(ApplicationModel):
     @field_validator("id", "name", "summary", "premise")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Return non-empty theme identity text."""
+        """空でないtheme識別textを返す。"""
         return non_blank(value, "theme text")
 
     @field_validator(
@@ -254,7 +272,7 @@ class ThemeDefinition(ApplicationModel):
     )
     @classmethod
     def normalize_terms(cls, value: dict[str, str]) -> dict[str, str]:
-        """Return display terms with normalized IDs and text."""
+        """正規化済みIDとtextを持つ表示用語を返す。"""
         return {
             non_blank(str(key), "theme term id"): non_blank(text, "theme term")
             for key, text in value.items()
@@ -263,7 +281,7 @@ class ThemeDefinition(ApplicationModel):
     @field_validator("narration")
     @classmethod
     def normalize_narration(cls, value: dict[str, tuple[str, ...]]) -> dict[str, tuple[str, ...]]:
-        """Return narration templates keyed by normalized event IDs."""
+        """正規化済みevent IDをkeyとするnarration templateを返す。"""
         normalized: dict[str, tuple[str, ...]] = {}
         for key, templates in value.items():
             narration_id = non_blank(str(key), "narration id")
@@ -285,7 +303,7 @@ class ThemeDefinition(ApplicationModel):
 
     @model_validator(mode="after")
     def validate_narration(self) -> Self:
-        """Validate enabled narration groups and template placeholders."""
+        """有効なnarration groupとtemplate placeholderを検証する。"""
         if self.narration_enabled and not self.narration:
             raise ValueError("enabled narration requires at least one template group")
         if self.narration_enabled and set(self.narration) != NARRATION_EVENT_IDS:
@@ -304,7 +322,7 @@ def _narration_fields(template: str) -> set[str]:
 
 
 class PlayerIdentityDefinition(ApplicationModel):
-    """Public identity candidate used once per generated roster."""
+    """生成rosterごとに一度使用する公開identity候補を表す。"""
 
     name: str
     age_min: int = Field(ge=18, le=120)
@@ -316,19 +334,19 @@ class PlayerIdentityDefinition(ApplicationModel):
     @field_validator("name", "gender")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Return non-empty player identity text."""
+        """空でないplayer identity textを返す。"""
         return non_blank(value, "player identity text")
 
     @model_validator(mode="after")
     def validate_age_range(self) -> Self:
-        """Require a non-decreasing supported age range."""
+        """下限が上限を超えない年齢範囲を要求する。"""
         if self.age_min > self.age_max:
             raise ValueError("age_min must not exceed age_max")
         return self
 
 
 class PublicPersonaDefinition(ApplicationModel):
-    """Public behavior fields combined with an identity."""
+    """Identityと組み合わせる公開行動fieldを表す。"""
 
     personality: str
     speaking_style: str
@@ -338,12 +356,12 @@ class PublicPersonaDefinition(ApplicationModel):
     @field_validator("personality", "speaking_style")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Return non-empty public persona text."""
+        """空でないpublic persona textを返す。"""
         return non_blank(value, "public persona text")
 
 
 class PrivateStrategyDefinition(ApplicationModel):
-    """Private reasoning fields provided only to the assigned agent."""
+    """割当済みagentだけへ渡すprivate reasoning fieldを表す。"""
 
     reasoning_style: str
     risk_tolerance: Literal["low", "medium", "high"]
@@ -354,12 +372,12 @@ class PrivateStrategyDefinition(ApplicationModel):
     @field_validator("reasoning_style", "evidence_focus")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Return non-empty private strategy text."""
+        """空でないprivate strategy textを返す。"""
         return non_blank(value, "private strategy text")
 
 
 class PlayerGenerationDefinition(ApplicationModel):
-    """Deterministic rules for composing a fresh roster for each game."""
+    """ゲームごとに新しいrosterを構成する決定的規則を表す。"""
 
     identities: tuple[PlayerIdentityDefinition, ...]
     public_personas: tuple[PublicPersonaDefinition, ...]
@@ -369,7 +387,7 @@ class PlayerGenerationDefinition(ApplicationModel):
 
     @model_validator(mode="after")
     def validate_pools(self) -> Self:
-        """Require every player generation component pool."""
+        """Player生成に必要な全component poolを要求する。"""
         if not self.identities or not self.public_personas or not self.private_strategies:
             raise ValueError("player generation pools must not be empty")
         names = [identity.name.strip() for identity in self.identities]
@@ -379,7 +397,7 @@ class PlayerGenerationDefinition(ApplicationModel):
 
 
 class GameSetupDocument(ApplicationModel):
-    """Complete portable setup accepted by every application boundary."""
+    """全application境界が受理するportableな完全setupを表す。"""
 
     schema_version: Literal["0.1.0"]
     mechanics: MechanicsDefinition
@@ -390,7 +408,7 @@ class GameSetupDocument(ApplicationModel):
 
     @model_validator(mode="after")
     def validate_coverage(self) -> Self:
-        """Require theme and player pools to cover the selected mechanics."""
+        """選択したmechanicsをthemeとplayer poolが網羅することを要求する。"""
         roles = set(self.mechanics.roles)
         abilities = set(self.mechanics.abilities)
         factions = {

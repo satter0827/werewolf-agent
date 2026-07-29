@@ -1,4 +1,4 @@
-"""Errors raised by deterministic game rules."""
+"""決定的なゲーム規則が返す例外を定義する。"""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from collections.abc import Mapping
 
 
 class RuleViolation(ValueError):
-    """A rejected game command with a stable machine-readable code."""
+    """安定したmachine-readable codeを持つ拒否済みゲームcommandを表す。"""
 
     def __init__(
         self,
@@ -15,7 +15,7 @@ class RuleViolation(ValueError):
         *,
         context: Mapping[str, object] | None = None,
     ) -> None:
-        """Initialize a violation with a stable code and safe context."""
+        """安定したcodeと安全なcontextで規則違反を初期化する。"""
         self.code = code
         self.detail = detail
         self.context = dict(context or {})
@@ -23,7 +23,7 @@ class RuleViolation(ValueError):
 
 
 class GameError(RuleViolation):
-    """A rejected game action."""
+    """拒否されたゲームactionを表す。"""
 
     def __init__(
         self,
@@ -31,12 +31,12 @@ class GameError(RuleViolation):
         *,
         context: Mapping[str, object] | None = None,
     ) -> None:
-        """Initialize an invalid-action violation."""
+        """不正actionの規則違反を初期化する。"""
         super().__init__("invalid_action", detail, context=context)
 
 
 class GamePhaseError(RuleViolation):
-    """A rejected game phase transition."""
+    """拒否されたゲームphase遷移を表す。"""
 
     def __init__(
         self,
@@ -44,7 +44,7 @@ class GamePhaseError(RuleViolation):
         *,
         context: Mapping[str, object] | None = None,
     ) -> None:
-        """Initialize an invalid-phase violation."""
+        """不正phaseの規則違反を初期化する。"""
         super().__init__("invalid_phase", detail, context=context)
 
 

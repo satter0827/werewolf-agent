@@ -46,6 +46,7 @@ from werewolf_agent.application.operations import AccessPolicy, OperationQueue, 
 from werewolf_agent.application.ports import GameRepository, SetupRepository
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
 from werewolf_agent.application.setup_document import (
+    AbilityDefinition,
     AttackAbility,
     DeathReactionAbility,
     EliminateAbility,
@@ -70,6 +71,7 @@ from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSe
 from werewolf_agent.application.types import GameStatus
 
 __all__ = [
+    "AbilityDefinition",
     "AccessPolicy",
     "Actor",
     "AdvanceGameResult",

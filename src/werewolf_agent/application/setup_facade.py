@@ -1,4 +1,4 @@
-"""Application facade for setup catalog, preview, and persistence."""
+"""Setup catalog、preview、永続化を扱うapplication facadeを定義する。"""
 
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ from werewolf_agent.application.validation import non_blank
 
 
 class SetupApplication:
-    """Own authorization and orchestration for reusable game setups."""
+    """再利用可能なゲームsetupの認可と調整を所有する。"""
 
     def __init__(
         self,
@@ -44,29 +44,29 @@ class SetupApplication:
         config: GameApplicationConfig,
         repository: SetupRepository | None = None,
     ) -> None:
-        """Bind the setup catalog, repository, and validation limits."""
+        """Setup catalog、repository、検証上限を結び付ける。"""
         self._catalog = catalog
         self._config = config
         self._repository = repository
 
     def catalog(self) -> GameSetupOptionsResult:
-        """Return template metadata and editor limits."""
+        """Template metadataとeditor上限を返す。"""
         return setup_catalog_options(self._config, self._catalog)
 
     def template(self, template_id: str) -> GameSetupDocument:
-        """Return one packaged complete setup document."""
+        """同梱する一つの完全setup文書を返す。"""
         try:
             return self._catalog.require_document(template_id)
         except KeyError as exc:
             raise ResourceNotFoundError("指定したゲーム設定が見つかりません。") from exc
 
     def preview(self, document: GameSetupDocument, *, seed: int | None) -> PlayerPreviewResult:
-        """Return a deterministic public-safe player preview."""
+        """決定的で公開可能なplayer previewを返す。"""
         self._validate_player_count(document)
         return preview_players(document, seed=seed)
 
     def validate(self, payload: Mapping[str, object]) -> SetupValidationResult:
-        """Validate a complete document against schema and runtime limits."""
+        """完全な文書をschemaとruntime上限に対して検証する。"""
         result = validate_setup_document(payload)
         self._validate_count(result.player_count)
         return result
@@ -80,7 +80,7 @@ class SetupApplication:
         llm_mode: Literal["fake", "paid"],
         deliberation_level: DeliberationLevel,
     ) -> CreateGameCommand:
-        """Resolve one complete immutable command before queue submission."""
+        """Queue送信前に完全でimmutableなcommandを解決する。"""
         self._validate_player_count(document)
         return prepare_create_command(
             document,
@@ -97,7 +97,7 @@ class SetupApplication:
         display_name: str,
         document: GameSetupDocument,
     ) -> SavedSetupRevision:
-        """Persist the first immutable revision for a signed-in owner."""
+        """ログイン済みownerの最初のimmutable revisionを保存する。"""
         self._require_member(actor)
         self._validate_player_count(document)
         setup_checksum, mechanics_checksum = _checksums(document)
@@ -111,7 +111,7 @@ class SetupApplication:
         )
 
     def list_setups(self, actor: Actor) -> list[SavedSetupSummary]:
-        """List setup summaries owned by a signed-in actor."""
+        """ログイン済みactorが所有するsetup概要を返す。"""
         self._require_member(actor)
         return self._require_repository().list_setups(owner_user_id=actor.user_id)
 
@@ -122,7 +122,7 @@ class SetupApplication:
         *,
         revision: int | None = None,
     ) -> SavedSetupRevision:
-        """Return an owned setup revision without disclosing foreign existence."""
+        """他者の存在を開示せず、所有するsetup revisionを返す。"""
         self._require_member(actor)
         result = self._require_repository().get(
             setup_id,
@@ -134,7 +134,7 @@ class SetupApplication:
         return result
 
     def revisions(self, actor: Actor, setup_id: str) -> list[SavedSetupRevision]:
-        """Return the immutable revision history for an owned setup."""
+        """所有するsetupのimmutableなrevision履歴を返す。"""
         self.get(actor, setup_id)
         return self._require_repository().list_revisions(setup_id, owner_user_id=actor.user_id)
 
@@ -146,7 +146,7 @@ class SetupApplication:
         expected_revision: int,
         document: GameSetupDocument,
     ) -> SavedSetupRevision:
-        """Append a revision when the caller's expected revision is current."""
+        """呼出元が期待するrevisionが最新の場合にrevisionを追加する。"""
         self._require_member(actor)
         self._validate_player_count(document)
         setup_checksum, mechanics_checksum = _checksums(document)

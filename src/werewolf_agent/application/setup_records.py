@@ -1,4 +1,4 @@
-"""Application records for immutable user setup revisions."""
+"""Immutableなuser setup revisionのapplication記録を定義する。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from werewolf_agent.application.setup_document import GameSetupDocument
 
 
 class SavedSetupSummary(ApplicationModel):
-    """One user-owned setup with its current revision."""
+    """利用者が所有するsetupと現在のrevision概要を表す。"""
 
     setup_id: str
     display_name: str
@@ -23,7 +23,7 @@ class SavedSetupSummary(ApplicationModel):
 
 
 class SavedSetupRevision(ApplicationModel):
-    """One immutable complete setup revision."""
+    """一つのimmutableな完全setup revisionを表す。"""
 
     setup_id: str
     display_name: str

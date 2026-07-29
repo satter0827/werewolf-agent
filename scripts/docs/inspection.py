@@ -94,7 +94,9 @@ _REPOSITORY_ROOT_FILES = frozenset(
 )
 _LABEL_PATTERN = re.compile(r"^\((?P<label>[a-z0-9][a-z0-9-]*)\)=$", re.MULTILINE)
 _TOCTREE_PATTERN = re.compile(r"```\{toctree\}\s*\n(?P<body>.*?)```", re.DOTALL)
-_AUTOMODULE_PATTERN = re.compile(r"```\{automodule\}\s+([a-zA-Z0-9_.]+)")
+_EVAL_RST_PATTERN = re.compile(r"```\{eval-rst\}\s*\n(?P<body>.*?)```", re.DOTALL)
+_RST_AUTOMODULE_PATTERN = re.compile(r"^\.\.\s+automodule::\s+([a-zA-Z0-9_.]+)\s*$", re.MULTILINE)
+_DIRECT_AUTOMODULE_PATTERN = re.compile(r"```\{automodule\}\s+([a-zA-Z0-9_.]+)")
 _INLINE_CODE_PATTERN = re.compile(r"`(?P<value>[^`\n]+)`")
 _MARKDOWN_LINK_PATTERN = re.compile(r"!?\[[^\]]*\]\((?P<target>[^)]+)\)")
 _VERIFICATION_COMMAND_PATTERN = re.compile(
@@ -193,14 +195,22 @@ def inspect_documentation() -> dict[str, object]:
             )
 
     labels: dict[str, list[str]] = {}
-    automodules: set[str] = set()
+    automodule_entries: list[str] = []
     reachable_graph: dict[str, set[str]] = {}
     for path in source_paths:
         relative = path.relative_to(DOCS_ROOT).with_suffix("").as_posix()
         text = path.read_text(encoding="utf-8")
         for label in _LABEL_PATTERN.findall(text):
             labels.setdefault(label, []).append(path.relative_to(REPOSITORY_ROOT).as_posix())
-        automodules.update(_AUTOMODULE_PATTERN.findall(text))
+        automodule_entries.extend(_eval_rst_automodules(text))
+        if _DIRECT_AUTOMODULE_PATTERN.search(text):
+            findings.append(
+                DocumentationFinding(
+                    "DOC-API-005",
+                    "automodule must be nested in an eval-rst fence.",
+                    path.relative_to(REPOSITORY_ROOT).as_posix(),
+                )
+            )
         reachable_graph[relative] = _toctree_targets(path, text)
         if ":undoc-members:" in text:
             findings.append(
@@ -252,6 +262,16 @@ def inspect_documentation() -> dict[str, object]:
                 )
             )
 
+    automodules = set(automodule_entries)
+    duplicates = sorted(module for module in automodules if automodule_entries.count(module) > 1)
+    for module in duplicates:
+        findings.append(
+            DocumentationFinding(
+                "DOC-API-006",
+                f"Published automodule must appear once: {module}",
+                "docs/reference",
+            )
+        )
     if automodules != PUBLIC_API_MODULES:
         findings.append(
             DocumentationFinding(
@@ -411,6 +431,14 @@ def inspect_documentation() -> dict[str, object]:
         "automodules": sorted(automodules),
         "findings": [asdict(finding) for finding in findings],
     }
+
+
+def _eval_rst_automodules(text: str) -> tuple[str, ...]:
+    return tuple(
+        module
+        for fence in _EVAL_RST_PATTERN.finditer(text)
+        for module in _RST_AUTOMODULE_PATTERN.findall(fence.group("body"))
+    )
 
 
 def _toctree_targets(path: Path, text: str) -> set[str]:

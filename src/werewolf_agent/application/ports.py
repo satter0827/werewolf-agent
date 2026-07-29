@@ -1,4 +1,4 @@
-"""Ports implemented by outer adapters."""
+"""外側のadapterが実装するportを定義する。"""
 
 from __future__ import annotations
 
@@ -21,38 +21,38 @@ from werewolf_agent.application.types import GameStatus
 
 
 class GameRepository(Protocol):
-    """Persistence operations required by stateless game jobs."""
+    """Statelessなゲーム処理が必要とする永続化操作を定義する。"""
 
     def create(self, game: GameRecordCreate) -> StoredGame:
-        """Persist a new game.
+        """新しいゲームを保存して結果を返す。
 
         Args:
-            game: Full persistence payload for the new game.
+            game: 新しいゲームの完全な永続化payload。
 
         Returns:
-            Stored game with repository-assigned timestamps.
+            Repositoryがtimestampを付与した保存済みゲーム。
 
         """
 
     def get(self, game_id: UUID) -> StoredGame | None:
-        """Return a game if it exists.
+        """ゲームが存在する場合に返す。
 
         Args:
-            game_id: Game id.
+            game_id: ゲームID。
 
         Returns:
-            Stored game, or `None` when absent.
+            保存済みゲーム。不在の場合は`None`。
 
         """
 
     def get_for_update(self, game_id: UUID) -> StoredGame | None:
-        """Return a game locked for update if it exists.
+        """ゲームが存在する場合に更新lockを取得して返す。
 
         Args:
-            game_id: Game id.
+            game_id: ゲームID。
 
         Returns:
-            Stored game, or `None` when absent.
+            保存済みゲーム。不在の場合は`None`。
 
         """
 
@@ -64,27 +64,27 @@ class GameRepository(Protocol):
         limit: int,
         offset: int,
     ) -> list[StoredGameSummary]:
-        """Return a page of game summaries.
+        """ゲーム概要の一pageを返す。
 
         Args:
-            user_id: Verified user whose participant games are visible.
-            status: Optional public game status filter.
-            limit: Maximum number of summaries to return.
-            offset: Result offset for pagination.
+            user_id: 参加ゲームを閲覧する検証済み利用者ID。
+            status: 任意の公開ゲームstatus filter。
+            limit: 返す概要の最大数。
+            offset: Paginationの開始位置。
 
         Returns:
-            Public game summaries in display order.
+            表示順に並んだ公開ゲーム概要。
 
         """
 
     def save(self, update: GameRecordUpdate) -> StoredGame:
-        """Persist mutable fields for one game.
+        """一つのゲームの可変fieldを保存して返す。
 
         Args:
-            update: Mutable game fields after an application step.
+            update: Applicationの一step後に更新するゲームfield。
 
         Returns:
-            Updated stored game.
+            更新後の保存済みゲーム。
 
         """
 
@@ -93,25 +93,25 @@ class GameRepository(Protocol):
         game_id: UUID,
         events: Sequence[GameEventCreate],
     ) -> list[StoredGameEvent]:
-        """Append events and assign stream sequence numbers.
+        """Eventを追加し、stream sequence番号を付与して返す。
 
         Args:
-            game_id: Game id that owns the events.
-            events: Domain-derived events to persist.
+            game_id: Eventを所有するゲームID。
+            events: Domainから導出した保存対象event。
 
         Returns:
-            Stored events with assigned sequence numbers.
+            Sequence番号を付与した保存済みevent。
 
         """
 
     def latest_public_turn_sequence(self, game_id: UUID) -> int:
-        """Return the latest public timeline sequence for one game.
+        """一つのゲームの最新公開timeline sequenceを返す。
 
         Args:
-            game_id: Game id that owns the timeline.
+            game_id: Timelineを所有するゲームID。
 
         Returns:
-            Latest public timeline sequence, or `0` when the timeline is empty.
+            最新の公開timeline sequence。Timelineが空の場合は`0`。
 
         """
 
@@ -122,21 +122,21 @@ class GameRepository(Protocol):
         after: int,
         limit: int,
     ) -> list[StoredGameTurn]:
-        """Return public turn records after the sequence cursor.
+        """Sequence cursorより後の公開turn記録を返す。
 
         Args:
-            game_id: Game id that owns the timeline.
-            after: Exclusive turn sequence cursor.
-            limit: Maximum number of turn records to return.
+            game_id: Timelineを所有するゲームID。
+            after: 対象に含めないturn sequence cursor。
+            limit: 返すturn記録の最大数。
 
         Returns:
-            Public turn records ordered by sequence.
+            Sequence順に並んだ公開turn記録。
 
         """
 
 
 class SetupRepository(Protocol):
-    """Persistence operations for user-owned immutable setup revisions."""
+    """利用者所有のimmutable setup revisionを扱う永続化操作を定義する。"""
 
     def create(
         self,
@@ -147,11 +147,11 @@ class SetupRepository(Protocol):
         setup_checksum: str,
         mechanics_checksum: str,
     ) -> SavedSetupRevision:
-        """Create an owned setup and its first immutable revision."""
+        """所有setupと最初のimmutable revisionを作成して返す。"""
         ...
 
     def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
-        """List only setup summaries owned by the supplied user."""
+        """指定した利用者が所有するsetup概要だけを返す。"""
         ...
 
     def get(
@@ -161,7 +161,7 @@ class SetupRepository(Protocol):
         owner_user_id: str,
         revision: int | None = None,
     ) -> SavedSetupRevision | None:
-        """Return one owned revision or None without revealing foreign rows."""
+        """他者のrowを開示せず、所有revisionまたは`None`を返す。"""
         ...
 
     def list_revisions(
@@ -170,7 +170,7 @@ class SetupRepository(Protocol):
         *,
         owner_user_id: str,
     ) -> list[SavedSetupRevision]:
-        """List immutable revisions for one owned setup."""
+        """所有する一つのsetupのimmutable revisionを返す。"""
         ...
 
     def add_revision(
@@ -183,5 +183,5 @@ class SetupRepository(Protocol):
         setup_checksum: str,
         mechanics_checksum: str,
     ) -> SavedSetupRevision:
-        """Append a revision after optimistic concurrency validation."""
+        """楽観的並行性検証後にrevisionを追加して返す。"""
         ...

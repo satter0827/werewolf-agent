@@ -11,7 +11,7 @@ from werewolf_agent.domain.state import AbilityDefinition, GameConfig, LocalRule
 
 @dataclass(frozen=True)
 class RuleSetDefinition:
-    """Validated data used to construct one executable rule set."""
+    """実行可能なrule setの構築に使う検証済みdataを表す。"""
 
     player_count: int
     role_counts: Mapping[str, int]
@@ -20,20 +20,20 @@ class RuleSetDefinition:
     abilities: Mapping[str, AbilityDefinition]
 
     def __post_init__(self) -> None:
-        """Freeze nested mappings after construction."""
+        """構築後に入れ子のmappingを固定する。"""
         object.__setattr__(self, "role_counts", frozen_mapping(self.role_counts))
         object.__setattr__(self, "abilities", frozen_mapping(self.abilities))
 
 
 @dataclass(frozen=True)
 class RuleSet:
-    """Validated executable configuration for one game."""
+    """一つのゲームで実行する検証済み設定を表す。"""
 
     config: GameConfig
 
 
 def build_game_rules(definition: RuleSetDefinition) -> RuleSet:
-    """Build the only supported deterministic rule pipeline from data."""
+    """Dataから唯一の対応済み決定的rule pipelineを構築する。"""
     return RuleSet(
         config=GameConfig(
             player_count=definition.player_count,
