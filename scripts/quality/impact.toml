@@ -27,5 +27,5 @@ patterns = ["src/werewolf_agent/clients/streamlit/**", "scripts/browser/**", "te
 profile = "release"
 
 [[rules]]
-patterns = [".github/**", ".vscode/**", "contracts/**"]
+patterns = [".codex/**", ".github/**", ".vscode/**", "contracts/**"]
 profile = "check"

@@ -162,8 +162,9 @@ def test_repository_exposes_standard_community_templates() -> None:
 
     assert "scripts/README.md" in contributing
     assert "公開Issue" in security
-    for heading in ("## 目的", "## 変更内容", "## 影響", "## 検証"):
+    for heading in ("## 目的", "## 変更内容", "## 影響", "## 検証", "## 最終判断"):
         assert heading in pull_request
+    assert "人間が未解決会話と必須checkを確認" in pull_request
     assert "blank_issues_enabled: false" in issue_config
     for filename in ("bug_report.yml", "feature_request.yml"):
         template = _read(f".github/ISSUE_TEMPLATE/{filename}")
@@ -263,7 +264,13 @@ def test_rulesets_require_the_stable_workflow_checks() -> None:
         pull_request_rule = next(
             rule for rule in document["rules"] if rule["type"] == "pull_request"
         )
-        assert pull_request_rule["parameters"]["allowed_merge_methods"] == ["merge"]
+        parameters = pull_request_rule["parameters"]
+        assert parameters["allowed_merge_methods"] == ["merge"]
+        assert parameters["required_approving_review_count"] == 0
+        assert parameters["dismiss_stale_reviews_on_push"] is False
+        assert parameters["require_code_owner_review"] is False
+        assert parameters["require_last_push_approval"] is False
+        assert parameters["required_review_thread_resolution"] is (filename == "main.json")
 
 
 def test_backend_dev_image_contains_the_test_suite() -> None:
@@ -273,7 +280,7 @@ def test_backend_dev_image_contains_the_test_suite() -> None:
     dev = dockerfile.split("FROM dev-dependencies AS dev", 1)[1].split(
         "FROM runtime-dependencies AS runtime", 1
     )[0]
-    for copied_path in (".github", "docker", "docs", "tests"):
+    for copied_path in (".codex", ".github", "docker", "docs", "tests"):
         assert f"COPY {copied_path}" in dev
     assert "contracts/openapi.json" in dev
 

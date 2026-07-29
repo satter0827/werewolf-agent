@@ -187,7 +187,7 @@ quote-style = "double"
 [tool.mypy]
 cache_dir = ".werewolf-agent/cache/mypy"
 check_untyped_defs = true
-files = ["src", "scripts", "notebooks/werewolf_demo"]
+files = ["src", "scripts", "notebooks/werewolf_demo", ".codex/hooks"]
 mypy_path = "src"
 python_version = "3.11"
 show_error_codes = true

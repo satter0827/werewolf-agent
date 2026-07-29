@@ -117,6 +117,18 @@ PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向�
 月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
 夜間Deepは早期検知に使用し、通常のmerge条件には含めない。
 
+AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`までを担当する。正式なレビュー判断、
+レビュー会話の解決、auto-merge、mergeは人間が担当する。リポジトリ固有の
+`.codex/hooks.json`はCodexの禁止操作を実行前に拒否し、hook変更後は新しいCodex sessionで
+再信頼する。`main`と`develop`のRulesetで`required_approving_review_count`を0とする設定は、
+同一GitHubアカウントによる単独開発を停止させないための意図的な設定である。人間は未解決会話と
+必須checkを確認して最終判断する。
+
+このhookは、信頼済みCodex sessionのlocal shellとGitHub MCP toolを対象とする実用上のguardで
+あり、GitHub側の権限制御ではない。未信頼または無効なhook、hook対象外のhosted tool、同じ認証を
+使う外部program、意図的に隠した間接実行は制御しない。Codexはこれらの経路へ切り替えず、禁止操作が
+必要な場合は人間へ引き渡す。
+
 ## ブラウザーE2E
 
 ブラウザーjourney、state、device、capture名の正本は`scripts/browser/catalog.toml`である。

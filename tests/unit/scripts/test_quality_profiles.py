@@ -1,8 +1,10 @@
 """品質gate selectorとschedulerの契約。"""
 
+import tomllib
 from pathlib import Path
 
 import pytest
+from scripts.quality.gates.python import build as build_python_gates
 from scripts.quality.impact import decide
 from scripts.quality.models import Gate
 from scripts.quality.profiles import expand_selectors
@@ -148,6 +150,29 @@ def test_unknown_change_escalates_to_check() -> None:
     assert decision.profile == "check"
     assert decision.selectors == ()
     assert "未登録path" in decision.reason
+
+
+def test_codex_change_explicitly_selects_check() -> None:
+    """Codexの実行制御変更を未知path fallbackに依存させない。"""
+    decision = decide((".codex/hooks/github_pr_governance.py",))
+
+    assert decision.profile == "check"
+    assert decision.selectors == ()
+    assert "未登録path" not in decision.reason
+
+
+def test_python_static_gates_cover_every_configured_source() -> None:
+    """静的検査の実行対象と再利用fingerprintを同じsource境界へ揃える。"""
+    root = Path(__file__).resolve().parents[3]
+    with (root / "pyproject.toml").open("rb") as stream:
+        configured = tomllib.load(stream)["tool"]["mypy"]["files"]
+    gates = {gate.name: gate for gate in build_python_gates(fresh=True)}
+
+    assert configured == ["src", "scripts", "notebooks/werewolf_demo", ".codex/hooks"]
+    assert all(path not in gates["mypy"].command for path in configured)
+    for gate_name in ("ruff", "format", "mypy"):
+        assert "notebooks/**/*.py" in gates[gate_name].inputs
+        assert ".codex/**/*.py" in gates[gate_name].inputs
 
 
 def test_unknown_change_never_downgrades_a_release_boundary() -> None:
