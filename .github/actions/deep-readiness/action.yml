@@ -22,9 +22,12 @@ runs:
     - shell: bash
       run: uv run --no-project python -m scripts.environment setup quality
     - shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_REF: ${{ inputs.head-ref }}
       run: >-
         uv run --no-sync python -m scripts.quality deep
-        --base-ref "${{ inputs.base-ref }}"
-        --head-ref "${{ inputs.head-ref }}"
+        --base-ref "$BASE_REF"
+        --head-ref "$HEAD_REF"
         --confirm-deep
         --fresh
