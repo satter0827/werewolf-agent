@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-
 import werewolf_agent.application.handlers as handlers
+from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.boundary import public_result
 from werewolf_agent.application.errors import (
     AppError,
@@ -36,22 +35,6 @@ from werewolf_agent.application.models import (
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.replay import verify_replay
 from werewolf_agent.application.types import GameStatus
-
-
-@dataclass(frozen=True)
-class Actor:
-    """外側のsecurity境界が検証した呼出主体を表す."""
-
-    user_id: str
-    is_anonymous: bool = False
-    is_admin: bool = False
-
-    def __post_init__(self) -> None:
-        """安定した外部subject IDを正規化して必須とする."""
-        user_id = self.user_id.strip()
-        if not user_id:
-            raise ValueError("Actor user_id must not be blank.")
-        object.__setattr__(self, "user_id", user_id)
 
 
 class GameApplication:

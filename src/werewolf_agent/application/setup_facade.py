@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
+from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.boundary import public_result
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import (
@@ -13,7 +14,6 @@ from werewolf_agent.application.errors import (
     ErrorCode,
     ResourceNotFoundError,
 )
-from werewolf_agent.application.facade import Actor
 from werewolf_agent.application.messages import message_player_count_between
 from werewolf_agent.application.models import (
     CreateGameCommand,

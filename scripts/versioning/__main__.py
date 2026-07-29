@@ -16,6 +16,8 @@ from typing import Literal, cast
 
 from packaging.version import InvalidVersion, Version
 
+from scripts.versioning import DEFAULT_BASE_REF, DEFAULT_HEAD_REF
+
 ROOT = Path(__file__).resolve().parents[2]
 REGISTRY = Path(__file__).with_name("registry.toml")
 SEMVER = re.compile(
@@ -440,8 +442,8 @@ def suggest(base_ref: str, head_ref: str) -> tuple[VersionLevel, str]:
 
 
 def _add_refs(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--base-ref", default="origin/main")
-    parser.add_argument("--head-ref", default="HEAD")
+    parser.add_argument("--base-ref", default=DEFAULT_BASE_REF)
+    parser.add_argument("--head-ref", default=DEFAULT_HEAD_REF)
 
 
 def build_parser() -> argparse.ArgumentParser:

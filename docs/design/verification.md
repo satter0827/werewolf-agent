@@ -23,7 +23,8 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 
 `--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
-変更影響の選定、version所有境界、reportは、runnerが一度だけ解決した同じbaseとheadを使用する。
+明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。baseを省略した場合、
+変更影響はworkspaceだけを扱い、version所有境界はリリース基準の`origin/main`を使用して実コマンドへ記録する。
 
 ## CI境界
 

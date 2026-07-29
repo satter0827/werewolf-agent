@@ -8,7 +8,7 @@ import pytest
 
 from werewolf_agent import application
 from werewolf_agent.application import handlers
-from werewolf_agent.application.errors import GameNotFoundError, InternalError
+from werewolf_agent.application.errors import GameNotFoundError
 
 
 class _Repository:
@@ -163,7 +163,7 @@ def test_public_facade_hides_unexpected_runtime_details(
 
     monkeypatch.setattr(handlers, "list_games", failed)
 
-    with pytest.raises(InternalError) as captured:
+    with pytest.raises(application.InternalError) as captured:
         _games().list(application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
@@ -175,7 +175,7 @@ def test_public_facade_hides_access_policy_runtime_details() -> None:
     """Access policyの内部失敗を安全な公開失敗へ変換する。"""
     games = _games(policy=_FailingPolicy())
 
-    with pytest.raises(InternalError) as captured:
+    with pytest.raises(application.InternalError) as captured:
         games.get("game-id", application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
@@ -194,7 +194,7 @@ def test_public_facade_hides_all_unexpected_exception_details(
 
     monkeypatch.setattr(handlers, "list_games", failed)
 
-    with pytest.raises(InternalError) as captured:
+    with pytest.raises(application.InternalError) as captured:
         _games().list(application.Actor("user-id"))
 
     assert captured.value.__cause__ is failure
@@ -260,7 +260,7 @@ def test_setup_facade_hides_repository_runtime_details() -> None:
         repository=cast(application.SetupRepository, _FailingSetupRepository()),
     )
 
-    with pytest.raises(InternalError) as captured:
+    with pytest.raises(application.InternalError) as captured:
         setups.list_setups(application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED

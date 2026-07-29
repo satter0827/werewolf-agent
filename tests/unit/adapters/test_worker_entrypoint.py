@@ -1,7 +1,9 @@
 import logging
+import traceback
 
 from typer.testing import CliRunner
 
+from werewolf_agent.application.errors import InternalError
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker import app as worker_app
 
@@ -29,6 +31,42 @@ def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -
         if record.event_action == "worker.application_error.handled"
     ]
     assert len(records) == 1
+    assert records[0].exc_info is None
+
+
+def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> None:
+    """安全化した内部障害の原因をworkerのERROR logへ保持する。"""
+    settings = AppSettings(
+        _env_file=None,
+        supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
+    )
+
+    def fail_process(_settings: object) -> int:
+        try:
+            raise RuntimeError("private worker detail")
+        except RuntimeError as cause:
+            raise InternalError() from cause
+
+    monkeypatch.setattr(
+        worker_app,
+        "configure_entrypoint_logging",
+        lambda *args, **kwargs: settings,
+    )
+    monkeypatch.setattr(worker_app, "process_worker_batch", fail_process)
+
+    with caplog.at_level(logging.ERROR, logger=worker_app.__name__):
+        result = CliRunner().invoke(worker_app.app, ["once"])
+
+    assert result.exit_code == 1
+    record = next(
+        record
+        for record in caplog.records
+        if record.event_action == "worker.application_error.handled"
+    )
+    assert record.exc_info is not None
+    formatted = "".join(traceback.format_exception(*record.exc_info))
+    assert "RuntimeError: private worker detail" in formatted
+    assert "InternalError" in formatted
 
 
 def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> None:

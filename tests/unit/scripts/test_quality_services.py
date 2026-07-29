@@ -108,7 +108,7 @@ def test_repository_gate_rejects_undefined_artifact_areas(
             "feature-head",
             ["--base-ref", "origin/develop", "--head-ref", "feature-head"],
         ),
-        (None, "HEAD", ["--head-ref", "HEAD"]),
+        (None, "HEAD", ["--base-ref", "origin/main", "--head-ref", "HEAD"]),
     ],
 )
 def test_version_gate_uses_the_resolved_quality_change_set(

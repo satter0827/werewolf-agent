@@ -7,6 +7,7 @@ from pathlib import Path
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
 from scripts.quality.models import Gate, RunContext
+from scripts.versioning import DEFAULT_BASE_REF
 
 GATES = ("repository", "version-contract", "architecture")
 
@@ -88,8 +89,7 @@ def check_artifact_placement(_: RunContext, __: Path) -> CommandResult:
 def check_version_contract(context: RunContext, _: Path) -> CommandResult:
     """品質実行と同じbase、headでversion所有境界を検査する。"""
     command = [sys.executable, "-m", "scripts.versioning", "check"]
-    if context.change.base_ref is not None:
-        command.extend(("--base-ref", context.change.base_ref))
+    command.extend(("--base-ref", context.change.base_ref or DEFAULT_BASE_REF))
     command.extend(("--head-ref", context.change.head_ref))
     return run_command(
         command,

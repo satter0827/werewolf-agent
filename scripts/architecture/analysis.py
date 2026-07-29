@@ -110,7 +110,11 @@ def _internal_public_alias_findings(modules: dict[str, Path]) -> list[Finding]:
             continue
         imported_aliases = {
             (target_module, line)
-            for imported, line in imports_with_lines(path, source_module)
+            for imported, line in imports_with_lines(
+                path,
+                source_module,
+                include_type_checking=True,
+            )
             if (target_module := _project_module_name(imported, modules))
             in PUBLIC_ALIAS_MODULE_NAMES
         }
@@ -131,14 +135,23 @@ def _internal_public_alias_findings(modules: dict[str, Path]) -> list[Finding]:
     return findings
 
 
-def imports_with_lines(path: Path, source_module: str) -> set[tuple[str, int]]:
-    """Parse runtime imports while excluding type-checking-only branches."""
+def imports_with_lines(
+    path: Path,
+    source_module: str,
+    *,
+    include_type_checking: bool = False,
+) -> set[tuple[str, int]]:
+    """Parse imports, optionally excluding type-checking-only branches."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[tuple[str, int]] = set()
 
     class ImportVisitor(ast.NodeVisitor):
         def visit_If(self, node: ast.If) -> None:
-            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            if (
+                not include_type_checking
+                and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"
+            ):
                 for child in node.orelse:
                     self.visit(child)
                 return

@@ -151,6 +151,12 @@ def test_internal_modules_cannot_import_the_public_root_alias(
         "from werewolf_agent import Game\n",
         encoding="utf-8",
     )
+    (application / "types.py").write_text(
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from werewolf_agent import Game\n",
+        encoding="utf-8",
+    )
     (domain / "__init__.py").write_text("class Game: pass\n", encoding="utf-8")
     monkeypatch.setattr(architecture, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(architecture, "PACKAGE_ROOT", package)
@@ -158,5 +164,11 @@ def test_internal_modules_cannot_import_the_public_root_alias(
 
     findings = architecture._internal_public_alias_findings(modules)
 
-    assert [finding.rule_id for finding in findings] == ["ARCH-DEPENDENCY-002"]
-    assert findings[0].evidence["source_module"] == "werewolf_agent.application.service"
+    assert [finding.rule_id for finding in findings] == [
+        "ARCH-DEPENDENCY-002",
+        "ARCH-DEPENDENCY-002",
+    ]
+    assert {finding.evidence["source_module"] for finding in findings} == {
+        "werewolf_agent.application.service",
+        "werewolf_agent.application.types",
+    }

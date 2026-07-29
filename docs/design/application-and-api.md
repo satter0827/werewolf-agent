@@ -10,6 +10,7 @@ HTTP APIは認証、wire schema、エラー応答を受け持つ。ユースケ�
 Python利用者向けの公開面は`werewolf_agent.domain`と`werewolf_agent.application`の
 `__all__`で定義する。公開署名から到達するproject内の型と、利用者が捕捉する例外は同じfacadeから
 importできる。HTTP request schemaと内部handlerは公開Python APIに含めない。
+`Actor`と例外変換はGame・Setup両facadeが共有するapplication所有境界とし、peer facade間で所有しない。
 handlerはリポジトリportから集約を読み、domainの操作を呼び、結果を保存して
 公開DTOへ射影する。application自身はログやtelemetryを出力しない。
 seed未指定の作成要求はapplicationが具体的なseedへ確定し、その値を結果、状態、コマンド記録へ
