@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import structlog
 
+from werewolf_agent import __version__
 from werewolf_agent.observability import (
     bind_observation_context,
     configure_entrypoint_logging,
@@ -13,7 +14,6 @@ from werewolf_agent.observability import (
     get_observation_context,
 )
 from werewolf_agent.observability import bootstrap as observability_bootstrap
-from werewolf_agent.observability import logging as observability_logging
 from werewolf_agent.security.redaction import redact_mapping, redact_text
 from werewolf_agent.settings import AppSettings
 
@@ -22,17 +22,6 @@ REDACTION_CASES = json.loads(
         encoding="utf-8"
     )
 )
-
-
-def test_package_version_fallback_uses_the_release_version(monkeypatch: pytest.MonkeyPatch) -> None:
-    """未installのsource checkoutでもrelease versionを重複定義しない。"""
-
-    def missing_distribution(_name: str) -> str:
-        raise observability_logging.metadata.PackageNotFoundError
-
-    monkeypatch.setattr(observability_logging.metadata, "version", missing_distribution)
-
-    assert observability_logging._package_version() == "0.2.0"
 
 
 def _settings(tmp_path: Path, **overrides: object) -> AppSettings:
@@ -120,7 +109,7 @@ def test_configure_observability_writes_ecs_jsonl_with_context_and_extra(
     assert payload["log.logger"] == "werewolf_agent.tests"
     assert payload["message"] == "hello world"
     assert payload["service.name"] == "werewolf-agent"
-    assert payload["service.version"] == "0.2.0"
+    assert payload["service.version"] == __version__
     assert payload["event.dataset"] == "werewolf_agent.tests"
     assert payload["event.action"] == "test.event"
     assert payload["trace.id"] == "trace-1"

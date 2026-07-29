@@ -1,10 +1,17 @@
 [project]
 name = "werewolf-agent"
 dynamic = ["version"]
-description = "LLM agents play and observe a deterministic Werewolf game engine."
+description = "Deterministic Werewolf backend for LLM agents with FastAPI, Streamlit, and Supabase."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
 license = "MIT"
+keywords = [
+    "ai-agents",
+    "llm",
+    "multi-agent-systems",
+    "social-deduction",
+    "werewolf",
+]
 authors = [
     { name = "werewolf-agent contributors" },
 ]
@@ -34,6 +41,12 @@ dependencies = [
     "toml>=0.10,<1",
     "typer>=0.15,<1",
 ]
+
+[project.urls]
+Homepage = "https://github.com/satter0827/werewolf-agent"
+Documentation = "https://github.com/satter0827/werewolf-agent/tree/main/docs"
+Repository = "https://github.com/satter0827/werewolf-agent"
+Issues = "https://github.com/satter0827/werewolf-agent/issues"
 
 [project.optional-dependencies]
 api = [
