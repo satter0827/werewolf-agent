@@ -64,10 +64,15 @@ def test_nightly_deep_is_change_aware_and_weekly_forced() -> None:
     assert "reason=manual-force" in workflow
     assert 'git diff --quiet "$main_sha..$develop_sha"' in workflow
     assert "uses: actions/cache/restore@" in preflight
+    assert "continue-on-error: true" in preflight
     assert "lookup-only: true" in preflight
     assert "key: ${{ steps.revisions.outputs.fingerprint }}" in preflight
+    assert "steps.success-cache.outcome || 'skipped'" in preflight
     assert "uses: actions/cache/save@" in scheduled_deep
+    assert "id: success-cache-save" in scheduled_deep
+    assert "continue-on-error: true" in scheduled_deep
     assert "key: ${{ needs.nightly-preflight.outputs.fingerprint }}" in scheduled_deep
+    assert "steps.success-cache-save.outcome" in scheduled_deep
     assert scheduled_deep.index("uses: ./.github/actions/deep-readiness") < scheduled_deep.index(
         "uses: actions/cache/save@"
     )
@@ -128,13 +133,24 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
 
     assert references
     assert errors == []
-    dependabot = _read(".github/dependabot.yml")
-    assert "package-ecosystem: github-actions" in dependabot
-    assert "package-ecosystem: uv" in dependabot
-    assert dependabot.count("target-branch: develop") == 2
-    assert dependabot.count("interval: weekly") == 2
-    assert dependabot.count("open-pull-requests-limit: 5") == 2
-    assert 'patterns:\n          - "actions/cache*"' in dependabot
+    updates = _dependabot_update_blocks(_read(".github/dependabot.yml"))
+    assert set(updates) == {"github-actions", "uv"}
+    for update in updates.values():
+        assert "target-branch: develop" in update
+        assert "interval: weekly" in update
+        assert "open-pull-requests-limit: 5" in update
+    github_actions = updates["github-actions"]
+    cache_group = re.search(
+        r"(?ms)^      actions-cache:\s*$\n"
+        r"        patterns:\s*$\n"
+        r"(?P<patterns>(?:          - .+$\n?)+)",
+        github_actions,
+    )
+    assert cache_group is not None
+    assert re.findall(r"^          -\s+(.+?)\s*$", cache_group.group("patterns"), re.MULTILINE) == [
+        '"actions/cache*"'
+    ]
+    assert "groups:" not in updates["uv"]
 
 
 def test_repository_exposes_standard_community_templates() -> None:
@@ -172,13 +188,20 @@ def test_external_action_contract_rejects_mutable_or_inconsistent_references() -
             "  - uses: actions/cache/save@"
             "27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5\n"
         ),
+        "case-inconsistent.yml": (
+            "steps:\n"
+            "  - uses: Actions/cache/restore@"
+            "55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n"
+            "  - uses: actions/cache/save@"
+            "27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5\n"
+        ),
     }
 
     _, errors = _validate_external_action_references(invalid_sources)
 
     assert len(errors) == len(invalid_sources)
     assert sum("40桁SHAとrelease番号" in error for error in errors) == 4
-    assert sum("同じSHAとrelease番号" in error for error in errors) == 1
+    assert sum("同じSHAとrelease番号" in error for error in errors) == 2
 
 
 def test_main_source_rejects_a_same_named_fork_branch() -> None:
@@ -351,6 +374,24 @@ def _action_sources() -> dict[str, str]:
     return {path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8") for path in paths}
 
 
+def _dependabot_update_blocks(source: str) -> dict[str, str]:
+    starts = list(
+        re.finditer(
+            r"^  - package-ecosystem:\s+(?P<ecosystem>[^\s#]+)\s*$",
+            source,
+            re.MULTILINE,
+        )
+    )
+    blocks: dict[str, str] = {}
+    for index, match in enumerate(starts):
+        ecosystem = match.group("ecosystem").strip("\"'")
+        if ecosystem in blocks:
+            raise AssertionError(f"Dependabotの{ecosystem}設定が重複しています")
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(source)
+        blocks[ecosystem] = source[match.start() : end]
+    return blocks
+
+
 def _validate_external_action_references(
     sources: dict[str, str],
 ) -> tuple[list[tuple[str, str, str]], list[str]]:
@@ -375,7 +416,7 @@ def _validate_external_action_references(
             if pin_match is None:
                 errors.append(f"{path}:{line_number}: 外部Actionは40桁SHAとrelease番号で固定する")
                 continue
-            identity = f"{pin_match.group('owner')}/{pin_match.group('repository')}"
+            identity = f"{pin_match.group('owner')}/{pin_match.group('repository')}".casefold()
             revision = pin_match.group("sha")
             version = pin_match.group("version")
             references.append((identity, revision, version))

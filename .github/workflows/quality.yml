@@ -192,6 +192,7 @@ jobs:
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
       - id: success-cache
         if: steps.revisions.outputs.changed == 'true' && steps.revisions.outputs.force != 'true'
+        continue-on-error: true
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
@@ -205,6 +206,7 @@ jobs:
             echo "- main: \`${{ steps.revisions.outputs.main_sha }}\`"
             echo "- develop: \`${{ steps.revisions.outputs.develop_sha }}\`"
             echo "- fingerprint: \`${{ steps.revisions.outputs.fingerprint }}\`"
+            echo "- cache step: \`${{ steps.success-cache.outcome || 'skipped' }}\`"
             echo "- cache hit: \`${{ steps.success-cache.outputs.cache-hit || 'false' }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -233,7 +235,9 @@ jobs:
           mkdir -p .werewolf-agent/cache/nightly-success
           printf '%s\n' '${{ needs.nightly-preflight.outputs.fingerprint }}' \
             > .werewolf-agent/cache/nightly-success/fingerprint.txt
-      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - id: success-cache-save
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ needs.nightly-preflight.outputs.fingerprint }}
@@ -255,6 +259,7 @@ jobs:
             echo "- reason: \`${{ needs.nightly-preflight.outputs.reason }}\`"
             echo "- main: \`${{ needs.nightly-preflight.outputs.main-sha }}\`"
             echo "- develop: \`${{ needs.nightly-preflight.outputs.develop-sha }}\`"
+            echo "- cache save: \`${{ steps.success-cache-save.outcome }}\`"
             echo "- result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
