@@ -68,6 +68,8 @@ role assignmentとprivate strategyを返さない。
 
 `api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
+公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
+公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
 
 ## Agent意思決定
 

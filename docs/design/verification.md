@@ -35,6 +35,16 @@ Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。夜�
 cacheを再利用し、失敗または取消時は次夜に再実行する。月曜JSTの実行と明示した
 `nightly-deep`はcacheを無視する。GitHub-hosted runner全体をローカルへ複製せず、共通の
 Deep composite actionと依存定義をリポジトリ内の再現境界とする。
+cacheの参照または保存に失敗した場合は品質判定を停止せず、参照失敗をcache missとして
+Deepを実行する。cache処理の結果はjob summaryへ残し、次回実行の要否と分離して観測する。
+
+外部GitHub Actionは40桁のcommit SHAへ固定し、対応する`vX.Y.Z`形式のリリース番号を
+同じ行へ記録する。同じupstreamリポジトリのActionはsubpathが異なっても同じSHAとリリースを
+使用する。Dependabotは同じupstreamリポジトリから提供される密結合なActionを同じPRで更新する。
+Actionが使用する実行runtimeは参照値から推測せず、upstreamのリリース内容と
+GitHub Actions上の実行結果で確認する。
+Dependabotはデフォルトbranchの設定を読むため、`develop`での設定変更は通常の`main`向け
+リリースへ取り込まれた後に有効となる。
 
 夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
 `current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
@@ -48,6 +58,9 @@ uploadしない。
 
 利用者は運用設定として有料providerを選択できる。ただし、そのcredential、応答、可用性を
 品質判定やレビューの前提にしない。Local LLMレビューはloopbackだけを許可する。
+
+文書検査はソースコード上の公開モジュール指定に加え、生成したPython API HTMLのモジュールanchor、Python
+object構造、生directiveの非露出を確認する。掲載snippetは外部serviceなしで実行する。
 
 ## 判定
 

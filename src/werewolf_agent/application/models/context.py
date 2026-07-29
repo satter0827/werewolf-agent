@@ -1,4 +1,4 @@
-"""Immutable context for application operations."""
+"""Application operationへ渡すimmutable contextを定義する."""
 
 from __future__ import annotations
 
@@ -26,7 +26,7 @@ ActionTypeId = str
 
 @dataclass(frozen=True)
 class GameApplicationConfig:
-    """Business settings used by stateless game jobs."""
+    """Statelessなゲーム処理が使用するbusiness設定を表す."""
 
     min_players: int
     max_players: int
@@ -36,7 +36,7 @@ class GameApplicationConfig:
     timeline_max_limit: int
 
     def __post_init__(self) -> None:
-        """Validate business settings supplied by the outer layer."""
+        """外側のlayerから渡されたbusiness設定を検証する."""
         if self.min_players < 1:
             raise ValueError(MESSAGE_MIN_PLAYERS_MUST_BE_AT_LEAST_ONE)
         if self.max_players < self.min_players:
@@ -57,7 +57,7 @@ class GameApplicationConfig:
 
 @dataclass(frozen=True)
 class ApplicationContext:
-    """Externally supplied dependencies for game operations."""
+    """ゲーム操作へ外部から渡す依存関係を保持する."""
 
     repository: GameRepository
     config: GameApplicationConfig

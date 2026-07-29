@@ -3,7 +3,7 @@
 import sys
 
 from scripts._infra.process import TEMPORARY_ROOT
-from scripts.quality.models import Gate
+from scripts.quality.models import CPU_INTENSIVE_RESOURCE, Gate
 
 GATES = ("ruff", "format", "docstrings", "mypy")
 
@@ -57,6 +57,7 @@ def build(*, fresh: bool = False) -> list[Gate]:
                 "src",
                 "scripts",
             ),
+            exclusive_resources=(CPU_INTENSIVE_RESOURCE,),
             inputs=("src/**/*.py", "scripts/**/*.py", "pyproject.toml", "uv.lock"),
             reusable=True,
         ),

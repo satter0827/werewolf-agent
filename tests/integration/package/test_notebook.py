@@ -77,7 +77,7 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
         check=False,
     )
     assert checked.returncode == 0, checked.stdout + checked.stderr
-    assert checked.stdout.strip() == "0.2.0"
+    assert checked.stdout.strip() == "0.3.0"
 
 
 @pytest.mark.serial

@@ -82,6 +82,13 @@ def test_scheduler_serializes_only_shared_exclusive_resources() -> None:
     ]
 
 
+def test_check_profile_does_not_run_pytest_and_mypy_concurrently() -> None:
+    """Workerを持つpytestとmypyを別stageへ分離する。"""
+    stages = _profile_stages("check", jobs=4, fresh=True)
+
+    assert all(not {"pytest", "mypy"}.issubset(gate.name for gate in stage) for stage in stages)
+
+
 def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     """local DB不足時も外部serviceへ依存しないdeep testを実行できる。"""
     gates = {gate.name: gate for stage in _profile_stages("deep", jobs=1) for gate in stage}

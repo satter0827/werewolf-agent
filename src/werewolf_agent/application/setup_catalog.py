@@ -1,4 +1,4 @@
-"""Read-only catalog of complete packaged setup templates."""
+"""同梱する完全なsetup templateのread-only catalogを定義する."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from werewolf_agent.application.validation import non_blank
 
 
 class SetupTemplateMetadata(ApplicationModel):
-    """Public metadata for one packaged template."""
+    """一つの同梱templateに関する公開metadataを表す."""
 
     name: str
     summary: str
@@ -23,12 +23,12 @@ class SetupTemplateMetadata(ApplicationModel):
     @field_validator("name", "summary", "file")
     @classmethod
     def normalize_text(cls, value: str) -> str:
-        """Return non-empty template metadata text."""
+        """空でないtemplate metadata textを返す."""
         return non_blank(value, "template metadata")
 
 
 class SetupTemplateCatalogDefinition(ApplicationModel):
-    """Catalog resource before template documents are loaded."""
+    """Template文書を読み込む前のcatalog resourceを表す."""
 
     recommended_template_id: str
     template_order: tuple[str, ...]
@@ -38,7 +38,7 @@ class SetupTemplateCatalogDefinition(ApplicationModel):
 
     @model_validator(mode="after")
     def validate_references(self) -> Self:
-        """Require explicit ordering of every catalog template."""
+        """Catalog内の全templateに明示的な順序を要求する."""
         if set(self.template_order) != set(self.templates):
             raise ValueError("template_order must contain every template exactly once")
         if self.recommended_template_id not in self.templates:
@@ -47,7 +47,7 @@ class SetupTemplateCatalogDefinition(ApplicationModel):
 
 
 class SetupTemplateCatalog(ApplicationModel):
-    """Validated packaged templates ready for application use."""
+    """Applicationが使用できる検証済み同梱templateを保持する."""
 
     recommended_template_id: str
     template_order: tuple[str, ...]
@@ -58,7 +58,7 @@ class SetupTemplateCatalog(ApplicationModel):
 
     @model_validator(mode="after")
     def validate_documents(self) -> Self:
-        """Require metadata and documents for every ordered template."""
+        """順序付けた全templateにmetadataと文書を要求する."""
         if set(self.metadata) != set(self.documents) or set(self.template_order) != set(
             self.documents
         ):
@@ -66,7 +66,7 @@ class SetupTemplateCatalog(ApplicationModel):
         return self
 
     def require_document(self, template_id: str) -> GameSetupDocument:
-        """Return one complete template or fail without fallback."""
+        """一つの完全なtemplateを返し、不存在時はfallbackせず失敗する."""
         return self.documents[non_blank(template_id, "template_id")]
 
 

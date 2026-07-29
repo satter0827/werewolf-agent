@@ -67,6 +67,7 @@ DEPENDENCY_EXCEPTION_REASONS = {
 }
 ALLOWED_MODULE_IMPORTS = frozenset(DEPENDENCY_EXCEPTION_REASONS)
 PUBLIC_MODULE_NAMES = tuple(str(name) for name in _RULES["public_modules"])
+PUBLIC_ALIAS_MODULE_NAMES = frozenset(str(name) for name in _RULES["public_alias_modules"])
 PUBLIC_MODULES: tuple[ModuleType, ...] = tuple(
     importlib.import_module(name) for name in PUBLIC_MODULE_NAMES
 )

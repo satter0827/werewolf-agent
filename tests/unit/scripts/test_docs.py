@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import ast
+import runpy
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
+from scripts.docs import building
 from scripts.docs import inspection as docs
 from scripts.quality import runner as quality
+
+from werewolf_agent import application
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -35,6 +40,87 @@ def test_sphinx_configuration_uses_japanese_furo_contract() -> None:
     assert '"sphinx_design"' in configuration
     assert '"On this page": "このページ内"' in configuration
     assert "alabaster" not in configuration
+    assert 'autodoc_default_options = {"exclude-members": "model_config"}' in configuration
+
+
+def test_automodule_directives_require_eval_rst_and_remain_unique() -> None:
+    """autodocのRST出力をMyST本文として誤解釈させない。"""
+    correct = """```{eval-rst}\n.. automodule:: werewolf_agent.domain\n   :members:\n```"""
+    old = """```{automodule} werewolf_agent.domain\n:members:\n```"""
+
+    assert docs._eval_rst_automodules(correct) == ("werewolf_agent.domain",)
+    assert docs._DIRECT_AUTOMODULE_PATTERN.search(old)
+    assert docs._eval_rst_automodules(old) == ()
+
+
+def test_python_api_html_requires_modules_objects_and_no_raw_directives(
+    tmp_path: Path,
+) -> None:
+    """生成HTMLの意味構造と可視textを検査する。"""
+    path = tmp_path / "python-api.html"
+    path.write_text(
+        """
+<section id="module-werewolf_agent"></section>
+<section id="module-werewolf_agent.domain"></section>
+<section id="module-werewolf_agent.application"></section>
+<dl class="py class"><dt id="werewolf_agent.domain.Game">Game</dt></dl>
+""",
+        encoding="utf-8",
+    )
+    assert building._python_api_html_findings(path) == []
+
+    path.write_text("<p>.. py:class:: Game :canonical:</p>", encoding="utf-8")
+    rule_ids = {item["rule_id"] for item in building._python_api_html_findings(path)}
+    assert rule_ids == {
+        "DOC-API-HTML-002",
+        "DOC-API-HTML-003",
+        "DOC-API-HTML-004",
+    }
+
+
+def test_python_api_html_uses_manifest_modules_and_rejects_any_raw_py_directive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """公開moduleの正本と一般化したPython directive検査を共有する。"""
+    synthetic = ModuleType("werewolf_agent.synthetic")
+    monkeypatch.setattr(building, "PUBLIC_MODULES", (synthetic,))
+    path = tmp_path / "python-api.html"
+    path.write_text(
+        """
+<section id="module-werewolf_agent.synthetic"></section>
+<dl class="py function"><dt>function</dt></dl>
+<p>.. py:function:: leaked</p>
+""",
+        encoding="utf-8",
+    )
+
+    findings = building._python_api_html_findings(path)
+
+    assert [item["rule_id"] for item in findings] == ["DOC-API-HTML-004"]
+
+
+def test_pydantic_signature_preserves_default_factory_parameters() -> None:
+    """Autodoc署名でdefault factory付きfieldを必須扱いしない。"""
+    configuration = runpy.run_path(ROOT / "docs" / "conf.py")
+
+    signature, _ = configuration["_pydantic_signature"](
+        None,
+        "class",
+        "werewolf_agent.application.GameRevealResult",
+        application.GameRevealResult,
+        None,
+        None,
+        None,
+    )
+
+    assert signature.count("<factory>") == 4
+
+
+def test_python_api_snippets_execute_without_external_services() -> None:
+    """掲載例を外部serviceなしで実行できる状態に保つ。"""
+    for name in ("python_api_domain.py", "python_api_application.py"):
+        runpy.run_path(ROOT / "docs" / "snippets" / name, run_name="__main__")
 
 
 def test_documentation_style_removes_code_and_link_targets() -> None:
