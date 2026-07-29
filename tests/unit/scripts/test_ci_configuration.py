@@ -68,7 +68,11 @@ def test_nightly_failure_issue_has_narrow_write_permission() -> None:
     notify = workflow.split("\n  nightly-notify:\n", 1)[1]
 
     assert "permissions:\n      contents: read\n      issues: write" in notify
-    assert 'const title = "[CI] Nightly Deep failure"' in notify
+    assert 'const title = "[CI] Nightly readiness failure"' in notify
+    assert "PREFLIGHT_RESULT: ${{ needs.nightly-preflight.result }}" in notify
+    assert 'const stage = preflight === "success" ? "deep" : "preflight"' in notify
+    assert 'const validSkip = result === "skipped" && !shouldRun' in notify
+    assert 'const recovered = preflight === "success"' in notify
     assert 'state: "closed"' in notify
     assert workflow.split("\njobs:\n", 1)[0].count("issues: write") == 0
 
@@ -243,6 +247,42 @@ def test_documented_validation_commands_match_repo_tooling() -> None:
         assert command in docs
     assert "[tool.werewolf-quality]" in pyproject
     assert 'testpaths = ["tests"]' in pyproject
+
+
+def test_ignore_files_exclude_secrets_and_current_generated_state() -> None:
+    """GitとDockerの入力から秘密情報と現行runtime成果物を除外する。"""
+    gitignore = _read(".gitignore")
+    dockerignore = _read(".dockerignore")
+
+    for pattern in (
+        ".env",
+        "!.env.example",
+        ".streamlit/secrets.toml",
+        "signing_keys.json",
+        "credentials.json",
+        "*.pem",
+        "*.key",
+        "/.werewolf-agent/",
+        "/supabase/.temp/",
+        "*.sqlite3-*",
+        "*.db-*",
+    ):
+        assert pattern in gitignore
+    for pattern in (
+        ".streamlit/secrets.toml",
+        "**/signing_keys.json",
+        "supabase/**/secrets.*",
+        "**/credentials.json",
+        "**/*.pem",
+        "**/*.key",
+        ".werewolf-agent",
+        "*.sqlite3-*",
+        "*.db-*",
+    ):
+        assert pattern in dockerignore
+    assert "/front-web/" not in gitignore
+    assert "/frontend/" not in gitignore
+    assert "/.vscode/" not in gitignore
 
 
 def _read(path: str) -> str:

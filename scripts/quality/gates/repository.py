@@ -22,7 +22,7 @@ def build() -> list[Gate]:
         ),
         Gate(
             "version-contract",
-            "SemVer ownership contract",
+            "Version ownership contract",
             (sys.executable, "-m", "scripts.versioning", "check"),
         ),
         Gate(

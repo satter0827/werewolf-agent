@@ -36,7 +36,7 @@ cacheを再利用し、失敗または取消時は次夜に再実行する。月
 `nightly-deep`はcacheを無視する。GitHub-hosted runner全体をローカルへ複製せず、共通の
 Deep composite actionと依存定義をリポジトリ内の再現境界とする。
 
-夜間失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
+夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
 `current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
 uploadしない。
 
