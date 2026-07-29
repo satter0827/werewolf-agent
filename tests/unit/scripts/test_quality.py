@@ -494,6 +494,45 @@ def test_clean_preserves_persistent_directories(
     assert not temporary_cache.exists()
 
 
+def test_resource_cleanup_requires_confirmation(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(quality.shutil, "which", lambda _command: "docker")
+
+    def run(command: tuple[str, ...], **_kwargs: object) -> support.CommandResult:
+        commands.append(tuple(command))
+        return support.CommandResult(list(command), 0, 0.0, "")
+
+    monkeypatch.setattr(quality, "run_command", run)
+
+    assert quality.cleanup_owned_resources(confirm=False) == 2
+    assert not any("down" in command for command in commands)
+
+
+def test_resource_cleanup_deletes_only_quality_owned_projects(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(quality.shutil, "which", lambda _command: "docker")
+
+    def run(command: tuple[str, ...], **_kwargs: object) -> support.CommandResult:
+        commands.append(tuple(command))
+        output = (
+            "werewolf-agent-quality-owned\nunrelated-project\n"
+            if command[:2] == ("docker", "ps") and "--format" in command
+            else ""
+        )
+        return support.CommandResult(list(command), 0, 0.0, output)
+
+    monkeypatch.setattr(quality, "run_command", run)
+
+    assert quality.cleanup_owned_resources(confirm=True) == 0
+    assert any(command[:3] == ("docker", "compose", "--profile") for command in commands)
+    stopped = [command for command in commands if command[:2] == ("supabase", "stop")]
+    assert stopped == [
+        ("supabase", "stop", "--project-id", "werewolf-agent-quality-owned", "--no-backup")
+    ]
+
+
 @pytest.mark.parametrize(
     "arguments",
     [
@@ -814,35 +853,40 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     }
     workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
 
-    assert visible_launch_names == {
-        "Debug: API",
-        "Debug: Worker",
-        "Run: CLI Play",
-        "Verify: Quality",
-        "Review: Evidence",
-        "Open: Latest Quality Report",
-        "Cleanup: Owned Resources",
-    }
+    assert visible_launch_names == {"クライアント: Streamlit", "クライアント: CLI Play"}
     assert visible_task_names == {
-        "Environment: Check",
-        "Environment: Setup",
-        "Diagnostics: Collect",
-        "Verify: Auto",
-        "Verify: Focus",
-        "Verify: Check",
-        "Verify: Release",
-        "Verify: Deep",
+        "環境: Pythonを準備",
+        "環境: 開発環境を準備",
+        "環境: 品質環境を準備",
+        "環境: 状態を確認",
+        "品質: Auto",
+        "品質: Focus",
+        "品質: Check",
+        "品質: Release",
+        "品質: Deep",
+        "品質: 最新Reportを開く",
+        "品質: 生成物を削除",
+        "品質: 所有Resourcesを削除",
+        "レビュー: UI",
+        "レビュー: Gameplay",
+        "レビュー: Local LLM",
+        "診断: 情報を収集",
     }
     compounds = {compound["name"]: compound for compound in launch["compounds"]}
-    assert set(compounds) == {"Run: Streamlit Stack"}
+    assert set(compounds) == {
+        "開発: Full Stack",
+        "開発: Backend",
+        "デバッグ: API",
+        "デバッグ: Worker",
+    }
     assert all(
-        "Internal: Supabase Stack" in compound["configurations"]
+        "内部: Supabase" in compound["configurations"]
         and compound["stopAll"] is True
-        and compound["preLaunchTask"] == "Internal: Environment Check Release"
+        and compound["preLaunchTask"].endswith("を予約")
         for compound in compounds.values()
     )
     assert "Internal: Supabase Preflight" not in task_commands
-    assert task_commands["Internal: Supabase Ready"][-4:] == [
+    assert task_commands["内部: Supabaseの準備完了を待つ"][-4:] == [
         "scripts.supabase",
         "wait",
         "--timeout",
@@ -851,50 +895,50 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     supabase_launch = next(
         configuration
         for configuration in launch["configurations"]
-        if configuration["name"] == "Internal: Supabase Stack"
+        if configuration["name"] == "内部: Supabase"
     )
     assert "postDebugTask" not in supabase_launch
     stack_configurations = {
         configuration["name"]: configuration
         for configuration in launch["configurations"]
-        if configuration["name"].startswith("Internal: Stack ")
+        if configuration["name"] in {"内部: API", "内部: Worker", "内部: Full Stack Streamlit"}
     }
     assert set(stack_configurations) == {
-        "Internal: Stack API",
-        "Internal: Stack Worker",
-        "Internal: Stack Streamlit",
+        "内部: API",
+        "内部: Worker",
+        "内部: Full Stack Streamlit",
     }
     assert all(
-        configuration["preLaunchTask"] == "Internal: Supabase Ready"
+        configuration["preLaunchTask"] == "内部: Supabaseの準備完了を待つ"
         for configuration in stack_configurations.values()
     )
-    assert set(compounds["Run: Streamlit Stack"]["configurations"]) == {
-        "Internal: Supabase Stack",
+    assert set(compounds["開発: Full Stack"]["configurations"]) == {
+        "内部: Supabase",
         *stack_configurations,
     }
-    inputs = {item["id"]: item for item in launch["inputs"]}
-    assert inputs["qualityLevel"]["type"] == "pickString"
-    assert inputs["qualityLevel"]["options"] == ["auto", "focus", "check", "release", "deep"]
-    assert inputs["reviewKind"]["type"] == "pickString"
-    assert inputs["reviewKind"]["options"] == ["ui", "gameplay", "local-llm"]
-    assert "promptString" not in json.dumps(launch)
-    assert "promptString" not in json.dumps(tasks)
-    assert task_commands["Verify: Auto"][-4:] == ["python", "-m", "scripts.quality", "auto"]
-    assert task_commands["Verify: Focus"][-4:] == ["python", "-m", "scripts.quality", "focus"]
-    assert task_commands["Verify: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
-    assert task_commands["Environment: Check"][-4:-1] == [
-        "-m",
-        "scripts.environment",
-        "check",
-    ]
-    assert task_commands["Environment: Setup"][-4:-1] == [
-        "-m",
-        "scripts.environment",
-        "setup",
+    assert "inputs" not in launch
+    streamlit_configurations = [
+        configuration
+        for configuration in launch["configurations"]
+        if "Streamlit" in configuration["name"]
     ]
     assert all(
-        "dependsOn" not in task for task in tasks["tasks"] if task["label"].startswith("Verify:")
+        configuration["serverReadyAction"]["pattern"] == r"(?:Local )?URL: (https?://[^\s]+)"
+        for configuration in streamlit_configurations
     )
+    assert "promptString" not in json.dumps(launch)
+    assert "promptString" not in json.dumps(tasks)
+    assert task_commands["品質: Auto"][-4:] == ["python", "-m", "scripts.quality", "auto"]
+    assert task_commands["品質: Focus"][-4:] == ["python", "-m", "scripts.quality", "focus"]
+    assert task_commands["品質: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]
+    assert task_commands["環境: Pythonを準備"][-1] == "python"
+    assert task_commands["環境: 開発環境を準備"][-1] == "development"
+    assert task_commands["環境: 品質環境を準備"][-1] == "quality"
+    assert all(
+        "dependsOn" not in task for task in tasks["tasks"] if task["label"].startswith("品質:")
+    )
+    assert "scripts.workbench" not in json.dumps(launch) + json.dumps(tasks)
+    assert "PYTHONPATH" not in json.dumps(launch)
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" not in workflow
     assert "python -m scripts.quality deep" in workflow

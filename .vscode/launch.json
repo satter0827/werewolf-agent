@@ -2,222 +2,121 @@
   "version": "0.2.0",
   "configurations": [
     {
-      "name": "Internal: Supabase Stack",
+      "name": "内部: Supabase",
       "type": "debugpy",
       "request": "launch",
       "module": "scripts.supabase",
-      "args": ["serve", "--stop-on-exit"],
+      "args": ["serve", "--reserved", "--stop-on-exit"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "presentation": { "hidden": true }
     },
     {
-      "name": "Debug: API",
+      "name": "内部: API",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Environment Check",
+      "preLaunchTask": "内部: Supabaseの準備完了を待つ",
       "module": "werewolf_agent.api.app",
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
-      "console": "integratedTerminal",
-      "justMyCode": true
-    },
-    {
-      "name": "Debug: Worker",
-      "type": "debugpy",
-      "request": "launch",
-      "preLaunchTask": "Internal: Environment Check",
-      "module": "werewolf_agent.worker.app",
-      "args": ["run"],
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Internal: Stack API",
-      "type": "debugpy",
-      "request": "launch",
-      "preLaunchTask": "Internal: Supabase Ready",
-      "module": "werewolf_agent.api.app",
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
       "console": "integratedTerminal",
       "justMyCode": true,
       "presentation": { "hidden": true }
     },
     {
-      "name": "Internal: Stack Worker",
+      "name": "内部: Worker",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Supabase Ready",
+      "preLaunchTask": "内部: Supabaseの準備完了を待つ",
       "module": "werewolf_agent.worker.app",
       "args": ["run"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
       "console": "integratedTerminal",
       "presentation": { "hidden": true }
     },
     {
-      "name": "Internal: Streamlit",
+      "name": "内部: Full Stack Streamlit",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Environment Check",
+      "preLaunchTask": "内部: Supabaseの準備完了を待つ",
       "module": "streamlit",
-      "args": [
-        "run",
-        "src/werewolf_agent/clients/streamlit/app.py",
-        "--server.address",
-        "127.0.0.1",
-        "--server.headless",
-        "true",
-        "--browser.gatherUsageStats",
-        "false"
-      ],
+      "args": ["run", "src/werewolf_agent/clients/streamlit/app.py"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "pattern": "(?:Local )?URL: (https?://[^\\s]+)",
+        "uriFormat": "%s",
+        "action": "openExternally"
       },
-      "console": "integratedTerminal",
       "presentation": { "hidden": true }
     },
     {
-      "name": "Internal: CLI Doctor",
+      "name": "クライアント: Streamlit",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Environment Check",
-      "module": "werewolf_agent",
-      "args": ["doctor"],
-      "cwd": "${workspaceFolder}",
-      "envFile": "${workspaceFolder}/.env",
-      "console": "integratedTerminal",
-      "presentation": { "hidden": true }
-    },
-    {
-      "name": "Internal: Stack Streamlit",
-      "type": "debugpy",
-      "request": "launch",
-      "preLaunchTask": "Internal: Supabase Ready",
+      "preLaunchTask": "内部: Python環境を確認",
       "module": "streamlit",
-      "args": [
-        "run",
-        "src/werewolf_agent/clients/streamlit/app.py",
-        "--server.address",
-        "127.0.0.1",
-        "--server.headless",
-        "true",
-        "--browser.gatherUsageStats",
-        "false"
-      ],
+      "args": ["run", "src/werewolf_agent/clients/streamlit/app.py"],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "env": {
-        "PYTHONPATH": "${workspaceFolder}/src"
-      },
       "console": "integratedTerminal",
-      "presentation": { "hidden": true }
+      "serverReadyAction": {
+        "pattern": "(?:Local )?URL: (https?://[^\\s]+)",
+        "uriFormat": "%s",
+        "action": "openExternally"
+      },
+      "presentation": { "group": "クライアント", "order": 1 }
     },
     {
-      "name": "Run: CLI Play",
+      "name": "クライアント: CLI Play",
       "type": "debugpy",
       "request": "launch",
-      "preLaunchTask": "Internal: Environment Check",
+      "preLaunchTask": "内部: Python環境を確認",
       "module": "werewolf_agent",
       "args": [
         "play",
-        "--role-count",
-        "werewolf=1",
-        "--role-count",
-        "seer=1",
-        "--role-count",
-        "knight=1",
-        "--role-count",
-        "villager=3",
-        "--seed",
-        "1"
+        "--role-count", "werewolf=1",
+        "--role-count", "seer=1",
+        "--role-count", "knight=1",
+        "--role-count", "villager=3",
+        "--seed", "1"
       ],
       "cwd": "${workspaceFolder}",
       "envFile": "${workspaceFolder}/.env",
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Verify: Quality",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.workbench",
-      "args": ["verify", "${input:qualityLevel}"],
-      "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
-      "justMyCode": true
-    },
-    {
-      "name": "Review: Evidence",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.workbench",
-      "args": ["review", "${input:reviewKind}"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal",
-      "justMyCode": true
-    },
-    {
-      "name": "Open: Latest Quality Report",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.workbench",
-      "args": ["open-report"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
-    },
-    {
-      "name": "Cleanup: Owned Resources",
-      "type": "debugpy",
-      "request": "launch",
-      "module": "scripts.workbench",
-      "args": ["cleanup"],
-      "cwd": "${workspaceFolder}",
-      "console": "integratedTerminal"
+      "presentation": { "group": "クライアント", "order": 2 }
     }
   ],
   "compounds": [
     {
-      "name": "Run: Streamlit Stack",
-      "configurations": [
-        "Internal: Supabase Stack",
-        "Internal: Stack API",
-        "Internal: Stack Worker",
-        "Internal: Stack Streamlit"
-      ],
-      "preLaunchTask": "Internal: Environment Check Release",
-      "stopAll": true
-    }
-  ],
-  "inputs": [
-    {
-      "id": "qualityLevel",
-      "type": "pickString",
-      "description": "品質levelを選択",
-      "options": ["auto", "focus", "check", "release", "deep"],
-      "default": "auto"
+      "name": "開発: Full Stack",
+      "configurations": ["内部: Supabase", "内部: API", "内部: Worker", "内部: Full Stack Streamlit"],
+      "preLaunchTask": "内部: Full Stackを予約",
+      "stopAll": true,
+      "presentation": { "group": "開発", "order": 1 }
     },
     {
-      "id": "reviewKind",
-      "type": "pickString",
-      "description": "読解用の証拠を選択",
-      "options": ["ui", "gameplay", "local-llm"],
-      "default": "ui"
+      "name": "開発: Backend",
+      "configurations": ["内部: Supabase", "内部: API", "内部: Worker"],
+      "preLaunchTask": "内部: Backendを予約",
+      "stopAll": true,
+      "presentation": { "group": "開発", "order": 2 }
+    },
+    {
+      "name": "デバッグ: API",
+      "configurations": ["内部: Supabase", "内部: API"],
+      "preLaunchTask": "内部: APIを予約",
+      "stopAll": true,
+      "presentation": { "group": "デバッグ", "order": 1 }
+    },
+    {
+      "name": "デバッグ: Worker",
+      "configurations": ["内部: Supabase", "内部: Worker"],
+      "preLaunchTask": "内部: Workerを予約",
+      "stopAll": true,
+      "presentation": { "group": "デバッグ", "order": 2 }
     }
   ]
 }

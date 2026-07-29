@@ -33,20 +33,22 @@ force-pushしない。正常なリリース後に`main`を`develope`へ逆merge�
 
 ## 環境
 
-`check`はlockとソースコードのfingerprint、現在のDocker context、準備時に記録したimage IDを
-読み取り専用で確認する。`setup`だけが依存取得、image build、隔離Supabaseの起動を行う。
-リリース系setupはDocker daemon、Buildx、Supabase CLIの固定versionを先に検査し、失敗時は
-変更を開始しない。隔離projectは固有IDとworkdirで所有し、利用者の開発stackを停止しない。
+環境targetは`python`、`development`、`quality`とする。`check`はtargetのfingerprint、Docker
+context、準備時に記録したimage IDを読み取り専用で確認する。`setup`だけが依存取得、image build、
+隔離Supabaseの起動を行う。`development`は品質用imageを構築せず、`quality`だけがBuildxと
+app・E2E imageを要求する。隔離projectは固有IDとworkdirで所有し、利用者の開発stackを停止しない。
 具体的な環境準備と診断コマンドは`scripts/README.md`を正本とする。
 
-VS Codeの「実行とデバッグ」では`Run: Streamlit Stack`、
-`Run: CLI Play`、`Debug: API`、`Debug: Worker`を使う。`Verify: Quality`は
-Auto/Focus/Check/リリース/Deep、`Review: Evidence`はUI/Gameplay/Local LLMを選択する。
-`Open: Latest Quality Report`と`Cleanup: Owned Resources`も同じ場所から実行する。
-選択は`pickString`で行い、コマンドや引数を手入力しない。Environment CheckとSetupを分離し、
-Verifyは暗黙に環境を変更しない。stackはローカルSupabaseを含むプロセスを所有し、debug sessionの
-終了時に自分が起動したprojectだけを停止する。API、worker、Streamlitはsupervisorがmigrationと
-接続確認を完了した状態を読み取り専用で待ってから起動する。
+VS Codeの「実行とデバッグ」は`開発: Full Stack`、`開発: Backend`、
+`クライアント: Streamlit`、`クライアント: CLI Play`、`デバッグ: API`、`デバッグ: Worker`を
+公開する。StreamlitとCLIはバックエンドを暗黙に起動しない。Streamlitはバックエンドがなければ
+安全な縮退画面を表示する。バックエンド系compoundは開始前に単一セッションを予約し、競合時は
+既存セッションを流用しない。
+
+環境準備、品質、レビュー、report、cleanup、診断はVS CodeのTaskとして公開する。品質Taskは環境を
+暗黙に準備しない。stackはローカルSupabaseを含むプロセスを所有し、終了時に自分が起動したprojectだけを
+停止する。API、worker、Full Stack用StreamlitはsupervisorがmigrationとCLI由来・`.env`由来の
+接続確認を完了した状態を待ってから起動する。秘密値はsupervisor stateと診断へ保存しない。
 
 個別gate、品質プロファイル、ブラウザー、エージェントレビューの具体的なコマンドは
 `scripts/README.md`を正本とする。

@@ -18,8 +18,8 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 依存とローカルtoolを準備し、設定とpackaged resourceを検査する。
 
 ```powershell
-uv run --no-project python -m scripts.environment setup check
-uv run --no-project python -m scripts.environment check check
+uv run --no-project python -m scripts.environment setup python
+uv run --no-project python -m scripts.environment check python
 uv run --no-sync werewolf-agent system doctor
 ```
 
@@ -52,7 +52,8 @@ API、worker、Streamlit、local Supabaseをまとめて起動する場合はDoc
 docker compose --profile dev up --build
 ```
 
-個別プロセスはconsole entrypointまたは`.vscode/launch.json`から起動できる。
+個別プロセスはconsole entrypointまたは`.vscode/launch.json`から起動できる。VS Codeでは
+Full Stack、バックエンド、Streamlit、CLI Play、API debug、Worker debugを独立して選択する。
 
 ```powershell
 uv run --no-sync werewolf-agent-api
