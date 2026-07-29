@@ -20,6 +20,7 @@ from scripts.architecture.definition import (
     ALLOWED_MODULE_IMPORTS,
     DEPENDENCY_EXCEPTION_REASONS,
     LAYERS,
+    PUBLIC_ALIAS_MODULE_NAMES,
     PUBLIC_MODULES,
 )
 from scripts.architecture.rendering import write_diagrams
@@ -575,6 +576,8 @@ def _public_export_findings() -> list[Finding]:
         }
         for identity in sorted(exported.keys() & later_exports.keys()):
             name = exported[identity]
+            if module.__name__ in PUBLIC_ALIAS_MODULE_NAMES:
+                continue
             findings.append(
                 Finding(
                     "ARCH-PUBLIC-003",

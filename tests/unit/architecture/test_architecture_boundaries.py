@@ -33,6 +33,7 @@ from scripts.architecture.definition import (
     THIN_MODULES,
 )
 
+import werewolf_agent as package
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
 
@@ -68,11 +69,14 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
-    """Pythonの公開面をdomainとapplicationに限定する。"""
-    assert (application, domain) == PUBLIC_MODULES
+    """Pythonの公開面をroot、domain、applicationに限定する。"""
+    assert (package, application, domain) == PUBLIC_MODULES
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
+    assert set(package.__all__) == {*domain.__all__, "__version__"}
+    for name in domain.__all__:
+        assert getattr(package, name) is getattr(domain, name)
     assert not _public_export_findings()
 
 
@@ -177,6 +181,25 @@ def test_public_export_findings_allow_types_owned_by_another_public_facade(
     monkeypatch.setattr(
         "scripts.architecture.analysis.PUBLIC_MODULES",
         (first, second),
+    )
+
+    assert not _public_export_findings()
+
+
+def test_public_export_findings_allow_an_explicit_convenience_alias(monkeypatch) -> None:
+    """Manifestで宣言したroot convenience APIだけは同一型の再公開を許可する。"""
+    alias = ModuleType("werewolf_agent.alias")
+    owner = ModuleType("werewolf_agent.owner")
+    exec("class Leaf: pass\n", owner.__dict__)
+    owner.__all__ = ["Leaf"]
+    alias.Leaf = owner.Leaf
+    alias.__all__ = ["Leaf"]
+    monkeypatch.setitem(sys.modules, alias.__name__, alias)
+    monkeypatch.setitem(sys.modules, owner.__name__, owner)
+    monkeypatch.setattr("scripts.architecture.analysis.PUBLIC_MODULES", (alias, owner))
+    monkeypatch.setattr(
+        "scripts.architecture.analysis.PUBLIC_ALIAS_MODULE_NAMES",
+        frozenset({alias.__name__}),
     )
 
     assert not _public_export_findings()

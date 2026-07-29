@@ -60,6 +60,7 @@ def test_python_api_html_requires_modules_objects_and_no_raw_directives(
     path = tmp_path / "python-api.html"
     path.write_text(
         """
+<section id="module-werewolf_agent"></section>
 <section id="module-werewolf_agent.domain"></section>
 <section id="module-werewolf_agent.application"></section>
 <dl class="py class"><dt id="werewolf_agent.domain.Game">Game</dt></dl>

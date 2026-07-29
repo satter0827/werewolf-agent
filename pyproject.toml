@@ -78,7 +78,10 @@ dev = [
     "hatchling>=1.27,<2",
     "hypothesis>=6.130,<7",
     "jsonschema>=4.23,<5",
+    "ipykernel>=6.29,<8",
     "mypy>=1.14,<2",
+    "nbclient>=0.10,<1",
+    "nbformat>=5.10,<6",
     "packaging>=25,<27",
     "pillow>=11.1,<13",
     "playwright>=1.60,<2",
@@ -169,7 +172,7 @@ deep = 1200
 [tool.ruff]
 cache-dir = ".werewolf-agent/cache/ruff"
 line-length = 100
-src = ["src", "scripts", "tests"]
+src = ["src", "scripts", "tests", "notebooks"]
 target-version = "py311"
 
 [tool.ruff.lint]
@@ -184,7 +187,7 @@ quote-style = "double"
 [tool.mypy]
 cache_dir = ".werewolf-agent/cache/mypy"
 check_untyped_defs = true
-files = ["src", "scripts"]
+files = ["src", "scripts", "notebooks/werewolf_demo"]
 mypy_path = "src"
 python_version = "3.11"
 show_error_codes = true
