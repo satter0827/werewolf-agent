@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 import structlog
 
+from werewolf_agent import __version__
 from werewolf_agent.observability import (
     bind_observation_context,
     configure_entrypoint_logging,
@@ -108,7 +109,7 @@ def test_configure_observability_writes_ecs_jsonl_with_context_and_extra(
     assert payload["log.logger"] == "werewolf_agent.tests"
     assert payload["message"] == "hello world"
     assert payload["service.name"] == "werewolf-agent"
-    assert payload["service.version"] == "0.1.0"
+    assert payload["service.version"] == __version__
     assert payload["event.dataset"] == "werewolf_agent.tests"
     assert payload["event.action"] == "test.event"
     assert payload["trace.id"] == "trace-1"

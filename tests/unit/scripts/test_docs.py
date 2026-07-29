@@ -177,6 +177,13 @@ def test_documentation_policy_identifies_obsolete_references_and_command_owners(
     assert docs._VERIFICATION_COMMAND_PATTERN.search("werewolf-agent system doctor")
 
 
+def test_public_repository_documents_are_canonical_sources() -> None:
+    """利用、参加、脆弱性報告の入口を文書検査の対象に含める。"""
+    paths = {path.name for path in docs.CANONICAL_DOCUMENT_PATHS}
+
+    assert {"README.md", "CONTRIBUTING.md", "SECURITY.md"} <= paths
+
+
 def test_docstring_suppression_detection_covers_source_and_configuration() -> None:
     """bare noqa、file-level noqa、Ruff設定によるD系回避を検出する。"""
     pattern = docs._DOCSTRING_SUPPRESSION_PATTERN
