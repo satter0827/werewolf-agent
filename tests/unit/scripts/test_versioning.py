@@ -15,8 +15,9 @@ def _boundary(
     watch: tuple[str, ...],
     *,
     standard: versioning.VersionStandard = "semver",
+    change_detection: versioning.ChangeDetection = "path",
 ) -> versioning.Boundary:
-    return versioning.Boundary(name, "test", standard, path, pattern, watch)
+    return versioning.Boundary(name, "test", standard, path, pattern, watch, change_detection)
 
 
 def test_registry_exposes_every_independent_version_boundary() -> None:
@@ -104,6 +105,71 @@ def test_file_watch_does_not_match_a_longer_filename() -> None:
     assert versioning._matches_watch("src/events.py", "src/events.py")
     assert not versioning._matches_watch("src/events.py.bak", "src/events.py")
     assert versioning._matches_watch("src/contracts/events.py", "src/contracts/")
+
+
+def test_semantic_python_ignores_docstrings_comments_and_formatting() -> None:
+    """setup schemaは説明と表記だけの変更を契約変更にしない。"""
+    before = '''"""old"""
+
+def build(value: int = 1) -> int:
+    """old"""
+    return value
+'''
+    after = '''"""新しい説明。"""
+
+# comment
+def build(
+    value: int = 1,
+) -> int:
+    """新しい説明。"""
+    return value
+'''
+
+    assert versioning._semantic_python(before) == versioning._semantic_python(after)
+
+
+@pytest.mark.parametrize(
+    "after",
+    [
+        "def build(value: str = '1') -> int:\n    return 1\n",
+        "def build(value: int = 2) -> int:\n    return value\n",
+        "def build(value: int = 1) -> int:\n    return value + 1\n",
+        "class Build:\n    pass\n",
+    ],
+)
+def test_semantic_python_detects_contract_and_behavior_changes(after: str) -> None:
+    """注釈、既定値、宣言、処理の変更を契約変更として扱う。"""
+    before = "def build(value: int = 1) -> int:\n    return value\n"
+
+    assert versioning._semantic_python(before) != versioning._semantic_python(after)
+
+
+def test_semantic_boundary_uses_ast_only_for_matching_python_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """意味判定は指定境界のPython fileだけへ適用する。"""
+    source = tmp_path / "setup.py"
+    source.write_text('"""new"""\nVALUE = 1\n', encoding="utf-8")
+    boundary = _boundary(
+        "setup",
+        "version.py",
+        r'"([^"]+)"',
+        ("setup.py",),
+        change_detection="python_ast",
+    )
+    monkeypatch.setattr(versioning, "ROOT", tmp_path)
+    monkeypatch.setattr(
+        versioning,
+        "_git",
+        lambda *args, **_kwargs: '"""old"""\nVALUE = 1\n'
+        if args == ("show", "base:setup.py")
+        else None,
+    )
+
+    assert not versioning._boundary_touched(boundary, ("setup.py",), "base", "HEAD")
+
+    source.write_text("VALUE = 2\n", encoding="utf-8")
+    assert versioning._boundary_touched(boundary, ("setup.py",), "base", "HEAD")
 
 
 def test_repository_path_rejects_an_escape(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
