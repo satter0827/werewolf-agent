@@ -10,7 +10,7 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, ForwardRef, get_args, get_origin, get_type_hints
 
 from scripts._infra.artifacts import publish_directory, staged_directory
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
@@ -502,6 +502,7 @@ def _resolve_import_from(
 
 def _public_docstring_findings() -> list[Finding]:
     findings: list[Finding] = []
+    findings.extend(_public_export_findings())
     for module in PUBLIC_MODULES:
         if not inspect.getdoc(module):
             findings.append(
@@ -549,6 +550,103 @@ def _public_docstring_findings() -> list[Finding]:
             if inspect.isclass(value):
                 findings.extend(_class_docstring_findings(module, name, value))
     return findings
+
+
+def _public_export_findings() -> list[Finding]:
+    findings: list[Finding] = []
+    exported_by_module: dict[str, dict[int, str]] = {}
+    for module in PUBLIC_MODULES:
+        exports = getattr(module, "__all__", ())
+        exported_by_module[module.__name__] = {
+            id(getattr(module, name)): str(name) for name in exports if hasattr(module, name)
+        }
+
+    modules = tuple(PUBLIC_MODULES)
+    for index, module in enumerate(modules):
+        exported = exported_by_module[module.__name__]
+        later_exports = {
+            identity: name
+            for other in modules[index + 1 :]
+            for identity, name in exported_by_module[other.__name__].items()
+        }
+        for identity in sorted(exported.keys() & later_exports.keys()):
+            name = exported[identity]
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-003",
+                    "error",
+                    f"Public symbol is exported by multiple facades: {name}",
+                    {"module": module.__name__, "symbol": name},
+                )
+            )
+
+        for value in _public_type_closure(module):
+            if id(value) in exported:
+                continue
+            name = getattr(value, "__name__", repr(value))
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-004",
+                    "error",
+                    f"Public signature type is not exported: {module.__name__}.{name}",
+                    {"module": module.__name__, "symbol": name},
+                )
+            )
+    return findings
+
+
+def _public_type_closure(module: ModuleType) -> tuple[type[Any], ...]:
+    pending: list[object] = [
+        getattr(module, name) for name in getattr(module, "__all__", ()) if hasattr(module, name)
+    ]
+    visited: dict[int, object] = {}
+    project_types: dict[int, type[Any]] = {}
+    while pending:
+        value = pending.pop()
+        if id(value) in visited:
+            continue
+        visited[id(value)] = value
+        origin = get_origin(value)
+        if origin is not None:
+            pending.extend(get_args(value))
+            continue
+        if isinstance(value, (str, ForwardRef)):
+            continue
+        if inspect.isfunction(value) or inspect.ismethod(value):
+            pending.extend(_callable_annotations(value))
+            continue
+        if not inspect.isclass(value):
+            continue
+        if value.__module__.startswith("werewolf_agent."):
+            project_types[id(value)] = value
+        pending.extend(_type_hints(value).values())
+        pending.extend(_callable_annotations(value.__init__))
+        for name, member in vars(value).items():
+            if name.startswith("_"):
+                continue
+            if isinstance(member, (classmethod, staticmethod)):
+                member = member.__func__
+            if isinstance(member, property):
+                if member.fget is not None:
+                    pending.extend(_callable_annotations(member.fget))
+                continue
+            if inspect.isfunction(member) or inspect.ismethod(member):
+                pending.extend(_callable_annotations(member))
+    return tuple(sorted(project_types.values(), key=lambda item: item.__qualname__))
+
+
+def _type_hints(value: object) -> dict[str, object]:
+    try:
+        return get_type_hints(value)
+    except (NameError, TypeError):
+        return dict(getattr(value, "__annotations__", {}))
+
+
+def _callable_annotations(value: object) -> tuple[object, ...]:
+    try:
+        return tuple(get_type_hints(value).values())
+    except (NameError, TypeError):
+        return tuple(getattr(value, "__annotations__", {}).values())
 
 
 def _class_docstring_findings(

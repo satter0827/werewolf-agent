@@ -1,7 +1,7 @@
 """Public API for the deterministic headless game."""
 
 from werewolf_agent.domain.definitions import RuleSet, RuleSetDefinition, build_game_rules
-from werewolf_agent.domain.errors import RuleViolation
+from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation
 from werewolf_agent.domain.game import Game
 from werewolf_agent.domain.state import (
     AbilityDefinition,
@@ -11,15 +11,21 @@ from werewolf_agent.domain.state import (
     EventVisibility,
     GameConfig,
     GameEvent,
+    GameHistory,
     GameSetup,
     GameState,
     GameView,
+    InspectionResult,
     LocalRules,
+    NightResult,
+    PendingActions,
     Phase,
     Player,
     PlayerStatus,
     RoleCatalog,
     RoleDefinition,
+    SpeechRecord,
+    VoteResult,
     WinResult,
 )
 
@@ -31,11 +37,17 @@ __all__ = [
     "EventVisibility",
     "Game",
     "GameConfig",
+    "GameError",
     "GameEvent",
+    "GameHistory",
+    "GamePhaseError",
     "GameSetup",
     "GameState",
     "GameView",
+    "InspectionResult",
     "LocalRules",
+    "NightResult",
+    "PendingActions",
     "Phase",
     "Player",
     "PlayerStatus",
@@ -44,6 +56,8 @@ __all__ = [
     "RuleSet",
     "RuleSetDefinition",
     "RuleViolation",
+    "SpeechRecord",
+    "VoteResult",
     "WinResult",
     "build_game_rules",
 ]

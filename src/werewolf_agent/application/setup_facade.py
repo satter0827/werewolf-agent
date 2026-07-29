@@ -6,7 +6,12 @@ from collections.abc import Mapping
 from typing import Literal
 
 from werewolf_agent.application.constants import DeliberationLevel
-from werewolf_agent.application.errors import AppError, ConfigError, ErrorCode
+from werewolf_agent.application.errors import (
+    AppError,
+    ConfigError,
+    ErrorCode,
+    ResourceNotFoundError,
+)
 from werewolf_agent.application.facade import Actor
 from werewolf_agent.application.messages import message_player_count_between
 from werewolf_agent.application.models import (
@@ -53,10 +58,7 @@ class SetupApplication:
         try:
             return self._catalog.require_document(template_id)
         except KeyError as exc:
-            raise AppError(
-                "指定したゲーム設定が見つかりません。",
-                code=ErrorCode.RESOURCE_NOT_FOUND,
-            ) from exc
+            raise ResourceNotFoundError("指定したゲーム設定が見つかりません。") from exc
 
     def preview(self, document: GameSetupDocument, *, seed: int | None) -> PlayerPreviewResult:
         """Return a deterministic public-safe player preview."""
@@ -128,10 +130,7 @@ class SetupApplication:
             revision=revision,
         )
         if result is None:
-            raise AppError(
-                "指定したゲーム設定が見つかりません。",
-                code=ErrorCode.RESOURCE_NOT_FOUND,
-            )
+            raise ResourceNotFoundError("指定したゲーム設定が見つかりません。")
         return result
 
     def revisions(self, actor: Actor, setup_id: str) -> list[SavedSetupRevision]:
@@ -170,7 +169,7 @@ class SetupApplication:
 
     def _require_repository(self) -> SetupRepository:
         if self._repository is None:
-            raise RuntimeError("setup persistence is unavailable in the public setup service")
+            raise ConfigError("setup repositoryが構成されていません。")
         return self._repository
 
     def _validate_player_count(self, document: GameSetupDocument) -> None:

@@ -7,8 +7,11 @@ import importlib
 import sys
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 from scripts.architecture.analysis import (
+    _public_export_findings,
+    _public_type_closure,
     graph_cycles,
     imports_with_lines,
     module_name,
@@ -24,6 +27,7 @@ from scripts.architecture.definition import (
     FRAMEWORK_RULES,
     LAYERS,
     PATH_RULES,
+    PUBLIC_MODULES,
     ROOT_ENTRIES,
     SETTINGS_SECTIONS,
     THIN_MODULES,
@@ -65,60 +69,76 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
     """Pythonの公開面をdomainとapplicationに限定する。"""
-    for module in (domain, application):
+    assert (application, domain) == PUBLIC_MODULES
+    for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
-    assert set(domain.__all__) == {
-        "AbilityDefinition",
-        "Action",
-        "ActionType",
-        "AvailableAction",
-        "EventVisibility",
-        "Game",
-        "GameConfig",
-        "GameEvent",
-        "GameSetup",
-        "GameState",
-        "GameView",
-        "LocalRules",
-        "Phase",
-        "Player",
-        "PlayerStatus",
-        "RoleCatalog",
-        "RoleDefinition",
-        "RuleSet",
-        "RuleSetDefinition",
-        "RuleViolation",
-        "WinResult",
-        "build_game_rules",
+    assert not _public_export_findings()
+
+
+def test_public_type_closure_expands_supported_annotation_shapes(
+    monkeypatch,
+) -> None:
+    """直接型、generic、union、forward reference、Protocol、循環参照を展開する。"""
+    module = ModuleType("werewolf_agent.synthetic")
+    exec(
+        """
+from typing import Protocol
+
+class Leaf:
+    pass
+
+class Contract(Protocol):
+    def item(self) -> Leaf:
+        ...
+
+class Root:
+    direct: Leaf
+    generic: list[Leaf]
+    union: Leaf | None
+    forward: "Cycle"
+    contract: Contract
+
+class Cycle:
+    root: Root
+""",
+        module.__dict__,
+    )
+    module.__all__ = ["Root"]
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+
+    assert {item.__name__ for item in _public_type_closure(module)} == {
+        "Contract",
+        "Cycle",
+        "Leaf",
+        "Root",
     }
-    assert set(application.__all__) == {
-        "AccessPolicy",
-        "Actor",
-        "AdvanceGameResult",
-        "ApplicationContext",
-        "CreateGameCommand",
-        "ComputedAdvanceGame",
-        "GameApplication",
-        "GameApplicationConfig",
-        "GameListResult",
-        "GameRepository",
-        "GameResult",
-        "GameRevealResult",
-        "GameTimelineResult",
-        "GameSetupDocument",
-        "LocalRulesDefinition",
-        "OperationQueue",
-        "PlayerActionCommand",
-        "PlayerActionResult",
-        "PlayerObservationResult",
-        "PreparedAdvanceGame",
-        "ReplayVerificationResult",
-        "SetupValidationResult",
-        "SetupApplication",
-        "SetupRepository",
-        "validate_setup_document",
-    }
+
+
+def test_public_export_findings_report_missing_and_duplicate_types(monkeypatch) -> None:
+    """到達不能な型と同じ型objectの重複公開を報告する。"""
+    first = ModuleType("werewolf_agent.first")
+    second = ModuleType("werewolf_agent.second")
+    exec("class Leaf: pass\nclass Root:\n    leaf: Leaf\n", first.__dict__)
+    first.__all__ = ["Root"]
+    second.Leaf = first.Leaf
+    second.__all__ = ["Leaf"]
+    monkeypatch.setitem(sys.modules, first.__name__, first)
+    monkeypatch.setitem(sys.modules, second.__name__, second)
+    monkeypatch.setattr(
+        "scripts.architecture.analysis.PUBLIC_MODULES",
+        (first,),
+    )
+
+    assert {finding.rule_id for finding in _public_export_findings()} == {"ARCH-PUBLIC-004"}
+
+    first.Leaf = first.Leaf
+    first.__all__.append("Leaf")
+    monkeypatch.setattr(
+        "scripts.architecture.analysis.PUBLIC_MODULES",
+        (first, second),
+    )
+    assert {finding.rule_id for finding in _public_export_findings()} == {"ARCH-PUBLIC-003"}
 
 
 def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:

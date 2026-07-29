@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import TypeVar
 
 import werewolf_agent.application.handlers as handlers
+from werewolf_agent.application.errors import (
+    AppError,
+    ConfigError,
+    ErrorCode,
+    GameNotFoundError,
+    ResourceNotFoundError,
+)
 from werewolf_agent.application.models import (
     AdvanceGameCommand,
     AdvanceGameResult,
@@ -29,6 +38,8 @@ from werewolf_agent.application.models import (
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.replay import verify_replay
 from werewolf_agent.application.types import GameStatus
+
+_Result = TypeVar("_Result")
 
 
 @dataclass(frozen=True)
@@ -73,7 +84,11 @@ class GameApplication:
     def get(self, game_id: str, actor: Actor) -> GameResult:
         """Return one public game visible to the verified actor."""
         self._require_game_access(game_id, actor)
-        return handlers.get_game(GetGameQuery(game_id=game_id), dependencies=self._dependencies)
+        return _resource_result(
+            lambda: handlers.get_game(
+                GetGameQuery(game_id=game_id), dependencies=self._dependencies
+            )
+        )
 
     def list(
         self,
@@ -102,7 +117,9 @@ class GameApplication:
         """Submit a player action using server-verified identity and version."""
         self._require_player_access(str(command.game_id), command.player_id, actor)
         trusted = command.model_copy(update={"trusted_user_id": actor.user_id})
-        return handlers.submit_player_action(trusted, dependencies=self._dependencies)
+        return _resource_result(
+            lambda: handlers.submit_player_action(trusted, dependencies=self._dependencies)
+        )
 
     def advance(
         self,
@@ -112,9 +129,11 @@ class GameApplication:
     ) -> AdvanceGameResult:
         """Advance one game from the expected public version."""
         self._require_game_access(game_id, actor)
-        return handlers.advance_game(
-            AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
-            dependencies=self._dependencies,
+        return _resource_result(
+            lambda: handlers.advance_game(
+                AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
+                dependencies=self._dependencies,
+            )
         )
 
     def prepare_advance(
@@ -125,9 +144,11 @@ class GameApplication:
     ) -> PreparedAdvanceGame:
         """Authorize and prepare a versioned advance for an external agent runtime."""
         self._require_game_access(game_id, actor)
-        return handlers.prepare_advance_game(
-            AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
-            dependencies=self._dependencies,
+        return _resource_result(
+            lambda: handlers.prepare_advance_game(
+                AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
+                dependencies=self._dependencies,
+            )
         )
 
     def compute_advance(
@@ -144,7 +165,9 @@ class GameApplication:
     ) -> AdvanceGameResult:
         """Authorize and commit a previously computed advance."""
         self._require_game_access(computed.game_id, actor)
-        return handlers.commit_prepared_advance(computed, dependencies=self._dependencies)
+        return _resource_result(
+            lambda: handlers.commit_prepared_advance(computed, dependencies=self._dependencies)
+        )
 
     def timeline(
         self,
@@ -156,9 +179,11 @@ class GameApplication:
     ) -> GameTimelineResult:
         """Return public timeline items after a cursor."""
         self._require_game_access(game_id, actor)
-        return handlers.list_timeline(
-            ListTimelineQuery(game_id=game_id, after=cursor, limit=limit),
-            dependencies=self._dependencies,
+        return _resource_result(
+            lambda: handlers.list_timeline(
+                ListTimelineQuery(game_id=game_id, after=cursor, limit=limit),
+                dependencies=self._dependencies,
+            )
         )
 
     def observation(
@@ -169,31 +194,41 @@ class GameApplication:
     ) -> PlayerObservationResult:
         """Return the authenticated player's private observation."""
         self._require_player_access(game_id, player_id, actor)
-        return handlers.get_player_observation(
-            GetPlayerObservationQuery(
-                game_id=game_id,
-                player_id=player_id,
-                trusted_user_id=actor.user_id,
-            ),
-            dependencies=self._dependencies,
+        return _resource_result(
+            lambda: handlers.get_player_observation(
+                GetPlayerObservationQuery(
+                    game_id=game_id,
+                    player_id=player_id,
+                    trusted_user_id=actor.user_id,
+                ),
+                dependencies=self._dependencies,
+            )
         )
 
     def reveal(self, game_id: str, admin: Actor) -> GameRevealResult:
         """Return complete state after the API has verified administrator access."""
         if not admin.is_admin:
-            raise PermissionError("Administrator access is required.")
-        return handlers.get_game_reveal(
-            GetGameRevealQuery(game_id=game_id),
-            dependencies=self._dependencies,
+            raise AppError(
+                "管理者権限が必要です。",
+                code=ErrorCode.AUTHORIZATION_FAILED,
+            )
+        return _resource_result(
+            lambda: handlers.get_game_reveal(
+                GetGameRevealQuery(game_id=game_id),
+                dependencies=self._dependencies,
+            )
         )
 
     def verify_replay(self, game_id: str, admin: Actor) -> ReplayVerificationResult:
         """Verify persisted replay checksums without returning private payloads."""
         if not admin.is_admin:
-            raise PermissionError("Administrator access is required.")
+            raise AppError(
+                "管理者権限が必要です。",
+                code=ErrorCode.AUTHORIZATION_FAILED,
+            )
         repository = self._dependencies.repository
         if not hasattr(repository, "replay_records"):
-            raise RuntimeError("The configured repository does not support replay verification.")
+            raise ConfigError("repositoryにreplay検証機能が構成されていません。")
         return verify_replay(game_id, repository)  # type: ignore[arg-type]
 
     def enqueue_create(
@@ -262,15 +297,34 @@ class GameApplication:
 
     def _queue(self) -> OperationQueue:
         if self._operation_queue is None:
-            raise RuntimeError("Operation queue is not configured.")
+            raise ConfigError("operation queueが構成されていません。")
         return self._operation_queue
 
     def _require_game_access(self, game_id: str, actor: Actor) -> None:
         if self._access_policy is None:
-            raise RuntimeError("Access policy is not configured.")
-        self._access_policy.require_game_access(game_id, user_id=actor.user_id)
+            raise ConfigError("access policyが構成されていません。")
+        try:
+            self._access_policy.require_game_access(game_id, user_id=actor.user_id)
+        except PermissionError as exc:
+            raise AppError(
+                "このゲームを操作する権限がありません。",
+                code=ErrorCode.AUTHORIZATION_FAILED,
+            ) from exc
 
     def _require_player_access(self, game_id: str, player_id: str, actor: Actor) -> None:
         if self._access_policy is None:
-            raise RuntimeError("Access policy is not configured.")
-        self._access_policy.require_player_access(game_id, player_id, user_id=actor.user_id)
+            raise ConfigError("access policyが構成されていません。")
+        try:
+            self._access_policy.require_player_access(game_id, player_id, user_id=actor.user_id)
+        except PermissionError as exc:
+            raise AppError(
+                "このプレイヤーを操作する権限がありません。",
+                code=ErrorCode.AUTHORIZATION_FAILED,
+            ) from exc
+
+
+def _resource_result(operation: Callable[[], _Result]) -> _Result:
+    try:
+        return operation()
+    except GameNotFoundError as exc:
+        raise ResourceNotFoundError("指定したゲームが見つかりません。") from exc
