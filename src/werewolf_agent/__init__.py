@@ -1,5 +1,53 @@
-"""Werewolf Agent backend package."""
+"""Public convenience API for the deterministic game domain."""
 
 from werewolf_agent._version import __version__
+from werewolf_agent.domain import (
+    AbilityDefinition,
+    Action,
+    ActionType,
+    AvailableAction,
+    EventVisibility,
+    Game,
+    GameConfig,
+    GameEvent,
+    GameSetup,
+    GameState,
+    GameView,
+    LocalRules,
+    Phase,
+    Player,
+    PlayerStatus,
+    RoleCatalog,
+    RoleDefinition,
+    RuleSet,
+    RuleSetDefinition,
+    RuleViolation,
+    WinResult,
+    build_game_rules,
+)
 
-__all__ = ["__version__"]
+__all__ = [
+    "AbilityDefinition",
+    "Action",
+    "ActionType",
+    "AvailableAction",
+    "EventVisibility",
+    "Game",
+    "GameConfig",
+    "GameEvent",
+    "GameSetup",
+    "GameState",
+    "GameView",
+    "LocalRules",
+    "Phase",
+    "Player",
+    "PlayerStatus",
+    "RoleCatalog",
+    "RoleDefinition",
+    "RuleSet",
+    "RuleSetDefinition",
+    "RuleViolation",
+    "WinResult",
+    "__version__",
+    "build_game_rules",
+]

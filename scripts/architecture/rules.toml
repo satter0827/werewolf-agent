@@ -1,6 +1,7 @@
-schema_version = "0.1.0"
+schema_version = "0.2.0"
 canonical_openapi = "contracts/openapi.json"
 public_modules = [
+  "werewolf_agent",
   "werewolf_agent.application",
   "werewolf_agent.domain",
 ]
@@ -14,6 +15,7 @@ root_entries = [
   ".vscode",
   "AGENTS.md",
   "LICENSE",
+  "notebooks",
   "README.md",
   "compose.yaml",
   "contracts",

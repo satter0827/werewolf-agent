@@ -85,9 +85,14 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 
 ## 公開面
 
-Pythonの公開モジュールは`werewolf_agent.domain`と`werewolf_agent.application`に限定する。
+Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.domain`、
+`werewolf_agent.application`に限定する。package直下はdomainの型と関数を同一objectのまま
+再公開し、application、アダプター、settings、agentをimportしない。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
 公開する。HTTPの正本は`contracts/openapi.json`とする。
+
+`notebooks`はリポジトリ閲覧者向けの実行例を所有する。Notebook固有のFakeゲーム進行と
+表示用resultは製品package、wheel、sdistへ含めず、公開APIの互換性対象にしない。
 
 application内部はゲーム参照、進行、プレイヤー action、timelineを独立したhandlerにする。
 DTOはruntime context、request、result、persistence recordのlifecycleで分ける。

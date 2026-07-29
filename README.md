@@ -8,6 +8,30 @@ Streamlit、workerを明示した境界で接続する。公開状態、public t
 Streamlitが唯一のブラウザーUIである。CLIとStreamlitは同じHTTP APIを使い、Supabaseが
 Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 
+## Python API
+
+リポジトリからwheelを構築してinstallすると、外部serviceを起動せずに決定的なdomain coreを
+利用できる。
+
+```powershell
+python -m pip install .
+```
+
+主要なdomain型はpackage直下からimportする。ゲーム作成時はプレイヤー、規則、seed付き乱数を
+明示して渡し、状態変更は`Game`を通じて行う。
+
+```python
+from werewolf_agent import Game, GameSetup, Player, build_game_rules
+```
+
+設定済みの6人ゲームとFakeListChatModelを使った一連の操作は
+[quickstart Notebook](notebooks/quickstart.ipynb)で確認できる。Notebook専用コードは製品の
+wheelとsdistに含めない。
+
+```powershell
+uv run --with jupyterlab jupyter lab notebooks/quickstart.ipynb
+```
+
 ## 前提環境
 
 - [pyproject.toml](pyproject.toml)の`requires-python`を満たすPython

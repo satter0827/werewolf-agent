@@ -14,6 +14,7 @@ from typing import Any, Final, TextIO, cast
 import structlog
 from structlog.typing import EventDict
 
+from werewolf_agent._version import __version__
 from werewolf_agent.observability.constants import (
     JSON_ENCODING,
     JSON_SEPARATORS,
@@ -199,7 +200,7 @@ def _package_version() -> str:
     try:
         return metadata.version(APP_NAME)
     except metadata.PackageNotFoundError:
-        return "0.1.0"
+        return __version__
 
 
 def _drop_private_gameplay_fields(

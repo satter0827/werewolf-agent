@@ -31,7 +31,12 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "replay",
         "setup",
     }
-    assert {item["version"] for item in items} == {"0.1.0"}
+    versions = {item["name"]: item["version"] for item in items}
+    assert versions["product"] == "0.2.0"
+    assert versions["architecture"] == "0.2.0"
+    assert {versions[name] for name in {"event", "quality-evidence", "replay", "setup"}} == {
+        "0.1.0"
+    }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}
     assert {item["standard"] for item in items if item["name"] != "product"} == {"semver"}
 

@@ -29,6 +29,7 @@ from scripts.architecture.definition import (
     THIN_MODULES,
 )
 
+import werewolf_agent as package
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
 
@@ -64,10 +65,13 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
-    """Pythonの公開面をdomainとapplicationに限定する。"""
-    for module in (domain, application):
+    """Pythonの公開面をroot、domain、applicationに限定する。"""
+    for module in (package, domain, application):
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
+    assert set(package.__all__) == {*domain.__all__, "__version__"}
+    for name in domain.__all__:
+        assert getattr(package, name) is getattr(domain, name)
     assert set(domain.__all__) == {
         "AbilityDefinition",
         "Action",
