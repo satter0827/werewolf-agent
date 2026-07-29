@@ -1,4 +1,4 @@
-"""ゲーム操作をまとめるobject-oriented facadeを定義する。"""
+"""ゲーム操作をまとめるobject-oriented facadeを定義する."""
 
 from __future__ import annotations
 
@@ -44,14 +44,14 @@ _Result = TypeVar("_Result")
 
 @dataclass(frozen=True)
 class Actor:
-    """外側のsecurity境界が検証した呼出主体を表す。"""
+    """外側のsecurity境界が検証した呼出主体を表す."""
 
     user_id: str
     is_anonymous: bool = False
     is_admin: bool = False
 
     def __post_init__(self) -> None:
-        """安定した外部subject IDを正規化して必須とする。"""
+        """安定した外部subject IDを正規化して必須とする."""
         user_id = self.user_id.strip()
         if not user_id:
             raise ValueError("Actor user_id must not be blank.")
@@ -59,7 +59,7 @@ class Actor:
 
 
 class GameApplication:
-    """完全なPythonゲーム手順を提供するstateless facadeを表す。"""
+    """完全なPythonゲーム手順を提供するstateless facadeを表す."""
 
     def __init__(
         self,
@@ -68,7 +68,7 @@ class GameApplication:
         access_policy: AccessPolicy | None = None,
         operation_queue: OperationQueue | None = None,
     ) -> None:
-        """検証済み依存関係からapplication facadeを構築する。"""
+        """検証済み依存関係からapplication facadeを構築する."""
         self._dependencies = dependencies
         self._access_policy = access_policy
         self._operation_queue = operation_queue
@@ -77,12 +77,12 @@ class GameApplication:
         self,
         command: CreateGameCommand,
     ) -> GameResult:
-        """一つのゲームを作成して現在状態を返す。"""
+        """一つのゲームを作成して現在状態を返す."""
         trusted = command.model_copy(update={"llm_mode": self._dependencies.create_llm_mode})
         return handlers.create_game(trusted, dependencies=self._dependencies)
 
     def get(self, game_id: str, actor: Actor) -> GameResult:
-        """検証済みactorが閲覧できる一つの公開ゲームを返す。"""
+        """検証済みactorが閲覧できる一つの公開ゲームを返す."""
         self._require_game_access(game_id, actor)
         return _resource_result(
             lambda: handlers.get_game(
@@ -98,7 +98,7 @@ class GameApplication:
         limit: int | None = None,
         offset: int = 0,
     ) -> GameListResult:
-        """検証済みactorが閲覧できるゲームの一pageを返す。"""
+        """検証済みactorが閲覧できるゲームの一pageを返す."""
         return handlers.list_games(
             ListGamesQuery(
                 trusted_user_id=actor.user_id,
@@ -114,7 +114,7 @@ class GameApplication:
         actor: Actor,
         command: PlayerActionCommand,
     ) -> PlayerActionResult:
-        """Serverが検証したidentityとversionでplayer actionを送信する。"""
+        """Serverが検証したidentityとversionでplayer actionを送信する."""
         self._require_player_access(str(command.game_id), command.player_id, actor)
         trusted = command.model_copy(update={"trusted_user_id": actor.user_id})
         return _resource_result(
@@ -127,7 +127,7 @@ class GameApplication:
         actor: Actor,
         expected_version: int,
     ) -> AdvanceGameResult:
-        """期待する公開versionからゲームを一step進めて結果を返す。"""
+        """期待する公開versionからゲームを一step進めて結果を返す."""
         self._require_game_access(game_id, actor)
         return _resource_result(
             lambda: handlers.advance_game(
@@ -142,7 +142,7 @@ class GameApplication:
         actor: Actor,
         expected_version: int,
     ) -> PreparedAdvanceGame:
-        """外部agent runtime向けにversion付き進行を認可して準備する。"""
+        """外部agent runtime向けにversion付き進行を認可して準備する."""
         self._require_game_access(game_id, actor)
         return _resource_result(
             lambda: handlers.prepare_advance_game(
@@ -155,7 +155,7 @@ class GameApplication:
         self,
         prepared: PreparedAdvanceGame,
     ) -> ComputedAdvanceGame:
-        """I/Oを行わず、検証済みagent decisionを適用する。"""
+        """I/Oを行わず、検証済みagent decisionを適用する."""
         return handlers.compute_prepared_advance(prepared)
 
     def commit_advance(
@@ -163,7 +163,7 @@ class GameApplication:
         actor: Actor,
         computed: ComputedAdvanceGame,
     ) -> AdvanceGameResult:
-        """計算済み進行を認可してcommitする。"""
+        """計算済み進行を認可してcommitする."""
         self._require_game_access(computed.game_id, actor)
         return _resource_result(
             lambda: handlers.commit_prepared_advance(computed, dependencies=self._dependencies)
@@ -177,7 +177,7 @@ class GameApplication:
         *,
         limit: int | None = None,
     ) -> GameTimelineResult:
-        """Cursorより後の公開timeline itemを返す。"""
+        """Cursorより後の公開timeline itemを返す."""
         self._require_game_access(game_id, actor)
         return _resource_result(
             lambda: handlers.list_timeline(
@@ -192,7 +192,7 @@ class GameApplication:
         actor: Actor,
         player_id: str,
     ) -> PlayerObservationResult:
-        """認証済みplayer本人のprivate observationを返す。"""
+        """認証済みplayer本人のprivate observationを返す."""
         self._require_player_access(game_id, player_id, actor)
         return _resource_result(
             lambda: handlers.get_player_observation(
@@ -206,7 +206,7 @@ class GameApplication:
         )
 
     def reveal(self, game_id: str, admin: Actor) -> GameRevealResult:
-        """APIが管理者権限を検証した後に完全状態を返す。"""
+        """APIが管理者権限を検証した後に完全状態を返す."""
         if not admin.is_admin:
             raise AppError(
                 "管理者権限が必要です。",
@@ -220,7 +220,7 @@ class GameApplication:
         )
 
     def verify_replay(self, game_id: str, admin: Actor) -> ReplayVerificationResult:
-        """Private payloadを返さず保存済みreplay checksumを検証する。"""
+        """Private payloadを返さず保存済みreplay checksumを検証する."""
         if not admin.is_admin:
             raise AppError(
                 "管理者権限が必要です。",
@@ -239,7 +239,7 @@ class GameApplication:
         request_payload: dict[str, object],
         llm_mode: str,
     ) -> QueuedOperation:
-        """検証済みactorのゲーム作成commandをqueueへ登録する。"""
+        """検証済みactorのゲーム作成commandをqueueへ登録する."""
         return self._queue().enqueue(
             operation_type="create_game",
             owner_user_id=actor.user_id,
@@ -258,7 +258,7 @@ class GameApplication:
         idempotency_key: str,
         request_payload: dict[str, object],
     ) -> QueuedOperation:
-        """一つのplayer actionを認可してqueueへ登録する。"""
+        """一つのplayer actionを認可してqueueへ登録する."""
         self._require_player_access(game_id, player_id, actor)
         return self._queue().enqueue(
             operation_type="submit_action",
@@ -279,7 +279,7 @@ class GameApplication:
         expected_version: int,
         idempotency_key: str,
     ) -> QueuedOperation:
-        """一つのゲーム進行を認可してqueueへ登録する。"""
+        """一つのゲーム進行を認可してqueueへ登録する."""
         self._require_game_access(game_id, actor)
         return self._queue().enqueue(
             operation_type="advance_game",
@@ -292,7 +292,7 @@ class GameApplication:
         )
 
     def operation(self, operation_id: str, actor: Actor) -> QueuedOperation | None:
-        """検証済みactorが所有する非同期operationを返す。"""
+        """検証済みactorが所有する非同期operationを返す."""
         return self._queue().get(operation_id, owner_user_id=actor.user_id)
 
     def _queue(self) -> OperationQueue:

@@ -47,7 +47,7 @@ SUPPORTED_ABILITY_KINDS = frozenset(
 
 
 class Phase(StrEnum):
-    """ゲームのlifecycle phaseを表す。"""
+    """ゲームのlifecycle phaseを表す."""
 
     SETUP = "setup"
     NIGHT = "night"
@@ -57,14 +57,14 @@ class Phase(StrEnum):
 
 
 class PlayerStatus(StrEnum):
-    """Playerの生存状態を表す。"""
+    """Playerの生存状態を表す."""
 
     ALIVE = "alive"
     DEAD = "dead"
 
 
 class ActionType(StrEnum):
-    """Domain coreが解釈する安定したaction種別を表す。"""
+    """Domain coreが解釈する安定したaction種別を表す."""
 
     SPEECH = "speech"
     VOTE = "vote"
@@ -73,7 +73,7 @@ class ActionType(StrEnum):
 
 
 class EventVisibility(StrEnum):
-    """Domain eventへ付与する可視性区分を表す。"""
+    """Domain eventへ付与する可視性区分を表す."""
 
     PUBLIC = "public"
     PLAYER_PRIVATE = "player_private"
@@ -82,7 +82,7 @@ class EventVisibility(StrEnum):
 
 @dataclass(frozen=True)
 class AbilityDefinition:
-    """一つのbounded ability componentのimmutable設定を表す。"""
+    """一つのbounded ability componentのimmutable設定を表す."""
 
     kind: str
     phase: Phase
@@ -176,7 +176,7 @@ class AbilityDefinition:
 
 @dataclass(frozen=True)
 class Player:
-    """一つのゲーム内のimmutableなplayer状態を表す。"""
+    """一つのゲーム内のimmutableなplayer状態を表す."""
 
     id: str
     name: str
@@ -206,13 +206,13 @@ class Player:
 
     @property
     def is_alive(self) -> bool:
-        """Playerが現在行動できるか返す。"""
+        """Playerが現在行動できるか返す."""
         return self.status is PlayerStatus.ALIVE
 
 
 @dataclass(frozen=True)
 class LocalRules:
-    """標準ゲーム動作の設定可能な値を表す。"""
+    """標準ゲーム動作の設定可能な値を表す."""
 
     day_speech_limit_per_player: int
     allow_self_vote: bool
@@ -239,7 +239,7 @@ class LocalRules:
 
 @dataclass(frozen=True)
 class RoleDefinition:
-    """一つの役職のimmutableなfactionとability所属を表す。"""
+    """一つの役職のimmutableなfactionとability所属を表す."""
 
     identity_faction: str
     victory_team: str
@@ -261,13 +261,13 @@ class RoleDefinition:
         object.__setattr__(self, "abilities", abilities)
 
     def has_ability(self, ability: str) -> bool:
-        """役職が指定したability IDを所有するか返す。"""
+        """役職が指定したability IDを所有するか返す."""
         return ability in self.abilities
 
 
 @dataclass(frozen=True)
 class RoleCatalog:
-    """設定済み役職定義のimmutable lookupを提供する。"""
+    """設定済み役職定義のimmutable lookupを提供する."""
 
     roles: Mapping[str, RoleDefinition]
 
@@ -279,25 +279,25 @@ class RoleCatalog:
         object.__setattr__(self, "roles", frozen_mapping(roles))
 
     def require_role(self, role: str) -> RoleDefinition:
-        """設定済み役職を返し、未知のIDでは例外を返す。"""
+        """設定済み役職を返し、未知のIDでは例外を返す."""
         return self.roles[role]
 
     def faction_for_role(self, role: str) -> str:
-        """一つの役職に対する正規faction IDを返す。"""
+        """一つの役職に対する正規faction IDを返す."""
         return self.require_role(role).identity_faction
 
     def victory_team_for_role(self, role: str) -> str:
-        """一つの役職が勝利するteamを返す。"""
+        """一つの役職が勝利するteamを返す."""
         return self.require_role(role).victory_team
 
     def role_has_ability(self, role: str | None, ability: str) -> bool:
-        """割当済み役職がabilityを所有するか返す。"""
+        """割当済み役職がabilityを所有するか返す."""
         return role is not None and self.require_role(role).has_ability(ability)
 
 
 @dataclass(frozen=True)
 class GameConfig:
-    """ゲーム状態へ埋め込む検証済みimmutable設定を表す。"""
+    """ゲーム状態へ埋め込む検証済みimmutable設定を表す."""
 
     player_count: int
     role_counts: Mapping[str, int]
@@ -363,7 +363,7 @@ class GameConfig:
 
 @dataclass(frozen=True)
 class AvailableAction:
-    """Playerへ提示する一つのaction候補を表す。"""
+    """Playerへ提示する一つのaction候補を表す."""
 
     type: ActionType
     ability_id: str | None = None
@@ -377,7 +377,7 @@ class AvailableAction:
 
     @property
     def key(self) -> str:
-        """Actionの安定した合法target keyを返す。"""
+        """Actionの安定した合法target keyを返す."""
         return (
             f"{self.type.value}:{self.ability_id}"
             if self.ability_id is not None
@@ -387,7 +387,7 @@ class AvailableAction:
 
 @dataclass(frozen=True)
 class Action:
-    """ゲームaggregateが受理する検証済みplayer intentを表す。"""
+    """ゲームaggregateが受理する検証済みplayer intentを表す."""
 
     type: ActionType
     player_id: str
@@ -447,7 +447,7 @@ class Action:
 
     @property
     def is_night_action(self) -> bool:
-        """Actionをnight phaseで解決するか返す。"""
+        """Actionをnight phaseで解決するか返す."""
         return self.type in {ActionType.USE_ABILITY, ActionType.PASS}
 
     @classmethod
@@ -459,7 +459,7 @@ class Action:
         focus_id: str | None = None,
         evidence_id: str | None = None,
     ) -> Self:
-        """公開speech actionを作成して返す。"""
+        """公開speech actionを作成して返す."""
         return cls(
             ActionType.SPEECH,
             player_id,
@@ -470,7 +470,7 @@ class Action:
 
     @classmethod
     def vote(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
-        """生存player一人を対象とするvote actionを作成して返す。"""
+        """生存player一人を対象とするvote actionを作成して返す."""
         return cls(ActionType.VOTE, player_id, reason=reason, target_id=target_id)
 
     @classmethod
@@ -482,7 +482,7 @@ class Action:
         *,
         reason: str = "",
     ) -> Self:
-        """設定済みability actionを作成して返す。"""
+        """設定済みability actionを作成して返す."""
         return cls(
             ActionType.USE_ABILITY,
             player_id,
@@ -493,13 +493,13 @@ class Action:
 
     @classmethod
     def pass_(cls, player_id: str, *, reason: str = "") -> Self:
-        """明示的なno-op actionを作成して返す。"""
+        """明示的なno-op actionを作成して返す."""
         return cls(ActionType.PASS, player_id, reason=reason)
 
 
 @dataclass(frozen=True)
 class VoteResult:
-    """一回のvoteで解決した公開factとprivate factを表す。"""
+    """一回のvoteで解決した公開factとprivate factを表す."""
 
     day: int
     tie_break_policy: str
@@ -521,7 +521,7 @@ class VoteResult:
 
 @dataclass(frozen=True)
 class InspectionResult:
-    """可視性を制御した一回の設定済みinspection結果を表す。"""
+    """可視性を制御した一回の設定済みinspection結果を表す."""
 
     day: int
     player_id: str
@@ -533,7 +533,7 @@ class InspectionResult:
 
 @dataclass(frozen=True)
 class NightResult:
-    """一回のnight phaseで解決したfactを表す。"""
+    """一回のnight phaseで解決したfactを表す."""
 
     day: int
     attacked_player_id: str | None = None
@@ -571,7 +571,7 @@ class NightResult:
 
 @dataclass(frozen=True)
 class SpeechRecord:
-    """受理された一つの公開speechを表す。"""
+    """受理された一つの公開speechを表す."""
 
     day: int
     player_id: str
@@ -591,7 +591,7 @@ class SpeechRecord:
 
 @dataclass(frozen=True)
 class WinResult:
-    """一つのゲームの終端結果を表す。"""
+    """一つのゲームの終端結果を表す."""
 
     winner: str
     reason: str
@@ -617,7 +617,7 @@ class WinResult:
 
 @dataclass(frozen=True)
 class GameHistory:
-    """解決済みゲーム履歴のimmutable collectionを表す。"""
+    """解決済みゲーム履歴のimmutable collectionを表す."""
 
     speeches: tuple[SpeechRecord, ...] = ()
     votes: tuple[VoteResult, ...] = ()
@@ -632,7 +632,7 @@ class GameHistory:
 
 @dataclass(frozen=True)
 class PendingActions:
-    """Aggregate状態内へ隠す未解決actionを表す。"""
+    """Aggregate状態内へ隠す未解決actionを表す."""
 
     votes: Mapping[str, Action] = field(default_factory=dict)
     night_actions: Mapping[str, Action] = field(default_factory=dict)
@@ -652,7 +652,7 @@ class PendingActions:
 
 @dataclass(frozen=True)
 class GameState:
-    """一つのゲームの完全なimmutable snapshotを表す。"""
+    """一つのゲームの完全なimmutable snapshotを表す."""
 
     config: GameConfig
     phase: Phase
@@ -716,18 +716,18 @@ class GameState:
 
     @property
     def is_finished(self) -> bool:
-        """ゲームが終端phaseへ到達したか返す。"""
+        """ゲームが終端phaseへ到達したか返す."""
         return self.phase is Phase.FINISHED
 
     @property
     def winner_id(self) -> str | None:
-        """勝者決定後に正規winning faction IDを返す。"""
+        """勝者決定後に正規winning faction IDを返す."""
         return None if self.win_result is None else self.win_result.winner
 
 
 @dataclass(frozen=True)
 class GameView:
-    """Playerごとのimmutableなゲームobservationを表す。"""
+    """Playerごとのimmutableなゲームobservationを表す."""
 
     phase: Phase
     day: int
@@ -755,7 +755,7 @@ class GameView:
 
 @dataclass(frozen=True)
 class GameEvent:
-    """状態遷移の成功後に生成するimmutable factを表す。"""
+    """状態遷移の成功後に生成するimmutable factを表す."""
 
     event_type: str
     phase: Phase | None = None
@@ -777,7 +777,7 @@ class GameEvent:
 
 @dataclass(frozen=True)
 class GameSetup:
-    """ゲーム作成に使用する検証済みplayerを保持する。"""
+    """ゲーム作成に使用する検証済みplayerを保持する."""
 
     players: tuple[Player, ...]
 

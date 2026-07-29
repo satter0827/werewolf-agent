@@ -1,4 +1,4 @@
-"""決定的なheadlessゲームのaggregate rootを定義する。"""
+"""決定的なheadlessゲームのaggregate rootを定義する."""
 
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ from werewolf_agent.domain.state import (
 
 
 class Game:
-    """Atomicで決定的な遷移を行うstateful aggregate rootを表す。"""
+    """Atomicで決定的な遷移を行うstateful aggregate rootを表す."""
 
     def __init__(
         self,
@@ -27,7 +27,7 @@ class Game:
         rules: RuleSet,
         creation_events: tuple[GameEvent, ...] = (),
     ) -> None:
-        """検証済みの値からaggregate fieldを復元する。"""
+        """検証済みの値からaggregate fieldを復元する."""
         if state.config != rules.config:
             raise RuleViolation("rules_mismatch", "State and rule set do not match.")
         self._state = state
@@ -42,7 +42,7 @@ class Game:
         rules: RuleSet,
         random: random.Random,
     ) -> Game:
-        """検証済みsetup dataと注入した規則からゲームを作成する。"""
+        """検証済みsetup dataと注入した規則からゲームを作成する."""
         state = game_setup.create_game_snapshot(rules.config, setup.players, random)
         events = (
             GameEvent(
@@ -64,11 +64,11 @@ class Game:
         *,
         rules: RuleSet,
     ) -> Game:
-        """外部I/Oを行わずゲームを復元する。"""
+        """外部I/Oを行わずゲームを復元する."""
         return cls(state, rules)
 
     def submit(self, action: Action) -> list[GameEvent]:
-        """一つのplayer actionを検証してatomicに適用する。"""
+        """一つのplayer actionを検証してatomicに適用する."""
         engine.validate_action(self._state, self._state.pending_actions, action)
         state, pending, events = engine.resolve_action(
             self._state,
@@ -79,7 +79,7 @@ class Game:
         return events
 
     def advance(self, random: random.Random) -> list[GameEvent]:
-        """現在のphaseを検証してatomicに進める。"""
+        """現在のphaseを検証してatomicに進める."""
         engine.validate_phase_advance(self._state, self._state.pending_actions)
         state, pending, events = engine.advance_phase(
             self._state,
@@ -90,21 +90,21 @@ class Game:
         return events
 
     def view_for(self, player_id: str) -> GameView:
-        """可視性でfilterしたplayer viewを返す。"""
+        """可視性でfilterしたplayer viewを返す."""
         return engine.build_view(self._state, self._state.pending_actions, player_id)
 
     def snapshot(self) -> GameState:
-        """現在のimmutableなstate snapshotを返す。"""
+        """現在のimmutableなstate snapshotを返す."""
         return self._state
 
     @property
     def creation_events(self) -> tuple[GameEvent, ...]:
-        """ゲーム作成時に生成したimmutable eventを返す。"""
+        """ゲーム作成時に生成したimmutable eventを返す."""
         return self._creation_events
 
     @property
     def pending_actions(self) -> PendingActions:
-        """現在のimmutableなpending-action bufferを返す。"""
+        """現在のimmutableなpending-action bufferを返す."""
         return self._state.pending_actions
 
 

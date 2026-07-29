@@ -1,4 +1,4 @@
-"""決定的なheadlessゲームの公開APIを提供する。"""
+"""決定的なheadlessゲームの公開APIを提供する."""
 
 from werewolf_agent.domain.definitions import RuleSet, RuleSetDefinition, build_game_rules
 from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation

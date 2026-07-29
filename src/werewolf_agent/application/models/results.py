@@ -32,7 +32,7 @@ ActionTypeId = str
 
 
 class GameSetupOptionsResult(ApplicationModel):
-    """Editor用metadataと同梱templateの概要を表す。"""
+    """Editor用metadataと同梱templateの概要を表す."""
 
     player_count: dict[str, int]
     recommended_template_id: str
@@ -44,7 +44,7 @@ class GameSetupOptionsResult(ApplicationModel):
 
 
 class SetupValidationResult(ApplicationModel):
-    """意味検証を通過した完全setupの正規化概要を表す。"""
+    """意味検証を通過した完全setupの正規化概要を表す."""
 
     schema_version: str
     player_count: int
@@ -60,7 +60,7 @@ class SetupValidationResult(ApplicationModel):
 
 
 class PlayerPreviewResult(ApplicationModel):
-    """公開情報だけを含む生成roster previewを表す。"""
+    """公開情報だけを含む生成roster previewを表す."""
 
     seed: int
     players: tuple[dict[str, object], ...]
@@ -70,7 +70,7 @@ class PlayerPreviewResult(ApplicationModel):
 
 
 class GameResult(ApplicationModel):
-    """Application operationが返す現在のゲーム状態を表す。"""
+    """Application operationが返す現在のゲーム状態を表す."""
 
     game_id: str
     state: dict[str, Any]
@@ -79,7 +79,7 @@ class GameResult(ApplicationModel):
 
 
 class GameRevealPlayer(ApplicationModel):
-    """専用reveal境界が返す完全なplayer状態を表す。"""
+    """専用reveal境界が返す完全なplayer状態を表す."""
 
     id: str
     name: str
@@ -96,7 +96,7 @@ class GameRevealPlayer(ApplicationModel):
 
 
 class GameRevealAction(ApplicationModel):
-    """専用reveal境界が返す未解決actionを表す。"""
+    """専用reveal境界が返す未解決actionを表す."""
 
     player_id: str
     type: ActionTypeId
@@ -108,7 +108,7 @@ class GameRevealAction(ApplicationModel):
 
 
 class GameRevealInspection(ApplicationModel):
-    """専用reveal境界が返す解決済みinspectionを表す。"""
+    """専用reveal境界が返す解決済みinspectionを表す."""
 
     player_id: str
     ability_id: str
@@ -120,7 +120,7 @@ class GameRevealInspection(ApplicationModel):
 
 
 class GameRevealNight(ApplicationModel):
-    """専用reveal境界が返す解決済みnight記録を表す。"""
+    """専用reveal境界が返す解決済みnight記録を表す."""
 
     day: int
     attacked_player_id: str | None = None
@@ -132,7 +132,7 @@ class GameRevealNight(ApplicationModel):
 
 
 class GameRevealVote(ApplicationModel):
-    """専用reveal境界が返す解決済みvote記録を表す。"""
+    """専用reveal境界が返す解決済みvote記録を表す."""
 
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
@@ -146,7 +146,7 @@ class GameRevealVote(ApplicationModel):
 
 
 class GameRevealResult(ApplicationModel):
-    """管理者observer viewへ返す完全なtable情報を表す。"""
+    """管理者observer viewへ返す完全なtable情報を表す."""
 
     game_id: str
     status: GameStatus
@@ -173,7 +173,7 @@ class GameRevealResult(ApplicationModel):
 
 
 class PlayerObservationResult(ApplicationModel):
-    """認証済みplayerへ返すprivate observationを表す。"""
+    """認証済みplayerへ返すprivate observationを表す."""
 
     game_id: str
     player_id: str
@@ -183,7 +183,7 @@ class PlayerObservationResult(ApplicationModel):
 
 
 class PlayerActionResult(ApplicationModel):
-    """Manual playerのactionを受理した結果を表す。"""
+    """Manual playerのactionを受理した結果を表す."""
 
     game_id: str
     player_id: str
@@ -194,7 +194,7 @@ class PlayerActionResult(ApplicationModel):
 
 
 class AdvanceGameResult(ApplicationModel):
-    """ゲームをapplicationの一step進めた結果を表す。"""
+    """ゲームをapplicationの一step進めた結果を表す."""
 
     game_id: str
     status: GameStatus
@@ -205,7 +205,7 @@ class AdvanceGameResult(ApplicationModel):
 
 
 class GameTimelineResult(ApplicationModel):
-    """公開timeline itemの一pageを表す。"""
+    """公開timeline itemの一pageを表す."""
 
     game_id: str
     items: list[dict[str, Any]]
@@ -215,7 +215,7 @@ class GameTimelineResult(ApplicationModel):
 
 
 class GameListResult(ApplicationModel):
-    """公開ゲーム概要の一pageを表す。"""
+    """公開ゲーム概要の一pageを表す."""
 
     games: list[dict[str, Any]]
     next_offset: int | None = None
@@ -224,7 +224,7 @@ class GameListResult(ApplicationModel):
 
 
 class ReplayVerificationResult(ApplicationModel):
-    """Private payloadを含まないreplay整合性結果を表す。"""
+    """Private payloadを含まないreplay整合性結果を表す."""
 
     game_id: str
     valid: bool
@@ -318,7 +318,7 @@ class GameTimelineItem(ApplicationModel):
 
 
 class GameEventCreate(ApplicationModel):
-    """外側のrepositoryへ保存する安全なevent dataを表す。"""
+    """外側のrepositoryへ保存する安全なevent dataを表す."""
 
     visibility: EventVisibility
     phase: GamePhase | None = None

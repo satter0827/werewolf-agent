@@ -1,4 +1,4 @@
-"""外側のadapterが実装するportを定義する。"""
+"""外側のadapterが実装するportを定義する."""
 
 from __future__ import annotations
 
@@ -21,10 +21,10 @@ from werewolf_agent.application.types import GameStatus
 
 
 class GameRepository(Protocol):
-    """Statelessなゲーム処理が必要とする永続化操作を定義する。"""
+    """Statelessなゲーム処理が必要とする永続化操作を定義する."""
 
     def create(self, game: GameRecordCreate) -> StoredGame:
-        """新しいゲームを保存して結果を返す。
+        """新しいゲームを保存して結果を返す.
 
         Args:
             game: 新しいゲームの完全な永続化payload。
@@ -35,7 +35,7 @@ class GameRepository(Protocol):
         """
 
     def get(self, game_id: UUID) -> StoredGame | None:
-        """ゲームが存在する場合に返す。
+        """ゲームが存在する場合に返す.
 
         Args:
             game_id: ゲームID。
@@ -46,7 +46,7 @@ class GameRepository(Protocol):
         """
 
     def get_for_update(self, game_id: UUID) -> StoredGame | None:
-        """ゲームが存在する場合に更新lockを取得して返す。
+        """ゲームが存在する場合に更新lockを取得して返す.
 
         Args:
             game_id: ゲームID。
@@ -64,7 +64,7 @@ class GameRepository(Protocol):
         limit: int,
         offset: int,
     ) -> list[StoredGameSummary]:
-        """ゲーム概要の一pageを返す。
+        """ゲーム概要の一pageを返す.
 
         Args:
             user_id: 参加ゲームを閲覧する検証済み利用者ID。
@@ -78,7 +78,7 @@ class GameRepository(Protocol):
         """
 
     def save(self, update: GameRecordUpdate) -> StoredGame:
-        """一つのゲームの可変fieldを保存して返す。
+        """一つのゲームの可変fieldを保存して返す.
 
         Args:
             update: Applicationの一step後に更新するゲームfield。
@@ -93,7 +93,7 @@ class GameRepository(Protocol):
         game_id: UUID,
         events: Sequence[GameEventCreate],
     ) -> list[StoredGameEvent]:
-        """Eventを追加し、stream sequence番号を付与して返す。
+        """Eventを追加し、stream sequence番号を付与して返す.
 
         Args:
             game_id: Eventを所有するゲームID。
@@ -105,7 +105,7 @@ class GameRepository(Protocol):
         """
 
     def latest_public_turn_sequence(self, game_id: UUID) -> int:
-        """一つのゲームの最新公開timeline sequenceを返す。
+        """一つのゲームの最新公開timeline sequenceを返す.
 
         Args:
             game_id: Timelineを所有するゲームID。
@@ -122,7 +122,7 @@ class GameRepository(Protocol):
         after: int,
         limit: int,
     ) -> list[StoredGameTurn]:
-        """Sequence cursorより後の公開turn記録を返す。
+        """Sequence cursorより後の公開turn記録を返す.
 
         Args:
             game_id: Timelineを所有するゲームID。
@@ -136,7 +136,7 @@ class GameRepository(Protocol):
 
 
 class SetupRepository(Protocol):
-    """利用者所有のimmutable setup revisionを扱う永続化操作を定義する。"""
+    """利用者所有のimmutable setup revisionを扱う永続化操作を定義する."""
 
     def create(
         self,
@@ -147,11 +147,11 @@ class SetupRepository(Protocol):
         setup_checksum: str,
         mechanics_checksum: str,
     ) -> SavedSetupRevision:
-        """所有setupと最初のimmutable revisionを作成して返す。"""
+        """所有setupと最初のimmutable revisionを作成して返す."""
         ...
 
     def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
-        """指定した利用者が所有するsetup概要だけを返す。"""
+        """指定した利用者が所有するsetup概要だけを返す."""
         ...
 
     def get(
@@ -161,7 +161,7 @@ class SetupRepository(Protocol):
         owner_user_id: str,
         revision: int | None = None,
     ) -> SavedSetupRevision | None:
-        """他者のrowを開示せず、所有revisionまたは`None`を返す。"""
+        """他者のrowを開示せず、所有revisionまたは`None`を返す."""
         ...
 
     def list_revisions(
@@ -170,7 +170,7 @@ class SetupRepository(Protocol):
         *,
         owner_user_id: str,
     ) -> list[SavedSetupRevision]:
-        """所有する一つのsetupのimmutable revisionを返す。"""
+        """所有する一つのsetupのimmutable revisionを返す."""
         ...
 
     def add_revision(
@@ -183,5 +183,5 @@ class SetupRepository(Protocol):
         setup_checksum: str,
         mechanics_checksum: str,
     ) -> SavedSetupRevision:
-        """楽観的並行性検証後にrevisionを追加して返す。"""
+        """楽観的並行性検証後にrevisionを追加して返す."""
         ...

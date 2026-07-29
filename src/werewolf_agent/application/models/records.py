@@ -19,7 +19,7 @@ ActionTypeId = str
 
 
 class StoredGameTurn(ApplicationModel):
-    """外側の永続化adapterから読み込んだturn記録を表す。"""
+    """外側の永続化adapterから読み込んだturn記録を表す."""
 
     sequence: int
     event_sequence: int
@@ -35,7 +35,7 @@ class StoredGameTurn(ApplicationModel):
 
 
 class StoredGameSummary(ApplicationModel):
-    """外側の永続化adapterから読み込んだゲーム概要を表す。"""
+    """外側の永続化adapterから読み込んだゲーム概要を表す."""
 
     game_id: UUID
     status: GameStatus
@@ -59,7 +59,7 @@ class StoredGameSummary(ApplicationModel):
 
 
 class GameRecordCreate(ApplicationModel):
-    """外側のrepositoryへ保存する新規ゲームdataを表す。"""
+    """外側のrepositoryへ保存する新規ゲームdataを表す."""
 
     id: UUID
     status: GameStatus
@@ -76,7 +76,7 @@ class GameRecordCreate(ApplicationModel):
 
 
 class GameRecordUpdate(ApplicationModel):
-    """既存ゲームへ保存できる更新内容を表す。"""
+    """既存ゲームへ保存できる更新内容を表す."""
 
     id: UUID
     status: GameStatus
@@ -91,7 +91,7 @@ class GameRecordUpdate(ApplicationModel):
 
 
 class StoredGame(ApplicationModel):
-    """外側の永続化adapterから読み込んだゲームを表す。"""
+    """外側の永続化adapterから読み込んだゲームを表す."""
 
     id: UUID
     status: GameStatus
@@ -110,7 +110,7 @@ class StoredGame(ApplicationModel):
 
 
 class StoredGameEvent(ApplicationModel):
-    """外側の永続化adapterから読み込んだevent記録を表す。"""
+    """外側の永続化adapterから読み込んだevent記録を表す."""
 
     sequence: int
     event_id: UUID
