@@ -631,6 +631,8 @@ def test_quality_environment_prepares_temporary_cache_parents(
     environment = support.quality_environment(run_dir=tmp_path / "run")
 
     assert all(path.is_dir() for path in directories)
+    assert Path(environment["PYTEST_DEBUG_TEMPROOT"]).is_dir()
+    assert environment["PYTEST_DEBUG_TEMPROOT"] == str(tmp_path / "pytest")
     assert environment["SUPABASE_HOME"] == str(tmp_path / "supabase" / "run")
 
 

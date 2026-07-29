@@ -255,7 +255,7 @@ def quality_environment(
                 "HYPOTHESIS_STORAGE_DIRECTORY": str(temporary_cache / "hypothesis"),
                 "MYPY_CACHE_DIR": str(temporary_cache / "mypy"),
                 "PYTEST_ADDOPTS": "",
-                "PYTEST_DEBUG_TEMPROOT": str(temporary_cache / "pytest" / "tmp"),
+                "PYTEST_DEBUG_TEMPROOT": str(TEMPORARY_ROOT / "pytest"),
                 "TEMP": str(process_temporary),
                 "TMP": str(process_temporary),
                 "TMPDIR": str(process_temporary),
