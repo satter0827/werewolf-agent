@@ -29,11 +29,60 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 python -m pip install .
 ```
 
-主要なdomain型はpackage直下からimportする。ゲーム作成時はプレイヤー、規則、seed付き乱数を
+主要なdomain型はpackage直下からimportする。次の例は外部serviceや設定fileを使わずに
+3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を
 明示して渡し、状態変更は`Game`を通じて行う。
 
 ```python
-from werewolf_agent import Game, GameSetup, Player, build_game_rules
+import random
+
+from werewolf_agent import (
+    Action,
+    Game,
+    GameSetup,
+    LocalRules,
+    Player,
+    RoleCatalog,
+    RoleDefinition,
+    RuleSetDefinition,
+    build_game_rules,
+)
+
+rules = build_game_rules(
+    RuleSetDefinition(
+        player_count=3,
+        role_counts={"villager": 2, "werewolf": 1},
+        rules=LocalRules(
+            day_speech_limit_per_player=1,
+            allow_self_vote=False,
+            allow_vote_revision=False,
+            allow_night_action_revision=False,
+            vote_tie_resolution="no_elimination",
+            starting_phase="day_discussion",
+            reveal_role_on_death=True,
+        ),
+        roles=RoleCatalog(
+            {
+                "villager": RoleDefinition("village", "village"),
+                "werewolf": RoleDefinition("werewolf", "werewolf"),
+            }
+        ),
+        abilities={},
+    )
+)
+game = Game.create(
+    GameSetup(
+        players=(
+            Player("p1", "Alice"),
+            Player("p2", "Bob"),
+            Player("p3", "Carol"),
+        )
+    ),
+    rules=rules,
+    random=random.Random(7),
+)
+game.submit(Action.speech("p1", "状況を確認します。"))
+observation = game.view_for("p1")
 ```
 
 設定済みの6人ゲームとFakeListChatModelを使った一連の操作は

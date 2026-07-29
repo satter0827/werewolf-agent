@@ -52,9 +52,10 @@ def test_fake_demo_steps_once_and_completes_deterministically() -> None:
     first_step = demo.step()
     assert first_step is not None
     assert first_step.operation == "action"
-    assert first_step.private_action_omitted
+    assert first_step.private_actor_omitted
+    assert not first_step.private_target_omitted
     assert first_step.actor_id is None
-    assert first_step.action_key == "private_action"
+    assert first_step.action_type == "pass"
     assert first_step.decision is not None
     assert first_step.decision.validation_status == "valid"
 
@@ -67,6 +68,27 @@ def test_fake_demo_steps_once_and_completes_deterministically() -> None:
     assert result.checksum == repeated.checksum
     assert result.action_count == repeated.action_count
     assert all(not decision.provider_error for decision in result.decisions)
+
+
+def test_fake_demo_distinguishes_private_actor_and_target_omission() -> None:
+    """private actorと、実際に存在するprivate targetだけを省略表示する。"""
+    demo = FakeGameDemo.create(seed=7)
+    private_pass = None
+    private_targeted_action = None
+    while private_pass is None or private_targeted_action is None:
+        step = demo.step()
+        assert step is not None
+        if step.action_type == "pass":
+            private_pass = step
+        if step.action_type == "use_ability" and step.private_target_omitted:
+            private_targeted_action = step
+
+    assert private_pass.private_actor_omitted
+    assert not private_pass.private_target_omitted
+    assert private_pass.actor_id is None
+    assert private_targeted_action.private_actor_omitted
+    assert private_targeted_action.private_target_omitted
+    assert private_targeted_action.actor_id is None
 
 
 def test_fake_demo_distinguishes_seeds_and_reports_limits() -> None:
@@ -126,3 +148,12 @@ def test_demo_limits_require_positive_values() -> None:
         DemoLimits(max_phases=0)
     with pytest.raises(ValueError):
         DemoLimits(max_actions=0)
+
+
+def test_demo_accepts_public_deliberation_level_values() -> None:
+    """内部enumをimportせず公開文字列で熟考レベルを変更する。"""
+    quick = FakeGameDemo.create(deliberation_level="quick")
+
+    assert quick.step() is not None
+    with pytest.raises(ValueError, match="unsupported"):
+        FakeGameDemo.create(deliberation_level="unsupported")

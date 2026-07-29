@@ -68,8 +68,9 @@ class DemoStep:
     day: int
     phase: str
     actor_id: str | None
-    action_key: str | None
-    private_action_omitted: bool
+    action_type: str | None
+    private_actor_omitted: bool
+    private_target_omitted: bool
     public_events: tuple[GameEvent, ...]
     decision: DemoDecision | None = None
 
@@ -130,7 +131,7 @@ class FakeGameDemo:
         *,
         template_id: str = "standard_6",
         seed: int = 7,
-        deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD,
+        deliberation_level: Literal["quick", "standard", "deep"] = "standard",
         limits: DemoLimits | None = None,
     ) -> FakeGameDemo:
         """Create a configured game without environment variables or external services."""
@@ -177,7 +178,7 @@ class FakeGameDemo:
             profile_ids_by_player={player_id: player_id for player_id in profiles},
             scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
             trace_sink=trace_sink,
-            deliberation_level=deliberation_level,
+            deliberation_level=DeliberationLevel(deliberation_level),
         )
         creation_events = [
             event for event in game.creation_events if event.visibility is EventVisibility.PUBLIC
@@ -238,8 +239,9 @@ class FakeGameDemo:
                 day=snapshot.day,
                 phase=snapshot.phase.value,
                 actor_id=action.player_id if is_public_action else None,
-                action_key=action.type.value if is_public_action else "private_action",
-                private_action_omitted=not is_public_action,
+                action_type=action.type.value,
+                private_actor_omitted=not is_public_action,
+                private_target_omitted=not is_public_action and action.target_id is not None,
                 public_events=public_events,
                 decision=self._trace_sink.decisions[decision_index],
             )
@@ -252,8 +254,9 @@ class FakeGameDemo:
             day=snapshot.day,
             phase=snapshot.phase.value,
             actor_id=None,
-            action_key=None,
-            private_action_omitted=False,
+            action_type=None,
+            private_actor_omitted=False,
+            private_target_omitted=False,
             public_events=public_events,
         )
 
