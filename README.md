@@ -8,6 +8,18 @@ Streamlit、workerを明示した境界で接続する。公開状態、public t
 Streamlitが唯一のブラウザーUIである。CLIとStreamlitは同じHTTP APIを使い、Supabaseが
 Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 
+## プロジェクトの状態
+
+本リポジトリはAlpha段階である。公開APIと設定はversion契約に従って管理するが、安定版までの
+後方互換は保証しない。
+
+## 主な機能
+
+- seedと設定を固定してゲームを再現する。
+- 公開状態、public timeline、本人のobservationを分離する。
+- CLI、Streamlit、workerを同じHTTP APIへ接続する。
+- Fake LLMとlocalhostだけで通常の品質検証を完結する。
+
 ## 前提環境
 
 - [pyproject.toml](pyproject.toml)の`requires-python`を満たすPython
@@ -74,6 +86,12 @@ uv run --no-sync python -m scripts.docs build
 
 生成HTMLは`.werewolf-agent/outputs/docs/index.html`へ保存される。生成物はGitへ追加しない。
 
+## 参加と報告
+
+変更を提案する場合は[Contributing](CONTRIBUTING.md)を参照する。脆弱性は公開Issueへ記載せず、
+[Security Policy](SECURITY.md)に従って報告する。一般的な不具合と機能提案は
+[GitHub Issues](https://github.com/satter0827/werewolf-agent/issues)で受け付ける。
+
 ## 検証
 
 通常の変更では、差分から必要なプロファイルまたはgateを選択する。
@@ -99,4 +117,4 @@ uv run --no-sync python -m scripts.quality auto
 
 ## License
 
-MIT License
+[MIT License](LICENSE)

@@ -121,7 +121,29 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
     assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for revision in actions)
     dependabot = _read(".github/dependabot.yml")
     assert "package-ecosystem: github-actions" in dependabot
-    assert "target-branch: develop" in dependabot
+    assert "package-ecosystem: uv" in dependabot
+    assert dependabot.count("target-branch: develop") == 2
+    assert dependabot.count("interval: weekly") == 2
+    assert dependabot.count("open-pull-requests-limit: 5") == 2
+
+
+def test_repository_exposes_standard_community_templates() -> None:
+    """公開リポジトリの参加、報告、レビュー入口を固定する。"""
+    contributing = _read("CONTRIBUTING.md")
+    security = _read("SECURITY.md")
+    pull_request = _read(".github/PULL_REQUEST_TEMPLATE.md")
+    issue_config = _read(".github/ISSUE_TEMPLATE/config.yml")
+
+    assert "scripts/README.md" in contributing
+    assert "公開Issue" in security
+    for heading in ("## 目的", "## 変更内容", "## 影響", "## 検証"):
+        assert heading in pull_request
+    assert "blank_issues_enabled: false" in issue_config
+    for filename in ("bug_report.yml", "feature_request.yml"):
+        template = _read(f".github/ISSUE_TEMPLATE/{filename}")
+        assert "name:" in template
+        assert "description:" in template
+        assert "validations:" in template
 
 
 def test_workflow_javascript_actions_use_node24_releases() -> None:

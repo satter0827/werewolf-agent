@@ -1,0 +1,40 @@
+name: 不具合報告
+description: 再現可能な不具合を報告する。
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: 秘匿情報や脆弱性は記載せず、Security Policyに従って報告する。
+  - type: textarea
+    id: summary
+    attributes:
+      label: 概要
+      description: 発生した問題を簡潔に記載する。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 最小の再現手順、設定、seedを記載する。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する結果
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の結果
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: OS、Python、revision、実行方法を記載する。
+    validations:
+      required: true

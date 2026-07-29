@@ -29,6 +29,8 @@ REQUIRED_LABELS = frozenset(
 PUBLIC_API_MODULES = frozenset(module.__name__ for module in PUBLIC_MODULES)
 CANONICAL_DOCUMENT_PATHS = (
     REPOSITORY_ROOT / "README.md",
+    REPOSITORY_ROOT / "CONTRIBUTING.md",
+    REPOSITORY_ROOT / "SECURITY.md",
     REPOSITORY_ROOT / "scripts" / "README.md",
 )
 QUALITY_COMMAND_OWNERS = frozenset({"AGENTS.md", "README.md", "scripts/README.md"})
@@ -86,7 +88,9 @@ _REPOSITORY_ROOT_FILES = frozenset(
     {
         ".env.example",
         "AGENTS.md",
+        "CONTRIBUTING.md",
         "README.md",
+        "SECURITY.md",
         "compose.yaml",
         "pyproject.toml",
         "uv.lock",
