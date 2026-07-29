@@ -28,8 +28,32 @@ def test_quality_workflow_separates_develope_and_main_boundaries() -> None:
     assert "--confirm-deep" in workflow
     assert "--base-ref origin/develope" in workflow
     assert "--base-ref origin/main" in workflow
-    assert "--head-ref ${{ github.event.pull_request.head.sha }}" in workflow
+    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in workflow
     assert "fetch-depth: 0" in workflow
+
+
+def test_manual_check_reuses_the_develope_pr_job() -> None:
+    """選択branchをPR前に同じLinux Checkで検証する。"""
+    workflow = _read(".github/workflows/quality.yml")
+    develope_check = workflow.split("\n  develope-check:\n", 1)[1].split("\n  main-source:\n", 1)[0]
+    scheduled_deep = workflow.split("\n  scheduled-deep:\n", 1)[1]
+
+    assert "github.event_name == 'workflow_dispatch'" in develope_check
+    assert "github.base_ref == 'develope'" in develope_check
+    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in develope_check
+    assert "github.event_name == 'schedule'" in scheduled_deep
+    assert "workflow_dispatch" not in scheduled_deep
+
+
+def test_quality_workflow_pins_the_runner_os_generation() -> None:
+    """hosted runnerのOS世代をjob間で統一する。"""
+    workflow = _read(".github/workflows/quality.yml")
+    jobs = workflow.split("\njobs:\n", 1)[1]
+    job_names = re.findall(r"^  ([a-z][a-z0-9-]+):$", jobs, re.MULTILINE)
+    runners = re.findall(r"^\s+runs-on:\s+([^\s]+)$", workflow, re.MULTILINE)
+
+    assert len(runners) == len(job_names)
+    assert set(runners) == {"ubuntu-24.04"}
 
 
 def test_quality_workflow_uses_the_repository_environment_command() -> None:
