@@ -14,7 +14,7 @@ from pathlib import Path
 
 import psutil  # type: ignore[import-untyped]
 
-from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
+from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT, replace_directory
 from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import TEMPORARY_ROOT, write_json
 from scripts.quality.artifacts import artifact_category
@@ -143,7 +143,7 @@ def publish_run(run_dir: Path, selector: str, state: str) -> Path:
             archived = history / previous
             history.mkdir(parents=True, exist_ok=True)
             _replace_directory(archived)
-            current.replace(archived)
+            replace_directory(current, archived)
             if _last_passed_run_id(selector) == previous:
                 write_json(
                     profile_root / "last-passed.json",
@@ -174,7 +174,7 @@ def _publish_complete_bundle(source: Path, target: Path) -> None:
     temporary.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(source, temporary)
     _replace_directory(target)
-    temporary.replace(target)
+    replace_directory(temporary, target)
     shutil.rmtree(source)
 
 

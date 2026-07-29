@@ -37,7 +37,7 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "architecture": "0.3.1",
         "event": "0.1.0",
         "product": "0.3.1",
-        "quality-evidence": "0.1.0",
+        "quality-evidence": "0.1.1",
         "replay": "0.1.0",
         "setup": "0.1.0",
     }
