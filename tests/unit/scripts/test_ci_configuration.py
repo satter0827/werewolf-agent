@@ -164,7 +164,8 @@ def test_repository_exposes_standard_community_templates() -> None:
     assert "公開Issue" in security
     for heading in ("## 目的", "## 変更内容", "## 影響", "## 検証", "## 最終判断"):
         assert heading in pull_request
-    assert "人間が未解決会話と必須checkを確認" in pull_request
+    assert "develop向けはAIが正式判断とmerge" in pull_request
+    assert "main向けの正式承認とmergeは人間" in pull_request
     assert "blank_issues_enabled: false" in issue_config
     for filename in ("bug_report.yml", "feature_request.yml"):
         template = _read(f".github/ISSUE_TEMPLATE/{filename}")

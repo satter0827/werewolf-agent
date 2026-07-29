@@ -121,12 +121,13 @@ PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向�
 月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
 夜間Deepは早期検知に使用し、通常のmerge条件には含めない。
 
-AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`までを担当する。正式なレビュー判断、
-レビュー会話の解決、auto-merge、mergeは人間が担当する。リポジトリ固有の
+AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`を担当する。`develop`向けPRは
+必須checkと未解決指摘を確認したAIが正式なレビュー判断を行い、merge commitで取り込める。
+`main`向けPRの正式な承認とmerge、レビュー会話の解決、auto-mergeは人間が担当する。リポジトリ固有の
 `.codex/hooks.json`はCodexの禁止操作を実行前に拒否し、hook変更後は新しいCodex sessionで
 再信頼する。`main`と`develop`のRulesetで`required_approving_review_count`を0とする設定は、
-同一GitHubアカウントによる単独開発を停止させないための意図的な設定である。人間は未解決会話と
-必須checkを確認して最終判断する。
+同一GitHubアカウントによる単独開発を停止させないための意図的な設定である。mainへの最終判断では
+人間が未解決会話と必須checkを確認する。
 
 このhookは、信頼済みCodex sessionのlocal shellとGitHub MCP toolを対象とする実用上のguardで
 あり、GitHub側の権限制御ではない。未信頼または無効なhook、hook対象外のhosted tool、同じ認証を
