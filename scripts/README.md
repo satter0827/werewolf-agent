@@ -35,6 +35,9 @@ uv run --no-sync python -m scripts.quality release --fresh
 uv run --no-sync python -m scripts.quality deep --confirm-deep --fresh
 uv run --no-sync python -m scripts.quality gate python-static
 uv run --no-sync python -m scripts.versioning inspect
+uv run --no-sync python -m scripts.versioning suggest --base-ref origin/main --head-ref HEAD
+uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD --dry-run
+uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.versioning check --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
@@ -44,6 +47,12 @@ uv run --no-sync python -m scripts.quality report open
 uv run --no-sync python -m scripts.quality cleanup
 uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 ```
+
+`suggest`はmainとの差分に含まれるConventional Commitから`patch`、`minor`、`major`を提案するが、
+versionを変更しない。変更levelは利用者が決定し、`bump`へ明示する。`bump`はcommit済み、stage済み、
+未stage、未追跡の変更pathをregistryの所有範囲へ対応付け、productと影響を受ける境界だけを更新する。
+同じlevelでの再実行は変更を増やさず、異なる手動versionが既にある場合は上書きせず停止する。
+最初に`--dry-run`で対象を確認する。
 
 | プロファイル | 判定範囲 |
 | --- | --- |
