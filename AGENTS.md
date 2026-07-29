@@ -84,5 +84,5 @@ uv run --no-sync python -m scripts.architecture
 ## Commit
 
 日本語のConventional Commitsに近い一行を使う。
-短期branchは`develope`から作成し、PRはmerge commitで取り込む。`main`向けPRのheadは
-`develope`に限定し、共有branchをforce-pushしない。
+短期branchは`develop`から作成し、PRはmerge commitで取り込む。`main`向けPRのheadは
+`develop`に限定し、共有branchをforce-pushしない。

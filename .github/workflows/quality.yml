@@ -3,7 +3,7 @@ name: Quality
 on:
   pull_request:
     branches:
-      - develope
+      - develop
       - main
   schedule:
     - cron: "0 18 * * 0"
@@ -17,11 +17,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  develope-check:
+  develop-check:
     if: >-
-      (github.event_name == 'pull_request' && github.base_ref == 'develope') ||
+      (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
       github.event_name == 'workflow_dispatch'
-    name: Develope / Check
+    name: Develop / Check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -35,13 +35,13 @@ jobs:
       - run: uv run --no-project python -m scripts.environment setup python
       - run: >-
           uv run --no-sync python -m scripts.quality check
-          --base-ref origin/develope
+          --base-ref origin/develop
           --head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}
           --fresh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: quality-develope-check
+          name: quality-develop-check
           path: |
             .werewolf-agent/quality/profiles/check/current
             .werewolf-agent/quality/profiles/check/last-passed.json
@@ -56,8 +56,8 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require develope as the source branch
-        run: test "${{ github.head_ref }}" = "develope"
+      - name: Require develop as the source branch
+        run: test "${{ github.head_ref }}" = "develop"
 
   main-readiness:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: develope
+          ref: develop
       - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
         with:
           python-version: "3.12"

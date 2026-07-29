@@ -8,17 +8,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_quality_workflow_separates_develope_and_main_boundaries() -> None:
+def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
     """日常統合はCheck、main境界はDeepと互換性を要求する。"""
     workflow = _read(".github/workflows/quality.yml")
 
     assert "pull_request:" in workflow
-    assert "      - develope" in workflow
+    assert "      - develop" in workflow
     assert "      - main" in workflow
     assert "push:" not in workflow
     assert 'cron: "0 18 * * 0"' in workflow
     assert "workflow_dispatch:" in workflow
-    assert "name: Develope / Check" in workflow
+    assert "name: Develop / Check" in workflow
     assert "name: Main / Source Branch" in workflow
     assert "name: Main / Readiness" in workflow
     assert "name: Main / Compatibility" in workflow
@@ -26,21 +26,21 @@ def test_quality_workflow_separates_develope_and_main_boundaries() -> None:
     assert "python -m scripts.quality release" not in workflow
     assert "python -m scripts.quality deep" in workflow
     assert "--confirm-deep" in workflow
-    assert "--base-ref origin/develope" in workflow
+    assert "--base-ref origin/develop" in workflow
     assert "--base-ref origin/main" in workflow
     assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in workflow
     assert "fetch-depth: 0" in workflow
 
 
-def test_manual_check_reuses_the_develope_pr_job() -> None:
+def test_manual_check_reuses_the_develop_pr_job() -> None:
     """選択branchをPR前に同じLinux Checkで検証する。"""
     workflow = _read(".github/workflows/quality.yml")
-    develope_check = workflow.split("\n  develope-check:\n", 1)[1].split("\n  main-source:\n", 1)[0]
+    develop_check = workflow.split("\n  develop-check:\n", 1)[1].split("\n  main-source:\n", 1)[0]
     scheduled_deep = workflow.split("\n  scheduled-deep:\n", 1)[1]
 
-    assert "github.event_name == 'workflow_dispatch'" in develope_check
-    assert "github.base_ref == 'develope'" in develope_check
-    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in develope_check
+    assert "github.event_name == 'workflow_dispatch'" in develop_check
+    assert "github.base_ref == 'develop'" in develop_check
+    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in develop_check
     assert "github.event_name == 'schedule'" in scheduled_deep
     assert "workflow_dispatch" not in scheduled_deep
 
@@ -74,7 +74,7 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     assert ".werewolf-agent/operations" in workflow
 
 
-def test_workflow_actions_are_pinned_and_dependabot_targets_develope() -> None:
+def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
     """必須CIの実装をmutable tagへ依存させない。"""
     workflow = _read(".github/workflows/quality.yml")
     actions = re.findall(r"uses:\s+[^@\s]+@([^\s]+)", workflow)
@@ -83,7 +83,7 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develope() -> None:
     assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for revision in actions)
     dependabot = _read(".github/dependabot.yml")
     assert "package-ecosystem: github-actions" in dependabot
-    assert "target-branch: develope" in dependabot
+    assert "target-branch: develop" in dependabot
 
 
 def test_workflow_javascript_actions_use_node24_releases() -> None:
@@ -119,7 +119,7 @@ def test_rulesets_require_the_stable_workflow_checks() -> None:
     """version管理したrulesetとworkflowの必須check名を一致させる。"""
     workflow = _read(".github/workflows/quality.yml")
     expected = {
-        "develope.json": {"Develope / Check"},
+        "develop.json": {"Develop / Check"},
         "main.json": {"Main / Source Branch", "Main / Readiness", "Main / Compatibility"},
     }
     for filename, contexts in expected.items():

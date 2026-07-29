@@ -27,10 +27,10 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 ## CI境界
 
 ローカルとGitHub Actionsは`scripts.quality`を共通の品質入口とする。feature branchはPR作成前に
-手動`Develope / Check`を実行し、GitHub-hosted Ubuntu固有の差を確認する。手動Checkはbranchの
-`HEAD`、PR Checkは`develope`との仮想mergeを検証するため、最終判定はPR Checkが所有する。
+手動`Develop / Check`を実行し、GitHub-hosted Ubuntu固有の差を確認する。手動Checkはbranchの
+`HEAD`、PR Checkは`develop`との仮想mergeを検証するため、最終判定はPR Checkが所有する。
 
-Deepはローカル、週次`develope`、`main`向けPRで実行する。GitHub-hosted runner全体をローカルへ
+Deepはローカル、週次`develop`、`main`向けPRで実行する。GitHub-hosted runner全体をローカルへ
 複製せず、共通コマンドと依存定義をリポジトリ内の再現境界とする。
 
 ## 外部接続境界

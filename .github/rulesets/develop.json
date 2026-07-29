@@ -1,10 +1,10 @@
 {
-  "name": "develope-quality",
+  "name": "develop-quality",
   "target": "branch",
   "enforcement": "active",
   "conditions": {
     "ref_name": {
-      "include": ["refs/heads/develope"],
+      "include": ["refs/heads/develop"],
       "exclude": []
     }
   },
@@ -25,7 +25,7 @@
     {
       "type": "required_status_checks",
       "parameters": {
-        "required_status_checks": [{"context": "Develope / Check"}],
+        "required_status_checks": [{"context": "Develop / Check"}],
         "strict_required_status_checks_policy": false
       }
     }
