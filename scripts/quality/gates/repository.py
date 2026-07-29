@@ -8,7 +8,7 @@ from scripts._infra.artifacts import LAYOUT
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult
 from scripts.quality.models import Gate, RunContext
 
-GATES = ("repository", "architecture")
+GATES = ("repository", "version-contract", "architecture")
 
 
 def build() -> list[Gate]:
@@ -19,6 +19,11 @@ def build() -> list[Gate]:
             "Repository artifact placement",
             ("repository-artifacts",),
             action=check_artifact_placement,
+        ),
+        Gate(
+            "version-contract",
+            "Version ownership contract",
+            (sys.executable, "-m", "scripts.versioning", "check"),
         ),
         Gate(
             "architecture",

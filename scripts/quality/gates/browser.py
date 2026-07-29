@@ -29,6 +29,7 @@ def build() -> list[Gate]:
                 "browser/docker-after.json",
                 "browser/**/*.png",
             ),
+            environment_target="quality",
         )
     ]
 

@@ -3,23 +3,34 @@ __pycache__/
 *.py[cod]
 *$py.class
 *.so
+*.pyd
 
-# Virtual environments
+# Local environments and dependency trees
 /.venv/
 /venv/
 /env/
 /ENV/
+node_modules/
 
-# Secrets and local environment overrides
-/.env
-/.env.*
+# Secrets and machine-local configuration
+.env
+.env.*
 !.env.example
-/.envrc
-/supabase/**/.env
-/supabase/**/signing_keys.json
+.envrc
+.streamlit/secrets.toml
+signing_keys.json
 /supabase/**/secrets.*
+credentials.json
+application_default_credentials.json
+service-account*.json
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
 
-# Werewolf Agent local generated artifacts
+# Werewolf Agent runtime, evidence, and diagnostics
 /.werewolf-agent/
 
 # Supabase local runtime state
@@ -27,20 +38,25 @@ __pycache__/
 /supabase/.temp/
 
 # Local databases
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
 *.sqlite3
-*.sqlite3-journal
-db.sqlite3
-db.sqlite3-journal
+*.sqlite3-*
 
-# Logs
+# Logs and process state
 *.log
+*.log.*
 *.pid
+*.pid.lock
 
 # Test, coverage, lint, type-check, and tool caches
-/.cache/
+.cache/
 .coverage
 .coverage.*
 coverage.xml
+coverage.json
 htmlcov/
 .hypothesis/
 .mypy_cache/
@@ -51,7 +67,7 @@ dmypy.json
 .ruff_cache/
 .tox/
 .nox/
-/.uv-cache/
+.uv-cache/
 
 # Packaging artifacts
 /build/
@@ -65,20 +81,16 @@ MANIFEST
 /docs/_build/
 /site/
 
-# JavaScript/web artifacts
-node_modules/
-/front-web/node_modules/
-/front-web/.next/
-/front-web/dist/
-/front-web/build/
-/front-web/coverage/
-/frontend/node_modules/
-/frontend/dist/
-/frontend/build/
-/frontend/coverage/
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
 
 # Editor and OS noise
 /.idea/
+/.fleet/
 tempCodeRunnerFile.py
 .DS_Store
 Thumbs.db

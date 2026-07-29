@@ -1,6 +1,14 @@
 [client]
 toolbarMode = "viewer"
 
+[server]
+address = "127.0.0.1"
+port = 8501
+headless = true
+
+[browser]
+gatherUsageStats = false
+
 [theme]
 base = "light"
 primaryColor = "#70400F"

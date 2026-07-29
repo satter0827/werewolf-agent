@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 
 from werewolf_agent.adapters.supabase.json import jsonb
 from werewolf_agent.application.replay import checksum_payload
+from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import ProblemDetails
@@ -338,7 +339,7 @@ class SupabaseWorkerStore:
             normalized_request["seed"] = effective_seed
             stored_config = _object(snapshot_row["config"])
             payload["replay"] = {
-                "format_version": 2,
+                "format_version": REPLAY_FORMAT_VERSION,
                 "seed": effective_seed,
                 "setup_document": _object(stored_config.get("setup_document")),
                 "setup_checksum": stored_config.get("setup_checksum"),

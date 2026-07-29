@@ -95,7 +95,6 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     if not snapshot.is_finished:
         raise RuntimeError(f"seed={seed}のゲームが{MAX_PHASES} phase以内に終了しませんでした。")
     return {
-        "schema_version": 1,
         "settings": {
             "seed": seed,
             "player_count": player_count,

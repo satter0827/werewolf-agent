@@ -1,0 +1,33 @@
+name: Deep readiness
+description: Prepare the quality runtime and execute a fresh Deep profile.
+
+inputs:
+  base-ref:
+    description: Git base reference used for change evidence.
+    required: true
+  head-ref:
+    description: Git head reference used for change evidence.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      with:
+        python-version: "3.12"
+        enable-cache: true
+    - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+      with:
+        version: 2.104.0
+    - shell: bash
+      run: uv run --no-project python -m scripts.environment setup quality
+    - shell: bash
+      env:
+        BASE_REF: ${{ inputs.base-ref }}
+        HEAD_REF: ${{ inputs.head-ref }}
+      run: >-
+        uv run --no-sync python -m scripts.quality deep
+        --base-ref "$BASE_REF"
+        --head-ref "$HEAD_REF"
+        --confirm-deep
+        --fresh

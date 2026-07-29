@@ -21,6 +21,7 @@ def build() -> list[Gate]:
             action=check_docker_runtime,
             dependencies=("environment",),
             exclusive_resources=("docker",),
+            environment_target="quality",
         )
     ]
 

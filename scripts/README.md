@@ -11,18 +11,18 @@
 package、ブラウザー、imageを取得せず、前提が不足する場合は`blocked`にする。
 
 ```powershell
-uv run --no-project python -m scripts.environment check auto
-uv run --no-project python -m scripts.environment check check
-uv run --no-project python -m scripts.environment check release
-uv run --no-project python -m scripts.environment setup check
-uv run --no-project python -m scripts.environment setup release
-uv run --no-project python -m scripts.environment setup deep
+uv run --no-project python -m scripts.environment check python
+uv run --no-project python -m scripts.environment check development
+uv run --no-project python -m scripts.environment check quality
+uv run --no-project python -m scripts.environment setup python
+uv run --no-project python -m scripts.environment setup development
+uv run --no-project python -m scripts.environment setup quality
 ```
 
-リリース系では変更処理より先にDocker daemon、Buildx、要求されたSupabase CLI版を確認する。
-要求版は`scripts/supabase/constants.py`を正本とする。
-`setup release|deep`は隔離Supabase projectを使ってCLIが要求するimageを準備し、project IDと
-workdirを指定して停止する。Docker Desktopは自動起動しない。
+`python`はPython依存、`development`はDockerと開発用Supabase、`quality`はBuildx、品質用image、
+隔離Supabaseまでを対象にする。要求するSupabase CLI版は`scripts/supabase/constants.py`を正本とする。
+`setup development|quality`は隔離Supabase projectで必要imageを準備し、project IDとworkdirを
+指定して停止する。Docker Desktopは自動起動しない。
 
 ## 品質プロファイル
 
@@ -30,15 +30,29 @@ workdirを指定して停止する。Docker Desktopは自動起動しない。
 uv run --no-sync python -m scripts.quality auto
 uv run --no-sync python -m scripts.quality focus
 uv run --no-sync python -m scripts.quality check --fresh
-uv run --no-sync python -m scripts.quality check --base-ref origin/develope --head-ref HEAD --fresh
+uv run --no-sync python -m scripts.quality check --base-ref origin/develop --head-ref HEAD --fresh
 uv run --no-sync python -m scripts.quality release --fresh
 uv run --no-sync python -m scripts.quality deep --confirm-deep --fresh
 uv run --no-sync python -m scripts.quality gate python-static
+uv run --no-sync python -m scripts.versioning inspect
+uv run --no-sync python -m scripts.versioning suggest --base-ref origin/main --head-ref HEAD
+uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD --dry-run
+uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD
+uv run --no-sync python -m scripts.versioning check --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality auto --explain
 uv run --no-sync python -m scripts.quality clean
+uv run --no-sync python -m scripts.quality report open
+uv run --no-sync python -m scripts.quality cleanup
+uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 ```
+
+`suggest`はmainとの差分に含まれるConventional Commitから`patch`、`minor`、`major`を提案するが、
+versionを変更しない。変更levelは利用者が決定し、`bump`へ明示する。`bump`はcommit済み、stage済み、
+未stage、未追跡の変更pathをregistryの所有範囲へ対応付け、productと影響を受ける境界だけを更新する。
+同じlevelでの再実行は変更を増やさず、異なる手動versionが既にある場合は上書きせず停止する。
+最初に`--dry-run`で対象を確認する。
 
 | プロファイル | 判定範囲 |
 | --- | --- |
@@ -69,6 +83,10 @@ uv run --no-sync python -m scripts.diagnostics collect
 診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存ログと成果物を複製せず
 pathとSHA-256で参照する。
 
+`clean`は品質reportを含む再生成可能な成果物だけを削除する。`cleanup`は品質所有のCompose project、
+container、volume、隔離Supabaseのcontainer、volume、networkを列挙し、
+`--confirm DELETE`がある場合だけ削除する。
+
 最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存する。
 以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は
 `profiles/<profile>/last-passed.json`が指す。
@@ -84,12 +102,20 @@ reportへ確定する。
 
 ## BranchとCI
 
-短期branchは`develope`から作成し、PRで取り込む。`develope`向けPRはPython 3.12のCheckだけを
-必須とする。`main`向けPRは`develope`から作成し、Deepと対応Python版の互換性検査を必須とする。
+短期branchは`develop`から作成し、PRで取り込む。`develop`向けPRはPython 3.12のCheckだけを
+必須とする。`main`向けPRは`develop`から作成し、Deepと対応Python版の互換性検査を必須とする。
+
+PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`から`Run workflow`を
+選び、対象branchを指定する。手動実行は選択branchの`HEAD`に対して`Develop / Check`を実行する。
+品質reportのrevisionがbranchのcommitと一致することを確認する。
+
+手動Checkはbranch単体を検証し、PR Checkは`develop`との仮想mergeを検証する。最終的なmerge判定は
+PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
-適用した後にGitHub APIから読み戻して確認する。週次Deepは`develope`の早期検知に使用し、通常の
-merge条件には含めない。
+適用した後にGitHub APIから読み戻して確認する。夜間Deepは毎日03:17 JSTに変更を検知し、
+月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
+夜間Deepは早期検知に使用し、通常のmerge条件には含めない。
 
 ## ブラウザーE2E
 
@@ -115,6 +141,9 @@ uv run --no-sync python -m scripts.agents preflight
 uv run --no-sync python -m scripts.agents run --provider fake --suite standard
 uv run --no-sync python -m scripts.agents run --provider local --suite smoke
 uv run --no-sync python -m scripts.agents local-ui
+uv run --no-sync python -m scripts.review ui
+uv run --no-sync python -m scripts.review gameplay
+uv run --no-sync python -m scripts.review local-llm
 ```
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。

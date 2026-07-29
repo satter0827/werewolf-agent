@@ -9,7 +9,7 @@ from scripts._infra.process import (
     CommandResult,
     run_command,
 )
-from scripts.environment.manager import PROFILES, inspect_environment
+from scripts.environment.manager import inspect_environment
 from scripts.quality.models import Gate, RunContext
 
 GATES = ("environment", "isolation")
@@ -37,9 +37,9 @@ def build() -> list[Gate]:
 def check_environment(context: RunContext, _: Path) -> CommandResult:
     """Lockに対応するPython実行能力を外部接続なしで検査する。"""
     started = time.monotonic()
-    profile = context.profile if context.profile in PROFILES else "check"
+    target = getattr(context, "environment_target", "python")
     try:
-        report = inspect_environment(profile)
+        report = inspect_environment(target)
     except (OSError, RuntimeError) as error:
         return CommandResult(
             ["environment-check"],
@@ -53,7 +53,7 @@ def check_environment(context: RunContext, _: Path) -> CommandResult:
             ["environment-check"],
             1 if report.state == "error" else 2,
             time.monotonic() - started,
-            f"{detail} python -m scripts.environment setup {profile}を実行してください。\n",
+            f"{detail} python -m scripts.environment setup {target}を実行してください。\n",
         )
     commands = ((sys.executable, "-c", "import werewolf_agent"),)
     output = [f"Python {sys.version.split()[0]}\n"]

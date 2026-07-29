@@ -56,8 +56,8 @@ UI変更では自動ブラウザーE2Eの成功後にブラウザー画面確認
 ## コマンド
 
 ```powershell
-uv run --no-project python -m scripts.environment check check
-uv run --no-project python -m scripts.environment setup check
+uv run --no-project python -m scripts.environment check python
+uv run --no-project python -m scripts.environment setup python
 uv run --no-sync python -m scripts.quality auto
 uv run --no-sync ruff format --check .
 uv run --no-sync ruff check --no-cache .
@@ -84,5 +84,5 @@ uv run --no-sync python -m scripts.architecture
 ## Commit
 
 日本語のConventional Commitsに近い一行を使う。
-短期branchは`develope`から作成し、PRはmerge commitで取り込む。`main`向けPRのheadは
-`develope`に限定し、共有branchをforce-pushしない。
+短期branchは`develop`から作成し、PRはmerge commitで取り込む。`main`向けPRのheadは
+`develop`に限定し、共有branchをforce-pushしない。

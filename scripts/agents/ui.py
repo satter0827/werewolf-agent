@@ -191,7 +191,6 @@ def _execute_local_ui(run_dir: Path, environment: dict[str, str]) -> tuple[Revie
     _write_json(
         run_dir / "report.json",
         {
-            "schema_version": 1,
             "run_id": run_dir.name,
             "state": state,
             "provider": "local",
@@ -604,7 +603,7 @@ def _finish_without_compose(
 ) -> tuple[ReviewState, Path]:
     _write_json(
         run_dir / "report.json",
-        {"schema_version": 1, "run_id": run_dir.name, "state": state, **detail},
+        {"run_id": run_dir.name, "state": state, **detail},
     )
     _write_jsonl(
         run_dir / "events.jsonl",

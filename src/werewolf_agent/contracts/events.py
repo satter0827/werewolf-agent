@@ -11,7 +11,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from werewolf_agent.contracts.constants import (
     DEFAULT_EVENT_VISIBILITY,
-    EVENT_SCHEMA_VERSION,
     GAME_EVENT_FIELD_DAY,
     GAME_EVENT_FIELD_EVENT_TYPE,
     JSON_SEPARATORS,
@@ -24,6 +23,7 @@ from werewolf_agent.contracts.messages import (
     MESSAGE_DAY_MUST_BE_NON_NEGATIVE,
     MESSAGE_EVENT_TYPE_MUST_NOT_BE_BLANK,
 )
+from werewolf_agent.contracts.versions import EVENT_SCHEMA_VERSION
 from werewolf_agent.security.redaction import redact_mapping
 
 

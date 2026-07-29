@@ -11,7 +11,6 @@ import pytest
 from scripts._infra.artifacts import ArtifactLayout
 from scripts._infra.process import CommandResult
 from scripts.environment import manager
-from scripts.quality import impact
 
 
 def test_environment_manager_import_does_not_load_deep_supabase_dependencies() -> None:
@@ -78,13 +77,10 @@ def test_path_fingerprint_ignores_generated_python_cache(
     assert manager._paths_fingerprint(("src",)) != baseline
 
 
-def test_auto_environment_uses_change_impact_profile(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        impact,
-        "decide",
-        lambda: impact.ImpactDecision("release", reason="UI change"),
-    )
-    assert manager._resolve_profile("auto") == "release"
+@pytest.mark.parametrize("legacy", ["auto", "focus", "check", "release", "deep"])
+def test_environment_rejects_legacy_quality_profiles(legacy: str) -> None:
+    with pytest.raises(ValueError, match="未定義の環境target"):
+        manager.inspect_environment(legacy, run_id="run")
 
 
 def test_environment_rejects_unsupported_python_before_profile_operations(
@@ -93,13 +89,13 @@ def test_environment_rejects_unsupported_python_before_profile_operations(
     monkeypatch.setattr(manager.shutil, "which", lambda command: command)
     monkeypatch.setattr(manager.sys, "version_info", (3, 15, 0))
 
-    report = manager.inspect_environment("release", run_id="run")
+    report = manager.inspect_environment("quality", run_id="run")
 
     assert report.state == "blocked"
     assert report.error_code == manager.ERROR_PYTHON_UNSUPPORTED
 
 
-def test_release_check_reports_stopped_docker_before_later_checks(
+def test_quality_check_reports_stopped_docker_before_later_checks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     commands: list[tuple[str, ...]] = []
@@ -110,7 +106,7 @@ def test_release_check_reports_stopped_docker_before_later_checks(
         return CommandResult(list(command), 1, 0.0, "daemon unavailable")
 
     monkeypatch.setattr(manager, "_execute", execute)
-    report = manager.inspect_environment("release", run_id="run")
+    report = manager.inspect_environment("quality", run_id="run")
 
     assert report.state == "blocked"
     assert report.error_code == manager.ERROR_DOCKER_DAEMON_UNAVAILABLE
@@ -120,11 +116,10 @@ def test_release_check_reports_stopped_docker_before_later_checks(
 
 def test_environment_summary_exposes_failure_code_and_safe_detail() -> None:
     report = manager.EnvironmentReport(
-        1,
         "run",
         "check",
-        "release",
-        "release",
+        "quality",
+        "quality",
         "blocked",
         "start",
         "finish",
@@ -167,7 +162,7 @@ def test_setup_does_not_mutate_when_prerequisite_is_blocked(
         lambda *_args: pytest.fail("変更処理を開始してはいけません。"),
     )
 
-    report = manager.setup("release")
+    report = manager.setup("quality")
 
     assert report.state == "blocked"
     assert report.error_code == manager.ERROR_DOCKER_DAEMON_UNAVAILABLE
@@ -188,7 +183,7 @@ def test_check_distinguishes_internal_inspection_error_from_missing_prerequisite
         lambda _profile: (_ for _ in ()).throw(OSError("state unreadable")),
     )
 
-    report = manager.inspect_environment("check", run_id="run")
+    report = manager.inspect_environment("python", run_id="run")
 
     assert report.state == "error"
     assert report.error_code == manager.ERROR_COMMAND_FAILED
@@ -211,7 +206,7 @@ def test_setup_does_not_mutate_when_prerequisite_inspection_errors(
         lambda *_args: pytest.fail("変更処理を開始してはいけません。"),
     )
 
-    report = manager.setup("release")
+    report = manager.setup("quality")
 
     assert report.state == "error"
     assert report.error_code == manager.ERROR_CLEANUP_FAILED
@@ -226,7 +221,7 @@ def test_setup_does_not_mutate_when_prerequisite_inspection_errors(
         (None, 0, "2.105.0", manager.ERROR_SUPABASE_VERSION_MISMATCH),
     ],
 )
-def test_release_prerequisites_have_distinct_error_codes(
+def test_quality_prerequisites_have_distinct_error_codes(
     monkeypatch: pytest.MonkeyPatch,
     missing: str | None,
     buildx_returncode: int,
@@ -248,12 +243,12 @@ def test_release_prerequisites_have_distinct_error_codes(
 
     monkeypatch.setattr(manager, "_execute", execute)
 
-    report = manager.inspect_environment("release", run_id="run")
+    report = manager.inspect_environment("quality", run_id="run")
 
     assert report.error_code == expected
 
 
-def test_setup_check_only_synchronizes_python_and_writes_state(
+def test_setup_python_only_synchronizes_python_and_writes_state(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     commands: list[tuple[str, ...]] = []
@@ -272,12 +267,42 @@ def test_setup_check_only_synchronizes_python_and_writes_state(
         lambda profile, images: written.append((profile, images)),
     )
 
-    failure, cleanup = manager._setup_locked("check", "run")
+    failure, cleanup = manager._setup_locked("python", "run")
 
     assert failure is None
     assert cleanup is None
     assert commands == [("uv", "sync", "--frozen", "--all-groups", "--all-extras")]
-    assert written == [("check", [])]
+    assert written == [("python", [])]
+
+
+def test_development_setup_prepares_supabase_without_buildx(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    commands: list[tuple[str, ...]] = []
+    monkeypatch.setattr(manager.shutil, "which", lambda command: command)
+    monkeypatch.setattr(
+        manager,
+        "_execute",
+        lambda command, **_kwargs: (
+            commands.append(tuple(command)) or CommandResult(list(command), 0, 0.0, "")
+        ),
+    )
+    monkeypatch.setattr(
+        manager,
+        "_prepare_supabase_images",
+        lambda _run_id: (None, None, [{"reference": "supabase", "image_id": "sha256:id"}]),
+    )
+    written: list[tuple[str, list[dict[str, str]]]] = []
+    monkeypatch.setattr(
+        manager, "_write_state", lambda target, images: written.append((target, images))
+    )
+
+    failure, cleanup = manager._setup_locked("development", "run")
+
+    assert failure is None
+    assert cleanup is None
+    assert not any(command[:2] == ("docker", "buildx") for command in commands)
+    assert written == [("development", [{"reference": "supabase", "image_id": "sha256:id"}])]
 
 
 def test_setup_failure_report_contains_stage_exit_duration_and_log_path(
@@ -298,7 +323,7 @@ def test_setup_failure_report_contains_stage_exit_duration_and_log_path(
     monkeypatch.setattr(manager, "_setup_locked", lambda *_args: (failure, None))
     monkeypatch.setattr(manager, "_publish_report", lambda *_args, **_kwargs: Path("report"))
 
-    report = manager.setup("check")
+    report = manager.setup("python")
 
     assert report.state == "error"
     evidence = report.checks[-1].evidence
@@ -373,7 +398,7 @@ def test_image_builds_embed_their_input_fingerprint(monkeypatch: pytest.MonkeyPa
     )
 
 
-def test_release_check_rejects_changed_docker_context(
+def test_quality_check_rejects_changed_docker_context(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -382,11 +407,11 @@ def test_release_check_rejects_changed_docker_context(
     monkeypatch.setattr(manager, "STATE_ROOT", state_root)
     monkeypatch.setattr(manager, "dependency_fingerprint", lambda _profile: "fingerprint")
     monkeypatch.setattr(manager, "_docker_context", lambda: "current")
-    (state_root / "release.json").write_text(
+    (state_root / "quality.json").write_text(
         json.dumps(
             {
                 "fingerprint": "fingerprint",
-                "profile": "release",
+                "target": "quality",
                 "docker_context": "recorded",
                 "supabase_cli_version": manager.SUPABASE_CLI_VERSION,
                 "supabase_images": [],
@@ -395,7 +420,7 @@ def test_release_check_rejects_changed_docker_context(
         encoding="utf-8",
     )
 
-    result = manager._state_check("release")
+    result = manager._state_check("quality")
 
     assert result.state == "blocked"
     assert result.id == manager.ERROR_FINGERPRINT_MISMATCH
@@ -441,10 +466,9 @@ def test_report_write_failure_does_not_leave_a_nonexistent_related_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     report = manager.EnvironmentReport(
-        1,
         "run",
-        "check",
-        "check",
+        "python",
+        "python",
         "check",
         "blocked",
         "start",

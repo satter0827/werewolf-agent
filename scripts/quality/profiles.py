@@ -28,7 +28,7 @@ from scripts.quality.models import Gate, QualitySettings
 PROFILE_ORDER = ("focus", "check", "release", "deep")
 
 GROUPS: dict[str, tuple[str, ...]] = {
-    "python-static": ("repository", "architecture", *PYTHON_STATIC_GATES),
+    "python-static": ("repository", "version-contract", "architecture", *PYTHON_STATIC_GATES),
     "unit": UNIT_GATES,
     "docs": DOCS_GATES,
     "contracts": CONTRACT_GATES,
@@ -61,6 +61,7 @@ def build_profile(
     focus = {
         "environment",
         "repository",
+        "version-contract",
         "architecture",
         *PYTHON_STATIC_GATES,
         *UNIT_GATES,

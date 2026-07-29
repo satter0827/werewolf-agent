@@ -53,7 +53,6 @@ services:
       WEREWOLF_API_GAME_LIST_MAX_LIMIT: ${WEREWOLF_API_GAME_LIST_MAX_LIMIT:-100}
       WEREWOLF_API_TIMELINE_DEFAULT_LIMIT: ${WEREWOLF_API_TIMELINE_DEFAULT_LIMIT:-100}
       WEREWOLF_API_TIMELINE_MAX_LIMIT: ${WEREWOLF_API_TIMELINE_MAX_LIMIT:-500}
-      WEREWOLF_API_CONTRACT_VERSION: ${WEREWOLF_API_CONTRACT_VERSION:-v1}
       WEREWOLF_API_CONFIG_REVISION: ${WEREWOLF_API_CONFIG_REVISION:-2026-07-24}
       WEREWOLF_API_DOCS_ENABLED: ${WEREWOLF_API_DOCS_ENABLED:-false}
       WEREWOLF_API_CORS_ORIGINS: ${WEREWOLF_API_CORS_ORIGINS:-}
@@ -137,8 +136,6 @@ services:
         "run",
         "src/werewolf_agent/clients/streamlit/app.py",
         "--server.address=0.0.0.0",
-        "--server.port=8501",
-        "--browser.gatherUsageStats=false",
       ]
     ports:
       - "8501:8501"

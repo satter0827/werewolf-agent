@@ -67,7 +67,6 @@ api_timeline_max_limit = 500
 api_host = "0.0.0.0"
 api_port = 8000
 api_base_url = "http://127.0.0.1:8000"
-api_contract_version = "v1"
 api_config_revision = "2026-07-24"
 api_instance_id = ""
 api_docs_enabled = false

@@ -24,6 +24,22 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 `--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
 
+## CI境界
+
+ローカルとGitHub Actionsは`scripts.quality`を共通の品質入口とする。feature branchはPR作成前に
+手動`Develop / Check`を実行し、GitHub-hosted Ubuntu固有の差を確認する。手動Checkはbranchの
+`HEAD`、PR Checkは`develop`との仮想mergeを検証するため、最終判定はPR Checkが所有する。
+
+Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。夜間実行は03:17 JSTに
+`main`と`develop`のSHAを固定し、差分がない日は省略する。同じSHA組合せで成功済みなら
+cacheを再利用し、失敗または取消時は次夜に再実行する。月曜JSTの実行と明示した
+`nightly-deep`はcacheを無視する。GitHub-hosted runner全体をローカルへ複製せず、共通の
+Deep composite actionと依存定義をリポジトリ内の再現境界とする。
+
+夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
+`current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
+uploadしない。
+
 ## 外部接続境界
 
 品質プロセスからprovider credentialと外部base URLを除去し、fake providerとtelemetryの

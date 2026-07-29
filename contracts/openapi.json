@@ -882,9 +882,9 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": 2,
+            "const": "0.1.0",
             "title": "Schema Version",
-            "type": "integer"
+            "type": "string"
           },
           "theme": {
             "$ref": "#/components/schemas/StoryThemeSettings"
@@ -2055,10 +2055,6 @@
             "title": "Config Revision",
             "type": "string"
           },
-          "contract_version": {
-            "title": "Contract Version",
-            "type": "string"
-          },
           "features": {
             "$ref": "#/components/schemas/PublicRuntimeFeatures"
           },
@@ -2067,7 +2063,6 @@
           }
         },
         "required": [
-          "contract_version",
           "config_revision",
           "limits",
           "features"
@@ -3406,7 +3401,7 @@
           },
           "schema_version": {
             "title": "Schema Version",
-            "type": "integer"
+            "type": "string"
           },
           "setup_checksum": {
             "title": "Setup Checksum",
@@ -3715,7 +3710,7 @@
   },
   "info": {
     "title": "Werewolf Agent API",
-    "version": "v1"
+    "version": "0.1.0"
   },
   "openapi": "3.1.0",
   "paths": {
