@@ -48,9 +48,11 @@ def test_manual_check_reuses_the_develope_pr_job() -> None:
 def test_quality_workflow_pins_the_runner_os_generation() -> None:
     """hosted runnerのOS世代をjob間で統一する。"""
     workflow = _read(".github/workflows/quality.yml")
+    jobs = workflow.split("\njobs:\n", 1)[1]
+    job_names = re.findall(r"^  ([a-z][a-z0-9-]+):$", jobs, re.MULTILINE)
     runners = re.findall(r"^\s+runs-on:\s+([^\s]+)$", workflow, re.MULTILINE)
 
-    assert runners
+    assert len(runners) == len(job_names)
     assert set(runners) == {"ubuntu-24.04"}
 
 

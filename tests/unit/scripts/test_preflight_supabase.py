@@ -40,15 +40,31 @@ def test_supabase_cli_version_is_pinned() -> None:
     assert not is_supported_supabase_version("2.105.0\n")
 
 
-def test_preflight_blocks_before_external_process_when_supabase_cli_is_missing(
+@pytest.mark.parametrize(
+    ("missing_executable", "expected_lookups", "expected_message"),
+    [
+        ("docker", ["docker"], "docker CLIが見つかりません。"),
+        ("supabase", ["docker", "supabase"], "supabase CLIが見つかりません。"),
+    ],
+)
+def test_preflight_blocks_before_external_process_when_cli_is_missing(
     monkeypatch: pytest.MonkeyPatch,
+    missing_executable: str,
+    expected_lookups: list[str],
+    expected_message: str,
 ) -> None:
-    """CLI不足はhostの状態に依存せず外部process起動前に判定する。"""
+    """CLI不足は探索順序を保ち、外部process起動前に判定する。"""
+    lookups: list[str] = []
     commands: list[list[str]] = []
+
+    def find_executable(command: str) -> str | None:
+        lookups.append(command)
+        return None if command == missing_executable else command
+
     monkeypatch.setattr(
         preflight_supabase.shutil,
         "which",
-        lambda command: None if command == "supabase" else command,
+        find_executable,
     )
     monkeypatch.setattr(
         preflight_supabase,
@@ -56,12 +72,11 @@ def test_preflight_blocks_before_external_process_when_supabase_cli_is_missing(
         lambda command, **_kwargs: commands.append(command),
     )
 
-    with pytest.raises(
-        preflight_supabase.EnvironmentBlockedError,
-        match="supabase CLIが見つかりません。",
-    ):
+    with pytest.raises(preflight_supabase.EnvironmentBlockedError) as captured:
         preflight_supabase.prepare_supabase(base_environment={})
 
+    assert str(captured.value) == expected_message
+    assert lookups == expected_lookups
     assert commands == []
 
 
