@@ -124,6 +124,11 @@ AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`まで
 同一GitHubアカウントによる単独開発を停止させないための意図的な設定である。人間は未解決会話と
 必須checkを確認して最終判断する。
 
+このhookは、信頼済みCodex sessionのlocal shellとGitHub MCP toolを対象とする実用上のguardで
+あり、GitHub側の権限制御ではない。未信頼または無効なhook、hook対象外のhosted tool、同じ認証を
+使う外部program、意図的に隠した間接実行は制御しない。Codexはこれらの経路へ切り替えず、禁止操作が
+必要な場合は人間へ引き渡す。
+
 ## ブラウザーE2E
 
 ブラウザーjourney、state、device、capture名の正本は`scripts/browser/catalog.toml`である。

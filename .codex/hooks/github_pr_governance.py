@@ -25,26 +25,64 @@ ALLOWED_REVIEW_ACTIONS = frozenset({"COMMENT"})
 
 _GH_INVOCATION = re.compile(
     r"(?:"
-    r"^\s*(?:&\s*)?"
-    r"|[;&|]\s*(?:&\s*)?"
+    r"^\s*"
+    r"|[;&|(]\s*"
     r"|\b(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*?"
-    r"(?:-Command|-c)\s+[\"']?\s*(?:&\s*)?"
+    r"(?:-Command|-c)\s+[\"']?\s*"
+    r"|\b(?:cmd(?:\.exe)?\s+/c|(?:ba)?sh\s+-c)\s+[\"']?\s*"
     r")"
-    r"gh(?:\.exe)?\s+(?P<arguments>[^;\r\n|&]+)",
+    r"(?:env(?:\s+-\S+)*\s+)?"
+    r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S+)\s+)*"
+    r"(?:command\s+)?(?:&\s*)?"
+    r"(?:gh(?:\.exe)?|[^\s;|&\"']*[\\/]gh(?:\.exe)?|[\"'][^\"'\r\n]*[\\/]gh(?:\.exe)?[\"'])"
+    r"\s+(?P<arguments>[^;\r\n|&]+)",
     re.IGNORECASE | re.MULTILINE,
 )
-_BLOCKED_API_WRITE = re.compile(
-    r"(?:"
-    r"(?:event|action)(?:\]|[\s:=\"'])*(?:approve|request[_-]changes)\b"
-    r"|/pulls/(?:\d+|\$\{?[^\s/}]+\}?)/merge\b"
-    r"|/pulls/(?:\d+|\$\{?[^\s/}]+\}?)/reviews/[^\s/]+/dismissals\b"
-    r"|addpullrequestreview\b[^\r\n]*(?:approve|request_changes)"
-    r"|dismisspullrequestreview\b"
-    r"|enablepullrequestautomerge\b"
-    r"|mergepullrequest\b"
-    r"|resolve(?:pullrequest)?reviewthread\b"
-    r"|unresolve(?:pullrequest)?reviewthread\b"
-    r")",
+_GH_ROOT_OPTION = re.compile(
+    r"^(?:"
+    r"(?:-R|--repo|--hostname)\s+(?:\"[^\"]*\"|'[^']*'|\S+)"
+    r"|(?:--repo|--hostname)=\S+"
+    r")\s+",
+    re.IGNORECASE,
+)
+_HTTP_METHOD = re.compile(
+    r"(?:^|\s)(?:-X(?:\s*|=)|--method(?:\s+|=))"
+    r"(?P<method>GET|POST|PUT|PATCH|DELETE)\b",
+    re.IGNORECASE,
+)
+_API_FIELD = re.compile(
+    r"(?:^|\s)(?:(?:-f|-F)(?:\s*|=)|(?:--field|--raw-field)(?:\s+|=))"
+    r"[\"']?(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^\s\"']+)",
+    re.IGNORECASE,
+)
+_REVIEW_COLLECTION = re.compile(
+    r"/pulls/[^/\s?\"']+/reviews(?=\?|\s|[\"']|$)",
+    re.IGNORECASE,
+)
+_REVIEW_SUBMISSION = re.compile(
+    r"/pulls/[^/\s?\"']+/reviews/[^/\s?\"']+/events(?=\?|\s|[\"']|$)",
+    re.IGNORECASE,
+)
+_REVIEW_DISMISSAL = re.compile(
+    r"/pulls/[^/\s?\"']+/reviews/[^/\s?\"']+/dismissals(?:\b|\?)",
+    re.IGNORECASE,
+)
+_MERGE_ENDPOINT = re.compile(
+    r"/pulls/[^/\s?\"']+/merge(?:\b|\?)",
+    re.IGNORECASE,
+)
+_BLOCKED_GRAPHQL_MUTATION = re.compile(
+    r"\b(?:"
+    r"dismissPullRequestReview"
+    r"|enablePullRequestAutoMerge"
+    r"|mergePullRequest"
+    r"|resolveReviewThread"
+    r"|unresolveReviewThread"
+    r")\b",
+    re.IGNORECASE,
+)
+_REVIEW_GRAPHQL_MUTATION = re.compile(
+    r"\b(?:addPullRequestReview|submitPullRequestReview)\b",
     re.IGNORECASE,
 )
 
@@ -75,17 +113,66 @@ def _github_operation(tool_name: str) -> str | None:
     return candidate.removeprefix(GITHUB_OPERATION_PREFIX)
 
 
+def _without_gh_root_options(arguments: str) -> str:
+    normalized = re.sub(r"\s+", " ", arguments.strip().strip("\"'")).strip()
+    while match := _GH_ROOT_OPTION.match(normalized):
+        normalized = normalized[match.end() :]
+    return normalized
+
+
+def _api_method(arguments: str) -> str:
+    if match := _HTTP_METHOD.search(arguments):
+        return match.group("method").upper()
+    if _API_FIELD.search(arguments) or re.search(
+        r"(?:^|\s)--input(?:\s+|=)", arguments, re.IGNORECASE
+    ):
+        return "POST"
+    return "GET"
+
+
+def _review_action(arguments: str) -> str | None:
+    actions = {
+        match.group("value").strip().upper().replace("-", "_")
+        for match in _API_FIELD.finditer(arguments)
+        if match.group("name").casefold() in {"action", "event"}
+    }
+    if len(actions) != 1:
+        return None
+    return actions.pop()
+
+
+def _blocked_api_operation(arguments: str) -> bool:
+    method = _api_method(arguments)
+    is_write = method != "GET"
+    is_graphql = bool(re.search(r"(?:^|\s)graphql(?:\s|$)", arguments, re.IGNORECASE))
+    if is_write and (_MERGE_ENDPOINT.search(arguments) or _REVIEW_DISMISSAL.search(arguments)):
+        return True
+    if is_write and (_REVIEW_SUBMISSION.search(arguments) or _REVIEW_COLLECTION.search(arguments)):
+        return _review_action(arguments) != "COMMENT"
+    if is_graphql and _BLOCKED_GRAPHQL_MUTATION.search(arguments):
+        return True
+    if is_graphql and _REVIEW_GRAPHQL_MUTATION.search(arguments):
+        return _review_action(arguments) != "COMMENT"
+    if re.search(r"(?:^|\s)--input(?:\s+|=)", arguments, re.IGNORECASE):
+        return is_graphql
+    if re.search(r"(?:^|\s)(?:-f|-F|--field)(?:\s+|=)query=@", arguments, re.IGNORECASE):
+        return is_graphql
+    return False
+
+
 def _blocked_shell_operation(command: str) -> bool:
     for match in _GH_INVOCATION.finditer(command):
-        arguments = match.group("arguments").strip().strip("\"'")
-        normalized = re.sub(r"\s+", " ", arguments).casefold()
+        arguments = _without_gh_root_options(match.group("arguments"))
+        normalized = arguments.casefold()
         if re.match(r"^pr merge(?:\s|$)", normalized):
             return True
         if re.match(r"^pr review(?:\s|$)", normalized):
             tokens = {token.strip("\"',") for token in normalized.split()}
             if tokens.intersection({"--approve", "-a", "--request-changes", "-r"}):
                 return True
-        if re.match(r"^api(?:\s|$)", normalized) and _BLOCKED_API_WRITE.search(arguments):
+            if not tokens.intersection({"--comment", "-c"}):
+                return True
+        if re.match(r"^api(?:\s|$)", normalized) and _blocked_api_operation(arguments[3:]):
             return True
     return False
 
