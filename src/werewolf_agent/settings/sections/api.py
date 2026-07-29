@@ -40,9 +40,6 @@ class ApiSettings(BaseModel):
     api_base_url: str = Field(
         validation_alias="WEREWOLF_API_BASE_URL",
     )
-    api_contract_version: str = Field(
-        validation_alias="WEREWOLF_API_CONTRACT_VERSION",
-    )
     api_config_revision: str = Field(
         validation_alias="WEREWOLF_API_CONFIG_REVISION",
     )

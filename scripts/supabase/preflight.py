@@ -633,7 +633,6 @@ def _write_supervisor_state(
     write_json(
         _supervisor_state_path(),
         {
-            "schema_version": 1,
             "run_id": run_id,
             "pid": os.getpid() if pid is None else pid,
             "state": state,
@@ -1007,7 +1006,6 @@ def _publish_supabase_report(
     detail = str(error) if error is not None else ""
     safe_detail = redact(detail)
     report = {
-        "schema_version": 1,
         "run_id": run_id,
         "command": command,
         "state": state,

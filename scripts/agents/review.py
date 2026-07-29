@@ -239,7 +239,6 @@ def _write_preflight_artifacts(
         "duration_seconds": evidence.get("duration_seconds"),
     }
     run_document = {
-        "schema_version": 1,
         "run_id": root.name,
         "provider": "local",
         "model": evidence.get("configured_model", local_settings()[1]),
@@ -431,7 +430,6 @@ def run_suite(
             )
         state = _aggregate_state(scenarios)
         run_document = {
-            "schema_version": 1,
             "run_id": run_dir.name,
             "provider": provider,
             "adapter_provider": config.provider,
@@ -535,7 +533,6 @@ def _write_checkpoint(
     _write_json(
         run_dir / "checkpoint.json",
         {
-            "schema_version": 1,
             "provider": provider,
             "model": model,
             "suite": suite,
@@ -586,7 +583,6 @@ def compare_runs(baseline: Path, candidate: Path) -> dict[str, object]:
         for key in keys
     }
     return {
-        "schema_version": 1,
         "baseline": baseline.name,
         "candidate": candidate.name,
         "context": {
@@ -1183,7 +1179,6 @@ def _write_failure(
 ) -> None:
     error_document = {"type": type(error).__name__, "message": redact(str(error))}
     document = {
-        "schema_version": 1,
         "run_id": run_dir.name,
         "provider": provider,
         "model": model,
@@ -1266,7 +1261,6 @@ def _invocation_progress(
     """完了済みLLM呼び出しだけから中断耐性のある進捗指標を作る."""
     latest = traces[-1] if traces else {}
     return {
-        "schema_version": 1,
         "preset_id": preset_id,
         "state": "running",
         "completed": False,
@@ -1306,7 +1300,7 @@ def _write_manifest(run_dir: Path) -> None:
         )
     _write_json(
         run_dir / "manifest.json",
-        {"schema_version": 1, "run_id": run_dir.name, "artifacts": artifacts},
+        {"run_id": run_dir.name, "artifacts": artifacts},
     )
 
 

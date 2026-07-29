@@ -12,7 +12,15 @@ from scripts.quality.scheduler import select_stages
 
 def test_meaningful_selector_expands_without_coupling_to_profile() -> None:
     """意味単位を個別gateへ展開する。"""
-    available = {"repository", "architecture", "ruff", "format", "docstrings", "mypy"}
+    available = {
+        "repository",
+        "version-contract",
+        "architecture",
+        "ruff",
+        "format",
+        "docstrings",
+        "mypy",
+    }
 
     assert expand_selectors(["python-static"], available) == available
 

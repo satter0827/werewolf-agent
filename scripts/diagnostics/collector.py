@@ -51,7 +51,6 @@ def collect() -> Path:
     application = _application_log_summary()
     observations.extend(cast(list[dict[str, object]], application["observations"]))
     report = {
-        "schema_version": 1,
         "generated_at": utc_now().isoformat(),
         "state": state,
         "observations": observations,

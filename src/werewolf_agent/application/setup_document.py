@@ -12,8 +12,8 @@ from werewolf_agent.application.constants import (
     NARRATION_TEMPLATE_FIELDS,
 )
 from werewolf_agent.application.validation import non_blank
+from werewolf_agent.application.versions import SETUP_SCHEMA_VERSION
 
-SETUP_SCHEMA_VERSION = 2
 FactionId = Literal["village", "werewolf", "fox"]
 RoleCount = Annotated[int, Field(ge=1)]
 AbilityKind = Literal[
@@ -381,7 +381,7 @@ class PlayerGenerationDefinition(ApplicationModel):
 class GameSetupDocument(ApplicationModel):
     """Complete portable setup accepted by every application boundary."""
 
-    schema_version: Literal[2]
+    schema_version: Literal["0.1.0"]
     mechanics: MechanicsDefinition
     theme: ThemeDefinition
     player_generation: PlayerGenerationDefinition

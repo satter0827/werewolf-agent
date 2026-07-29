@@ -22,10 +22,11 @@ from scripts.architecture.definition import (
     PUBLIC_MODULES,
 )
 from scripts.architecture.rendering import write_diagrams
+from scripts.versioning.versions import ARCHITECTURE_SCHEMA_VERSION
 
 PACKAGE_ROOT = REPOSITORY_ROOT / "src" / "werewolf_agent"
 OUTPUT_ROOT = ARTIFACT_ROOT / "outputs" / "architecture"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = ARCHITECTURE_SCHEMA_VERSION
 
 
 @dataclass(frozen=True, slots=True)

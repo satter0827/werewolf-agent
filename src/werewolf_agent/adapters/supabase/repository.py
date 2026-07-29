@@ -54,12 +54,12 @@ class SupabaseGameRepository(GameRepository):
             insert into public.games (
               game_id, owner_user_id, status, phase, day, version, seed,
               scenario_id, scenario_name, narration_mode, public_state,
-              engine_version, llm_mode, state_checksum,
+              llm_mode, state_checksum,
               created_at, updated_at, completed_at
             )
             values (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s
             )
             """,
             (
@@ -74,7 +74,6 @@ class SupabaseGameRepository(GameRepository):
                 _state_text(game.public_state, "scenario_name"),
                 str(game.public_state.get("narration_mode") or "standard"),
                 Jsonb(game.public_state),
-                str(game.config["engine_schema_version"]),
                 str(game.config.get("llm_mode") or "fake"),
                 _state_checksum(game.version, game.private_state, game.public_state),
                 now,

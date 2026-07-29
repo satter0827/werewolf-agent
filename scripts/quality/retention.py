@@ -18,6 +18,7 @@ from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
 from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.process import TEMPORARY_ROOT, write_json
 from scripts.quality.artifacts import artifact_category
+from scripts.versioning.versions import QUALITY_EVIDENCE_VERSION
 
 FAILURES_PER_SELECTOR = 2
 FAILURE_BYTES_LIMIT = 100 * 1024 * 1024
@@ -86,7 +87,7 @@ def _ensure_interrupted_report(run_dir: Path, selector: str) -> None:
     write_json(
         run_dir / "report.json",
         {
-            "schema_version": 3,
+            "schema_version": QUALITY_EVIDENCE_VERSION,
             "run_id": run_dir.name,
             "profile": selector,
             "state": "error",

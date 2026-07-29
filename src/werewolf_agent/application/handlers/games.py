@@ -93,7 +93,6 @@ def create_game(
         "narration_mode": "standard" if setup.theme.narration_enabled else "none",
         "deliberation_level": command.deliberation_level,
         "llm_mode": command.llm_mode,
-        "engine_schema_version": setup.schema_version,
         "setup_document": setup_payload,
         "setup_checksum": command.setup_checksum,
         "mechanics_checksum": command.mechanics_checksum,

@@ -34,6 +34,8 @@ uv run --no-sync python -m scripts.quality check --base-ref origin/develop --hea
 uv run --no-sync python -m scripts.quality release --fresh
 uv run --no-sync python -m scripts.quality deep --confirm-deep --fresh
 uv run --no-sync python -m scripts.quality gate python-static
+uv run --no-sync python -m scripts.versioning inspect
+uv run --no-sync python -m scripts.versioning check --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality auto --explain
@@ -99,11 +101,12 @@ PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`�
 品質reportのrevisionがbranchのcommitと一致することを確認する。
 
 手動Checkはbranch単体を検証し、PR Checkは`develop`との仮想mergeを検証する。最終的なmerge判定は
-PR Checkを使用する。Deepはローカル、週次`develop`、`main`向けPRで実行する。
+PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
-適用した後にGitHub APIから読み戻して確認する。週次Deepは`develop`の早期検知に使用し、通常の
-merge条件には含めない。
+適用した後にGitHub APIから読み戻して確認する。夜間Deepは毎日03:17 JSTに変更を検知し、
+月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
+夜間Deepは早期検知に使用し、通常のmerge条件には含めない。
 
 ## ブラウザーE2E
 

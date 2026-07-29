@@ -394,7 +394,6 @@ def inspect_documentation() -> dict[str, object]:
                     )
 
     return {
-        "schema_version": 1,
         "status": "failed" if findings else "passed",
         "metrics": {
             "published_page_count": len(source_paths),

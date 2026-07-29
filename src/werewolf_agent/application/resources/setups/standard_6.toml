@@ -1,4 +1,4 @@
-schema_version = 2
+schema_version = "0.1.0"
 
 [mechanics.role_counts]
 werewolf = 1

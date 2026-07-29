@@ -84,7 +84,6 @@ def _finalize(root: Path, kind: str, state: str) -> None:
     (root / "report.json").write_text(
         json.dumps(
             {
-                "schema_version": 1,
                 "run_id": root.name,
                 "kind": kind,
                 "state": state,

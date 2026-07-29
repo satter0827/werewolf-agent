@@ -45,7 +45,6 @@ class PublicRuntimeFeatures(BaseModel):
 class PublicRuntimeConfig(BaseModel):
     """Public runtime configuration shared by HTTP clients."""
 
-    contract_version: str
     config_revision: str
     limits: PublicRuntimeLimits
     features: PublicRuntimeFeatures
@@ -56,7 +55,7 @@ class PublicRuntimeConfig(BaseModel):
 class SetupValidationResponse(BaseModel):
     """Normalized summary returned after semantic setup validation."""
 
-    schema_version: int
+    schema_version: str
     player_count: int = Field(ge=1)
     theme_id: str
     theme_name: str

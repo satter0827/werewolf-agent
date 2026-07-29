@@ -23,6 +23,21 @@ credential、local `.env`、cache、品質reportは配布物へ含めない。
 6. artifactのversion、digest、検証reportを関連付ける。
 7. 承認された配布基盤がartifactを配置し、起動時検証を行う。
 
+## Version契約
+
+product versionの正本は`src/werewolf_agent/_version.py`とし、mainへmergeしたリリースを基準に
+SemVerで更新する。setup文書、replay、public event、architecture成果物、quality evidenceは
+独立した互換性境界として個別のSemVerを持つ。HTTP pathの`/api/v1`はroute majorであり、
+配布versionや設定値として扱わない。
+
+`scripts.versioning`は所有モジュールと監視pathを`registry.toml`から読み、SemVerの形式、退行、
+所有範囲の変更に対するversion更新漏れを検査する。初回`0.1.0`では新しい正本をbaselineとして
+確立し、以後はmain上の値と比較する。
+
+Supabaseの`0.1.0` migrationは新規databaseを構築する単一baselineである。リリース前databaseの
+data移行やmigration history修復は行わない。既存環境を切り替える場合は、main merge後にbackupと
+reset対象を明示し、別の承認された運用として実施する。
+
 ## Versionと契約
 
 破壊的変更を許容する開発方針でも、同じ配布物内のAPI、OpenAPI contract、

@@ -1,6 +1,6 @@
 [project]
 name = "werewolf-agent"
-version = "0.1.0"
+dynamic = ["version"]
 description = "LLM agents play and observe a deterministic Werewolf game engine."
 readme = "README.md"
 requires-python = ">=3.11,<3.15"
@@ -91,6 +91,9 @@ docs = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/werewolf_agent/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/werewolf_agent"]

@@ -22,6 +22,7 @@ from werewolf_agent.application.projections import (
 from werewolf_agent.application.randomness import namespace_seed, runtime_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
 from werewolf_agent.domain import Game, build_game_rules
 
 
@@ -238,22 +239,22 @@ def _verify_execution(
             game_id,
             checked_versions,
             1,
-            expected="replay format version 2 create command",
+            expected=f"replay format version {REPLAY_FORMAT_VERSION} create command",
             actual="unsupported replay format",
         )
     try:
         create_payload = _mapping(commands[0].get("payload"))
         genesis = _mapping(create_payload.get("replay"))
-        format_version = int(genesis.get("format_version", 0))
+        format_version = str(genesis.get("format_version", ""))
     except (TypeError, ValueError):
-        format_version = 0
+        format_version = ""
         genesis = {}
-    if format_version != 2:
+    if format_version != REPLAY_FORMAT_VERSION:
         return _structural_mismatch(
             game_id,
             checked_versions,
             1,
-            expected="replay format version 2",
+            expected=f"replay format version {REPLAY_FORMAT_VERSION}",
             actual="unsupported replay format",
         )
     try:
