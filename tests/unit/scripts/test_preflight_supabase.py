@@ -180,6 +180,7 @@ def test_preflight_blocks_when_dotenv_connection_does_not_match_local_supabase(
 ) -> None:
     artifact_root = tmp_path / ".werewolf-agent"
     monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr(preflight_supabase.shutil, "which", lambda command: command)
     doctor_calls = 0
 
     def fake_run(command: list[str], **_kwargs: object) -> CommandResult:
@@ -219,6 +220,7 @@ def test_isolated_quality_preflight_does_not_use_repository_dotenv(
     artifact_root = tmp_path / ".werewolf-agent"
     isolated_root = artifact_root / "runtime" / "supabase" / "quality"
     monkeypatch.setattr(preflight_supabase, "ARTIFACT_ROOT", artifact_root)
+    monkeypatch.setattr(preflight_supabase.shutil, "which", lambda command: command)
     monkeypatch.setattr(
         preflight_supabase,
         "prepare_isolated_project",
