@@ -64,7 +64,8 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 
 プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
 成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
-`--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。
+`--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。Version gateを含む
+差分依存gateは、runnerが解決した同じbaseとheadを使用し、gateごとに既定refを再解決しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、

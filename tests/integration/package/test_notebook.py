@@ -59,6 +59,7 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
             str(python),
             "-c",
             (
+                "from importlib.metadata import version; "
                 "from pathlib import Path; "
                 "import sys; "
                 "from werewolf_agent import Action, Game, GameSetup, Player, build_game_rules; "
@@ -66,7 +67,7 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
                 "assert Path(werewolf_agent.__file__).resolve().is_relative_to("
                 "Path(sys.argv[1]).resolve()); "
                 "assert all((Action, Game, GameSetup, Player, build_game_rules)); "
-                "print(werewolf_agent.__version__)"
+                "assert werewolf_agent.__version__ == version('werewolf-agent')"
             ),
             str(environment),
         ],
@@ -77,7 +78,6 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
         check=False,
     )
     assert checked.returncode == 0, checked.stdout + checked.stderr
-    assert checked.stdout.strip() == "0.3.0"
 
 
 @pytest.mark.serial

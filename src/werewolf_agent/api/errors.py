@@ -41,7 +41,7 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
         trace_id = _trace_id(request)
-        _log_handled_error(request, exc.code, trace_id, extra=exc.log_extra())
+        _log_handled_error(request, exc.code, trace_id, error=exc, extra=exc.log_extra())
         return _response(
             problem_details_from_error(
                 exc,
@@ -168,12 +168,17 @@ def _log_handled_error(
     code: ErrorCode,
     trace_id: str,
     *,
+    error: AppError | None = None,
     extra: dict[str, object] | None = None,
 ) -> None:
     spec = get_error_spec(code)
+    exc_info = None
+    if code is ErrorCode.INTERNAL_UNEXPECTED and error is not None:
+        exc_info = (type(error), error, error.__traceback__)
     request.app.state.api_logger.log(
         log_level_number(spec.log_level),
         "api.application_error.handled",
+        exc_info=exc_info,
         extra={
             **(extra or {}),
             "trace_id": trace_id,

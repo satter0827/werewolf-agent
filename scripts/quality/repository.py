@@ -30,6 +30,7 @@ class ChangeSet:
     head_revision: str
     merge_base_revision: str | None
     changed_paths: tuple[str, ...]
+    head_ref: str = "HEAD"
 
 
 def resolve_changes(
@@ -57,6 +58,7 @@ def resolve_changes(
         head_revision=head_revision,
         merge_base_revision=merge_base_revision,
         changed_paths=tuple(sorted(paths)),
+        head_ref=head_ref,
     )
 
 

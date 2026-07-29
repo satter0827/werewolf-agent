@@ -21,6 +21,7 @@ def test_change_set_combines_commits_workspace_and_untracked_files(tmp_path: Pat
     change = resolve_changes(base, "HEAD", root=tmp_path)
 
     assert change.base_revision == base
+    assert change.head_ref == "HEAD"
     assert change.merge_base_revision == base
     assert change.changed_paths == ("committed.txt", "tracked.txt", "untracked.txt")
 

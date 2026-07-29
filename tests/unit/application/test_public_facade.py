@@ -8,7 +8,7 @@ import pytest
 
 from werewolf_agent import application
 from werewolf_agent.application import handlers
-from werewolf_agent.application.errors import GameNotFoundError
+from werewolf_agent.application.errors import GameNotFoundError, InternalError
 
 
 class _Repository:
@@ -163,22 +163,57 @@ def test_public_facade_hides_unexpected_runtime_details(
 
     monkeypatch.setattr(handlers, "list_games", failed)
 
-    with pytest.raises(application.AppError) as captured:
+    with pytest.raises(InternalError) as captured:
         _games().list(application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
     assert "private-host" not in str(captured.value)
+    assert isinstance(captured.value.__cause__, RuntimeError)
 
 
 def test_public_facade_hides_access_policy_runtime_details() -> None:
     """Access policyの内部失敗を安全な公開失敗へ変換する。"""
     games = _games(policy=_FailingPolicy())
 
-    with pytest.raises(application.AppError) as captured:
+    with pytest.raises(InternalError) as captured:
         games.get("game-id", application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
     assert "policy_backend" not in str(captured.value)
+
+
+@pytest.mark.parametrize("failure", [KeyError("private-key"), OSError("private-path")])
+def test_public_facade_hides_all_unexpected_exception_details(
+    monkeypatch: pytest.MonkeyPatch,
+    failure: Exception,
+) -> None:
+    """例外型の列挙へ依存せず、予期しない内部障害を安全化する。"""
+
+    def failed(*_args: object, **_kwargs: object) -> NoReturn:
+        raise failure
+
+    monkeypatch.setattr(handlers, "list_games", failed)
+
+    with pytest.raises(InternalError) as captured:
+        _games().list(application.Actor("user-id"))
+
+    assert captured.value.__cause__ is failure
+    assert str(failure) not in str(captured.value)
+
+
+def test_public_facade_preserves_value_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """公開入力とdomain値構築のvalidation契約を維持する。"""
+    failure = ValueError("public validation detail")
+
+    def invalid(*_args: object, **_kwargs: object) -> NoReturn:
+        raise failure
+
+    monkeypatch.setattr(handlers, "list_games", invalid)
+
+    with pytest.raises(ValueError) as captured:
+        _games().list(application.Actor("user-id"))
+
+    assert captured.value is failure
 
 
 def test_public_facade_converts_queue_permission_failures() -> None:
@@ -225,8 +260,9 @@ def test_setup_facade_hides_repository_runtime_details() -> None:
         repository=cast(application.SetupRepository, _FailingSetupRepository()),
     )
 
-    with pytest.raises(application.AppError) as captured:
+    with pytest.raises(InternalError) as captured:
         setups.list_setups(application.Actor("user-id"))
 
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
     assert "private-host" not in str(captured.value)
+    assert isinstance(captured.value.__cause__, RuntimeError)
