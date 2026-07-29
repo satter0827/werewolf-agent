@@ -192,7 +192,7 @@ jobs:
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
       - id: success-cache
         if: steps.revisions.outputs.changed == 'true' && steps.revisions.outputs.force != 'true'
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ steps.revisions.outputs.fingerprint }}
@@ -233,7 +233,7 @@ jobs:
           mkdir -p .werewolf-agent/cache/nightly-success
           printf '%s\n' '${{ needs.nightly-preflight.outputs.fingerprint }}' \
             > .werewolf-agent/cache/nightly-success/fingerprint.txt
-      - uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ needs.nightly-preflight.outputs.fingerprint }}

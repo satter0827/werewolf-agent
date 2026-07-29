@@ -36,6 +36,12 @@ cacheを再利用し、失敗または取消時は次夜に再実行する。月
 `nightly-deep`はcacheを無視する。GitHub-hosted runner全体をローカルへ複製せず、共通の
 Deep composite actionと依存定義をリポジトリ内の再現境界とする。
 
+外部GitHub Actionは40桁のcommit SHAへ固定し、対応する`vX.Y.Z`形式のリリース番号を
+同じ行へ記録する。同じupstreamリポジトリのActionはsubpathが異なっても同じSHAとリリースを
+使用する。Dependabotは同じupstreamリポジトリから提供される密結合なActionを同じPRで更新する。
+Actionが使用する実行runtimeは参照値から推測せず、upstreamのリリース内容と
+GitHub Actions上の実行結果で確認する。
+
 夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
 `current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
 uploadしない。
