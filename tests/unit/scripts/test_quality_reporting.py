@@ -265,6 +265,8 @@ def test_overlapping_artifact_patterns_do_not_duplicate_report_references(
     screenshot = tmp_path / "browser" / "public" / "contact-sheet.png"
     screenshot.parent.mkdir(parents=True)
     screenshot.write_bytes(b"image")
+    current_mtime = context.started_at.timestamp() + 1
+    os.utime(screenshot, (current_mtime, current_mtime))
     gate = quality.Gate(
         "e2e",
         "Browser",
