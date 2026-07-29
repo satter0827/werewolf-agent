@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
 from scripts.quality.repository import capture_snapshot, resolve_changes
 
 
@@ -24,6 +25,28 @@ def test_change_set_combines_commits_workspace_and_untracked_files(tmp_path: Pat
     assert change.head_ref == "HEAD"
     assert change.merge_base_revision == base
     assert change.changed_paths == ("committed.txt", "tracked.txt", "untracked.txt")
+
+
+def test_change_set_rejects_workspace_overlay_for_non_head_ref(tmp_path: Path) -> None:
+    """任意commitと現在checkoutのworkspaceを曖昧に合成しない。"""
+    _initialize_repository(tmp_path)
+    head = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "tracked.txt").write_text("workspace\n", encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match="HEAD以外のhead ref"):
+        resolve_changes(None, head, root=tmp_path)
+
+
+def test_change_set_accepts_clean_non_head_ref(tmp_path: Path) -> None:
+    """cleanなCI workspaceでは指定commitをそのまま検査する。"""
+    _initialize_repository(tmp_path)
+    head = _git(tmp_path, "rev-parse", "HEAD")
+
+    change = resolve_changes(None, head, root=tmp_path)
+
+    assert change.head_ref == head
+    assert change.head_revision == head
+    assert change.changed_paths == ()
 
 
 def test_snapshot_tracks_source_changes_but_ignores_declared_artifacts(tmp_path: Path) -> None:

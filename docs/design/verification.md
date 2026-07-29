@@ -25,6 +25,7 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
 明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。baseを省略した場合、
 変更影響はworkspaceだけを扱い、version所有境界はリリース基準の`origin/main`を使用して実コマンドへ記録する。
+`HEAD`以外のheadと現在checkoutのworkspace差分は合成せず、workspaceがcleanな場合だけ任意headを検査する。
 
 ## CI境界
 

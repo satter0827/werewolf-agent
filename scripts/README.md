@@ -67,6 +67,8 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 `--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。明示したrefは
 Version gateへそのまま渡す。baseを省略した場合だけ、Version gateはリリース基準の`origin/main`を
 使用し、reportの実コマンドにも既定refを明示する。
+`HEAD`以外のheadを指定する場合はworkspaceをcleanにする。未commitの変更を検査する場合は
+`--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
