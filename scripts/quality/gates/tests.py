@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 
 from scripts._infra.process import TEMPORARY_ROOT, CommandResult, run_command
-from scripts.quality.models import Gate, QualitySettings, RunContext
+from scripts.quality.models import CPU_INTENSIVE_RESOURCE, Gate, QualitySettings, RunContext
 
 UNIT_GATES = ("pytest",)
 INTEGRATION_GATES = ("integration",)
@@ -41,6 +41,7 @@ def build(
             "Python unit test with profile coverage",
             tuple(unit_command),
             action=partial(run_unit, profile=unit_profile, jobs=jobs),
+            exclusive_resources=(CPU_INTENSIVE_RESOURCE,),
             artifacts=tuple(unit_artifacts),
         ),
         Gate(
