@@ -34,7 +34,7 @@ ActionTypeId = str
 
 
 class GeneratedPlayerInput(ApplicationModel):
-    """Complete generated player profile embedded in a create command."""
+    """作成commandへ埋め込む完全な生成player profileを表す."""
 
     player_id: str
     name: str
@@ -50,7 +50,7 @@ class GeneratedPlayerInput(ApplicationModel):
 
 
 class CreateGameCommand(ApplicationModel):
-    """Command for creating one game."""
+    """一つのゲームを作成するcommandを表す."""
 
     seed: int
     setup: GameSetupDocument
@@ -65,14 +65,14 @@ class CreateGameCommand(ApplicationModel):
     @field_validator("manual_player_id")
     @classmethod
     def validate_manual_player_id(cls, value: str | None) -> str | None:
-        """Return a stripped optional manual player id."""
+        """空白を除去した任意のmanual player IDを返す."""
         if value is None:
             return None
         return non_blank(value, "manual_player_id")
 
     @model_validator(mode="after")
     def validate_manual_player_within_generated_seats(self) -> Self:
-        """Ensure the requested manual seat exists in the generated table."""
+        """要求したmanual seatが生成tableに存在することを検証する."""
         valid_player_ids = generated_player_ids(self.player_count)
         actual_player_ids = {player.player_id for player in self.players}
         if actual_player_ids != valid_player_ids or len(self.players) != self.player_count:
@@ -96,7 +96,7 @@ class CreateGameCommand(ApplicationModel):
 
     @property
     def player_count(self) -> int:
-        """Return the player count derived from role counts."""
+        """役職数から導出したplayer数を返す."""
         return sum(self.setup.mechanics.role_counts.values())
 
 
@@ -127,7 +127,7 @@ class AdvanceGameCommand(ApplicationModel):
 
 @dataclass(frozen=True)
 class PreparedAdvanceGame:
-    """Prepared immutable input for one advance computation."""
+    """一回の進行計算へ渡すimmutableな準備済み入力を表す."""
 
     game_id: str
     version: int
@@ -139,7 +139,7 @@ class PreparedAdvanceGame:
 
 
 class ComputedAdvanceGame(ApplicationModel):
-    """Computed advance result waiting for version-checked persistence."""
+    """Version検査付き保存を待つ進行計算結果を表す."""
 
     game_id: str
     expected_version: int
@@ -165,7 +165,7 @@ class GetPlayerObservationQuery(ApplicationModel):
 
 
 class PlayerActionCommand(ApplicationModel):
-    """Command for submitting one manual player action."""
+    """Manual playerのactionを送信するcommandを表す."""
 
     game_id: str | UUID
     player_id: str

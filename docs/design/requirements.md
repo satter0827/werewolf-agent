@@ -54,7 +54,7 @@
 | `REQ-OPS-001` | リポジトリ内の検証と運用準備をCLIから再現できる | quality、リリース |
 | `REQ-QUALITY-003` | 実行せずにテスト結果、画面、設定、ログを成果物一式からレビューできる | manifest、レビュー |
 | `REQ-QUALITY-004` | 品質実行が依存環境と所有外resourceを変更しない | fingerprint、lease |
-| `REQ-DOCS-001` | 設計書と公開APIをwarningなしで自動生成できる | docs build |
+| `REQ-DOCS-001` | 設計書と公開Python APIをwarningなしで生成し、モジュールとobjectのHTML構造を検査できる | docs build、HTML検査 |
 
 ## 提供範囲
 

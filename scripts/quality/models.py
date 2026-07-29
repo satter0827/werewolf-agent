@@ -15,6 +15,7 @@ State = Literal["passed", "failed", "error", "blocked", "skipped"]
 FailureState = Literal["failed", "error", "blocked"]
 EnvironmentTarget = Literal["python", "quality"]
 Action = Callable[["RunContext", Path], CommandResult]
+CPU_INTENSIVE_RESOURCE = "cpu-intensive"
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +98,7 @@ class RunContext:
 
 
 __all__ = [
+    "CPU_INTENSIVE_RESOURCE",
     "Action",
     "EnvironmentTarget",
     "FailureState",

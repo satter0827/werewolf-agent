@@ -59,6 +59,9 @@ uploadしない。
 利用者は運用設定として有料providerを選択できる。ただし、そのcredential、応答、可用性を
 品質判定やレビューの前提にしない。Local LLMレビューはloopbackだけを許可する。
 
+文書検査はソースコード上の公開モジュール指定に加え、生成したPython API HTMLのモジュールanchor、Python
+object構造、生directiveの非露出を確認する。掲載snippetは外部serviceなしで実行する。
+
 ## 判定
 
 - `passed`: 検査を満たす。

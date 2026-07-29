@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import subprocess
@@ -29,6 +30,7 @@ BREAKING_FOOTER = re.compile(r"^BREAKING(?: CHANGE|-CHANGE):", re.MULTILINE)
 
 VersionLevel = Literal["patch", "minor", "major"]
 VersionStandard = Literal["pep440", "semver"]
+ChangeDetection = Literal["path", "python_ast"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,7 @@ class Boundary:
     path: str
     pattern: str
     watch: tuple[str, ...]
+    change_detection: ChangeDetection = "path"
 
 
 @total_ordering
@@ -84,6 +87,14 @@ def _boundaries() -> tuple[Boundary, ...]:
     unknown = {str(item["standard"]) for item in items if str(item["standard"]) not in standards}
     if unknown:
         raise ValueError(f"未定義のversion規格です: {', '.join(sorted(unknown))}")
+    change_detections = {"path", "python_ast"}
+    unknown_detections = {
+        str(item.get("change_detection", "path"))
+        for item in items
+        if str(item.get("change_detection", "path")) not in change_detections
+    }
+    if unknown_detections:
+        raise ValueError("未定義の変更判定です: " + ", ".join(sorted(unknown_detections)))
     return tuple(
         Boundary(
             name=str(item["name"]),
@@ -92,6 +103,7 @@ def _boundaries() -> tuple[Boundary, ...]:
             path=str(item["path"]),
             pattern=str(item["pattern"]),
             watch=tuple(str(path) for path in item["watch"]),
+            change_detection=cast(ChangeDetection, str(item.get("change_detection", "path"))),
         )
         for item in items
     )
@@ -202,8 +214,82 @@ def _matches_watch(path: str, watched: str) -> bool:
     return path.startswith(normalized) if normalized.endswith("/") else path == normalized
 
 
-def _touched(boundary: Boundary, changed: Sequence[str]) -> bool:
-    return any(_matches_watch(path, watched) for path in changed for watched in boundary.watch)
+class _DocstringRemover(ast.NodeTransformer):
+    """ASTから実行時の説明文だけを除外する。"""
+
+    @staticmethod
+    def _without_docstring(body: list[ast.stmt]) -> list[ast.stmt]:
+        if (
+            body
+            and isinstance(body[0], ast.Expr)
+            and isinstance(body[0].value, ast.Constant)
+            and isinstance(body[0].value.value, str)
+        ):
+            return body[1:]
+        return body
+
+    def visit_Module(self, node: ast.Module) -> ast.AST:
+        node.body = self._without_docstring(node.body)
+        return self.generic_visit(node)
+
+    def visit_ClassDef(self, node: ast.ClassDef) -> ast.AST:
+        node.body = self._without_docstring(node.body)
+        return self.generic_visit(node)
+
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.AST:
+        node.body = self._without_docstring(node.body)
+        return self.generic_visit(node)
+
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> ast.AST:
+        node.body = self._without_docstring(node.body)
+        return self.generic_visit(node)
+
+
+def _semantic_python(content: str) -> str:
+    tree = ast.parse(content, type_comments=True)
+    normalized = _DocstringRemover().visit(tree)
+    ast.fix_missing_locations(normalized)
+    return ast.dump(normalized, include_attributes=False)
+
+
+def _revision_content(revision: str, path: str) -> str | None:
+    return _git("show", f"{revision}:{path}", allow_failure=True)
+
+
+def _current_content(head_ref: str, path: str) -> str | None:
+    if head_ref != "HEAD":
+        return _revision_content(head_ref, path)
+    target = _repository_path(path)
+    if not target.is_file():
+        return None
+    return target.read_text(encoding="utf-8")
+
+
+def _semantic_python_changed(base_revision: str, head_ref: str, path: str) -> bool:
+    if not path.endswith(".py"):
+        return True
+    before = _revision_content(base_revision, path)
+    after = _current_content(head_ref, path)
+    if before is None or after is None:
+        return True
+    try:
+        return _semantic_python(before) != _semantic_python(after)
+    except SyntaxError:
+        return True
+
+
+def _boundary_touched(
+    boundary: Boundary,
+    changed: Sequence[str],
+    base_revision: str,
+    head_ref: str,
+) -> bool:
+    matching = tuple(
+        path for path in changed if any(_matches_watch(path, watched) for watched in boundary.watch)
+    )
+    if boundary.change_detection == "path":
+        return bool(matching)
+    return any(_semantic_python_changed(base_revision, head_ref, path) for path in matching)
 
 
 def _compare(boundary: Boundary, left: str, right: str) -> int:
@@ -252,7 +338,7 @@ def check(base_ref: str, head_ref: str) -> list[str]:
             issues.append(
                 f"{boundary.name}: versionが退行しています: {base_version} -> {current_version}"
             )
-        elif _touched(boundary, changed) and comparison == 0:
+        elif _boundary_touched(boundary, changed, base_revision, head_ref) and comparison == 0:
             issues.append(
                 f"{boundary.name}: 所有範囲が変更されていますが"
                 f"versionは{current_version}のままです。"
@@ -300,7 +386,7 @@ def bump(
     contents: dict[str, str] = {}
     updates: list[dict[str, str]] = []
     for boundary in _boundaries():
-        if not _touched(boundary, changed):
+        if not _boundary_touched(boundary, changed, base_revision, head_ref):
             continue
         base_version = _base_version(boundary, base_revision)
         if base_version is None:

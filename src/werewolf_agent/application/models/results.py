@@ -32,7 +32,7 @@ ActionTypeId = str
 
 
 class GameSetupOptionsResult(ApplicationModel):
-    """Editor metadata and packaged template summaries."""
+    """Editor用metadataと同梱templateの概要を表す."""
 
     player_count: dict[str, int]
     recommended_template_id: str
@@ -44,7 +44,7 @@ class GameSetupOptionsResult(ApplicationModel):
 
 
 class SetupValidationResult(ApplicationModel):
-    """Normalized summary of one semantically valid complete setup."""
+    """意味検証を通過した完全setupの正規化概要を表す."""
 
     schema_version: str
     player_count: int
@@ -60,7 +60,7 @@ class SetupValidationResult(ApplicationModel):
 
 
 class PlayerPreviewResult(ApplicationModel):
-    """Public-only generated roster preview."""
+    """公開情報だけを含む生成roster previewを表す."""
 
     seed: int
     players: tuple[dict[str, object], ...]
@@ -70,7 +70,7 @@ class PlayerPreviewResult(ApplicationModel):
 
 
 class GameResult(ApplicationModel):
-    """Current game state returned by application operations."""
+    """Application operationが返す現在のゲーム状態を表す."""
 
     game_id: str
     state: dict[str, Any]
@@ -79,7 +79,7 @@ class GameResult(ApplicationModel):
 
 
 class GameRevealPlayer(ApplicationModel):
-    """Full player state for the dedicated reveal boundary."""
+    """専用reveal境界が返す完全なplayer状態を表す."""
 
     id: str
     name: str
@@ -96,7 +96,7 @@ class GameRevealPlayer(ApplicationModel):
 
 
 class GameRevealAction(ApplicationModel):
-    """Pending action for the dedicated reveal boundary."""
+    """専用reveal境界が返す未解決actionを表す."""
 
     player_id: str
     type: ActionTypeId
@@ -108,7 +108,7 @@ class GameRevealAction(ApplicationModel):
 
 
 class GameRevealInspection(ApplicationModel):
-    """Resolved inspection for the dedicated reveal boundary."""
+    """専用reveal境界が返す解決済みinspectionを表す."""
 
     player_id: str
     ability_id: str
@@ -120,7 +120,7 @@ class GameRevealInspection(ApplicationModel):
 
 
 class GameRevealNight(ApplicationModel):
-    """Resolved night record for the dedicated reveal boundary."""
+    """専用reveal境界が返す解決済みnight記録を表す."""
 
     day: int
     attacked_player_id: str | None = None
@@ -132,7 +132,7 @@ class GameRevealNight(ApplicationModel):
 
 
 class GameRevealVote(ApplicationModel):
-    """Resolved vote record for the dedicated reveal boundary."""
+    """専用reveal境界が返す解決済みvote記録を表す."""
 
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
@@ -146,7 +146,7 @@ class GameRevealVote(ApplicationModel):
 
 
 class GameRevealResult(ApplicationModel):
-    """Full table information for admin observer views."""
+    """管理者observer viewへ返す完全なtable情報を表す."""
 
     game_id: str
     status: GameStatus
@@ -173,7 +173,7 @@ class GameRevealResult(ApplicationModel):
 
 
 class PlayerObservationResult(ApplicationModel):
-    """Private observation returned to an authenticated player."""
+    """認証済みplayerへ返すprivate observationを表す."""
 
     game_id: str
     player_id: str
@@ -183,7 +183,7 @@ class PlayerObservationResult(ApplicationModel):
 
 
 class PlayerActionResult(ApplicationModel):
-    """Result after accepting one manual player action."""
+    """Manual playerのactionを受理した結果を表す."""
 
     game_id: str
     player_id: str
@@ -194,7 +194,7 @@ class PlayerActionResult(ApplicationModel):
 
 
 class AdvanceGameResult(ApplicationModel):
-    """Result from advancing a game by one application step."""
+    """ゲームをapplicationの一step進めた結果を表す."""
 
     game_id: str
     status: GameStatus
@@ -205,7 +205,7 @@ class AdvanceGameResult(ApplicationModel):
 
 
 class GameTimelineResult(ApplicationModel):
-    """Page of public timeline items."""
+    """公開timeline itemの一pageを表す."""
 
     game_id: str
     items: list[dict[str, Any]]
@@ -215,7 +215,7 @@ class GameTimelineResult(ApplicationModel):
 
 
 class GameListResult(ApplicationModel):
-    """Page of public game summaries."""
+    """公開ゲーム概要の一pageを表す."""
 
     games: list[dict[str, Any]]
     next_offset: int | None = None
@@ -224,7 +224,7 @@ class GameListResult(ApplicationModel):
 
 
 class ReplayVerificationResult(ApplicationModel):
-    """Private-payload-free replay integrity result."""
+    """Private payloadを含まないreplay整合性結果を表す."""
 
     game_id: str
     valid: bool
@@ -318,7 +318,7 @@ class GameTimelineItem(ApplicationModel):
 
 
 class GameEventCreate(ApplicationModel):
-    """Sanitized event data to persist through an outer repository."""
+    """外側のrepositoryへ保存する安全なevent dataを表す."""
 
     visibility: EventVisibility
     phase: GamePhase | None = None
