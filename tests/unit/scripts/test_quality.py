@@ -141,10 +141,10 @@ def test_auto_is_an_explicit_command_separate_from_fixed_focus() -> None:
 def test_quality_cli_accepts_explicit_change_refs() -> None:
     """CIがbaseとsource headを品質reportへ明示できる。"""
     arguments = quality.build_parser().parse_args(
-        ["check", "--base-ref", "origin/develope", "--head-ref", "feature"]
+        ["check", "--base-ref", "origin/develop", "--head-ref", "feature"]
     )
 
-    assert arguments.base_ref == "origin/develope"
+    assert arguments.base_ref == "origin/develop"
     assert arguments.head_ref == "feature"
 
 
@@ -979,7 +979,7 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert "python -m scripts.quality deep" in workflow
     assert "--confirm-deep" in workflow
     assert 'python-version: ["3.11", "3.13", "3.14"]' in workflow
-    assert "--base-ref origin/develope" in workflow
+    assert "--base-ref origin/develop" in workflow
     assert "--base-ref origin/main" in workflow
     assert "actions/upload-artifact@" in workflow
     assert "include-hidden-files: true" in workflow

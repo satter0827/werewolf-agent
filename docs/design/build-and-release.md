@@ -15,7 +15,7 @@ credential、local `.env`、cache、品質reportは配布物へ含めない。
 
 ## 手順
 
-1. `develope`から`main`へのPRであることを確認する。
+1. `develop`から`main`へのPRであることを確認する。
 2. lock file、FastAPIから生成したOpenAPI、checked-in `contracts/openapi.json`が一致することを確認する。
 3. PRのテスト用merge commitに対してDeepと対応Python版の互換性検査を実行する。
 4. Python packageとcontainer imageを同じrevisionから作る。

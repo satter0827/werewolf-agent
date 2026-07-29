@@ -17,11 +17,11 @@
 
 ## Branch
 
-`develope`は日常の統合、`main`はリリース可能な状態を所有する。短期branchは`develope`から
-作成し、PRで`develope`へ取り込む。リリースは`develope`から`main`へのPRだけで行う。
+`develop`は日常の統合、`main`はリリース可能な状態を所有する。短期branchは`develop`から
+作成し、PRで`develop`へ取り込む。リリースは`develop`から`main`へのPRだけで行う。
 
 すべてのPRはmerge commitで取り込む。squash mergeとrebase mergeは使用せず、共有branchを
-force-pushしない。正常なリリース後に`main`を`develope`へ逆mergeしない。
+force-pushしない。正常なリリース後に`main`を`develop`へ逆mergeしない。
 
 ## 境界
 
@@ -67,5 +67,5 @@ formatter、lint、型、対象テストを先に実行し、変更範囲に応�
 リリース、Deepへ広げる。完成した仕様は`docs/design`、再利用する調査と引継ぎだけを
 `docs/notes`へ置き、完了した一時記録と生成証拠は`.werewolf-agent`へ移す。
 
-`develope`向けPRはCheckを必須とする。`main`向けPRはheadを`develope`に限定し、Deepと
+`develop`向けPRはCheckを必須とする。`main`向けPRはheadを`develop`に限定し、Deepと
 対応Python版の互換性検査を必須とする。`main`へのpushでは同じ検査を再実行しない。
