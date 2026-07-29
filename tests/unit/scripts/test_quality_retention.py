@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from scripts._infra import artifacts
@@ -81,8 +82,8 @@ def test_publish_retries_transient_windows_directory_lock(
         return original_replace(path, destination)
 
     monkeypatch.setattr(Path, "replace", transient_replace)
-    monkeypatch.setattr(artifacts.os, "name", "nt")
-    monkeypatch.setattr(artifacts.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(artifacts, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(artifacts, "time", SimpleNamespace(sleep=lambda _seconds: None))
 
     report = retention.publish_run(_run(tmp_path, "run", "passed"), "check", "passed")
 
