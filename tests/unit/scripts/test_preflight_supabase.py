@@ -40,6 +40,31 @@ def test_supabase_cli_version_is_pinned() -> None:
     assert not is_supported_supabase_version("2.105.0\n")
 
 
+def test_preflight_blocks_before_external_process_when_supabase_cli_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """CLI不足はhostの状態に依存せず外部process起動前に判定する。"""
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        preflight_supabase.shutil,
+        "which",
+        lambda command: None if command == "supabase" else command,
+    )
+    monkeypatch.setattr(
+        preflight_supabase,
+        "run_command",
+        lambda command, **_kwargs: commands.append(command),
+    )
+
+    with pytest.raises(
+        preflight_supabase.EnvironmentBlockedError,
+        match="supabase CLIが見つかりません。",
+    ):
+        preflight_supabase.prepare_supabase(base_environment={})
+
+    assert commands == []
+
+
 @pytest.mark.parametrize("value", ["0", "-1"])
 def test_preflight_rejects_non_positive_timeout(value: str) -> None:
     """不正なtimeoutを外部process起動前に拒否する。"""

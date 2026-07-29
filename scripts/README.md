@@ -94,6 +94,13 @@ reportへ確定する。
 短期branchは`develope`から作成し、PRで取り込む。`develope`向けPRはPython 3.12のCheckだけを
 必須とする。`main`向けPRは`develope`から作成し、Deepと対応Python版の互換性検査を必須とする。
 
+PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`から`Run workflow`を
+選び、対象branchを指定する。手動実行は選択branchの`HEAD`に対して`Develope / Check`を実行する。
+品質reportのrevisionがbranchのcommitと一致することを確認する。
+
+手動Checkはbranch単体を検証し、PR Checkは`develope`との仮想mergeを検証する。最終的なmerge判定は
+PR Checkを使用する。Deepはローカル、週次`develope`、`main`向けPRで実行する。
+
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
 適用した後にGitHub APIから読み戻して確認する。週次Deepは`develope`の早期検知に使用し、通常の
 merge条件には含めない。

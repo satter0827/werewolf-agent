@@ -18,9 +18,11 @@ concurrency:
 
 jobs:
   develope-check:
-    if: github.event_name == 'pull_request' && github.base_ref == 'develope'
+    if: >-
+      (github.event_name == 'pull_request' && github.base_ref == 'develope') ||
+      github.event_name == 'workflow_dispatch'
     name: Develope / Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,7 +36,7 @@ jobs:
       - run: >-
           uv run --no-sync python -m scripts.quality check
           --base-ref origin/develope
-          --head-ref ${{ github.event.pull_request.head.sha }}
+          --head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}
           --fresh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -51,7 +53,7 @@ jobs:
   main-source:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     name: Main / Source Branch
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require develope as the source branch
@@ -60,7 +62,7 @@ jobs:
   main-readiness:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     name: Main / Readiness
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -95,7 +97,7 @@ jobs:
   main-compatibility-matrix:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
     name: Main / Compatibility / Python ${{ matrix.python-version }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -132,16 +134,16 @@ jobs:
     name: Main / Compatibility
     needs:
       - main-compatibility-matrix
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
       - name: Require every supported Python job to pass
         run: test "${{ needs.main-compatibility-matrix.result }}" = "success"
 
   scheduled-deep:
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'schedule'
     name: Scheduled / Deep
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
