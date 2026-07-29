@@ -19,6 +19,7 @@ from werewolf_agent.adapters.supabase.messages import (
     MESSAGE_WORKER_REQUEST_FAILED,
     message_game_not_found,
 )
+from werewolf_agent.application.errors import GameNotFoundError
 from werewolf_agent.application.models import (
     GameEventCreate,
     GameRecordCreate,
@@ -113,7 +114,7 @@ class SupabaseGameRepository(GameRepository):
         )
         stored = self.get(game.id)
         if stored is None:
-            raise KeyError(message_game_not_found(game.id))
+            raise RuntimeError(MESSAGE_WORKER_REQUEST_FAILED)
         self._upsert_summary(stored)
         return stored
 
@@ -222,7 +223,7 @@ class SupabaseGameRepository(GameRepository):
             ),
         )
         if result.rowcount == 0:
-            raise KeyError(message_game_not_found(update.id))
+            raise GameNotFoundError(message_game_not_found(update.id))
         self._connection.execute(
             """
             update private.game_snapshots
@@ -256,7 +257,7 @@ class SupabaseGameRepository(GameRepository):
         )
         stored = self.get(update.id)
         if stored is None:
-            raise KeyError(message_game_not_found(update.id))
+            raise GameNotFoundError(message_game_not_found(update.id))
         self._upsert_summary(stored)
         return stored
 
@@ -465,7 +466,7 @@ class SupabaseGameRepository(GameRepository):
             (game_id,),
         ).fetchone()
         if row is None:
-            raise KeyError(message_game_not_found(game_id))
+            raise GameNotFoundError(message_game_not_found(game_id))
         return int(row["version"])
 
     def _insert_state_version(

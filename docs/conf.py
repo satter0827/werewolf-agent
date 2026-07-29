@@ -96,7 +96,9 @@ def _pydantic_signature(app, what, name, obj, options, signature, return_annotat
             parameters.append(parameter)
             continue
         default = field.default
-        if field.is_required() or default is PydanticUndefined or field.default_factory is not None:
+        if field.default_factory is not None:
+            default = parameter.default
+        elif field.is_required() or default is PydanticUndefined:
             default = inspect.Parameter.empty
         parameters.append(
             parameter.replace(

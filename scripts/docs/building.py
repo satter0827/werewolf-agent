@@ -23,7 +23,7 @@ from scripts._infra.process import (
     run_command,
 )
 from scripts.architecture import OUTPUT_ROOT as ARCHITECTURE_OUTPUT_ROOT
-from scripts.architecture import write_outputs
+from scripts.architecture import PUBLIC_MODULES, write_outputs
 from scripts.docs.inspection import inspect_documentation
 
 DOCS_ROOT = REPOSITORY_ROOT / "docs"
@@ -216,7 +216,7 @@ def _python_api_html_findings(path: Path) -> list[dict[str, str]]:
     parser = _PythonApiHtmlParser()
     parser.feed(path.read_text(encoding="utf-8"))
     findings: list[dict[str, str]] = []
-    for module in sorted(("werewolf_agent.domain", "werewolf_agent.application")):
+    for module in sorted(item.__name__ for item in PUBLIC_MODULES):
         anchor = f"module-{module}"
         if anchor not in parser.anchors:
             findings.append(
@@ -235,7 +235,7 @@ def _python_api_html_findings(path: Path) -> list[dict[str, str]]:
             }
         )
     visible = " ".join(parser.visible_text)
-    for marker in (".. py:module::", ".. py:class::", ":canonical:"):
+    for marker in (".. py:", ":canonical:"):
         if marker in visible:
             findings.append(
                 {

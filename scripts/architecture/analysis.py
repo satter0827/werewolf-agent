@@ -6,11 +6,12 @@ import argparse
 import ast
 import inspect
 import json
+import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any, ForwardRef, get_args, get_origin, get_type_hints
+from typing import Any, ForwardRef, TypeVar, get_args, get_origin, get_type_hints
 
 from scripts._infra.artifacts import publish_directory, staged_directory
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
@@ -560,6 +561,9 @@ def _public_export_findings() -> list[Finding]:
         exported_by_module[module.__name__] = {
             id(getattr(module, name)): str(name) for name in exports if hasattr(module, name)
         }
+    public_identities = {
+        identity for exports in exported_by_module.values() for identity in exports
+    }
 
     modules = tuple(PUBLIC_MODULES)
     for index, module in enumerate(modules):
@@ -580,15 +584,27 @@ def _public_export_findings() -> list[Finding]:
                 )
             )
 
-        for value in _public_type_closure(module):
-            if id(value) in exported:
+        try:
+            closure = _public_type_closure(module)
+        except _PublicTypeResolutionError as error:
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-005",
+                    "error",
+                    f"Public signature annotation cannot be resolved: {error}",
+                    {"module": module.__name__},
+                )
+            )
+            continue
+        for value in closure:
+            if id(value) in public_identities:
                 continue
             name = getattr(value, "__name__", repr(value))
             findings.append(
                 Finding(
                     "ARCH-PUBLIC-004",
                     "error",
-                    f"Public signature type is not exported: {module.__name__}.{name}",
+                    f"Public signature type is not exported by a public facade: {name}",
                     {"module": module.__name__, "symbol": name},
                 )
             )
@@ -608,7 +624,16 @@ def _public_type_closure(module: ModuleType) -> tuple[type[Any], ...]:
         visited[id(value)] = value
         origin = get_origin(value)
         if origin is not None:
+            pending.append(origin)
             pending.extend(get_args(value))
+            continue
+        if isinstance(value, (list, tuple, set, frozenset)):
+            pending.extend(value)
+            continue
+        if isinstance(value, TypeVar):
+            pending.extend(value.__constraints__)
+            if value.__bound__ is not None:
+                pending.append(value.__bound__)
             continue
         if isinstance(value, (str, ForwardRef)):
             continue
@@ -637,16 +662,36 @@ def _public_type_closure(module: ModuleType) -> tuple[type[Any], ...]:
 
 def _type_hints(value: object) -> dict[str, object]:
     try:
-        return get_type_hints(value)
-    except (NameError, TypeError):
-        return dict(getattr(value, "__annotations__", {}))
+        return _resolved_type_hints(value)
+    except (NameError, TypeError) as error:
+        raise _PublicTypeResolutionError(_annotation_owner(value, error)) from error
 
 
 def _callable_annotations(value: object) -> tuple[object, ...]:
     try:
-        return tuple(get_type_hints(value).values())
-    except (NameError, TypeError):
-        return tuple(getattr(value, "__annotations__", {}).values())
+        return tuple(_resolved_type_hints(value).values())
+    except (NameError, TypeError) as error:
+        raise _PublicTypeResolutionError(_annotation_owner(value, error)) from error
+
+
+class _PublicTypeResolutionError(ValueError):
+    """公開署名の型注釈を解決できない状態を表す。"""
+
+
+def _resolved_type_hints(value: object) -> dict[str, object]:
+    module = sys.modules.get(getattr(value, "__module__", ""))
+    global_namespace = dict(vars(module)) if module is not None else {}
+    for public_module in PUBLIC_MODULES:
+        for name in getattr(public_module, "__all__", ()):
+            if hasattr(public_module, name):
+                global_namespace.setdefault(name, getattr(public_module, name))
+    local_namespace = dict(vars(value)) if inspect.isclass(value) else None
+    return get_type_hints(value, globalns=global_namespace, localns=local_namespace)
+
+
+def _annotation_owner(value: object, error: Exception) -> str:
+    owner = getattr(value, "__qualname__", getattr(value, "__name__", repr(value)))
+    return f"{owner}: {error}"
 
 
 def _class_docstring_findings(

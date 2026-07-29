@@ -53,6 +53,8 @@ infrastructureエラーを混同せず、安定したerror codeで表す。
 公開Python serviceは認可拒否を`AUTHORIZATION_FAILED`、resource不存在を
 `RESOURCE_NOT_FOUND`、portの構成不足を`ConfigError`、ゲーム操作違反を`GameError`系で表す。
 入力modelとdomain値の構築時検証は`ValueError`で表す。
+Portや内部処理の予期しない`PermissionError`と`RuntimeError`は公開面へ漏らさず、安定した
+`AppError`へ変換する。
 
 ## worker
 

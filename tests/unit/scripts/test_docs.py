@@ -6,11 +6,14 @@ import ast
 import runpy
 import tomllib
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 from scripts.docs import building
 from scripts.docs import inspection as docs
 from scripts.quality import runner as quality
+
+from werewolf_agent import application
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -72,6 +75,45 @@ def test_python_api_html_requires_modules_objects_and_no_raw_directives(
         "DOC-API-HTML-003",
         "DOC-API-HTML-004",
     }
+
+
+def test_python_api_html_uses_manifest_modules_and_rejects_any_raw_py_directive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """公開moduleの正本と一般化したPython directive検査を共有する。"""
+    synthetic = ModuleType("werewolf_agent.synthetic")
+    monkeypatch.setattr(building, "PUBLIC_MODULES", (synthetic,))
+    path = tmp_path / "python-api.html"
+    path.write_text(
+        """
+<section id="module-werewolf_agent.synthetic"></section>
+<dl class="py function"><dt>function</dt></dl>
+<p>.. py:function:: leaked</p>
+""",
+        encoding="utf-8",
+    )
+
+    findings = building._python_api_html_findings(path)
+
+    assert [item["rule_id"] for item in findings] == ["DOC-API-HTML-004"]
+
+
+def test_pydantic_signature_preserves_default_factory_parameters() -> None:
+    """Autodoc署名でdefault factory付きfieldを必須扱いしない。"""
+    configuration = runpy.run_path(ROOT / "docs" / "conf.py")
+
+    signature, _ = configuration["_pydantic_signature"](
+        None,
+        "class",
+        "werewolf_agent.application.GameRevealResult",
+        application.GameRevealResult,
+        None,
+        None,
+        None,
+    )
+
+    assert signature.count("<factory>") == 4
 
 
 def test_python_api_snippets_execute_without_external_services() -> None:

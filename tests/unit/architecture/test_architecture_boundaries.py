@@ -79,14 +79,20 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
 def test_public_type_closure_expands_supported_annotation_shapes(
     monkeypatch,
 ) -> None:
-    """直接型、generic、union、forward reference、Protocol、循環参照を展開する。"""
+    """公開署名で利用できる型注釈の形を再帰的に展開する。"""
     module = ModuleType("werewolf_agent.synthetic")
     exec(
         """
-from typing import Protocol
+from collections.abc import Callable
+from typing import Generic, Protocol, TypeVar
+
+Item = TypeVar("Item")
 
 class Leaf:
     pass
+
+class Page(Generic[Item]):
+    item: Item
 
 class Contract(Protocol):
     def item(self) -> Leaf:
@@ -95,6 +101,8 @@ class Contract(Protocol):
 class Root:
     direct: Leaf
     generic: list[Leaf]
+    project_generic: Page[Leaf]
+    callback: Callable[[Leaf], Leaf]
     union: Leaf | None
     forward: "Cycle"
     contract: Contract
@@ -111,8 +119,20 @@ class Cycle:
         "Contract",
         "Cycle",
         "Leaf",
+        "Page",
         "Root",
     }
+
+
+def test_public_export_findings_report_unresolved_forward_references(monkeypatch) -> None:
+    """解決不能なforward referenceを黙って公開しない。"""
+    module = ModuleType("werewolf_agent.unresolved")
+    exec('class Root:\n    missing: "Missing"\n', module.__dict__)
+    module.__all__ = ["Root"]
+    monkeypatch.setitem(sys.modules, module.__name__, module)
+    monkeypatch.setattr("scripts.architecture.analysis.PUBLIC_MODULES", (module,))
+
+    assert {finding.rule_id for finding in _public_export_findings()} == {"ARCH-PUBLIC-005"}
 
 
 def test_public_export_findings_report_missing_and_duplicate_types(monkeypatch) -> None:
@@ -139,6 +159,27 @@ def test_public_export_findings_report_missing_and_duplicate_types(monkeypatch) 
         (first, second),
     )
     assert {finding.rule_id for finding in _public_export_findings()} == {"ARCH-PUBLIC-003"}
+
+
+def test_public_export_findings_allow_types_owned_by_another_public_facade(
+    monkeypatch,
+) -> None:
+    """署名型を一つの公開facadeだけが所有する状態を許可する。"""
+    first = ModuleType("werewolf_agent.first")
+    second = ModuleType("werewolf_agent.second")
+    exec("class Leaf: pass\n", second.__dict__)
+    second.__all__ = ["Leaf"]
+    first.Leaf = second.Leaf
+    exec("class Root:\n    leaf: Leaf\n", first.__dict__)
+    first.__all__ = ["Root"]
+    monkeypatch.setitem(sys.modules, first.__name__, first)
+    monkeypatch.setitem(sys.modules, second.__name__, second)
+    monkeypatch.setattr(
+        "scripts.architecture.analysis.PUBLIC_MODULES",
+        (first, second),
+    )
+
+    assert not _public_export_findings()
 
 
 def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
