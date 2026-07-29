@@ -14,7 +14,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from werewolf_agent import __version__
+from werewolf_agent._version import __version__
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
     build_setup_catalog,

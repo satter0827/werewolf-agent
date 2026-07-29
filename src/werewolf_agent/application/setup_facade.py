@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Literal
 
+from werewolf_agent.application.actor import Actor
+from werewolf_agent.application.boundary import public_result
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import (
     AppError,
@@ -12,7 +14,6 @@ from werewolf_agent.application.errors import (
     ErrorCode,
     ResourceNotFoundError,
 )
-from werewolf_agent.application.facade import Actor, _public_result
 from werewolf_agent.application.messages import message_player_count_between
 from werewolf_agent.application.models import (
     CreateGameCommand,
@@ -102,7 +103,7 @@ class SetupApplication:
         self._validate_player_count(document)
         setup_checksum, mechanics_checksum = _checksums(document)
         repository = self._require_repository()
-        return _public_result(
+        return public_result(
             lambda: repository.create(
                 owner_user_id=actor.user_id,
                 display_name=non_blank(display_name, "display_name"),
@@ -115,7 +116,7 @@ class SetupApplication:
     def list_setups(self, actor: Actor) -> list[SavedSetupSummary]:
         """ログイン済みactorが所有するsetup概要を返す."""
         self._require_member(actor)
-        return _public_result(
+        return public_result(
             lambda: self._require_repository().list_setups(owner_user_id=actor.user_id)
         )
 
@@ -128,7 +129,7 @@ class SetupApplication:
     ) -> SavedSetupRevision:
         """他者の存在を開示せず、所有するsetup revisionを返す."""
         self._require_member(actor)
-        result = _public_result(
+        result = public_result(
             lambda: self._require_repository().get(
                 setup_id,
                 owner_user_id=actor.user_id,
@@ -142,7 +143,7 @@ class SetupApplication:
     def revisions(self, actor: Actor, setup_id: str) -> list[SavedSetupRevision]:
         """所有するsetupのimmutableなrevision履歴を返す."""
         self.get(actor, setup_id)
-        return _public_result(
+        return public_result(
             lambda: self._require_repository().list_revisions(setup_id, owner_user_id=actor.user_id)
         )
 
@@ -158,7 +159,7 @@ class SetupApplication:
         self._require_member(actor)
         self._validate_player_count(document)
         setup_checksum, mechanics_checksum = _checksums(document)
-        return _public_result(
+        return public_result(
             lambda: self._require_repository().add_revision(
                 setup_id,
                 owner_user_id=actor.user_id,

@@ -70,6 +70,8 @@ role assignmentとprivate strategyを返さない。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
 公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
 公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
+Package rootの`werewolf_agent`は外部利用者向けconvenience APIとし、内部モジュールはroot aliasを
+経由せず、値と型を所有するモジュールを直接参照する。
 
 ## Agent意思決定
 

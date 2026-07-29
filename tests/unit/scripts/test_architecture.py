@@ -130,3 +130,45 @@ def test_project_module_resolution_prefers_the_deepest_real_module() -> None:
         == "werewolf_agent.application"
     )
     assert architecture._project_module_name("httpx.Client", modules) is None
+
+
+def test_internal_modules_cannot_import_the_public_root_alias(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    """外部向けpackage rootで内部依存規則を迂回させない。"""
+    package = tmp_path / "src" / "werewolf_agent"
+    application = package / "application"
+    domain = package / "domain"
+    application.mkdir(parents=True)
+    domain.mkdir()
+    (package / "__init__.py").write_text(
+        "from werewolf_agent.domain import Game\n",
+        encoding="utf-8",
+    )
+    (application / "__init__.py").write_text("", encoding="utf-8")
+    (application / "service.py").write_text(
+        "from werewolf_agent import Game\n",
+        encoding="utf-8",
+    )
+    (application / "types.py").write_text(
+        "from typing import TYPE_CHECKING\n"
+        "if TYPE_CHECKING:\n"
+        "    from werewolf_agent import Game\n",
+        encoding="utf-8",
+    )
+    (domain / "__init__.py").write_text("class Game: pass\n", encoding="utf-8")
+    monkeypatch.setattr(architecture, "REPOSITORY_ROOT", tmp_path)
+    monkeypatch.setattr(architecture, "PACKAGE_ROOT", package)
+    modules = {architecture.module_name(path): path for path in sorted(package.rglob("*.py"))}
+
+    findings = architecture._internal_public_alias_findings(modules)
+
+    assert [finding.rule_id for finding in findings] == [
+        "ARCH-DEPENDENCY-002",
+        "ARCH-DEPENDENCY-002",
+    ]
+    assert {finding.evidence["source_module"] for finding in findings} == {
+        "werewolf_agent.application.service",
+        "werewolf_agent.application.types",
+    }

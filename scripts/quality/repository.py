@@ -30,6 +30,7 @@ class ChangeSet:
     head_revision: str
     merge_base_revision: str | None
     changed_paths: tuple[str, ...]
+    head_ref: str = "HEAD"
 
 
 def resolve_changes(
@@ -40,6 +41,15 @@ def resolve_changes(
 ) -> ChangeSet:
     """commit差分と現在のworkspace差分を統合する。"""
     head_revision = _git_text(root, "rev-parse", "--verify", f"{head_ref}^{{commit}}")
+    workspace_paths = {
+        *_git_lines(root, "diff", "--name-only", "HEAD"),
+        *_untracked_paths(root),
+    }
+    if head_ref != "HEAD" and workspace_paths:
+        raise RuntimeError(
+            "HEAD以外のhead refとworkspace差分は同時に検査できません。"
+            "workspaceをcommitまたは退避するか、--head-ref HEADを指定してください。"
+        )
     base_revision: str | None = None
     merge_base_revision: str | None = None
     paths: set[str] = set()
@@ -49,14 +59,14 @@ def resolve_changes(
         paths.update(
             _git_lines(root, "diff", "--name-only", merge_base_revision, head_revision, "--")
         )
-    paths.update(_git_lines(root, "diff", "--name-only", "HEAD"))
-    paths.update(_untracked_paths(root))
+    paths.update(workspace_paths)
     return ChangeSet(
         base_ref=base_ref,
         base_revision=base_revision,
         head_revision=head_revision,
         merge_base_revision=merge_base_revision,
         changed_paths=tuple(sorted(paths)),
+        head_ref=head_ref,
     )
 
 

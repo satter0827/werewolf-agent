@@ -1,5 +1,6 @@
 """公開Python application facade."""
 
+from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import (
     AppError,
@@ -7,9 +8,10 @@ from werewolf_agent.application.errors import (
     ErrorCode,
     GameError,
     GamePhaseError,
+    InternalError,
     ResourceNotFoundError,
 )
-from werewolf_agent.application.facade import Actor, GameApplication
+from werewolf_agent.application.facade import GameApplication
 from werewolf_agent.application.models import (
     AdvanceGameResult,
     ApplicationContext,
@@ -108,6 +110,7 @@ __all__ = [
     "GeneratedPlayerInput",
     "ImmunityAbility",
     "InspectAbility",
+    "InternalError",
     "KnowledgeAbility",
     "LocalRulesDefinition",
     "MechanicsDefinition",

@@ -100,14 +100,58 @@ def project_import_edges() -> list[ImportEdge]:
     )
 
 
-def imports_with_lines(path: Path, source_module: str) -> set[tuple[str, int]]:
-    """Parse runtime imports while excluding type-checking-only branches."""
+def _internal_public_alias_findings(modules: dict[str, Path]) -> list[Finding]:
+    """内部moduleから外部向けconvenience APIへの依存を検出する。"""
+    findings: list[Finding] = []
+    for source_module, path in sorted(modules.items()):
+        source_parts = source_module.split(".")
+        source_layer = source_parts[1] if len(source_parts) > 1 else ""
+        if source_module in PUBLIC_ALIAS_MODULE_NAMES or source_layer not in LAYERS:
+            continue
+        imported_aliases = {
+            (target_module, line)
+            for imported, line in imports_with_lines(
+                path,
+                source_module,
+                include_type_checking=True,
+            )
+            if (target_module := _project_module_name(imported, modules))
+            in PUBLIC_ALIAS_MODULE_NAMES
+        }
+        for target_module, line in sorted(imported_aliases):
+            findings.append(
+                Finding(
+                    "ARCH-DEPENDENCY-002",
+                    "error",
+                    "Internal modules must import the owning module instead of a public alias",
+                    {
+                        "path": path.relative_to(REPOSITORY_ROOT).as_posix(),
+                        "line": line,
+                        "source_module": source_module,
+                        "target_module": target_module,
+                    },
+                )
+            )
+    return findings
+
+
+def imports_with_lines(
+    path: Path,
+    source_module: str,
+    *,
+    include_type_checking: bool = False,
+) -> set[tuple[str, int]]:
+    """Parse imports, optionally excluding type-checking-only branches."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[tuple[str, int]] = set()
 
     class ImportVisitor(ast.NodeVisitor):
         def visit_If(self, node: ast.If) -> None:
-            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            if (
+                not include_type_checking
+                and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"
+            ):
                 for child in node.orelse:
                     self.visit(child)
                 return
@@ -182,6 +226,7 @@ def analyze() -> dict[str, object]:
                 )
             )
 
+    findings.extend(_internal_public_alias_findings(modules))
     for edge in edges:
         if edge.source_layer != edge.target_layer:
             layer_graph[edge.source_layer].add(edge.target_layer)

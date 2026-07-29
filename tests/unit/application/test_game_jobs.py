@@ -3,9 +3,9 @@ from typing import cast
 import pytest
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.errors import AppError, ConfigError, ErrorCode
-from werewolf_agent.application.facade import Actor
 from werewolf_agent.application.models import GameApplicationConfig
 from werewolf_agent.application.ports import SetupRepository
 from werewolf_agent.application.setup_document import GameSetupDocument

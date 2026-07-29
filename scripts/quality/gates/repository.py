@@ -5,8 +5,9 @@ import time
 from pathlib import Path
 
 from scripts._infra.artifacts import LAYOUT
-from scripts._infra.process import REPOSITORY_ROOT, CommandResult
+from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
 from scripts.quality.models import Gate, RunContext
+from scripts.versioning import DEFAULT_BASE_REF
 
 GATES = ("repository", "version-contract", "architecture")
 
@@ -24,6 +25,7 @@ def build() -> list[Gate]:
             "version-contract",
             "Version ownership contract",
             (sys.executable, "-m", "scripts.versioning", "check"),
+            action=check_version_contract,
         ),
         Gate(
             "architecture",
@@ -84,6 +86,18 @@ def check_artifact_placement(_: RunContext, __: Path) -> CommandResult:
     )
 
 
+def check_version_contract(context: RunContext, _: Path) -> CommandResult:
+    """品質実行と同じbase、headでversion所有境界を検査する。"""
+    command = [sys.executable, "-m", "scripts.versioning", "check"]
+    command.extend(("--base-ref", context.change.base_ref or DEFAULT_BASE_REF))
+    command.extend(("--head-ref", context.change.head_ref))
+    return run_command(
+        command,
+        timeout_seconds=context.timeout_seconds,
+        environment=context.environment,
+    )
+
+
 def _unknown_children(root: Path, allowed: frozenset[str]) -> list[str]:
     """管理root直下の未定義entry名を返す。"""
     if not root.is_dir():
@@ -99,4 +113,5 @@ __all__ = [
     "GATES",
     "build",
     "check_artifact_placement",
+    "check_version_contract",
 ]
