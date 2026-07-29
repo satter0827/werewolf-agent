@@ -1,0 +1,25 @@
+name: 機能提案
+description: 解決したい問題と期待する振る舞いを提案する。
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 解決したい問題
+      description: 利用者が困る状況と、その理由を記載する。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 提案
+      description: 期待する振る舞いと責務の境界を記載する。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 代替案
+      description: 検討した代替案や対象外を記載する。
+    validations:
+      required: false
