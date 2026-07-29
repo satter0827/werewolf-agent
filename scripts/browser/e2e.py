@@ -480,7 +480,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     write_json(
         artifact_directory / "report.json",
         {
-            "schema_version": 1,
             "run_id": artifact_directory.name,
             "kind": "browser",
             "state": state,

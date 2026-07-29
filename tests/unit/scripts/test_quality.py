@@ -874,7 +874,9 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         for task in tasks["tasks"]
         if task.get("type") == "process"
     }
-    workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8") + (
+        ROOT / ".github" / "actions" / "deep-readiness" / "action.yml"
+    ).read_text(encoding="utf-8")
 
     assert visible_launch_names == {"クライアント: Streamlit", "クライアント: CLI Play"}
     assert visible_task_names == {
@@ -980,10 +982,11 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
     assert "--confirm-deep" in workflow
     assert 'python-version: ["3.11", "3.13", "3.14"]' in workflow
     assert "--base-ref origin/develop" in workflow
-    assert "--base-ref origin/main" in workflow
+    assert "base-ref: origin/main" in workflow
     assert "actions/upload-artifact@" in workflow
     assert "include-hidden-files: true" in workflow
-    assert ".werewolf-agent/outputs" in workflow
+    assert ".werewolf-agent/outputs" not in workflow
+    assert ".werewolf-agent/operations" not in workflow
     assert not (ROOT / ".github" / "workflows" / "docker.yml").exists()
     assert settings["python.testing.pytestArgs"] == ["--test-level=focus", "tests/unit"]
     assert "flake8.enabled" not in settings

@@ -151,11 +151,6 @@ def _action_from_command(command: PlayerActionCommand) -> Action:
 
 
 def _restore_game(run: StoredGame) -> Game:
-    if run.config.get("engine_schema_version") != 2:
-        raise GameError(
-            "このゲームは現在の設定形式に対応していません。新しいゲームを作成してください。",
-            context={"engine_schema_version": run.config.get("engine_schema_version")},
-        )
     state = game_state_from_data({**run.private_state, "pending_actions": run.pending_actions})
     rules = build_game_rules(rule_definition_from_state(state))
     return Game.restore(state, rules=rules)

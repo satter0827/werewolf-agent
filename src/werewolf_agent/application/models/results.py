@@ -46,7 +46,7 @@ class GameSetupOptionsResult(ApplicationModel):
 class SetupValidationResult(ApplicationModel):
     """Normalized summary of one semantically valid complete setup."""
 
-    schema_version: int
+    schema_version: str
     player_count: int
     theme_id: str
     theme_name: str

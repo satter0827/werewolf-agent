@@ -22,7 +22,7 @@ def test_game_event_serializes_to_single_json_line() -> None:
 
     payload = json.loads(event.to_json_line())
 
-    assert payload["schema_version"] == "1.0"
+    assert payload["schema_version"] == "0.1.0"
     assert payload["event_id"] == str(event.event_id)
     assert payload["event_type"] == "phase_started"
     assert payload["game_id"] == "game-1"

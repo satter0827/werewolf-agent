@@ -87,7 +87,6 @@ CLI_OUTPUT_FORMAT_CHOICES: Final = (
 CLI_OUTPUT_FORMAT_CHOICE_SET: Final = frozenset(CLI_OUTPUT_FORMAT_CHOICES)
 CliOutputFormat: TypeAlias = Literal["table", "json", "jsonl"]
 
-EVENT_SCHEMA_VERSION: Final = "1.0"
 EVENT_VISIBILITY_PUBLIC: Final = "public"
 EVENT_VISIBILITY_PLAYER_PRIVATE: Final = "player_private"
 EVENT_VISIBILITY_DEBUG: Final = "debug"

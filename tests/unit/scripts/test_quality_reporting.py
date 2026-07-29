@@ -183,7 +183,7 @@ def test_artifact_issues_change_final_state_and_exit_contract(
         "resolved_profile": "focus",
         "reason": "差分からfocusを選択しました。",
     }
-    assert report["schema_version"] == 3
+    assert report["schema_version"] == "0.1.0"
     assert report["execution"] == {"revision": "merge-commit", "tree": "tree"}
     assert report["change"] == {
         "base_ref": "origin/main",

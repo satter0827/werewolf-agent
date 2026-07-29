@@ -36,8 +36,6 @@ DELIBERATION_LEVEL_STANDARD: Final = "standard"
 DEFAULT_DELIBERATION_LEVEL: Final[Literal["standard"]] = DELIBERATION_LEVEL_STANDARD
 DeliberationLevel: TypeAlias = Literal["quick", "standard", "deep"]
 
-EVENT_SCHEMA_VERSION: Final = "1.0"
-
 EVENT_VISIBILITY_PUBLIC: Final = "public"
 
 EventVisibility: TypeAlias = Literal["public", "player_private", "debug"]

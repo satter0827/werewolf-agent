@@ -11,6 +11,7 @@ from pathlib import Path
 from scripts._infra.artifacts import LAYOUT, REPOSITORY_ROOT
 from scripts._infra.process import write_json
 from scripts.quality.models import GateResult
+from scripts.versioning.versions import QUALITY_EVIDENCE_VERSION
 
 EVIDENCE_ROOTS = frozenset(
     {
@@ -68,7 +69,7 @@ def write_manifest(run_dir: Path, results: list[GateResult]) -> Path:
     write_json(
         manifest,
         {
-            "schema_version": 1,
+            "schema_version": QUALITY_EVIDENCE_VERSION,
             "run_id": run_dir.name,
             "artifacts": entries,
         },

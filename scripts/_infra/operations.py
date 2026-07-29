@@ -87,7 +87,7 @@ def write_bundle_manifest(root: Path) -> None:
                 "sha256": _sha256(path),
             }
         )
-    write_json(root / "manifest.json", {"schema_version": 1, "artifacts": entries})
+    write_json(root / "manifest.json", {"artifacts": entries})
 
 
 def prune_review_runs() -> None:

@@ -6,8 +6,17 @@ on:
       - develop
       - main
   schedule:
-    - cron: "0 18 * * 0"
+    - cron: "17 18 * * *"
   workflow_dispatch:
+    inputs:
+      profile:
+        description: Quality profile to execute.
+        required: true
+        default: check
+        type: choice
+        options:
+          - check
+          - nightly-deep
 
 permissions:
   contents: read
@@ -20,7 +29,7 @@ jobs:
   develop-check:
     if: >-
       (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
-      github.event_name == 'workflow_dispatch'
+      (github.event_name == 'workflow_dispatch' && inputs.profile == 'check')
     name: Develop / Check
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -45,10 +54,9 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/check/current
             .werewolf-agent/quality/profiles/check/last-passed.json
-            .werewolf-agent/operations
-            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 7
 
   main-source:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -56,8 +64,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
-      - name: Require develop as the source branch
-        run: test "${{ github.head_ref }}" = "develop"
+      - name: Require develop from this repository
+        env:
+          HEAD_LABEL: ${{ github.event.pull_request.head.label }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          test "${{ github.head_ref }}" = "develop"
+          test "$HEAD_REPOSITORY" = "${{ github.repository }}"
+          test "$HEAD_LABEL" = "${{ github.repository_owner }}:develop"
 
   main-readiness:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -68,20 +82,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: ./.github/actions/deep-readiness
         with:
-          python-version: "3.12"
-          enable-cache: true
-      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
-        with:
-          version: 2.104.0
-      - run: uv run --no-project python -m scripts.environment setup quality
-      - run: >-
-          uv run --no-sync python -m scripts.quality deep
-          --base-ref origin/main
-          --head-ref ${{ github.event.pull_request.head.sha }}
-          --confirm-deep
-          --fresh
+          base-ref: origin/main
+          head-ref: ${{ github.event.pull_request.head.sha }}
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -89,10 +93,9 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/deep/current
             .werewolf-agent/quality/profiles/deep/last-passed.json
-            .werewolf-agent/operations
-            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 7
 
   main-compatibility-matrix:
     if: github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -124,10 +127,9 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/focus/current
             .werewolf-agent/quality/profiles/focus/last-passed.json
-            .werewolf-agent/operations
-            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 7
 
   main-compatibility:
     if: always() && github.event_name == 'pull_request' && github.base_ref == 'main'
@@ -140,30 +142,100 @@ jobs:
       - name: Require every supported Python job to pass
         run: test "${{ needs.main-compatibility-matrix.result }}" = "success"
 
+  nightly-preflight:
+    if: >-
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.profile == 'nightly-deep')
+    name: Nightly / Preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      changed: ${{ steps.revisions.outputs.changed }}
+      develop-sha: ${{ steps.revisions.outputs.develop_sha }}
+      fingerprint: ${{ steps.revisions.outputs.fingerprint }}
+      force: ${{ steps.revisions.outputs.force }}
+      main-sha: ${{ steps.revisions.outputs.main_sha }}
+      reason: ${{ steps.revisions.outputs.reason }}
+      cache-hit: ${{ steps.success-cache.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          ref: develop
+      - id: revisions
+        shell: bash
+        run: |
+          git fetch --no-tags origin main develop
+          main_sha="$(git rev-parse origin/main)"
+          develop_sha="$(git rev-parse origin/develop)"
+          changed=true
+          reason=changes-detected
+          if git diff --quiet "$main_sha..$develop_sha" --; then
+            changed=false
+            reason=no-changes
+          fi
+          force=false
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            force=true
+            reason=manual-force
+          elif [ "$(date -u +%u)" = "7" ]; then
+            force=true
+            reason=weekly-force
+          fi
+          fingerprint="nightly-deep-v1-${main_sha}-${develop_sha}"
+          echo "main_sha=$main_sha" >> "$GITHUB_OUTPUT"
+          echo "develop_sha=$develop_sha" >> "$GITHUB_OUTPUT"
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+          echo "force=$force" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+      - id: success-cache
+        if: steps.revisions.outputs.changed == 'true' && steps.revisions.outputs.force != 'true'
+        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: .werewolf-agent/cache/nightly-success
+          key: ${{ steps.revisions.outputs.fingerprint }}
+          lookup-only: true
+      - shell: bash
+        run: |
+          {
+            echo "## Nightly preflight"
+            echo "- reason: \`${{ steps.revisions.outputs.reason }}\`"
+            echo "- main: \`${{ steps.revisions.outputs.main_sha }}\`"
+            echo "- develop: \`${{ steps.revisions.outputs.develop_sha }}\`"
+            echo "- fingerprint: \`${{ steps.revisions.outputs.fingerprint }}\`"
+            echo "- cache hit: \`${{ steps.success-cache.outputs.cache-hit || 'false' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
   scheduled-deep:
-    if: github.event_name == 'schedule'
+    if: >-
+      always() &&
+      needs.nightly-preflight.result == 'success' &&
+      (needs.nightly-preflight.outputs.force == 'true' || needs.nightly-preflight.outputs.changed == 'true') &&
+      (needs.nightly-preflight.outputs.force == 'true' || needs.nightly-preflight.outputs.cache-hit != 'true')
     name: Scheduled / Deep
+    needs: nightly-preflight
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: develop
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+          ref: ${{ needs.nightly-preflight.outputs.develop-sha }}
+      - run: git fetch --no-tags origin main
+      - uses: ./.github/actions/deep-readiness
         with:
-          python-version: "3.12"
-          enable-cache: true
-      - uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520 # v3.0.0
+          base-ref: origin/main
+          head-ref: HEAD
+      - shell: bash
+        run: |
+          mkdir -p .werewolf-agent/cache/nightly-success
+          printf '%s\n' '${{ needs.nightly-preflight.outputs.fingerprint }}' \
+            > .werewolf-agent/cache/nightly-success/fingerprint.txt
+      - uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
         with:
-          version: 2.104.0
-      - run: uv run --no-project python -m scripts.environment setup quality
-      - run: >-
-          uv run --no-sync python -m scripts.quality deep
-          --base-ref origin/main
-          --head-ref HEAD
-          --confirm-deep
-          --fresh
+          path: .werewolf-agent/cache/nightly-success
+          key: ${{ needs.nightly-preflight.outputs.fingerprint }}
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -171,7 +243,73 @@ jobs:
           path: |
             .werewolf-agent/quality/profiles/deep/current
             .werewolf-agent/quality/profiles/deep/last-passed.json
-            .werewolf-agent/operations
-            .werewolf-agent/outputs
           if-no-files-found: warn
           include-hidden-files: true
+          retention-days: 7
+      - if: always()
+        shell: bash
+        run: |
+          {
+            echo "## Nightly Deep"
+            echo "- reason: \`${{ needs.nightly-preflight.outputs.reason }}\`"
+            echo "- main: \`${{ needs.nightly-preflight.outputs.main-sha }}\`"
+            echo "- develop: \`${{ needs.nightly-preflight.outputs.develop-sha }}\`"
+            echo "- result: \`${{ job.status }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  nightly-notify:
+    if: >-
+      always() &&
+      (github.event_name == 'schedule' ||
+       (github.event_name == 'workflow_dispatch' && inputs.profile == 'nightly-deep'))
+    name: Nightly / Notify
+    needs:
+      - nightly-preflight
+      - scheduled-deep
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          DEVELOP_SHA: ${{ needs.nightly-preflight.outputs.develop-sha }}
+          MAIN_SHA: ${{ needs.nightly-preflight.outputs.main-sha }}
+          NIGHTLY_RESULT: ${{ needs.scheduled-deep.result }}
+          NIGHTLY_REASON: ${{ needs.nightly-preflight.outputs.reason }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const title = "[CI] Nightly Deep failure";
+            const result = process.env.NIGHTLY_RESULT;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner, repo, state: "open", per_page: 100,
+            });
+            const issue = issues.find((item) => item.title === title && !item.pull_request);
+            if (result === "success") {
+              if (issue) {
+                await github.rest.issues.createComment({
+                  owner, repo, issue_number: issue.number,
+                  body: `Recovered in ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}.`,
+                });
+                await github.rest.issues.update({owner, repo, issue_number: issue.number, state: "closed"});
+              }
+              return;
+            }
+            if (result !== "failure" && result !== "cancelled") return;
+            const body = [
+              "Nightly Deep did not complete successfully.",
+              "",
+              `- result: \`${result}\``,
+              `- reason: \`${process.env.NIGHTLY_REASON}\``,
+              `- main: \`${process.env.MAIN_SHA}\``,
+              `- develop: \`${process.env.DEVELOP_SHA}\``,
+              `- run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+            ].join("\n");
+            if (issue) {
+              await github.rest.issues.createComment({owner, repo, issue_number: issue.number, body});
+            } else {
+              await github.rest.issues.create({owner, repo, title, body});
+            }

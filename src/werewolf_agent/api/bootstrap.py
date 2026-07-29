@@ -14,6 +14,7 @@ from uuid import uuid4
 from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from werewolf_agent import __version__
 from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
     build_setup_catalog,
@@ -132,7 +133,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Werewolf Agent API",
-        version=runtime.api_contract_version,
+        version=__version__,
         docs_url="/docs" if runtime.api_docs_enabled else None,
         redoc_url=None,
         openapi_url="/openapi.json" if runtime.api_docs_enabled else None,
@@ -282,7 +283,6 @@ def _owned_setup_dependency(
 
 def _public_runtime_config(settings: AppSettings) -> PublicRuntimeConfig:
     return PublicRuntimeConfig(
-        contract_version=settings.api_contract_version,
         config_revision=settings.api_config_revision,
         limits=PublicRuntimeLimits(
             game_min_players=settings.game_min_players,

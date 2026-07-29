@@ -16,7 +16,7 @@ def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
     assert "      - develop" in workflow
     assert "      - main" in workflow
     assert "push:" not in workflow
-    assert 'cron: "0 18 * * 0"' in workflow
+    assert 'cron: "17 18 * * *"' in workflow
     assert "workflow_dispatch:" in workflow
     assert "name: Develop / Check" in workflow
     assert "name: Main / Source Branch" in workflow
@@ -24,10 +24,11 @@ def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
     assert "name: Main / Compatibility" in workflow
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" not in workflow
-    assert "python -m scripts.quality deep" in workflow
-    assert "--confirm-deep" in workflow
+    composite = _read(".github/actions/deep-readiness/action.yml")
+    assert "python -m scripts.quality deep" in composite
+    assert "--confirm-deep" in composite
     assert "--base-ref origin/develop" in workflow
-    assert "--base-ref origin/main" in workflow
+    assert "base-ref: origin/main" in workflow
     assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in workflow
     assert "fetch-depth: 0" in workflow
 
@@ -36,13 +37,40 @@ def test_manual_check_reuses_the_develop_pr_job() -> None:
     """選択branchをPR前に同じLinux Checkで検証する。"""
     workflow = _read(".github/workflows/quality.yml")
     develop_check = workflow.split("\n  develop-check:\n", 1)[1].split("\n  main-source:\n", 1)[0]
-    scheduled_deep = workflow.split("\n  scheduled-deep:\n", 1)[1]
+    scheduled_deep = workflow.split("\n  scheduled-deep:\n", 1)[1].split(
+        "\n  nightly-notify:\n", 1
+    )[0]
 
-    assert "github.event_name == 'workflow_dispatch'" in develop_check
+    assert "inputs.profile == 'check'" in develop_check
     assert "github.base_ref == 'develop'" in develop_check
     assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in develop_check
-    assert "github.event_name == 'schedule'" in scheduled_deep
-    assert "workflow_dispatch" not in scheduled_deep
+    assert "needs.nightly-preflight.result == 'success'" in scheduled_deep
+    assert "nightly-preflight.outputs.force" in scheduled_deep
+
+
+def test_nightly_deep_is_change_aware_and_weekly_forced() -> None:
+    """毎晩のSHA fingerprint再利用と週次強制実行を両立する。"""
+    workflow = _read(".github/workflows/quality.yml")
+
+    assert 'fingerprint="nightly-deep-v1-${main_sha}-${develop_sha}"' in workflow
+    assert '"$(date -u +%u)" = "7"' in workflow
+    assert "reason=weekly-force" in workflow
+    assert "reason=manual-force" in workflow
+    assert 'git diff --quiet "$main_sha..$develop_sha"' in workflow
+    assert "actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae" in workflow
+    assert "actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae" in workflow
+    assert "lookup-only: true" in workflow
+
+
+def test_nightly_failure_issue_has_narrow_write_permission() -> None:
+    """失敗通知jobだけにissue更新権限を与える。"""
+    workflow = _read(".github/workflows/quality.yml")
+    notify = workflow.split("\n  nightly-notify:\n", 1)[1]
+
+    assert "permissions:\n      contents: read\n      issues: write" in notify
+    assert 'const title = "[CI] Nightly Deep failure"' in notify
+    assert 'state: "closed"' in notify
+    assert workflow.split("\njobs:\n", 1)[0].count("issues: write") == 0
 
 
 def test_quality_workflow_pins_the_runner_os_generation() -> None:
@@ -58,7 +86,9 @@ def test_quality_workflow_pins_the_runner_os_generation() -> None:
 
 def test_quality_workflow_uses_the_repository_environment_command() -> None:
     """取得を伴う準備をrepository内のenvironment commandへ分離する。"""
-    workflow = _read(".github/workflows/quality.yml")
+    workflow = _read(".github/workflows/quality.yml") + _read(
+        ".github/actions/deep-readiness/action.yml"
+    )
 
     for command in (
         "python -m scripts.environment setup python",
@@ -71,12 +101,16 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
     assert "python -m scripts.quality focus" in workflow
     assert "--pull=false" not in workflow
     assert "supabase stop --no-backup" not in workflow
-    assert ".werewolf-agent/operations" in workflow
+    assert ".werewolf-agent/operations" not in workflow
+    assert ".werewolf-agent/outputs" not in workflow
+    assert "retention-days: 7" in workflow
 
 
 def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
     """必須CIの実装をmutable tagへ依存させない。"""
-    workflow = _read(".github/workflows/quality.yml")
+    workflow = _read(".github/workflows/quality.yml") + _read(
+        ".github/actions/deep-readiness/action.yml"
+    )
     actions = re.findall(r"uses:\s+[^@\s]+@([^\s]+)", workflow)
 
     assert actions
@@ -88,15 +122,30 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
 
 def test_workflow_javascript_actions_use_node24_releases() -> None:
     """GitHub runnerが廃止済みNode runtimeを強制置換しない。"""
-    workflow = _read(".github/workflows/quality.yml")
+    workflow = _read(".github/workflows/quality.yml") + _read(
+        ".github/actions/deep-readiness/action.yml"
+    )
     expected = {
         "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
         "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
         "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
         "supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520",
+        "actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae",
+        "actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae",
+        "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
     }
 
     assert all(action in workflow for action in expected)
+
+
+def test_main_source_rejects_a_same_named_fork_branch() -> None:
+    """main release sourceを同一repositoryのdevelopへ限定する。"""
+    workflow = _read(".github/workflows/quality.yml")
+    source = workflow.split("\n  main-source:\n", 1)[1].split("\n  main-readiness:\n", 1)[0]
+
+    assert "github.event.pull_request.head.repo.full_name" in source
+    assert 'test "$HEAD_REPOSITORY" = "${{ github.repository }}"' in source
+    assert 'test "$HEAD_LABEL" = "${{ github.repository_owner }}:develop"' in source
 
 
 def test_main_compatibility_matches_supported_python_versions() -> None:

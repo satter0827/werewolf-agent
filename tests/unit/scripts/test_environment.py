@@ -116,7 +116,6 @@ def test_quality_check_reports_stopped_docker_before_later_checks(
 
 def test_environment_summary_exposes_failure_code_and_safe_detail() -> None:
     report = manager.EnvironmentReport(
-        1,
         "run",
         "check",
         "quality",
@@ -467,7 +466,6 @@ def test_report_write_failure_does_not_leave_a_nonexistent_related_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     report = manager.EnvironmentReport(
-        1,
         "run",
         "python",
         "python",

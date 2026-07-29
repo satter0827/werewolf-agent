@@ -17,6 +17,7 @@ from scripts.quality.artifacts import (
     write_manifest,
 )
 from scripts.quality.models import GateResult, RunContext, State
+from scripts.versioning.versions import QUALITY_EVIDENCE_VERSION
 
 
 class CoverageFileMetric(TypedDict):
@@ -51,7 +52,7 @@ def write_summary(
         append_events(context.run_dir / "events.jsonl", [artifact_result])
     state = result_state(results)
     report = {
-        "schema_version": 3,
+        "schema_version": QUALITY_EVIDENCE_VERSION,
         "run_id": context.run_id,
         "profile": context.profile,
         "selection": {

@@ -100,7 +100,6 @@ class EnvironmentCheck:
 class EnvironmentReport:
     """人と機械が同じ根拠を参照する環境診断結果。"""
 
-    schema_version: int
     run_id: str
     command: str
     requested_target: str
@@ -192,7 +191,6 @@ def inspect_environment(
         else ("blocked" if failures else "passed")
     )
     return EnvironmentReport(
-        schema_version=1,
         run_id=actual_run_id,
         command=command,
         requested_target=requested,
@@ -232,7 +230,6 @@ def setup(target: str = "python") -> EnvironmentReport:
         )
         state = "error" if selected.state == "error" else "blocked"
         report = EnvironmentReport(
-            1,
             run_id,
             "setup",
             requested,
@@ -288,7 +285,6 @@ def setup(target: str = "python") -> EnvironmentReport:
         failure_logs[item.stage] = item.result.output
     state = "passed" if failure is None and cleanup_failure is None else "error"
     report = EnvironmentReport(
-        1,
         run_id,
         "setup",
         requested,
