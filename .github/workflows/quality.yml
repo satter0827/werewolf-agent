@@ -66,10 +66,11 @@ jobs:
     steps:
       - name: Require develop from this repository
         env:
+          HEAD_REF: ${{ github.head_ref }}
           HEAD_LABEL: ${{ github.event.pull_request.head.label }}
           HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
-          test "${{ github.head_ref }}" = "develop"
+          test "$HEAD_REF" = "develop"
           test "$HEAD_REPOSITORY" = "${{ github.repository }}"
           test "$HEAD_LABEL" = "${{ github.repository_owner }}:develop"
 

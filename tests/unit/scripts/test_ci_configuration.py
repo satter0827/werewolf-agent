@@ -147,9 +147,24 @@ def test_main_source_rejects_a_same_named_fork_branch() -> None:
     workflow = _read(".github/workflows/quality.yml")
     source = workflow.split("\n  main-source:\n", 1)[1].split("\n  main-readiness:\n", 1)[0]
 
+    assert "HEAD_REF: ${{ github.head_ref }}" in source
+    assert 'test "$HEAD_REF" = "develop"' in source
+    assert 'test "${{ github.head_ref }}"' not in source
     assert "github.event.pull_request.head.repo.full_name" in source
     assert 'test "$HEAD_REPOSITORY" = "${{ github.repository }}"' in source
     assert 'test "$HEAD_LABEL" = "${{ github.repository_owner }}:develop"' in source
+
+
+def test_deep_readiness_does_not_expand_inputs_in_the_shell_source() -> None:
+    """composite actionのref入力をshell本文へ直接展開しない。"""
+    action = _read(".github/actions/deep-readiness/action.yml")
+
+    assert "BASE_REF: ${{ inputs.base-ref }}" in action
+    assert "HEAD_REF: ${{ inputs.head-ref }}" in action
+    assert '--base-ref "$BASE_REF"' in action
+    assert '--head-ref "$HEAD_REF"' in action
+    assert '--base-ref "${{ inputs.base-ref }}"' not in action
+    assert '--head-ref "${{ inputs.head-ref }}"' not in action
 
 
 def test_main_compatibility_matches_supported_python_versions() -> None:
