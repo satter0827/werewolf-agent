@@ -41,7 +41,7 @@ def review(kind: str) -> int:
         )
         transcript = result.stdout + result.stderr
         (root / "transcript.txt").write_text(transcript, encoding="utf-8")
-        _finalize(root, kind, "passed" if result.returncode == 0 else "failed")
+        _finalize(root, kind, _quality_exit_state(result.returncode))
         print(transcript, end="")
         print(f"レビュー証拠: {root}")
         return result.returncode
@@ -56,6 +56,14 @@ def review(kind: str) -> int:
         print(f"レビュー証拠: {root}")
         return 0
     return _review_local_llm(root)
+
+
+def _quality_exit_state(returncode: int) -> str:
+    if returncode == 0:
+        return "passed"
+    if returncode == 2:
+        return "blocked"
+    return "failed"
 
 
 def _review_local_llm(root: Path) -> int:

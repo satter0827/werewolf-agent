@@ -7,6 +7,7 @@
       "request": "launch",
       "module": "scripts.supabase",
       "args": ["serve", "--reserved", "--stop-on-exit"],
+      "postDebugTask": "内部: Supabaseセッションを停止",
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "presentation": { "hidden": true }

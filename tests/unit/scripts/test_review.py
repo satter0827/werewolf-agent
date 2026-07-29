@@ -5,6 +5,12 @@ from pathlib import Path
 from scripts.review import __main__ as review
 
 
+def test_ui_review_preserves_quality_gate_state_taxonomy() -> None:
+    assert review._quality_exit_state(0) == "passed"
+    assert review._quality_exit_state(1) == "failed"
+    assert review._quality_exit_state(2) == "blocked"
+
+
 def test_local_llm_review_delegates_to_agent_preflight(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         review,

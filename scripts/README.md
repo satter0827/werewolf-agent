@@ -40,7 +40,7 @@ uv run --no-sync python -m scripts.quality auto --explain
 uv run --no-sync python -m scripts.quality clean
 uv run --no-sync python -m scripts.quality report open
 uv run --no-sync python -m scripts.quality cleanup
-uv run --no-sync python -m scripts.quality cleanup --confirm
+uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 ```
 
 | プロファイル | 判定範囲 |
@@ -72,8 +72,9 @@ uv run --no-sync python -m scripts.diagnostics collect
 診断viewは`.werewolf-agent/diagnostics/current`へ生成され、既存ログと成果物を複製せず
 pathとSHA-256で参照する。
 
-`clean`は再生成可能な成果物だけを削除する。`cleanup`は品質所有のCompose project、volume、
-隔離Supabase projectを列挙し、`--confirm`がある場合だけ削除する。
+`clean`は品質reportを含む再生成可能な成果物だけを削除する。`cleanup`は品質所有のCompose project、
+container、volume、隔離Supabaseのcontainer、volume、networkを列挙し、
+`--confirm DELETE`がある場合だけ削除する。
 
 最新試行は成否に関係なく`.werewolf-agent/quality/profiles/<profile>/current`へ保存する。
 以前の試行は`.werewolf-agent/quality/history/<profile>/<run-id>`へ移動し、最終成功は

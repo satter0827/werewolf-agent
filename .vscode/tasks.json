@@ -29,6 +29,15 @@
       "problemMatcher": []
     },
     {
+      "label": "内部: Supabaseセッションを停止",
+      "type": "process",
+      "command": "uv",
+      "args": ["run", "--no-sync", "python", "-m", "scripts.supabase", "stop-session"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "hide": true,
+      "problemMatcher": []
+    },
+    {
       "label": "内部: Full Stackを予約",
       "type": "process",
       "command": "uv",
@@ -165,7 +174,10 @@
       "label": "品質: 所有Resourcesを削除",
       "type": "process",
       "command": "uv",
-      "args": ["run", "--no-sync", "python", "-m", "scripts.quality", "cleanup", "--confirm"],
+      "args": [
+        "run", "--no-sync", "python", "-m", "scripts.quality", "cleanup",
+        "--confirm", "${input:qualityResourceCleanupConfirmation}"
+      ],
       "options": { "cwd": "${workspaceFolder}" },
       "problemMatcher": []
     },
@@ -209,6 +221,12 @@
       "description": "確認する環境を選択",
       "options": ["python", "development", "quality"],
       "default": "python"
+    },
+    {
+      "id": "qualityResourceCleanupConfirmation",
+      "type": "promptString",
+      "description": "品質所有Resourcesを削除する場合は DELETE と入力",
+      "default": ""
     }
   ]
 }

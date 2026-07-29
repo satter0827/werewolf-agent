@@ -456,7 +456,7 @@ def test_clean_failure_returns_infrastructure_exit_code(
     assert "成果物を削除できません" in capsys.readouterr().err
 
 
-def test_clean_preserves_persistent_directories(
+def test_clean_removes_quality_reports_and_preserves_persistent_directories(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -478,7 +478,11 @@ def test_clean_preserves_persistent_directories(
     temporary_cache = temporary_root / "pytest"
     temporary_cache.mkdir(parents=True)
     monkeypatch.setattr(quality, "ARTIFACT_ROOT", artifact_root)
-    monkeypatch.setattr(quality, "BUILD_DIRECTORIES", (outputs, cache))
+    monkeypatch.setattr(
+        quality,
+        "BUILD_DIRECTORIES",
+        (outputs, cache, artifact_root / "quality"),
+    )
     monkeypatch.setattr(quality, "TEMPORARY_CACHE_DIRECTORIES", (temporary_cache,))
     monkeypatch.setattr("scripts._infra.process.ARTIFACT_ROOT", artifact_root)
     monkeypatch.setattr("scripts._infra.process.TEMPORARY_ROOT", temporary_root)
@@ -488,7 +492,7 @@ def test_clean_preserves_persistent_directories(
     assert not outputs.exists()
     assert not cache.exists()
     assert (artifact_root / "logs").exists()
-    assert (artifact_root / "quality").exists()
+    assert not (artifact_root / "quality").exists()
     assert (artifact_root / "reviews").exists()
     assert (artifact_root / "runtime").exists()
     assert not temporary_cache.exists()
@@ -504,7 +508,7 @@ def test_resource_cleanup_requires_confirmation(monkeypatch: pytest.MonkeyPatch)
 
     monkeypatch.setattr(quality, "run_command", run)
 
-    assert quality.cleanup_owned_resources(confirm=False) == 2
+    assert quality.cleanup_owned_resources(confirmation=None) == 2
     assert not any("down" in command for command in commands)
 
 
@@ -516,21 +520,40 @@ def test_resource_cleanup_deletes_only_quality_owned_projects(
 
     def run(command: tuple[str, ...], **_kwargs: object) -> support.CommandResult:
         commands.append(tuple(command))
-        output = (
-            "werewolf-agent-quality-owned\nunrelated-project\n"
-            if command[:2] == ("docker", "ps") and "--format" in command
-            else ""
-        )
+        if command[:2] == ("docker", "ps") and any(
+            "com.supabase.cli.project" in part for part in command
+        ):
+            output = (
+                "owned-container\tquality-db\twerewolf-agent-quality-owned\n"
+                "other-container\tother-db\tunrelated-project\n"
+            )
+        elif command[:3] == ("docker", "volume", "ls") and any(
+            "com.supabase.cli.project" in part for part in command
+        ):
+            output = "owned-volume\twerewolf-agent-quality-owned\nother-volume\tunrelated-project\n"
+        elif command[:3] == ("docker", "network", "ls"):
+            output = (
+                "owned-network\tquality-network\twerewolf-agent-quality-owned\n"
+                "other-network\tother-network\tunrelated-project\n"
+            )
+        else:
+            output = ""
         return support.CommandResult(list(command), 0, 0.0, output)
 
     monkeypatch.setattr(quality, "run_command", run)
 
-    assert quality.cleanup_owned_resources(confirm=True) == 0
+    assert quality.cleanup_owned_resources(confirmation=quality.QUALITY_RESOURCE_CONFIRMATION) == 0
     assert any(command[:3] == ("docker", "compose", "--profile") for command in commands)
-    stopped = [command for command in commands if command[:2] == ("supabase", "stop")]
-    assert stopped == [
-        ("supabase", "stop", "--project-id", "werewolf-agent-quality-owned", "--no-backup")
+    destructive = [
+        command
+        for command in commands
+        if command[:2] in {("docker", "rm"), ("docker", "volume"), ("docker", "network")}
+        and "ls" not in command
     ]
+    assert ("docker", "rm", "--force", "owned-container") in destructive
+    assert ("docker", "volume", "rm", "owned-volume") in destructive
+    assert ("docker", "network", "rm", "owned-network") in destructive
+    assert all("other-" not in " ".join(command) for command in destructive)
 
 
 @pytest.mark.parametrize(
@@ -897,7 +920,11 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         for configuration in launch["configurations"]
         if configuration["name"] == "内部: Supabase"
     )
-    assert "postDebugTask" not in supabase_launch
+    assert supabase_launch["postDebugTask"] == "内部: Supabaseセッションを停止"
+    assert task_commands["内部: Supabaseセッションを停止"][-2:] == [
+        "scripts.supabase",
+        "stop-session",
+    ]
     stack_configurations = {
         configuration["name"]: configuration
         for configuration in launch["configurations"]
@@ -927,7 +954,15 @@ def test_vscode_and_ci_use_the_shared_quality_entrypoint() -> None:
         for configuration in streamlit_configurations
     )
     assert "promptString" not in json.dumps(launch)
-    assert "promptString" not in json.dumps(tasks)
+    cleanup_input = next(
+        item for item in tasks["inputs"] if item["id"] == "qualityResourceCleanupConfirmation"
+    )
+    assert cleanup_input["type"] == "promptString"
+    assert "DELETE" in cleanup_input["description"]
+    assert task_commands["品質: 所有Resourcesを削除"][-2:] == [
+        "--confirm",
+        "${input:qualityResourceCleanupConfirmation}",
+    ]
     assert task_commands["品質: Auto"][-4:] == ["python", "-m", "scripts.quality", "auto"]
     assert task_commands["品質: Focus"][-4:] == ["python", "-m", "scripts.quality", "focus"]
     assert task_commands["品質: Check"][-4:] == ["python", "-m", "scripts.quality", "check"]

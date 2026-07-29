@@ -9,7 +9,10 @@ from collections.abc import Sequence
 def main(argv: Sequence[str] | None = None) -> int:
     """Supabase subcommandを実行する。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("preflight", "reserve", "serve", "wait", "migrate"))
+    parser.add_argument(
+        "command",
+        choices=("preflight", "reserve", "serve", "wait", "stop-session", "migrate"),
+    )
     arguments, remaining = parser.parse_known_args(argv)
     if arguments.command == "preflight":
         from scripts.supabase.preflight import main as preflight_main
@@ -49,6 +52,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if wait_arguments.timeout < 1:
             wait_parser.error("--timeoutは1以上を指定してください。")
         return wait_for_supervisor(timeout_seconds=wait_arguments.timeout)
+    if arguments.command == "stop-session":
+        if remaining:
+            parser.error("stop-sessionは追加引数を受け付けません。")
+        from scripts.supabase.preflight import cleanup_development_session
+
+        return cleanup_development_session()
     if remaining:
         parser.error("migrateは追加引数を受け付けません。")
     from scripts.supabase.migrations import main as migrations_main

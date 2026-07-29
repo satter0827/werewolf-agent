@@ -49,6 +49,9 @@ VS Codeの「実行とデバッグ」は`開発: Full Stack`、`開発: Backend`
 暗黙に準備しない。stackはローカルSupabaseを含むプロセスを所有し、終了時に自分が起動したprojectだけを
 停止する。API、worker、Full Stack用StreamlitはsupervisorがmigrationとCLI由来・`.env`由来の
 接続確認を完了した状態を待ってから起動する。秘密値はsupervisor stateと診断へ保存しない。
+開発projectの停止はdata volumeを保持し、`--no-backup`による破棄は品質runnerが所有する隔離projectに
+限定する。デバッグプロセスの強制終了時は`postDebugTask`がsecretを含まない所有状態を読み、終了した
+supervisorが起動したprojectだけを停止する。
 
 個別gate、品質プロファイル、ブラウザー、エージェントレビューの具体的なコマンドは
 `scripts/README.md`を正本とする。

@@ -134,7 +134,9 @@ def test_compose_exposes_isolated_runtime_and_test_services() -> None:
     assert 'profiles: ["test"]' in compose
     assert "test:" in compose
     assert "command: pytest" in compose
-    assert "--browser.gatherUsageStats=false" in compose
+    streamlit_config = _read(".streamlit/config.toml")
+    assert "gatherUsageStats = false" in streamlit_config
+    assert "--browser.gatherUsageStats" not in compose
     assert "WEREWOLF_LOG_OUTPUT: ${WEREWOLF_LOG_OUTPUT:-stdout}" in compose
     test_service = compose.split("\n  test:\n", 1)[1].split("\n  e2e:\n", 1)[0]
     assert "WEREWOLF_SUPABASE_" not in test_service
