@@ -65,22 +65,79 @@ def _assert_denied(result: subprocess.CompletedProcess[str]) -> None:
     assert decision["permissionDecisionReason"]
 
 
-@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES", "approve"])
-def test_formal_review_decisions_are_denied(action: str) -> None:
-    """正式なレビュー判断は大文字小文字にかかわらず拒否する。"""
-    result = _run_hook(ADD_REVIEW_TOOL, {"action": action, "pull_number": 123})
+def _assert_evaluation_denied(result: dict[str, object] | None) -> None:
+    assert result is not None
+    decision = result["hookSpecificOutput"]
+    assert isinstance(decision, Mapping)
+    assert decision["permissionDecision"] == "deny"
 
-    _assert_denied(result)
+
+@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES", "approve"])
+def test_formal_review_decisions_are_denied_outside_develop(
+    action: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """develop以外の正式レビュー判断を大文字小文字にかかわらず拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
+    result = HOOK.evaluate(
+        {"tool_name": ADD_REVIEW_TOOL, "tool_input": {"action": action, "pull_number": 123}}
+    )
+
+    _assert_evaluation_denied(result)
+
+
+@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES"])
+def test_develop_review_decisions_are_allowed(
+    action: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """develop向けPRではAIの正式レビュー判断を許可する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+
+    assert (
+        HOOK.evaluate(
+            {
+                "tool_name": ADD_REVIEW_TOOL,
+                "tool_input": {"action": action, "pull_number": 123},
+            }
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize("operation", sorted(HOOK.BLOCKED_OPERATIONS))
 @pytest.mark.parametrize("server", ["codex_apps", "renamed_github_connector"])
-def test_direct_governance_tools_are_denied(operation: str, server: str) -> None:
+def test_direct_governance_tools_are_denied(
+    operation: str,
+    server: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """判断状態を変更するGitHub toolを直接拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
     tool_name = f"mcp__{server}__github_{operation}"
-    result = _run_hook(tool_name, {"owner": "example", "repo": "repo", "pull_number": 123})
+    result = HOOK.evaluate(
+        {
+            "tool_name": tool_name,
+            "tool_input": {"owner": "example", "repo": "repo", "pull_number": 123},
+        }
+    )
 
-    _assert_denied(result)
+    _assert_evaluation_denied(result)
+
+
+def test_develop_merge_tool_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """develop向けPRだけmerge toolを許可する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+
+    assert (
+        HOOK.evaluate(
+            {
+                "tool_name": "mcp__codex_apps__github_merge_pull_request",
+                "tool_input": {"pr_number": 123},
+            }
+        )
+        is None
+    )
 
 
 @pytest.mark.parametrize(
@@ -103,14 +160,19 @@ def test_advice_and_pr_work_are_allowed(tool_name: str, tool_input: Mapping[str,
     assert result.stderr == ""
 
 
-def test_review_action_is_independent_of_mcp_server_namespace() -> None:
+def test_review_action_is_independent_of_mcp_server_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """GitHub connectorのserver名が変わってもreview actionを判定する。"""
-    result = _run_hook(
-        "mcp__renamed_connector__github_add_review_to_pr",
-        {"action": "APPROVE", "pull_number": 123},
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
+    result = HOOK.evaluate(
+        {
+            "tool_name": "mcp__renamed_connector__github_add_review_to_pr",
+            "tool_input": {"action": "APPROVE", "pull_number": 123},
+        }
     )
 
-    _assert_denied(result)
+    _assert_evaluation_denied(result)
 
 
 @pytest.mark.parametrize(
@@ -153,11 +215,110 @@ def test_review_action_is_independent_of_mcp_server_namespace() -> None:
         "gh api -X PUT repos/example/repo/pulls/123/reviews/456/dismissals",
     ],
 )
-def test_shell_equivalents_are_denied(command: str) -> None:
+def test_shell_equivalents_are_denied(
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """PowerShell wrapperとAPI直呼びを含む禁止commandを拒否する。"""
-    result = _run_hook("Bash", {"command": command})
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
+    result = HOOK.evaluate({"tool_name": "Bash", "tool_input": {"command": command}})
 
-    _assert_denied(result)
+    _assert_evaluation_denied(result)
+
+
+@pytest.mark.parametrize(
+    "command",
+    ["gh pr review 123 --approve", "gh pr review 123 --request-changes", "gh pr merge 123 --merge"],
+)
+@pytest.mark.parametrize("tool_name", ["Bash", "shell_command"])
+def test_develop_shell_review_and_merge_are_allowed(
+    command: str,
+    tool_name: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gh経由でもdevelop向けの正式判断とmergeを許可する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+
+    assert HOOK.evaluate({"tool_name": tool_name, "tool_input": {"command": command}}) is None
+
+
+def test_pull_request_base_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """PR targetは呼出入力で自己申告させずGitHubから取得する。"""
+    commands: list[list[str]] = []
+
+    def completed(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, "develop\n", "")
+
+    monkeypatch.setattr(HOOK.subprocess, "run", completed)
+
+    assert (
+        HOOK._pull_request_base({"pr_number": 123, "repository_full_name": "example/repo"})
+        == "develop"
+    )
+    assert commands == [
+        [
+            "gh",
+            "pr",
+            "view",
+            "123",
+            "--json",
+            "baseRefName",
+            "--jq",
+            ".baseRefName",
+            "--repo",
+            "example/repo",
+        ]
+    ]
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [subprocess.CompletedProcess(["gh"], 1, "", "not found"), subprocess.TimeoutExpired(["gh"], 5)],
+)
+def test_pull_request_base_resolution_fails_closed(
+    failure: subprocess.CompletedProcess[str] | subprocess.TimeoutExpired,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """GitHub照会が失敗した場合はdevelop向けと推定しない。"""
+
+    def fail(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(failure, subprocess.TimeoutExpired):
+            raise failure
+        return failure
+
+    monkeypatch.setattr(HOOK.subprocess, "run", fail)
+
+    assert HOOK._pull_request_base({"pr_number": 123}) is None
+    result = HOOK.evaluate(
+        {
+            "tool_name": "mcp__codex_apps__github_merge_pull_request",
+            "tool_input": {"pr_number": 123},
+        }
+    )
+    _assert_evaluation_denied(result)
+
+
+def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
+    """cross-repository操作は現在repoの同番号PRで判定しない。"""
+    inputs: list[Mapping[str, object]] = []
+
+    def develop(tool_input: Mapping[str, object]) -> str:
+        inputs.append(tool_input)
+        return "develop"
+
+    monkeypatch.setattr(HOOK, "_pull_request_base", develop)
+
+    assert (
+        HOOK.evaluate(
+            {
+                "tool_name": "shell_command",
+                "tool_input": {"command": "gh -R example/repo pr merge 123 --merge"},
+            }
+        )
+        is None
+    )
+    assert inputs == [{"pr_number": 123, "repository_full_name": "example/repo"}]
 
 
 @pytest.mark.parametrize(
@@ -230,9 +391,9 @@ def test_hook_registration_covers_every_governance_tool() -> None:
     assert len(registrations) == 1
     matcher = registrations[0]["matcher"]
     assert re.fullmatch(matcher, "Bash")
+    assert re.fullmatch(matcher, "shell_command")
     assert re.fullmatch(matcher, ADD_REVIEW_TOOL)
     assert re.fullmatch(matcher, "mcp__renamed_connector__github_merge_pull_request")
-    assert re.fullmatch(matcher, "shell_command") is None
     command_hook = registrations[0]["hooks"][0]
     assert command_hook["type"] == "command"
     assert ".codex/hooks/github_pr_governance.py" in command_hook["command"]
@@ -249,10 +410,12 @@ def test_governance_boundary_is_documented_consistently() -> None:
 
     for document in (agents, scripts):
         assert "inline `COMMENT`" in document
+        assert "`develop`向けPR" in document
+        assert "`main`向けPR" in document
         assert "人間" in document
         assert "merge" in document
     assert "required_approving_review_count`を0" in scripts
     assert "GitHub側の権限制御ではない" in scripts
     assert "hosted tool" in scripts
-    assert "AIのレビューは助言" in template
-    assert "人間が未解決会話と必須checkを確認" in template
+    assert "develop向けはAIが正式判断とmerge" in template
+    assert "main向けの正式承認とmergeは人間" in template
