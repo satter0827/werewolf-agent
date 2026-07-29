@@ -51,15 +51,26 @@ def test_manual_check_reuses_the_develop_pr_job() -> None:
 def test_nightly_deep_is_change_aware_and_weekly_forced() -> None:
     """毎晩のSHA fingerprint再利用と週次強制実行を両立する。"""
     workflow = _read(".github/workflows/quality.yml")
+    preflight = workflow.split("\n  nightly-preflight:\n", 1)[1].split("\n  scheduled-deep:\n", 1)[
+        0
+    ]
+    scheduled_deep = workflow.split("\n  scheduled-deep:\n", 1)[1].split(
+        "\n  nightly-notify:\n", 1
+    )[0]
 
     assert 'fingerprint="nightly-deep-v1-${main_sha}-${develop_sha}"' in workflow
     assert '"$(date -u +%u)" = "7"' in workflow
     assert "reason=weekly-force" in workflow
     assert "reason=manual-force" in workflow
     assert 'git diff --quiet "$main_sha..$develop_sha"' in workflow
-    assert "actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae" in workflow
-    assert "actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae" in workflow
-    assert "lookup-only: true" in workflow
+    assert "uses: actions/cache/restore@" in preflight
+    assert "lookup-only: true" in preflight
+    assert "key: ${{ steps.revisions.outputs.fingerprint }}" in preflight
+    assert "uses: actions/cache/save@" in scheduled_deep
+    assert "key: ${{ needs.nightly-preflight.outputs.fingerprint }}" in scheduled_deep
+    assert scheduled_deep.index("uses: ./.github/actions/deep-readiness") < scheduled_deep.index(
+        "uses: actions/cache/save@"
+    )
 
 
 def test_nightly_failure_issue_has_narrow_write_permission() -> None:
@@ -111,20 +122,19 @@ def test_quality_workflow_uses_the_repository_environment_command() -> None:
 
 
 def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
-    """必須CIの実装をmutable tagへ依存させない。"""
-    workflow = _read(".github/workflows/quality.yml") + _read(
-        ".github/actions/deep-readiness/action.yml"
-    )
-    actions = re.findall(r"uses:\s+[^@\s]+@([^\s]+)", workflow)
+    """外部Actionをimmutableなreleaseへ固定し、同じ依存を統一する。"""
+    sources = _action_sources()
+    references, errors = _validate_external_action_references(sources)
 
-    assert actions
-    assert all(re.fullmatch(r"[0-9a-f]{40}", revision) for revision in actions)
+    assert references
+    assert errors == []
     dependabot = _read(".github/dependabot.yml")
     assert "package-ecosystem: github-actions" in dependabot
     assert "package-ecosystem: uv" in dependabot
     assert dependabot.count("target-branch: develop") == 2
     assert dependabot.count("interval: weekly") == 2
     assert dependabot.count("open-pull-requests-limit: 5") == 2
+    assert 'patterns:\n          - "actions/cache*"' in dependabot
 
 
 def test_repository_exposes_standard_community_templates() -> None:
@@ -146,22 +156,29 @@ def test_repository_exposes_standard_community_templates() -> None:
         assert "validations:" in template
 
 
-def test_workflow_javascript_actions_use_node24_releases() -> None:
-    """GitHub runnerが廃止済みNode runtimeを強制置換しない。"""
-    workflow = _read(".github/workflows/quality.yml") + _read(
-        ".github/actions/deep-readiness/action.yml"
-    )
-    expected = {
-        "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
-        "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-        "astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9",
-        "supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520",
-        "actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae",
-        "actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae",
-        "actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3",
+def test_external_action_contract_rejects_mutable_or_inconsistent_references() -> None:
+    """更新時に見逃してはならない参照形式と同一依存の不一致を拒否する。"""
+    invalid_sources = {
+        "mutable-tag.yml": "steps:\n  - uses: actions/checkout@v7 # v7.0.1\n",
+        "short-sha.yml": "steps:\n  - uses: actions/checkout@3d3c42e # v7.0.1\n",
+        "missing-release.yml": (
+            "steps:\n  - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1\n"
+        ),
+        "unsupported.yml": "steps:\n  - uses: docker://alpine:3\n",
+        "inconsistent.yml": (
+            "steps:\n"
+            "  - uses: actions/cache/restore@"
+            "55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0\n"
+            "  - uses: actions/cache/save@"
+            "27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5\n"
+        ),
     }
 
-    assert all(action in workflow for action in expected)
+    _, errors = _validate_external_action_references(invalid_sources)
+
+    assert len(errors) == len(invalid_sources)
+    assert sum("40桁SHAとrelease番号" in error for error in errors) == 4
+    assert sum("同じSHAとrelease番号" in error for error in errors) == 1
 
 
 def test_main_source_rejects_a_same_named_fork_branch() -> None:
@@ -324,3 +341,45 @@ def test_ignore_files_exclude_secrets_and_current_generated_state() -> None:
 
 def _read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def _action_sources() -> dict[str, str]:
+    paths = sorted((ROOT / ".github/workflows").rglob("*.yml"))
+    paths.extend(sorted((ROOT / ".github/workflows").rglob("*.yaml")))
+    for pattern in ("action.yml", "action.yaml"):
+        paths.extend(sorted((ROOT / ".github/actions").rglob(pattern)))
+    return {path.relative_to(ROOT).as_posix(): path.read_text(encoding="utf-8") for path in paths}
+
+
+def _validate_external_action_references(
+    sources: dict[str, str],
+) -> tuple[list[tuple[str, str, str]], list[str]]:
+    use_line = re.compile(r"^\s*-?\s*uses:\s*(?P<value>.+?)\s*$")
+    pinned = re.compile(
+        r"^(?P<owner>[A-Za-z0-9_.-]+)/(?P<repository>[A-Za-z0-9_.-]+)"
+        r"(?:/[A-Za-z0-9_.\-/]+)?@(?P<sha>[0-9a-f]{40})"
+        r"\s+#\s+(?P<version>v(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*))$"
+    )
+    references: list[tuple[str, str, str]] = []
+    errors: list[str] = []
+    identities: dict[str, tuple[str, str]] = {}
+    for path, source in sources.items():
+        for line_number, line in enumerate(source.splitlines(), start=1):
+            use_match = use_line.fullmatch(line)
+            if use_match is None:
+                continue
+            value = use_match.group("value")
+            if value.startswith("./"):
+                continue
+            pin_match = pinned.fullmatch(value)
+            if pin_match is None:
+                errors.append(f"{path}:{line_number}: 外部Actionは40桁SHAとrelease番号で固定する")
+                continue
+            identity = f"{pin_match.group('owner')}/{pin_match.group('repository')}"
+            revision = pin_match.group("sha")
+            version = pin_match.group("version")
+            references.append((identity, revision, version))
+            expected = identities.setdefault(identity, (revision, version))
+            if expected != (revision, version):
+                errors.append(f"{path}:{line_number}: {identity}は同じSHAとrelease番号へ統一する")
+    return references, errors
