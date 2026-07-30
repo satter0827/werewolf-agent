@@ -20,6 +20,6 @@
 
 ## 最終判断
 
-<!-- develop向けはAIが正式判断とmergeを行える。main向けの正式承認とmergeは人間が行う。 -->
+<!-- develop向けはAIが最新headへの判断を記録しmergeできる。main向けの正式承認とmergeは人間が行う。 -->
 
 - [ ] target branchの責務に従って未解決会話と必須checkを確認した

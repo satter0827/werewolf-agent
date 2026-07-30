@@ -1,13 +1,12 @@
-"""CodexによるGitHub PR判断操作をtarget branchごとに制御する。"""
+"""CodexによるGitHub PR判断操作を構造化入力で制御する。"""
 
 from __future__ import annotations
 
 import json
-import re
-import shlex
 import subprocess
 import sys
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import cast
 
 HOOK_EVENT = "PreToolUse"
@@ -24,66 +23,16 @@ BLOCKED_OPERATIONS = frozenset(
         "unresolve_review_thread",
     }
 )
-BLOCKED_REVIEW_ACTIONS = frozenset({"APPROVE", "REQUEST_CHANGES"})
+FORMAL_REVIEW_ACTIONS = frozenset({"APPROVE", "REQUEST_CHANGES"})
 ALLOWED_REVIEW_ACTIONS = frozenset({"COMMENT"})
 
-_SHELL_PUNCTUATION = ";&|()\n"
-_SHELL_WRAPPERS = frozenset({"command", "exec"})
-_SHELL_LAUNCHERS = frozenset({"bash", "cmd", "powershell", "pwsh", "sh"})
-_ENV_OPTIONS_WITH_VALUE = frozenset({"-C", "--chdir", "-u", "--unset"})
-_EXEC_OPTIONS_WITH_VALUE = frozenset({"-a"})
-_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
-_GH_ROOT_OPTION = re.compile(
-    r"^(?:"
-    r"(?:-R|--repo|--hostname)\s+(?:\"[^\"]*\"|'[^']*'|\S+)"
-    r"|(?:--repo|--hostname)=\S+"
-    r")\s+",
-    re.IGNORECASE,
-)
-_GH_REPOSITORY_OPTION = re.compile(
-    r"(?:^|\s)(?:-R|--repo)(?:\s+|=)(?P<repository>\"[^\"]*\"|'[^']*'|\S+)",
-    re.IGNORECASE,
-)
-_HTTP_METHOD = re.compile(
-    r"(?:^|\s)(?:-X(?:\s*|=)|--method(?:\s+|=))"
-    r"(?P<method>GET|POST|PUT|PATCH|DELETE)\b",
-    re.IGNORECASE,
-)
-_API_FIELD = re.compile(
-    r"(?:^|\s)(?:(?:-f|-F)(?:\s*|=)|(?:--field|--raw-field)(?:\s+|=))"
-    r"[\"']?(?P<name>[A-Za-z_][A-Za-z0-9_]*)=[\"']?(?P<value>[^\s\"']+)[\"']?",
-    re.IGNORECASE,
-)
-_REVIEW_COLLECTION = re.compile(
-    r"/pulls/[^/\s?\"']+/reviews(?=\?|\s|[\"']|$)",
-    re.IGNORECASE,
-)
-_REVIEW_SUBMISSION = re.compile(
-    r"/pulls/[^/\s?\"']+/reviews/[^/\s?\"']+/events(?=\?|\s|[\"']|$)",
-    re.IGNORECASE,
-)
-_REVIEW_DISMISSAL = re.compile(
-    r"/pulls/[^/\s?\"']+/reviews/[^/\s?\"']+/dismissals(?:\b|\?)",
-    re.IGNORECASE,
-)
-_MERGE_ENDPOINT = re.compile(
-    r"/pulls/[^/\s?\"']+/merge(?:\b|\?)",
-    re.IGNORECASE,
-)
-_BLOCKED_GRAPHQL_MUTATION = re.compile(
-    r"\b(?:"
-    r"dismissPullRequestReview"
-    r"|enablePullRequestAutoMerge"
-    r"|mergePullRequest"
-    r"|resolveReviewThread"
-    r"|unresolveReviewThread"
-    r")\b",
-    re.IGNORECASE,
-)
-_REVIEW_GRAPHQL_MUTATION = re.compile(
-    r"\b(?:addPullRequestReview|submitPullRequestReview)\b",
-    re.IGNORECASE,
-)
+
+@dataclass(frozen=True)
+class PullRequestState:
+    """判断操作に必要なGitHub上のPR状態。"""
+
+    base_ref: str
+    head_sha: str
 
 
 def _deny(reason: str) -> dict[str, object]:
@@ -96,13 +45,6 @@ def _deny(reason: str) -> dict[str, object]:
     }
 
 
-def _command_from(tool_input: object) -> str | None:
-    if not isinstance(tool_input, Mapping):
-        return None
-    command = tool_input.get("command")
-    return command if isinstance(command, str) else None
-
-
 def _github_operation(tool_name: str) -> str | None:
     if not tool_name.startswith("mcp__") or "__" not in tool_name:
         return None
@@ -112,34 +54,43 @@ def _github_operation(tool_name: str) -> str | None:
     return candidate.removeprefix(GITHUB_OPERATION_PREFIX)
 
 
-def _pull_request_base(tool_input: Mapping[str, object]) -> str | None:
-    """GitHubからPRのbase branchをread-onlyで解決する。"""
-    number = next(
+def _pull_request_number(tool_input: Mapping[str, object]) -> int | None:
+    return next(
         (
             value
             for key in ("pr_number", "pull_number")
-            if isinstance((value := tool_input.get(key)), int)
+            if isinstance((value := tool_input.get(key)), int) and not isinstance(value, bool)
         ),
         None,
     )
-    if number is None:
-        return None
+
+
+def _repository(tool_input: Mapping[str, object]) -> str | None:
     repository = next(
         (
-            value
+            value.strip()
             for key in ("repository_full_name", "repo_full_name")
             if isinstance((value := tool_input.get(key)), str) and value.strip()
         ),
         None,
     )
-    if repository is None:
-        owner = tool_input.get("owner")
-        repo = tool_input.get("repo")
-        if isinstance(owner, str) and owner.strip() and isinstance(repo, str) and repo.strip():
-            repository = f"{owner.strip()}/{repo.strip()}"
-    command = ["gh", "pr", "view", str(number), "--json", "baseRefName", "--jq", ".baseRefName"]
     if repository is not None:
-        command.extend(("--repo", repository))
+        return repository
+    owner = tool_input.get("owner")
+    repo = tool_input.get("repo")
+    if isinstance(owner, str) and owner.strip() and isinstance(repo, str) and repo.strip():
+        return f"{owner.strip()}/{repo.strip()}"
+    return None
+
+
+def _pull_request_state(tool_input: Mapping[str, object]) -> PullRequestState | None:
+    """GitHubからPRのbaseと最新head SHAをread-onlyで解決する。"""
+    number = _pull_request_number(tool_input)
+    repository = _repository(tool_input)
+    if number is None or repository is None:
+        return None
+    command = ["gh", "pr", "view", str(number), "--json", "baseRefName,headRefOid"]
+    command.extend(("--repo", repository))
     try:
         completed = subprocess.run(
             command,
@@ -153,230 +104,60 @@ def _pull_request_base(tool_input: Mapping[str, object]) -> str | None:
         return None
     if completed.returncode != 0:
         return None
-    base = completed.stdout.strip()
-    return base or None
+    try:
+        document = json.loads(completed.stdout)
+    except (json.JSONDecodeError, TypeError):
+        return None
+    if not isinstance(document, Mapping):
+        return None
+    base_ref = document.get("baseRefName")
+    head_sha = document.get("headRefOid")
+    if not isinstance(base_ref, str) or not base_ref.strip():
+        return None
+    if not isinstance(head_sha, str) or not head_sha.strip():
+        return None
+    return PullRequestState(base_ref=base_ref.strip(), head_sha=head_sha.strip())
 
 
-def _is_develop_pull_request(tool_input: object) -> bool:
-    return isinstance(tool_input, Mapping) and _pull_request_base(tool_input) == DEVELOP_BRANCH
+def _normalized_string(tool_input: Mapping[str, object], key: str) -> str | None:
+    value = tool_input.get(key)
+    if not isinstance(value, str) or not value.strip():
+        return None
+    return value.strip()
 
 
-def _uses_merge_commit(tool_input: object) -> bool:
+def _evaluate_review(tool_input: object) -> dict[str, object] | None:
     if not isinstance(tool_input, Mapping):
-        return False
-    method = tool_input.get("merge_method")
-    return isinstance(method, str) and method.strip().casefold() == MERGE_METHOD
+        return _deny("レビュー入力を確認できないため、操作を拒否します。")
+    action = _normalized_string(tool_input, "action")
+    if action is None:
+        return _deny("レビュー種別を確認できないため、操作を拒否します。")
+    normalized_action = action.upper()
+    if normalized_action not in ALLOWED_REVIEW_ACTIONS | FORMAL_REVIEW_ACTIONS:
+        return _deny("未知のレビュー種別は許可しません。COMMENTとして助言してください。")
 
-
-def _without_gh_root_options(arguments: str) -> str:
-    normalized = re.sub(r"\s+", " ", arguments.strip().strip("\"'")).strip()
-    while match := _GH_ROOT_OPTION.match(normalized):
-        normalized = normalized[match.end() :]
-    return normalized
-
-
-def _gh_repository(arguments: str) -> str | None:
-    match = _GH_REPOSITORY_OPTION.search(arguments)
-    if match is None:
-        return None
-    repository = match.group("repository").strip("\"'").strip()
-    return repository or None
-
-
-def _api_method(arguments: str) -> str:
-    if match := _HTTP_METHOD.search(arguments):
-        return match.group("method").upper()
-    if _API_FIELD.search(arguments) or re.search(
-        r"(?:^|\s)--input(?:\s+|=)", arguments, re.IGNORECASE
-    ):
-        return "POST"
-    return "GET"
-
-
-def _review_action(arguments: str) -> str | None:
-    actions = {
-        match.group("value").strip().upper().replace("-", "_")
-        for match in _API_FIELD.finditer(arguments)
-        if match.group("name").casefold() in {"action", "event"}
-    }
-    if len(actions) != 1:
-        return None
-    return actions.pop()
-
-
-def _blocked_api_operation(arguments: str) -> bool:
-    method = _api_method(arguments)
-    is_write = method != "GET"
-    is_graphql = bool(re.search(r"(?:^|\s)graphql(?:\s|$)", arguments, re.IGNORECASE))
-    if is_write and (_MERGE_ENDPOINT.search(arguments) or _REVIEW_DISMISSAL.search(arguments)):
-        return True
-    if is_write and (_REVIEW_SUBMISSION.search(arguments) or _REVIEW_COLLECTION.search(arguments)):
-        return _review_action(arguments) != "COMMENT"
-    if is_graphql and _BLOCKED_GRAPHQL_MUTATION.search(arguments):
-        return True
-    if is_graphql and _REVIEW_GRAPHQL_MUTATION.search(arguments):
-        return _review_action(arguments) != "COMMENT"
-    if re.search(r"(?:^|\s)--input(?:\s+|=)", arguments, re.IGNORECASE):
-        return is_graphql
-    if re.search(r"(?:^|\s)(?:-f|-F|--field)(?:\s+|=)query=@", arguments, re.IGNORECASE):
-        return is_graphql
-    return False
-
-
-def _shell_pull_request_input(
-    arguments: str,
-    repository: str | None,
-) -> dict[str, object] | None:
-    match = re.match(r"^pr\s+(?:merge|review)\s+(?P<number>\d+)(?:\s|$)", arguments, re.IGNORECASE)
-    if match is None:
-        return None
-    tool_input: dict[str, object] = {"pr_number": int(match.group("number"))}
-    if repository is not None:
-        tool_input["repository_full_name"] = repository
-    return tool_input
-
-
-def _shell_tokenizations(command: str) -> tuple[tuple[str, ...], ...]:
-    """POSIX escapeとWindows pathの両方を保つshell token列を返す。"""
-    tokenizations: list[tuple[str, ...]] = []
-    escapes = ("\\", "") if re.search(r"(?:[A-Za-z]:\\|\\\\)", command) else ("\\",)
-    for escape in escapes:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=_SHELL_PUNCTUATION)
-        lexer.commenters = ""
-        lexer.escape = escape
-        lexer.whitespace = " \t\r"
-        lexer.whitespace_split = True
-        try:
-            tokens = tuple(lexer)
-        except ValueError:
-            continue
-        if tokens not in tokenizations:
-            tokenizations.append(tokens)
-    return tuple(tokenizations)
-
-
-def _is_shell_separator(token: str) -> bool:
-    return bool(token) and all(character in _SHELL_PUNCTUATION for character in token)
-
-
-def _shell_command_name(token: str) -> str:
-    normalized = token.replace("\\", "/").rsplit("/", maxsplit=1)[-1].casefold()
-    return normalized.removesuffix(".exe")
-
-
-def _skip_env_options(tokens: tuple[str, ...], index: int, end: int) -> int:
-    while index < end and tokens[index].startswith("-"):
-        option = tokens[index].split("=", maxsplit=1)[0]
-        index += 1
-        if option in _ENV_OPTIONS_WITH_VALUE and "=" not in tokens[index - 1] and index < end:
-            index += 1
-    return index
-
-
-def _skip_shell_prefixes(tokens: tuple[str, ...], index: int, end: int) -> int:
-    while index < end:
-        name = _shell_command_name(tokens[index])
-        if _ENV_ASSIGNMENT.match(tokens[index]):
-            index += 1
-            continue
-        if name in _SHELL_WRAPPERS:
-            index += 1
-            if name == "command":
-                while index < end and tokens[index] in {"--", "-p"}:
-                    index += 1
-                if index < end and tokens[index].startswith("-"):
-                    return end
-                continue
-            while index < end and tokens[index].startswith("-"):
-                option = tokens[index].split("=", maxsplit=1)[0]
-                index += 1
-                if (
-                    option in _EXEC_OPTIONS_WITH_VALUE
-                    and "=" not in tokens[index - 1]
-                    and index < end
-                ):
-                    index += 1
-                if option == "--":
-                    break
-            continue
-        if name == "env":
-            index = _skip_env_options(tokens, index + 1, end)
-            continue
-        return index
-    return index
-
-
-def _nested_shell_command(tokens: tuple[str, ...], index: int, end: int) -> str | None:
-    launcher = _shell_command_name(tokens[index])
-    expected = {"/c"} if launcher == "cmd" else {"-c", "-command"}
-    for option_index in range(index + 1, end):
-        if tokens[option_index].casefold() in expected and option_index + 1 < end:
-            return " ".join(tokens[option_index + 1 : end])
+    state = _pull_request_state(tool_input)
+    commit_id = _normalized_string(tool_input, "commit_id")
+    if state is None or commit_id is None or commit_id != state.head_sha:
+        return _deny("レビューは対象PRの最新head SHAへ固定してください。")
+    if normalized_action in FORMAL_REVIEW_ACTIONS and state.base_ref != DEVELOP_BRANCH:
+        return _deny("AIはdevelop以外のPRへ正式なレビュー判断を送信しません。")
     return None
 
 
-def _gh_invocations(command: str, *, depth: int = 0) -> tuple[str, ...]:
-    if depth > 3:
-        return ()
-    invocations: list[str] = []
-    for tokens in _shell_tokenizations(command):
-        index = 0
-        command_start = True
-        while index < len(tokens):
-            if _is_shell_separator(tokens[index]):
-                command_start = True
-                index += 1
-                continue
-            if not command_start:
-                index += 1
-                continue
-            end = index
-            while end < len(tokens) and not _is_shell_separator(tokens[end]):
-                end += 1
-            executable_index = _skip_shell_prefixes(tokens, index, end)
-            if executable_index >= end:
-                index = end
-                continue
-            executable = _shell_command_name(tokens[executable_index])
-            if executable in _SHELL_LAUNCHERS:
-                nested = _nested_shell_command(tokens, executable_index, end)
-                if nested is not None:
-                    invocations.extend(_gh_invocations(nested, depth=depth + 1))
-            elif executable == "gh" and executable_index + 1 < end:
-                invocations.append(" ".join(tokens[executable_index + 1 : end]))
-            command_start = False
-            index = end
-    return tuple(dict.fromkeys(invocations))
-
-
-def _blocked_shell_operation(command: str) -> bool:
-    for raw_arguments in _gh_invocations(command):
-        repository = _gh_repository(raw_arguments)
-        arguments = _without_gh_root_options(raw_arguments)
-        normalized = arguments.casefold()
-        if re.match(r"^pr merge(?:\s|$)", normalized):
-            pull_request = _shell_pull_request_input(arguments, repository)
-            tokens = {token.strip("\"',") for token in normalized.split()}
-            if (
-                pull_request is None
-                or not _is_develop_pull_request(pull_request)
-                or "--merge" not in tokens
-                or tokens.intersection({"--squash", "--rebase", "--auto"})
-            ):
-                return True
-            continue
-        if re.match(r"^pr review(?:\s|$)", normalized):
-            tokens = {token.strip("\"',") for token in normalized.split()}
-            if tokens.intersection({"--approve", "-a", "--request-changes", "-r"}):
-                pull_request = _shell_pull_request_input(arguments, repository)
-                if pull_request is None or not _is_develop_pull_request(pull_request):
-                    return True
-                continue
-            if not tokens.intersection({"--comment", "-c"}):
-                return True
-        if re.match(r"^api(?:\s|$)", normalized) and _blocked_api_operation(arguments[3:]):
-            return True
-    return False
+def _evaluate_merge(tool_input: object) -> dict[str, object] | None:
+    if not isinstance(tool_input, Mapping):
+        return _deny("merge入力を確認できないため、操作を拒否します。")
+    state = _pull_request_state(tool_input)
+    merge_method = _normalized_string(tool_input, "merge_method")
+    expected_head_sha = _normalized_string(tool_input, "expected_head_sha")
+    if state is None or state.base_ref != DEVELOP_BRANCH:
+        return _deny("AIはdevelop向けPRだけをmerge commitで取り込みます。")
+    if merge_method is None or merge_method.casefold() != MERGE_METHOD:
+        return _deny("develop向けPRはmerge commitで取り込んでください。")
+    if expected_head_sha is None or expected_head_sha != state.head_sha:
+        return _deny("developのmergeは最新head SHAをexpected_head_shaへ指定してください。")
+    return None
 
 
 def evaluate(payload: Mapping[str, object]) -> dict[str, object] | None:
@@ -388,37 +169,13 @@ def evaluate(payload: Mapping[str, object]) -> dict[str, object] | None:
 
     operation = _github_operation(tool_name)
     if operation == ADD_REVIEW_OPERATION:
-        if not isinstance(tool_input, Mapping):
-            return _deny("レビュー種別を確認できないため、正式なレビュー操作を拒否します。")
-        action = tool_input.get("action")
-        if not isinstance(action, str):
-            return _deny("レビュー種別を確認できないため、正式なレビュー操作を拒否します。")
-        normalized_action = action.strip().upper()
-        if normalized_action in ALLOWED_REVIEW_ACTIONS:
-            return None
-        if normalized_action in BLOCKED_REVIEW_ACTIONS:
-            if _is_develop_pull_request(tool_input):
-                return None
-            return _deny("AIはdevelop以外のPRへ正式なレビュー判断を送信しません。")
-        return _deny("未知のレビュー種別は許可しません。COMMENTとして助言してください。")
-
+        return _evaluate_review(tool_input)
     if operation == MERGE_OPERATION:
-        if _is_develop_pull_request(tool_input) and _uses_merge_commit(tool_input):
-            return None
-        return _deny("AIはdevelop向けPRだけをmerge commitで取り込みます。")
-
+        return _evaluate_merge(tool_input)
     if operation in BLOCKED_OPERATIONS:
         return _deny(
             "AIはレビュー却下、会話解決、auto-mergeを実行しません。対象PRを人間へ引き渡してください。"
         )
-
-    if tool_name not in {"Bash", "shell_command"}:
-        return None
-    command = _command_from(tool_input)
-    if command is None:
-        return _deny("shell commandを確認できないため、PRガバナンスhookが実行を拒否します。")
-    if _blocked_shell_operation(command):
-        return _deny("AIはgh経由でdevelop以外の正式なレビュー判断またはmergeを実行しません。")
     return None
 
 
