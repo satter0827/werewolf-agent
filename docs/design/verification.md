@@ -25,13 +25,16 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
 明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。baseを省略した場合、
 変更影響はworkspaceだけを扱い、version所有境界はリリース基準の`origin/main`を使用して実コマンドへ記録する。
-`HEAD`以外のheadと現在checkoutのworkspace差分は合成せず、workspaceがcleanな場合だけ任意headを検査する。
+headは現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitは専用worktreeへ
+checkoutして検査し、reportのheadと実際にgateを動かすtreeを一致させる。現在checkoutのworkspace差分を
+別treeへ合成しない。
 
 ## CI境界
 
 ローカルとGitHub Actionsは`scripts.quality`を共通の品質入口とする。feature branchはPR作成前に
 手動`Develop / Check`を実行し、GitHub-hosted Ubuntu固有の差を確認する。手動Checkはbranchの
-`HEAD`、PR Checkは`develop`との仮想mergeを検証するため、最終判定はPR Checkが所有する。
+`HEAD`、PR Checkはcheckoutされた仮想mergeの`HEAD`を検証する。reportのheadと実行treeを同じcommitへ
+固定するため、最終判定はPR Checkが所有する。
 
 Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。夜間実行は03:17 JSTに
 `main`と`develop`のSHAを固定し、差分がない日は省略する。同じSHA組合せで成功済みなら

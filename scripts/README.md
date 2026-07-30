@@ -67,7 +67,8 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 `--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。明示したrefは
 Version gateへそのまま渡す。baseを省略した場合だけ、Version gateはリリース基準の`origin/main`を
 使用し、reportの実コマンドにも既定refを明示する。
-`HEAD`以外のheadを指定する場合はworkspaceをcleanにする。未commitの変更を検査する場合は
+`--head-ref`は現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitを
+検査する場合は、そのcommitを専用worktreeへcheckoutしてから実行する。未commitの変更を検査する場合は
 `--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
@@ -113,7 +114,8 @@ PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`�
 選び、対象branchを指定する。手動実行は選択branchの`HEAD`に対して`Develop / Check`を実行する。
 品質reportのrevisionがbranchのcommitと一致することを確認する。
 
-手動Checkはbranch単体を検証し、PR Checkは`develop`との仮想mergeを検証する。最終的なmerge判定は
+手動Checkはbranch単体を検証し、PR Checkはcheckoutされた仮想mergeの`HEAD`を検証する。quality runnerへ
+別のPR head SHAを渡さず、reportのheadと実際にgateを動かすtreeを一致させる。最終的なmerge判定は
 PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
