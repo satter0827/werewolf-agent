@@ -8,7 +8,7 @@ import pytest
 
 from werewolf_agent import application
 from werewolf_agent.application import handlers
-from werewolf_agent.application.errors import GameNotFoundError
+from werewolf_agent.application.errors import GameNotFoundError, InvalidGameIdError
 
 
 class _Repository:
@@ -36,6 +36,12 @@ class _FailingSetupRepository:
     def list_setups(self, *, owner_user_id: str) -> NoReturn:
         del owner_user_id
         raise RuntimeError("postgresql://private-host/database")
+
+
+class _InvalidSetupRepository:
+    def list_setups(self, *, owner_user_id: str) -> NoReturn:
+        del owner_user_id
+        raise ValueError("persisted setup row is invalid")
 
 
 class _AllowPolicy:
@@ -201,17 +207,53 @@ def test_public_facade_hides_all_unexpected_exception_details(
     assert str(failure) not in str(captured.value)
 
 
-def test_public_facade_preserves_value_errors(monkeypatch: pytest.MonkeyPatch) -> None:
-    """公開入力とdomain値構築のvalidation契約を維持する。"""
-    failure = ValueError("public validation detail")
+def test_public_facade_hides_handler_value_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Handler内部のValueErrorを公開入力違反として漏らさない。"""
+    failure = ValueError("persisted row contains a private invalid value")
 
     def invalid(*_args: object, **_kwargs: object) -> NoReturn:
         raise failure
 
     monkeypatch.setattr(handlers, "list_games", invalid)
 
-    with pytest.raises(ValueError) as captured:
+    with pytest.raises(application.InternalError) as captured:
         _games().list(application.Actor("user-id"))
+
+    assert captured.value.__cause__ is failure
+    assert str(failure) not in str(captured.value)
+
+
+def test_public_facade_preserves_caller_input_validation() -> None:
+    """Facadeが構築する公開queryの入力validationを維持する。"""
+    with pytest.raises(ValueError):
+        _games().list(application.Actor("user-id"), limit=0)
+
+
+def test_public_facade_authorizes_before_validating_protected_input() -> None:
+    """保護対象操作では入力変換より認可を優先する。"""
+    with pytest.raises(application.AppError) as captured:
+        _games(policy=_DenyPolicy()).advance(
+            "game-id",
+            application.Actor("user-id"),
+            expected_version=-1,
+        )
+
+    assert captured.value.code is application.ErrorCode.AUTHORIZATION_FAILED
+
+
+def test_public_facade_preserves_owned_game_id_validation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Applicationが所有するgame ID validation例外を維持する。"""
+    failure = InvalidGameIdError("game_id must be a valid UUID")
+
+    def invalid(*_args: object, **_kwargs: object) -> NoReturn:
+        raise failure
+
+    monkeypatch.setattr(handlers, "get_game", invalid)
+
+    with pytest.raises(InvalidGameIdError) as captured:
+        _games(policy=_AllowPolicy()).get("invalid", application.Actor("user-id"))
 
     assert captured.value is failure
 
@@ -266,3 +308,18 @@ def test_setup_facade_hides_repository_runtime_details() -> None:
     assert captured.value.code is application.ErrorCode.INTERNAL_UNEXPECTED
     assert "private-host" not in str(captured.value)
     assert isinstance(captured.value.__cause__, RuntimeError)
+
+
+def test_setup_facade_hides_repository_value_errors() -> None:
+    """Setup repositoryのValueErrorを公開入力違反として漏らさない。"""
+    setups = application.SetupApplication(
+        cast(Any, object()),
+        _config(),
+        repository=cast(application.SetupRepository, _InvalidSetupRepository()),
+    )
+
+    with pytest.raises(application.InternalError) as captured:
+        setups.list_setups(application.Actor("user-id"))
+
+    assert isinstance(captured.value.__cause__, ValueError)
+    assert "persisted setup row" not in str(captured.value)

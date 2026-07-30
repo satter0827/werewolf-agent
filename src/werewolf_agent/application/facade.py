@@ -63,11 +63,8 @@ class GameApplication:
     def get(self, game_id: str, actor: Actor) -> GameResult:
         """検証済みactorが閲覧できる一つの公開ゲームを返す."""
         self._require_game_access(game_id, actor)
-        return public_result(
-            lambda: handlers.get_game(
-                GetGameQuery(game_id=game_id), dependencies=self._dependencies
-            )
-        )
+        query = GetGameQuery(game_id=game_id)
+        return public_result(lambda: handlers.get_game(query, dependencies=self._dependencies))
 
     def list(
         self,
@@ -78,17 +75,13 @@ class GameApplication:
         offset: int = 0,
     ) -> GameListResult:
         """検証済みactorが閲覧できるゲームの一pageを返す."""
-        return public_result(
-            lambda: handlers.list_games(
-                ListGamesQuery(
-                    trusted_user_id=actor.user_id,
-                    status=status,
-                    limit=limit,
-                    offset=offset,
-                ),
-                dependencies=self._dependencies,
-            )
+        query = ListGamesQuery(
+            trusted_user_id=actor.user_id,
+            status=status,
+            limit=limit,
+            offset=offset,
         )
+        return public_result(lambda: handlers.list_games(query, dependencies=self._dependencies))
 
     def submit_action(
         self,
@@ -110,11 +103,9 @@ class GameApplication:
     ) -> AdvanceGameResult:
         """期待する公開versionからゲームを一step進めて結果を返す."""
         self._require_game_access(game_id, actor)
+        command = AdvanceGameCommand(game_id=game_id, expected_version=expected_version)
         return public_result(
-            lambda: handlers.advance_game(
-                AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
-                dependencies=self._dependencies,
-            )
+            lambda: handlers.advance_game(command, dependencies=self._dependencies)
         )
 
     def prepare_advance(
@@ -125,11 +116,9 @@ class GameApplication:
     ) -> PreparedAdvanceGame:
         """外部agent runtime向けにversion付き進行を認可して準備する."""
         self._require_game_access(game_id, actor)
+        command = AdvanceGameCommand(game_id=game_id, expected_version=expected_version)
         return public_result(
-            lambda: handlers.prepare_advance_game(
-                AdvanceGameCommand(game_id=game_id, expected_version=expected_version),
-                dependencies=self._dependencies,
-            )
+            lambda: handlers.prepare_advance_game(command, dependencies=self._dependencies)
         )
 
     def compute_advance(
@@ -160,12 +149,8 @@ class GameApplication:
     ) -> GameTimelineResult:
         """Cursorより後の公開timeline itemを返す."""
         self._require_game_access(game_id, actor)
-        return public_result(
-            lambda: handlers.list_timeline(
-                ListTimelineQuery(game_id=game_id, after=cursor, limit=limit),
-                dependencies=self._dependencies,
-            )
-        )
+        query = ListTimelineQuery(game_id=game_id, after=cursor, limit=limit)
+        return public_result(lambda: handlers.list_timeline(query, dependencies=self._dependencies))
 
     def observation(
         self,
@@ -175,15 +160,13 @@ class GameApplication:
     ) -> PlayerObservationResult:
         """認証済みplayer本人のprivate observationを返す."""
         self._require_player_access(game_id, player_id, actor)
+        query = GetPlayerObservationQuery(
+            game_id=game_id,
+            player_id=player_id,
+            trusted_user_id=actor.user_id,
+        )
         return public_result(
-            lambda: handlers.get_player_observation(
-                GetPlayerObservationQuery(
-                    game_id=game_id,
-                    player_id=player_id,
-                    trusted_user_id=actor.user_id,
-                ),
-                dependencies=self._dependencies,
-            )
+            lambda: handlers.get_player_observation(query, dependencies=self._dependencies)
         )
 
     def reveal(self, game_id: str, admin: Actor) -> GameRevealResult:
@@ -193,11 +176,9 @@ class GameApplication:
                 "管理者権限が必要です。",
                 code=ErrorCode.AUTHORIZATION_FAILED,
             )
+        query = GetGameRevealQuery(game_id=game_id)
         return public_result(
-            lambda: handlers.get_game_reveal(
-                GetGameRevealQuery(game_id=game_id),
-                dependencies=self._dependencies,
-            )
+            lambda: handlers.get_game_reveal(query, dependencies=self._dependencies)
         )
 
     def verify_replay(self, game_id: str, admin: Actor) -> ReplayVerificationResult:
@@ -210,11 +191,8 @@ class GameApplication:
         repository = self._dependencies.repository
         if not hasattr(repository, "replay_records"):
             raise ConfigError("repositoryにreplay検証機能が構成されていません。")
-        public_result(
-            lambda: handlers.get_game(
-                GetGameQuery(game_id=game_id), dependencies=self._dependencies
-            )
-        )
+        query = GetGameQuery(game_id=game_id)
+        public_result(lambda: handlers.get_game(query, dependencies=self._dependencies))
         return public_result(
             lambda: verify_replay(game_id, repository)  # type: ignore[arg-type]
         )

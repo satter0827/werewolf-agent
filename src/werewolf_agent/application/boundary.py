@@ -10,6 +10,7 @@ from werewolf_agent.application.errors import (
     ErrorCode,
     GameNotFoundError,
     InternalError,
+    InvalidGameIdError,
     ResourceNotFoundError,
 )
 
@@ -29,7 +30,7 @@ def public_result(operation: Callable[[], _Result]) -> _Result:
             "この操作を実行する権限がありません。",
             code=ErrorCode.AUTHORIZATION_FAILED,
         ) from exc
-    except ValueError:
+    except InvalidGameIdError:
         raise
     except Exception as exc:
         raise InternalError() from exc
