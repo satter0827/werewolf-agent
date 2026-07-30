@@ -53,6 +53,8 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
 ) -> None:
     """source checkout外のvenvでwheelのroot APIをimportする。"""
     environment, python, runtime_environment = installed_wheel_environment
+    package_environment = runtime_environment.copy()
+    package_environment.pop("PYTHONPATH", None)
 
     checked = subprocess.run(
         [
@@ -72,7 +74,7 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
             str(environment),
         ],
         cwd=environment.parent,
-        env=runtime_environment,
+        env=package_environment,
         capture_output=True,
         text=True,
         check=False,
