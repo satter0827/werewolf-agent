@@ -211,6 +211,12 @@ def test_review_action_is_independent_of_mcp_server_namespace(
         "exec env GH_HOST=github.com command gh pr merge 123 --merge",
         'exec "gh" pr merge 123 --merge',
         "'gh' pr review 123 --approve",
+        '"gh" "pr" "merge" 123 --merge',
+        '"exec" "gh" "pr" "review" 123 --approve',
+        'e"xec" g"h" p"r" m"erge" 123 --merge',
+        "exec -- gh pr merge 123 --merge",
+        "exec -a github gh pr review 123 --approve",
+        "command -- gh pr merge 123 --merge",
         'exec "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
         "gh.exe pr merge 123 --merge",
         "C:\\tools\\gh.exe pr merge 123 --merge",
@@ -225,6 +231,7 @@ def test_review_action_is_independent_of_mcp_server_namespace(
         '& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event=APPROVE",
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event='APPROVE'",
+        "gh api -X POST repos/example/repo/pulls/123/reviews -f 'event'='APPROVE'",
         "gh api -XPOST repos/example/repo/pulls/%PR_NUMBER%/reviews -fevent=APPROVE",
         "gh api -X POST repos/example/repo/pulls/123/reviews",
         "gh api --input review.json repos/example/repo/pulls/123/reviews",
@@ -260,6 +267,7 @@ def test_shell_equivalents_are_denied(
         "exec gh pr merge 123 --merge",
         "exec env GH_HOST=github.com gh pr merge 123 --merge",
         'exec "gh" pr merge 123 --merge',
+        '"exec" "gh" "pr" "merge" 123 --merge',
     ],
 )
 @pytest.mark.parametrize("tool_name", ["Bash", "shell_command"])
@@ -408,6 +416,7 @@ def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.M
         "gh api -X GET repos/example/repo/pulls/123/merge",
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event=COMMENT",
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event='COMMENT'",
+        "gh api -X POST repos/example/repo/pulls/123/reviews -f 'event'='COMMENT'",
         'gh api -X POST repos/example/repo/pulls/123/reviews --field="event=COMMENT"',
         "gh api -X POST repos/example/repo/pulls/123/reviews/456/events -f event=COMMENT",
         "gh api graphql -f query='query { viewer { login } }'",
@@ -418,6 +427,7 @@ def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.M
         'Write-Output "gh pr merge 123"',
         'Write-Output "exec gh pr merge 123 --merge"',
         "powershell -Command \"Write-Output 'gh pr merge 123'\"",
+        "command -v gh pr merge 123 --merge",
     ],
 )
 def test_read_comment_and_creation_commands_are_allowed(command: str) -> None:
