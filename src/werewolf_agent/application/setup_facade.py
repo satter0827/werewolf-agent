@@ -103,10 +103,11 @@ class SetupApplication:
         self._validate_player_count(document)
         setup_checksum, mechanics_checksum = _checksums(document)
         repository = self._require_repository()
+        normalized_display_name = non_blank(display_name, "display_name")
         return public_result(
             lambda: repository.create(
                 owner_user_id=actor.user_id,
-                display_name=non_blank(display_name, "display_name"),
+                display_name=normalized_display_name,
                 document=document,
                 setup_checksum=setup_checksum,
                 mechanics_checksum=mechanics_checksum,
