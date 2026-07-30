@@ -25,12 +25,16 @@ def _load_hook() -> ModuleType:
     if spec is None or spec.loader is None:
         raise AssertionError("Codex hookを読み込めません")
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
 HOOK = _load_hook()
 ADD_REVIEW_TOOL = "mcp__codex_apps__github_add_review_to_pr"
+MERGE_TOOL = "mcp__codex_apps__github_merge_pull_request"
+DEVELOP_STATE = HOOK.PullRequestState(base_ref="develop", head_sha="head-sha")
+MAIN_STATE = HOOK.PullRequestState(base_ref="main", head_sha="head-sha")
 
 
 def _run_hook(tool_name: str, tool_input: Mapping[str, Any]) -> subprocess.CompletedProcess[str]:
@@ -45,299 +49,169 @@ def _run_hook(tool_name: str, tool_input: Mapping[str, Any]) -> subprocess.Compl
     )
 
 
-def _run_raw_hook(payload: str) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [sys.executable, str(HOOK_PATH)],
-        input=payload,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
-
-
-def _assert_denied(result: subprocess.CompletedProcess[str]) -> None:
-    assert result.returncode == 0
-    output = json.loads(result.stdout)
-    decision = output["hookSpecificOutput"]
-    assert decision["hookEventName"] == "PreToolUse"
-    assert decision["permissionDecision"] == "deny"
-    assert decision["permissionDecisionReason"]
-
-
-def _assert_evaluation_denied(result: dict[str, object] | None) -> None:
+def _assert_denied(result: dict[str, object] | None) -> None:
     assert result is not None
-    decision = result["hookSpecificOutput"]
-    assert isinstance(decision, Mapping)
-    assert decision["permissionDecision"] == "deny"
+    output = result["hookSpecificOutput"]
+    assert isinstance(output, Mapping)
+    assert output["hookEventName"] == "PreToolUse"
+    assert output["permissionDecision"] == "deny"
+    assert output["permissionDecisionReason"]
 
 
-@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES", "approve"])
-def test_formal_review_decisions_are_denied_outside_develop(
-    action: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """develop以外の正式レビュー判断を大文字小文字にかかわらず拒否する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
-    result = HOOK.evaluate(
-        {"tool_name": ADD_REVIEW_TOOL, "tool_input": {"action": action, "pull_number": 123}}
+def test_comment_review_is_allowed_without_pr_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """助言用COMMENTはtarget branchに依存しない。"""
+    monkeypatch.setattr(
+        HOOK,
+        "_pull_request_state",
+        lambda _input: pytest.fail("COMMENT must not query PR state"),
     )
-
-    _assert_evaluation_denied(result)
-
-
-@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES"])
-def test_develop_review_decisions_are_allowed(
-    action: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """develop向けPRではAIの正式レビュー判断を許可する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
 
     assert (
         HOOK.evaluate(
             {
                 "tool_name": ADD_REVIEW_TOOL,
-                "tool_input": {"action": action, "pull_number": 123},
+                "tool_input": {"action": "COMMENT", "pr_number": 123},
             }
         )
         is None
     )
 
 
-@pytest.mark.parametrize("operation", sorted(HOOK.BLOCKED_OPERATIONS))
-@pytest.mark.parametrize("server", ["codex_apps", "renamed_github_connector"])
-def test_direct_governance_tools_are_denied(
-    operation: str,
-    server: str,
+@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES", "approve"])
+def test_formal_review_is_denied_outside_develop(
+    action: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """判断状態を変更するGitHub toolを直接拒否する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
-    tool_name = f"mcp__{server}__github_{operation}"
+    """develop以外の正式レビュー判断を拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_state", lambda _input: MAIN_STATE)
+
     result = HOOK.evaluate(
         {
-            "tool_name": tool_name,
-            "tool_input": {"owner": "example", "repo": "repo", "pull_number": 123},
+            "tool_name": ADD_REVIEW_TOOL,
+            "tool_input": {"action": action, "commit_id": "head-sha", "pr_number": 123},
         }
     )
 
-    _assert_evaluation_denied(result)
+    _assert_denied(result)
 
 
-def test_develop_merge_tool_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
-    """develop向けPRだけmerge toolを許可する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+@pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES"])
+def test_develop_formal_review_requires_current_head(
+    action: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """developの正式判断はGitHub上の最新headへ固定する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_state", lambda _input: DEVELOP_STATE)
 
     assert (
         HOOK.evaluate(
             {
-                "tool_name": "mcp__codex_apps__github_merge_pull_request",
-                "tool_input": {"pr_number": 123, "merge_method": "merge"},
+                "tool_name": ADD_REVIEW_TOOL,
+                "tool_input": {
+                    "action": action,
+                    "commit_id": "head-sha",
+                    "pr_number": 123,
+                },
             }
         )
         is None
     )
+    for commit_id in (None, "stale-sha"):
+        result = HOOK.evaluate(
+            {
+                "tool_name": ADD_REVIEW_TOOL,
+                "tool_input": {
+                    "action": action,
+                    "commit_id": commit_id,
+                    "pr_number": 123,
+                },
+            }
+        )
+        _assert_denied(result)
 
 
-@pytest.mark.parametrize("merge_method", [None, "squash", "rebase"])
-def test_develop_merge_tool_rejects_non_merge_commit_methods(
-    merge_method: str | None,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """develop向けでもmerge commit以外の取り込みを拒否する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+def test_develop_merge_requires_method_and_current_head(monkeypatch: pytest.MonkeyPatch) -> None:
+    """develop mergeはmerge commitと最新head SHAを同時に要求する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_state", lambda _input: DEVELOP_STATE)
+    valid = {
+        "pr_number": 123,
+        "merge_method": "merge",
+        "expected_head_sha": "head-sha",
+    }
+
+    assert HOOK.evaluate({"tool_name": MERGE_TOOL, "tool_input": valid}) is None
+
+    for invalid in (
+        valid | {"merge_method": "squash"},
+        valid | {"merge_method": "rebase"},
+        valid | {"expected_head_sha": "stale-sha"},
+        {"pr_number": 123, "merge_method": "merge"},
+    ):
+        _assert_denied(HOOK.evaluate({"tool_name": MERGE_TOOL, "tool_input": invalid}))
+
+
+def test_merge_is_denied_outside_develop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """mainを含むdevelop以外のmergeを拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_state", lambda _input: MAIN_STATE)
 
     result = HOOK.evaluate(
         {
-            "tool_name": "mcp__codex_apps__github_merge_pull_request",
-            "tool_input": {"pr_number": 123, "merge_method": merge_method},
+            "tool_name": MERGE_TOOL,
+            "tool_input": {
+                "pr_number": 123,
+                "merge_method": "merge",
+                "expected_head_sha": "head-sha",
+            },
         }
     )
 
-    _assert_evaluation_denied(result)
+    _assert_denied(result)
+
+
+@pytest.mark.parametrize("operation", sorted(HOOK.BLOCKED_OPERATIONS))
+def test_review_state_mutations_are_denied(operation: str) -> None:
+    """人間が所有するレビュー状態の変更を拒否する。"""
+    result = HOOK.evaluate(
+        {
+            "tool_name": f"mcp__codex_apps__github_{operation}",
+            "tool_input": {"pull_number": 123},
+        }
+    )
+
+    _assert_denied(result)
 
 
 @pytest.mark.parametrize(
     ("tool_name", "tool_input"),
     [
-        (ADD_REVIEW_TOOL, {"action": "COMMENT"}),
         ("mcp__codex_apps__github_create_pull_request", {"title": "change"}),
-        ("mcp__codex_apps__github_add_comment_to_issue", {"body": "advice"}),
-        ("mcp__codex_apps__github_reply_to_pull_request_comment", {"body": "reply"}),
-        ("mcp__codex_apps__github_request_pull_request_review", {"reviewers": ["human"]}),
-        ("mcp__codex_apps__github_get_pull_request", {"pull_number": 123}),
+        ("mcp__codex_apps__github_add_comment_to_issue", {"comment": "advice"}),
+        ("mcp__codex_apps__github_reply_to_review_comment", {"comment": "reply"}),
+        ("mcp__codex_apps__github_fetch_pr", {"pr_number": 123}),
     ],
 )
-def test_advice_and_pr_work_are_allowed(tool_name: str, tool_input: Mapping[str, Any]) -> None:
-    """PR作業と助言コメントは維持する。"""
-    result = _run_hook(tool_name, tool_input)
-
-    assert result.returncode == 0
-    assert result.stdout == ""
-    assert result.stderr == ""
-
-
-def test_review_action_is_independent_of_mcp_server_namespace(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """GitHub connectorのserver名が変わってもreview actionを判定する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
-    result = HOOK.evaluate(
-        {
-            "tool_name": "mcp__renamed_connector__github_add_review_to_pr",
-            "tool_input": {"action": "APPROVE", "pull_number": 123},
-        }
-    )
-
-    _assert_evaluation_denied(result)
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "gh pr review 123 --approve",
-        "gh pr review 123 --request-changes --body 'fix this'",
-        "gh pr review 123 -a",
-        "gh pr review 123",
-        "gh pr merge 123 --merge",
-        "gh -R example/repo pr merge 123 --merge",
-        "gh --repo=example/repo pr review 123 --approve",
-        "GH_HOST=github.com gh pr merge 123 --merge",
-        "env GH_HOST=github.com gh pr review 123 --approve",
-        "command gh pr merge 123 --merge",
-        "exec gh pr merge 123 --merge",
-        "command exec gh pr review 123 --approve",
-        "exec env GH_HOST=github.com command gh pr merge 123 --merge",
-        'exec "gh" pr merge 123 --merge',
-        "'gh' pr review 123 --approve",
-        '"gh" "pr" "merge" 123 --merge',
-        '"exec" "gh" "pr" "review" 123 --approve',
-        'e"xec" g"h" p"r" m"erge" 123 --merge',
-        "exec -- gh pr merge 123 --merge",
-        "exec -a github gh pr review 123 --approve",
-        "command -- gh pr merge 123 --merge",
-        'exec "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
-        "gh.exe pr merge 123 --merge",
-        "C:\\tools\\gh.exe pr merge 123 --merge",
-        "Write-Output ready; gh pr merge 123 --merge",
-        "Write-Output ready && gh pr review 123 --approve",
-        'powershell -Command "gh pr review 123 --approve"',
-        'powershell -NoProfile -Command "gh pr review 123 --request-changes"',
-        'pwsh -Command "gh pr merge 123 --auto"',
-        'cmd /c "gh pr merge 123 --merge"',
-        'bash -c "gh pr review 123 --approve"',
-        "$(gh pr merge 123 --merge)",
-        '& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f event=APPROVE",
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f event='APPROVE'",
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f 'event'='APPROVE'",
-        "gh api -XPOST repos/example/repo/pulls/%PR_NUMBER%/reviews -fevent=APPROVE",
-        "gh api -X POST repos/example/repo/pulls/123/reviews",
-        "gh api --input review.json repos/example/repo/pulls/123/reviews",
-        "gh api -X POST repos/example/repo/pulls/123/reviews/456/events",
-        "gh api -X POST graphql -f query='mutation { enablePullRequestAutoMerge(input: {}) }'",
-        "gh api graphql --input mutation.json",
-        "gh api graphql -f query=@mutation.graphql",
-        "gh api graphql -f query='mutation { submitPullRequestReview(input: {}) }'",
-        "gh api -X POST graphql -f query='mutation { resolveReviewThread(input: {}) }'",
-        "gh api -X POST graphql -f query='mutation { unresolveReviewThread(input: {}) }'",
-        "gh api -X PUT repos/example/repo/pulls/123/merge",
-        "gh api --method=PUT 'repos/example/repo/pulls/$PR_NUMBER/merge'",
-        "gh api -X PUT repos/example/repo/pulls/123/reviews/456/dismissals",
-    ],
-)
-def test_shell_equivalents_are_denied(
-    command: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """PowerShell wrapperとAPI直呼びを含む禁止commandを拒否する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "main")
-    result = HOOK.evaluate({"tool_name": "Bash", "tool_input": {"command": command}})
-
-    _assert_evaluation_denied(result)
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "gh pr review 123 --approve",
-        "gh pr review 123 --request-changes",
-        "gh pr merge 123 --merge",
-        "exec gh pr merge 123 --merge",
-        "exec env GH_HOST=github.com gh pr merge 123 --merge",
-        'exec "gh" pr merge 123 --merge',
-        '"exec" "gh" "pr" "merge" 123 --merge',
-    ],
-)
-@pytest.mark.parametrize("tool_name", ["Bash", "shell_command"])
-def test_develop_shell_review_and_merge_are_allowed(
-    command: str,
+def test_non_judgment_github_operations_are_allowed(
     tool_name: str,
-    monkeypatch: pytest.MonkeyPatch,
+    tool_input: Mapping[str, Any],
 ) -> None:
-    """gh経由でもdevelop向けの正式判断とmergeを許可する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
-
-    assert HOOK.evaluate({"tool_name": tool_name, "tool_input": {"command": command}}) is None
+    """PR作成、参照、通常コメントを維持する。"""
+    assert HOOK.evaluate({"tool_name": tool_name, "tool_input": tool_input}) is None
 
 
-@pytest.mark.parametrize(
-    "command",
-    [
-        "gh pr merge 123",
-        "gh pr merge 123 --squash",
-        "gh pr merge 123 --rebase",
-        "gh pr merge 123 --auto",
-        "gh pr merge 123 --merge --squash",
-    ],
-)
-def test_develop_shell_merge_rejects_non_merge_commit_methods(
-    command: str,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """gh経由でもmerge commitを明示しない取り込みを拒否する。"""
-    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
-
-    result = HOOK.evaluate({"tool_name": "shell_command", "tool_input": {"command": command}})
-
-    _assert_evaluation_denied(result)
-
-
-def test_every_shell_gh_invocation_is_checked(monkeypatch: pytest.MonkeyPatch) -> None:
-    """許可対象の後に続く禁止対象も検査する。"""
-
-    def base(tool_input: Mapping[str, object]) -> str:
-        return "develop" if tool_input["pr_number"] == 123 else "main"
-
-    monkeypatch.setattr(HOOK, "_pull_request_base", base)
-
-    result = HOOK.evaluate(
-        {
-            "tool_name": "shell_command",
-            "tool_input": {
-                "command": "gh pr merge 123 --merge && gh pr merge 456 --merge",
-            },
-        }
-    )
-
-    _assert_evaluation_denied(result)
-
-
-def test_pull_request_base_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
-    """PR targetは呼出入力で自己申告させずGitHubから取得する。"""
+def test_pull_request_state_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    """baseとheadは呼出入力で自己申告させずGitHubから取得する。"""
     commands: list[list[str]] = []
 
     def completed(command: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         commands.append(command)
-        return subprocess.CompletedProcess(command, 0, "develop\n", "")
+        output = json.dumps({"baseRefName": "develop", "headRefOid": "head-sha"})
+        return subprocess.CompletedProcess(command, 0, output, "")
 
     monkeypatch.setattr(HOOK.subprocess, "run", completed)
 
-    assert (
-        HOOK._pull_request_base({"pr_number": 123, "repository_full_name": "example/repo"})
-        == "develop"
-    )
+    state = HOOK._pull_request_state({"pr_number": 123, "repository_full_name": "example/repo"})
+
+    assert state == DEVELOP_STATE
     assert commands == [
         [
             "gh",
@@ -345,9 +219,7 @@ def test_pull_request_base_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch
             "view",
             "123",
             "--json",
-            "baseRefName",
-            "--jq",
-            ".baseRefName",
+            "baseRefName,headRefOid",
             "--repo",
             "example/repo",
         ]
@@ -355,14 +227,40 @@ def test_pull_request_base_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch
 
 
 @pytest.mark.parametrize(
-    "failure",
-    [subprocess.CompletedProcess(["gh"], 1, "", "not found"), subprocess.TimeoutExpired(["gh"], 5)],
+    "tool_input",
+    [
+        {"pr_number": 123},
+        {"pr_number": True, "repository_full_name": "example/repo"},
+        {"repository_full_name": "example/repo"},
+    ],
 )
-def test_pull_request_base_resolution_fails_closed(
+def test_pull_request_state_requires_explicit_repository_and_number(
+    tool_input: Mapping[str, object],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """現在repoや真偽値へ曖昧にfallbackしない。"""
+    monkeypatch.setattr(
+        HOOK.subprocess,
+        "run",
+        lambda *_args, **_kwargs: pytest.fail("invalid input must not query GitHub"),
+    )
+
+    assert HOOK._pull_request_state(tool_input) is None
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        subprocess.CompletedProcess(["gh"], 1, "", "not found"),
+        subprocess.CompletedProcess(["gh"], 0, "{", ""),
+        subprocess.TimeoutExpired(["gh"], 5),
+    ],
+)
+def test_pull_request_state_resolution_fails_closed(
     failure: subprocess.CompletedProcess[str] | subprocess.TimeoutExpired,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """GitHub照会が失敗した場合はdevelop向けと推定しない。"""
+    """GitHub照会失敗時は判断操作を許可しない。"""
 
     def fail(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if isinstance(failure, subprocess.TimeoutExpired):
@@ -371,71 +269,21 @@ def test_pull_request_base_resolution_fails_closed(
 
     monkeypatch.setattr(HOOK.subprocess, "run", fail)
 
-    assert HOOK._pull_request_base({"pr_number": 123}) is None
-    result = HOOK.evaluate(
-        {
-            "tool_name": "mcp__codex_apps__github_merge_pull_request",
-            "tool_input": {"pr_number": 123},
-        }
-    )
-    _assert_evaluation_denied(result)
-
-
-def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
-    """cross-repository操作は現在repoの同番号PRで判定しない。"""
-    inputs: list[Mapping[str, object]] = []
-
-    def develop(tool_input: Mapping[str, object]) -> str:
-        inputs.append(tool_input)
-        return "develop"
-
-    monkeypatch.setattr(HOOK, "_pull_request_base", develop)
-
-    assert (
+    tool_input = {"pr_number": 123, "repository_full_name": "example/repo"}
+    assert HOOK._pull_request_state(tool_input) is None
+    _assert_denied(
         HOOK.evaluate(
             {
-                "tool_name": "shell_command",
-                "tool_input": {"command": "gh -R example/repo pr merge 123 --merge"},
+                "tool_name": MERGE_TOOL,
+                "tool_input": {
+                    "pr_number": 123,
+                    "repository_full_name": "example/repo",
+                    "merge_method": "merge",
+                    "expected_head_sha": "head-sha",
+                },
             }
         )
-        is None
     )
-    assert inputs == [{"pr_number": 123, "repository_full_name": "example/repo"}]
-
-
-@pytest.mark.parametrize(
-    "command",
-    [
-        "gh pr view 123",
-        "gh pr checks 123",
-        "gh pr comment 123 --body 'advice'",
-        "gh pr create --title 'change' --body 'details'",
-        "gh pr review 123 --comment --body 'advice'",
-        "gh api repos/example/repo/pulls/123",
-        "gh api repos/example/repo/pulls/123/merge",
-        "gh api -X GET repos/example/repo/pulls/123/merge",
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f event=COMMENT",
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f event='COMMENT'",
-        "gh api -X POST repos/example/repo/pulls/123/reviews -f 'event'='COMMENT'",
-        'gh api -X POST repos/example/repo/pulls/123/reviews --field="event=COMMENT"',
-        "gh api -X POST repos/example/repo/pulls/123/reviews/456/events -f event=COMMENT",
-        "gh api graphql -f query='query { viewer { login } }'",
-        "gh api -X POST repos/example/repo/issues/123/comments -f body=mergePullRequest",
-        "gh api -X POST repos/example/repo/issues/123/comments -f body=event=APPROVE",
-        'rg -n "gh pr merge" .codex tests',
-        'Select-String -Pattern "gh pr review 123 --approve" -Path policy.md',
-        'Write-Output "gh pr merge 123"',
-        'Write-Output "exec gh pr merge 123 --merge"',
-        "powershell -Command \"Write-Output 'gh pr merge 123'\"",
-        "command -v gh pr merge 123 --merge",
-    ],
-)
-def test_read_comment_and_creation_commands_are_allowed(command: str) -> None:
-    """参照、作成、通常コメント、COMMENT reviewは許可する。"""
-    result = _run_hook("Bash", {"command": command})
-
-    assert result.returncode == 0
-    assert result.stdout == ""
 
 
 @pytest.mark.parametrize("tool_input", [{}, {"action": "UNKNOWN"}])
@@ -443,19 +291,28 @@ def test_unknown_review_action_fails_closed(tool_input: Mapping[str, Any]) -> No
     """tool仕様の追加を暗黙に許可しない。"""
     result = _run_hook(ADD_REVIEW_TOOL, tool_input)
 
-    _assert_denied(result)
+    assert result.returncode == 0
+    _assert_denied(json.loads(result.stdout))
 
 
 def test_malformed_json_fails_closed() -> None:
     """解析できないhook入力を許可しない。"""
-    result = _run_raw_hook("{")
+    result = subprocess.run(
+        [sys.executable, str(HOOK_PATH)],
+        input="{",
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
 
-    _assert_denied(result)
+    assert result.returncode == 0
+    _assert_denied(json.loads(result.stdout))
 
 
 def test_evaluation_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     """判定処理の例外を有効なdeny応答へ変換する。"""
-    stdin = io.StringIO(json.dumps({"tool_name": "Bash", "tool_input": {"command": "true"}}))
+    stdin = io.StringIO(json.dumps({"tool_name": MERGE_TOOL, "tool_input": {}}))
     stdout = io.StringIO()
 
     def fail(_: Mapping[str, object]) -> None:
@@ -466,27 +323,24 @@ def test_evaluation_error_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(HOOK, "evaluate", fail)
 
     assert HOOK.main() == 0
-    decision = json.loads(stdout.getvalue())["hookSpecificOutput"]
-    assert decision["permissionDecision"] == "deny"
+    _assert_denied(json.loads(stdout.getvalue()))
 
 
-def test_hook_registration_covers_every_governance_tool() -> None:
-    """hook登録、対象tool、禁止操作一覧を固定する。"""
+def test_hook_registration_targets_only_structured_github_tools() -> None:
+    """shellを解析せず構造化GitHub toolだけを対象にする。"""
     document = json.loads(HOOK_CONFIG_PATH.read_text(encoding="utf-8"))
     registrations = document["hooks"]["PreToolUse"]
 
     assert len(registrations) == 1
     matcher = registrations[0]["matcher"]
-    assert re.fullmatch(matcher, "Bash")
-    assert re.fullmatch(matcher, "shell_command")
     assert re.fullmatch(matcher, ADD_REVIEW_TOOL)
-    assert re.fullmatch(matcher, "mcp__renamed_connector__github_merge_pull_request")
+    assert re.fullmatch(matcher, MERGE_TOOL)
+    assert re.fullmatch(matcher, "Bash") is None
+    assert re.fullmatch(matcher, "shell_command") is None
     command_hook = registrations[0]["hooks"][0]
     assert command_hook["type"] == "command"
     assert ".codex/hooks/github_pr_governance.py" in command_hook["command"]
     assert ".codex/hooks/github_pr_governance.py" in command_hook["commandWindows"]
-    assert {"APPROVE", "REQUEST_CHANGES"} == HOOK.BLOCKED_REVIEW_ACTIONS
-    assert {"COMMENT"} == HOOK.ALLOWED_REVIEW_ACTIONS
 
 
 def test_governance_boundary_is_documented_consistently() -> None:
@@ -497,12 +351,13 @@ def test_governance_boundary_is_documented_consistently() -> None:
 
     for document in (agents, scripts):
         assert "inline `COMMENT`" in document
+        assert "最新head SHA" in document
         assert "`develop`向けPR" in document
         assert "`main`向けPR" in document
         assert "人間" in document
         assert "merge" in document
     assert "required_approving_review_count`を0" in scripts
     assert "GitHub側の権限制御ではない" in scripts
-    assert "hosted tool" in scripts
-    assert "develop向けはAIが正式判断とmerge" in template
+    assert "shellコマンドを解析しない" in scripts
+    assert "develop向けはAIが最新headへの判断を記録" in template
     assert "main向けの正式承認とmergeは人間" in template

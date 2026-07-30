@@ -84,10 +84,13 @@ uv run --no-sync python -m scripts.architecture
 ## Pull Requestガバナンス
 
 AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`を担当する。`develop`向けPRでは
-必須checkと未解決指摘を確認し、正式な`APPROVE`または`REQUEST_CHANGES`を送信してmerge commitで
-取り込める。`main`向けPRの正式な承認とmerge、レビュー却下、レビュー会話の解決または再オープン、
-auto-mergeは行わない。`.codex/hooks.json`の`PreToolUse` hookをCLI、API、ブラウザーなどの別経路で
-回避しない。禁止操作が必要な場合は、対象PRと必要な判断を人間へ引き渡す。
+必須checkと未解決指摘を最新head SHAで確認し、そのcommitへ判断を記録してmerge commitで取り込める。
+正式な`APPROVE`または`REQUEST_CHANGES`を使う場合も最新head SHAへ固定する。同じGitHubアカウントの
+自己承認が拒否される場合は、commitへ固定した`COMMENT`に判断と根拠を記録する。merge時は
+`expected_head_sha`へ確認済みheadを指定する。`main`向けPRの正式な承認とmerge、レビュー却下、
+レビュー会話の解決または再オープン、auto-mergeは行わない。`.codex/hooks.json`の`PreToolUse` hookを
+CLI、API、ブラウザーなどの別経路で回避しない。禁止操作が必要な場合は、対象PRと必要な判断を
+人間へ引き渡す。
 
 ## Commit
 
