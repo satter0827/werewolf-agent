@@ -38,7 +38,7 @@ _GH_INVOCATION = re.compile(
     r"(?:env(?:\s+-\S+)*\s+)?"
     r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S+)\s+)*"
     r"(?:(?:command|exec)\s+)*(?:&\s*)?"
-    r"(?:gh(?:\.exe)?|[^\s;|&\"']*[\\/]gh(?:\.exe)?|[\"'][^\"'\r\n]*[\\/]gh(?:\.exe)?[\"'])"
+    r"(?:gh(?:\.exe)?|[^\s;|&\"']*[\\/]gh(?:\.exe)?|[\"'](?:gh(?:\.exe)?|[^\"'\r\n]*[\\/]gh(?:\.exe)?)[\"'])"
     r"\s+(?P<arguments>[^;\r\n|&]+)",
     re.IGNORECASE | re.MULTILINE,
 )
@@ -60,7 +60,7 @@ _HTTP_METHOD = re.compile(
 )
 _API_FIELD = re.compile(
     r"(?:^|\s)(?:(?:-f|-F)(?:\s*|=)|(?:--field|--raw-field)(?:\s+|=))"
-    r"[\"']?(?P<name>[A-Za-z_][A-Za-z0-9_]*)=(?P<value>[^\s\"']+)",
+    r"[\"']?(?P<name>[A-Za-z_][A-Za-z0-9_]*)=[\"']?(?P<value>[^\s\"']+)[\"']?",
     re.IGNORECASE,
 )
 _REVIEW_COLLECTION = re.compile(

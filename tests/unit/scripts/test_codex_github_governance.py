@@ -209,6 +209,8 @@ def test_review_action_is_independent_of_mcp_server_namespace(
         "exec gh pr merge 123 --merge",
         "command exec gh pr review 123 --approve",
         "exec env GH_HOST=github.com command gh pr merge 123 --merge",
+        'exec "gh" pr merge 123 --merge',
+        "'gh' pr review 123 --approve",
         'exec "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
         "gh.exe pr merge 123 --merge",
         "C:\\tools\\gh.exe pr merge 123 --merge",
@@ -222,6 +224,7 @@ def test_review_action_is_independent_of_mcp_server_namespace(
         "$(gh pr merge 123 --merge)",
         '& "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event=APPROVE",
+        "gh api -X POST repos/example/repo/pulls/123/reviews -f event='APPROVE'",
         "gh api -XPOST repos/example/repo/pulls/%PR_NUMBER%/reviews -fevent=APPROVE",
         "gh api -X POST repos/example/repo/pulls/123/reviews",
         "gh api --input review.json repos/example/repo/pulls/123/reviews",
@@ -256,6 +259,7 @@ def test_shell_equivalents_are_denied(
         "gh pr merge 123 --merge",
         "exec gh pr merge 123 --merge",
         "exec env GH_HOST=github.com gh pr merge 123 --merge",
+        'exec "gh" pr merge 123 --merge',
     ],
 )
 @pytest.mark.parametrize("tool_name", ["Bash", "shell_command"])
@@ -403,6 +407,8 @@ def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.M
         "gh api repos/example/repo/pulls/123/merge",
         "gh api -X GET repos/example/repo/pulls/123/merge",
         "gh api -X POST repos/example/repo/pulls/123/reviews -f event=COMMENT",
+        "gh api -X POST repos/example/repo/pulls/123/reviews -f event='COMMENT'",
+        'gh api -X POST repos/example/repo/pulls/123/reviews --field="event=COMMENT"',
         "gh api -X POST repos/example/repo/pulls/123/reviews/456/events -f event=COMMENT",
         "gh api graphql -f query='query { viewer { login } }'",
         "gh api -X POST repos/example/repo/issues/123/comments -f body=mergePullRequest",
