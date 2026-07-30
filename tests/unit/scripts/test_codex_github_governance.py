@@ -206,6 +206,10 @@ def test_review_action_is_independent_of_mcp_server_namespace(
         "GH_HOST=github.com gh pr merge 123 --merge",
         "env GH_HOST=github.com gh pr review 123 --approve",
         "command gh pr merge 123 --merge",
+        "exec gh pr merge 123 --merge",
+        "command exec gh pr review 123 --approve",
+        "exec env GH_HOST=github.com command gh pr merge 123 --merge",
+        'exec "C:\\Program Files\\GitHub CLI\\gh.exe" pr merge 123 --merge',
         "gh.exe pr merge 123 --merge",
         "C:\\tools\\gh.exe pr merge 123 --merge",
         "Write-Output ready; gh pr merge 123 --merge",
@@ -246,7 +250,13 @@ def test_shell_equivalents_are_denied(
 
 @pytest.mark.parametrize(
     "command",
-    ["gh pr review 123 --approve", "gh pr review 123 --request-changes", "gh pr merge 123 --merge"],
+    [
+        "gh pr review 123 --approve",
+        "gh pr review 123 --request-changes",
+        "gh pr merge 123 --merge",
+        "exec gh pr merge 123 --merge",
+        "exec env GH_HOST=github.com gh pr merge 123 --merge",
+    ],
 )
 @pytest.mark.parametrize("tool_name", ["Bash", "shell_command"])
 def test_develop_shell_review_and_merge_are_allowed(
@@ -400,6 +410,7 @@ def test_shell_repository_is_preserved_for_base_resolution(monkeypatch: pytest.M
         'rg -n "gh pr merge" .codex tests',
         'Select-String -Pattern "gh pr review 123 --approve" -Path policy.md',
         'Write-Output "gh pr merge 123"',
+        'Write-Output "exec gh pr merge 123 --merge"',
         "powershell -Command \"Write-Output 'gh pr merge 123'\"",
     ],
 )
