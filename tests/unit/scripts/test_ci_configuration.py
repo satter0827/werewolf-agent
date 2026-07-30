@@ -281,7 +281,7 @@ def test_backend_dev_image_contains_the_test_suite() -> None:
     dev = dockerfile.split("FROM dev-dependencies AS dev", 1)[1].split(
         "FROM runtime-dependencies AS runtime", 1
     )[0]
-    for copied_path in (".codex", ".github", "docker", "docs", "tests"):
+    for copied_path in (".codex", ".github", "docker", "docs", "notebooks", "tests"):
         assert f"COPY {copied_path}" in dev
     assert "contracts/openapi.json" in dev
 
