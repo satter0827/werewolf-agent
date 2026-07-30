@@ -133,17 +133,15 @@ def _evaluate_review(tool_input: object) -> dict[str, object] | None:
     if action is None:
         return _deny("レビュー種別を確認できないため、操作を拒否します。")
     normalized_action = action.upper()
-    if normalized_action in ALLOWED_REVIEW_ACTIONS:
-        return None
-    if normalized_action not in FORMAL_REVIEW_ACTIONS:
+    if normalized_action not in ALLOWED_REVIEW_ACTIONS | FORMAL_REVIEW_ACTIONS:
         return _deny("未知のレビュー種別は許可しません。COMMENTとして助言してください。")
 
     state = _pull_request_state(tool_input)
     commit_id = _normalized_string(tool_input, "commit_id")
-    if state is None or state.base_ref != DEVELOP_BRANCH:
+    if state is None or commit_id is None or commit_id != state.head_sha:
+        return _deny("レビューは対象PRの最新head SHAへ固定してください。")
+    if normalized_action in FORMAL_REVIEW_ACTIONS and state.base_ref != DEVELOP_BRANCH:
         return _deny("AIはdevelop以外のPRへ正式なレビュー判断を送信しません。")
-    if commit_id is None or commit_id != state.head_sha:
-        return _deny("developの正式レビューは最新head SHAへ固定してください。")
     return None
 
 

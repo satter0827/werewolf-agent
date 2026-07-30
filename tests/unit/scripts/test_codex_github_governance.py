@@ -58,23 +58,39 @@ def _assert_denied(result: dict[str, object] | None) -> None:
     assert output["permissionDecisionReason"]
 
 
-def test_comment_review_is_allowed_without_pr_lookup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """助言用COMMENTはtarget branchに依存しない。"""
-    monkeypatch.setattr(
-        HOOK,
-        "_pull_request_state",
-        lambda _input: pytest.fail("COMMENT must not query PR state"),
-    )
+@pytest.mark.parametrize("state", [DEVELOP_STATE, MAIN_STATE])
+def test_comment_review_requires_current_head_on_every_branch(
+    state: Any,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """COMMENT reviewもtarget branchの最新headへ固定する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_state", lambda _input: state)
 
     assert (
         HOOK.evaluate(
             {
                 "tool_name": ADD_REVIEW_TOOL,
-                "tool_input": {"action": "COMMENT", "pr_number": 123},
+                "tool_input": {
+                    "action": "COMMENT",
+                    "commit_id": "head-sha",
+                    "pr_number": 123,
+                },
             }
         )
         is None
     )
+    for commit_id in (None, "stale-sha"):
+        result = HOOK.evaluate(
+            {
+                "tool_name": ADD_REVIEW_TOOL,
+                "tool_input": {
+                    "action": "COMMENT",
+                    "commit_id": commit_id,
+                    "pr_number": 123,
+                },
+            }
+        )
+        _assert_denied(result)
 
 
 @pytest.mark.parametrize("action", ["APPROVE", "REQUEST_CHANGES", "approve"])

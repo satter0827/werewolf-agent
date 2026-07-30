@@ -123,8 +123,9 @@ PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向�
 
 AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`を担当する。`develop`向けPRは必須checkと
 未解決指摘を最新head SHAで確認し、そのcommitへ判断を記録してmerge commitで取り込める。正式な
-レビュー判断を使う場合は`commit_id`、merge時は`expected_head_sha`へ同じ最新head SHAを指定する。
-同じGitHubアカウントの自己承認が拒否される場合は、commitへ固定した`COMMENT`に判断と根拠を残す。
+レビュー判断とレビューAPIの`COMMENT`は`commit_id`、merge時は`expected_head_sha`へ同じ最新head SHAを
+指定する。通常コメントはレビューAPIと分離する。同じGitHubアカウントの自己承認が拒否される場合は、
+commitへ固定した`COMMENT`に判断と根拠を残す。
 `main`向けPRの正式な承認とmerge、レビュー会話の解決、auto-mergeは人間が担当する。リポジトリ固有の
 `.codex/hooks.json`は構造化GitHub connectorの禁止操作を実行前に拒否し、hook変更後は新しいCodex
 sessionで再信頼する。`main`と`develop`のRulesetで`required_approving_review_count`を0とする設定は、
