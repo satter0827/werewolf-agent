@@ -14,6 +14,7 @@ GITHUB_OPERATION_PREFIX = "github_"
 ADD_REVIEW_OPERATION = "add_review_to_pr"
 MERGE_OPERATION = "merge_pull_request"
 DEVELOP_BRANCH = "develop"
+MERGE_METHOD = "merge"
 BLOCKED_OPERATIONS = frozenset(
     {
         "dismiss_pull_request_review",
@@ -168,6 +169,13 @@ def _is_develop_pull_request(tool_input: object) -> bool:
     return isinstance(tool_input, Mapping) and _pull_request_base(tool_input) == DEVELOP_BRANCH
 
 
+def _uses_merge_commit(tool_input: object) -> bool:
+    if not isinstance(tool_input, Mapping):
+        return False
+    method = tool_input.get("merge_method")
+    return isinstance(method, str) and method.strip().casefold() == MERGE_METHOD
+
+
 def _without_gh_root_options(arguments: str) -> str:
     normalized = re.sub(r"\s+", " ", arguments.strip().strip("\"'")).strip()
     while match := _GH_ROOT_OPTION.match(normalized):
@@ -244,12 +252,22 @@ def _blocked_shell_operation(command: str) -> bool:
         normalized = arguments.casefold()
         if re.match(r"^pr merge(?:\s|$)", normalized):
             pull_request = _shell_pull_request_input(arguments, repository)
-            return pull_request is None or not _is_develop_pull_request(pull_request)
+            tokens = {token.strip("\"',") for token in normalized.split()}
+            if (
+                pull_request is None
+                or not _is_develop_pull_request(pull_request)
+                or "--merge" not in tokens
+                or tokens.intersection({"--squash", "--rebase", "--auto"})
+            ):
+                return True
+            continue
         if re.match(r"^pr review(?:\s|$)", normalized):
             tokens = {token.strip("\"',") for token in normalized.split()}
             if tokens.intersection({"--approve", "-a", "--request-changes", "-r"}):
                 pull_request = _shell_pull_request_input(arguments, repository)
-                return pull_request is None or not _is_develop_pull_request(pull_request)
+                if pull_request is None or not _is_develop_pull_request(pull_request):
+                    return True
+                continue
             if not tokens.intersection({"--comment", "-c"}):
                 return True
         if re.match(r"^api(?:\s|$)", normalized) and _blocked_api_operation(arguments[3:]):
@@ -281,9 +299,9 @@ def evaluate(payload: Mapping[str, object]) -> dict[str, object] | None:
         return _deny("未知のレビュー種別は許可しません。COMMENTとして助言してください。")
 
     if operation == MERGE_OPERATION:
-        if _is_develop_pull_request(tool_input):
+        if _is_develop_pull_request(tool_input) and _uses_merge_commit(tool_input):
             return None
-        return _deny("AIはdevelop以外のPRをmergeしません。")
+        return _deny("AIはdevelop向けPRだけをmerge commitで取り込みます。")
 
     if operation in BLOCKED_OPERATIONS:
         return _deny(
