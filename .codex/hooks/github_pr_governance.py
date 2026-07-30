@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 import sys
 from collections.abc import Mapping
@@ -26,22 +27,12 @@ BLOCKED_OPERATIONS = frozenset(
 BLOCKED_REVIEW_ACTIONS = frozenset({"APPROVE", "REQUEST_CHANGES"})
 ALLOWED_REVIEW_ACTIONS = frozenset({"COMMENT"})
 
-_GH_INVOCATION = re.compile(
-    r"(?:"
-    r"^\s*"
-    r"|[;&|(]\s*"
-    r"|\b(?:powershell|pwsh)(?:\.exe)?\b[^\r\n]*?"
-    r"(?:-Command|-c)\s+[\"']?\s*"
-    r"|\b(?:cmd(?:\.exe)?\s+/c|(?:ba)?sh\s+-c)\s+[\"']?\s*"
-    r")"
-    r"(?:(?:command|exec)\s+)*"
-    r"(?:env(?:\s+-\S+)*\s+)?"
-    r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S+)\s+)*"
-    r"(?:(?:command|exec)\s+)*(?:&\s*)?"
-    r"(?:gh(?:\.exe)?|[^\s;|&\"']*[\\/]gh(?:\.exe)?|[\"'](?:gh(?:\.exe)?|[^\"'\r\n]*[\\/]gh(?:\.exe)?)[\"'])"
-    r"\s+(?P<arguments>[^;\r\n|&]+)",
-    re.IGNORECASE | re.MULTILINE,
-)
+_SHELL_PUNCTUATION = ";&|()\n"
+_SHELL_WRAPPERS = frozenset({"command", "exec"})
+_SHELL_LAUNCHERS = frozenset({"bash", "cmd", "powershell", "pwsh", "sh"})
+_ENV_OPTIONS_WITH_VALUE = frozenset({"-C", "--chdir", "-u", "--unset"})
+_EXEC_OPTIONS_WITH_VALUE = frozenset({"-a"})
+_ENV_ASSIGNMENT = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 _GH_ROOT_OPTION = re.compile(
     r"^(?:"
     r"(?:-R|--repo|--hostname)\s+(?:\"[^\"]*\"|'[^']*'|\S+)"
@@ -245,9 +236,121 @@ def _shell_pull_request_input(
     return tool_input
 
 
+def _shell_tokenizations(command: str) -> tuple[tuple[str, ...], ...]:
+    """POSIX escapeとWindows pathの両方を保つshell token列を返す。"""
+    tokenizations: list[tuple[str, ...]] = []
+    escapes = ("\\", "") if re.search(r"(?:[A-Za-z]:\\|\\\\)", command) else ("\\",)
+    for escape in escapes:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=_SHELL_PUNCTUATION)
+        lexer.commenters = ""
+        lexer.escape = escape
+        lexer.whitespace = " \t\r"
+        lexer.whitespace_split = True
+        try:
+            tokens = tuple(lexer)
+        except ValueError:
+            continue
+        if tokens not in tokenizations:
+            tokenizations.append(tokens)
+    return tuple(tokenizations)
+
+
+def _is_shell_separator(token: str) -> bool:
+    return bool(token) and all(character in _SHELL_PUNCTUATION for character in token)
+
+
+def _shell_command_name(token: str) -> str:
+    normalized = token.replace("\\", "/").rsplit("/", maxsplit=1)[-1].casefold()
+    return normalized.removesuffix(".exe")
+
+
+def _skip_env_options(tokens: tuple[str, ...], index: int, end: int) -> int:
+    while index < end and tokens[index].startswith("-"):
+        option = tokens[index].split("=", maxsplit=1)[0]
+        index += 1
+        if option in _ENV_OPTIONS_WITH_VALUE and "=" not in tokens[index - 1] and index < end:
+            index += 1
+    return index
+
+
+def _skip_shell_prefixes(tokens: tuple[str, ...], index: int, end: int) -> int:
+    while index < end:
+        name = _shell_command_name(tokens[index])
+        if _ENV_ASSIGNMENT.match(tokens[index]):
+            index += 1
+            continue
+        if name in _SHELL_WRAPPERS:
+            index += 1
+            if name == "command":
+                while index < end and tokens[index] in {"--", "-p"}:
+                    index += 1
+                if index < end and tokens[index].startswith("-"):
+                    return end
+                continue
+            while index < end and tokens[index].startswith("-"):
+                option = tokens[index].split("=", maxsplit=1)[0]
+                index += 1
+                if (
+                    option in _EXEC_OPTIONS_WITH_VALUE
+                    and "=" not in tokens[index - 1]
+                    and index < end
+                ):
+                    index += 1
+                if option == "--":
+                    break
+            continue
+        if name == "env":
+            index = _skip_env_options(tokens, index + 1, end)
+            continue
+        return index
+    return index
+
+
+def _nested_shell_command(tokens: tuple[str, ...], index: int, end: int) -> str | None:
+    launcher = _shell_command_name(tokens[index])
+    expected = {"/c"} if launcher == "cmd" else {"-c", "-command"}
+    for option_index in range(index + 1, end):
+        if tokens[option_index].casefold() in expected and option_index + 1 < end:
+            return " ".join(tokens[option_index + 1 : end])
+    return None
+
+
+def _gh_invocations(command: str, *, depth: int = 0) -> tuple[str, ...]:
+    if depth > 3:
+        return ()
+    invocations: list[str] = []
+    for tokens in _shell_tokenizations(command):
+        index = 0
+        command_start = True
+        while index < len(tokens):
+            if _is_shell_separator(tokens[index]):
+                command_start = True
+                index += 1
+                continue
+            if not command_start:
+                index += 1
+                continue
+            end = index
+            while end < len(tokens) and not _is_shell_separator(tokens[end]):
+                end += 1
+            executable_index = _skip_shell_prefixes(tokens, index, end)
+            if executable_index >= end:
+                index = end
+                continue
+            executable = _shell_command_name(tokens[executable_index])
+            if executable in _SHELL_LAUNCHERS:
+                nested = _nested_shell_command(tokens, executable_index, end)
+                if nested is not None:
+                    invocations.extend(_gh_invocations(nested, depth=depth + 1))
+            elif executable == "gh" and executable_index + 1 < end:
+                invocations.append(" ".join(tokens[executable_index + 1 : end]))
+            command_start = False
+            index = end
+    return tuple(dict.fromkeys(invocations))
+
+
 def _blocked_shell_operation(command: str) -> bool:
-    for match in _GH_INVOCATION.finditer(command):
-        raw_arguments = match.group("arguments")
+    for raw_arguments in _gh_invocations(command):
         repository = _gh_repository(raw_arguments)
         arguments = _without_gh_root_options(raw_arguments)
         normalized = arguments.casefold()
