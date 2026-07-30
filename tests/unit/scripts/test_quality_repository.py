@@ -37,8 +37,8 @@ def test_change_set_rejects_workspace_overlay_for_non_head_ref(tmp_path: Path) -
         resolve_changes(None, head, root=tmp_path)
 
 
-def test_change_set_accepts_clean_non_head_ref(tmp_path: Path) -> None:
-    """cleanなCI workspaceでは指定commitをそのまま検査する。"""
+def test_change_set_accepts_ref_resolving_to_checked_out_head(tmp_path: Path) -> None:
+    """ref名がHEAD以外でもcheckoutと同じcommitなら検査する。"""
     _initialize_repository(tmp_path)
     head = _git(tmp_path, "rev-parse", "HEAD")
 
@@ -47,6 +47,18 @@ def test_change_set_accepts_clean_non_head_ref(tmp_path: Path) -> None:
     assert change.head_ref == head
     assert change.head_revision == head
     assert change.changed_paths == ()
+
+
+def test_change_set_rejects_clean_ref_outside_checked_out_head(tmp_path: Path) -> None:
+    """reportのheadと実際にgateを動かすcheckoutを一致させる。"""
+    _initialize_repository(tmp_path)
+    other = _git(tmp_path, "rev-parse", "HEAD")
+    (tmp_path / "committed.txt").write_text("current\n", encoding="utf-8")
+    _git(tmp_path, "add", "committed.txt")
+    _git(tmp_path, "commit", "-m", "current")
+
+    with pytest.raises(RuntimeError, match="現在checkoutしているHEAD"):
+        resolve_changes(None, other, root=tmp_path)
 
 
 def test_snapshot_tracks_source_changes_but_ignores_declared_artifacts(tmp_path: Path) -> None:

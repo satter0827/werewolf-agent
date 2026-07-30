@@ -29,7 +29,11 @@ def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
     assert "--confirm-deep" in composite
     assert "--base-ref origin/develop" in workflow
     assert "base-ref: origin/main" in workflow
-    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in workflow
+    assert workflow.count("--head-ref HEAD") == 2
+    assert workflow.count("head-ref: HEAD") >= 2
+    assert (
+        "github.event.pull_request.head.sha" not in workflow.split("\n  nightly-preflight:", 1)[0]
+    )
     assert "fetch-depth: 0" in workflow
 
 
@@ -43,7 +47,7 @@ def test_manual_check_reuses_the_develop_pr_job() -> None:
 
     assert "inputs.profile == 'check'" in develop_check
     assert "github.base_ref == 'develop'" in develop_check
-    assert "--head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}" in develop_check
+    assert "--head-ref HEAD" in develop_check
     assert "needs.nightly-preflight.result == 'success'" in scheduled_deep
     assert "nightly-preflight.outputs.force" in scheduled_deep
 

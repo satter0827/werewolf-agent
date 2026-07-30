@@ -41,6 +41,12 @@ def resolve_changes(
 ) -> ChangeSet:
     """commit差分と現在のworkspace差分を統合する。"""
     head_revision = _git_text(root, "rev-parse", "--verify", f"{head_ref}^{{commit}}")
+    checked_out_revision = _git_text(root, "rev-parse", "--verify", "HEAD^{commit}")
+    if head_revision != checked_out_revision:
+        raise RuntimeError(
+            "head refは現在checkoutしているHEADと同じcommitを指定してください。"
+            "別commitを検査する場合は、そのcommitを専用worktreeへcheckoutしてください。"
+        )
     workspace_paths = {
         *_git_lines(root, "diff", "--name-only", "HEAD"),
         *_untracked_paths(root),
