@@ -133,11 +133,29 @@ def test_develop_merge_tool_is_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
         HOOK.evaluate(
             {
                 "tool_name": "mcp__codex_apps__github_merge_pull_request",
-                "tool_input": {"pr_number": 123},
+                "tool_input": {"pr_number": 123, "merge_method": "merge"},
             }
         )
         is None
     )
+
+
+@pytest.mark.parametrize("merge_method", [None, "squash", "rebase"])
+def test_develop_merge_tool_rejects_non_merge_commit_methods(
+    merge_method: str | None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """develop向けでもmerge commit以外の取り込みを拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+
+    result = HOOK.evaluate(
+        {
+            "tool_name": "mcp__codex_apps__github_merge_pull_request",
+            "tool_input": {"pr_number": 123, "merge_method": merge_method},
+        }
+    )
+
+    _assert_evaluation_denied(result)
 
 
 @pytest.mark.parametrize(
@@ -240,6 +258,48 @@ def test_develop_shell_review_and_merge_are_allowed(
     monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
 
     assert HOOK.evaluate({"tool_name": tool_name, "tool_input": {"command": command}}) is None
+
+
+@pytest.mark.parametrize(
+    "command",
+    [
+        "gh pr merge 123",
+        "gh pr merge 123 --squash",
+        "gh pr merge 123 --rebase",
+        "gh pr merge 123 --auto",
+        "gh pr merge 123 --merge --squash",
+    ],
+)
+def test_develop_shell_merge_rejects_non_merge_commit_methods(
+    command: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """gh経由でもmerge commitを明示しない取り込みを拒否する。"""
+    monkeypatch.setattr(HOOK, "_pull_request_base", lambda _input: "develop")
+
+    result = HOOK.evaluate({"tool_name": "shell_command", "tool_input": {"command": command}})
+
+    _assert_evaluation_denied(result)
+
+
+def test_every_shell_gh_invocation_is_checked(monkeypatch: pytest.MonkeyPatch) -> None:
+    """許可対象の後に続く禁止対象も検査する。"""
+
+    def base(tool_input: Mapping[str, object]) -> str:
+        return "develop" if tool_input["pr_number"] == 123 else "main"
+
+    monkeypatch.setattr(HOOK, "_pull_request_base", base)
+
+    result = HOOK.evaluate(
+        {
+            "tool_name": "shell_command",
+            "tool_input": {
+                "command": "gh pr merge 123 --merge && gh pr merge 456 --merge",
+            },
+        }
+    )
+
+    _assert_evaluation_denied(result)
 
 
 def test_pull_request_base_is_resolved_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
