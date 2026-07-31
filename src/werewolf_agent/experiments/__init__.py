@@ -12,6 +12,15 @@ from werewolf_agent.experiments.contracts import (
     TrialPlan,
     plan_trials,
 )
+from werewolf_agent.experiments.evaluation import (
+    STANDARD_EVALUATOR_VERSION,
+    ConditionReport,
+    EvaluationResult,
+    Evaluator,
+    ExperimentReport,
+    StandardEvaluator,
+    build_report,
+)
 from werewolf_agent.experiments.execution import (
     TrialArtifactStore,
     TrialPlayerResult,
@@ -23,13 +32,19 @@ from werewolf_agent.experiments.execution import (
 
 __all__ = [
     "EXPERIMENT_CONTRACT_VERSION",
+    "STANDARD_EVALUATOR_VERSION",
     "AgentCondition",
+    "ConditionReport",
+    "EvaluationResult",
+    "Evaluator",
     "ExperimentCondition",
     "ExperimentKind",
+    "ExperimentReport",
     "ExperimentSpec",
     "PlayerAssignment",
     "RotationMode",
     "RulesCondition",
+    "StandardEvaluator",
     "TrialArtifactStore",
     "TrialPlan",
     "TrialPlayerResult",
@@ -37,5 +52,6 @@ __all__ = [
     "TrialRunSummary",
     "TrialRunner",
     "TrialSessionFactory",
+    "build_report",
     "plan_trials",
 ]

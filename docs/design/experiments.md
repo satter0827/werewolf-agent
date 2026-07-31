@@ -46,6 +46,17 @@ Trial planと照合する。Factoryが異なる実装を返した場合はSessio
 実時間、token、費用は運用観測値として保存できるが、Trial IDと決定性の判定へ含めない。
 LLM judgeは標準評価に使わず、説得や欺瞞の観測値を因果効果として断定しない。
 
+`StandardEvaluator`は条件ごとに合法判断率、fallback率、陣営別勝率、identity faction別生存率、
+controller別・役職別の勝率と生存率、投票対象、能力対象、latency、token、費用を集計する。
+対象分布はプレイヤーIDに加えてtargetのidentity factionでも集計する。合法判断率はfallbackへ移る前にAgent応答が
+そのまま採用された割合とする。belief校正を有効にした場合は、Agentが返した各プレイヤーの
+werewolf確率と最終的なidentity factionからBrier scoreを計算する。
+tokenと費用は計測値があるdecisionだけを合計し、sample数を併記して未計測と実測0を分離する。
+
+外部`Evaluator`は安定ID、意味論version、有限なJSON互換metricを返す。`build_report()`はTrialを
+ID順に並べ、条件別評価、全条件が揃うpaired Trial数、Trial内容の`source_checksum`を生成する。
+生成時刻や実行環境をReportへ含めず、同じartifact集合から同じJSONを得る。
+
 ## 検証
 
 契約テストは条件分離、paired ID、実装fingerprint、決定的計画を確認する。rotationテストは
