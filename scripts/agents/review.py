@@ -26,6 +26,7 @@ from werewolf_agent.adapters.application_bridge import (
     build_setup_catalog,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
 from werewolf_agent.adapters.llm.models import (
     DeliberationLevel,
     PlayerProfile,
@@ -761,6 +762,7 @@ def _run_preset(
                 max_phases=MAX_PHASES,
                 decision_timeout_seconds=config.timeout_seconds,
             ),
+            speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
         ),
     )
     public_timeline = [

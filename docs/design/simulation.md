@@ -30,6 +30,8 @@ provider設定、複数試行、統計、checkpoint、artifactを所有しない
 
 静的なidentityとworldは小さな実験で利用できる。長期sessionでは`AgentMetadataProvider`を使い、
 能力使用後も現在値を返す。providerへ渡す値は本人用`GameView`だけとし、完全状態を契約へ含めない。
+phase専用seedと発言長上限は`SimulationSpec`へ値として注入し、applicationやLLMアダプターの設定を
+simulationへ持ち込まない。
 
 ## 決定性
 

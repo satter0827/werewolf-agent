@@ -110,6 +110,11 @@ Notebook、gameplayレビュー、Agent driver、workerを同じstep APIへ移�
 完了条件は、すべてのヘッドレス入口が同じ実行経路を使い、同じSpecとseedから同じstep、
 state、event列を得ることである。
 
+実装は完了している。Notebook、gameplayレビュー、Agentレビュー、prepared game driver、workerは
+`SimulationSession`を使用する。applicationの手動action、Agentを使わないphase進行、replay検証は
+それぞれの所有境界に残し、別の自動ゲームloopとして扱わない。prepared transitionは開始phase/dayと
+完了状態を検証し、phaseの二重進行と進行漏れを拒否する。
+
 ### 6. Experiment SDKを完成させる
 
 experimentsは`ExperimentSpec`、`RulesCondition`、`AgentCondition`、`TrialPlan`、

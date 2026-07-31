@@ -102,7 +102,11 @@ class SimulationSession:
         self._executor = decision_executor or SynchronousDecisionExecutor()
         self._trace_sink = trace_sink or NullDecisionTraceSink()
         self._cancellation = cancellation or CancellationToken()
-        self._phase_random = random.Random(namespace_seed(spec.seed, "simulation:phase"))
+        self._phase_random = random.Random(
+            spec.phase_seed
+            if spec.phase_seed is not None
+            else namespace_seed(spec.seed, "simulation:phase")
+        )
         self._agent_sessions: dict[str, AgentSession] = {}
         self._fallback_sessions: dict[str, AgentSession] = {}
         self._steps: list[SimulationStep] = []
@@ -144,9 +148,19 @@ class SimulationSession:
             if controller.is_manual:
                 manual_pending = True
                 continue
+            if self._action_count >= self._spec.limits.max_actions:
+                return self._record_stop(
+                    SimulationStepKind.LIMIT_REACHED,
+                    SimulationStopReason.ACTION_LIMIT,
+                )
             return self._agent_action(controller, observation)
 
         if manual_pending:
+            if self._action_count >= self._spec.limits.max_actions:
+                return self._record_stop(
+                    SimulationStepKind.LIMIT_REACHED,
+                    SimulationStopReason.ACTION_LIMIT,
+                )
             return self._record_stop(
                 SimulationStepKind.WAITING_FOR_MANUAL,
                 SimulationStopReason.WAITING_FOR_MANUAL,
@@ -159,6 +173,8 @@ class SimulationSession:
         terminal = self._terminal_step()
         if terminal is not None:
             raise RuntimeError(f"simulation cannot accept input: {terminal.stop_reason}")
+        if self._action_count >= self._spec.limits.max_actions:
+            raise RuntimeError("simulation cannot accept input: action_limit")
         controller = self._spec.controllers.get(action.player_id)
         if controller is None or not controller.is_manual:
             raise ValueError("manual action requires a manual player controller")
@@ -206,11 +222,6 @@ class SimulationSession:
         if state.is_finished:
             return self._record_stop(SimulationStepKind.FINISHED, SimulationStopReason.FINISHED)
         limits = self._spec.limits
-        if self._action_count >= limits.max_actions:
-            return self._record_stop(
-                SimulationStepKind.LIMIT_REACHED,
-                SimulationStopReason.ACTION_LIMIT,
-            )
         if self._phase_count >= limits.max_phases:
             return self._record_stop(
                 SimulationStepKind.LIMIT_REACHED,
@@ -364,6 +375,11 @@ class SimulationSession:
                     action_type=action.type.value,
                     ability_id=action.ability_id,
                     legal_target_ids=tuple(observation.legal_targets.get(action.key, ())),
+                    message_max_chars=(
+                        self._spec.speech_message_max_chars
+                        if action.type.value == "speech"
+                        else None
+                    ),
                 )
                 for action in observation.available_actions
             ),

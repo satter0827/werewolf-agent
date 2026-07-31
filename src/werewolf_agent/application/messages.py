@@ -16,6 +16,8 @@ MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED = "Finished games cannot be advanced."
 
 MESSAGE_ADVANCE_JOB_STATE_CHANGED = "Game changed while advance job was running."
 
+MESSAGE_PREPARED_TRANSITION_STATE_MISMATCH = "Prepared domain transition state is inconsistent."
+
 MESSAGE_GAME_ID_MUST_BE_VALID_UUID = "game_id must be a valid UUID."
 
 MESSAGE_PLAYER_COUNT_AT_LEAST_ONE = "player_count must be at least 1"

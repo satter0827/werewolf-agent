@@ -20,7 +20,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.2.0"
+SIMULATION_CONTRACT_VERSION = "0.3.0"
 
 
 class SimulationStepKind(StrEnum):
@@ -110,6 +110,8 @@ class SimulationSpec:
     seed: int
     controllers: Mapping[str, PlayerController]
     limits: SimulationLimits = field(default_factory=SimulationLimits)
+    phase_seed: int | None = None
+    speech_message_max_chars: int | None = None
 
     def __post_init__(self) -> None:
         """Controller mappingをimmutableにして参照整合を検証する."""
@@ -121,6 +123,12 @@ class SimulationSpec:
         object.__setattr__(self, "game_id", _non_blank(self.game_id, "game_id"))
         if not isinstance(self.seed, int) or isinstance(self.seed, bool):
             raise ValueError("seed must be an integer")
+        if self.phase_seed is not None and (
+            not isinstance(self.phase_seed, int) or isinstance(self.phase_seed, bool)
+        ):
+            raise ValueError("phase_seed must be an integer")
+        if self.speech_message_max_chars is not None:
+            _positive_integer(self.speech_message_max_chars, "speech_message_max_chars")
         controllers = dict(self.controllers)
         if not controllers:
             raise ValueError("controllers must not be empty")
