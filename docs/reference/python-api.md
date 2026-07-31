@@ -1,7 +1,7 @@
 (python-api-reference)=
 # Python API
 
-`werewolf_agent.domain`はゲーム規則と決定的な状態遷移を提供する。
+`werewolf_agent.domain`はゲーム規則、明示登録するRule Pack、決定的な状態遷移を提供する。
 `werewolf_agent.setup`は完全setupの検証、Domain Rule Definition変換、用途別seed、checksum、
 プレイヤー generationを提供する。
 `werewolf_agent.application`は認可、保存port、公開resultを含む利用手順を提供する。

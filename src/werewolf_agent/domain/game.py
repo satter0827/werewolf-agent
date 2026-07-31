@@ -5,8 +5,8 @@ from __future__ import annotations
 import random
 from dataclasses import replace
 
-from werewolf_agent.domain.definitions import RuleSet
 from werewolf_agent.domain.errors import RuleViolation
+from werewolf_agent.domain.rule_packs import CompiledRuleSet
 from werewolf_agent.domain.rules import engine, game_setup
 from werewolf_agent.domain.state import (
     Action,
@@ -24,7 +24,7 @@ class Game:
     def __init__(
         self,
         state: GameState,
-        rules: RuleSet,
+        rules: CompiledRuleSet,
         creation_events: tuple[GameEvent, ...] = (),
     ) -> None:
         """検証済みの値からaggregate fieldを復元する."""
@@ -39,7 +39,7 @@ class Game:
         cls,
         setup: GameSetup,
         *,
-        rules: RuleSet,
+        rules: CompiledRuleSet,
         random: random.Random,
     ) -> Game:
         """検証済みsetup dataと注入した規則からゲームを作成する."""
@@ -62,7 +62,7 @@ class Game:
         cls,
         state: GameState,
         *,
-        rules: RuleSet,
+        rules: CompiledRuleSet,
     ) -> Game:
         """外部I/Oを行わずゲームを復元する."""
         return cls(state, rules)
@@ -85,6 +85,7 @@ class Game:
             self._state,
             self._state.pending_actions,
             random,
+            victory_policy=self._rules.victory_policy,
         )
         self._state = replace(state, pending_actions=pending)
         return events

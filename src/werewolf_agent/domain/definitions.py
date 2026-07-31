@@ -6,6 +6,15 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from werewolf_agent.domain._model import frozen_mapping
+from werewolf_agent.domain.rule_packs import (
+    CORE_RULE_PACK_FINGERPRINT,
+    CORE_RULE_PACK_ID,
+    CORE_RULE_PACK_IMPLEMENTATION_VERSION,
+    RULE_PACK_CONTRACT_VERSION,
+    CompiledRuleSet,
+    CoreVictoryPolicy,
+    RulePackManifest,
+)
 from werewolf_agent.domain.state import AbilityDefinition, GameConfig, LocalRules, RoleCatalog
 
 
@@ -25,24 +34,37 @@ class RuleSetDefinition:
         object.__setattr__(self, "abilities", frozen_mapping(self.abilities))
 
 
-@dataclass(frozen=True)
-class RuleSet:
-    """一つのゲームで実行する検証済み設定を表す."""
+class CoreRulePack:
+    """現在の組み込み規則を同じProvider契約でcompileする."""
 
-    config: GameConfig
+    @property
+    def manifest(self) -> RulePackManifest:
+        """組み込みRule Packのversion付きmanifestを返す."""
+        return RulePackManifest(
+            provider_id=CORE_RULE_PACK_ID,
+            contract_version=RULE_PACK_CONTRACT_VERSION,
+            implementation_version=CORE_RULE_PACK_IMPLEMENTATION_VERSION,
+            fingerprint=CORE_RULE_PACK_FINGERPRINT,
+        )
+
+    def compile(self, definition: RuleSetDefinition) -> CompiledRuleSet:
+        """検証済みdataを組み込みpolicy付きrulesetへ変換する."""
+        return CompiledRuleSet(
+            config=GameConfig(
+                player_count=definition.player_count,
+                role_counts=definition.role_counts,
+                rules=definition.rules,
+                roles=definition.roles,
+                abilities=definition.abilities,
+            ),
+            manifest=self.manifest,
+            victory_policy=CoreVictoryPolicy(),
+        )
 
 
-def build_game_rules(definition: RuleSetDefinition) -> RuleSet:
-    """Dataから唯一の対応済み決定的rule pipelineを構築する."""
-    return RuleSet(
-        config=GameConfig(
-            player_count=definition.player_count,
-            role_counts=definition.role_counts,
-            rules=definition.rules,
-            roles=definition.roles,
-            abilities=definition.abilities,
-        ),
-    )
+def build_game_rules(definition: RuleSetDefinition) -> CompiledRuleSet:
+    """Dataを組み込みRule Packでcompileする."""
+    return CoreRulePack().compile(definition)
 
 
-__all__ = ["RuleSet", "RuleSetDefinition", "build_game_rules"]
+__all__ = ["CoreRulePack", "RuleSetDefinition", "build_game_rules"]

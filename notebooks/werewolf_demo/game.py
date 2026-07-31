@@ -13,6 +13,7 @@ from werewolf_agent.agents.models import AgentScenario, DeliberationLevel, Playe
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.domain import (
+    CompiledRuleSet,
     EventVisibility,
     Game,
     GameEvent,
@@ -20,7 +21,6 @@ from werewolf_agent.domain import (
     Phase,
     Player,
     PlayerStatus,
-    RuleSet,
     build_game_rules,
 )
 from werewolf_agent.setup import (
@@ -116,7 +116,7 @@ class FakeGameDemo:
     """Notebook composition root for one deterministic Fake LLM game."""
 
     game: Game
-    rules: RuleSet
+    rules: CompiledRuleSet
     limits: DemoLimits
     seed: int
     _factory: LlmAgentFactory

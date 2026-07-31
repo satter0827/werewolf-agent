@@ -78,6 +78,17 @@ role assignmentとprivate strategyを返さない。
 Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者と内部モジュールはroot aliasを
 経由せず、値と型を所有する責務別モジュールを直接参照する。
 
+## Rule Pack
+
+`CompiledRuleSet`は`GameConfig`、`RulePackManifest`、副作用を持たないPolicyを一局へ固定する。
+外部Rule Packは`RulePackProvider`を実装し、利用者またはcomposition rootが
+`RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
+
+`RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
+最初の外部化対象は`VictoryPolicy`であり、immutableな`GameState`から`WinResult`だけを返す。
+GameはOutcomeを新しい`GameState`へ適用する際に整合性を検証し、不正Outcomeまたは例外では
+元のstateを維持する。能力と投票は挙動を先に固定し、次の縦断sliceで個別に外部化する。
+
 ## Agent意思決定
 
 `agents`は`DecisionTask`、`ModelRequest`、`ModelResponse`、`DecisionModel`を所有する。

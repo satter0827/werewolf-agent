@@ -1,8 +1,15 @@
 """決定的なheadlessゲームの公開APIを提供する."""
 
-from werewolf_agent.domain.definitions import RuleSet, RuleSetDefinition, build_game_rules
+from werewolf_agent.domain.definitions import CoreRulePack, RuleSetDefinition, build_game_rules
 from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation
 from werewolf_agent.domain.game import Game
+from werewolf_agent.domain.rule_packs import (
+    CompiledRuleSet,
+    RulePackManifest,
+    RulePackProvider,
+    RulePolicyRegistry,
+    VictoryPolicy,
+)
 from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
@@ -34,6 +41,8 @@ __all__ = [
     "Action",
     "ActionType",
     "AvailableAction",
+    "CompiledRuleSet",
+    "CoreRulePack",
     "EventVisibility",
     "Game",
     "GameConfig",
@@ -53,10 +62,13 @@ __all__ = [
     "PlayerStatus",
     "RoleCatalog",
     "RoleDefinition",
-    "RuleSet",
+    "RulePackManifest",
+    "RulePackProvider",
+    "RulePolicyRegistry",
     "RuleSetDefinition",
     "RuleViolation",
     "SpeechRecord",
+    "VictoryPolicy",
     "VoteResult",
     "WinResult",
     "build_game_rules",
