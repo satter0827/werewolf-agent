@@ -27,6 +27,13 @@ decision seedだけを保持する。完全state、application service、リポ�
 保存しない。Agent identityはimplementation version、SHA-256 fingerprint、固定parameterで記録する。
 `DecisionTrace`は意思決定を生成した`AgentSpec`を保持し、同じAgent IDの異なる実装や設定を区別する。
 
+`AgentIdentity`は本人だけが知る役職、陣営、勝利陣営、目的、能力を保持する。`AgentWorld`は全員へ
+公開できる世界観、用語、関連規則、setupとmechanicsのchecksumを保持する。Agent固有のpersonaと
+private strategyはFactoryの固定parameterであり、ゲーム中のobservationへ混在させない。
+
+予定されたprovider障害、応答schema違反、合法性違反は`AgentDecisionError`で通知する。Sessionは
+fallbackを暗黙適用せず、呼出し側がdeadline、cancel、決定的fallback、`DecisionTrace`を一括管理する。
+
 標準実装は`RandomLegalAgentFactory`、`HeuristicAgentFactory`、`ScriptedAgentFactory`、
 `FaultAgentFactory`を同じSession契約で提供する。random実装はdecision seedだけから合法手を選び、
 scriptedとfaultは通常品質、Simulationのfallback、timeout、close検証へ使用する。
