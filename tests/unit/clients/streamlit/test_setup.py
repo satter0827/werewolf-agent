@@ -4,7 +4,9 @@ from pydantic import ValidationError
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.clients.streamlit.constants import SETUP_DRAFT_KEY
 from werewolf_agent.clients.streamlit.views.game_settings import (
+    _SOURCE_KEY,
     _new_ability,
+    _source_index,
     _validation_sections,
 )
 from werewolf_agent.clients.streamlit.views.setup import (
@@ -60,3 +62,11 @@ def test_editor_validation_reports_beginner_facing_sections() -> None:
         GameSetupDocumentRequest.model_validate(payload)
 
     assert _validation_sections(raised.value) == ("プレイヤー生成",)
+
+
+def test_editor_keeps_loaded_revision_when_a_new_revision_appears() -> None:
+    selected = "saved:setup-id:1"
+    state = {_SOURCE_KEY: selected}
+    sources = ["template:standard_6", selected, "saved:setup-id:2"]
+
+    assert _source_index(state, sources) == 1

@@ -4069,7 +4069,7 @@
   },
   "info": {
     "title": "Werewolf Agent API",
-    "version": "0.31.0"
+    "version": "0.31.1"
   },
   "openapi": "3.1.0",
   "paths": {

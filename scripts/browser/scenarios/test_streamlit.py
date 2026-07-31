@@ -10,11 +10,17 @@ from pathlib import Path
 import httpx
 from playwright.sync_api import Locator, Page, expect
 
-from scripts.browser.scenarios.api import create_authenticated_user, create_completed_game
+from scripts.browser.scenarios.api import (
+    add_setup_revision,
+    create_authenticated_user,
+    create_completed_game,
+    create_saved_setup,
+)
 from scripts.browser.scenarios.quality import (
     assert_no_horizontal_overflow,
     assert_streamlit_quality,
     reset_streamlit_scroll,
+    scroll_streamlit_to_text,
 )
 
 
@@ -65,6 +71,9 @@ def test_gameplay_waiting_speech_and_target(
     _capture_state(page, capture_public_screenshot, f"streamlit-gameplay-waiting-{device_name}.png")
     advance.focus()
     page.keyboard.press("Enter")
+    expect(
+        page.get_by_text("自動進行中です。入力が必要になったら停止します。").first
+    ).to_be_visible(timeout=30_000)
     message = page.get_by_label("発言内容")
     expect(message).to_be_visible(timeout=30_000)
     capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")
@@ -77,6 +86,13 @@ def test_gameplay_waiting_speech_and_target(
     expect(target).to_be_visible(timeout=30_000)
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-gameplay-target-{device_name}.png")
+    page.context.set_offline(True)
+    page.wait_for_timeout(1_000)
+    page.context.set_offline(False)
+    expect(page.get_by_role("heading", name="月明かりの卓")).to_be_visible(timeout=30_000)
+    expect(page.get_by_label("対象を選ぶ")).to_be_visible(timeout=30_000)
+    assert_streamlit_quality(page)
+    capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
 
 
 def test_completed_game_presents_result_before_timeline(
@@ -94,17 +110,9 @@ def test_completed_game_presents_result_before_timeline(
     )
     create_completed_game(api_client, api_url, token)
     page.goto(streamlit_url)
-    _open_sidebar_if_needed(page)
-    login = page.locator('[data-testid="stExpander"] summary').filter(has_text="ログイン")
-    login.focus()
-    page.keyboard.press("Enter")
-    page.get_by_label("メールアドレス").fill(email)
-    page.get_by_label("パスワード").fill(password)
-    button = page.get_by_role("button", name="ログイン", exact=True).last
-    button.focus()
-    page.keyboard.press("Enter")
-    expect(page.get_by_text(email)).to_be_visible(timeout=30_000)
+    _sign_in(page, email=email, password=password)
     _open_navigation(page, "記録")
+    expect(page.get_by_role("heading", name="ゲーム記録")).to_be_visible(timeout=30_000)
     _close_sidebar_if_needed(page)
     record = page.get_by_role("button", name="記録を開く", exact=True)
     expect(record).to_be_visible(timeout=30_000)
@@ -128,6 +136,54 @@ def test_completed_game_presents_result_before_timeline(
         capture_public_screenshot,
         f"streamlit-gameplay-complete-{device_name}.png",
     )
+
+
+def test_setup_revision_conflict_explains_reload(
+    page: Page,
+    api_client: httpx.Client,
+    streamlit_url: str,
+    capture_public_screenshot: Callable[[Page, str], Path],
+    device_name: str,
+) -> None:
+    """画面外で更新されたsetupを上書きせず、再読込の案内を表示する。"""
+    api_url = os.environ.get("PLAYWRIGHT_API_URL", "http://api:8000")
+    email, password, token = create_authenticated_user(
+        api_client,
+        os.environ["PLAYWRIGHT_SUPABASE_URL"],
+        os.environ["PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY"],
+    )
+    setup_id, document = create_saved_setup(
+        api_client,
+        api_url,
+        token,
+        display_name="競合確認",
+    )
+    page.goto(streamlit_url)
+    _sign_in(page, email=email, password=password)
+    _open_navigation(page, "ゲーム設定")
+    expect(page.get_by_role("heading", name="ゲーム設定")).to_be_visible(timeout=30_000)
+    _close_sidebar_if_needed(page)
+    _select_streamlit_option(page, "編集元", "保存済み: 競合確認 (第1版)")
+    save = page.get_by_role("button", name="新しい版として保存")
+    expect(save).to_be_visible(timeout=30_000)
+    add_setup_revision(
+        api_client,
+        api_url,
+        token,
+        setup_id=setup_id,
+        expected_revision=1,
+        document=document,
+    )
+    save.click()
+    conflict_message = page.get_by_text("別の操作で新しい設定版が保存されています。")
+    expect(conflict_message).to_be_visible(timeout=30_000)
+    expect(page.get_by_text("必要な対応: 最新の状態を読み込み直してください。")).to_be_visible()
+    _close_sidebar_if_needed(page)
+    page.get_by_role("combobox", name=re.compile("編集元")).focus()
+    assert_streamlit_quality(page)
+    _close_sidebar_if_needed(page)
+    scroll_streamlit_to_text(page, "別の操作で新しい設定版が保存されています。")
+    capture_public_screenshot(page, f"streamlit-conflict-{device_name}.png")
 
 
 def test_observer_uses_public_presentation(
@@ -202,6 +258,27 @@ def _open_navigation(page: Page, label: str) -> None:
     button: Locator = page.get_by_role("button", name=label, exact=True).first
     button.focus()
     page.keyboard.press("Enter")
+
+
+def _select_streamlit_option(page: Page, label: str, option: str) -> None:
+    combobox = page.get_by_role("combobox", name=re.compile(label))
+    combobox.click()
+    choice = page.get_by_role("option", name=option, exact=True)
+    expect(choice).to_be_visible()
+    choice.click()
+
+
+def _sign_in(page: Page, *, email: str, password: str) -> None:
+    _open_sidebar_if_needed(page)
+    login = page.locator('[data-testid="stExpander"] summary').filter(has_text="ログイン")
+    login.focus()
+    page.keyboard.press("Enter")
+    page.get_by_label("メールアドレス").fill(email)
+    page.get_by_label("パスワード").fill(password)
+    button = page.get_by_role("button", name="ログイン", exact=True).last
+    button.focus()
+    page.keyboard.press("Enter")
+    expect(page.get_by_text(email)).to_be_visible(timeout=30_000)
 
 
 def _close_sidebar_if_needed(page: Page) -> None:

@@ -4,14 +4,15 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from werewolf_agent.application import QueuedOperation
-from werewolf_agent.contracts.api import OperationResponse
+from werewolf_agent.application import QueuedOperation, SavedSetupRevision
+from werewolf_agent.contracts.api import OperationResponse, SavedSetupRevisionResponse
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
     AvailableActionDescriptor,
     GameListResponse,
     GameResponse,
     GameRevealResponse,
+    GameSetupDocumentRequest,
     GameTimelineResponse,
     PlayerObservation,
     PlayerObservationHistory,
@@ -131,11 +132,25 @@ def operation_response(source: QueuedOperation) -> OperationResponse:
     )
 
 
+def saved_setup_revision_response(source: SavedSetupRevision) -> SavedSetupRevisionResponse:
+    """Return one setup revision after explicitly crossing the domain document boundary."""
+    return SavedSetupRevisionResponse(
+        setup_id=source.setup_id,
+        display_name=source.display_name,
+        revision=source.revision,
+        document=GameSetupDocumentRequest.model_validate(source.document.to_mapping()),
+        setup_checksum=source.setup_checksum,
+        mechanics_checksum=source.mechanics_checksum,
+        created_at=source.created_at,
+    )
+
+
 __all__ = [
     "game_list_response",
     "game_response",
     "observation_response",
     "operation_response",
     "reveal_response",
+    "saved_setup_revision_response",
     "timeline_response",
 ]

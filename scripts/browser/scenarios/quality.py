@@ -30,6 +30,26 @@ def reset_streamlit_scroll(page: Page) -> None:
     )
 
 
+def scroll_streamlit_to_text(page: Page, text: str) -> None:
+    """再描画される要素handleを保持せず、指定文言を画面内へ移動する。"""
+    found = page.evaluate(
+        """text => {
+          const main = document.querySelector('[data-testid="stMain"]');
+          if (!main) return false;
+          const target = [...main.querySelectorAll('*')].find(
+            node => node.children.length === 0 && node.textContent?.trim() === text
+          );
+          if (!target) return false;
+          const top = target.getBoundingClientRect().top
+            - main.getBoundingClientRect().top + main.scrollTop;
+          main.scrollTo(0, Math.max(0, top - 24));
+          return true;
+        }""",
+        text,
+    )
+    assert found, f"scroll target was not found: {text}"
+
+
 def assert_streamlit_quality(page: Page) -> None:
     """操作性、文書構造、accessibilityをまとめて検査する。"""
     from axe_playwright_python.sync_playwright import Axe  # type: ignore[import-untyped]
@@ -92,4 +112,5 @@ __all__ = [
     "assert_no_horizontal_overflow",
     "assert_streamlit_quality",
     "reset_streamlit_scroll",
+    "scroll_streamlit_to_text",
 ]

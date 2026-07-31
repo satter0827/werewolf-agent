@@ -16,6 +16,8 @@ def test_i18n_catalog_has_matching_ja_en_keys() -> None:
     assert label_key_sets(catalog)["ja"] == label_key_sets(catalog)["en"]
     assert catalog.t("ja", "nav.play") == "プレイ"
     assert catalog.t("en", "nav.play") == "Play"
+    assert catalog.t("ja", "history.column.day") == "日"
+    assert catalog.t("ja", "result.fact.finish_day", day=5) == "5日目で終了しました。"
 
 
 def test_language_state_defaults_to_settings_then_session_wins() -> None:

@@ -171,7 +171,6 @@ class SupabaseSetupRepository(SetupRepository):
         latest_revision = int(row["latest_revision"])
         if latest_revision != expected_revision:
             raise AppError(
-                "別の版が先に保存されています。最新の設定を読み直してください。",
                 code=ErrorCode.SETUP_REVISION_CONFLICT,
                 context={
                     "expected_revision": expected_revision,

@@ -1,7 +1,10 @@
 """Application resultから独立したHTTP wire contractへの変換を検証する。"""
 
-from werewolf_agent.api.presenters import observation_response
-from werewolf_agent.application import PlayerObservationResult
+from datetime import UTC, datetime
+
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.api.presenters import observation_response, saved_setup_revision_response
+from werewolf_agent.application import PlayerObservationResult, SavedSetupRevision
 
 
 def test_observation_presenter_exposes_typed_actions_without_private_fields() -> None:
@@ -59,3 +62,23 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
     assert "reason" not in payload["observation"]["history"]["speeches"][0]
     assert "nights" not in payload["observation"]["history"]
     assert "winning_player_ids" not in payload["observation"]["win_result"]
+
+
+def test_saved_setup_presenter_serializes_immutable_document() -> None:
+    document = build_setup_catalog().require_document("standard_6")
+    response = saved_setup_revision_response(
+        SavedSetupRevision(
+            setup_id="setup-1",
+            display_name="標準設定",
+            revision=1,
+            document=document,
+            setup_checksum="setup-checksum",
+            mechanics_checksum="mechanics-checksum",
+            created_at=datetime(2026, 8, 1, tzinfo=UTC),
+        )
+    )
+
+    payload = response.model_dump(mode="json")
+
+    assert payload["setup_id"] == "setup-1"
+    assert payload["document"] == document.to_mapping()
