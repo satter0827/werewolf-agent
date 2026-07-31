@@ -26,6 +26,10 @@ decision seedだけを保持する。完全state、application service、リポ�
 含めない。Responseのbelief、confidence、intent、metadataは任意であり、chain-of-thoughtを要求または
 保存しない。Agent identityはimplementation version、SHA-256 fingerprint、固定parameterで記録する。
 
+標準実装は`RandomLegalAgentFactory`、`HeuristicAgentFactory`、`ScriptedAgentFactory`、
+`FaultAgentFactory`を同じSession契約で提供する。random実装はdecision seedだけから合法手を選び、
+scriptedとfaultは通常品質、Simulationのfallback、timeout、close検証へ使用する。
+
 ## LLMプロバイダー境界
 
 `agents.models`と`agents.ports`は既存LLM pipelineの内部DTOを所有する。`adapters.llm`は

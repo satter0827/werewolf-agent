@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.1.0"
+AGENT_CONTRACT_VERSION = "0.2.0"
 
 
 @dataclass(frozen=True)
