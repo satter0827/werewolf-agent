@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from werewolf_agent.domain._messages import MESSAGE_UNSUPPORTED_AGENT_ACTION
 from werewolf_agent.domain.errors import GameError, RuleViolation
+from werewolf_agent.domain.rule_packs import VictoryPolicy
 from werewolf_agent.domain.rules import (
     action_availability,
     day_speech,
@@ -15,7 +16,6 @@ from werewolf_agent.domain.rules import (
     phase_transitions,
     voting,
 )
-from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
@@ -91,6 +91,8 @@ def advance_phase(
     state: GameState,
     pending: PendingActions,
     random_source: random.Random,
+    *,
+    victory_policy: VictoryPolicy,
 ) -> tuple[GameState, PendingActions, list[GameEvent]]:
     """Advance one phase and evaluate the fixed faction victory boundary."""
     outcome = phase_transitions.advance_game_phase(
@@ -111,7 +113,7 @@ def advance_phase(
     )
     next_state = outcome.snapshot
     events = outcome.events
-    win_result = check_win(next_state)
+    win_result = victory_policy.evaluate(next_state)
     if win_result is not None:
         next_state = replace(next_state, phase=Phase.FINISHED, win_result=win_result)
         events = [

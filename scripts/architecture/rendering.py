@@ -67,7 +67,7 @@ DOMAIN_NODES = (
     DiagramNode("game", "Game", "aggregate"),
     DiagramNode("state", "GameState", "value"),
     DiagramNode("events", "GameEvent", "value"),
-    DiagramNode("ruleset", "RuleSet", "definition"),
+    DiagramNode("ruleset", "CompiledRuleSet", "definition"),
     DiagramNode("definition", "RuleSetDefinition", "definition"),
     DiagramNode("factory", "build_game_rules", "factory"),
     DiagramNode("engine", "rule engine", "module"),
