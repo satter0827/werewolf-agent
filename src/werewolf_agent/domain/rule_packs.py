@@ -13,6 +13,7 @@ from werewolf_agent.domain._model import non_blank
 from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.state import (
     Action,
+    DeathReactionResolution,
     GameConfig,
     GameState,
     NightResolution,
@@ -23,10 +24,10 @@ from werewolf_agent.domain.state import (
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.3.0"
+RULE_PACK_CONTRACT_VERSION = "0.4.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.3.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.3.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.4.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.4.0").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -88,6 +89,15 @@ class AbilityPolicy(Protocol):
         random: random.Random,
     ) -> NightResolution:
         """一夜の能動能力と受動耐性を解決して検証可能なOutcomeを返す."""
+        ...
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """新たな死亡から連鎖する能力反応を順序付きOutcomeとして返す."""
         ...
 
 

@@ -12,7 +12,7 @@ from werewolf_agent.domain._messages import (
     MESSAGE_SELF_VOTING_DISABLED,
 )
 from werewolf_agent.domain.errors import GameError
-from werewolf_agent.domain.rule_packs import VotingPolicy
+from werewolf_agent.domain.rule_packs import AbilityPolicy, VotingPolicy
 from werewolf_agent.domain.rules.player_rules import (
     alive_players,
     mark_dead,
@@ -65,6 +65,7 @@ def resolve_votes(
     rng: random.Random,
     *,
     vote_round: int = 1,
+    ability_policy: AbilityPolicy,
     policy: VotingPolicy,
 ) -> tuple[GameState, VoteResult]:
     """Policy Outcomeを検証し、死亡と履歴をDomainで一括適用する."""
@@ -90,6 +91,7 @@ def resolve_votes(
                 updated_snapshot,
                 [result.eliminated_player_id],
                 rng,
+                policy=ability_policy,
                 during_night=False,
             )
 
