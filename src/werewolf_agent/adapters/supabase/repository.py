@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from contextlib import AbstractContextManager
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 from uuid import UUID
 
 from psycopg.types.json import Jsonb
@@ -46,6 +47,10 @@ class SupabaseGameRepository(GameRepository):
         """Create a repository bound to one worker transaction."""
         self._connection = connection
         self._owner_user_id = owner_user_id
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """複数のrepository操作を一つのdatabase transactionで実行する."""
+        return cast(AbstractContextManager[None], self._connection.transaction())
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """Persist a new game and private snapshot."""

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from threading import RLock
 from typing import Protocol
@@ -44,6 +45,12 @@ class InMemoryGameRepository(GameRepository):
         self._events: dict[UUID, list[StoredGameEvent]] = {}
         self._turns: dict[UUID, list[StoredGameTurn]] = {}
         self._lock = RLock()
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        """Applicationの一更新単位を同じlockで直列化する."""
+        with self._lock:
+            yield
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """新しいゲームsnapshotを保存する."""

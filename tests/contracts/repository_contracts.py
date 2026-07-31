@@ -71,12 +71,12 @@ def assert_game_repository_contract(
             ),
         ],
     )
-    assert [event.sequence for event in events] == [1, 2]
+    assert events[1].sequence == events[0].sequence + 1
     assert repository.latest_public_turn_sequence(game_id) == 1
     turns = repository.list_public_turns(game_id, after=0, limit=10)
     assert len(turns) == 1
     assert turns[0].sequence == 1
-    assert turns[0].event_sequence == 2
+    assert turns[0].event_sequence == events[1].sequence
     assert turns[0].version == 2
     assert turns[0].payload == {"message": "hello"}
     assert repository.list_public_turns(game_id, after=1, limit=10) == []

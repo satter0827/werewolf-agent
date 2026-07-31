@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, NoReturn, cast
 
 import pytest
@@ -13,6 +14,9 @@ from werewolf_agent.application.errors import GameNotFoundError, InvalidGameIdEr
 
 class _Repository:
     """例外境界だけを検証する空repository。"""
+
+    def transaction(self) -> AbstractContextManager[None]:
+        return nullcontext()
 
 
 class _ReplayRepository(_Repository):

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -22,6 +23,9 @@ from werewolf_agent.setup import GameSetupDocument
 
 class GameRepository(Protocol):
     """Statelessなゲーム処理が必要とする永続化操作を定義する."""
+
+    def transaction(self) -> AbstractContextManager[None]:
+        """複数のrepository操作を一つのatomic unitとして実行する."""
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """新しいゲームを保存して結果を返す.

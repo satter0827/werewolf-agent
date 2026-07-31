@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from threading import Event, Thread
 from uuid import UUID
 
 import pytest
@@ -104,6 +105,36 @@ def test_game_repository_rejects_missing_and_stale_updates() -> None:
     repository.create(_game_create())
     with pytest.raises(GamePhaseError):
         repository.save(_game_update(version=3))
+
+
+def test_game_repository_serializes_the_complete_transaction_unit() -> None:
+    repository = InMemoryGameRepository(owner_user_id=OWNER_ID)
+    first_entered = Event()
+    release_first = Event()
+    second_entered = Event()
+
+    def hold_first_transaction() -> None:
+        with repository.transaction():
+            first_entered.set()
+            assert release_first.wait(timeout=2)
+
+    def enter_second_transaction() -> None:
+        assert first_entered.wait(timeout=2)
+        with repository.transaction():
+            second_entered.set()
+
+    first = Thread(target=hold_first_transaction)
+    second = Thread(target=enter_second_transaction)
+    first.start()
+    second.start()
+    assert first_entered.wait(timeout=2)
+    assert not second_entered.wait(timeout=0.05)
+    release_first.set()
+    first.join(timeout=2)
+    second.join(timeout=2)
+    assert not first.is_alive()
+    assert not second.is_alive()
+    assert second_entered.is_set()
 
 
 def test_game_repository_projects_owner_scoped_summary_and_public_turns() -> None:
