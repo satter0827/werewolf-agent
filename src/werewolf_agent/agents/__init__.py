@@ -1,5 +1,11 @@
 """外部注入可能な標準ライブラリAgent SDKを公開する."""
 
+from werewolf_agent.agents.builtins import (
+    FaultAgentFactory,
+    HeuristicAgentFactory,
+    RandomLegalAgentFactory,
+    ScriptedAgentFactory,
+)
 from werewolf_agent.agents.contracts import (
     AGENT_CONTRACT_VERSION,
     AgentContext,
@@ -26,6 +32,10 @@ __all__ = [
     "DecisionRequest",
     "DecisionResponse",
     "DecisionTrace",
+    "FaultAgentFactory",
+    "HeuristicAgentFactory",
     "ObservedPlayer",
     "PublicTimelineEvent",
+    "RandomLegalAgentFactory",
+    "ScriptedAgentFactory",
 ]

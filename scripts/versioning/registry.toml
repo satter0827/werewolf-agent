@@ -37,7 +37,7 @@ owner = "agents"
 standard = "semver"
 path = "src/werewolf_agent/agents/contracts.py"
 pattern = 'AGENT_CONTRACT_VERSION\s*=\s*"([^"]+)"'
-watch = ["src/werewolf_agent/agents/contracts.py", "src/werewolf_agent/agents/__init__.py"]
+watch = ["src/werewolf_agent/agents/contracts.py", "src/werewolf_agent/agents/builtins.py", "src/werewolf_agent/agents/__init__.py"]
 
 [[boundaries]]
 name = "event"
