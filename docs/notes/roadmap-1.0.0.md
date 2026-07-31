@@ -150,6 +150,11 @@ single-tenant access policy、application factoryを追加する。
 完了条件は、HTTP、database、workerを起動せずPythonプロセスへapplicationを組み込め、
 in-memoryとSupabaseが同じリポジトリcontractテストを通ることである。
 
+in-memory game/setupリポジトリ、共通リポジトリcontract、transaction単位、single-tenant policy、
+inlineコマンドexecutor、application factoryを実装済みである。Factoryを作り直しても注入した
+リポジトリが状態を保持し、HTTP、database、workerなしで作成、参照、一覧、observation、revealを
+実行できる。
+
 ### 8. APIとworkerを新しいSDKへ接続する
 
 composition rootはRule Pack ProviderとAgent Factoryを明示登録する。
