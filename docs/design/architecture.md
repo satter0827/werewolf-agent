@@ -14,6 +14,7 @@
 | `setup` | 標準libraryだけで構成するsetup定義、seed、checksum、roster生成 |
 | `application` | use case、authorization、transaction、コマンド/result、port、projection |
 | `agents` | provider非依存のobservation、decision、プレイヤー port |
+| `simulation` | 単一ゲームのAgent呼び出し、action適用、phase進行、停止・再開 |
 | `adapters` | HTTP client、Supabase、LangChain、外部I/O |
 | `contracts` | wire schema、error、Problem Details |
 | `settings` | runtime設定と環境変数の検証 |
@@ -40,6 +41,7 @@
 - applicationはdomain、setup、application内部だけを参照し、wire schema、外部service、delivery、
   agentsを参照しない。
 - agentsはdomainとapplicationを参照しない。
+- simulationはagents、domain、setupだけを参照し、I/O、永続化、provider設定を所有しない。
 - LangChainはアダプター、workerは独立プロセスとして扱う。
 - package resourceと外部定義fileのI/Oおよび相互参照検証はアダプターに置く。
 - API routeはapplicationの公開contractだけを呼ぶ。
@@ -96,12 +98,17 @@ detail、visibilityを検証する。本人roleと設定済み死亡公開はPol
 履歴、eventはDomainが所有する。Gameは各Outcomeを新しい`GameState`へ適用する際に整合性を
 検証し、不正Outcomeまたは例外では元のstateと乱数状態を維持する。
 
-## Agent意思決定
+## Agent意思決定と単一ゲーム実行
 
-`agents`は`DecisionTask`、`ModelRequest`、`ModelResponse`、`DecisionModel`を所有する。
-workerのcomposition rootはゲーム作成時に固定したproviderから`FakeDecisionModel`または
-`LangChainChatDecisionModel`を一度だけ選ぶ。以後はproviderに関係なく、観測正規化、context構築、
-model呼び出し、JSON正規化、schema検証、合法手検証、決定的fallback、trace記録の順に処理する。
+`agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
+秘匿性検証済み`DecisionRequest`、構造化`DecisionResponse`を所有する。外部LLMアダプターは
+schema検証後のresponseだけを返し、simulationは本人用`GameView`からrequestを構築する。
+
+`SimulationRunner`は一局の`Game`、プレイヤー別controller、用途別seed、実行上限を固定する。
+`SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、
+手動入力待ち、終局、上限、cancelを明示的な停止理由として返す。リポジトリ、HTTP、provider preflight、
+複数試行、統計、artifactは所有しない。状態・event・action/response列は同じ入力とseedで再現できる。
+`latency_ms`とdeadlineは運用診断値であり、決定性の比較対象に含めない。
 
 modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
 modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに
@@ -113,7 +120,8 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 ## 公開面
 
 Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.application`、
-`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.setup`に限定する。
+`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.simulation`、
+`werewolf_agent.setup`に限定する。
 package直下は`__version__`だけを公開し、型と関数は責務を所有する公開モジュールからimportする。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
 公開する。HTTPの正本は`contracts/openapi.json`とする。

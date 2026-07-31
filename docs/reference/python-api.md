@@ -5,6 +5,7 @@
 `werewolf_agent.setup`は完全setupの検証、Domain Rule Definition変換、用途別seed、checksum、
 プレイヤー generationを提供する。
 `werewolf_agent.agents`は外部Agentの注入契約と標準Agent実装を提供する。
+`werewolf_agent.simulation`は単一ゲームのstep実行、停止、再開を提供する。
 `werewolf_agent.application`は認可、保存port、公開resultを含む利用手順を提供する。
 列挙されない内部モジュールは公開契約に含めない。
 
@@ -78,5 +79,21 @@
 
 ```{eval-rst}
 .. automodule:: werewolf_agent.agents
+   :members:
+```
+
+## Simulationの最小利用例
+
+`SimulationSpec`はproviderや永続化へ依存せず、一局のcontrollerとseedを固定する。
+構築済みの`Game`は`SimulationRunner.start()`へ渡す。
+
+```{literalinclude} ../snippets/python_api_simulation.py
+:language: python
+```
+
+## Simulation API
+
+```{eval-rst}
+.. automodule:: werewolf_agent.simulation
    :members:
 ```

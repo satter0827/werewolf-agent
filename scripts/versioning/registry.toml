@@ -48,6 +48,14 @@ pattern = 'EVENT_SCHEMA_VERSION:\s*Final\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/contracts/events.py"]
 
 [[boundaries]]
+name = "simulation"
+owner = "simulation"
+standard = "semver"
+path = "src/werewolf_agent/simulation/contracts.py"
+pattern = 'SIMULATION_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/simulation/"]
+
+[[boundaries]]
 name = "architecture"
 owner = "scripts.architecture"
 standard = "semver"
