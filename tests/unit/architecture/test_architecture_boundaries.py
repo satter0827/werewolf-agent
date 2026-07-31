@@ -204,7 +204,7 @@ def test_public_export_findings_allow_an_explicit_convenience_alias(monkeypatch)
     assert not _public_export_findings()
 
 
-def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
+def test_create_restore_and_replay_use_the_explicit_rule_pack_registry() -> None:
     owners = (
         PACKAGE / "application" / "handlers" / "games.py",
         PACKAGE / "application" / "handlers" / "common.py",
@@ -213,8 +213,8 @@ def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
 
     for owner in owners:
         source = owner.read_text(encoding="utf-8")
-        assert "build_game_rules(" in source, owner
-        assert "RuleRegistry" not in source, owner
+        assert "rule_packs.compile(" in source, owner
+        assert "build_game_rules(" not in source, owner
 
 
 def test_replay_verifies_every_create_command_checksum() -> None:
@@ -226,6 +226,8 @@ def test_replay_verifies_every_create_command_checksum() -> None:
     for checksum in ("setup_checksum", "mechanics_checksum", "roster_checksum"):
         assert f'"{checksum}": stored_config.get("{checksum}")' in worker_store
         assert f'genesis["{checksum}"]' in replay
+    assert '"rule_pack_manifest": _object(stored_config.get("rule_pack_manifest"))' in worker_store
+    assert 'genesis["rule_pack_manifest"]' in replay
 
 
 def test_standard_sdk_uses_only_the_standard_library_and_owned_modules() -> None:

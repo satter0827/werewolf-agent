@@ -59,7 +59,7 @@ def get_player_observation(
         query.player_id,
         trusted_user_id=query.trusted_user_id,
     )
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     observation = game.view_for(query.player_id)
     return PlayerObservationResult(
         game_id=str(run.id),
@@ -88,7 +88,7 @@ def submit_player_action(
         command.player_id,
         trusted_user_id=command.trusted_user_id,
     )
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     action = _action_from_command(command)
     try:
         events = game.submit(action)

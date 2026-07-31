@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import werewolf_agent.application.handlers as handlers
 from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.boundary import public_result
@@ -33,7 +35,7 @@ from werewolf_agent.application.models import (
     ReplayVerificationResult,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
-from werewolf_agent.application.replay import verify_replay
+from werewolf_agent.application.replay import ReplayRepository, verify_replay
 from werewolf_agent.application.types import GameStatus
 
 
@@ -194,7 +196,11 @@ class GameApplication:
         query = GetGameQuery(game_id=game_id)
         public_result(lambda: handlers.get_game(query, dependencies=self._dependencies))
         return public_result(
-            lambda: verify_replay(game_id, repository)  # type: ignore[arg-type]
+            lambda: verify_replay(
+                game_id,
+                cast(ReplayRepository, repository),
+                self._dependencies.rule_packs,
+            )
         )
 
     def enqueue_create(

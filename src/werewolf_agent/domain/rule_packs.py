@@ -25,10 +25,10 @@ from werewolf_agent.domain.state import (
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.5.0"
+RULE_PACK_CONTRACT_VERSION = "0.6.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.5.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.5.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.6.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.6.0").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -55,6 +55,29 @@ class RulePackManifest:
             )
         if self.contract_version != RULE_PACK_CONTRACT_VERSION:
             raise ValueError(f"contract_version must be {RULE_PACK_CONTRACT_VERSION}")
+        if len(self.fingerprint) != 64 or any(
+            character not in "0123456789abcdef" for character in self.fingerprint
+        ):
+            raise ValueError("fingerprint must be a lowercase SHA-256 digest")
+
+    def to_mapping(self) -> dict[str, str]:
+        """永続化と実験provenanceへ使用する正規表現を返す."""
+        return {
+            "provider_id": self.provider_id,
+            "contract_version": self.contract_version,
+            "implementation_version": self.implementation_version,
+            "fingerprint": self.fingerprint,
+        }
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, object]) -> RulePackManifest:
+        """外部表現から検証済みmanifestを構築する."""
+        return cls(
+            provider_id=_manifest_text(value, "provider_id"),
+            contract_version=_manifest_text(value, "contract_version"),
+            implementation_version=_manifest_text(value, "implementation_version"),
+            fingerprint=_manifest_text(value, "fingerprint"),
+        )
 
 
 class VictoryPolicy(Protocol):
@@ -163,6 +186,29 @@ class RulePolicyRegistry:
             return self._providers[normalized]
         except KeyError as exc:
             raise ValueError(f"unknown rule pack provider: {normalized}") from exc
+
+    def compile(
+        self,
+        provider_id: str,
+        definition: RuleSetDefinition,
+        *,
+        expected_manifest: RulePackManifest | None = None,
+    ) -> CompiledRuleSet:
+        """登録済みproviderをcompileし、宣言したidentityとの一致を検証する."""
+        provider = self.require(provider_id)
+        rules = provider.compile(definition)
+        if rules.manifest != provider.manifest:
+            raise ValueError("compiled rule pack manifest does not match its provider")
+        if expected_manifest is not None and rules.manifest != expected_manifest:
+            raise ValueError("registered rule pack does not match the persisted manifest")
+        return rules
+
+
+def _manifest_text(value: Mapping[str, object], field_name: str) -> str:
+    item = value[field_name]
+    if not isinstance(item, str):
+        raise ValueError(f"{field_name} must be a string")
+    return item
 
 
 __all__ = [

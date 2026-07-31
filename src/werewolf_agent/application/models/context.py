@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
 from werewolf_agent.application.constants import MIN_PAGE_LIMIT
@@ -16,6 +16,7 @@ from werewolf_agent.application.messages import (
     MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX,
     MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE,
 )
+from werewolf_agent.domain import CoreRulePack, RulePolicyRegistry
 
 if TYPE_CHECKING:
     from werewolf_agent.application.ports import GameRepository
@@ -62,3 +63,6 @@ class ApplicationContext:
     repository: GameRepository
     config: GameApplicationConfig
     create_llm_mode: Literal["fake", "paid"] = "fake"
+    rule_packs: RulePolicyRegistry = field(
+        default_factory=lambda: RulePolicyRegistry((CoreRulePack(),))
+    )

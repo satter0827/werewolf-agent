@@ -19,7 +19,7 @@ from werewolf_agent.application.projections import (
 )
 from werewolf_agent.application.randomness import runtime_seed
 from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
-from werewolf_agent.domain import Game, build_game_rules
+from werewolf_agent.domain import Game, RulePackManifest, RulePolicyRegistry
 from werewolf_agent.setup import (
     GameSetupDocument,
     checksum_payload,
@@ -36,10 +36,14 @@ class ReplayRepository(Protocol):
         """Return checksum-bearing command, event, and state records."""
 
 
-def verify_replay(game_id: str, repository: ReplayRepository) -> ReplayVerificationResult:
+def verify_replay(
+    game_id: str,
+    repository: ReplayRepository,
+    rule_packs: RulePolicyRegistry,
+) -> ReplayVerificationResult:
     """Verify replay data without leaking malformed persistence exceptions."""
     try:
-        return _verify_replay_records(game_id, repository)
+        return _verify_replay_records(game_id, repository, rule_packs)
     except (IndexError, KeyError, TypeError, ValueError):
         return _structural_mismatch(
             game_id,
@@ -53,6 +57,7 @@ def verify_replay(game_id: str, repository: ReplayRepository) -> ReplayVerificat
 def _verify_replay_records(
     game_id: str,
     repository: ReplayRepository,
+    rule_packs: RulePolicyRegistry,
 ) -> ReplayVerificationResult:
     """Verify checksums, version continuity, and rebuilt public projections."""
     records = repository.replay_records(game_id)
@@ -175,6 +180,7 @@ def _verify_replay_records(
         game_id,
         records,
         checked_versions,
+        rule_packs,
     )
     if execution_mismatch is not None:
         return execution_mismatch
@@ -230,6 +236,7 @@ def _verify_execution(
     game_id: str,
     records: Mapping[str, Sequence[Mapping[str, Any]]],
     checked_versions: set[int],
+    rule_packs: RulePolicyRegistry,
 ) -> ReplayVerificationResult | None:
     commands = list(records.get("commands", ()))
     states = {int(record["version"]): record for record in records.get("states", ())}
@@ -295,7 +302,12 @@ def _verify_execution(
                 for ability_id, ability in mechanics.abilities.items()
             },
         )
-        rules = build_game_rules(definition)
+        manifest = RulePackManifest.from_mapping(_mapping(genesis["rule_pack_manifest"]))
+        rules = rule_packs.compile(
+            manifest.provider_id,
+            definition,
+            expected_manifest=manifest,
+        )
         setup = game_setup_from_data({"players": genesis["players"]})
         game = Game.create(
             setup,

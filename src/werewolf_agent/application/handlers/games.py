@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from werewolf_agent.application.constants import AUTOMATED_AGENT_TYPE, MANUAL_AGENT_TYPE
 from werewolf_agent.application.domain_codec import domain_to_data, game_setup_from_data
-from werewolf_agent.application.errors import GameNotFoundError
+from werewolf_agent.application.errors import ConfigError, GameNotFoundError
 from werewolf_agent.application.handlers.common import (
     _config_text,
     _narration_mode,
@@ -48,7 +48,7 @@ from werewolf_agent.application.types import (
     GamePhase,
     GameStatus,
 )
-from werewolf_agent.domain import Game, build_game_rules
+from werewolf_agent.domain import Game
 from werewolf_agent.setup import LocalRulesDefinition, namespace_seed, rule_definition_from_values
 
 
@@ -78,7 +78,10 @@ def create_game(
             ability_id: ability.to_mapping() for ability_id, ability in mechanics.abilities.items()
         },
     )
-    rules = build_game_rules(definition)
+    try:
+        rules = dependencies.rule_packs.compile(command.rule_pack_provider_id, definition)
+    except ValueError as exc:
+        raise ConfigError("要求されたRule Packが構成されていません。") from exc
     setup_payload = setup.to_mapping()
     scenario_config = {
         "scenario_id": setup.theme.id,
@@ -107,6 +110,7 @@ def create_game(
             player.player_id: player.model_dump(mode="json", exclude={"player_id"})
             for player in command.players
         },
+        "rule_pack_manifest": rules.manifest.to_mapping(),
     }
     game = Game.create(
         game_setup_from_data({"players": players}),
@@ -178,7 +182,7 @@ def get_game_reveal(
     if run is None:
         raise GameNotFoundError(str(game_id))
 
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     snapshot = game.snapshot()
     pending_actions = snapshot.pending_actions
     alive_player_ids = [player.id for player in snapshot.players.values() if player.is_alive]

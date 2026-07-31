@@ -3,7 +3,10 @@ from collections.abc import Mapping, Sequence
 import pytest
 
 from werewolf_agent.application.replay import verify_replay
+from werewolf_agent.domain import CoreRulePack, RulePolicyRegistry
 from werewolf_agent.setup import checksum_payload
+
+RULE_PACKS = RulePolicyRegistry((CoreRulePack(),))
 
 
 class EmptyReplayRepository:
@@ -20,7 +23,7 @@ class StaticReplayRepository:
 
 
 def test_replay_rejects_missing_v2_genesis() -> None:
-    result = verify_replay("game-1", EmptyReplayRepository())
+    result = verify_replay("game-1", EmptyReplayRepository(), RULE_PACKS)
 
     assert result.valid is False
     assert result.first_mismatch_version == 1
@@ -48,7 +51,7 @@ def test_replay_detects_each_tampered_checksum_before_reexecution(stream: str) -
         }
     )
 
-    result = verify_replay("game-1", repository)
+    result = verify_replay("game-1", repository, RULE_PACKS)
 
     assert result.valid is False
     assert result.first_mismatch_version == 2
