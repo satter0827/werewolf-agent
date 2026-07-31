@@ -183,7 +183,7 @@ def test_artifact_issues_change_final_state_and_exit_contract(
         "resolved_profile": "focus",
         "reason": "差分からfocusを選択しました。",
     }
-    assert report["schema_version"] == "0.1.1"
+    assert report["schema_version"] == "0.2.0"
     assert report["execution"] == {"revision": "merge-commit", "tree": "tree"}
     assert report["change"] == {
         "base_ref": "origin/main",
@@ -297,8 +297,8 @@ def test_success_uses_contract_artifacts_without_adding_failure_diagnostics(
 
     def generate_contract(*_args: object) -> quality.CommandResult:
         generated.write_text("{}", encoding="utf-8")
-        generated_mtime = context.started_at.timestamp() + 1
-        os.utime(generated, (generated_mtime, generated_mtime))
+        coarse_mtime = int(context.started_at.timestamp())
+        os.utime(generated, (coarse_mtime, coarse_mtime))
         return quality.CommandResult([], 0, 0.0, "")
 
     gate = quality.Gate(
@@ -310,6 +310,42 @@ def test_success_uses_contract_artifacts_without_adding_failure_diagnostics(
     )
 
     result = quality._run_gate(context, gate)
+
+    assert result.state == "passed"
+    assert result.artifacts == ["contracts/openapi.json"]
+
+
+def test_gate_accepts_changed_artifact_with_coarse_mtime(tmp_path: Path) -> None:
+    """同一秒へ丸められた既存成果物も内容更新で現在runと判定する."""
+    generated = tmp_path / "contracts" / "openapi.json"
+    generated.parent.mkdir(parents=True)
+    generated.write_text('{"old": true}', encoding="utf-8")
+    os.utime(generated, (1, 1))
+    context = quality.RunContext(
+        profile="check",
+        jobs=1,
+        timeout_seconds=60,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={},
+        started_at=quality.utc_now(),
+    )
+
+    def generate_contract(*_args: object) -> quality.CommandResult:
+        generated.write_text("{}", encoding="utf-8")
+        coarse_mtime = int(context.started_at.timestamp())
+        os.utime(generated, (coarse_mtime, coarse_mtime))
+        return quality.CommandResult([], 0, 0.0, "")
+
+    result = quality._run_gate(
+        context,
+        quality.Gate(
+            "openapi",
+            "OpenAPI",
+            action=generate_contract,
+            artifacts=("contracts/openapi.json",),
+        ),
+    )
 
     assert result.state == "passed"
     assert result.artifacts == ["contracts/openapi.json"]
