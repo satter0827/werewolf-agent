@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 
 import pytest
 
 from werewolf_agent.domain import (
+    Action,
     CompiledRuleSet,
     CoreRulePack,
     Game,
@@ -19,6 +21,8 @@ from werewolf_agent.domain import (
     RulePackManifest,
     RulePolicyRegistry,
     RuleSetDefinition,
+    VoteResult,
+    VotingPolicy,
     WinResult,
 )
 from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
@@ -85,6 +89,7 @@ class ExternalVictoryPack:
         return CompiledRuleSet(
             config=core.config,
             manifest=self.manifest,
+            voting_policy=core.voting_policy,
             victory_policy=ImmediateVillageVictory(),
         )
 
@@ -106,6 +111,86 @@ class InvalidVictoryPolicy:
             day=state.day,
             winning_player_ids=(wolf_id,),
         )
+
+
+class RedirectVotingPolicy:
+    """得票数にかかわらずp2を排除する外部test policy."""
+
+    def resolve(
+        self,
+        state: GameState,
+        pending_votes: Mapping[str, Action],
+        random: random.Random,
+        *,
+        vote_round: int,
+    ) -> VoteResult:
+        """入力票を保持しつつ外部意味論の排除Outcomeを返す."""
+        del random
+        votes = {player_id: str(action.target_id) for player_id, action in pending_votes.items()}
+        return VoteResult(
+            day=state.day,
+            votes=votes,
+            counts={"p1": 2, "p2": 1},
+            tied_player_ids=("p1",),
+            missing_voter_ids=(),
+            eliminated_player_id="p2",
+            tie_break_policy="external_redirect",
+            round=vote_round,
+        )
+
+
+class InvalidVotingPolicy:
+    """存在しないplayerを排除するfault policy."""
+
+    def resolve(
+        self,
+        state: GameState,
+        pending_votes: Mapping[str, Action],
+        random: random.Random,
+        *,
+        vote_round: int,
+    ) -> VoteResult:
+        """Domain invariantに反する排除Outcomeを返す."""
+        del random
+        return VoteResult(
+            day=state.day,
+            votes={player_id: str(action.target_id) for player_id, action in pending_votes.items()},
+            counts={"p1": 2, "p2": 1},
+            tied_player_ids=("p1",),
+            missing_voter_ids=(),
+            eliminated_player_id="unknown",
+            tie_break_policy="invalid",
+            round=vote_round,
+        )
+
+
+def _game_with_voting_policy(policy: VotingPolicy) -> Game:
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=ExternalVictoryPack().manifest,
+        voting_policy=policy,
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup(
+            (
+                Player("p1", "Alice"),
+                Player("p2", "Bob"),
+                Player("p3", "Carol"),
+            )
+        ),
+        rules=rules,
+        random=random.Random(7),
+    )
+    game.advance(random.Random(11))
+    for action in (
+        Action.vote("p1", "p2"),
+        Action.vote("p2", "p1"),
+        Action.vote("p3", "p1"),
+    ):
+        game.submit(action)
+    return game
 
 
 def test_external_provider_is_used_only_after_explicit_registration() -> None:
@@ -147,6 +232,7 @@ def test_invalid_external_outcome_is_rejected_atomically() -> None:
     rules = CompiledRuleSet(
         config=core.config,
         manifest=ExternalVictoryPack().manifest,
+        voting_policy=core.voting_policy,
         victory_policy=InvalidVictoryPolicy(),
     )
     game = Game.create(
@@ -166,3 +252,28 @@ def test_invalid_external_outcome_is_rejected_atomically() -> None:
         game.advance(random.Random(11))
 
     assert game.snapshot() is before
+
+
+def test_external_voting_policy_changes_resolution_without_mutating_directly() -> None:
+    game = _game_with_voting_policy(RedirectVotingPolicy())
+
+    events = game.advance(random.Random(13))
+
+    assert not game.snapshot().players["p2"].is_alive
+    result = game.snapshot().history.votes[-1]
+    assert result.eliminated_player_id == "p2"
+    assert result.tie_break_policy == "external_redirect"
+    assert next(event for event in events if event.event_type == "vote_resolved")
+
+
+def test_invalid_voting_outcome_is_rejected_atomically() -> None:
+    game = _game_with_voting_policy(InvalidVotingPolicy())
+    before = game.snapshot()
+    random_source = random.Random(13)
+    random_state = random_source.getstate()
+
+    with pytest.raises(ValueError, match="eliminated player must be alive"):
+        game.advance(random_source)
+
+    assert game.snapshot() is before
+    assert random_source.getstate() == random_state
