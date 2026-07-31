@@ -18,9 +18,9 @@ from werewolf_agent.agents import (
     DecisionTrace,
     HeuristicAgentFactory,
 )
-from werewolf_agent.domain import GameEvent, GameState
+from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.1.0"
+SIMULATION_CONTRACT_VERSION = "0.2.0"
 
 
 class SimulationStepKind(StrEnum):
@@ -65,6 +65,22 @@ class SimulationLimits:
 
 
 @dataclass(frozen=True)
+class AgentMetadata:
+    """一回の本人用observationへ付加する役職情報と世界設定."""
+
+    identity: AgentIdentity | None = None
+    world: AgentWorld | None = None
+
+
+class AgentMetadataProvider(Protocol):
+    """現在の本人用viewから動的なAgent metadataを解決する境界."""
+
+    def resolve(self, observation: GameView) -> AgentMetadata:
+        """他プレイヤーの秘匿情報を含まないmetadataを返す."""
+        ...
+
+
+@dataclass(frozen=True)
 class PlayerController:
     """一人のプレイヤーへmanualまたはAgent制御を割り当てる."""
 
@@ -72,6 +88,7 @@ class PlayerController:
     factory: AgentFactory | None = None
     identity: AgentIdentity | None = None
     world: AgentWorld | None = None
+    metadata_provider: AgentMetadataProvider | None = None
     fallback_factory: AgentFactory = field(default_factory=HeuristicAgentFactory)
 
     def __post_init__(self) -> None:
@@ -239,6 +256,8 @@ def _non_negative_integer(value: object, field_name: str) -> None:
 
 __all__ = [
     "SIMULATION_CONTRACT_VERSION",
+    "AgentMetadata",
+    "AgentMetadataProvider",
     "DecisionExecutor",
     "DecisionTraceSink",
     "NullDecisionTraceSink",

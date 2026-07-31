@@ -10,6 +10,7 @@ Notebook、worker、実験から同じ一局実行契約を利用し、Agent差�
 
 - `SimulationSpec`はsimulation ID、game ID、seed、プレイヤー別controller、実行上限を固定する。
 - `PlayerController`はmanualまたは外部注入した`AgentFactory`を一人へ割り当てる。
+- `AgentMetadataProvider`は現在の本人用`GameView`から役職、能力残数、世界設定を都度解決する。
 - `SimulationRunner.create()`と`restore()`は同じseed規則でGameを開始する。
 - `SimulationSession.step()`は一つのaction、phase進行、停止判定のいずれかを返す。
 - `submit_manual()`はmanual controllerのactionだけを`Game`へ渡す。
@@ -26,6 +27,9 @@ provider設定、複数試行、統計、checkpoint、artifactを所有しない
 同期の既定executorはAgentを一回だけ呼び出し、応答後にtimeout超過を検出する。実行中の処理を
 安全に強制停止する必要があるproviderは、プロセスまたはprovider固有timeoutを使う外部executorを
 注入する。simulationは停止不能なthreadを生成しない。
+
+静的なidentityとworldは小さな実験で利用できる。長期sessionでは`AgentMetadataProvider`を使い、
+能力使用後も現在値を返す。providerへ渡す値は本人用`GameView`だけとし、完全状態を契約へ含めない。
 
 ## 決定性
 

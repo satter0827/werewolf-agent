@@ -2,6 +2,8 @@
 
 from werewolf_agent.simulation.contracts import (
     SIMULATION_CONTRACT_VERSION,
+    AgentMetadata,
+    AgentMetadataProvider,
     DecisionExecutor,
     DecisionTraceSink,
     NullDecisionTraceSink,
@@ -22,6 +24,8 @@ from werewolf_agent.simulation.session import (
 
 __all__ = [
     "SIMULATION_CONTRACT_VERSION",
+    "AgentMetadata",
+    "AgentMetadataProvider",
     "CancellationToken",
     "DecisionExecutor",
     "DecisionTraceSink",

@@ -19,8 +19,8 @@ import httpx
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
-from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
-from werewolf_agent.adapters.agents.game_driver import decide_game_action, langchain_agent_factory
+from werewolf_agent.adapters.agents.game_context import SetupAgentMetadataProvider
+from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
     build_llm_definitions,
     build_setup_catalog,
@@ -31,15 +31,22 @@ from werewolf_agent.adapters.llm.models import (
     PlayerProfile,
 )
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
-from werewolf_agent.agents import AgentContext, AgentFactory
+from werewolf_agent.agents import AgentFactory
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
+from werewolf_agent.domain import EventVisibility, Game, GameSetup, Player, build_game_rules
 from werewolf_agent.settings import get_settings
 from werewolf_agent.setup import (
     checksum_payload,
     generate_players,
     namespace_seed,
     rule_definition_from_values,
+)
+from werewolf_agent.simulation import (
+    PlayerController,
+    SimulationLimits,
+    SimulationRunner,
+    SimulationSpec,
+    SimulationStepKind,
 )
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
@@ -706,25 +713,10 @@ def _run_preset(
         player.player_id: PlayerProfile.model_validate(player.profile.to_mapping())
         for player in players
     }
-    role_rng = random.Random(namespace_seed(seed, "role_assignment"))
-    gameplay_rng = random.Random(namespace_seed(seed, "gameplay"))
-    game = Game.create(
-        GameSetup(
-            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
-        ),
-        rules=build_game_rules(rule_definition),
-        random=role_rng,
-    )
     trace_sink = InMemoryTraceSink(trace_callback)
     setup_document = setup.to_mapping()
     setup_checksum = checksum_payload(setup_document)
     mechanics_checksum = checksum_payload(mechanics.to_mapping())
-    contexts = build_agent_game_contexts(
-        setup_document,
-        game.snapshot(),
-        setup_checksum=setup_checksum,
-        mechanics_checksum=mechanics_checksum,
-    )
     factories: dict[str, AgentFactory] = {
         player_id: langchain_agent_factory(
             config,
@@ -735,6 +727,42 @@ def _run_preset(
         )
         for player_id, profile in profiles.items()
     }
+    player_setup = GameSetup(
+        players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
+    )
+    rules = build_game_rules(rule_definition)
+    game = Game.create(
+        player_setup,
+        rules=rules,
+        random=random.Random(namespace_seed(seed, "role_assignment")),
+    )
+    metadata_provider = SetupAgentMetadataProvider(
+        setup=setup_document,
+        snapshot=game.snapshot,
+        setup_checksum=setup_checksum,
+        mechanics_checksum=mechanics_checksum,
+    )
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            simulation_id=f"review:{seed}",
+            game_id=f"review:{seed}",
+            seed=seed,
+            controllers={
+                player_id: PlayerController(
+                    player_id,
+                    factory,
+                    metadata_provider=metadata_provider,
+                )
+                for player_id, factory in factories.items()
+            },
+            limits=SimulationLimits(
+                max_actions=MAX_INVOCATIONS,
+                max_phases=MAX_PHASES,
+                decision_timeout_seconds=config.timeout_seconds,
+            ),
+        ),
+    )
     public_timeline = [
         domain_to_data(event)
         for event in game.creation_events
@@ -743,51 +771,25 @@ def _run_preset(
     phase_count = 0
     action_count = 0
     stopped_for_preflight = False
-    while game.snapshot().phase is not Phase.FINISHED and phase_count < MAX_PHASES:
-        for index, player in enumerate(tuple(game.snapshot().players.values())):
-            if player.status.value != "alive":
-                continue
-            observation = game.view_for(player.id)
-            while observation.available_actions:
-                if len(trace_sink.records) >= invocation_limit:
-                    stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
-                    break
-                decision_seed = seed + phase_count * 1009 + index * 131 + action_count
-                action = decide_game_action(
-                    factories[player.id],
-                    context=AgentContext(
-                        session_id=f"review:{seed}:{player.id}",
-                        game_id=f"review:{seed}",
-                        player_id=player.id,
-                        session_seed=namespace_seed(seed, f"review-session:{player.id}"),
-                    ),
-                    observation=observation,
-                    decision_seed=decision_seed,
-                    game_context=contexts.get(player.id),
-                )
-                emitted = game.submit(action)
-                action_count += 1
-                public_timeline.extend(
-                    domain_to_data(event)
-                    for event in emitted
-                    if event.visibility is EventVisibility.PUBLIC
-                )
-                observation = game.view_for(player.id)
-            if stopped_for_preflight:
+    try:
+        while True:
+            if len(trace_sink.records) >= invocation_limit:
+                stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
                 break
-        if stopped_for_preflight:
-            break
-        emitted = game.advance(gameplay_rng)
-        public_timeline.extend(
-            domain_to_data(event) for event in emitted if event.visibility is EventVisibility.PUBLIC
-        )
-        phase_count += 1
-        contexts = build_agent_game_contexts(
-            setup_document,
-            game.snapshot(),
-            setup_checksum=setup_checksum,
-            mechanics_checksum=mechanics_checksum,
-        )
+            step = session.step()
+            public_timeline.extend(
+                domain_to_data(event)
+                for event in step.events
+                if event.visibility is EventVisibility.PUBLIC
+            )
+            if step.kind is SimulationStepKind.AGENT_ACTION:
+                action_count += 1
+            elif step.kind is SimulationStepKind.PHASE_ADVANCED:
+                phase_count += 1
+            if step.stop_reason is not None:
+                break
+    finally:
+        session.close()
     snapshot = game.snapshot()
     traces = [_trace_document(trace) for trace in trace_sink.records]
     fallbacks = sum(bool(trace["fallback_used"]) for trace in traces)
@@ -801,7 +803,7 @@ def _run_preset(
     )
     prompt_characters = sum(_as_int(trace["prompt_characters"]) for trace in traces)
     response_characters = sum(_as_int(trace["response_characters"]) for trace in traces)
-    completed = snapshot.phase is Phase.FINISHED
+    completed = snapshot.is_finished
     state = _classify_scenario_state(
         stopped_for_preflight=stopped_for_preflight,
         has_traces=bool(traces),

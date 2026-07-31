@@ -108,7 +108,8 @@ schema検証後のresponseだけを返し、simulationは本人用`GameView`か�
 `SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、
 手動入力待ち、終局、上限、cancelを明示的な停止理由として返す。リポジトリ、HTTP、provider preflight、
 複数試行、統計、artifactは所有しない。状態・event・action/response列は同じ入力とseedで再現できる。
-`latency_ms`とdeadlineは運用診断値であり、決定性の比較対象に含めない。
+`latency_ms`は運用診断値であり、決定性の比較対象に含めない。
+能力残数などの可変metadataは`AgentMetadataProvider`が本人用`GameView`から都度解決する。
 
 modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
 modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに

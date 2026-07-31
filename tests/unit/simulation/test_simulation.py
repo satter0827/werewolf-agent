@@ -7,10 +7,20 @@ import random
 import pytest
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.agents import FaultAgentFactory, RandomLegalAgentFactory
-from werewolf_agent.domain import Action, Game, GameSetup, Player, build_game_rules
+from werewolf_agent.agents import (
+    AgentContext,
+    AgentSession,
+    AgentSpec,
+    AgentWorld,
+    DecisionRequest,
+    DecisionResponse,
+    FaultAgentFactory,
+    RandomLegalAgentFactory,
+)
+from werewolf_agent.domain import Action, Game, GameSetup, GameView, Player, build_game_rules
 from werewolf_agent.setup import generate_players, namespace_seed, rule_definition_from_values
 from werewolf_agent.simulation import (
+    AgentMetadata,
     CancellationToken,
     PlayerController,
     SimulationLimits,
@@ -19,6 +29,49 @@ from werewolf_agent.simulation import (
     SimulationStepKind,
     SimulationStopReason,
 )
+
+
+class _CapturingFactory:
+    def __init__(self) -> None:
+        self._inner = RandomLegalAgentFactory()
+        self.requests: list[DecisionRequest] = []
+
+    @property
+    def spec(self) -> AgentSpec:
+        return self._inner.spec
+
+    def create(self, context: AgentContext) -> AgentSession:
+        return _CapturingSession(self._inner.create(context), self.requests)
+
+
+class _CapturingSession:
+    def __init__(self, inner: AgentSession, requests: list[DecisionRequest]) -> None:
+        self._inner = inner
+        self._requests = requests
+
+    def decide(self, request: DecisionRequest) -> DecisionResponse:
+        self._requests.append(request)
+        return self._inner.decide(request)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+class _ChangingMetadata:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def resolve(self, _observation: GameView) -> AgentMetadata:
+        self.calls += 1
+        return AgentMetadata(
+            world=AgentWorld(
+                "test",
+                "Test",
+                f"call-{self.calls}",
+                "0" * 64,
+                "1" * 64,
+            )
+        )
 
 
 def _game(seed: int = 41) -> Game:
@@ -154,6 +207,38 @@ def test_limits_and_cancellation_are_explicit_stop_reasons() -> None:
         assert session.run().stop_reason is SimulationStopReason.CANCELLED
     finally:
         session.close()
+
+
+def test_metadata_provider_is_resolved_for_every_decision() -> None:
+    game = _game()
+    factory = _CapturingFactory()
+    metadata = _ChangingMetadata()
+    spec = SimulationSpec(
+        "dynamic-metadata",
+        "game-1",
+        19,
+        {
+            player_id: PlayerController(
+                player_id,
+                factory,
+                metadata_provider=metadata,
+            )
+            for player_id in game.snapshot().players
+        },
+    )
+    session = SimulationRunner().start(game, spec)
+    try:
+        while len(factory.requests) < 3:
+            assert session.step().stop_reason is None
+    finally:
+        session.close()
+
+    assert metadata.calls == len(factory.requests)
+    assert [request.observation.world.premise for request in factory.requests] == [
+        "call-1",
+        "call-2",
+        "call-3",
+    ]
 
 
 def test_spec_rejects_controller_mismatch_and_invalid_limits() -> None:
