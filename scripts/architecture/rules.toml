@@ -74,9 +74,7 @@ roots = ["src/werewolf_agent/api/routes"]
 forbidden = [
   "werewolf_agent.adapters",
   "werewolf_agent.agents",
-  "werewolf_agent.application.handlers",
-  "werewolf_agent.application.models",
-  "werewolf_agent.application.ports",
+  "werewolf_agent.application.",
   "werewolf_agent.domain",
 ]
 

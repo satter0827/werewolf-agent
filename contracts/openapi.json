@@ -306,6 +306,55 @@
         "title": "AdvanceOperationRequest",
         "type": "object"
       },
+      "AvailableActionDescriptor": {
+        "additionalProperties": false,
+        "description": "One legal action and its server-authorized target candidates.",
+        "properties": {
+          "ability_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ability Id"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "legal_target_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Legal Target Ids",
+            "type": "array"
+          },
+          "message_required": {
+            "default": false,
+            "title": "Message Required",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "speech",
+              "vote",
+              "use_ability",
+              "pass"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type"
+        ],
+        "title": "AvailableActionDescriptor",
+        "type": "object"
+      },
       "CreateGameRequest": {
         "additionalProperties": false,
         "description": "Payload for creating one game.",
@@ -1351,6 +1400,199 @@
         "title": "PlayerIdentitySettings",
         "type": "object"
       },
+      "PlayerObservation": {
+        "additionalProperties": false,
+        "description": "Typed private observation used to build an independent game client.",
+        "properties": {
+          "available_actions": {
+            "items": {
+              "$ref": "#/components/schemas/AvailableActionDescriptor"
+            },
+            "title": "Available Actions",
+            "type": "array"
+          },
+          "day": {
+            "minimum": 1.0,
+            "title": "Day",
+            "type": "integer"
+          },
+          "history": {
+            "$ref": "#/components/schemas/PlayerObservationHistory"
+          },
+          "known_factions": {
+            "additionalProperties": {
+              "enum": [
+                "village",
+                "werewolf",
+                "fox"
+              ],
+              "type": "string"
+            },
+            "title": "Known Factions",
+            "type": "object"
+          },
+          "known_roles": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Known Roles",
+            "type": "object"
+          },
+          "me": {
+            "$ref": "#/components/schemas/PlayerObservationPlayer"
+          },
+          "phase": {
+            "enum": [
+              "night",
+              "day_discussion",
+              "voting",
+              "finished"
+            ],
+            "title": "Phase",
+            "type": "string"
+          },
+          "players": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerObservationPlayer"
+            },
+            "title": "Players",
+            "type": "array"
+          },
+          "win_result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PlayerObservationOutcome"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "phase",
+          "day",
+          "me",
+          "players"
+        ],
+        "title": "PlayerObservation",
+        "type": "object"
+      },
+      "PlayerObservationHistory": {
+        "additionalProperties": false,
+        "description": "Public history included in one player observation.",
+        "properties": {
+          "speeches": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerObservationSpeech"
+            },
+            "title": "Speeches",
+            "type": "array"
+          },
+          "votes": {
+            "items": {
+              "$ref": "#/components/schemas/PlayerObservationVote"
+            },
+            "title": "Votes",
+            "type": "array"
+          }
+        },
+        "title": "PlayerObservationHistory",
+        "type": "object"
+      },
+      "PlayerObservationOutcome": {
+        "additionalProperties": false,
+        "description": "Public game outcome without hidden winning player identities.",
+        "properties": {
+          "day": {
+            "minimum": 1.0,
+            "title": "Day",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "winner": {
+            "enum": [
+              "village",
+              "werewolf",
+              "fox"
+            ],
+            "title": "Winner",
+            "type": "string"
+          }
+        },
+        "required": [
+          "winner",
+          "reason",
+          "day"
+        ],
+        "title": "PlayerObservationOutcome",
+        "type": "object"
+      },
+      "PlayerObservationPlayer": {
+        "additionalProperties": false,
+        "description": "One player as visible to the authenticated observer.",
+        "properties": {
+          "eliminated_day": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated Day"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "killed_night": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Killed Night"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "role": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Role"
+          },
+          "status": {
+            "enum": [
+              "alive",
+              "dead"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status"
+        ],
+        "title": "PlayerObservationPlayer",
+        "type": "object"
+      },
       "PlayerObservationResponse": {
         "additionalProperties": false,
         "description": "Private observation visible to one authenticated player.",
@@ -1360,9 +1602,7 @@
             "type": "string"
           },
           "observation": {
-            "additionalProperties": true,
-            "title": "Observation",
-            "type": "object"
+            "$ref": "#/components/schemas/PlayerObservation"
           },
           "player_id": {
             "title": "Player Id",
@@ -1375,6 +1615,125 @@
           "observation"
         ],
         "title": "PlayerObservationResponse",
+        "type": "object"
+      },
+      "PlayerObservationSpeech": {
+        "additionalProperties": false,
+        "description": "One public speech visible in a player observation.",
+        "properties": {
+          "day": {
+            "minimum": 1.0,
+            "title": "Day",
+            "type": "integer"
+          },
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "focus_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Focus Id"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "player_id",
+          "message"
+        ],
+        "title": "PlayerObservationSpeech",
+        "type": "object"
+      },
+      "PlayerObservationVote": {
+        "additionalProperties": false,
+        "description": "One resolved public vote round visible in a player observation.",
+        "properties": {
+          "counts": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "title": "Counts",
+            "type": "object"
+          },
+          "day": {
+            "minimum": 1.0,
+            "title": "Day",
+            "type": "integer"
+          },
+          "eliminated_player_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Eliminated Player Id"
+          },
+          "missing_voter_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Voter Ids",
+            "type": "array"
+          },
+          "requires_revote": {
+            "default": false,
+            "title": "Requires Revote",
+            "type": "boolean"
+          },
+          "round": {
+            "default": 1,
+            "minimum": 1.0,
+            "title": "Round",
+            "type": "integer"
+          },
+          "tie_break_policy": {
+            "title": "Tie Break Policy",
+            "type": "string"
+          },
+          "tied_player_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tied Player Ids",
+            "type": "array"
+          },
+          "votes": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Votes",
+            "type": "object"
+          }
+        },
+        "required": [
+          "day",
+          "tie_break_policy"
+        ],
+        "title": "PlayerObservationVote",
         "type": "object"
       },
       "PlayerPreviewRequest": {
@@ -3710,7 +4069,7 @@
   },
   "info": {
     "title": "Werewolf Agent API",
-    "version": "0.28.0"
+    "version": "0.29.0"
   },
   "openapi": "3.1.0",
   "paths": {

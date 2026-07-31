@@ -681,6 +681,25 @@ class WinResult:
 
 
 @dataclass(frozen=True)
+class VisibleWinResult:
+    """Player observationへ公開できる勝敗情報を表す."""
+
+    winner: str
+    reason: str
+    day: int
+
+    def __post_init__(self) -> None:
+        """勝利陣営、理由、日数を公開値として検証する."""
+        winner = non_blank(self.winner, "winner")
+        if winner not in SUPPORTED_FACTIONS:
+            raise ValueError(message_unsupported_faction(winner))
+        if self.day < 1:
+            raise ValueError("visible win result day must be at least 1.")
+        object.__setattr__(self, "winner", winner)
+        object.__setattr__(self, "reason", non_blank(self.reason, "reason"))
+
+
+@dataclass(frozen=True)
 class GameHistory:
     """解決済みゲーム履歴のimmutable collectionを表す."""
 
@@ -803,7 +822,7 @@ class GameView:
     available_actions: tuple[AvailableAction, ...] = ()
     legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
-    win_result: WinResult | None = None
+    win_result: VisibleWinResult | None = None
 
     def __post_init__(self) -> None:
         """Freeze visible collections and legal targets."""

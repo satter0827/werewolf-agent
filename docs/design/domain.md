@@ -26,6 +26,8 @@ domainはID生成規則とuserの所有関係を扱わない。
 public timelineに射影し、プレイヤー observationは認証した本人が知り得る範囲へ
 絞る。完全状態の管理者reveal、ゲーム終了後の完全リプレイ、LLM traceは、公開
 DTOとは別の認可された経路で扱う。
+本人用`GameView`の発言履歴は公開messageと参照IDだけを保持し、内部reasonを保持しない。
+終局結果は勝利陣営、公開理由、日数だけを保持し、完全状態の勝利プレイヤーIDを含めない。
 `reveal_role_on_death`が有効な場合だけ、死亡が確定したプレイヤーのroleとfactionをpublic stateと
 対応する解決済みeventへ含める。生存者、未解決投票、夜行動、占い結果は公開しない。
 

@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-from werewolf_agent.application.operations import OperationQueue, QueuedOperation
+from werewolf_agent.application import OperationQueue, QueuedOperation
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     RuntimeAvailability,

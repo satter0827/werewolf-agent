@@ -106,15 +106,15 @@ def _prompt_and_submit_manual_action(
         game_id,
         player_id,
     )
-    actions = observation.observation.get("available_actions") or []
+    actions = observation.observation.available_actions
     if not actions:
         return
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_observation(observation)
-    selected = actions[0] if isinstance(actions[0], dict) else {"type": str(actions[0])}
-    action_type = str(selected.get("type"))
-    ability_id = str(selected["ability_id"]) if selected.get("ability_id") else None
-    action_key = f"{action_type}:{ability_id}" if ability_id else action_type
+    selected = actions[0]
+    action_type = selected.type
+    ability_id = selected.ability_id
+    action_key = selected.key
     target_id = None
     message = None
     if action_type == "speech":

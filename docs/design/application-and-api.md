@@ -51,6 +51,11 @@ FastAPIはapplication composition rootとして、設定、リポジトリ、認
 - Pydantic契約で入力と出力を検証する。
 - 安全な例外だけをProblem Detailsへ変換する。
 - stack traceとtokenを応答へ含めず、private stateを通常応答へ含めない。
+- 本人observationは型付きwire schemaへallowlist投影し、合法行動ごとの安定key、能力ID、
+  合法対象ID、message要否を返す。Domain内部の理由、非公開履歴、勝利プレイヤーIDは返さない。
+
+API routeは`werewolf_agent.application`の公開facadeだけをimportする。内部handler、model、port、
+errorモジュールへの直接依存は構造テストで拒否する。
 
 CORSはAPIの一般的な外部境界として扱う。既定では無効とし、許可originを設定した場合だけ
 middlewareを有効にする。設定fieldと環境変数名はsettings modelと`.env.example`を正本とする。

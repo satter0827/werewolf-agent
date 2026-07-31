@@ -40,15 +40,15 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     versions = {str(item["name"]): str(item["version"]) for item in items}
     assert versions == {
         "agent": "0.4.0",
-        "architecture": "0.13.0",
+        "architecture": "0.13.1",
         "event": "0.1.0",
         "experiment": "0.5.0",
         "experiment-evaluator": "0.3.0",
-        "product": "0.28.0",
+        "product": "0.29.0",
         "quality-evidence": "0.2.0",
         "replay": "0.4.0",
-        "rule-pack": "0.6.0",
-        "simulation": "0.3.1",
+        "rule-pack": "0.6.1",
+        "simulation": "0.4.0",
         "setup": "0.3.0",
     }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}

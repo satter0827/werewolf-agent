@@ -84,7 +84,15 @@ class FakeStreamlitClient:
             game_id=game_id,
             player_id=player_id,
             observation={
-                "me": {"id": player_id, "role": "villager"},
+                "phase": "day_discussion",
+                "day": 1,
+                "me": {
+                    "id": player_id,
+                    "name": player_id,
+                    "status": "alive",
+                    "role": "villager",
+                },
+                "players": [],
                 "known_roles": {},
                 "available_actions": [],
             },

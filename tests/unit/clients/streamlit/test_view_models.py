@@ -10,6 +10,7 @@ from werewolf_agent.clients.streamlit.view_models import (
 from werewolf_agent.clients.streamlit.view_models.formatting import _display_player_name
 from werewolf_agent.contracts.schemas import (
     GameTimelineItem,
+    PlayerObservation,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -67,9 +68,24 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         game_id="game-1",
         player_id="player-1",
         observation={
-            "me": {"id": "player-1", "role": "seer"},
+            "phase": "day_discussion",
+            "day": 2,
+            "me": {
+                "id": "player-1",
+                "name": "P1",
+                "status": "alive",
+                "role": "seer",
+            },
+            "players": [],
             "known_roles": {"player-2": "werewolf"},
-            "available_actions": [{"type": "speech"}],
+            "available_actions": [
+                {
+                    "key": "speech",
+                    "type": "speech",
+                    "legal_target_ids": [],
+                    "message_required": True,
+                }
+            ],
         },
     )
 
@@ -194,7 +210,25 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     candidates = target_candidates_for_action(
         "vote",
         state=_state(),
-        observation={"legal_targets": {"vote": ["player-2"]}},
+        observation=PlayerObservation.model_validate(
+            {
+                "phase": "voting",
+                "day": 1,
+                "me": {
+                    "id": "player-1",
+                    "name": "P1",
+                    "status": "alive",
+                },
+                "players": [],
+                "available_actions": [
+                    {
+                        "key": "vote",
+                        "type": "vote",
+                        "legal_target_ids": ["player-2"],
+                    }
+                ],
+            }
+        ),
         manual_player_id="player-1",
     )
 
