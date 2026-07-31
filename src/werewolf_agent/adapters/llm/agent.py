@@ -12,6 +12,7 @@ from werewolf_agent.adapters.llm.models import (
     AgentAbilityContext,
     AgentActionType,
     AgentAvailableAction,
+    AgentDecision,
     AgentGameContext,
     AgentPhase,
     AgentPlayerStatus,
@@ -93,6 +94,7 @@ class _LangChainAgentSession:
                 self.context.player_id,
                 _llm_observation(request, self.profile),
             )
+            _require_legal_decision(request, decision)
         except AgentDecisionError:
             raise
         except Exception as exc:
@@ -232,6 +234,33 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
 def _checksum(value: object) -> str:
     payload = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -> None:
+    option = next(
+        (
+            item
+            for item in request.options
+            if item.action_type == decision.type.value and item.ability_id == decision.ability_id
+        ),
+        None,
+    )
+    if option is None:
+        raise AgentDecisionError("llm_action_not_available")
+    if decision.target_id is not None and decision.target_id not in option.legal_target_ids:
+        raise AgentDecisionError("llm_target_not_legal")
+    if option.legal_target_ids and decision.target_id is None:
+        raise AgentDecisionError("llm_target_required")
+    if decision.type is AgentActionType.SPEECH:
+        if decision.message is None:
+            raise AgentDecisionError("llm_message_required")
+        if (
+            option.message_max_chars is not None
+            and len(decision.message) > option.message_max_chars
+        ):
+            raise AgentDecisionError("llm_message_too_long")
+    elif decision.message is not None:
+        raise AgentDecisionError("llm_message_not_allowed")
 
 
 def _optional_text(value: object) -> str | None:

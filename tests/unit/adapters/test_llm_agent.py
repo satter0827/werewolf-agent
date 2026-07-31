@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 
 import pytest
@@ -76,6 +77,26 @@ def test_langchain_session_rejects_request_for_another_context() -> None:
 
     with pytest.raises(ValueError, match="does not belong"):
         factory.create(context).decide(_request(other))
+
+
+def test_langchain_session_rejects_preflight_response_outside_options() -> None:
+    factory = _factory('{"type":"vote","target_id":"p2","reason":"test"}')
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = _request(context)
+    dead_me = ObservedPlayer("p1", "Alice", False)
+    request = replace(
+        request,
+        observation=replace(
+            request.observation,
+            me=dead_me,
+            players=(dead_me, request.observation.players[1]),
+        ),
+    )
+
+    with pytest.raises(AgentDecisionError) as captured:
+        factory.create(context).decide(request)
+
+    assert captured.value.code == "llm_action_not_available"
 
 
 def _factory(response: str) -> LangChainAgentFactory:
