@@ -12,6 +12,7 @@ from typing import Protocol, runtime_checkable
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
 AGENT_CONTRACT_VERSION = "0.4.0"
+_CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,9 @@ class AgentIdentity:
         if len(ability_ids) != len(set(ability_ids)):
             raise ValueError("abilities must have unique ability IDs")
         object.__setattr__(self, "abilities", abilities)
+        for field_name in ("identity_faction_id", "victory_team_id"):
+            if getattr(self, field_name) not in _CANONICAL_FACTION_IDS:
+                raise ValueError(f"{field_name} must be a canonical faction ID")
 
 
 @dataclass(frozen=True)

@@ -202,6 +202,21 @@ def test_observation_rejects_identity_inconsistent_with_self_knowledge() -> None
         )
 
 
+@pytest.mark.parametrize(
+    ("field_name", "position"), (("identity_faction_id", 2), ("victory_team_id", 4))
+)
+def test_agent_identity_rejects_noncanonical_faction_ids(
+    field_name: str,
+    position: int,
+) -> None:
+    """Domainと同じ正規faction IDだけを外部Agent契約で受理する."""
+    values = ["oracle", "観測者", "village", "探索側", "village", "探索側", "目的"]
+    values[position] = "town"
+
+    with pytest.raises(ValueError, match=field_name):
+        AgentIdentity(*values)
+
+
 def test_agent_decision_error_freezes_safe_diagnostics() -> None:
     """予定された失敗を安定codeとimmutableな診断値で通知する."""
     error = AgentDecisionError("agent.invalid_response", {"stage": "schema"})
