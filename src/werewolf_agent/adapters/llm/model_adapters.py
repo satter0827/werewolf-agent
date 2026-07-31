@@ -55,6 +55,8 @@ class LangChainChatDecisionModel:
     base_url: str = ""
     timeout_seconds: float | None = None
     max_tokens: int | None = None
+    temperature: float | None = None
+    max_retries: int | None = None
 
     def invoke(self, request: ModelRequest) -> ModelResponse:
         """Return one normalized chat response."""

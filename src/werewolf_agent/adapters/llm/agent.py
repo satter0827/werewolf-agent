@@ -35,7 +35,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.0.0"
+_IMPLEMENTATION_VERSION = "1.1.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -50,14 +50,28 @@ class LangChainAgentFactory:
     def spec(self) -> AgentSpec:
         """Credentialを含まない再現可能なLLM Agent identityを返す."""
         prompt_payload = self.provider.prompt.model_dump(mode="json", by_alias=True)
+        decision_model = self.provider.decision_model
         parameters: dict[str, object] = {
             "provider": self.provider.provider_name,
             "model": self.provider.model_name,
+            "decision_model_type": (
+                f"{type(decision_model).__module__}.{type(decision_model).__qualname__}"
+            ),
             "max_output_tokens": self.provider.max_output_tokens,
             "deliberation_level": self.provider.deliberation_level.value,
             "prompt_checksum": _checksum(prompt_payload),
             "profile": self.profile.model_dump(mode="json"),
         }
+        for field_name in (
+            "base_url",
+            "timeout_seconds",
+            "max_tokens",
+            "temperature",
+            "max_retries",
+        ):
+            value = getattr(decision_model, field_name, None)
+            if value not in {None, ""}:
+                parameters[field_name] = value
         fingerprint = _checksum(
             {
                 "agent_id": "langchain",

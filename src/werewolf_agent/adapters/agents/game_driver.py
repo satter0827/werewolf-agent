@@ -277,6 +277,8 @@ def _decision_provider(
             base_url=config.base_url,
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
+            temperature=config.temperature,
+            max_retries=config.max_retries,
         )
         return LangChainDecisionProvider(
             prompt=definitions.prompt,

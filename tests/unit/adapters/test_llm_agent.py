@@ -40,6 +40,10 @@ def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> No
     assert response.target_id == "p2"
     assert response.metadata == {"reason": "公開発言から判断"}
     assert factory.spec.parameters["provider"] == "openai-compatible"
+    assert factory.spec.parameters["base_url"] == "http://localhost:1234/v1"
+    assert str(factory.spec.parameters["decision_model_type"]).endswith(
+        ".LangChainChatDecisionModel"
+    )
     assert len(factory.spec.fingerprint) == 64
     assert "credential" not in repr(factory.spec.parameters).lower()
 
