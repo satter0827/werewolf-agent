@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import os
 import shutil
 import sys
@@ -310,6 +311,7 @@ def _run_gate(context: RunContext, gate: Gate) -> GateResult:
     started = time.monotonic()
     try:
         with log_path.open("w", encoding="utf-8") as stream:
+            previous_artifacts = _artifact_fingerprints(context, gate)
             if gate.action is not None:
                 command_result = gate.action(context, log_path)
                 stream.write(redact(command_result.output))
@@ -321,7 +323,11 @@ def _run_gate(context: RunContext, gate: Gate) -> GateResult:
                     output=stream,
                     cwd=gate.cwd,
                 )
-            artifact_issues, contract_artifacts = _artifact_contract(context, gate)
+            artifact_issues, contract_artifacts = _artifact_contract(
+                context,
+                gate,
+                previous_artifacts=previous_artifacts,
+            )
             if command_result.returncode == 0 and artifact_issues:
                 detail = "\n成果物契約に違反しています:\n" + "".join(
                     f"- {issue}\n" for issue in artifact_issues
@@ -379,7 +385,12 @@ def _run_gate(context: RunContext, gate: Gate) -> GateResult:
         )
 
 
-def _artifact_contract(context: RunContext, gate: Gate) -> tuple[list[str], list[str]]:
+def _artifact_contract(
+    context: RunContext,
+    gate: Gate,
+    *,
+    previous_artifacts: dict[Path, tuple[int, int, int, str]] | None = None,
+) -> tuple[list[str], list[str]]:
     """Gate自身が宣言した成果物の欠落と鮮度を検査する。"""
     issues: list[str] = []
     artifacts: list[str] = []
@@ -396,9 +407,40 @@ def _artifact_contract(context: RunContext, gate: Gate) -> tuple[list[str], list
             if artifact not in seen_artifacts:
                 artifacts.append(artifact)
                 seen_artifacts.add(artifact)
-        if all(path.stat().st_mtime < started for path in matches):
+        if all(
+            path.stat().st_mtime < started
+            and (
+                previous_artifacts is None
+                or (
+                    path in previous_artifacts
+                    and _artifact_fingerprint(path) == previous_artifacts[path]
+                )
+            )
+            for path in matches
+        ):
             issues.append(f"成果物が現在runで更新されていません: {pattern}")
     return issues, artifacts
+
+
+def _artifact_fingerprints(
+    context: RunContext,
+    gate: Gate,
+) -> dict[Path, tuple[int, int, int, str]]:
+    """Gate実行前に存在する宣言成果物の内容とmetadataを固定する."""
+    fingerprints: dict[Path, tuple[int, int, int, str]] = {}
+    for pattern in gate.artifacts:
+        root = ARTIFACT_ROOT if pattern.startswith("outputs/") else context.run_dir
+        for path in root.glob(pattern):
+            if path.is_file() and path not in fingerprints:
+                fingerprints[path] = _artifact_fingerprint(path)
+    return fingerprints
+
+
+def _artifact_fingerprint(path: Path) -> tuple[int, int, int, str]:
+    """Filesystem時刻解像度に依存しない一つの成果物fingerprintを返す."""
+    stat = path.stat()
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    return stat.st_mtime_ns, stat.st_ctime_ns, stat.st_size, digest
 
 
 def _snapshot_artifact(path: Path, run_dir: Path) -> str:

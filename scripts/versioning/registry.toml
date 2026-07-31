@@ -45,4 +45,4 @@ owner = "scripts.quality"
 standard = "semver"
 path = "scripts/versioning/versions.py"
 pattern = 'QUALITY_EVIDENCE_VERSION\s*=\s*"([^"]+)"'
-watch = ["scripts/quality/reporting.py", "scripts/quality/artifacts.py", "scripts/quality/retention.py"]
+watch = ["scripts/quality/runner.py", "scripts/quality/reporting.py", "scripts/quality/artifacts.py", "scripts/quality/retention.py"]
