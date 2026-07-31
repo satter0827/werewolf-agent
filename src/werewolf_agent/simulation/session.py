@@ -558,6 +558,12 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
         raise AgentDecisionError("agent_target_required")
     if response.action_type == "speech" and response.message is None:
         raise AgentDecisionError("agent_message_required")
+    if (
+        response.message is not None
+        and option.message_max_chars is not None
+        and len(response.message) > option.message_max_chars
+    ):
+        raise AgentDecisionError("agent_message_too_long")
     if response.action_type != "speech" and response.message is not None:
         raise AgentDecisionError("agent_message_not_allowed")
 

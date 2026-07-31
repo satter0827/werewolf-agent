@@ -1,6 +1,10 @@
 """公開Python application facade."""
 
 from werewolf_agent.application.actor import Actor
+from werewolf_agent.application.conformance import (
+    assert_game_repository_contract,
+    assert_setup_repository_contract,
+)
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.embedding import (
     EmbeddedApplication,
@@ -125,6 +129,8 @@ __all__ = [
     "StoredGameSummary",
     "StoredGameTurn",
     "Transaction",
+    "assert_game_repository_contract",
+    "assert_setup_repository_contract",
     "create_core_rule_policy_registry",
     "create_embedded_application",
     "parse_setup_document",

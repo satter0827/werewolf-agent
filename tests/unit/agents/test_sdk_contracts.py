@@ -23,6 +23,7 @@ from werewolf_agent.agents import (
     ObservedPlayer,
     PublicTimelineEvent,
     RandomLegalAgentFactory,
+    assert_agent_factory_contract,
 )
 
 
@@ -33,7 +34,11 @@ class _Session:
 
     def decide(self, request: DecisionRequest) -> DecisionResponse:
         assert request.context == self.context
-        return DecisionResponse(action_type=request.options[0].action_type)
+        option = request.options[0]
+        return DecisionResponse(
+            action_type=option.action_type,
+            target_id=option.legal_target_ids[0] if option.legal_target_ids else None,
+        )
 
     def close(self) -> None:
         self.closed = True
@@ -79,6 +84,15 @@ def test_external_factory_creates_state_isolated_sessions() -> None:
     assert isinstance(first, AgentSession)
     assert first is not second
     assert first.decide(_request(first_context)).action_type == "vote"
+
+
+def test_external_factory_uses_the_public_contract_kit() -> None:
+    """利用者が公開APIだけでSession分離と応答を検証できる。"""
+    contexts = (
+        AgentContext("s1", "g1", "p1", 11),
+        AgentContext("s2", "g1", "p3", 12),
+    )
+    assert_agent_factory_contract(_Factory(), requests=tuple(map(_request, contexts)))
 
 
 def test_request_rejects_secret_or_illegal_player_references() -> None:

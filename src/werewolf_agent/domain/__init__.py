@@ -1,5 +1,6 @@
 """決定的なheadlessゲームの公開APIを提供する."""
 
+from werewolf_agent.domain.conformance import assert_rule_pack_contract
 from werewolf_agent.domain.definitions import CoreRulePack, RuleSetDefinition, build_game_rules
 from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation
 from werewolf_agent.domain.game import Game
@@ -91,5 +92,6 @@ __all__ = [
     "VoteResult",
     "VotingPolicy",
     "WinResult",
+    "assert_rule_pack_contract",
     "build_game_rules",
 ]

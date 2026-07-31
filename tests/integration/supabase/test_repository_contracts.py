@@ -8,14 +8,14 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from psycopg.rows import dict_row
-from tests.contracts.repository_contracts import (
-    assert_game_repository_contract,
-    assert_setup_repository_contract,
-)
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.adapters.supabase.repository import SupabaseGameRepository
 from werewolf_agent.adapters.supabase.setup_repository import SupabaseSetupRepository
+from werewolf_agent.application import (
+    assert_game_repository_contract,
+    assert_setup_repository_contract,
+)
 
 pytestmark = [pytest.mark.supabase, pytest.mark.serial]
 

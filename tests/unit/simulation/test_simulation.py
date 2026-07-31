@@ -58,6 +58,31 @@ class _CapturingSession:
         self._inner.close()
 
 
+class _LongSpeechFactory:
+    def __init__(self) -> None:
+        self._inner = RandomLegalAgentFactory()
+
+    @property
+    def spec(self) -> AgentSpec:
+        return self._inner.spec
+
+    def create(self, context: AgentContext) -> AgentSession:
+        return _LongSpeechSession(self._inner.create(context))
+
+
+class _LongSpeechSession:
+    def __init__(self, inner: AgentSession) -> None:
+        self._inner = inner
+
+    def decide(self, request: DecisionRequest) -> DecisionResponse:
+        if any(option.action_type == "speech" for option in request.options):
+            return DecisionResponse("speech", message="長すぎる発言です")
+        return self._inner.decide(request)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
 class _ChangingMetadata:
     def __init__(self) -> None:
         self.calls = 0
@@ -251,6 +276,41 @@ def test_agent_failure_uses_fallback_and_records_stable_error() -> None:
         assert step.decision_trace is not None
         assert step.decision_trace.fallback_used
         assert step.decision_trace.error_code == "broken"
+    finally:
+        session.close()
+
+
+def test_too_long_agent_speech_uses_fallback_and_records_stable_error() -> None:
+    """DecisionOptionの文字数上限をSimulationの実行境界でも強制する。"""
+    game = _game()
+    base = _spec(game)
+    controllers = {
+        player_id: PlayerController(player_id, _LongSpeechFactory())
+        for player_id in base.controllers
+    }
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            controllers,
+            base.limits,
+            speech_message_max_chars=4,
+        ),
+    )
+    try:
+        for _ in range(100):
+            step = session.step()
+            if step.decision_trace is not None and step.decision_trace.error_code:
+                break
+        else:
+            pytest.fail("speech decision was not reached")
+        assert step.decision_trace is not None
+        assert step.decision_trace.fallback_used
+        assert step.decision_trace.error_code == "agent_message_too_long"
+        assert step.decision_trace.response is not None
+        assert len(step.decision_trace.response.message or "") <= 4
     finally:
         session.close()
 
