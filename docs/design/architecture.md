@@ -90,8 +90,8 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 ## 公開面
 
 Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.domain`、
-`werewolf_agent.application`に限定する。package直下はdomainの型と関数を同一objectのまま
-再公開し、application、アダプター、settings、agentをimportしない。
+`werewolf_agent.application`に限定する。package直下は`__version__`だけを公開し、
+型と関数は責務を所有する公開モジュールからimportする。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
 公開する。HTTPの正本は`contracts/openapi.json`とする。
 

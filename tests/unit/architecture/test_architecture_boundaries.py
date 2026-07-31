@@ -74,9 +74,7 @@ def test_public_surfaces_are_minimal_and_explicit() -> None:
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
-    assert set(package.__all__) == {*domain.__all__, "__version__"}
-    for name in domain.__all__:
-        assert getattr(package, name) is getattr(domain, name)
+    assert package.__all__ == ["__version__"]
     assert not _public_export_findings()
 
 

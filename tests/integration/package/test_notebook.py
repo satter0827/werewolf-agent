@@ -48,10 +48,10 @@ def installed_wheel_environment(
 
 
 @pytest.mark.serial
-def test_wheel_installs_and_exposes_the_root_domain_api(
+def test_wheel_installs_and_exposes_the_owned_domain_api(
     installed_wheel_environment: tuple[Path, Path, dict[str, str]],
 ) -> None:
-    """source checkout外のvenvでwheelのroot APIをimportする。"""
+    """source checkout外のvenvでversionとdomain APIをimportする。"""
     environment, python, runtime_environment = installed_wheel_environment
     package_environment = runtime_environment.copy()
     package_environment.pop("PYTHONPATH", None)
@@ -64,11 +64,14 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
                 "from importlib.metadata import version; "
                 "from pathlib import Path; "
                 "import sys; "
-                "from werewolf_agent import Action, Game, GameSetup, Player, build_game_rules; "
+                "from werewolf_agent.domain import "
+                "Action, Game, GameSetup, Player, build_game_rules; "
                 "import werewolf_agent; "
                 "assert Path(werewolf_agent.__file__).resolve().is_relative_to("
                 "Path(sys.argv[1]).resolve()); "
                 "assert all((Action, Game, GameSetup, Player, build_game_rules)); "
+                "assert werewolf_agent.__all__ == ['__version__']; "
+                "assert not hasattr(werewolf_agent, 'Game'); "
                 "assert werewolf_agent.__version__ == version('werewolf-agent')"
             ),
             str(environment),

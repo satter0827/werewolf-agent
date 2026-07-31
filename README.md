@@ -29,14 +29,14 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 python -m pip install .
 ```
 
-主要なdomain型はpackage直下からimportする。次の例は外部serviceや設定fileを使わずに
+主要なdomain型は`werewolf_agent.domain`からimportする。次の例は外部serviceや設定fileを使わずに
 3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を
 明示して渡し、状態変更は`Game`を通じて行う。
 
 ```python
 import random
 
-from werewolf_agent import (
+from werewolf_agent.domain import (
     Action,
     Game,
     GameSetup,

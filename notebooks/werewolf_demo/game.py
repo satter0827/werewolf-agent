@@ -6,17 +6,6 @@ import random
 from dataclasses import dataclass, field
 from typing import Literal
 
-from werewolf_agent import (
-    EventVisibility,
-    Game,
-    GameEvent,
-    GameSetup,
-    Phase,
-    Player,
-    PlayerStatus,
-    RuleSet,
-    build_game_rules,
-)
 from werewolf_agent.adapters.agents.game_driver import LlmAgentFactory, langchain_agent_factory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
@@ -27,6 +16,17 @@ from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.domain import (
+    EventVisibility,
+    Game,
+    GameEvent,
+    GameSetup,
+    Phase,
+    Player,
+    PlayerStatus,
+    RuleSet,
+    build_game_rules,
+)
 
 StopReason = Literal["finished", "max_actions", "max_phases"]
 Operation = Literal["action", "advance"]
