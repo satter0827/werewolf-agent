@@ -85,6 +85,7 @@ class Game:
             self._state,
             self._state.pending_actions,
             random,
+            voting_policy=self._rules.voting_policy,
             victory_policy=self._rules.victory_policy,
         )
         self._state = replace(state, pending_actions=pending)

@@ -1,7 +1,8 @@
-"""明示登録するRule Packと勝敗policyの公開契約を定義する."""
+"""明示登録するRule Packとstate非変更policyの公開契約を定義する."""
 
 from __future__ import annotations
 
+import random
 from collections.abc import Mapping
 from dataclasses import dataclass
 from hashlib import sha256
@@ -10,15 +11,15 @@ from typing import TYPE_CHECKING, Protocol
 
 from werewolf_agent.domain._model import non_blank
 from werewolf_agent.domain.rules.player_rules import check_win
-from werewolf_agent.domain.state import GameConfig, GameState, WinResult
+from werewolf_agent.domain.state import Action, GameConfig, GameState, VoteResult, WinResult
 
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.1.0"
+RULE_PACK_CONTRACT_VERSION = "0.2.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.1.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.1.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.2.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.2.0").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,21 @@ class VictoryPolicy(Protocol):
         ...
 
 
+class VotingPolicy(Protocol):
+    """投票入力からstateを変更せず解決Outcomeを返すpolicy契約."""
+
+    def resolve(
+        self,
+        state: GameState,
+        pending_votes: Mapping[str, Action],
+        random: random.Random,
+        *,
+        vote_round: int,
+    ) -> VoteResult:
+        """現在の投票を集計し、一つの検証可能なOutcomeを返す."""
+        ...
+
+
 class RulePackProvider(Protocol):
     """Rule Definitionを実行可能なRule Packへcompileする契約."""
 
@@ -74,6 +90,7 @@ class CompiledRuleSet:
 
     config: GameConfig
     manifest: RulePackManifest
+    voting_policy: VotingPolicy
     victory_policy: VictoryPolicy
 
 
@@ -123,4 +140,5 @@ __all__ = [
     "RulePackProvider",
     "RulePolicyRegistry",
     "VictoryPolicy",
+    "VotingPolicy",
 ]

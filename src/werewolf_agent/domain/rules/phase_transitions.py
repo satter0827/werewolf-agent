@@ -8,6 +8,7 @@ from dataclasses import dataclass, field, replace
 
 from werewolf_agent.domain._messages import message_cannot_advance_phase
 from werewolf_agent.domain.errors import GamePhaseError
+from werewolf_agent.domain.rule_packs import VotingPolicy
 from werewolf_agent.domain.rules.night_actions import resolve_night
 from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.rules.voting import resolve_votes
@@ -41,6 +42,7 @@ def advance_game_phase(
     rng: random.Random,
     *,
     vote_round: int = 1,
+    voting_policy: VotingPolicy,
     victory_evaluator: Callable[[GameState], WinResult | None] = check_win,
 ) -> TransitionOutcome:
     """Advance the state machine by one phase."""
@@ -61,6 +63,7 @@ def advance_game_phase(
             pending_votes,
             rng,
             victory_evaluator,
+            voting_policy=voting_policy,
             vote_round=vote_round,
         )
     raise GamePhaseError(
@@ -108,14 +111,15 @@ def _advance_from_voting(
     rng: random.Random,
     victory_evaluator: Callable[[GameState], WinResult | None],
     *,
+    voting_policy: VotingPolicy,
     vote_round: int,
 ) -> TransitionOutcome:
     resolved_snapshot, result = resolve_votes(
         snapshot,
-        config,
         pending_votes,
         rng,
         vote_round=vote_round,
+        policy=voting_policy,
     )
     events = [
         GameEvent(

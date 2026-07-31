@@ -9,6 +9,7 @@ from werewolf_agent.domain.rule_packs import (
     RulePackProvider,
     RulePolicyRegistry,
     VictoryPolicy,
+    VotingPolicy,
 )
 from werewolf_agent.domain.state import (
     AbilityDefinition,
@@ -70,6 +71,7 @@ __all__ = [
     "SpeechRecord",
     "VictoryPolicy",
     "VoteResult",
+    "VotingPolicy",
     "WinResult",
     "build_game_rules",
 ]

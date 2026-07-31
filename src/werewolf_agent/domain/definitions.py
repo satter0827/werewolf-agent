@@ -15,6 +15,7 @@ from werewolf_agent.domain.rule_packs import (
     CoreVictoryPolicy,
     RulePackManifest,
 )
+from werewolf_agent.domain.rules.voting import CoreVotingPolicy
 from werewolf_agent.domain.state import AbilityDefinition, GameConfig, LocalRules, RoleCatalog
 
 
@@ -58,6 +59,7 @@ class CoreRulePack:
                 abilities=definition.abilities,
             ),
             manifest=self.manifest,
+            voting_policy=CoreVotingPolicy(),
             victory_policy=CoreVictoryPolicy(),
         )
 

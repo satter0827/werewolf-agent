@@ -85,9 +85,10 @@ Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者
 `RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
 
 `RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
-最初の外部化対象は`VictoryPolicy`であり、immutableな`GameState`から`WinResult`だけを返す。
-GameはOutcomeを新しい`GameState`へ適用する際に整合性を検証し、不正Outcomeまたは例外では
-元のstateを維持する。能力と投票は挙動を先に固定し、次の縦断sliceで個別に外部化する。
+`VictoryPolicy`はimmutableな`GameState`から`WinResult`だけを返す。`VotingPolicy`は検証済みの
+pending voteから`VoteResult`だけを返し、投票の合法性、死亡、death reaction、履歴、eventは
+Domainが所有する。GameはOutcomeを新しい`GameState`へ適用する際に整合性を検証し、
+不正Outcomeまたは例外では元のstateを維持する。能力は挙動を固定した次の縦断sliceで外部化する。
 
 ## Agent意思決定
 
