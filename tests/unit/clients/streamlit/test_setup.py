@@ -32,7 +32,7 @@ def test_preview_fingerprint_changes_with_seed_or_revision() -> None:
 
 def test_inline_editor_draft_reaches_game_creation_selection() -> None:
     document = build_setup_catalog().require_document("standard_6")
-    inline_document = _inline_draft({SETUP_DRAFT_KEY: document.model_dump(mode="json")})
+    inline_document = _inline_draft({SETUP_DRAFT_KEY: document.to_mapping()})
 
     selection = _selection("inline:draft", inline_document=inline_document)
 
@@ -53,7 +53,7 @@ def test_new_passive_abilities_start_with_executable_conditions() -> None:
 
 
 def test_editor_validation_reports_beginner_facing_sections() -> None:
-    payload = build_setup_catalog().require_document("standard_6").model_dump(mode="json")
+    payload = build_setup_catalog().require_document("standard_6").to_mapping()
     del payload["player_generation"]["public_personas"][0]["personality"]
 
     with pytest.raises(ValidationError) as raised:

@@ -47,41 +47,21 @@ from werewolf_agent.application.models import (
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.ports import GameRepository, SetupRepository
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
-from werewolf_agent.application.setup_document import (
-    AbilityDefinition,
-    AttackAbility,
-    DeathReactionAbility,
-    EliminateAbility,
-    GameSetupDocument,
-    ImmunityAbility,
-    InspectAbility,
-    KnowledgeAbility,
-    LocalRulesDefinition,
-    MechanicsDefinition,
-    ProtectAbility,
-    RoleDefinition,
-    ThemeDefinition,
-    VulnerabilityAbility,
-)
 from werewolf_agent.application.setup_facade import SetupApplication
-from werewolf_agent.application.setup_options import validate_setup_document
+from werewolf_agent.application.setup_options import parse_setup_document, validate_setup_document
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.types import GameStatus
 
 __all__ = [
-    "AbilityDefinition",
     "AccessPolicy",
     "Actor",
     "AdvanceGameResult",
     "AppError",
     "ApplicationContext",
-    "AttackAbility",
     "ComputedAdvanceGame",
     "ConfigError",
     "CreateGameCommand",
-    "DeathReactionAbility",
     "DeliberationLevel",
-    "EliminateAbility",
     "ErrorCode",
     "GameApplication",
     "GameApplicationConfig",
@@ -99,28 +79,20 @@ __all__ = [
     "GameRevealPlayer",
     "GameRevealResult",
     "GameRevealVote",
-    "GameSetupDocument",
     "GameSetupOptionsResult",
     "GameStatus",
     "GameTimelineResult",
     "GeneratedPlayerInput",
-    "ImmunityAbility",
-    "InspectAbility",
     "InternalError",
-    "KnowledgeAbility",
-    "LocalRulesDefinition",
-    "MechanicsDefinition",
     "OperationQueue",
     "PlayerActionCommand",
     "PlayerActionResult",
     "PlayerObservationResult",
     "PlayerPreviewResult",
     "PreparedAdvanceGame",
-    "ProtectAbility",
     "QueuedOperation",
     "ReplayVerificationResult",
     "ResourceNotFoundError",
-    "RoleDefinition",
     "SavedSetupRevision",
     "SavedSetupSummary",
     "SetupApplication",
@@ -132,7 +104,6 @@ __all__ = [
     "StoredGameEvent",
     "StoredGameSummary",
     "StoredGameTurn",
-    "ThemeDefinition",
-    "VulnerabilityAbility",
+    "parse_setup_document",
     "validate_setup_document",
 ]

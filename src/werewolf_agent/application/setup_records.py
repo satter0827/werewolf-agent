@@ -7,7 +7,7 @@ from datetime import datetime
 from pydantic import ConfigDict, Field
 
 from werewolf_agent.application.models.base import ApplicationModel
-from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.setup import GameSetupDocument
 
 
 class SavedSetupSummary(ApplicationModel):

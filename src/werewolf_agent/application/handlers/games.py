@@ -43,15 +43,13 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
     Faction,
     GamePhase,
     GameStatus,
 )
 from werewolf_agent.domain import Game, build_game_rules
-from werewolf_agent.setup import namespace_seed
+from werewolf_agent.setup import LocalRulesDefinition, namespace_seed, rule_definition_from_values
 
 
 def create_game(
@@ -74,15 +72,14 @@ def create_game(
     definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.model_dump(mode="json"),
-        roles={role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()},
+        rules=mechanics.rules.to_mapping(),
+        roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
         abilities={
-            ability_id: ability.model_dump(mode="json")
-            for ability_id, ability in mechanics.abilities.items()
+            ability_id: ability.to_mapping() for ability_id, ability in mechanics.abilities.items()
         },
     )
     rules = build_game_rules(definition)
-    setup_payload = setup.model_dump(mode="json")
+    setup_payload = setup.to_mapping()
     scenario_config = {
         "scenario_id": setup.theme.id,
         "scenario_name": setup.theme.name,
@@ -207,7 +204,7 @@ def get_game_reveal(
         narration_mode=_narration_mode(run.config),
         theme=dict(setup_theme) if setup_theme is not None else None,
         role_counts=dict(snapshot.config.role_counts),
-        rules=LocalRulesDefinition.model_validate(domain_to_data(snapshot.config.rules)),
+        rules=LocalRulesDefinition.from_mapping(domain_to_data(snapshot.config.rules)),
         players=[
             GameRevealPlayer(
                 id=player.id,

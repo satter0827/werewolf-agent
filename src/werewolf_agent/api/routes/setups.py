@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import APIRouter, status
 
 from werewolf_agent.api.dependencies import (
@@ -12,7 +14,7 @@ from werewolf_agent.api.dependencies import (
     RequestServices,
     ServicesDependency,
 )
-from werewolf_agent.application import Actor, GameSetupDocument
+from werewolf_agent.application import Actor, parse_setup_document
 from werewolf_agent.application.errors import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
@@ -43,15 +45,15 @@ def _actor(principal: PrincipalDependency) -> Actor:
     )
 
 
-def _document(request: GameSetupDocumentRequest) -> GameSetupDocument:
-    return GameSetupDocument.model_validate(request.model_dump(mode="json"))
+def _document(request: GameSetupDocumentRequest) -> Any:
+    return parse_setup_document(request.model_dump(mode="json"))
 
 
 def resolve_setup(
     request: GameSetupSelectionRequest,
     principal: Principal,
     services: RequestServices,
-) -> GameSetupDocument:
+) -> Any:
     """Resolve a wire selection to one immutable complete document."""
     if request.mode == "template":
         return services.setups.template(request.template_id)
@@ -80,7 +82,7 @@ def get_template(template_id: str, setups: PublicSetupsDependency) -> SetupTempl
     document = setups.template(template_id)
     return SetupTemplateResponse(
         template_id=template_id,
-        document=GameSetupDocumentRequest.model_validate(document.model_dump(mode="json")),
+        document=GameSetupDocumentRequest.model_validate(document.to_mapping()),
     )
 
 

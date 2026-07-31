@@ -55,9 +55,11 @@
 
 `GameSetupDocument` 0.2.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
 同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
-所有しない。`setup`がプレイヤー generation、用途別seed、checksumを所有し、applicationが入力schemaと
-完全文書を検証する。役職はidentity faction、victory team、ability IDだけを持つ。applicationが
-能力種別の判別共用体を検証し、domainの`build_game_rules()`が決定的な実行規則へ変換する。
+所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
+Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
+applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証は`setup`の標準ライブラリ契約へ委譲する。
+domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
+replay 0.3.0は同じ標準ライブラリ契約でgenesis setupを再検証する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
 seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは

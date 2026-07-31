@@ -18,11 +18,15 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
 )
 from werewolf_agent.application.randomness import runtime_seed
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
 from werewolf_agent.domain import Game, build_game_rules
-from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
+from werewolf_agent.setup import (
+    GameSetupDocument,
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
+)
 
 
 class ReplayRepository(Protocol):
@@ -257,14 +261,12 @@ def _verify_execution(
             actual="unsupported replay format",
         )
     try:
-        setup_document = GameSetupDocument.model_validate(genesis["setup_document"])
-        setup_payload = setup_document.model_dump(mode="json")
+        setup_document = GameSetupDocument.from_mapping(genesis["setup_document"])
+        setup_payload = setup_document.to_mapping()
         if checksum_payload(setup_payload) != str(genesis["setup_checksum"]):
             raise ValueError("setup checksum mismatch")
         mechanics = setup_document.mechanics
-        if checksum_payload(mechanics.model_dump(mode="json")) != str(
-            genesis["mechanics_checksum"]
-        ):
+        if checksum_payload(mechanics.to_mapping()) != str(genesis["mechanics_checksum"]):
             raise ValueError("mechanics checksum mismatch")
         seed = _optional_int(genesis.get("seed"))
         if seed is None:
@@ -286,12 +288,10 @@ def _verify_execution(
         definition = rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.model_dump(mode="json"),
-            roles={
-                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
-            },
+            rules=mechanics.rules.to_mapping(),
+            roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
             abilities={
-                ability_id: ability.model_dump(mode="json")
+                ability_id: ability.to_mapping()
                 for ability_id, ability in mechanics.abilities.items()
             },
         )

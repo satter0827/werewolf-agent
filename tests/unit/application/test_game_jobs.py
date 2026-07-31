@@ -7,10 +7,9 @@ from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.errors import AppError, ConfigError, ErrorCode
 from werewolf_agent.application.models import GameApplicationConfig
 from werewolf_agent.application.ports import SetupRepository
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.application.setup_options import prepare_create_command, preview_players
-from werewolf_agent.setup import checksum_payload
+from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 
 def test_create_command_contains_a_complete_resolved_setup_and_generated_players() -> None:
@@ -28,8 +27,8 @@ def test_create_command_contains_a_complete_resolved_setup_and_generated_players
     assert command.setup == setup
     assert [player.player_id for player in command.players] == [f"p{i}" for i in range(1, 7)]
     assert command.players[0].reasoning_style
-    assert command.setup_checksum == checksum_payload(setup.model_dump(mode="json"))
-    assert command.mechanics_checksum == checksum_payload(setup.mechanics.model_dump(mode="json"))
+    assert command.setup_checksum == checksum_payload(setup.to_mapping())
+    assert command.mechanics_checksum == checksum_payload(setup.mechanics.to_mapping())
     assert command.roster_checksum == checksum_payload(
         [player.model_dump(mode="json") for player in command.players]
     )
@@ -81,9 +80,9 @@ def test_anonymous_actor_cannot_persist_a_setup() -> None:
 
 
 def test_setup_runtime_limits_are_checked_before_preview_or_queue_preparation() -> None:
-    payload = build_setup_catalog().require_document("standard_6").model_dump(mode="json")
+    payload = build_setup_catalog().require_document("standard_6").to_mapping()
     payload["mechanics"]["role_counts"]["villager"] = 1
-    setup = GameSetupDocument.model_validate(payload)
+    setup = GameSetupDocument.from_mapping(payload)
     application = SetupApplication(
         build_setup_catalog(),
         GameApplicationConfig(
