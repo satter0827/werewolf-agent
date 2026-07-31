@@ -6,6 +6,7 @@
 プレイヤー generationを提供する。
 `werewolf_agent.agents`は外部Agentの注入契約と標準Agent実装を提供する。
 `werewolf_agent.simulation`は単一ゲームのstep実行、停止、再開を提供する。
+`werewolf_agent.experiments`は比較条件と決定的なTrial計画を提供する。
 `werewolf_agent.application`は認可、保存port、公開resultを含む利用手順を提供する。
 列挙されない内部モジュールは公開契約に含めない。
 
@@ -95,5 +96,20 @@
 
 ```{eval-rst}
 .. automodule:: werewolf_agent.simulation
+   :members:
+```
+
+## Experimentの最小利用例
+
+`ExperimentSpec`はRules比較とAgent比較を混在させず、seedと割当rotationを固定する。
+
+```{literalinclude} ../snippets/python_api_experiments.py
+:language: python
+```
+
+## Experiment API
+
+```{eval-rst}
+.. automodule:: werewolf_agent.experiments
    :members:
 ```

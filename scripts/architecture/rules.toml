@@ -4,6 +4,7 @@ public_modules = [
   "werewolf_agent.application",
   "werewolf_agent.agents",
   "werewolf_agent.domain",
+  "werewolf_agent.experiments",
   "werewolf_agent.simulation",
   "werewolf_agent.setup",
 ]
@@ -152,6 +153,9 @@ allowed = ["agents", "contracts"]
 
 [layers.simulation]
 allowed = ["agents", "domain", "setup", "simulation"]
+
+[layers.experiments]
+allowed = ["agents", "domain", "experiments", "setup", "simulation"]
 
 [layers.application]
 allowed = ["application", "domain", "setup"]
