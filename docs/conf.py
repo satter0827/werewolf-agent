@@ -38,7 +38,7 @@ nitpicky = True
 nitpick_ignore_regex = [
     (
         "py:class",
-        r"(?:collections\.abc\.(?:Mapping|Sequence)|datetime(?:\.datetime)?|random\.Random|uuid\.UUID)",
+        r"(?:collections\.abc\.(?:Mapping|Sequence)|datetime(?:\.datetime)?|pathlib\.Path|random\.Random|uuid\.UUID)",
     )
 ]
 language = "ja"
