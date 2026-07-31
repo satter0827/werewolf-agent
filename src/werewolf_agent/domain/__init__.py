@@ -4,6 +4,7 @@ from werewolf_agent.domain.definitions import CoreRulePack, RuleSetDefinition, b
 from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation
 from werewolf_agent.domain.game import Game
 from werewolf_agent.domain.rule_packs import (
+    AbilityPolicy,
     CompiledRuleSet,
     RulePackManifest,
     RulePackProvider,
@@ -25,6 +26,7 @@ from werewolf_agent.domain.state import (
     GameView,
     InspectionResult,
     LocalRules,
+    NightResolution,
     NightResult,
     PendingActions,
     Phase,
@@ -39,6 +41,7 @@ from werewolf_agent.domain.state import (
 
 __all__ = [
     "AbilityDefinition",
+    "AbilityPolicy",
     "Action",
     "ActionType",
     "AvailableAction",
@@ -56,6 +59,7 @@ __all__ = [
     "GameView",
     "InspectionResult",
     "LocalRules",
+    "NightResolution",
     "NightResult",
     "PendingActions",
     "Phase",

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field, replace
 
 from werewolf_agent.domain._messages import message_cannot_advance_phase
 from werewolf_agent.domain.errors import GamePhaseError
-from werewolf_agent.domain.rule_packs import VotingPolicy
+from werewolf_agent.domain.rule_packs import AbilityPolicy, VotingPolicy
 from werewolf_agent.domain.rules.night_actions import resolve_night
 from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.rules.voting import resolve_votes
@@ -42,6 +42,7 @@ def advance_game_phase(
     rng: random.Random,
     *,
     vote_round: int = 1,
+    ability_policy: AbilityPolicy,
     voting_policy: VotingPolicy,
     victory_evaluator: Callable[[GameState], WinResult | None] = check_win,
 ) -> TransitionOutcome:
@@ -53,6 +54,7 @@ def advance_game_phase(
             pending_night_actions,
             rng,
             victory_evaluator,
+            ability_policy=ability_policy,
         )
     if snapshot.phase is Phase.DAY_DISCUSSION:
         return _phase_only(snapshot, config)
@@ -78,8 +80,15 @@ def _advance_from_night(
     pending_night_actions: Mapping[str, Action],
     rng: random.Random,
     victory_evaluator: Callable[[GameState], WinResult | None],
+    *,
+    ability_policy: AbilityPolicy,
 ) -> TransitionOutcome:
-    resolved_snapshot, result = resolve_night(snapshot, pending_night_actions, rng)
+    resolved_snapshot, result = resolve_night(
+        snapshot,
+        pending_night_actions,
+        rng,
+        policy=ability_policy,
+    )
     events = [
         GameEvent(
             event_type="night_resolved",

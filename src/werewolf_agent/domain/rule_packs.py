@@ -11,15 +11,22 @@ from typing import TYPE_CHECKING, Protocol
 
 from werewolf_agent.domain._model import non_blank
 from werewolf_agent.domain.rules.player_rules import check_win
-from werewolf_agent.domain.state import Action, GameConfig, GameState, VoteResult, WinResult
+from werewolf_agent.domain.state import (
+    Action,
+    GameConfig,
+    GameState,
+    NightResolution,
+    VoteResult,
+    WinResult,
+)
 
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.2.0"
+RULE_PACK_CONTRACT_VERSION = "0.3.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.2.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.2.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.3.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.3.0").hexdigest()
 
 
 @dataclass(frozen=True)
@@ -71,6 +78,19 @@ class VotingPolicy(Protocol):
         ...
 
 
+class AbilityPolicy(Protocol):
+    """夜の能力入力からstateを変更せず解決Outcomeを返すpolicy契約."""
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """一夜の能動能力と受動耐性を解決して検証可能なOutcomeを返す."""
+        ...
+
+
 class RulePackProvider(Protocol):
     """Rule Definitionを実行可能なRule Packへcompileする契約."""
 
@@ -90,6 +110,7 @@ class CompiledRuleSet:
 
     config: GameConfig
     manifest: RulePackManifest
+    ability_policy: AbilityPolicy
     voting_policy: VotingPolicy
     victory_policy: VictoryPolicy
 
@@ -134,6 +155,7 @@ __all__ = [
     "CORE_RULE_PACK_ID",
     "CORE_RULE_PACK_IMPLEMENTATION_VERSION",
     "RULE_PACK_CONTRACT_VERSION",
+    "AbilityPolicy",
     "CompiledRuleSet",
     "CoreVictoryPolicy",
     "RulePackManifest",

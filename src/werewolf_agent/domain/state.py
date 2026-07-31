@@ -532,6 +532,29 @@ class InspectionResult:
 
 
 @dataclass(frozen=True)
+class NightResolution:
+    """Night ability policyが返すstate非変更の解決Outcomeを表す."""
+
+    attacked_player_ids: tuple[str, ...] = ()
+    protected_player_ids: tuple[str, ...] = ()
+    killed_player_ids: tuple[str, ...] = ()
+    inspections: tuple[InspectionResult, ...] = ()
+    passive_uses: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        """順序付きcollectionをimmutableなtupleへ固定する."""
+        object.__setattr__(self, "attacked_player_ids", tuple(self.attacked_player_ids))
+        object.__setattr__(self, "protected_player_ids", tuple(self.protected_player_ids))
+        object.__setattr__(self, "killed_player_ids", tuple(self.killed_player_ids))
+        object.__setattr__(self, "inspections", tuple(self.inspections))
+        object.__setattr__(
+            self,
+            "passive_uses",
+            tuple((player_id, ability_id) for player_id, ability_id in self.passive_uses),
+        )
+
+
+@dataclass(frozen=True)
 class NightResult:
     """一回のnight phaseで解決したfactを表す."""
 
@@ -807,6 +830,7 @@ __all__ = [
     "GameView",
     "InspectionResult",
     "LocalRules",
+    "NightResolution",
     "NightResult",
     "PendingActions",
     "Phase",
