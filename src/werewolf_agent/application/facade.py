@@ -38,6 +38,7 @@ from werewolf_agent.application.models import (
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.replay import ReplayRepository, verify_replay
 from werewolf_agent.application.types import GameStatus
+from werewolf_agent.domain import RulePolicyRegistry
 
 ResultT = TypeVar("ResultT")
 
@@ -212,7 +213,7 @@ class GameApplication:
             lambda: verify_replay(
                 game_id,
                 cast(ReplayRepository, repository),
-                self._dependencies.rule_packs,
+                cast(RulePolicyRegistry, self._dependencies.rule_packs),
             )
         )
 

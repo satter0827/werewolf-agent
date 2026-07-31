@@ -9,6 +9,9 @@ from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.contracts import AppError, ErrorCode, GameNotFoundError
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker import service as worker_service
+from werewolf_agent.worker.composition import create_core_worker_dependencies
+
+WORKER_DEPENDENCIES = create_core_worker_dependencies()
 
 
 def test_worker_database_adapter_hides_driver_connection_error(
@@ -52,8 +55,8 @@ def test_worker_retries_after_transient_database_failure(
         def close(self) -> None:
             return None
 
-    def process(_settings: AppSettings, *, pool: object) -> int:
-        del pool
+    def process(_settings: AppSettings, *, dependencies: object, pool: object) -> int:
+        del dependencies, pool
         raise next(attempts)
 
     monkeypatch.setattr(worker_service, "process_worker_batch", process)
@@ -63,7 +66,10 @@ def test_worker_retries_after_transient_database_failure(
 
     settings = AppSettings(_env_file=None)
     with pytest.raises(KeyboardInterrupt):
-        worker_service.run_worker_forever(settings)
+        worker_service.run_worker_forever(
+            settings,
+            dependencies=WORKER_DEPENDENCIES,
+        )
 
     assert sleeps == [settings.supabase_worker_poll_interval_seconds]
 
@@ -85,6 +91,7 @@ def test_worker_rolls_back_business_savepoint_before_recording_failure(
     worker_service._process_request(
         SimpleNamespace(connection=lambda: connection),
         AppSettings(_env_file=None),
+        WORKER_DEPENDENCIES,
         {"request_id": "operation-1", "operation_type": "create_game"},
     )
 
@@ -236,6 +243,7 @@ def test_worker_deletes_reveal_view_when_reveal_is_disabled(
         connection,
         SupabaseWorkerStore(connection),
         settings,
+        WORKER_DEPENDENCIES,
         "00000000-0000-0000-0000-000000000001",
         actor_user_id="00000000-0000-0000-0000-000000000002",
     )

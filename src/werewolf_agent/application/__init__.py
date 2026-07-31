@@ -54,6 +54,10 @@ from werewolf_agent.application.models import (
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.ports import GameRepository, SetupRepository, Transaction
+from werewolf_agent.application.rule_packs import (
+    RulePackRegistry,
+    create_core_rule_policy_registry,
+)
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.application.setup_options import parse_setup_document, validate_setup_document
@@ -107,6 +111,7 @@ __all__ = [
     "QueuedOperation",
     "ReplayVerificationResult",
     "ResourceNotFoundError",
+    "RulePackRegistry",
     "SavedSetupRevision",
     "SavedSetupSummary",
     "SetupApplication",
@@ -120,6 +125,7 @@ __all__ = [
     "StoredGameSummary",
     "StoredGameTurn",
     "Transaction",
+    "create_core_rule_policy_registry",
     "create_embedded_application",
     "parse_setup_document",
     "validate_setup_document",

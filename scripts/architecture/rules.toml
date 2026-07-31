@@ -78,6 +78,10 @@ forbidden = [
   "werewolf_agent.domain",
 ]
 
+[path_rules.worker_application]
+roots = ["src/werewolf_agent/worker"]
+forbidden = ["werewolf_agent.application."]
+
 [path_rules.clients]
 roots = [
   "src/werewolf_agent/clients/cli",

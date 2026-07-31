@@ -169,10 +169,11 @@ workerはapplicationからprepared gameを受け取り、Simulation実行後にa
 完了条件は、API routeがapplication公開contractだけを呼び、OpenAPIから独立した
 Webまたはmobile clientを構築できることである。
 
-API側はpublic state、version、timeline cursor、安定したerror codeに加え、本人observationと
-available action descriptorを型付きwire schemaとして公開する。Routeはapplication公開facadeだけを
-importし、observation生成時点で内部理由と非公開の勝利プレイヤーIDを除外する。worker接続は次の
-区切りで完成させる。
+実装は完了している。APIはpublic state、version、timeline cursor、安定したerror codeに加え、
+本人observationとavailable action descriptorを型付きwire schemaとして公開する。Routeとworkerは
+application公開facadeだけをimportする。observation生成時点で内部理由と非公開の勝利プレイヤーIDを
+除外する。workerはprepared gameをDB外のSimulationで進め、leaseとversionを再確認してapplicationの
+commit境界へ渡す。Rule Pack registryとプレイヤー別Agent Factoryはcomposition rootから明示注入する。
 
 ### 9. Streamlitと開発者体験を完成させる
 

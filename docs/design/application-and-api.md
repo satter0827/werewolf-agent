@@ -93,6 +93,13 @@ applicationはtransition完了済みのGameから保存用projectionを作り、
 APIとworkerはプロセス所有poolからconnectionを借用する。workerはqueue処理全体のtransactionを
 所有し、`GameApplication`の更新単位はリポジトリが同じconnection上のtransactionへ対応付ける。
 
+`ApplicationContext`は`RulePackRegistry`を必須依存として受け取り、組み込みRule Packを暗黙登録しない。
+APIは`create_app(rule_packs=...)`、組み込みapplicationは`create_embedded_application(rule_packs=...)`、
+workerは`WorkerDependencies`から同じ契約を注入する。通常起動は
+`create_core_rule_policy_registry()`をcomposition rootで明示的に選ぶ。workerへ注入する
+`agent_factories`はプレイヤーIDをkeyとし、指定したseatだけ既定のLangChain factoryを置き換える。
+設定値からimport pathを解決せず、呼出側が構築済みの信頼済みobjectだけを渡す。
+
 ## 契約の管理
 
 外部契約は`werewolf_agent.contracts`に置き、`contracts/openapi.json`を正本とする。
