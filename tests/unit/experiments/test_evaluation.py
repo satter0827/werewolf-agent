@@ -145,7 +145,7 @@ def test_standard_evaluator_calculates_game_agent_and_operational_metrics() -> N
         "ability_targets": {"inspect": {"p2": 1}},
         "ability_target_factions": {"inspect": {"werewolf": 1}},
         "latency_ms": {"count": 2, "total": 40, "mean": 20.0, "max": 30},
-        "tokens": {"sample_count": 2, "input": 8, "output": 6},
+        "tokens": {"sample_count": 2, "input": 8, "output": 6, "total": 14},
         "cost_micros": {"sample_count": 2, "total": 18},
         "belief_calibration": {"sample_count": 4, "brier_score": 0.04},
     }
@@ -160,12 +160,17 @@ def test_report_is_deterministic_and_regenerated_from_saved_trials(tmp_path: Pat
     store.save(baseline)
 
     loaded = store.load_experiment("evaluation-test")
-    first = build_report(loaded, (StandardEvaluator(include_belief_calibration=True),))
+    first = build_report(
+        loaded,
+        (StandardEvaluator(include_belief_calibration=True),),
+        expected_condition_ids=("baseline", "candidate"),
+    )
     first_path = store.save_report(first)
     first_content = first_path.read_bytes()
     second = build_report(
         tuple(reversed(loaded)),
         (StandardEvaluator(include_belief_calibration=True),),
+        expected_condition_ids=("baseline", "candidate"),
     )
     second_path = store.save_report(second)
 
@@ -174,3 +179,40 @@ def test_report_is_deterministic_and_regenerated_from_saved_trials(tmp_path: Pat
     assert first.paired_trial_count == 1
     assert [item.condition_id for item in first.conditions] == ["baseline", "candidate"]
     assert first.source_checksum == second.source_checksum
+
+
+def test_standard_evaluator_counts_total_only_token_measurement() -> None:
+    """total_tokensだけのprovider応答も計測済みとして集計する。"""
+    result = _result("baseline")
+    trace = _trace(
+        action_type="vote",
+        ability_id=None,
+        fallback=False,
+        latency_ms=10,
+        diagnostics={"total_tokens": 9},
+    )
+    result = TrialResult(
+        plan=result.plan,
+        stop_reason=result.stop_reason,
+        winner_id=result.winner_id,
+        final_phase=result.final_phase,
+        final_day=result.final_day,
+        players=result.players,
+        steps=({"decision_trace": trace},),
+        action_count=1,
+        phase_count=result.phase_count,
+    )
+
+    metrics = StandardEvaluator().evaluate((result,))
+
+    assert metrics["tokens"] == {"sample_count": 1, "input": 0, "output": 0, "total": 9}
+
+
+def test_partial_report_requires_all_planned_conditions_for_paired_count() -> None:
+    """未実行conditionを含むpairは完了件数へ数えない。"""
+    report = build_report(
+        (_result("baseline"),),
+        expected_condition_ids=("baseline", "candidate"),
+    )
+
+    assert report.paired_trial_count == 0

@@ -14,7 +14,7 @@ from werewolf_agent.experiments.execution import TrialResult
 from werewolf_agent.setup import checksum_payload
 from werewolf_agent.simulation import SimulationStopReason
 
-STANDARD_EVALUATOR_VERSION = "0.1.0"
+STANDARD_EVALUATOR_VERSION = "0.2.0"
 
 
 class Evaluator(Protocol):
@@ -130,10 +130,20 @@ class StandardEvaluator:
                 )
                 input_tokens = _usage_int(diagnostics, metadata, "input_tokens")
                 output_tokens = _usage_int(diagnostics, metadata, "output_tokens")
-                if input_tokens is not None or output_tokens is not None:
+                total_tokens = _usage_int(diagnostics, metadata, "total_tokens")
+                if (
+                    input_tokens is not None
+                    or output_tokens is not None
+                    or total_tokens is not None
+                ):
                     token_sample_count += 1
                     token_totals["input"] += input_tokens or 0
                     token_totals["output"] += output_tokens or 0
+                    token_totals["total"] += (
+                        total_tokens
+                        if total_tokens is not None
+                        else (input_tokens or 0) + (output_tokens or 0)
+                    )
                 cost = _usage_int(diagnostics, metadata, "cost_micros")
                 if cost is not None:
                     cost_sample_count += 1
@@ -238,6 +248,7 @@ class StandardEvaluator:
                 "sample_count": token_sample_count,
                 "input": token_totals["input"],
                 "output": token_totals["output"],
+                "total": token_totals["total"],
             },
             "cost_micros": {"sample_count": cost_sample_count, "total": cost_micros},
         }
@@ -338,8 +349,10 @@ class ExperimentReport:
 def build_report(
     trials: Sequence[TrialResult],
     evaluators: Sequence[Evaluator] | None = None,
+    *,
+    expected_condition_ids: Sequence[str],
 ) -> ExperimentReport:
-    """Trial内容を正本として条件別Reportを決定的に生成する。."""
+    """Trial内容と計画上の全条件からReportを決定的に生成する。."""
     items = tuple(sorted(trials, key=lambda item: item.plan.trial_id))
     if not items:
         raise ValueError("trials must not be empty")
@@ -355,12 +368,21 @@ def build_report(
         raise ValueError("evaluators must have unique IDs")
     selected = tuple(sorted(selected, key=lambda item: item.evaluator_id))
 
+    condition_ids = tuple(expected_condition_ids)
+    expected_conditions = {
+        _non_blank(condition_id, "expected_condition_id") for condition_id in condition_ids
+    }
+    if not expected_conditions or len(expected_conditions) != len(condition_ids):
+        raise ValueError("expected_condition_ids must be non-empty and unique")
+
     grouped: dict[str, list[TrialResult]] = defaultdict(list)
     paired: dict[str, set[str]] = defaultdict(set)
     for item in items:
         grouped[item.plan.condition_id].append(item)
         paired[item.plan.pair_id].add(item.plan.condition_id)
-    expected_conditions = set(grouped)
+    unexpected_conditions = set(grouped) - expected_conditions
+    if unexpected_conditions:
+        raise ValueError("trials contain conditions outside expected_condition_ids")
     condition_reports = tuple(
         ConditionReport(
             condition_id,

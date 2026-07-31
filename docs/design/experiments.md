@@ -54,7 +54,8 @@ werewolf確率と最終的なidentity factionからBrier scoreを計算する。
 tokenと費用は計測値があるdecisionだけを合計し、sample数を併記して未計測と実測0を分離する。
 
 外部`Evaluator`は安定ID、意味論version、有限なJSON互換metricを返す。`build_report()`はTrialを
-ID順に並べ、条件別評価、全条件が揃うpaired Trial数、Trial内容の`source_checksum`を生成する。
+ID順に並べ、`ExperimentSpec`由来の全condition IDを`expected_condition_ids`として受け取る。条件別評価、
+全条件が揃うpaired Trial数、Trial内容の`source_checksum`を生成する。
 生成時刻や実行環境をReportへ含めず、同じartifact集合から同じJSONを得る。
 
 ## 検証
