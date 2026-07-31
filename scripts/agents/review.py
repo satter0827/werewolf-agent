@@ -19,20 +19,20 @@ import httpx
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
-from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
+from werewolf_agent.adapters.agents.game_driver import decide_game_action, langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
     build_llm_definitions,
     build_setup_catalog,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentAbilityContext,
     AgentGameContext,
-    AgentScenario,
     DeliberationLevel,
     PlayerProfile,
 )
-from werewolf_agent.agents.tracing import LlmInvocationTrace
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
+from werewolf_agent.agents import AgentContext, AgentFactory
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
 from werewolf_agent.settings import get_settings
@@ -719,16 +719,16 @@ def _run_preset(
     )
     trace_sink = InMemoryTraceSink(trace_callback)
     contexts = _game_contexts(setup, game, setup_checksum=checksum_payload(setup.to_mapping()))
-    factory = langchain_agent_factory(
-        config,
-        definitions=llm_definitions,
-        profiles=profiles,
-        profile_ids_by_player={player_id: player_id for player_id in profiles},
-        scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-        game_contexts=contexts,
-        trace_sink=trace_sink,
-        deliberation_level=deliberation_level,
-    )
+    factories: dict[str, AgentFactory] = {
+        player_id: langchain_agent_factory(
+            config,
+            definitions=llm_definitions,
+            profile=profile,
+            trace_sink=trace_sink,
+            deliberation_level=deliberation_level,
+        )
+        for player_id, profile in profiles.items()
+    }
     public_timeline = [
         domain_to_data(event)
         for event in game.creation_events
@@ -746,11 +746,19 @@ def _run_preset(
                 if len(trace_sink.records) >= invocation_limit:
                     stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
                     break
-                agent = factory.create(
-                    player.id,
-                    seed=seed + phase_count * 1009 + index * 131 + action_count,
+                decision_seed = seed + phase_count * 1009 + index * 131 + action_count
+                action = decide_game_action(
+                    factories[player.id],
+                    context=AgentContext(
+                        session_id=f"review:{seed}:{player.id}",
+                        game_id=f"review:{seed}",
+                        player_id=player.id,
+                        session_seed=namespace_seed(seed, f"review-session:{player.id}"),
+                    ),
+                    observation=observation,
+                    decision_seed=decision_seed,
+                    game_context=contexts.get(player.id),
                 )
-                action = agent.act(observation)
                 emitted = game.submit(action)
                 action_count += 1
                 public_timeline.extend(
@@ -772,16 +780,6 @@ def _run_preset(
             setup,
             game,
             setup_checksum=checksum_payload(setup.to_mapping()),
-        )
-        factory = langchain_agent_factory(
-            config,
-            definitions=llm_definitions,
-            profiles=profiles,
-            profile_ids_by_player={player_id: player_id for player_id in profiles},
-            scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-            game_contexts=contexts,
-            trace_sink=trace_sink,
-            deliberation_level=deliberation_level,
         )
     snapshot = game.snapshot()
     traces = [_trace_document(trace) for trace in trace_sink.records]

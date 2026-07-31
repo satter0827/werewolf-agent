@@ -6,7 +6,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from werewolf_agent.agents.tracing import LlmInvocationTrace
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
 from werewolf_agent.setup import checksum_payload
 
 

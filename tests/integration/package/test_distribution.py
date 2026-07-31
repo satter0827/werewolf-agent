@@ -27,7 +27,7 @@ def test_wheel_contains_entrypoints_and_packaged_resources() -> None:
     assert "werewolf-agent-api =" in entrypoint_text
     assert "werewolf-agent-worker =" in entrypoint_text
     assert "werewolf_agent/settings/resources/defaults.toml" in names
-    assert "werewolf_agent/agents/resources/prompts/agent_decision.toml" in names
+    assert "werewolf_agent/adapters/llm/resources/agent_decision.toml" in names
     assert not any("notebooks/" in name for name in names)
     assert (
         "Summary: Deterministic headless Werewolf SDK for agent experiments and applications."

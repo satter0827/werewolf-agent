@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
-from werewolf_agent.adapters.agents.game_driver import LlmAgentFactory, langchain_agent_factory
+from werewolf_agent.adapters.agents.game_driver import decide_game_action, langchain_agent_factory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
 from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
-from werewolf_agent.agents.models import AgentScenario, DeliberationLevel, PlayerProfile
-from werewolf_agent.agents.tracing import LlmInvocationTrace
+from werewolf_agent.agents import AgentContext, AgentFactory
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.domain import (
     CompiledRuleSet,
@@ -119,7 +121,7 @@ class FakeGameDemo:
     rules: CompiledRuleSet
     limits: DemoLimits
     seed: int
-    _factory: LlmAgentFactory
+    _factories: Mapping[str, AgentFactory]
     _gameplay_random: random.Random
     _trace_sink: _SummaryTraceSink
     _public_events: list[GameEvent]
@@ -171,15 +173,17 @@ class FakeGameDemo:
             for player in generated
         }
         trace_sink = _SummaryTraceSink()
-        factory = langchain_agent_factory(
-            _fake_provider_config(),
-            definitions=load_llm_definitions(prompt_path=None, fake_responses_path=None),
-            profiles=profiles,
-            profile_ids_by_player={player_id: player_id for player_id in profiles},
-            scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-            trace_sink=trace_sink,
-            deliberation_level=DeliberationLevel(deliberation_level),
-        )
+        definitions = load_llm_definitions(prompt_path=None, fake_responses_path=None)
+        factories = {
+            player_id: langchain_agent_factory(
+                _fake_provider_config(),
+                definitions=definitions,
+                profile=profile,
+                trace_sink=trace_sink,
+                deliberation_level=DeliberationLevel(deliberation_level),
+            )
+            for player_id, profile in profiles.items()
+        }
         creation_events = [
             event for event in game.creation_events if event.visibility is EventVisibility.PUBLIC
         ]
@@ -188,7 +192,7 @@ class FakeGameDemo:
             rules=rules,
             limits=limits or DemoLimits(),
             seed=seed,
-            _factory=factory,
+            _factories=factories,
             _gameplay_random=random.Random(namespace_seed(seed, "gameplay")),
             _trace_sink=trace_sink,
             _public_events=creation_events,
@@ -220,14 +224,22 @@ class FakeGameDemo:
                 self._player_index += 1
                 continue
             decision_index = len(self._trace_sink.decisions)
-            agent = self._factory.create(
-                player.id,
-                seed=namespace_seed(
-                    self.seed,
-                    f"demo:{snapshot.day}:{snapshot.phase.value}:{player.id}:{self._action_count}",
-                ),
+            decision_seed = namespace_seed(
+                self.seed,
+                f"demo:{snapshot.day}:{snapshot.phase.value}:{player.id}:{self._action_count}",
             )
-            action = agent.act(observation)
+            context = AgentContext(
+                session_id=f"demo:{self.seed}:{player.id}",
+                game_id=f"demo:{self.seed}",
+                player_id=player.id,
+                session_seed=namespace_seed(self.seed, f"demo-session:{player.id}"),
+            )
+            action = decide_game_action(
+                self._factories[player.id],
+                context=context,
+                observation=observation,
+                decision_seed=decision_seed,
+            )
             emitted = self.game.submit(action)
             public_events = self._public(emitted)
             self._action_count += 1

@@ -7,7 +7,7 @@ from string import Template
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from werewolf_agent.agents.constants import MIN_VERSION
+from werewolf_agent.adapters.llm.constants import MIN_VERSION
 from werewolf_agent.agents.validation import non_blank
 
 

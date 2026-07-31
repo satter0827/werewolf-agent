@@ -7,8 +7,12 @@ from typing import Any, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.agents.constants import MAX_CHARACTER_AGE, MIN_CHARACTER_AGE, MIN_VERSION
-from werewolf_agent.agents.messages import (
+from werewolf_agent.adapters.llm.constants import (
+    MAX_CHARACTER_AGE,
+    MIN_CHARACTER_AGE,
+    MIN_VERSION,
+)
+from werewolf_agent.adapters.llm.messages import (
     MESSAGE_INPUT_VARIABLES_MUST_BE_UNIQUE,
     MESSAGE_INPUT_VARIABLES_REQUIRED,
     MESSAGE_PROMPT_MESSAGE_ROLE_MUST_BE_VALID,

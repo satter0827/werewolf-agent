@@ -7,8 +7,8 @@ from typing import Any, ClassVar, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.agents.definitions import PlayerProfile as PlayerProfileDefinition
-from werewolf_agent.agents.messages import (
+from werewolf_agent.adapters.llm.definitions import PlayerProfile as PlayerProfileDefinition
+from werewolf_agent.adapters.llm.messages import (
     MESSAGE_AGENT_PROFILES_REQUIRED,
     MESSAGE_PASS_DECISION_FORBIDS_PAYLOAD,
     MESSAGE_SPEECH_DECISION_FORBIDS_TARGET,
@@ -93,7 +93,7 @@ class VisiblePlayer(_LlmModel):
         return non_blank(value, str(info.field_name))
 
 
-class _AgentSpeech(_LlmModel):
+class AgentSpeech(_LlmModel):
     """Public speech visible to a decision provider."""
 
     day: int = Field(ge=1)
@@ -114,7 +114,7 @@ class _AgentSpeech(_LlmModel):
         return optional_non_blank(value, str(info.field_name))
 
 
-class _AgentVoteRound(_LlmModel):
+class AgentVoteRound(_LlmModel):
     """Public voting result visible to a decision provider."""
 
     day: int
@@ -276,7 +276,7 @@ class AgentGameContext(_LlmModel):
     victory_team_name: str
     objective: str
     abilities: tuple[AgentAbilityContext, ...] = ()
-    relevant_rules: dict[str, str | bool | int] = Field(default_factory=dict)
+    relevant_rules: dict[str, object] = Field(default_factory=dict)
     action_names: dict[str, str] = Field(default_factory=dict)
     phase_names: dict[str, str] = Field(default_factory=dict)
     setup_checksum: str
@@ -299,8 +299,8 @@ class AgentObservation(_LlmModel):
     known_factions: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentAvailableAction] = Field(default_factory=list)
     legal_targets: dict[str, list[str]] = Field(default_factory=dict)
-    speeches: list[_AgentSpeech] = Field(default_factory=list)
-    vote_rounds: list[_AgentVoteRound] = Field(default_factory=list)
+    speeches: list[AgentSpeech] = Field(default_factory=list)
+    vote_rounds: list[AgentVoteRound] = Field(default_factory=list)
 
     @field_validator("role")
     @classmethod
