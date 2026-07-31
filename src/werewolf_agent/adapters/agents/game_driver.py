@@ -18,7 +18,10 @@ from werewolf_agent.adapters.agents.constants import (
     LLM_PROVIDER_OPENAI,
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
-from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
+from werewolf_agent.adapters.agents.game_context import (
+    agent_metadata_from_game_context,
+    build_agent_game_contexts,
+)
 from werewolf_agent.adapters.agents.messages import (
     message_langchain_openai_required,
     message_unsupported_llm_provider,
@@ -41,13 +44,10 @@ from werewolf_agent.adapters.llm.models import (
 from werewolf_agent.adapters.llm.tracing import LlmTraceSink, NullLlmTraceSink
 from werewolf_agent.adapters.resources import LlmDefinitions
 from werewolf_agent.agents import (
-    AgentAbility,
     AgentContext,
     AgentDecisionError,
     AgentFactory,
-    AgentIdentity,
     AgentObservation,
-    AgentWorld,
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
@@ -468,8 +468,7 @@ def _decision_request_from_game(
         for player in observation.players
     )
     me = next(player for player in players if player.player_id == observation.me.id)
-    identity = _agent_identity(game_context)
-    world = _agent_world(game_context)
+    metadata = agent_metadata_from_game_context(game_context)
     return DecisionRequest(
         decision_id=(
             f"{context.session_id}:{observation.phase.value}:{observation.day}:{decision_seed}"
@@ -482,8 +481,8 @@ def _decision_request_from_game(
             players=players,
             known_roles=dict(observation.known_roles),
             known_factions=dict(observation.known_factions),
-            identity=identity,
-            world=world,
+            identity=metadata.identity,
+            world=metadata.world,
         ),
         public_timeline=_public_timeline(observation),
         options=tuple(
@@ -498,44 +497,6 @@ def _decision_request_from_game(
             for action in observation.available_actions
         ),
         decision_seed=decision_seed,
-    )
-
-
-def _agent_identity(context: AgentGameContext | None) -> AgentIdentity | None:
-    if context is None:
-        return None
-    return AgentIdentity(
-        role_id=context.role_id,
-        role_name=context.role_name,
-        identity_faction_id=context.identity_faction,
-        identity_faction_name=context.identity_faction_name,
-        victory_team_id=context.victory_team,
-        victory_team_name=context.victory_team_name,
-        objective=context.objective,
-        abilities=tuple(
-            AgentAbility(
-                ability_id=ability.id,
-                name=ability.name,
-                kind=ability.kind,
-                remaining_uses=ability.remaining_uses,
-            )
-            for ability in context.abilities
-        ),
-    )
-
-
-def _agent_world(context: AgentGameContext | None) -> AgentWorld | None:
-    if context is None:
-        return None
-    return AgentWorld(
-        theme_id=context.theme_id,
-        theme_name=context.theme_name,
-        premise=context.premise,
-        setup_checksum=context.setup_checksum,
-        mechanics_checksum=context.mechanics_checksum,
-        relevant_rules=context.relevant_rules,
-        action_names=context.action_names,
-        phase_names=context.phase_names,
     )
 
 

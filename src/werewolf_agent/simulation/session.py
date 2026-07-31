@@ -29,6 +29,7 @@ from werewolf_agent.domain import (
 )
 from werewolf_agent.setup import namespace_seed
 from werewolf_agent.simulation.contracts import (
+    AgentMetadata,
     DecisionExecutor,
     DecisionTraceSink,
     NullDecisionTraceSink,
@@ -334,6 +335,13 @@ class SimulationSession:
             for player in observation.players
         )
         me = next(player for player in players if player.player_id == observation.me.id)
+        metadata = (
+            controller.metadata_provider.resolve(observation)
+            if controller.metadata_provider is not None
+            else AgentMetadata(controller.identity, controller.world)
+        )
+        if not isinstance(metadata, AgentMetadata):
+            raise TypeError("metadata provider must return AgentMetadata")
         return DecisionRequest(
             decision_id=(
                 f"{context.session_id}:{observation.phase.value}:{observation.day}:"
@@ -347,8 +355,8 @@ class SimulationSession:
                 players=players,
                 known_roles=dict(observation.known_roles),
                 known_factions=dict(observation.known_factions),
-                identity=controller.identity,
-                world=controller.world,
+                identity=metadata.identity,
+                world=metadata.world,
             ),
             public_timeline=_public_timeline(observation),
             options=tuple(

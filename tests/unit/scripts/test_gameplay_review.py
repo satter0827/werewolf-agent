@@ -12,4 +12,9 @@ def test_gameplay_evidence_is_reproducible_and_public_only() -> None:
     assert first["operations"]
     assert first["public_timeline"]
     assert all("target_id" not in operation for operation in first["operations"])
+    assert all(
+        operation["actor_id"] is None
+        for operation in first["operations"]
+        if operation["action"] != "speech"
+    )
     assert all(event["visibility"] == "public" for event in first["public_timeline"])

@@ -165,6 +165,7 @@ allowed = [
   "domain",
   "observability",
   "security",
+  "simulation",
   "setup",
   "settings",
 ]

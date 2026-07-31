@@ -2,10 +2,38 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from werewolf_agent.adapters.llm.models import AgentAbilityContext, AgentGameContext
+from werewolf_agent.agents import AgentAbility, AgentIdentity, AgentWorld
+from werewolf_agent.domain import GameState, GameView
+from werewolf_agent.simulation import AgentMetadata
+
+
+@dataclass(frozen=True)
+class SetupAgentMetadataProvider:
+    """正規setupと現在snapshotから本人用metadataを都度構築する."""
+
+    setup: Mapping[str, object]
+    snapshot: Callable[[], GameState]
+    setup_checksum: str
+    mechanics_checksum: str
+    scenario_name: str = ""
+    scenario_premise: str = ""
+
+    def resolve(self, observation: GameView) -> AgentMetadata:
+        """View所有者だけの役職・能力情報と公開世界設定を返す."""
+        contexts = build_agent_game_contexts(
+            self.setup,
+            self.snapshot(),
+            setup_checksum=self.setup_checksum,
+            mechanics_checksum=self.mechanics_checksum,
+            scenario_name=self.scenario_name,
+            scenario_premise=self.scenario_premise,
+        )
+        return agent_metadata_from_game_context(contexts.get(observation.me.id))
 
 
 def build_agent_game_contexts(
@@ -105,4 +133,44 @@ def _mapping(value: object) -> Mapping[str, object]:
     return value if isinstance(value, Mapping) else {}
 
 
-__all__ = ["build_agent_game_contexts"]
+def agent_metadata_from_game_context(context: AgentGameContext | None) -> AgentMetadata:
+    """既存adapter contextを標準Agent metadataへ変換する."""
+    if context is None:
+        return AgentMetadata()
+    return AgentMetadata(
+        identity=AgentIdentity(
+            role_id=context.role_id,
+            role_name=context.role_name,
+            identity_faction_id=context.identity_faction,
+            identity_faction_name=context.identity_faction_name,
+            victory_team_id=context.victory_team,
+            victory_team_name=context.victory_team_name,
+            objective=context.objective,
+            abilities=tuple(
+                AgentAbility(
+                    ability_id=ability.id,
+                    name=ability.name,
+                    kind=ability.kind,
+                    remaining_uses=ability.remaining_uses,
+                )
+                for ability in context.abilities
+            ),
+        ),
+        world=AgentWorld(
+            theme_id=context.theme_id,
+            theme_name=context.theme_name,
+            premise=context.premise,
+            setup_checksum=context.setup_checksum,
+            mechanics_checksum=context.mechanics_checksum,
+            relevant_rules=context.relevant_rules,
+            action_names=context.action_names,
+            phase_names=context.phase_names,
+        ),
+    )
+
+
+__all__ = [
+    "SetupAgentMetadataProvider",
+    "agent_metadata_from_game_context",
+    "build_agent_game_contexts",
+]

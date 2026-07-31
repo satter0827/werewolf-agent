@@ -2,20 +2,21 @@
 
 from __future__ import annotations
 
-import random
 from typing import Any
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.agents import RandomLegalAgentFactory
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.domain import Game, GameSetup, build_game_rules
-from werewolf_agent.domain.state import (
-    Action,
-    ActionType,
-    AvailableAction,
-    EventVisibility,
-    Player,
-)
+from werewolf_agent.domain import EventVisibility, GameSetup, Player, build_game_rules
 from werewolf_agent.setup import generate_players, rule_definition_from_values
+from werewolf_agent.simulation import (
+    PlayerController,
+    SimulationLimits,
+    SimulationRunner,
+    SimulationSpec,
+    SimulationStepKind,
+    SimulationStopReason,
+)
 
 MAX_PHASES = 64
 
@@ -36,60 +37,69 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
             for ability_id, ability in setup.mechanics.abilities.items()
         },
     )
-    rng = random.Random(seed)
-    game = Game.create(
-        GameSetup(
-            players=tuple(
-                Player(id=item.player_id, name=item.profile.name)
-                for item in generate_players(
-                    setup.player_generation, player_count=player_count, seed=seed
-                )
-            )
-        ),
-        rules=build_game_rules(rule_definition),
-        random=rng,
+    players = tuple(
+        Player(id=item.player_id, name=item.profile.name)
+        for item in generate_players(
+            setup.player_generation,
+            player_count=player_count,
+            seed=seed,
+        )
     )
+    spec = SimulationSpec(
+        simulation_id=f"gameplay-review:{seed}",
+        game_id=f"gameplay-review:{seed}",
+        seed=seed,
+        controllers={
+            player.id: PlayerController(
+                player.id,
+                RandomLegalAgentFactory(speech=f"seed-{seed}の公開発言"),
+            )
+            for player in players
+        },
+        limits=SimulationLimits(max_actions=10_000, max_phases=MAX_PHASES),
+    )
+    session = SimulationRunner().create(
+        GameSetup(players=players),
+        rules=build_game_rules(rule_definition),
+        spec=spec,
+    )
+    game = session.game
     operations: list[dict[str, object]] = []
     public_timeline = [
         domain_to_data(event)
         for event in game.creation_events
         if event.visibility is EventVisibility.PUBLIC
     ]
-    for phase_index in range(MAX_PHASES):
-        snapshot = game.snapshot()
-        if snapshot.is_finished:
-            break
-        player_ids = list(snapshot.players)
-        rng.shuffle(player_ids)
-        for player_id in player_ids:
-            observation = game.view_for(player_id)
-            while observation.available_actions:
-                action_type = rng.choice(observation.available_actions)
-                action = _choose_action(rng, game, player_id, action_type, seed)
-                events = game.submit(action)
+    phase_index = 0
+    try:
+        while True:
+            step = session.step()
+            public_timeline.extend(
+                domain_to_data(event)
+                for event in step.events
+                if event.visibility is EventVisibility.PUBLIC
+            )
+            if step.kind is SimulationStepKind.AGENT_ACTION:
+                public_actor = step.action_type == "speech"
                 operations.append(
                     {
                         "phase_index": phase_index,
-                        "day": snapshot.day,
-                        "phase": snapshot.phase.value,
-                        "actor_id": player_id,
-                        "action": action_type.key,
-                        "private_target_omitted": action.target_id is not None,
+                        "day": step.day_before,
+                        "phase": step.phase_before,
+                        "actor_id": step.actor_id if public_actor else None,
+                        "action": step.action_type,
+                        "private_actor_omitted": not public_actor,
+                        "private_target_omitted": step.action_type in {"vote", "use_ability"},
                     }
                 )
-                public_timeline.extend(
-                    domain_to_data(event)
-                    for event in events
-                    if event.visibility is EventVisibility.PUBLIC
-                )
-                observation = game.view_for(player_id)
-        public_timeline.extend(
-            domain_to_data(event)
-            for event in game.advance(rng)
-            if event.visibility is EventVisibility.PUBLIC
-        )
+            elif step.kind is SimulationStepKind.PHASE_ADVANCED:
+                phase_index += 1
+            if step.stop_reason is not None:
+                break
+    finally:
+        session.close()
     snapshot = game.snapshot()
-    if not snapshot.is_finished:
+    if step.stop_reason is not SimulationStopReason.FINISHED:
         raise RuntimeError(f"seed={seed}のゲームが{MAX_PHASES} phase以内に終了しませんでした。")
     return {
         "settings": {
@@ -129,26 +139,6 @@ def gameplay_summary(evidence: dict[str, Any]) -> str:
             "",
         ]
     )
-
-
-def _choose_action(
-    rng: random.Random,
-    game: Game,
-    player_id: str,
-    action_type: AvailableAction,
-    seed: int,
-) -> Action:
-    if action_type.type is ActionType.SPEECH:
-        return Action.speech(player_id, f"seed-{seed}の公開発言")
-    if action_type.type is ActionType.PASS:
-        return Action.pass_(player_id)
-    targets = game.view_for(player_id).legal_targets[action_type.key]
-    target_id = rng.choice(targets)
-    if action_type.type is ActionType.VOTE:
-        return Action.vote(player_id, target_id)
-    if action_type.ability_id is not None:
-        return Action.use_ability(player_id, action_type.ability_id, target_id)
-    raise ValueError(f"unsupported available action: {action_type.key}")
 
 
 __all__ = ["gameplay_summary", "generate_gameplay_evidence"]
