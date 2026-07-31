@@ -30,8 +30,8 @@ from werewolf_agent.application.models import (
     StoredGameTurn,
 )
 from werewolf_agent.application.ports import GameRepository
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
+from werewolf_agent.setup import checksum_payload
 
 
 class SupabaseGameRepository(GameRepository):

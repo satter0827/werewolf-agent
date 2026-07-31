@@ -30,6 +30,7 @@ def test_architecture_analysis_passes_and_exposes_evidence() -> None:
         "werewolf_agent",
         "werewolf_agent.application",
         "werewolf_agent.domain",
+        "werewolf_agent.setup",
     }
     assert all(edge["line"] > 0 for edge in document["import_evidence"])
 

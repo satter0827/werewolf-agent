@@ -2,13 +2,13 @@
 # Python API
 
 `werewolf_agent.domain`はゲーム規則と決定的な状態遷移を提供する。
+`werewolf_agent.setup`は用途別seed、checksum、プレイヤー generationを提供する。
 `werewolf_agent.application`は認可、保存port、公開resultを含む利用手順を提供する。
 列挙されない内部モジュールは公開契約に含めない。
 
 ## Package
 
-`werewolf_agent`は`werewolf_agent.domain`の公開symbolを同一objectのまま短いimport pathで
-再公開する。各型と例外の詳細はDomain APIを正本とする。
+`werewolf_agent`は`__version__`だけを公開する。型と関数は責務を所有するモジュールからimportする。
 
 ```{eval-rst}
 .. automodule:: werewolf_agent
@@ -32,6 +32,14 @@
 :language: python
 ```
 
+## Setupの最小利用例
+
+同じプレイヤー generation定義とseedから同じrosterを生成する。
+
+```{literalinclude} ../snippets/python_api_setup.py
+:language: python
+```
+
 ## Domain API
 
 ```{eval-rst}
@@ -43,5 +51,12 @@
 
 ```{eval-rst}
 .. automodule:: werewolf_agent.application
+   :members:
+```
+
+## Setup API
+
+```{eval-rst}
+.. automodule:: werewolf_agent.setup
    :members:
 ```

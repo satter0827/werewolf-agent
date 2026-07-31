@@ -7,7 +7,7 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from werewolf_agent.agents.tracing import LlmInvocationTrace
-from werewolf_agent.application.replay import checksum_payload
+from werewolf_agent.setup import checksum_payload
 
 
 class BufferedLlmTraceSink:

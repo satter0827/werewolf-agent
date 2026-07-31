@@ -11,10 +11,7 @@ from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
 from werewolf_agent.agents.models import AgentScenario, DeliberationLevel, PlayerProfile
 from werewolf_agent.agents.tracing import LlmInvocationTrace
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.domain import (
     EventVisibility,
@@ -27,6 +24,7 @@ from werewolf_agent.domain import (
     RuleSet,
     build_game_rules,
 )
+from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
 
 StopReason = Literal["finished", "max_actions", "max_phases"]
 Operation = Literal["action", "advance"]
@@ -167,7 +165,7 @@ class FakeGameDemo:
             random=random.Random(namespace_seed(seed, "role_assignment")),
         )
         profiles = {
-            player.player_id: PlayerProfile.model_validate(player.profile.model_dump(mode="json"))
+            player.player_id: PlayerProfile.model_validate(player.profile.to_mapping())
             for player in generated
         }
         trace_sink = _SummaryTraceSink()

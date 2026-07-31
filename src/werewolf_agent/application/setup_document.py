@@ -13,6 +13,7 @@ from werewolf_agent.application.constants import (
 )
 from werewolf_agent.application.validation import non_blank
 from werewolf_agent.application.versions import SETUP_SCHEMA_VERSION
+from werewolf_agent.setup import PlayerGenerationDefinition
 
 FactionId = Literal["village", "werewolf", "fox"]
 RoleCount = Annotated[int, Field(ge=1)]
@@ -321,85 +322,10 @@ def _narration_fields(template: str) -> set[str]:
     return fields
 
 
-class PlayerIdentityDefinition(ApplicationModel):
-    """生成rosterごとに一度使用する公開identity候補を表す."""
-
-    name: str
-    age_min: int = Field(ge=18, le=120)
-    age_max: int = Field(ge=18, le=120)
-    gender: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("name", "gender")
-    @classmethod
-    def normalize_text(cls, value: str) -> str:
-        """空でないplayer identity textを返す."""
-        return non_blank(value, "player identity text")
-
-    @model_validator(mode="after")
-    def validate_age_range(self) -> Self:
-        """下限が上限を超えない年齢範囲を要求する."""
-        if self.age_min > self.age_max:
-            raise ValueError("age_min must not exceed age_max")
-        return self
-
-
-class PublicPersonaDefinition(ApplicationModel):
-    """Identityと組み合わせる公開行動fieldを表す."""
-
-    personality: str
-    speaking_style: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("personality", "speaking_style")
-    @classmethod
-    def normalize_text(cls, value: str) -> str:
-        """空でないpublic persona textを返す."""
-        return non_blank(value, "public persona text")
-
-
-class PrivateStrategyDefinition(ApplicationModel):
-    """割当済みagentだけへ渡すprivate reasoning fieldを表す."""
-
-    reasoning_style: str
-    risk_tolerance: Literal["low", "medium", "high"]
-    evidence_focus: str
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @field_validator("reasoning_style", "evidence_focus")
-    @classmethod
-    def normalize_text(cls, value: str) -> str:
-        """空でないprivate strategy textを返す."""
-        return non_blank(value, "private strategy text")
-
-
-class PlayerGenerationDefinition(ApplicationModel):
-    """ゲームごとに新しいrosterを構成する決定的規則を表す."""
-
-    identities: tuple[PlayerIdentityDefinition, ...]
-    public_personas: tuple[PublicPersonaDefinition, ...]
-    private_strategies: tuple[PrivateStrategyDefinition, ...]
-
-    model_config = ConfigDict(extra="forbid", frozen=True)
-
-    @model_validator(mode="after")
-    def validate_pools(self) -> Self:
-        """Player生成に必要な全component poolを要求する."""
-        if not self.identities or not self.public_personas or not self.private_strategies:
-            raise ValueError("player generation pools must not be empty")
-        names = [identity.name.strip() for identity in self.identities]
-        if any(not name for name in names) or len(names) != len(set(names)):
-            raise ValueError("player identity names must be non-empty and unique")
-        return self
-
-
 class GameSetupDocument(ApplicationModel):
     """全application境界が受理するportableな完全setupを表す."""
 
-    schema_version: Literal["0.1.0"]
+    schema_version: Literal["0.2.0"]
     mechanics: MechanicsDefinition
     theme: ThemeDefinition
     player_generation: PlayerGenerationDefinition
@@ -487,10 +413,6 @@ __all__ = [
     "InlineSetupSelection",
     "LocalRulesDefinition",
     "MechanicsDefinition",
-    "PlayerGenerationDefinition",
-    "PlayerIdentityDefinition",
-    "PrivateStrategyDefinition",
-    "PublicPersonaDefinition",
     "RoleDefinition",
     "SavedSetupSelection",
     "TemplateSetupSelection",

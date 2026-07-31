@@ -43,7 +43,6 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
-from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
@@ -52,6 +51,7 @@ from werewolf_agent.application.types import (
     GameStatus,
 )
 from werewolf_agent.domain import Game, build_game_rules
+from werewolf_agent.setup import namespace_seed
 
 
 def create_game(

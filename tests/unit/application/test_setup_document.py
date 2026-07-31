@@ -6,9 +6,6 @@ import pytest
 from pydantic import ValidationError
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_options import validate_setup_document
@@ -22,6 +19,7 @@ from werewolf_agent.domain import (
     Player,
     build_game_rules,
 )
+from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
 
 
 def _standard() -> GameSetupDocument:
@@ -50,7 +48,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.1.0"
+        assert setup.schema_version == "0.2.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -235,7 +233,7 @@ def test_setup_rejects_missing_theme_coverage_and_kind_specific_extras() -> None
 def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
     payload = _standard().model_dump(mode="json")
     payload["player_generation"]["public_personas"][0]["personality"] = "  "
-    with pytest.raises(ValidationError, match="public persona text"):
+    with pytest.raises(ValidationError, match="personality must not be blank"):
         GameSetupDocument.model_validate(payload)
 
     payload = _standard().model_dump(mode="json")

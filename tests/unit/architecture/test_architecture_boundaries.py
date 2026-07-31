@@ -36,6 +36,7 @@ from scripts.architecture.definition import (
 import werewolf_agent as package
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
+import werewolf_agent.setup as setup
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
@@ -69,8 +70,8 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
-    """Pythonの公開面をroot、domain、applicationに限定する。"""
-    assert (package, application, domain) == PUBLIC_MODULES
+    """Pythonの公開面を責務別moduleに限定する。"""
+    assert (package, application, domain, setup) == PUBLIC_MODULES
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
@@ -227,14 +228,15 @@ def test_replay_verifies_every_create_command_checksum() -> None:
         assert f'genesis["{checksum}"]' in replay
 
 
-def test_domain_uses_only_the_standard_library_and_domain_modules() -> None:
-    """Domainへvalidation frameworkや他layerを持ち込まない。"""
+def test_standard_sdk_uses_only_the_standard_library_and_owned_modules() -> None:
+    """Domainとsetupへvalidation frameworkや提供層を持ち込まない。"""
     offenders = [
         (path.relative_to(ROOT), imported)
-        for path in (PACKAGE / "domain").rglob("*.py")
+        for root in (PACKAGE / "domain", PACKAGE / "setup")
+        for path in root.rglob("*.py")
         for imported in _imports(path)
         if imported.split(".", maxsplit=1)[0] not in sys.stdlib_module_names
-        and not imported.startswith("werewolf_agent.domain")
+        and not imported.startswith(("werewolf_agent.domain", "werewolf_agent.setup"))
     ]
     assert not offenders
 
