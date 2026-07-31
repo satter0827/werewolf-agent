@@ -36,7 +36,7 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     assert versions == {
         "architecture": "0.9.0",
         "event": "0.1.0",
-        "product": "0.11.0",
+        "product": "0.12.0",
         "quality-evidence": "0.1.1",
         "replay": "0.3.0",
         "setup": "0.2.0",

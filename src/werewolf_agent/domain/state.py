@@ -575,6 +575,28 @@ class DeathReactionResolution:
 
 
 @dataclass(frozen=True)
+class KnowledgeClaim:
+    """設定済みknowledge能力が一人について返すroleまたはfactionを表す."""
+
+    player_id: str
+    ability_id: str
+    target_id: str
+    role: str | None = None
+    faction: str | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeResolution:
+    """Ability policyが返すstate非変更の知識候補を表す."""
+
+    claims: tuple[KnowledgeClaim, ...] = ()
+
+    def __post_init__(self) -> None:
+        """知識候補列をimmutableなtupleへ固定する."""
+        object.__setattr__(self, "claims", tuple(self.claims))
+
+
+@dataclass(frozen=True)
 class NightResult:
     """一回のnight phaseで解決したfactを表す."""
 
@@ -851,6 +873,8 @@ __all__ = [
     "GameState",
     "GameView",
     "InspectionResult",
+    "KnowledgeClaim",
+    "KnowledgeResolution",
     "LocalRules",
     "NightResolution",
     "NightResult",

@@ -72,6 +72,29 @@ def _passive_ability(
     )
 
 
+def _knowledge_ability(
+    mode: str,
+    *,
+    detail: str = "faction",
+    visibility: str = "private",
+) -> AbilityDefinition:
+    return AbilityDefinition(
+        kind="knowledge",
+        phase=Phase.NIGHT,
+        target_policy="none",
+        start_day=1,
+        max_uses=None,
+        result_visibility=visibility,
+        resolution_priority=100,
+        allow_repeat_target=True,
+        enabled_first_night=True,
+        result_detail=detail,
+        knowledge_mode=mode,
+        tie_resolution=None,
+        source_kinds=(),
+    )
+
+
 def _game(
     players: Sequence[Player],
     *,
@@ -150,6 +173,60 @@ def test_first_night_inspection_is_private_and_does_not_require_disabled_actions
     assert game.snapshot().history.nights[0].inspections[0].target_id == "p2"
     assert game.view_for("p1").known_factions["p2"] == "werewolf"
     assert "p2" not in game.view_for("p3").known_factions
+
+
+def test_private_allies_knowledge_is_visible_only_to_ability_owner() -> None:
+    game = _game(
+        (
+            Player("p1", "Wolf A", "werewolf"),
+            Player("p2", "Wolf B", "werewolf"),
+            Player("p3", "Villager A", "villager"),
+            Player("p4", "Villager B", "villager"),
+        ),
+        roles={
+            "werewolf": RoleDefinition("werewolf", "werewolf", ("allies",)),
+            "villager": RoleDefinition("village", "village"),
+        },
+        abilities={"allies": _knowledge_ability("allies")},
+    )
+
+    assert game.view_for("p1").known_factions["p2"] == "werewolf"
+    assert game.view_for("p2").known_factions["p1"] == "werewolf"
+    assert "p1" not in game.view_for("p3").known_factions
+
+
+def test_last_eliminated_knowledge_reveals_role_only_to_ability_owner() -> None:
+    game = _game(
+        (
+            Player("p1", "Wolf", "werewolf"),
+            Player("p2", "Medium", "medium"),
+            Player("p3", "Villager A", "villager"),
+            Player("p4", "Villager B", "villager"),
+        ),
+        roles={
+            "werewolf": RoleDefinition("werewolf", "werewolf"),
+            "medium": RoleDefinition("village", "village", ("medium",)),
+            "villager": RoleDefinition("village", "village"),
+        },
+        abilities={
+            "medium": _knowledge_ability("last_eliminated", detail="role"),
+        },
+        starting_phase="day_discussion",
+    )
+    game.advance(random.Random(0))
+    _submit_and_advance(
+        game,
+        (
+            Action.vote("p1", "p3"),
+            Action.vote("p2", "p3"),
+            Action.vote("p3", "p1"),
+            Action.vote("p4", "p3"),
+        ),
+        seed=19,
+    )
+
+    assert game.view_for("p2").known_roles["p3"] == "villager"
+    assert "p3" not in game.view_for("p4").known_roles
 
 
 def test_same_definition_seed_and_actions_reproduce_state_and_events() -> None:

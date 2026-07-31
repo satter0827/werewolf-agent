@@ -19,6 +19,8 @@ from werewolf_agent.domain import (
     GameError,
     GameSetup,
     GameState,
+    KnowledgeClaim,
+    KnowledgeResolution,
     LocalRules,
     NightResolution,
     Phase,
@@ -195,6 +197,11 @@ class RedirectAbilityPolicy:
         del state, newly_dead_player_ids, random
         return DeathReactionResolution()
 
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """知識候補を発生させない."""
+        del state
+        return KnowledgeResolution()
+
 
 class InvalidAbilityPolicy:
     """存在しないplayerを死亡させるfault policy."""
@@ -220,6 +227,11 @@ class InvalidAbilityPolicy:
         del state, newly_dead_player_ids, random
         return DeathReactionResolution()
 
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """知識候補を発生させない."""
+        del state
+        return KnowledgeResolution()
+
 
 class ExcessPassiveUsePolicy:
     """設定済み上限を超える受動能力使用を返すfault policy."""
@@ -243,6 +255,11 @@ class ExcessPassiveUsePolicy:
         """死亡反応を発生させない."""
         del state, newly_dead_player_ids, random
         return DeathReactionResolution()
+
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """知識候補を発生させない."""
+        del state
+        return KnowledgeResolution()
 
 
 class SuppressDeathReactionPolicy:
@@ -270,6 +287,10 @@ class SuppressDeathReactionPolicy:
         del state, newly_dead_player_ids, random
         return DeathReactionResolution()
 
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """知識解決はCoreへ委譲する."""
+        return self._core.resolve_knowledge(state)
+
 
 class InvalidDeathReactionPolicy(SuppressDeathReactionPolicy):
     """生存者を反応所有者として返すfault policy."""
@@ -284,6 +305,29 @@ class InvalidDeathReactionPolicy(SuppressDeathReactionPolicy):
         del state, newly_dead_player_ids
         random.choice(("consumed",))
         return DeathReactionResolution((DeathReaction("p1", "reaction", "p3"),))
+
+
+class RedirectKnowledgePolicy(SuppressDeathReactionPolicy):
+    """Private knowledgeの意味論を外部から変更するtest policy."""
+
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """村人p2を人狼と主張するprivate知識候補を返す."""
+        del state
+        return KnowledgeResolution(
+            (
+                KnowledgeClaim("p1", "knowledge", "p1", faction="werewolf"),
+                KnowledgeClaim("p1", "knowledge", "p2", faction="werewolf"),
+            )
+        )
+
+
+class InvalidKnowledgePolicy(SuppressDeathReactionPolicy):
+    """設定と異なるdetailを返すfault policy."""
+
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """faction能力へroleを返す不正候補を生成する."""
+        del state
+        return KnowledgeResolution((KnowledgeClaim("p1", "knowledge", "p2", role="villager"),))
 
 
 def _game_with_voting_policy(policy: VotingPolicy) -> Game:
@@ -462,6 +506,67 @@ def _game_with_death_reaction_policy(
     return game
 
 
+def _game_with_knowledge_policy(
+    policy_factory: type[SuppressDeathReactionPolicy],
+) -> Game:
+    definition = RuleSetDefinition(
+        player_count=3,
+        role_counts={"seer": 1, "villager": 1, "werewolf": 1},
+        rules=LocalRules(
+            day_speech_limit_per_player=1,
+            allow_self_vote=False,
+            allow_vote_revision=False,
+            allow_night_action_revision=False,
+            vote_tie_resolution="no_elimination",
+            starting_phase="night",
+            reveal_role_on_death=False,
+        ),
+        roles=RoleCatalog(
+            {
+                "seer": RoleDefinition("village", "village", ("knowledge",)),
+                "villager": RoleDefinition("village", "village"),
+                "werewolf": RoleDefinition("werewolf", "werewolf"),
+            }
+        ),
+        abilities={
+            "knowledge": AbilityDefinition(
+                kind="knowledge",
+                phase=Phase.NIGHT,
+                target_policy="none",
+                start_day=1,
+                max_uses=None,
+                result_visibility="private",
+                resolution_priority=100,
+                allow_repeat_target=True,
+                enabled_first_night=True,
+                result_detail="faction",
+                knowledge_mode="allies",
+                tie_resolution=None,
+                source_kinds=(),
+            )
+        },
+    )
+    core = CoreRulePack().compile(definition)
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=ExternalVictoryPack().manifest,
+        ability_policy=policy_factory(core.ability_policy),
+        voting_policy=core.voting_policy,
+        victory_policy=core.victory_policy,
+    )
+    return Game.create(
+        GameSetup(
+            (
+                Player("p1", "Seer", "seer"),
+                Player("p2", "Alice", "villager"),
+                Player("p3", "Wolf", "werewolf"),
+            )
+        ),
+        rules=rules,
+        random=random.Random(7),
+    )
+
+
 def test_external_provider_is_used_only_after_explicit_registration() -> None:
     provider = ExternalVictoryPack()
     registry = RulePolicyRegistry((CoreRulePack(), provider))
@@ -604,3 +709,18 @@ def test_invalid_death_reaction_outcome_is_rejected_atomically() -> None:
 
     assert game.snapshot() is before
     assert random_source.getstate() == random_state
+
+
+def test_external_knowledge_policy_changes_private_claim_without_leaking() -> None:
+    game = _game_with_knowledge_policy(RedirectKnowledgePolicy)
+
+    assert game.view_for("p1").known_factions["p2"] == "werewolf"
+    assert game.view_for("p1").known_factions["p1"] == "village"
+    assert "p2" not in game.view_for("p3").known_factions
+
+
+def test_invalid_knowledge_outcome_is_rejected() -> None:
+    game = _game_with_knowledge_policy(InvalidKnowledgePolicy)
+
+    with pytest.raises(ValueError, match="faction knowledge"):
+        game.view_for("p1")

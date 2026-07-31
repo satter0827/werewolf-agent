@@ -94,7 +94,12 @@ class Game:
 
     def view_for(self, player_id: str) -> GameView:
         """可視性でfilterしたplayer viewを返す."""
-        return engine.build_view(self._state, self._state.pending_actions, player_id)
+        return engine.build_view(
+            self._state,
+            self._state.pending_actions,
+            player_id,
+            ability_policy=self._rules.ability_policy,
+        )
 
     def snapshot(self) -> GameState:
         """現在のimmutableなstate snapshotを返す."""

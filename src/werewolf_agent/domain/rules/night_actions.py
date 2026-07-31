@@ -15,6 +15,7 @@ from werewolf_agent.domain._messages import (
 )
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rule_packs import AbilityPolicy
+from werewolf_agent.domain.rules.observations import resolve_core_knowledge
 from werewolf_agent.domain.rules.player_rules import (
     faction_for_role,
     mark_dead,
@@ -31,6 +32,7 @@ from werewolf_agent.domain.state import (
     DeathReactionResolution,
     GameState,
     InspectionResult,
+    KnowledgeResolution,
     NightResolution,
     NightResult,
     Phase,
@@ -143,6 +145,10 @@ class CoreAbilityPolicy:
     ) -> DeathReactionResolution:
         """組み込みの死亡反応連鎖をstate変更なしで解決する."""
         return resolve_core_death_reactions(state, newly_dead_player_ids, random)
+
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """組み込みknowledge能力の知識候補を返す."""
+        return resolve_core_knowledge(state)
 
 
 def _ordered_ability_actions(
