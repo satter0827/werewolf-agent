@@ -21,12 +21,14 @@ from werewolf_agent.domain.rules.player_rules import (
     player_by_id,
     require_alive,
     require_phase,
+    resolve_core_death_reactions,
     resolve_death_reactions,
 )
 from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
     ActionType,
+    DeathReactionResolution,
     GameState,
     InspectionResult,
     NightResolution,
@@ -61,9 +63,27 @@ def resolve_night(
     try:
         resolution = policy.resolve_night(snapshot, pending_actions, rng)
         _validate_resolution(snapshot, pending_actions, resolution)
+        return _apply_night_resolution(
+            snapshot,
+            pending_actions,
+            resolution,
+            rng,
+            policy=policy,
+        )
     except Exception:
         rng.setstate(random_state)
         raise
+
+
+def _apply_night_resolution(
+    snapshot: GameState,
+    pending_actions: Mapping[str, Action],
+    resolution: NightResolution,
+    rng: random.Random,
+    *,
+    policy: AbilityPolicy,
+) -> tuple[GameState, NightResult]:
+    """検証済み夜Outcomeと死亡反応を一つのstate遷移へ適用する."""
     updated_snapshot = snapshot
     for player_id in sorted(resolution.killed_player_ids):
         updated_snapshot = mark_dead(updated_snapshot, player_id, killed_night=snapshot.day)
@@ -71,6 +91,7 @@ def resolve_night(
         updated_snapshot,
         sorted(resolution.killed_player_ids),
         rng,
+        policy=policy,
         during_night=True,
     )
     killed_ids = tuple(sorted((*resolution.killed_player_ids, *reaction_deaths)))
@@ -113,6 +134,15 @@ class CoreAbilityPolicy:
         """設定済み能力を優先順位順に解決してOutcomeを返す."""
         ordered = _ordered_ability_actions(state, pending_actions)
         return _resolve_core_night(state, ordered, random)
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """組み込みの死亡反応連鎖をstate変更なしで解決する."""
+        return resolve_core_death_reactions(state, newly_dead_player_ids, random)
 
 
 def _ordered_ability_actions(

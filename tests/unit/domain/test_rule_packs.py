@@ -13,6 +13,8 @@ from werewolf_agent.domain import (
     Action,
     CompiledRuleSet,
     CoreRulePack,
+    DeathReaction,
+    DeathReactionResolution,
     Game,
     GameError,
     GameSetup,
@@ -183,6 +185,16 @@ class RedirectAbilityPolicy:
         del state, pending_actions, random
         return NightResolution(attacked_player_ids=("p2",), killed_player_ids=("p3",))
 
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """死亡反応を発生させない."""
+        del state, newly_dead_player_ids, random
+        return DeathReactionResolution()
+
 
 class InvalidAbilityPolicy:
     """存在しないplayerを死亡させるfault policy."""
@@ -198,6 +210,16 @@ class InvalidAbilityPolicy:
         random.choice(("consumed",))
         return NightResolution(killed_player_ids=("unknown",))
 
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """死亡反応を発生させない."""
+        del state, newly_dead_player_ids, random
+        return DeathReactionResolution()
+
 
 class ExcessPassiveUsePolicy:
     """設定済み上限を超える受動能力使用を返すfault policy."""
@@ -211,6 +233,57 @@ class ExcessPassiveUsePolicy:
         """同じ一回制限能力を二回使用したOutcomeを返す."""
         del state, pending_actions, random
         return NightResolution(passive_uses=(("p2", "immunity"), ("p2", "immunity")))
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """死亡反応を発生させない."""
+        del state, newly_dead_player_ids, random
+        return DeathReactionResolution()
+
+
+class SuppressDeathReactionPolicy:
+    """Coreの夜解決を保ち、死亡反応だけを抑止する外部test policy."""
+
+    def __init__(self, core: AbilityPolicy) -> None:
+        self._core = core
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """夜解決はCoreへ委譲する."""
+        return self._core.resolve_night(state, pending_actions, random)
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """死亡反応を明示的に発生させない."""
+        del state, newly_dead_player_ids, random
+        return DeathReactionResolution()
+
+
+class InvalidDeathReactionPolicy(SuppressDeathReactionPolicy):
+    """生存者を反応所有者として返すfault policy."""
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """Domain invariantに反する反応Outcomeを返す."""
+        del state, newly_dead_player_ids
+        random.choice(("consumed",))
+        return DeathReactionResolution((DeathReaction("p1", "reaction", "p3"),))
 
 
 def _game_with_voting_policy(policy: VotingPolicy) -> Game:
@@ -315,6 +388,77 @@ def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
         random=random.Random(7),
     )
     game.submit(Action.use_ability("p1", "attack", "p2"))
+    return game
+
+
+def _game_with_death_reaction_policy(
+    policy_factory: type[SuppressDeathReactionPolicy],
+) -> Game:
+    definition = RuleSetDefinition(
+        player_count=4,
+        role_counts={"hunter": 1, "villager": 2, "werewolf": 1},
+        rules=LocalRules(
+            day_speech_limit_per_player=1,
+            allow_self_vote=False,
+            allow_vote_revision=False,
+            allow_night_action_revision=False,
+            vote_tie_resolution="no_elimination",
+            starting_phase="day_discussion",
+            reveal_role_on_death=False,
+        ),
+        roles=RoleCatalog(
+            {
+                "hunter": RoleDefinition("village", "village", ("reaction",)),
+                "villager": RoleDefinition("village", "village"),
+                "werewolf": RoleDefinition("werewolf", "werewolf"),
+            }
+        ),
+        abilities={
+            "reaction": AbilityDefinition(
+                kind="death_reaction",
+                phase=Phase.VOTING,
+                target_policy="none",
+                start_day=1,
+                max_uses=1,
+                result_visibility="none",
+                resolution_priority=100,
+                allow_repeat_target=True,
+                enabled_first_night=True,
+                result_detail=None,
+                knowledge_mode=None,
+                tie_resolution=None,
+                source_kinds=(),
+            )
+        },
+    )
+    core = CoreRulePack().compile(definition)
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=ExternalVictoryPack().manifest,
+        ability_policy=policy_factory(core.ability_policy),
+        voting_policy=core.voting_policy,
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup(
+            (
+                Player("p1", "Wolf", "werewolf"),
+                Player("p2", "Hunter", "hunter"),
+                Player("p3", "Alice", "villager"),
+                Player("p4", "Bob", "villager"),
+            )
+        ),
+        rules=rules,
+        random=random.Random(7),
+    )
+    game.advance(random.Random(11))
+    for action in (
+        Action.vote("p1", "p2"),
+        Action.vote("p2", "p1"),
+        Action.vote("p3", "p2"),
+        Action.vote("p4", "p2"),
+    ):
+        game.submit(action)
     return game
 
 
@@ -437,3 +581,26 @@ def test_ability_outcome_cannot_exceed_passive_use_limit() -> None:
         game.advance(random.Random(13))
 
     assert game.snapshot() is before
+
+
+def test_external_ability_policy_can_suppress_death_reaction() -> None:
+    game = _game_with_death_reaction_policy(SuppressDeathReactionPolicy)
+
+    game.advance(random.Random(13))
+
+    assert not game.snapshot().players["p2"].is_alive
+    assert all(game.snapshot().players[player_id].is_alive for player_id in ("p1", "p3", "p4"))
+    assert game.snapshot().ability_uses.get("p2", {}).get("reaction", 0) == 0
+
+
+def test_invalid_death_reaction_outcome_is_rejected_atomically() -> None:
+    game = _game_with_death_reaction_policy(InvalidDeathReactionPolicy)
+    before = game.snapshot()
+    random_source = random.Random(13)
+    random_state = random_source.getstate()
+
+    with pytest.raises(ValueError, match="owner must already be dead"):
+        game.advance(random_source)
+
+    assert game.snapshot() is before
+    assert random_source.getstate() == random_state

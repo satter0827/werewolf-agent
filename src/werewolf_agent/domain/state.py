@@ -555,6 +555,26 @@ class NightResolution:
 
 
 @dataclass(frozen=True)
+class DeathReaction:
+    """一つの死亡反応が選んだ能力所有者と死亡対象を表す."""
+
+    player_id: str
+    ability_id: str
+    target_id: str
+
+
+@dataclass(frozen=True)
+class DeathReactionResolution:
+    """Ability policyが返す順序付き死亡反応Outcomeを表す."""
+
+    reactions: tuple[DeathReaction, ...] = ()
+
+    def __post_init__(self) -> None:
+        """反応列をimmutableなtupleへ固定する."""
+        object.__setattr__(self, "reactions", tuple(self.reactions))
+
+
+@dataclass(frozen=True)
 class NightResult:
     """一回のnight phaseで解決したfactを表す."""
 
@@ -821,6 +841,8 @@ __all__ = [
     "Action",
     "ActionType",
     "AvailableAction",
+    "DeathReaction",
+    "DeathReactionResolution",
     "EventVisibility",
     "GameConfig",
     "GameEvent",

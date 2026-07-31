@@ -66,6 +66,7 @@ def advance_game_phase(
             rng,
             victory_evaluator,
             voting_policy=voting_policy,
+            ability_policy=ability_policy,
             vote_round=vote_round,
         )
     raise GamePhaseError(
@@ -120,6 +121,7 @@ def _advance_from_voting(
     rng: random.Random,
     victory_evaluator: Callable[[GameState], WinResult | None],
     *,
+    ability_policy: AbilityPolicy,
     voting_policy: VotingPolicy,
     vote_round: int,
 ) -> TransitionOutcome:
@@ -128,6 +130,7 @@ def _advance_from_voting(
         pending_votes,
         rng,
         vote_round=vote_round,
+        ability_policy=ability_policy,
         policy=voting_policy,
     )
     events = [
