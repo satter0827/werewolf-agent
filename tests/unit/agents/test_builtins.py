@@ -78,3 +78,33 @@ def test_fault_agent_fails_without_affecting_other_sessions() -> None:
     with pytest.raises(RuntimeError, match="expected_fault"):
         factory.create(context).decide(_request(context))
     assert factory.create(context) is not factory.create(context)
+
+
+@pytest.mark.parametrize(
+    ("factory_type", "value"),
+    (
+        (RandomLegalAgentFactory, " "),
+        (HeuristicAgentFactory, "\t"),
+        (FaultAgentFactory, ""),
+    ),
+)
+def test_builtin_factory_rejects_blank_configuration(
+    factory_type: type[RandomLegalAgentFactory]
+    | type[HeuristicAgentFactory]
+    | type[FaultAgentFactory],
+    value: str,
+) -> None:
+    """実行時まで遅延せずFactory構築時に空設定を拒否する."""
+    with pytest.raises(ValueError, match="must not be blank"):
+        factory_type(value)
+
+
+def test_scripted_agent_fingerprint_accepts_nested_immutable_metadata() -> None:
+    """Responseのimmutableなnested値を正規JSONへ戻してfingerprint化する."""
+    response = DecisionResponse("pass", metadata={"nested": {"items": [1, 2]}})
+
+    first = ScriptedAgentFactory((response,)).spec
+    second = ScriptedAgentFactory((response,)).spec
+
+    assert first == second
+    assert first.parameters["responses"]

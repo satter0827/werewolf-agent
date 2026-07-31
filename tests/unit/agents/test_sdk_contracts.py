@@ -14,8 +14,10 @@ from werewolf_agent.agents import (
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
+    DecisionTrace,
     ObservedPlayer,
     PublicTimelineEvent,
+    RandomLegalAgentFactory,
 )
 
 
@@ -118,3 +120,31 @@ def test_contract_values_deeply_freeze_diagnostics_and_public_payloads() -> None
         AgentSpec("external", "1.0.0", "1" * 64, {1: "invalid"})  # type: ignore[dict-item]
     with pytest.raises(ValueError, match="JSON-compatible"):
         AgentSpec("external", "1.0.0", "1" * 64, {"runtime": object()})
+
+
+def test_contract_rejects_non_string_text_without_leaking_attribute_errors() -> None:
+    """外部実装の型違反を一貫した契約エラーとして拒否する."""
+    with pytest.raises(ValueError, match="agent_id must be a string"):
+        AgentSpec(1, "1.0.0", "1" * 64)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="speech must be a string"):
+        RandomLegalAgentFactory(1)  # type: ignore[arg-type]
+
+
+def test_decision_trace_requires_an_outcome_and_a_fallback_response() -> None:
+    """分析不能な空traceと応答のないfallbackを拒否する."""
+    spec = AgentSpec("external", "1.0.0", "1" * 64)
+    with pytest.raises(ValueError, match="response or error_code"):
+        DecisionTrace("decision-1", spec, None, 1)
+    with pytest.raises(ValueError, match="fallback trace must contain a response"):
+        DecisionTrace("decision-1", spec, None, 1, True, "agent_timeout")
+    with pytest.raises(ValueError, match="fallback trace must contain an error_code"):
+        DecisionTrace("decision-1", spec, DecisionResponse("pass"), 1, True)
+    with pytest.raises(ValueError, match="successful trace must not contain an error_code"):
+        DecisionTrace("decision-1", spec, DecisionResponse("pass"), 1, False, "agent_fault")
+
+    response = DecisionResponse("pass")
+    trace = DecisionTrace("decision-1", spec, response, 1, True, "agent_timeout")
+
+    assert trace.agent_spec == spec
+    assert trace.response == response
+    assert trace.fallback_used

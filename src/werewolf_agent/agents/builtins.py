@@ -16,6 +16,9 @@ from werewolf_agent.agents.contracts import (
     DecisionRequest,
     DecisionResponse,
 )
+from werewolf_agent.agents.validation import non_blank
+
+_BUILTIN_IMPLEMENTATION_VERSION = "1.0.1"
 
 
 @dataclass(frozen=True)
@@ -23,6 +26,10 @@ class RandomLegalAgentFactory:
     """decision seedから合法手を一つ選ぶ再現可能なAgent Factory."""
 
     speech: str = "状況を確認します。"
+
+    def __post_init__(self) -> None:
+        """発言設定をFactory構築時に検証する."""
+        object.__setattr__(self, "speech", non_blank(self.speech, "speech"))
 
     @property
     def spec(self) -> AgentSpec:
@@ -39,6 +46,10 @@ class HeuristicAgentFactory:
     """能力、投票、発言、passの順で最初の合法手を選ぶAgent Factory."""
 
     speech: str = "公開情報を基準に判断します。"
+
+    def __post_init__(self) -> None:
+        """発言設定をFactory構築時に検証する."""
+        object.__setattr__(self, "speech", non_blank(self.speech, "speech"))
 
     @property
     def spec(self) -> AgentSpec:
@@ -80,6 +91,10 @@ class FaultAgentFactory:
     """timeoutと例外処理のcontractテスト用に決定的に失敗するFactory."""
 
     error_code: str = "agent_fault"
+
+    def __post_init__(self) -> None:
+        """故障識別子をFactory構築時に検証する."""
+        object.__setattr__(self, "error_code", non_blank(self.error_code, "error_code"))
 
     @property
     def spec(self) -> AgentSpec:
@@ -187,9 +202,14 @@ def _response(
 
 
 def _spec(agent_id: str, parameters: Mapping[str, object]) -> AgentSpec:
-    payload = json.dumps(parameters, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    fingerprint = sha256(f"werewolf-agent:{agent_id}:{payload}".encode()).hexdigest()
-    return AgentSpec(agent_id, "1.0.0", fingerprint, parameters)
+    canonical = _json_value(parameters)
+    if not isinstance(canonical, dict):
+        raise ValueError("agent parameters must be an object")
+    payload = json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    fingerprint = sha256(
+        f"werewolf-agent:{agent_id}:{_BUILTIN_IMPLEMENTATION_VERSION}:{payload}".encode()
+    ).hexdigest()
+    return AgentSpec(agent_id, _BUILTIN_IMPLEMENTATION_VERSION, fingerprint, canonical)
 
 
 def _response_payload(response: DecisionResponse) -> dict[str, object]:
@@ -201,10 +221,18 @@ def _response_payload(response: DecisionResponse) -> dict[str, object]:
         "focus_id": response.focus_id,
         "evidence_id": response.evidence_id,
         "confidence": response.confidence,
-        "beliefs": dict(response.beliefs),
+        "beliefs": _json_value(response.beliefs),
         "intent": response.intent,
-        "metadata": dict(response.metadata),
+        "metadata": _json_value(response.metadata),
     }
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _json_value(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_json_value(item) for item in value]
+    return value
 
 
 __all__ = [

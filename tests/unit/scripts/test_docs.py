@@ -61,6 +61,7 @@ def test_python_api_html_requires_modules_objects_and_no_raw_directives(
     path.write_text(
         """
 <section id="module-werewolf_agent"></section>
+<section id="module-werewolf_agent.agents"></section>
 <section id="module-werewolf_agent.domain"></section>
 <section id="module-werewolf_agent.application"></section>
 <section id="module-werewolf_agent.setup"></section>
@@ -120,7 +121,12 @@ def test_pydantic_signature_preserves_default_factory_parameters() -> None:
 
 def test_python_api_snippets_execute_without_external_services() -> None:
     """掲載例を外部serviceなしで実行できる状態に保つ。"""
-    for name in ("python_api_domain.py", "python_api_application.py"):
+    for name in (
+        "python_api_agents.py",
+        "python_api_application.py",
+        "python_api_domain.py",
+        "python_api_setup.py",
+    ):
         runpy.run_path(ROOT / "docs" / "snippets" / name, run_name="__main__")
 
 
