@@ -297,6 +297,8 @@ def test_success_uses_contract_artifacts_without_adding_failure_diagnostics(
 
     def generate_contract(*_args: object) -> quality.CommandResult:
         generated.write_text("{}", encoding="utf-8")
+        generated_mtime = context.started_at.timestamp() + 1
+        os.utime(generated, (generated_mtime, generated_mtime))
         return quality.CommandResult([], 0, 0.0, "")
 
     gate = quality.Gate(
