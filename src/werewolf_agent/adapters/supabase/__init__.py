@@ -1,10 +1,6 @@
-"""Supabase Auth and persistence adapters."""
+"""Supabase Auth and persistence adapters.
 
-from werewolf_agent.adapters.supabase.auth_client import SupabaseAuthClient
-from werewolf_agent.adapters.supabase.session_store import SupabaseSession, SupabaseSessionStore
+Auth、session、databaseは依存が異なるため、具象型は所有moduleからimportする。
+"""
 
-__all__ = [
-    "SupabaseAuthClient",
-    "SupabaseSession",
-    "SupabaseSessionStore",
-]
+__all__: list[str] = []

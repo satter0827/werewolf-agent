@@ -5,7 +5,8 @@ import pytest
 from keyring.errors import NoKeyringError
 
 from werewolf_agent.adapters import auth
-from werewolf_agent.adapters.supabase import SupabaseSession, auth_client, session_store
+from werewolf_agent.adapters.supabase import auth_client, session_store
+from werewolf_agent.adapters.supabase.session_store import SupabaseSession
 from werewolf_agent.contracts import AppError
 from werewolf_agent.settings import AppSettings
 

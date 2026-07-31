@@ -86,6 +86,49 @@ def test_wheel_installs_and_exposes_the_owned_domain_api(
 
 
 @pytest.mark.serial
+@pytest.mark.parametrize(
+    ("command", "extra"),
+    (
+        ("werewolf-agent", "cli"),
+        ("werewolf-agent-api", "api"),
+        ("werewolf-agent-worker", "worker"),
+    ),
+)
+def test_standard_install_entrypoints_explain_the_required_extra(
+    installed_wheel_environment: tuple[Path, Path, dict[str, str]],
+    command: str,
+    extra: str,
+) -> None:
+    """標準installのconsole scriptはtracebackなしで必要なextraを示す。"""
+    environment, python, runtime_environment = installed_wheel_environment
+    package_environment = runtime_environment.copy()
+    package_environment.pop("PYTHONPATH", None)
+    arguments = (
+        [
+            str(python),
+            "-c",
+            f"from werewolf_agent._entrypoints import {extra}; {extra}()",
+        ]
+        if sys.platform == "win32"
+        else [str(environment / "bin" / command), "--help"]
+    )
+
+    executed = subprocess.run(
+        arguments,
+        cwd=environment.parent,
+        env=package_environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = executed.stdout + executed.stderr
+    assert executed.returncode != 0
+    assert f"werewolf-agent[{extra}]" in output
+    assert "Traceback" not in output
+
+
+@pytest.mark.serial
 def test_notebook_executes_against_wheel_without_source_or_scripts(
     tmp_path: Path,
     installed_wheel_environment: tuple[Path, Path, dict[str, str]],

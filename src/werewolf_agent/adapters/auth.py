@@ -8,13 +8,9 @@ from contextvars import ContextVar
 from typing import Protocol
 
 from werewolf_agent.adapters.messages import MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED
-from werewolf_agent.adapters.supabase import (
-    SupabaseAuthClient,
-    SupabaseSessionStore,
-)
-from werewolf_agent.adapters.supabase import (
-    SupabaseSession as SupabaseSession,
-)
+from werewolf_agent.adapters.supabase.auth_client import SupabaseAuthClient
+from werewolf_agent.adapters.supabase.session_store import SupabaseSession as SupabaseSession
+from werewolf_agent.adapters.supabase.session_store import SupabaseSessionStore
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.settings import AppSettings

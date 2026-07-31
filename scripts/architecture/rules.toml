@@ -61,9 +61,9 @@ streamlit = "werewolf_agent.settings.sections.streamlit:StreamlitSettings"
 worker = "werewolf_agent.settings.sections.worker:WorkerSettings"
 
 [entrypoints]
-cli = "werewolf_agent.clients.cli.app:app"
-api = "werewolf_agent.api.app:run"
-worker = "werewolf_agent.worker.app:app"
+cli = "werewolf_agent._entrypoints:cli"
+api = "werewolf_agent._entrypoints:api"
+worker = "werewolf_agent._entrypoints:worker"
 
 [path_rules.api_routes]
 roots = ["src/werewolf_agent/api/routes"]
