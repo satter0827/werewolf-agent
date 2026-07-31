@@ -33,6 +33,7 @@ def test_create_command_contains_a_complete_resolved_setup_and_generated_players
         [player.model_dump(mode="json") for player in command.players]
     )
     assert command.rule_pack_provider_id == "core"
+    assert command.model_dump(mode="json")["setup"] == setup.to_mapping()
 
 
 def test_create_command_preserves_an_explicit_rule_pack_provider() -> None:

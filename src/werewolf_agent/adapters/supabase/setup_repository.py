@@ -70,7 +70,12 @@ class SupabaseSetupRepository(SetupRepository):
             """,
             (UUID(owner_user_id),),
         ).fetchall()
-        return [SavedSetupSummary.model_validate(dict(row)) for row in rows]
+        summaries: list[SavedSetupSummary] = []
+        for row in rows:
+            payload = dict(row)
+            payload["setup_id"] = str(payload["setup_id"])
+            summaries.append(SavedSetupSummary.model_validate(payload))
+        return summaries
 
     def get(
         self,
