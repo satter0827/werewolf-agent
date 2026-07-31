@@ -35,7 +35,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.1.0"
+_IMPLEMENTATION_VERSION = "1.2.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -125,8 +125,11 @@ class _LangChainAgentSession:
             }
             if trace.provider_error:
                 diagnostics["provider_error"] = trace.provider_error
+            diagnostics.update(_usage_metadata(trace))
             raise AgentDecisionError(_FAILURE_CODE, diagnostics)
         metadata = {"reason": decision.reason} if decision.reason else {}
+        if trace is not None:
+            metadata.update(_usage_metadata(trace))
         return DecisionResponse(
             action_type=decision.type.value,
             ability_id=decision.ability_id,
@@ -140,6 +143,18 @@ class _LangChainAgentSession:
     def close(self) -> None:
         """Sessionを冪等にcloseする."""
         self.closed = True
+
+
+def _usage_metadata(trace: LlmInvocationTrace) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in (
+            ("input_tokens", trace.input_tokens),
+            ("output_tokens", trace.output_tokens),
+            ("total_tokens", trace.total_tokens),
+        )
+        if value is not None
+    }
 
 
 @dataclass

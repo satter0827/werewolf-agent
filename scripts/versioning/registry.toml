@@ -64,6 +64,14 @@ pattern = 'EXPERIMENT_CONTRACT_VERSION\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/experiments/"]
 
 [[boundaries]]
+name = "experiment-evaluator"
+owner = "experiments"
+standard = "semver"
+path = "src/werewolf_agent/experiments/evaluation.py"
+pattern = 'STANDARD_EVALUATOR_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/experiments/evaluation.py"]
+
+[[boundaries]]
 name = "architecture"
 owner = "scripts.architecture"
 standard = "semver"

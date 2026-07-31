@@ -137,7 +137,7 @@ Reportは保存済みTrialから再生成する。
 席順・役職・persona・controller割当、均衡rotation、決定的なTrial IDと実装fingerprintを公開する。
 Trial実行、trial単位のatomic artifact、checkpoint、resumeも実装済みである。Runnerは注入された
 Simulation Sessionをplan provenanceと照合し、完成済みTrialを重複実行しない。EvaluatorとReportは
-後続工程で実装する。
+標準metric、任意のbelief校正、外部Evaluator契約、条件別の決定的Reportとして実装済みである。
 
 ### 7. applicationの組み込み境界を完成させる
 

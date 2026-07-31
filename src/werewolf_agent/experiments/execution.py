@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from types import MappingProxyType
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
 from werewolf_agent.agents import AgentSpec, DecisionResponse, DecisionTrace
 from werewolf_agent.domain import GameEvent, RulePackManifest
@@ -26,6 +26,9 @@ from werewolf_agent.simulation import (
     SimulationStep,
     SimulationStopReason,
 )
+
+if TYPE_CHECKING:
+    from werewolf_agent.experiments.evaluation import ExperimentReport
 
 
 class TrialSessionFactory(Protocol):
@@ -207,6 +210,42 @@ class TrialArtifactStore:
         path = self._trial_path(plan)
         if not path.is_file():
             return None
+        result = self._load_path(path)
+        if result.plan.to_mapping() != plan.to_mapping():
+            raise ValueError(f"trial artifact plan mismatch: {path}")
+        return result
+
+    def load_experiment(self, experiment_id: str) -> tuple[TrialResult, ...]:
+        """一つのexperimentに保存された全TrialをID順で返す。."""
+        directory = self._experiment_path(experiment_id) / "trials"
+        if not directory.is_dir():
+            return ()
+        results = tuple(self._load_path(path) for path in sorted(directory.glob("*.json")))
+        if any(item.plan.experiment_id != experiment_id for item in results):
+            raise ValueError("trial artifact belongs to a different experiment")
+        trial_ids = tuple(item.plan.trial_id for item in results)
+        if len(trial_ids) != len(set(trial_ids)):
+            raise ValueError("experiment artifacts contain duplicate trial IDs")
+        return results
+
+    def save_report(self, report: ExperimentReport) -> Path:
+        """再生成可能なReport JSONを現在値としてatomic保存する。."""
+        path = self._experiment_path(report.experiment_id) / "report.json"
+        content = (
+            json.dumps(
+                report.to_mapping(),
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            )
+            + "\n"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _atomic_replace(path, content)
+        return path
+
+    def _load_path(self, path: Path) -> TrialResult:
         document = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(document, dict):
             raise ValueError(f"trial artifact must be an object: {path}")
@@ -214,8 +253,8 @@ class TrialArtifactStore:
         if checksum != checksum_payload(document):
             raise ValueError(f"trial artifact checksum mismatch: {path}")
         result = TrialResult.from_mapping(document)
-        if result.plan.to_mapping() != plan.to_mapping():
-            raise ValueError(f"trial artifact plan mismatch: {path}")
+        if path.stem != result.plan.trial_id:
+            raise ValueError(f"trial artifact filename does not match trial ID: {path}")
         return result
 
     def save(self, result: TrialResult) -> Path:
@@ -264,11 +303,17 @@ class TrialArtifactStore:
         return path
 
     def _trial_path(self, plan: TrialPlan) -> Path:
-        path = self._root / plan.experiment_id / "trials" / f"{plan.trial_id}.json"
+        path = self._experiment_path(plan.experiment_id) / "trials" / f"{plan.trial_id}.json"
         resolved = path.resolve()
         if self._root != resolved and self._root not in resolved.parents:
             raise ValueError("experiment artifact path escapes its root")
         return resolved
+
+    def _experiment_path(self, experiment_id: str) -> Path:
+        path = (self._root / experiment_id).resolve()
+        if self._root != path and self._root not in path.parents:
+            raise ValueError("experiment artifact path escapes its root")
+        return path
 
 
 class TrialRunner:
@@ -363,6 +408,26 @@ def _step_mapping(step: SimulationStep) -> dict[str, object]:
         ),
         "stop_reason": None if step.stop_reason is None else step.stop_reason.value,
     }
+
+
+def _atomic_replace(path: Path, content: str) -> None:
+    with NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        newline="\n",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        suffix=".tmp",
+        delete=False,
+    ) as temporary:
+        temporary.write(content)
+        temporary.flush()
+        os.fsync(temporary.fileno())
+        temporary_path = Path(temporary.name)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        temporary_path.unlink(missing_ok=True)
 
 
 def _event_mapping(event: GameEvent) -> dict[str, object]:

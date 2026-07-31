@@ -11,7 +11,7 @@ from werewolf_agent.agents import AgentSpec
 from werewolf_agent.domain import RulePackManifest
 from werewolf_agent.setup import checksum_payload
 
-EXPERIMENT_CONTRACT_VERSION = "0.3.0"
+EXPERIMENT_CONTRACT_VERSION = "0.4.0"
 
 
 class ExperimentKind(StrEnum):
