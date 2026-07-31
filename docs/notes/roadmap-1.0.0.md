@@ -186,7 +186,7 @@ Domain、Setup、Rule Pack、Agent、Simulation、Experiment、Applicationの最
 完了条件は、自動E2E、desktop、mobile、keyboard、loading、競合、再接続、終了、エラーの
 画面確認が完了し、公開例が内部モジュールをimportしないことである。
 
-実装は完了している。責務別の最小例、外部Rule PackとAgent向けcontract test kit、診断手順を
+実装は完了している。責務別の最小例、外部Rule PackとAgent向けの契約テスト一式、診断手順を
 公開し、Streamlitは設定、プレイ、観戦、物語、記録、再戦だけを扱う。loading、保存設定の競合、
 接続復旧、終了状態、APIエラーをdesktopとmobileの自動E2Eで検証し、keyboard操作、accessibility、
 内部IDと内部用語の非表示を同じ画面品質契約で確認する。保存設定APIはapplication documentを
