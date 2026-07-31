@@ -1,8 +1,10 @@
 """品質gate selectorとschedulerの契約。"""
 
+import tomllib
 from pathlib import Path
 
 import pytest
+from scripts.quality.gates.python import build as build_python_gates
 from scripts.quality.impact import decide
 from scripts.quality.models import Gate
 from scripts.quality.profiles import expand_selectors
@@ -82,6 +84,13 @@ def test_scheduler_serializes_only_shared_exclusive_resources() -> None:
     ]
 
 
+def test_check_profile_does_not_run_pytest_and_mypy_concurrently() -> None:
+    """Workerを持つpytestとmypyを別stageへ分離する。"""
+    stages = _profile_stages("check", jobs=4, fresh=True)
+
+    assert all(not {"pytest", "mypy"}.issubset(gate.name for gate in stage) for stage in stages)
+
+
 def test_deep_domain_and_service_tests_have_independent_prerequisites() -> None:
     """local DB不足時も外部serviceへ依存しないdeep testを実行できる。"""
     gates = {gate.name: gate for stage in _profile_stages("deep", jobs=1) for gate in stage}
@@ -141,6 +150,29 @@ def test_unknown_change_escalates_to_check() -> None:
     assert decision.profile == "check"
     assert decision.selectors == ()
     assert "未登録path" in decision.reason
+
+
+def test_codex_change_explicitly_selects_check() -> None:
+    """Codexの実行制御変更を未知path fallbackに依存させない。"""
+    decision = decide((".codex/hooks/github_pr_governance.py",))
+
+    assert decision.profile == "check"
+    assert decision.selectors == ()
+    assert "未登録path" not in decision.reason
+
+
+def test_python_static_gates_cover_every_configured_source() -> None:
+    """静的検査の実行対象と再利用fingerprintを同じsource境界へ揃える。"""
+    root = Path(__file__).resolve().parents[3]
+    with (root / "pyproject.toml").open("rb") as stream:
+        configured = tomllib.load(stream)["tool"]["mypy"]["files"]
+    gates = {gate.name: gate for gate in build_python_gates(fresh=True)}
+
+    assert configured == ["src", "scripts", "notebooks/werewolf_demo", ".codex/hooks"]
+    assert all(path not in gates["mypy"].command for path in configured)
+    for gate_name in ("ruff", "format", "mypy"):
+        assert "notebooks/**/*.py" in gates[gate_name].inputs
+        assert ".codex/**/*.py" in gates[gate_name].inputs
 
 
 def test_unknown_change_never_downgrades_a_release_boundary() -> None:

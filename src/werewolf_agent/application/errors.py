@@ -1,4 +1,4 @@
-"""Safe errors and stable codes produced by application use cases."""
+"""Application use caseが返す安全な例外と安定したcodeを定義する."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from enum import StrEnum
 
 
 class ErrorCode(StrEnum):
-    """Stable identifiers for application failures."""
+    """Applicationの失敗を識別する安定したcodeを表す."""
 
     CONFIG_INVALID_VALUE = "config.invalid_value"
     REQUEST_VALIDATION_FAILED = "request.validation_failed"
@@ -72,7 +72,7 @@ _RETRYABLE = {
 
 
 class AppError(Exception):
-    """Safe application failure with a stable code and structured context."""
+    """安定したcodeと構造化contextを持つ安全なapplication失敗を表す."""
 
     code = ErrorCode.INTERNAL_UNEXPECTED
 
@@ -84,7 +84,7 @@ class AppError(Exception):
         context: Mapping[str, object] | None = None,
         retryable: bool | None = None,
     ) -> None:
-        """Initialize a safe failure without delivery-specific metadata."""
+        """Delivery固有metadataを含まない安全な失敗を初期化する."""
         self.code = code or self.code
         self.detail = detail or _DEFAULT_DETAILS[self.code]
         self.context = dict(context or {})
@@ -92,7 +92,7 @@ class AppError(Exception):
         super().__init__(self.detail)
 
     def log_extra(self, *, trace_id: str | None = None) -> dict[str, object]:
-        """Return structured fields for redaction at an outer logging boundary."""
+        """外側のlogging境界でredactionする構造化fieldを返す."""
         extra: dict[str, object] = {
             "error_code": self.code.value,
             "error_message": self.detail,
@@ -106,25 +106,25 @@ class AppError(Exception):
 
 
 class ConfigError(AppError):
-    """Report invalid application configuration."""
+    """不正なapplication設定を表す."""
 
     code = ErrorCode.CONFIG_INVALID_VALUE
 
 
 class GameError(AppError):
-    """Report an invalid game operation."""
+    """不正なゲーム操作を表す."""
 
     code = ErrorCode.GAME_INVALID_ACTION
 
 
 class GamePhaseError(GameError):
-    """Report an operation attempted in the wrong phase."""
+    """現在のphaseでは実行できない操作を表す."""
 
     code = ErrorCode.GAME_INVALID_PHASE
 
 
 class ResourceNotFoundError(AppError):
-    """Report a missing application resource."""
+    """Application resourceの不存在を表す."""
 
     code = ErrorCode.RESOURCE_NOT_FOUND
 

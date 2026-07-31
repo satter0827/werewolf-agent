@@ -6,11 +6,12 @@ import argparse
 import ast
 import inspect
 import json
+import sys
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import Any, ForwardRef, TypeVar, get_args, get_origin, get_type_hints
 
 from scripts._infra.artifacts import publish_directory, staged_directory
 from scripts._infra.process import ARTIFACT_ROOT, REPOSITORY_ROOT
@@ -19,6 +20,7 @@ from scripts.architecture.definition import (
     ALLOWED_MODULE_IMPORTS,
     DEPENDENCY_EXCEPTION_REASONS,
     LAYERS,
+    PUBLIC_ALIAS_MODULE_NAMES,
     PUBLIC_MODULES,
 )
 from scripts.architecture.rendering import write_diagrams
@@ -98,14 +100,58 @@ def project_import_edges() -> list[ImportEdge]:
     )
 
 
-def imports_with_lines(path: Path, source_module: str) -> set[tuple[str, int]]:
-    """Parse runtime imports while excluding type-checking-only branches."""
+def _internal_public_alias_findings(modules: dict[str, Path]) -> list[Finding]:
+    """内部moduleから外部向けconvenience APIへの依存を検出する。"""
+    findings: list[Finding] = []
+    for source_module, path in sorted(modules.items()):
+        source_parts = source_module.split(".")
+        source_layer = source_parts[1] if len(source_parts) > 1 else ""
+        if source_module in PUBLIC_ALIAS_MODULE_NAMES or source_layer not in LAYERS:
+            continue
+        imported_aliases = {
+            (target_module, line)
+            for imported, line in imports_with_lines(
+                path,
+                source_module,
+                include_type_checking=True,
+            )
+            if (target_module := _project_module_name(imported, modules))
+            in PUBLIC_ALIAS_MODULE_NAMES
+        }
+        for target_module, line in sorted(imported_aliases):
+            findings.append(
+                Finding(
+                    "ARCH-DEPENDENCY-002",
+                    "error",
+                    "Internal modules must import the owning module instead of a public alias",
+                    {
+                        "path": path.relative_to(REPOSITORY_ROOT).as_posix(),
+                        "line": line,
+                        "source_module": source_module,
+                        "target_module": target_module,
+                    },
+                )
+            )
+    return findings
+
+
+def imports_with_lines(
+    path: Path,
+    source_module: str,
+    *,
+    include_type_checking: bool = False,
+) -> set[tuple[str, int]]:
+    """Parse imports, optionally excluding type-checking-only branches."""
     tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
     imports: set[tuple[str, int]] = set()
 
     class ImportVisitor(ast.NodeVisitor):
         def visit_If(self, node: ast.If) -> None:
-            if isinstance(node.test, ast.Name) and node.test.id == "TYPE_CHECKING":
+            if (
+                not include_type_checking
+                and isinstance(node.test, ast.Name)
+                and node.test.id == "TYPE_CHECKING"
+            ):
                 for child in node.orelse:
                     self.visit(child)
                 return
@@ -180,6 +226,7 @@ def analyze() -> dict[str, object]:
                 )
             )
 
+    findings.extend(_internal_public_alias_findings(modules))
     for edge in edges:
         if edge.source_layer != edge.target_layer:
             layer_graph[edge.source_layer].add(edge.target_layer)
@@ -502,6 +549,7 @@ def _resolve_import_from(
 
 def _public_docstring_findings() -> list[Finding]:
     findings: list[Finding] = []
+    findings.extend(_public_export_findings())
     for module in PUBLIC_MODULES:
         if not inspect.getdoc(module):
             findings.append(
@@ -549,6 +597,149 @@ def _public_docstring_findings() -> list[Finding]:
             if inspect.isclass(value):
                 findings.extend(_class_docstring_findings(module, name, value))
     return findings
+
+
+def _public_export_findings() -> list[Finding]:
+    findings: list[Finding] = []
+    exported_by_module: dict[str, dict[int, str]] = {}
+    for module in PUBLIC_MODULES:
+        exports = getattr(module, "__all__", ())
+        exported_by_module[module.__name__] = {
+            id(getattr(module, name)): str(name) for name in exports if hasattr(module, name)
+        }
+    public_identities = {
+        identity for exports in exported_by_module.values() for identity in exports
+    }
+
+    modules = tuple(PUBLIC_MODULES)
+    for index, module in enumerate(modules):
+        exported = exported_by_module[module.__name__]
+        later_exports = {
+            identity: name
+            for other in modules[index + 1 :]
+            for identity, name in exported_by_module[other.__name__].items()
+        }
+        for identity in sorted(exported.keys() & later_exports.keys()):
+            name = exported[identity]
+            if module.__name__ in PUBLIC_ALIAS_MODULE_NAMES:
+                continue
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-003",
+                    "error",
+                    f"Public symbol is exported by multiple facades: {name}",
+                    {"module": module.__name__, "symbol": name},
+                )
+            )
+
+        try:
+            closure = _public_type_closure(module)
+        except _PublicTypeResolutionError as error:
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-005",
+                    "error",
+                    f"Public signature annotation cannot be resolved: {error}",
+                    {"module": module.__name__},
+                )
+            )
+            continue
+        for value in closure:
+            if id(value) in public_identities:
+                continue
+            name = getattr(value, "__name__", repr(value))
+            findings.append(
+                Finding(
+                    "ARCH-PUBLIC-004",
+                    "error",
+                    f"Public signature type is not exported by a public facade: {name}",
+                    {"module": module.__name__, "symbol": name},
+                )
+            )
+    return findings
+
+
+def _public_type_closure(module: ModuleType) -> tuple[type[Any], ...]:
+    pending: list[object] = [
+        getattr(module, name) for name in getattr(module, "__all__", ()) if hasattr(module, name)
+    ]
+    visited: dict[int, object] = {}
+    project_types: dict[int, type[Any]] = {}
+    while pending:
+        value = pending.pop()
+        if id(value) in visited:
+            continue
+        visited[id(value)] = value
+        origin = get_origin(value)
+        if origin is not None:
+            pending.append(origin)
+            pending.extend(get_args(value))
+            continue
+        if isinstance(value, (list, tuple, set, frozenset)):
+            pending.extend(value)
+            continue
+        if isinstance(value, TypeVar):
+            pending.extend(value.__constraints__)
+            if value.__bound__ is not None:
+                pending.append(value.__bound__)
+            continue
+        if isinstance(value, (str, ForwardRef)):
+            continue
+        if inspect.isfunction(value) or inspect.ismethod(value):
+            pending.extend(_callable_annotations(value))
+            continue
+        if not inspect.isclass(value):
+            continue
+        if value.__module__.startswith("werewolf_agent."):
+            project_types[id(value)] = value
+        pending.extend(_type_hints(value).values())
+        pending.extend(_callable_annotations(value.__init__))
+        for name, member in vars(value).items():
+            if name.startswith("_"):
+                continue
+            if isinstance(member, (classmethod, staticmethod)):
+                member = member.__func__
+            if isinstance(member, property):
+                if member.fget is not None:
+                    pending.extend(_callable_annotations(member.fget))
+                continue
+            if inspect.isfunction(member) or inspect.ismethod(member):
+                pending.extend(_callable_annotations(member))
+    return tuple(sorted(project_types.values(), key=lambda item: item.__qualname__))
+
+
+def _type_hints(value: object) -> dict[str, object]:
+    try:
+        return _resolved_type_hints(value)
+    except (NameError, TypeError) as error:
+        raise _PublicTypeResolutionError(_annotation_owner(value, error)) from error
+
+
+def _callable_annotations(value: object) -> tuple[object, ...]:
+    try:
+        return tuple(_resolved_type_hints(value).values())
+    except (NameError, TypeError) as error:
+        raise _PublicTypeResolutionError(_annotation_owner(value, error)) from error
+
+
+class _PublicTypeResolutionError(ValueError):
+    """公開署名の型注釈を解決できない状態を表す。"""
+
+
+def _resolved_type_hints(value: object) -> dict[str, object]:
+    module = sys.modules.get(getattr(value, "__module__", ""))
+    global_namespace = dict(vars(module)) if module is not None else {}
+    for public_module in PUBLIC_MODULES:
+        for name in getattr(public_module, "__all__", ()):
+            if hasattr(public_module, name):
+                global_namespace.setdefault(name, getattr(public_module, name))
+    local_namespace = dict(vars(value)) if inspect.isclass(value) else None
+    return get_type_hints(value, globalns=global_namespace, localns=local_namespace)
+
+
+def _annotation_owner(value: object, error: Exception) -> str:
+    owner = getattr(value, "__qualname__", getattr(value, "__name__", repr(value)))
+    return f"{owner}: {error}"
 
 
 def _class_docstring_findings(

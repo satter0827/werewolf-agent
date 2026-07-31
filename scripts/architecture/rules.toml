@@ -1,20 +1,25 @@
-schema_version = "0.1.0"
 canonical_openapi = "contracts/openapi.json"
 public_modules = [
+  "werewolf_agent",
   "werewolf_agent.application",
   "werewolf_agent.domain",
 ]
+public_alias_modules = ["werewolf_agent"]
 root_entries = [
   ".dockerignore",
   ".env.example",
+  ".codex",
   ".github",
   ".gitignore",
   ".python-version",
   ".streamlit",
   ".vscode",
   "AGENTS.md",
+  "CONTRIBUTING.md",
   "LICENSE",
+  "notebooks",
   "README.md",
+  "SECURITY.md",
   "compose.yaml",
   "contracts",
   "docker",

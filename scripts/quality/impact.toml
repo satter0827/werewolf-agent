@@ -19,9 +19,13 @@ patterns = ["scripts/**/*.py", "scripts/**/*.toml", "pyproject.toml", "uv.lock"]
 profile = "check"
 
 [[rules]]
+patterns = ["notebooks/**/*.py", "notebooks/**/*.ipynb"]
+profile = "check"
+
+[[rules]]
 patterns = ["src/werewolf_agent/clients/streamlit/**", "scripts/browser/**", "tests/integration/supabase/**", "docker/**", "compose.yaml", "supabase/**", ".streamlit/**"]
 profile = "release"
 
 [[rules]]
-patterns = [".github/**", ".vscode/**", "contracts/**"]
+patterns = [".codex/**", ".github/**", ".vscode/**", "contracts/**"]
 profile = "check"

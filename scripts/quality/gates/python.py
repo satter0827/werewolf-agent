@@ -3,7 +3,7 @@
 import sys
 
 from scripts._infra.process import TEMPORARY_ROOT
-from scripts.quality.models import Gate
+from scripts.quality.models import CPU_INTENSIVE_RESOURCE, Gate
 
 GATES = ("ruff", "format", "docstrings", "mypy")
 
@@ -18,14 +18,28 @@ def build(*, fresh: bool = False) -> list[Gate]:
             "ruff",
             "Python lint",
             (python, "-m", "ruff", "check", *ruff_cache, "."),
-            inputs=("src/**/*.py", "scripts/**/*.py", "tests/**/*.py", "pyproject.toml"),
+            inputs=(
+                "src/**/*.py",
+                "scripts/**/*.py",
+                "tests/**/*.py",
+                "notebooks/**/*.py",
+                ".codex/**/*.py",
+                "pyproject.toml",
+            ),
             reusable=True,
         ),
         Gate(
             "format",
             "Python format",
             (python, "-m", "ruff", "format", "--check", *ruff_cache, "."),
-            inputs=("src/**/*.py", "scripts/**/*.py", "tests/**/*.py", "pyproject.toml"),
+            inputs=(
+                "src/**/*.py",
+                "scripts/**/*.py",
+                "tests/**/*.py",
+                "notebooks/**/*.py",
+                ".codex/**/*.py",
+                "pyproject.toml",
+            ),
             reusable=True,
         ),
         Gate(
@@ -54,10 +68,16 @@ def build(*, fresh: bool = False) -> list[Gate]:
                 *mypy_cache,
                 "--cache-dir",
                 str(TEMPORARY_ROOT / "mypy"),
-                "src",
-                "scripts",
             ),
-            inputs=("src/**/*.py", "scripts/**/*.py", "pyproject.toml", "uv.lock"),
+            exclusive_resources=(CPU_INTENSIVE_RESOURCE,),
+            inputs=(
+                "src/**/*.py",
+                "scripts/**/*.py",
+                "notebooks/**/*.py",
+                ".codex/**/*.py",
+                "pyproject.toml",
+                "uv.lock",
+            ),
             reusable=True,
         ),
     ]

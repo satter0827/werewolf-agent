@@ -10,6 +10,7 @@ watch = ["src/", "pyproject.toml", "supabase/migrations/"]
 name = "setup"
 owner = "application"
 standard = "semver"
+change_detection = "python_ast"
 path = "src/werewolf_agent/application/versions.py"
 pattern = 'SETUP_SCHEMA_VERSION:\s*Final\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/application/setup_document.py", "src/werewolf_agent/contracts/schemas.py", "src/werewolf_agent/application/resources/setups/", "src/werewolf_agent/adapters/supabase/setup_repository.py", "supabase/migrations/"]

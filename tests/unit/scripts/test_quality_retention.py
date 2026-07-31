@@ -2,8 +2,10 @@
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
+from scripts._infra import artifacts
 from scripts._infra.artifacts import ArtifactLayout
 from scripts.quality import retention
 
@@ -60,6 +62,33 @@ def test_failures_are_bounded_per_selector(
     current = tmp_path / "artifacts" / "quality" / "profiles" / "focus" / "current"
     assert len(list(history.iterdir())) == retention.FAILURES_PER_SELECTOR
     assert current.is_dir()
+
+
+def test_publish_retries_transient_windows_directory_lock(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Windowsの短時間lockで最新bundleの公開を失敗させない。"""
+    monkeypatch.setattr(retention, "LAYOUT", ArtifactLayout(tmp_path / "artifacts"))
+    directory_attempts = 0
+    original_replace = Path.replace
+
+    def transient_replace(path: Path, destination: Path) -> Path:
+        nonlocal directory_attempts
+        if path.is_dir():
+            directory_attempts += 1
+            if directory_attempts == 1:
+                raise PermissionError("temporarily locked")
+        return original_replace(path, destination)
+
+    monkeypatch.setattr(Path, "replace", transient_replace)
+    monkeypatch.setattr(artifacts, "os", SimpleNamespace(name="nt"))
+    monkeypatch.setattr(artifacts, "time", SimpleNamespace(sleep=lambda _seconds: None))
+
+    report = retention.publish_run(_run(tmp_path, "run", "passed"), "check", "passed")
+
+    assert json.loads(report.read_text(encoding="utf-8"))["run_id"] == "run"
+    assert directory_attempts == 2
 
 
 def test_failure_keeps_complete_review_context(

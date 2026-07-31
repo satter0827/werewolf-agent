@@ -12,6 +12,7 @@ from scripts.quality import retention
 from scripts.quality import runner as quality
 from scripts.quality.gates import repository, services
 from scripts.quality.models import ResourceLease
+from scripts.quality.repository import ChangeSet
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -97,6 +98,49 @@ def test_repository_gate_rejects_undefined_artifact_areas(
     assert result.returncode == 1
     assert "diagnostic-architecture" in result.output
     assert "manual" in result.output
+
+
+@pytest.mark.parametrize(
+    ("base_ref", "head_ref", "expected_tail"),
+    [
+        (
+            "origin/develop",
+            "feature-head",
+            ["--base-ref", "origin/develop", "--head-ref", "feature-head"],
+        ),
+        (None, "HEAD", ["--base-ref", "origin/main", "--head-ref", "HEAD"]),
+    ],
+)
+def test_version_gate_uses_the_resolved_quality_change_set(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    base_ref: str | None,
+    head_ref: str,
+    expected_tail: list[str],
+) -> None:
+    """Version検査だけが品質実行と異なる差分を再計算しない。"""
+    commands: list[list[str]] = []
+
+    def fake_run(command: list[str], **_kwargs: object) -> support.CommandResult:
+        commands.append(command)
+        return support.CommandResult(command, 0, 0.0, "version contract passed\n")
+
+    monkeypatch.setattr(repository, "run_command", fake_run)
+    context = quality.RunContext(
+        profile="check",
+        jobs=1,
+        timeout_seconds=60,
+        run_id="run",
+        run_dir=tmp_path,
+        environment={},
+        started_at=quality.utc_now(),
+        change=ChangeSet(base_ref, "base", "head", "merge-base", (), head_ref),
+    )
+
+    result = repository.check_version_contract(context, tmp_path)
+
+    assert result.returncode == 0
+    assert commands[0][-len(expected_tail) :] == expected_tail
 
 
 def test_execute_stops_owned_supabase_when_runner_is_interrupted(

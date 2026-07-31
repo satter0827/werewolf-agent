@@ -1,6 +1,7 @@
 """配布物の公開契約を検査する。"""
 
 from pathlib import Path
+from tarfile import open as open_tar
 from zipfile import ZipFile
 
 import pytest
@@ -18,10 +19,37 @@ def test_wheel_contains_entrypoints_and_packaged_resources() -> None:
     with ZipFile(wheels[0]) as wheel:
         names = set(wheel.namelist())
         entry_points = next(name for name in names if name.endswith(".dist-info/entry_points.txt"))
-        metadata = wheel.read(entry_points).decode("utf-8")
+        package_metadata = next(name for name in names if name.endswith(".dist-info/METADATA"))
+        entrypoint_text = wheel.read(entry_points).decode("utf-8")
+        metadata_text = wheel.read(package_metadata).decode("utf-8")
 
-    assert "werewolf-agent =" in metadata
-    assert "werewolf-agent-api =" in metadata
-    assert "werewolf-agent-worker =" in metadata
+    assert "werewolf-agent =" in entrypoint_text
+    assert "werewolf-agent-api =" in entrypoint_text
+    assert "werewolf-agent-worker =" in entrypoint_text
     assert "werewolf_agent/settings/resources/defaults.toml" in names
     assert "werewolf_agent/agents/resources/prompts/agent_decision.toml" in names
+    assert not any("notebooks/" in name for name in names)
+    assert (
+        "Summary: Deterministic Werewolf backend for LLM agents with FastAPI, Streamlit, and "
+        "Supabase."
+    ) in metadata_text
+    assert "Keywords: ai-agents,llm,multi-agent-systems,social-deduction,werewolf" in metadata_text
+    for label, url in (
+        ("Homepage", "https://github.com/satter0827/werewolf-agent"),
+        ("Documentation", "https://github.com/satter0827/werewolf-agent/tree/main/docs"),
+        ("Repository", "https://github.com/satter0827/werewolf-agent"),
+        ("Issues", "https://github.com/satter0827/werewolf-agent/issues"),
+    ):
+        assert f"Project-URL: {label}, {url}" in metadata_text
+
+
+@pytest.mark.serial
+def test_sdist_excludes_repository_notebooks() -> None:
+    """リポジトリ向けNotebookを製品source distributionへ混入させない。"""
+    archives = list((ROOT / ".werewolf-agent" / "outputs" / "package").glob("*.tar.gz"))
+    assert len(archives) == 1, "先にcheck profileで配布物を構築してください。"
+
+    with open_tar(archives[0], "r:gz") as archive:
+        names = archive.getnames()
+
+    assert not any("/notebooks/" in name for name in names)

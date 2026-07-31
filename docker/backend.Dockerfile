@@ -28,8 +28,10 @@ COPY scripts ./scripts
 COPY supabase ./supabase
 COPY .streamlit ./.streamlit
 COPY .github ./.github
+COPY .codex ./.codex
 COPY docker ./docker
 COPY docs ./docs
+COPY notebooks ./notebooks
 COPY tests ./tests
 COPY .env.example AGENTS.md compose.yaml ./
 COPY contracts/openapi.json ./contracts/openapi.json

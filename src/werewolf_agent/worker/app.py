@@ -109,6 +109,9 @@ def _run_worker_command(command: Callable[[], T]) -> T:
         logger.log(
             log_level_number(get_error_spec(exc.code).log_level),
             LOG_WORKER_APPLICATION_ERROR_HANDLED,
+            exc_info=(type(exc), exc, exc.__traceback__)
+            if exc.code is ErrorCode.INTERNAL_UNEXPECTED
+            else None,
             extra={
                 **exc.log_extra(),
                 "error_message": redact_text(exc.detail),

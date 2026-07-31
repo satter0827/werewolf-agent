@@ -68,6 +68,10 @@ role assignmentとprivate strategyを返さない。
 
 `api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
+公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
+公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
+Package rootの`werewolf_agent`は外部利用者向けconvenience APIとし、内部モジュールはroot aliasを
+経由せず、値と型を所有するモジュールを直接参照する。
 
 ## Agent意思決定
 
@@ -85,9 +89,14 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 
 ## 公開面
 
-Pythonの公開モジュールは`werewolf_agent.domain`と`werewolf_agent.application`に限定する。
+Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.domain`、
+`werewolf_agent.application`に限定する。package直下はdomainの型と関数を同一objectのまま
+再公開し、application、アダプター、settings、agentをimportしない。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
 公開する。HTTPの正本は`contracts/openapi.json`とする。
+
+`notebooks`はリポジトリ閲覧者向けの実行例を所有する。Notebook固有のFakeゲーム進行と
+表示用resultは製品package、wheel、sdistへ含めず、公開APIの互換性対象にしない。
 
 application内部はゲーム参照、進行、プレイヤー action、timelineを独立したhandlerにする。
 DTOはruntime context、request、result、persistence recordのlifecycleで分ける。

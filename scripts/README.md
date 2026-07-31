@@ -64,7 +64,12 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 
 プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
 成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
-`--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。
+`--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。明示したrefは
+Version gateへそのまま渡す。baseを省略した場合だけ、Version gateはリリース基準の`origin/main`を
+使用し、reportの実コマンドにも既定refを明示する。
+`--head-ref`は現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitを
+検査する場合は、そのcommitを専用worktreeへcheckoutしてから実行する。未commitの変更を検査する場合は
+`--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
@@ -109,13 +114,30 @@ PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`�
 選び、対象branchを指定する。手動実行は選択branchの`HEAD`に対して`Develop / Check`を実行する。
 品質reportのrevisionがbranchのcommitと一致することを確認する。
 
-手動Checkはbranch単体を検証し、PR Checkは`develop`との仮想mergeを検証する。最終的なmerge判定は
+手動Checkはbranch単体を検証し、PR Checkはcheckoutされた仮想mergeの`HEAD`を検証する。quality runnerへ
+別のPR head SHAを渡さず、reportのheadと実際にgateを動かすtreeを一致させる。最終的なmerge判定は
 PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
 適用した後にGitHub APIから読み戻して確認する。夜間Deepは毎日03:17 JSTに変更を検知し、
 月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
 夜間Deepは早期検知に使用し、通常のmerge条件には含めない。
+
+AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`を担当する。`develop`向けPRは必須checkと
+未解決指摘を最新head SHAで確認し、そのcommitへ判断を記録してmerge commitで取り込める。正式な
+レビュー判断とレビューAPIの`COMMENT`は`commit_id`、merge時は`expected_head_sha`へ同じ最新head SHAを
+指定する。通常コメントはレビューAPIと分離する。同じGitHubアカウントの自己承認が拒否される場合は、
+commitへ固定した`COMMENT`に判断と根拠を残す。
+`main`向けPRの正式な承認とmerge、レビュー会話の解決、auto-mergeは人間が担当する。リポジトリ固有の
+`.codex/hooks.json`は構造化GitHub connectorの禁止操作を実行前に拒否し、hook変更後は新しいCodex
+sessionで再信頼する。`main`と`develop`のRulesetで`required_approving_review_count`を0とする設定は、
+同一GitHubアカウントによる単独開発を停止させないための意図的な設定である。mainへの最終判断では
+人間が未解決会話と必須checkを確認する。
+
+このhookはshellコマンドを解析しない。Bash、PowerShell、cmdの文法を部分的に再実装せず、型付きの
+GitHub connector入力だけを判定する。これはGitHub側の権限制御ではないため、branch保護の正本は
+Rulesetとrequired checksである。CodexはCLI、API、ブラウザー、hook対象外のhosted tool、外部programへ
+切り替えて禁止操作を回避しない。禁止操作が必要な場合は人間へ引き渡す。
 
 ## ブラウザーE2E
 

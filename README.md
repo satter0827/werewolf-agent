@@ -8,6 +8,91 @@ Streamlit、workerを明示した境界で接続する。公開状態、public t
 Streamlitが唯一のブラウザーUIである。CLIとStreamlitは同じHTTP APIを使い、Supabaseが
 Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 
+## プロジェクトの状態
+
+本リポジトリはAlpha段階である。公開APIと設定はversion契約に従って管理するが、安定版までの
+後方互換は保証しない。
+
+## 主な機能
+
+- seedと設定を固定してゲームを再現する。
+- 公開状態、public timeline、本人のobservationを分離する。
+- CLI、Streamlit、workerを同じHTTP APIへ接続する。
+- Fake LLMとlocalhostだけで通常の品質検証を完結する。
+
+## Python API
+
+リポジトリからwheelを構築してinstallすると、外部serviceを起動せずに決定的なdomain coreを
+利用できる。
+
+```powershell
+python -m pip install .
+```
+
+主要なdomain型はpackage直下からimportする。次の例は外部serviceや設定fileを使わずに
+3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を
+明示して渡し、状態変更は`Game`を通じて行う。
+
+```python
+import random
+
+from werewolf_agent import (
+    Action,
+    Game,
+    GameSetup,
+    LocalRules,
+    Player,
+    RoleCatalog,
+    RoleDefinition,
+    RuleSetDefinition,
+    build_game_rules,
+)
+
+rules = build_game_rules(
+    RuleSetDefinition(
+        player_count=3,
+        role_counts={"villager": 2, "werewolf": 1},
+        rules=LocalRules(
+            day_speech_limit_per_player=1,
+            allow_self_vote=False,
+            allow_vote_revision=False,
+            allow_night_action_revision=False,
+            vote_tie_resolution="no_elimination",
+            starting_phase="day_discussion",
+            reveal_role_on_death=True,
+        ),
+        roles=RoleCatalog(
+            {
+                "villager": RoleDefinition("village", "village"),
+                "werewolf": RoleDefinition("werewolf", "werewolf"),
+            }
+        ),
+        abilities={},
+    )
+)
+game = Game.create(
+    GameSetup(
+        players=(
+            Player("p1", "Alice"),
+            Player("p2", "Bob"),
+            Player("p3", "Carol"),
+        )
+    ),
+    rules=rules,
+    random=random.Random(7),
+)
+game.submit(Action.speech("p1", "状況を確認します。"))
+observation = game.view_for("p1")
+```
+
+設定済みの6人ゲームとFakeListChatModelを使った一連の操作は
+[quickstart Notebook](notebooks/quickstart.ipynb)で確認できる。Notebook専用コードは製品の
+wheelとsdistに含めない。
+
+```powershell
+uv run --with jupyterlab jupyter lab notebooks/quickstart.ipynb
+```
+
 ## 前提環境
 
 - [pyproject.toml](pyproject.toml)の`requires-python`を満たすPython
@@ -74,6 +159,12 @@ uv run --no-sync python -m scripts.docs build
 
 生成HTMLは`.werewolf-agent/outputs/docs/index.html`へ保存される。生成物はGitへ追加しない。
 
+## 参加と報告
+
+変更を提案する場合は[Contributing](CONTRIBUTING.md)を参照する。脆弱性は公開Issueへ記載せず、
+[Security Policy](SECURITY.md)に従って報告する。一般的な不具合と機能提案は
+[GitHub Issues](https://github.com/satter0827/werewolf-agent/issues)で受け付ける。
+
 ## 検証
 
 通常の変更では、差分から必要なプロファイルまたはgateを選択する。
@@ -99,4 +190,4 @@ uv run --no-sync python -m scripts.quality auto
 
 ## License
 
-MIT License
+[MIT License](LICENSE)

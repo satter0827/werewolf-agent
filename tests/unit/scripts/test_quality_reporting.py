@@ -183,7 +183,7 @@ def test_artifact_issues_change_final_state_and_exit_contract(
         "resolved_profile": "focus",
         "reason": "差分からfocusを選択しました。",
     }
-    assert report["schema_version"] == "0.1.0"
+    assert report["schema_version"] == "0.1.1"
     assert report["execution"] == {"revision": "merge-commit", "tree": "tree"}
     assert report["change"] == {
         "base_ref": "origin/main",
@@ -265,6 +265,8 @@ def test_overlapping_artifact_patterns_do_not_duplicate_report_references(
     screenshot = tmp_path / "browser" / "public" / "contact-sheet.png"
     screenshot.parent.mkdir(parents=True)
     screenshot.write_bytes(b"image")
+    current_mtime = context.started_at.timestamp() + 1
+    os.utime(screenshot, (current_mtime, current_mtime))
     gate = quality.Gate(
         "e2e",
         "Browser",

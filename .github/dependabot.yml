@@ -8,4 +8,17 @@ updates:
       day: monday
       time: "03:30"
       timezone: Asia/Tokyo
+    groups:
+      actions-cache:
+        patterns:
+          - "actions/cache*"
+    open-pull-requests-limit: 5
+  - package-ecosystem: uv
+    directory: /
+    target-branch: develop
+    schedule:
+      interval: weekly
+      day: monday
+      time: "03:30"
+      timezone: Asia/Tokyo
     open-pull-requests-limit: 5

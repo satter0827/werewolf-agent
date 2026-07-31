@@ -45,7 +45,7 @@ jobs:
       - run: >-
           uv run --no-sync python -m scripts.quality check
           --base-ref origin/develop
-          --head-ref ${{ github.event.pull_request.head.sha || 'HEAD' }}
+          --head-ref HEAD
           --fresh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -86,7 +86,7 @@ jobs:
       - uses: ./.github/actions/deep-readiness
         with:
           base-ref: origin/main
-          head-ref: ${{ github.event.pull_request.head.sha }}
+          head-ref: HEAD
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -119,7 +119,7 @@ jobs:
       - run: >-
           uv run --no-sync python -m scripts.quality focus
           --base-ref origin/main
-          --head-ref ${{ github.event.pull_request.head.sha }}
+          --head-ref HEAD
           --fresh
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -192,7 +192,8 @@ jobs:
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
       - id: success-cache
         if: steps.revisions.outputs.changed == 'true' && steps.revisions.outputs.force != 'true'
-        uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        continue-on-error: true
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ steps.revisions.outputs.fingerprint }}
@@ -205,6 +206,7 @@ jobs:
             echo "- main: \`${{ steps.revisions.outputs.main_sha }}\`"
             echo "- develop: \`${{ steps.revisions.outputs.develop_sha }}\`"
             echo "- fingerprint: \`${{ steps.revisions.outputs.fingerprint }}\`"
+            echo "- cache step: \`${{ steps.success-cache.outcome || 'skipped' }}\`"
             echo "- cache hit: \`${{ steps.success-cache.outputs.cache-hit || 'false' }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -233,7 +235,9 @@ jobs:
           mkdir -p .werewolf-agent/cache/nightly-success
           printf '%s\n' '${{ needs.nightly-preflight.outputs.fingerprint }}' \
             > .werewolf-agent/cache/nightly-success/fingerprint.txt
-      - uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      - id: success-cache-save
+        continue-on-error: true
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ needs.nightly-preflight.outputs.fingerprint }}
@@ -255,6 +259,7 @@ jobs:
             echo "- reason: \`${{ needs.nightly-preflight.outputs.reason }}\`"
             echo "- main: \`${{ needs.nightly-preflight.outputs.main-sha }}\`"
             echo "- develop: \`${{ needs.nightly-preflight.outputs.develop-sha }}\`"
+            echo "- cache save: \`${{ steps.success-cache-save.outcome }}\`"
             echo "- result: \`${{ job.status }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
 

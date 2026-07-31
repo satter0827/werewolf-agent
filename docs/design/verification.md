@@ -23,18 +23,34 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 
 `--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
+明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。baseを省略した場合、
+変更影響はworkspaceだけを扱い、version所有境界はリリース基準の`origin/main`を使用して実コマンドへ記録する。
+headは現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitは専用worktreeへ
+checkoutして検査し、reportのheadと実際にgateを動かすtreeを一致させる。現在checkoutのworkspace差分を
+別treeへ合成しない。
 
 ## CI境界
 
 ローカルとGitHub Actionsは`scripts.quality`を共通の品質入口とする。feature branchはPR作成前に
 手動`Develop / Check`を実行し、GitHub-hosted Ubuntu固有の差を確認する。手動Checkはbranchの
-`HEAD`、PR Checkは`develop`との仮想mergeを検証するため、最終判定はPR Checkが所有する。
+`HEAD`、PR Checkはcheckoutされた仮想mergeの`HEAD`を検証する。reportのheadと実行treeを同じcommitへ
+固定するため、最終判定はPR Checkが所有する。
 
 Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。夜間実行は03:17 JSTに
 `main`と`develop`のSHAを固定し、差分がない日は省略する。同じSHA組合せで成功済みなら
 cacheを再利用し、失敗または取消時は次夜に再実行する。月曜JSTの実行と明示した
 `nightly-deep`はcacheを無視する。GitHub-hosted runner全体をローカルへ複製せず、共通の
 Deep composite actionと依存定義をリポジトリ内の再現境界とする。
+cacheの参照または保存に失敗した場合は品質判定を停止せず、参照失敗をcache missとして
+Deepを実行する。cache処理の結果はjob summaryへ残し、次回実行の要否と分離して観測する。
+
+外部GitHub Actionは40桁のcommit SHAへ固定し、対応する`vX.Y.Z`形式のリリース番号を
+同じ行へ記録する。同じupstreamリポジトリのActionはsubpathが異なっても同じSHAとリリースを
+使用する。Dependabotは同じupstreamリポジトリから提供される密結合なActionを同じPRで更新する。
+Actionが使用する実行runtimeは参照値から推測せず、upstreamのリリース内容と
+GitHub Actions上の実行結果で確認する。
+Dependabotはデフォルトbranchの設定を読むため、`develop`での設定変更は通常の`main`向け
+リリースへ取り込まれた後に有効となる。
 
 夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
 `current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
@@ -48,6 +64,9 @@ uploadしない。
 
 利用者は運用設定として有料providerを選択できる。ただし、そのcredential、応答、可用性を
 品質判定やレビューの前提にしない。Local LLMレビューはloopbackだけを許可する。
+
+文書検査はソースコード上の公開モジュール指定に加え、生成したPython API HTMLのモジュールanchor、Python
+object構造、生directiveの非露出を確認する。掲載snippetは外部serviceなしで実行する。
 
 ## 判定
 
