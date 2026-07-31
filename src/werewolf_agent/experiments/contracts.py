@@ -11,7 +11,7 @@ from werewolf_agent.agents import AgentSpec
 from werewolf_agent.domain import RulePackManifest
 from werewolf_agent.setup import checksum_payload
 
-EXPERIMENT_CONTRACT_VERSION = "0.4.0"
+EXPERIMENT_CONTRACT_VERSION = "0.5.0"
 
 
 class ExperimentKind(StrEnum):
@@ -29,6 +29,34 @@ class RotationMode(StrEnum):
 
 
 @dataclass(frozen=True)
+class AgentBinding:
+    """一つのcontrollerとpersonaへ固定Agent実装を結び付ける。."""
+
+    controller_id: str
+    persona_id: str
+    agent_spec: AgentSpec
+
+    def __post_init__(self) -> None:
+        """Bindingの安定IDとAgent契約を検証する。."""
+        object.__setattr__(
+            self,
+            "controller_id",
+            _non_blank(self.controller_id, "controller_id"),
+        )
+        object.__setattr__(self, "persona_id", _non_blank(self.persona_id, "persona_id"))
+        if not isinstance(self.agent_spec, AgentSpec):
+            raise ValueError("agent_spec must be an AgentSpec")
+
+    def to_mapping(self) -> dict[str, object]:
+        """条件provenanceへ含める正規JSON表現を返す。."""
+        return {
+            "controller_id": self.controller_id,
+            "persona_id": self.persona_id,
+            "agent_spec": _agent_spec_mapping(self.agent_spec),
+        }
+
+
+@dataclass(frozen=True)
 class RulesCondition:
     """一つのSetupとRule Packを比較する条件。."""
 
@@ -36,7 +64,7 @@ class RulesCondition:
     setup_checksum: str
     rule_pack: RulePackManifest
     role_ids: tuple[str, ...]
-    agents: Mapping[str, AgentSpec]
+    agent_bindings: tuple[AgentBinding, ...]
 
     def __post_init__(self) -> None:
         """再現に必要な識別子と役職multisetを検証する。."""
@@ -47,7 +75,7 @@ class RulesCondition:
             _sha256(self.setup_checksum, "setup_checksum"),
         )
         object.__setattr__(self, "role_ids", _text_tuple(self.role_ids, "role_ids"))
-        object.__setattr__(self, "agents", _agent_specs(self.agents))
+        object.__setattr__(self, "agent_bindings", _agent_bindings(self.agent_bindings))
 
     @property
     def kind(self) -> ExperimentKind:
@@ -62,9 +90,7 @@ class RulesCondition:
             "setup_checksum": self.setup_checksum,
             "rule_pack": self.rule_pack.to_mapping(),
             "role_ids": list(self.role_ids),
-            "agents": {
-                key: _agent_spec_mapping(value) for key, value in sorted(self.agents.items())
-            },
+            "agent_bindings": [item.to_mapping() for item in self.agent_bindings],
         }
 
 
@@ -76,7 +102,7 @@ class AgentCondition:
     setup_checksum: str
     rule_pack: RulePackManifest
     role_ids: tuple[str, ...]
-    agents: Mapping[str, AgentSpec]
+    agent_bindings: tuple[AgentBinding, ...]
 
     def __post_init__(self) -> None:
         """Controller IDとAgent provenanceを固定する。."""
@@ -87,7 +113,7 @@ class AgentCondition:
             _sha256(self.setup_checksum, "setup_checksum"),
         )
         object.__setattr__(self, "role_ids", _text_tuple(self.role_ids, "role_ids"))
-        object.__setattr__(self, "agents", _agent_specs(self.agents))
+        object.__setattr__(self, "agent_bindings", _agent_bindings(self.agent_bindings))
 
     @property
     def kind(self) -> ExperimentKind:
@@ -102,9 +128,7 @@ class AgentCondition:
             "setup_checksum": self.setup_checksum,
             "rule_pack": self.rule_pack.to_mapping(),
             "role_ids": list(self.role_ids),
-            "agents": {
-                key: _agent_spec_mapping(value) for key, value in sorted(self.agents.items())
-            },
+            "agent_bindings": [item.to_mapping() for item in self.agent_bindings],
         }
 
 
@@ -176,16 +200,24 @@ class ExperimentSpec:
             for item in conditions
         ):
             raise ValueError("agent conditions must share setup, rule pack, and roles")
-        expected = set(self.controller_ids)
-        if any(set(item.agents) != expected for item in conditions):
-            raise ValueError("agent condition keys must exactly match controller_ids")
+        expected = {
+            (controller_id, persona_id)
+            for controller_id in self.controller_ids
+            for persona_id in self.persona_ids
+        }
+        if any(_binding_keys(item.agent_bindings) != expected for item in conditions):
+            raise ValueError("agent conditions must bind every controller and persona")
 
     def _validate_rules_conditions(self) -> None:
         conditions = tuple(item for item in self.conditions if isinstance(item, RulesCondition))
-        expected = set(self.controller_ids)
-        if any(set(item.agents) != expected for item in conditions):
-            raise ValueError("rules condition keys must exactly match controller_ids")
-        if any(item.agents != conditions[0].agents for item in conditions[1:]):
+        expected = {
+            (controller_id, persona_id)
+            for controller_id in self.controller_ids
+            for persona_id in self.persona_ids
+        }
+        if any(_binding_keys(item.agent_bindings) != expected for item in conditions):
+            raise ValueError("rules conditions must bind every controller and persona")
+        if any(item.agent_bindings != conditions[0].agent_bindings for item in conditions[1:]):
             raise ValueError("rules conditions must share fixed agent specifications")
 
 
@@ -224,6 +256,7 @@ class TrialPlan:
     trial_id: str
     pair_id: str
     experiment_id: str
+    experiment_fingerprint: str
     condition_id: str
     kind: ExperimentKind
     seed: int
@@ -232,11 +265,16 @@ class TrialPlan:
     setup_checksum: str
     rule_pack: RulePackManifest
     implementation_fingerprint: str
-    agent_specs: Mapping[str, AgentSpec] = field(default_factory=dict)
+    player_agent_specs: Mapping[str, AgentSpec] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         """永続化前に識別子と割当を固定する。."""
-        for field_name in ("trial_id", "pair_id", "implementation_fingerprint"):
+        for field_name in (
+            "trial_id",
+            "pair_id",
+            "experiment_fingerprint",
+            "implementation_fingerprint",
+        ):
             object.__setattr__(self, field_name, _sha256(getattr(self, field_name), field_name))
         for field_name in ("experiment_id", "condition_id"):
             object.__setattr__(
@@ -261,10 +299,10 @@ class TrialPlan:
             "setup_checksum",
             _sha256(self.setup_checksum, "setup_checksum"),
         )
-        agent_specs = _agent_specs(self.agent_specs)
-        if set(agent_specs) != {item.controller_id for item in assignments}:
-            raise ValueError("agent_specs keys must match assigned controller IDs")
-        object.__setattr__(self, "agent_specs", agent_specs)
+        agent_specs = _agent_specs(self.player_agent_specs)
+        if set(agent_specs) != {item.player_id for item in assignments}:
+            raise ValueError("player_agent_specs keys must match assigned player IDs")
+        object.__setattr__(self, "player_agent_specs", agent_specs)
 
     def to_mapping(self) -> dict[str, object]:
         """artifactへ保存できる正規JSON表現を返す。."""
@@ -273,6 +311,7 @@ class TrialPlan:
             "trial_id": self.trial_id,
             "pair_id": self.pair_id,
             "experiment_id": self.experiment_id,
+            "experiment_fingerprint": self.experiment_fingerprint,
             "condition_id": self.condition_id,
             "kind": self.kind.value,
             "seed": self.seed,
@@ -281,8 +320,9 @@ class TrialPlan:
             "setup_checksum": self.setup_checksum,
             "rule_pack": self.rule_pack.to_mapping(),
             "implementation_fingerprint": self.implementation_fingerprint,
-            "agent_specs": {
-                key: _agent_spec_mapping(value) for key, value in sorted(self.agent_specs.items())
+            "player_agent_specs": {
+                key: _agent_spec_mapping(value)
+                for key, value in sorted(self.player_agent_specs.items())
             },
         }
 
@@ -290,12 +330,14 @@ class TrialPlan:
 def plan_trials(spec: ExperimentSpec) -> tuple[TrialPlan, ...]:
     """条件をpaired seedと決定的な割当rotationへ展開する。."""
     rotations = _rotation_offsets(len(spec.player_ids), spec.rotation_mode)
+    experiment_fingerprint = checksum_payload(_experiment_mapping(spec))
     plans: list[TrialPlan] = []
     for seed in spec.seeds:
         for rotation_index, offsets in enumerate(rotations):
             pair_payload = {
                 "contract_version": EXPERIMENT_CONTRACT_VERSION,
                 "experiment_id": spec.experiment_id,
+                "experiment_fingerprint": experiment_fingerprint,
                 "seed": seed,
                 "rotation_index": rotation_index,
                 "player_ids": list(spec.player_ids),
@@ -317,6 +359,7 @@ def plan_trials(spec: ExperimentSpec) -> tuple[TrialPlan, ...]:
                         trial_id=checksum_payload(identity),
                         pair_id=pair_id,
                         experiment_id=spec.experiment_id,
+                        experiment_fingerprint=experiment_fingerprint,
                         condition_id=condition.condition_id,
                         kind=condition.kind,
                         seed=seed,
@@ -325,7 +368,10 @@ def plan_trials(spec: ExperimentSpec) -> tuple[TrialPlan, ...]:
                         setup_checksum=condition.setup_checksum,
                         rule_pack=condition.rule_pack,
                         implementation_fingerprint=implementation_fingerprint,
-                        agent_specs=condition.agents,
+                        player_agent_specs={
+                            assignment.player_id: _binding_spec(condition, assignment)
+                            for assignment in assignments
+                        },
                     )
                 )
     return tuple(plans)
@@ -377,6 +423,31 @@ def _agent_specs(values: Mapping[str, AgentSpec]) -> Mapping[str, AgentSpec]:
     return MappingProxyType(dict(sorted(agents.items())))
 
 
+def _agent_bindings(values: Sequence[AgentBinding]) -> tuple[AgentBinding, ...]:
+    bindings = tuple(values)
+    if not bindings or any(not isinstance(value, AgentBinding) for value in bindings):
+        raise ValueError("agent_bindings must contain AgentBinding values")
+    keys = tuple((item.controller_id, item.persona_id) for item in bindings)
+    _unique(keys, "agent binding keys")
+    return tuple(sorted(bindings, key=lambda item: (item.controller_id, item.persona_id)))
+
+
+def _binding_keys(values: Sequence[AgentBinding]) -> set[tuple[str, str]]:
+    return {(item.controller_id, item.persona_id) for item in values}
+
+
+def _binding_spec(
+    condition: ExperimentCondition,
+    assignment: PlayerAssignment,
+) -> AgentSpec:
+    key = (assignment.controller_id, assignment.persona_id)
+    return next(
+        item.agent_spec
+        for item in condition.agent_bindings
+        if (item.controller_id, item.persona_id) == key
+    )
+
+
 def _json_value(value: object) -> object:
     if isinstance(value, Mapping):
         return {key: _json_value(item) for key, item in sorted(value.items())}
@@ -391,6 +462,19 @@ def _condition_implementation_mapping(
     mapping = condition.to_mapping()
     mapping.pop("condition_id")
     return mapping
+
+
+def _experiment_mapping(spec: ExperimentSpec) -> dict[str, object]:
+    return {
+        "contract_version": EXPERIMENT_CONTRACT_VERSION,
+        "experiment_id": spec.experiment_id,
+        "conditions": [item.to_mapping() for item in spec.conditions],
+        "seeds": list(spec.seeds),
+        "player_ids": list(spec.player_ids),
+        "controller_ids": list(spec.controller_ids),
+        "persona_ids": list(spec.persona_ids),
+        "rotation_mode": spec.rotation_mode.value,
+    }
 
 
 def _text_tuple(values: Sequence[str], field_name: str) -> tuple[str, ...]:
@@ -425,6 +509,7 @@ def _unique(values: Sequence[object], field_name: str) -> None:
 
 __all__ = [
     "EXPERIMENT_CONTRACT_VERSION",
+    "AgentBinding",
     "AgentCondition",
     "ExperimentCondition",
     "ExperimentKind",

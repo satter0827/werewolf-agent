@@ -2,6 +2,7 @@
 
 from werewolf_agent.experiments.contracts import (
     EXPERIMENT_CONTRACT_VERSION,
+    AgentBinding,
     AgentCondition,
     ExperimentCondition,
     ExperimentKind,
@@ -33,6 +34,7 @@ from werewolf_agent.experiments.execution import (
 __all__ = [
     "EXPERIMENT_CONTRACT_VERSION",
     "STANDARD_EVALUATOR_VERSION",
+    "AgentBinding",
     "AgentCondition",
     "ConditionReport",
     "EvaluationResult",

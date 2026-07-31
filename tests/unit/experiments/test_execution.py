@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import json
 import random
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.agents import RandomLegalAgentFactory
+from werewolf_agent.agents import HeuristicAgentFactory, RandomLegalAgentFactory
 from werewolf_agent.domain import Game, GameSetup, Player, build_game_rules
 from werewolf_agent.experiments import (
+    AgentBinding,
     ExperimentSpec,
     RotationMode,
     RulesCondition,
@@ -82,7 +84,12 @@ def _plans(factory: _SessionFactory) -> tuple[TrialPlan, ...]:
     player_ids = tuple(f"p{index}" for index in range(1, len(role_ids) + 1))
     controller_ids = tuple(f"c{index}" for index in range(1, len(role_ids) + 1))
     agent = RandomLegalAgentFactory().spec
-    agents = {controller_id: agent for controller_id in controller_ids}
+    persona_ids = tuple(f"persona-{index}" for index in range(1, len(role_ids) + 1))
+    agents = tuple(
+        AgentBinding(controller_id, persona_id, agent)
+        for controller_id in controller_ids
+        for persona_id in persona_ids
+    )
     conditions = tuple(
         RulesCondition(
             condition_id,
@@ -100,7 +107,7 @@ def _plans(factory: _SessionFactory) -> tuple[TrialPlan, ...]:
             (0,),
             player_ids,
             controller_ids,
-            tuple(f"persona-{index}" for index in range(1, len(role_ids) + 1)),
+            persona_ids,
             RotationMode.NONE,
         )
     )
@@ -198,3 +205,50 @@ def test_runner_rejects_duplicate_trial_ids(tmp_path: Path) -> None:
         TrialRunner(factory, TrialArtifactStore(tmp_path)).run((plan, plan))
 
     assert factory.created == []
+
+
+def test_runner_rejects_agent_spec_for_a_different_persona(tmp_path: Path) -> None:
+    """seatへ計画したpersonaと異なるAgent Factoryをartifact化しない。"""
+    factory = _SessionFactory()
+    plan = _plans(factory)[0]
+    expected = dict(plan.player_agent_specs)
+    expected[plan.assignments[0].player_id] = HeuristicAgentFactory().spec
+    plan = replace(plan, player_agent_specs=expected)
+
+    with pytest.raises(ValueError, match="Agent spec must match"):
+        TrialRunner(factory, TrialArtifactStore(tmp_path)).run((plan,))
+
+    assert list(tmp_path.rglob("*.json")) == []
+
+
+def test_store_rejects_reusing_experiment_id_for_a_different_specification(
+    tmp_path: Path,
+) -> None:
+    """同じexperiment IDへ異なる仕様世代のTrialを混在させない。"""
+    factory = _SessionFactory()
+    plan = _plans(factory)[0]
+    runner = TrialRunner(factory, TrialArtifactStore(tmp_path))
+    runner.run((plan,))
+    created = list(factory.created)
+    changed = replace(
+        plan,
+        trial_id="e" * 64,
+        experiment_fingerprint="f" * 64,
+    )
+
+    with pytest.raises(ValueError, match="different specification"):
+        runner.run((changed,))
+
+    assert factory.created == created
+
+
+def test_store_rejects_trial_without_experiment_binding(tmp_path: Path) -> None:
+    """仕様bindingが欠落したTrialを暗黙復旧せず破損として拒否する。"""
+    factory = _SessionFactory()
+    plan = _plans(factory)[0]
+    store = TrialArtifactStore(tmp_path)
+    TrialRunner(factory, store).run((plan,))
+    (tmp_path / plan.experiment_id / "experiment.json").unlink()
+
+    with pytest.raises(ValueError, match="binding is missing"):
+        store.load(plan)

@@ -14,7 +14,7 @@ from werewolf_agent.experiments.execution import TrialResult
 from werewolf_agent.setup import checksum_payload
 from werewolf_agent.simulation import SimulationStopReason
 
-STANDARD_EVALUATOR_VERSION = "0.2.0"
+STANDARD_EVALUATOR_VERSION = "0.3.0"
 
 
 class Evaluator(Protocol):
@@ -301,6 +301,7 @@ class ExperimentReport:
     """同じTrial artifactから再生成できる時刻非依存Report。."""
 
     experiment_id: str
+    experiment_fingerprint: str
     source_checksum: str
     trial_ids: tuple[str, ...]
     paired_trial_count: int
@@ -313,6 +314,7 @@ class ExperimentReport:
             "experiment_id",
             _non_blank(self.experiment_id, "experiment_id"),
         )
+        _require_sha256(self.experiment_fingerprint, "experiment_fingerprint")
         _require_sha256(self.source_checksum, "source_checksum")
         trial_ids = tuple(self.trial_ids)
         if not trial_ids or len(trial_ids) != len(set(trial_ids)):
@@ -339,6 +341,7 @@ class ExperimentReport:
         return {
             "contract_version": EXPERIMENT_CONTRACT_VERSION,
             "experiment_id": self.experiment_id,
+            "experiment_fingerprint": self.experiment_fingerprint,
             "source_checksum": self.source_checksum,
             "trial_ids": list(self.trial_ids),
             "paired_trial_count": self.paired_trial_count,
@@ -359,6 +362,9 @@ def build_report(
     experiment_ids = {item.plan.experiment_id for item in items}
     if len(experiment_ids) != 1:
         raise ValueError("trials must belong to one experiment")
+    experiment_fingerprints = {item.plan.experiment_fingerprint for item in items}
+    if len(experiment_fingerprints) != 1:
+        raise ValueError("trials must belong to one experiment specification")
     trial_ids = tuple(item.plan.trial_id for item in items)
     if len(trial_ids) != len(set(trial_ids)):
         raise ValueError("trials must contain unique trial IDs")
@@ -400,6 +406,7 @@ def build_report(
     )
     return ExperimentReport(
         experiment_id=next(iter(experiment_ids)),
+        experiment_fingerprint=next(iter(experiment_fingerprints)),
         source_checksum=checksum_payload([item.to_mapping() for item in items]),
         trial_ids=trial_ids,
         paired_trial_count=sum(conditions == expected_conditions for conditions in paired.values()),

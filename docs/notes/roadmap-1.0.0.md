@@ -135,6 +135,8 @@ Reportは保存済みTrialから再生成する。
 
 実験条件と試行計画は実装済みである。Rules条件とAgent条件を分離し、paired seed、明示的な
 席順・役職・persona・controller割当、均衡rotation、決定的なTrial IDと実装fingerprintを公開する。
+controllerとpersonaの組合せごとにAgent provenanceを固定し、実行時は実際のseatへ割り当てた
+Agent Factoryの`AgentSpec`を照合する。
 Trial実行、trial単位のatomic artifact、checkpoint、resumeも実装済みである。Runnerは注入された
 Simulation Sessionをplan provenanceと照合し、完成済みTrialを重複実行しない。EvaluatorとReportは
 標準metric、任意のbelief校正、外部Evaluator契約、条件別の決定的Reportとして実装済みである。
