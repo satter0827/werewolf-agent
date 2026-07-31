@@ -9,7 +9,7 @@ Rule PackまたはAgentだけを条件差として分離し、同じseedと割�
 ## 条件
 
 `RulesCondition`はsetup checksum、Rule Pack manifest、役職multiset、固定Agent仕様を保持する。
-`AgentCondition`は同じ環境に加えてcontrollerごとの`AgentSpec`を固定する。Agent比較ではsetup、
+`AgentCondition`は同じ環境に加えてcontrollerとpersonaの組合せごとの`AgentSpec`を固定する。Agent比較ではsetup、
 Rule Pack、役職multisetを全条件で一致させ、同時にルールを変える交絡を拒否する。
 Rules比較では全条件のAgent仕様を一致させる。Rules条件とAgent条件は一つの`ExperimentSpec`へ
 混在させない。
@@ -17,8 +17,11 @@ Rules比較では全条件のAgent仕様を一致させる。Rules条件とAgent
 ## Trial計画
 
 `ExperimentSpec`はexperiment ID、比較条件、paired seed、seat ID、controller ID、persona IDを持つ。
+各条件の`AgentBinding`はcontrollerとpersonaの直積を欠けなく定義する。personaはAgent Factoryの固定parameter
+として`AgentSpec`のfingerprintに含め、Trialは実際のseatごとの`player_agent_specs`を保持する。
 `plan_trials()`は同じseedとrotationの条件へ同じ`pair_id`を付ける。`trial_id`は条件、seed、割当、
-setup checksum、Rule PackとAgentの実装fingerprintからSHA-256で生成する。
+setup checksum、Rule PackとAgentの実装fingerprintからSHA-256で生成する。実験仕様全体の
+`experiment_fingerprint`はcondition、seed、割当候補、rotation方式を固定し、各TrialとReportへ記録する。
 
 `balanced` rotationはプレイヤー数をnとしてseedごとにn²個の割当を作る。各controllerと役職、
 各controllerとpersonaの組合せが同数になる。役職はTrialへ明示するため、Domainの乱数抽選へ
@@ -35,12 +38,13 @@ Trial artifactを先に検証し、未完了分だけを計画順に実行する
 制限し、残りのTrial IDを返す。例外またはプロセス停止で完成しなかったTrialは保存せず、次回に
 同じIDで再実行する。
 
-`TrialArtifactStore`は`.werewolf-agent/experiments/<experiment-id>/trials/`へtrial単位のJSONを
+`TrialArtifactStore`は`.werewolf-agent/experiments/<experiment-id>/experiment.json`へIDと仕様fingerprintの
+immutableなbindingを保存し、同じIDへ異なる仕様を混在させない。`trials/`へtrial単位のJSONを
 保存する。artifactはplan、最終状態、step、event、chain-of-thoughtを含まないdecision traceを持つ。
 checksumを検証し、一時fileのflush後に新規pathへatomic publishする。既存artifactとplanが一致しない場合は
 再実行せず失敗する。
 
-Runnerは実行前にSessionのsimulation ID、seed、Rule Pack manifest、プレイヤー、明示役職、Agent specを
+Runnerは実行前にSessionのsimulation ID、seed、Rule Pack manifest、プレイヤー、明示役職、seatごとのAgent specを
 Trial planと照合する。Factoryが異なる実装を返した場合はSessionをcloseし、artifactを保存しない。
 
 実時間、token、費用は運用観測値として保存できるが、Trial IDと決定性の判定へ含めない。

@@ -208,6 +208,7 @@ class TrialArtifactStore:
     def load(self, plan: TrialPlan) -> TrialResult | None:
         """一致する完成済みTrialだけを返す。."""
         path = self._trial_path(plan)
+        self._verify_experiment_binding(plan, required=path.is_file())
         if not path.is_file():
             return None
         result = self._load_path(path)
@@ -223,6 +224,11 @@ class TrialArtifactStore:
         results = tuple(self._load_path(path) for path in sorted(directory.glob("*.json")))
         if any(item.plan.experiment_id != experiment_id for item in results):
             raise ValueError("trial artifact belongs to a different experiment")
+        fingerprints = {item.plan.experiment_fingerprint for item in results}
+        if len(fingerprints) > 1:
+            raise ValueError("experiment artifacts contain mixed experiment fingerprints")
+        if results:
+            self._verify_experiment_binding(results[0].plan, required=True)
         trial_ids = tuple(item.plan.trial_id for item in results)
         if len(trial_ids) != len(set(trial_ids)):
             raise ValueError("experiment artifacts contain duplicate trial IDs")
@@ -230,6 +236,10 @@ class TrialArtifactStore:
 
     def save_report(self, report: ExperimentReport) -> Path:
         """再生成可能なReport JSONを現在値としてatomic保存する。."""
+        self._bind_experiment_identity(
+            report.experiment_id,
+            report.experiment_fingerprint,
+        )
         path = self._experiment_path(report.experiment_id) / "report.json"
         content = (
             json.dumps(
@@ -259,6 +269,7 @@ class TrialArtifactStore:
 
     def save(self, result: TrialResult) -> Path:
         """Trialを同一内容だけ再保存可能なatomic JSONとして保存する。."""
+        self.bind_experiment(result.plan)
         path = self._trial_path(result.plan)
         document = result.to_mapping()
         document["artifact_checksum"] = checksum_payload(document)
@@ -302,6 +313,76 @@ class TrialArtifactStore:
             temporary_path.unlink(missing_ok=True)
         return path
 
+    def bind_experiment(self, plan: TrialPlan) -> Path:
+        """Experiment IDを一つのimmutableな仕様fingerprintへ固定する。."""
+        return self._bind_experiment_identity(
+            plan.experiment_id,
+            plan.experiment_fingerprint,
+        )
+
+    def _bind_experiment_identity(
+        self,
+        experiment_id: str,
+        experiment_fingerprint: str,
+    ) -> Path:
+        path = self._experiment_path(experiment_id) / "experiment.json"
+        content = (
+            json.dumps(
+                {
+                    "contract_version": EXPERIMENT_CONTRACT_VERSION,
+                    "experiment_id": experiment_id,
+                    "experiment_fingerprint": experiment_fingerprint,
+                },
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            + "\n"
+        )
+        if path.is_file():
+            if path.read_text(encoding="utf-8") != content:
+                raise ValueError("experiment ID is already bound to a different specification")
+            return path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=".experiment.",
+            suffix=".tmp",
+            delete=False,
+        ) as temporary:
+            temporary.write(content)
+            temporary.flush()
+            os.fsync(temporary.fileno())
+            temporary_path = Path(temporary.name)
+        try:
+            try:
+                os.link(temporary_path, path)
+            except FileExistsError:
+                if path.read_text(encoding="utf-8") != content:
+                    raise ValueError(
+                        "experiment ID is already bound to a different specification"
+                    ) from None
+        finally:
+            temporary_path.unlink(missing_ok=True)
+        return path
+
+    def _verify_experiment_binding(self, plan: TrialPlan, *, required: bool) -> None:
+        path = self._experiment_path(plan.experiment_id) / "experiment.json"
+        if not path.is_file():
+            if required:
+                raise ValueError("experiment binding is missing")
+            return
+        expected = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(expected, dict) or expected != {
+            "contract_version": EXPERIMENT_CONTRACT_VERSION,
+            "experiment_id": plan.experiment_id,
+            "experiment_fingerprint": plan.experiment_fingerprint,
+        }:
+            raise ValueError("experiment ID is bound to a different specification")
+
     def _trial_path(self, plan: TrialPlan) -> Path:
         path = self._experiment_path(plan.experiment_id) / "trials" / f"{plan.trial_id}.json"
         resolved = path.resolve()
@@ -336,6 +417,9 @@ class TrialRunner:
         trial_ids = tuple(plan.trial_id for plan in plans)
         if len(trial_ids) != len(set(trial_ids)):
             raise ValueError("plans must contain unique trial IDs")
+        experiment_keys = {(plan.experiment_id, plan.experiment_fingerprint) for plan in plans}
+        if len(experiment_keys) > 1:
+            raise ValueError("plans must belong to one experiment specification")
         results: list[TrialResult] = []
         executed: list[str] = []
         resumed: list[str] = []
@@ -353,6 +437,7 @@ class TrialRunner:
             session = self._factory.create(plan)
             try:
                 _validate_session(plan, session)
+                self._store.bind_experiment(plan)
                 result = TrialResult.from_simulation(plan, session.run())
             finally:
                 session.close()
@@ -385,7 +470,7 @@ def _validate_session(plan: TrialPlan, session: SimulationSession) -> None:
         controller = session.spec.controllers[player_id]
         if controller.factory is None:
             raise ValueError("experiment trials require Agent controllers")
-        expected = plan.agent_specs[assignment.controller_id]
+        expected = plan.player_agent_specs[player_id]
         if controller.factory.spec != expected:
             raise ValueError("session Agent spec must match trial plan")
         if state.players[player_id].role != assignment.role_id:
@@ -473,6 +558,7 @@ def _trial_plan(value: Mapping[str, object]) -> TrialPlan:
         trial_id=_text(value, "trial_id"),
         pair_id=_text(value, "pair_id"),
         experiment_id=_text(value, "experiment_id"),
+        experiment_fingerprint=_text(value, "experiment_fingerprint"),
         condition_id=_text(value, "condition_id"),
         kind=ExperimentKind(_text(value, "kind")),
         seed=_integer(value, "seed", minimum=None),
@@ -484,9 +570,9 @@ def _trial_plan(value: Mapping[str, object]) -> TrialPlan:
         setup_checksum=_text(value, "setup_checksum"),
         rule_pack=RulePackManifest.from_mapping(_mapping(value, "rule_pack")),
         implementation_fingerprint=_text(value, "implementation_fingerprint"),
-        agent_specs={
+        player_agent_specs={
             key: _agent_spec(_as_mapping(item, "agent_spec"))
-            for key, item in _mapping(value, "agent_specs").items()
+            for key, item in _mapping(value, "player_agent_specs").items()
         },
     )
 

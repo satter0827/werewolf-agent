@@ -2,10 +2,20 @@ from hashlib import sha256
 
 from werewolf_agent.agents import RandomLegalAgentFactory
 from werewolf_agent.domain import RULE_PACK_CONTRACT_VERSION, RulePackManifest
-from werewolf_agent.experiments import ExperimentSpec, RotationMode, RulesCondition, plan_trials
+from werewolf_agent.experiments import (
+    AgentBinding,
+    ExperimentSpec,
+    RotationMode,
+    RulesCondition,
+    plan_trials,
+)
 
 digest = lambda value: sha256(value.encode()).hexdigest()  # noqa: E731
-agents = {controller_id: RandomLegalAgentFactory().spec for controller_id in ("c1", "c2", "c3")}
+agents = tuple(
+    AgentBinding(controller_id, persona_id, RandomLegalAgentFactory().spec)
+    for controller_id in ("c1", "c2", "c3")
+    for persona_id in ("calm", "bold", "careful")
+)
 conditions = tuple(
     RulesCondition(
         condition_id,

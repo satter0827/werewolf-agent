@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+
+import pytest
 
 from werewolf_agent.agents import AgentSpec
 from werewolf_agent.domain import RULE_PACK_CONTRACT_VERSION, RulePackManifest
@@ -30,6 +33,7 @@ def _plan(condition_id: str) -> TrialPlan:
         trial_id=_digest(f"trial:{condition_id}"),
         pair_id=_digest("pair"),
         experiment_id="evaluation-test",
+        experiment_fingerprint=_digest("experiment"),
         condition_id=condition_id,
         kind=ExperimentKind.AGENTS,
         seed=0,
@@ -46,7 +50,7 @@ def _plan(condition_id: str) -> TrialPlan:
             _digest("rules"),
         ),
         implementation_fingerprint=_digest(f"implementation:{condition_id}"),
-        agent_specs={"c1": agent, "c2": agent},
+        player_agent_specs={"p1": agent, "p2": agent},
     )
 
 
@@ -216,3 +220,19 @@ def test_partial_report_requires_all_planned_conditions_for_paired_count() -> No
     )
 
     assert report.paired_trial_count == 0
+
+
+def test_report_rejects_trials_from_different_experiment_specifications() -> None:
+    """同じIDでも仕様fingerprintが異なるTrialを集計しない。"""
+    baseline = _result("baseline")
+    candidate = _result("candidate")
+    candidate = replace(
+        candidate,
+        plan=replace(candidate.plan, experiment_fingerprint=_digest("changed-experiment")),
+    )
+
+    with pytest.raises(ValueError, match="one experiment specification"):
+        build_report(
+            (baseline, candidate),
+            expected_condition_ids=("baseline", "candidate"),
+        )
