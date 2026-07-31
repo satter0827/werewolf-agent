@@ -2,6 +2,12 @@
 
 from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.constants import DeliberationLevel
+from werewolf_agent.application.embedding import (
+    EmbeddedApplication,
+    InlineCommandExecutor,
+    SingleTenantAccessPolicy,
+    create_embedded_application,
+)
 from werewolf_agent.application.errors import (
     AppError,
     ConfigError,
@@ -14,6 +20,7 @@ from werewolf_agent.application.errors import (
 from werewolf_agent.application.facade import GameApplication
 from werewolf_agent.application.memory import Clock, InMemoryGameRepository, InMemorySetupRepository
 from werewolf_agent.application.models import (
+    AdvanceGameCommand,
     AdvanceGameResult,
     ApplicationContext,
     ComputedAdvanceGame,
@@ -56,6 +63,7 @@ from werewolf_agent.application.types import GameStatus
 __all__ = [
     "AccessPolicy",
     "Actor",
+    "AdvanceGameCommand",
     "AdvanceGameResult",
     "AppError",
     "ApplicationContext",
@@ -64,6 +72,7 @@ __all__ = [
     "ConfigError",
     "CreateGameCommand",
     "DeliberationLevel",
+    "EmbeddedApplication",
     "ErrorCode",
     "GameApplication",
     "GameApplicationConfig",
@@ -87,6 +96,7 @@ __all__ = [
     "GeneratedPlayerInput",
     "InMemoryGameRepository",
     "InMemorySetupRepository",
+    "InlineCommandExecutor",
     "InternalError",
     "OperationQueue",
     "PlayerActionCommand",
@@ -104,11 +114,13 @@ __all__ = [
     "SetupTemplateCatalog",
     "SetupTemplateMetadata",
     "SetupValidationResult",
+    "SingleTenantAccessPolicy",
     "StoredGame",
     "StoredGameEvent",
     "StoredGameSummary",
     "StoredGameTurn",
     "Transaction",
+    "create_embedded_application",
     "parse_setup_document",
     "validate_setup_document",
 ]

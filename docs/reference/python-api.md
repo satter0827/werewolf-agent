@@ -29,8 +29,10 @@
 
 ## Applicationの最小利用例
 
-`GameApplication`は外側で構築したportと設定を受け取る。予定された失敗は`AppError`系で返し、
-利用者は`ErrorCode`で処理を分岐できる。
+`create_embedded_application()`は設定、setup catalog、任意のリポジトリとRule Packを受け取り、
+HTTP、database、workerを必要としないsingle-tenant applicationを構築する。設定とcatalogは暗黙に
+読み込まず、利用者が実験条件として固定する。`InlineCommandExecutor`は型付きコマンドをqueueなしで
+同期実行する。状態はfactoryやfacadeではなく、注入したリポジトリが所有する。
 
 ```{literalinclude} ../snippets/python_api_application.py
 :language: python
