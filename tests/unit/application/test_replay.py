@@ -2,7 +2,8 @@ from collections.abc import Mapping, Sequence
 
 import pytest
 
-from werewolf_agent.application.replay import checksum_payload, verify_replay
+from werewolf_agent.application.replay import verify_replay
+from werewolf_agent.setup import checksum_payload
 
 
 class EmptyReplayRepository:

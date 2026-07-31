@@ -8,7 +8,6 @@ from typing import Literal
 
 from pydantic import ValidationError
 
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import ConfigError
 from werewolf_agent.application.models import (
@@ -19,9 +18,9 @@ from werewolf_agent.application.models import (
     PlayerPreviewResult,
     SetupValidationResult,
 )
-from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
 from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.setup import checksum_payload, generate_players
 
 ABILITY_KINDS = (
     "attack",

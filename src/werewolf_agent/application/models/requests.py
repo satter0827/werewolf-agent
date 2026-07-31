@@ -9,7 +9,6 @@ from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.constants import (
     DEFAULT_DELIBERATION_LEVEL,
     MIN_PAGE_LIMIT,
@@ -25,6 +24,7 @@ from werewolf_agent.application.models.results import GameEventCreate
 from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.types import GamePhase, GameStatus
 from werewolf_agent.application.validation import generated_player_ids, non_blank
+from werewolf_agent.setup import checksum_payload
 
 if TYPE_CHECKING:
     from werewolf_agent.domain import Game, GameEvent

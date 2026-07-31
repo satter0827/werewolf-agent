@@ -7,7 +7,6 @@ from typing import Any
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.domain import Game, GameSetup, build_game_rules
 from werewolf_agent.domain.state import (
@@ -17,6 +16,7 @@ from werewolf_agent.domain.state import (
     EventVisibility,
     Player,
 )
+from werewolf_agent.setup import generate_players
 
 MAX_PHASES = 64
 

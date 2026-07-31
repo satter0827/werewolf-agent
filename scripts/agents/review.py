@@ -34,13 +34,11 @@ from werewolf_agent.agents.models import (
 )
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
 from werewolf_agent.settings import get_settings
+from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
@@ -705,7 +703,7 @@ def _run_preset(
         seed=seed,
     )
     profiles = {
-        player.player_id: PlayerProfile.model_validate(player.profile.model_dump(mode="json"))
+        player.player_id: PlayerProfile.model_validate(player.profile.to_mapping())
         for player in players
     }
     role_rng = random.Random(namespace_seed(seed, "role_assignment"))

@@ -23,7 +23,6 @@ from werewolf_agent.application.models import (
     SetupValidationResult,
 )
 from werewolf_agent.application.ports import SetupRepository
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
 from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_options import (
@@ -34,6 +33,7 @@ from werewolf_agent.application.setup_options import (
 )
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.validation import non_blank
+from werewolf_agent.setup import checksum_payload
 
 
 class SetupApplication:

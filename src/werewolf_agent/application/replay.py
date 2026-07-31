@@ -6,7 +6,6 @@ import random
 from collections.abc import Mapping, Sequence
 from typing import Any, Protocol, cast
 
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.domain_codec import (
     action_from_data,
     domain_to_data,
@@ -14,16 +13,16 @@ from werewolf_agent.application.domain_codec import (
     game_state_from_data,
 )
 from werewolf_agent.application.models import ReplayVerificationResult
-from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.projections import (
     event_to_create,
     public_state_payload_from_snapshot,
 )
-from werewolf_agent.application.randomness import namespace_seed, runtime_seed
+from werewolf_agent.application.randomness import runtime_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
 from werewolf_agent.domain import Game, build_game_rules
+from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
 
 
 class ReplayRepository(Protocol):

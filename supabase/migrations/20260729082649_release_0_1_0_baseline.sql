@@ -280,7 +280,7 @@ CREATE TABLE IF NOT EXISTS "private"."user_setup_revisions" (
     "created_at" timestamp with time zone DEFAULT "timezone"('utc'::"text", "now"()) NOT NULL,
     CONSTRAINT "user_setup_revisions_mechanics_checksum_check" CHECK (("length"("mechanics_checksum") = 64)),
     CONSTRAINT "user_setup_revisions_revision_check" CHECK (("revision" >= 1)),
-    CONSTRAINT "user_setup_revisions_schema_version_check" CHECK (("schema_version" = '0.1.0'::"text")),
+    CONSTRAINT "user_setup_revisions_schema_version_check" CHECK (("schema_version" = '0.2.0'::"text")),
     CONSTRAINT "user_setup_revisions_setup_checksum_check" CHECK (("length"("setup_checksum") = 64))
 );
 

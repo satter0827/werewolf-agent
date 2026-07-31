@@ -1,4 +1,4 @@
-"""Canonical checksums for immutable application payloads."""
+"""Setupと実験入力に使う正規checksumを定義する."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Any
 
 
 def checksum_payload(payload: Any) -> str:
-    """Return a stable SHA-256 checksum for JSON-compatible data."""
+    """JSON互換値の安定したSHA-256 checksumを返す."""
     canonical = json.dumps(
         payload,
         ensure_ascii=False,

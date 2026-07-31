@@ -9,8 +9,6 @@ from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, initialize, invariant, rule
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
 from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.domain import (
     Action,
@@ -22,6 +20,7 @@ from werewolf_agent.domain import (
     build_game_rules,
 )
 from werewolf_agent.domain.errors import RuleViolation
+from werewolf_agent.setup import generate_players, namespace_seed
 
 SETUP_CATALOG = build_setup_catalog()
 SETUP_PRESETS = tuple(SETUP_CATALOG.template_order)

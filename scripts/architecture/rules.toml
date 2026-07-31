@@ -3,6 +3,7 @@ public_modules = [
   "werewolf_agent",
   "werewolf_agent.application",
   "werewolf_agent.domain",
+  "werewolf_agent.setup",
 ]
 public_alias_modules = []
 root_entries = [
@@ -129,6 +130,9 @@ forbidden = ["execute", "executemany"]
 [layers.domain]
 allowed = ["domain"]
 
+[layers.setup]
+allowed = ["domain", "setup"]
+
 [layers.settings]
 allowed = ["settings"]
 
@@ -145,7 +149,7 @@ allowed = ["contracts", "observability", "security", "settings"]
 allowed = ["agents", "contracts"]
 
 [layers.application]
-allowed = ["application", "domain"]
+allowed = ["application", "domain", "setup"]
 
 [layers.adapters]
 allowed = [
@@ -156,6 +160,7 @@ allowed = [
   "domain",
   "observability",
   "security",
+  "setup",
   "settings",
 ]
 

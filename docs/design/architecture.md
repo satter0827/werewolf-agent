@@ -11,6 +11,7 @@
 | レイヤー | 責務 |
 | --- | --- |
 | `domain` | 標準libraryだけで構成するaggregate、immutable state、event、rule policy |
+| `setup` | 標準libraryだけで構成するsetup定義、seed、checksum、roster生成 |
 | `application` | use case、authorization、transaction、コマンド/result、port、projection |
 | `agents` | provider非依存のobservation、decision、プレイヤー port |
 | `adapters` | HTTP client、Supabase、LangChain、外部I/O |
@@ -35,7 +36,8 @@
 ## 境界
 
 - domainは他layerを参照しない。
-- applicationはdomainとapplication内部だけを参照し、wire schema、外部service、delivery、
+- setupはdomainとsetup内部だけを参照する。
+- applicationはdomain、setup、application内部だけを参照し、wire schema、外部service、delivery、
   agentsを参照しない。
 - agentsはdomainとapplicationを参照しない。
 - LangChainはアダプター、workerは独立プロセスとして扱う。
@@ -51,10 +53,11 @@
 
 ## ゲーム設定
 
-`GameSetupDocument` v2はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
+`GameSetupDocument` 0.2.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
 同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
-所有しない。役職はidentity faction、victory team、ability IDだけを持つ。applicationが能力種別の
-判別共用体を検証し、domainの`build_game_rules()`が決定的な実行規則へ変換する。
+所有しない。`setup`がプレイヤー generation、用途別seed、checksumを所有し、applicationが入力schemaと
+完全文書を検証する。役職はidentity faction、victory team、ability IDだけを持つ。applicationが
+能力種別の判別共用体を検証し、domainの`build_game_rules()`が決定的な実行規則へ変換する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
 seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは
@@ -70,8 +73,8 @@ role assignmentとprivate strategyを返さない。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
 公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
 公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
-Package rootの`werewolf_agent`は外部利用者向けconvenience APIとし、内部モジュールはroot aliasを
-経由せず、値と型を所有するモジュールを直接参照する。
+Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者と内部モジュールはroot aliasを
+経由せず、値と型を所有する責務別モジュールを直接参照する。
 
 ## Agent意思決定
 
