@@ -114,11 +114,19 @@ def create_embedded_application(
     setup_catalog: SetupTemplateCatalog,
     game_repository: GameRepository | None = None,
     setup_repository: SetupRepository | None = None,
+    access_policy: AccessPolicy | None = None,
+    allow_reveal: bool = False,
     create_llm_mode: Literal["fake", "paid"] = "fake",
     rule_packs: RulePolicyRegistry | None = None,
 ) -> EmbeddedApplication:
     """明示した依存だけからsingle-tenant applicationを構築する."""
-    actor = Actor(user_id=user_id, is_admin=True)
+    if not isinstance(allow_reveal, bool):
+        raise ConfigError("allow_revealはbooleanで指定してください。")
+    if create_llm_mode not in {"fake", "paid"}:
+        raise ConfigError("create_llm_modeはfakeまたはpaidで指定してください。")
+    actor = Actor(user_id=user_id, is_admin=allow_reveal)
+    if game_repository is not None and access_policy is None:
+        raise ConfigError("外部game repositoryにはaccess_policyが必要です。")
     games_store = (
         game_repository
         if game_repository is not None
@@ -140,9 +148,13 @@ def create_embedded_application(
         )
     games = GameApplication(
         context,
-        access_policy=SingleTenantAccessPolicy(
-            user_id=actor.user_id,
-            repository=games_store,
+        access_policy=(
+            access_policy
+            if access_policy is not None
+            else SingleTenantAccessPolicy(
+                user_id=actor.user_id,
+                repository=games_store,
+            )
         ),
     )
     return EmbeddedApplication(

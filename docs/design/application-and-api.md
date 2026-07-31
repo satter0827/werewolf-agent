@@ -30,12 +30,16 @@ game一覧はfacadeが受け取った`Actor.user_id`をqueryへ固定し、リ�
 `InlineCommandExecutor`を一つのbundleとして返す。既定ではin-memoryリポジトリと
 `SingleTenantAccessPolicy`を使用し、状態をモジュールglobalへ保存しない。同じリポジトリを別のfactoryへ
 注入した場合だけ状態を共有する。外部リポジトリとRule Packは同じportへ明示注入する。
+外部gameリポジトリはtenant境界を推測できないため、対応する`AccessPolicy`も必須とする。
+既定の`SingleTenantAccessPolicy`はfactoryが生成した専用in-memoryリポジトリだけへ適用する。
+外部リポジトリの保存対象tenantと`AccessPolicy`の利用者はcomposition rootが一致させる。
 
 Factoryは環境変数、HTTP、database、worker、package resourceを読み込まない。利用者は
 `GameApplicationConfig`と`SetupTemplateCatalog`を実験条件として渡す。Inline実行でも認可、
 期待version、transaction、公開resultの境界は通常の`GameApplication`と同じである。
-固定`Actor`は信頼済みの単一Pythonプロセスを表すadminであり、複数利用者を隔離する用途には
-HTTP APIと永続リポジトリを使用する。
+固定`Actor`は既定では通常利用者とする。完全状態を必要とする信頼済みの単一Pythonプロセスだけが
+`allow_reveal=True`を明示してadmin境界を有効化する。複数利用者を隔離する用途にはHTTP APIと
+永続リポジトリを使用する。
 
 ## HTTP API
 

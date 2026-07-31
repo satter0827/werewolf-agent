@@ -153,7 +153,8 @@ in-memoryとSupabaseが同じリポジトリcontractテストを通ることで�
 in-memory game/setupリポジトリ、共通リポジトリcontract、transaction単位、single-tenant policy、
 inlineコマンドexecutor、application factoryを実装済みである。Factoryを作り直しても注入した
 リポジトリが状態を保持し、HTTP、database、workerなしで作成、参照、一覧、observation、revealを
-実行できる。
+実行できる。revealは既定で無効とし、信頼済みの単一利用者実験だけが明示的に有効化する。
+外部gameリポジトリは、同じtenant境界を表す`AccessPolicy`との同時注入を必須とする。
 
 ### 8. APIとworkerを新しいSDKへ接続する
 

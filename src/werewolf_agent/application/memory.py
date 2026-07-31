@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
+from copy import deepcopy
 from datetime import UTC, datetime
 from threading import RLock
-from typing import Any, Protocol, cast
+from typing import Protocol, cast
 from uuid import UUID, uuid4
 
 from werewolf_agent.application.errors import AppError, ErrorCode, GameNotFoundError, GamePhaseError
@@ -40,15 +41,26 @@ class InMemoryGameRepository(GameRepository):
     def __init__(self, *, owner_user_id: str, clock: Clock | None = None) -> None:
         """一つのownerに固定した空のrepositoryを作成する."""
         self._owner_user_id = owner_user_id
-        self._clock = clock or _utc_now
+        self._clock = clock if clock is not None else _utc_now
         self._games: dict[UUID, StoredGame] = {}
         self._events: dict[UUID, list[StoredGameEvent]] = {}
         self._turns: dict[UUID, list[StoredGameTurn]] = {}
         self._lock = RLock()
 
     def transaction(self) -> Transaction:
-        """Applicationの一更新単位を同じlockで直列化する."""
-        return cast(Transaction, _locked(self._lock))
+        """Applicationの一更新単位を直列化し、失敗時に破棄する."""
+        return cast(Transaction, self._transaction())
+
+    @contextmanager
+    def _transaction(self) -> Iterator[None]:
+        """現在の永続状態を保存し、例外時に更新単位全体を戻す."""
+        with self._lock:
+            snapshot = deepcopy((self._games, self._events, self._turns))
+            try:
+                yield
+            except BaseException:
+                self._games, self._events, self._turns = snapshot
+                raise
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """新しいゲームsnapshotを保存する."""
@@ -219,7 +231,7 @@ class InMemorySetupRepository(SetupRepository):
 
     def __init__(self, *, clock: Clock | None = None) -> None:
         """空のsetup repositoryを作成する."""
-        self._clock = clock or _utc_now
+        self._clock = clock if clock is not None else _utc_now
         self._setups: dict[str, tuple[str, str, list[SavedSetupRevision]]] = {}
         self._lock = RLock()
 
@@ -347,13 +359,6 @@ class InMemorySetupRepository(SetupRepository):
 
 def _optional_text(value: object) -> str | None:
     return value if isinstance(value, str) else None
-
-
-@contextmanager
-def _locked(lock: Any) -> Iterator[None]:
-    """一つのreentrant lockをcontext managerへ変換する."""
-    with lock:
-        yield
 
 
 def _optional_object(value: object) -> dict[str, object] | None:
