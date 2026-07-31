@@ -17,7 +17,7 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 ## 主な機能
 
 - seedと設定を固定してゲームを再現する。
-- manifest付き外部Rule Packを明示登録し、勝敗・投票Policyを一局へ固定する。
+- manifest付き外部Rule Packを明示登録し、能力・投票・勝敗Policyを一局へ固定する。
 - 公開状態、public timeline、本人のobservationを分離する。
 - CLI、Streamlit、workerを同じHTTP APIへ接続する。
 - Fake LLMとlocalhostだけで通常の品質検証を完結する。

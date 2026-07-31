@@ -85,10 +85,13 @@ Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者
 `RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
 
 `RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
-`VictoryPolicy`はimmutableな`GameState`から`WinResult`だけを返す。`VotingPolicy`は検証済みの
-pending voteから`VoteResult`だけを返し、投票の合法性、死亡、death reaction、履歴、eventは
-Domainが所有する。GameはOutcomeを新しい`GameState`へ適用する際に整合性を検証し、
-不正Outcomeまたは例外では元のstateを維持する。能力は挙動を固定した次の縦断sliceで外部化する。
+`AbilityPolicy`は検証済みのnight actionから`NightResolution`だけを返す。能動能力と
+immunity、vulnerabilityの解決意味論を所有し、死亡適用、使用回数、履歴、eventはDomainが
+所有する。`VictoryPolicy`はimmutableな`GameState`から`WinResult`だけを返す。
+`VotingPolicy`は検証済みのpending voteから`VoteResult`だけを返し、投票の合法性、死亡、
+death reaction、履歴、eventはDomainが所有する。Gameは各Outcomeを新しい`GameState`へ
+適用する際に整合性を検証し、不正Outcomeまたは例外では元のstateと乱数状態を維持する。
+夜と投票に跨るdeath reactionは独立した横断Policyとして扱う。
 
 ## Agent意思決定
 

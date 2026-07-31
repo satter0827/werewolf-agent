@@ -8,13 +8,18 @@ from collections.abc import Mapping
 import pytest
 
 from werewolf_agent.domain import (
+    AbilityDefinition,
+    AbilityPolicy,
     Action,
     CompiledRuleSet,
     CoreRulePack,
     Game,
+    GameError,
     GameSetup,
     GameState,
     LocalRules,
+    NightResolution,
+    Phase,
     Player,
     RoleCatalog,
     RoleDefinition,
@@ -89,6 +94,7 @@ class ExternalVictoryPack:
         return CompiledRuleSet(
             config=core.config,
             manifest=self.manifest,
+            ability_policy=core.ability_policy,
             voting_policy=core.voting_policy,
             victory_policy=ImmediateVillageVictory(),
         )
@@ -164,11 +170,55 @@ class InvalidVotingPolicy:
         )
 
 
+class RedirectAbilityPolicy:
+    """提出された攻撃先ではなくp3を死亡させる外部test policy."""
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """入力や乱数を変更せず外部意味論のOutcomeを返す."""
+        del state, pending_actions, random
+        return NightResolution(attacked_player_ids=("p2",), killed_player_ids=("p3",))
+
+
+class InvalidAbilityPolicy:
+    """存在しないplayerを死亡させるfault policy."""
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """Domain invariantに反するOutcomeを返す."""
+        del state, pending_actions
+        random.choice(("consumed",))
+        return NightResolution(killed_player_ids=("unknown",))
+
+
+class ExcessPassiveUsePolicy:
+    """設定済み上限を超える受動能力使用を返すfault policy."""
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """同じ一回制限能力を二回使用したOutcomeを返す."""
+        del state, pending_actions, random
+        return NightResolution(passive_uses=(("p2", "immunity"), ("p2", "immunity")))
+
+
 def _game_with_voting_policy(policy: VotingPolicy) -> Game:
     core = CoreRulePack().compile(_definition())
     rules = CompiledRuleSet(
         config=core.config,
         manifest=ExternalVictoryPack().manifest,
+        ability_policy=core.ability_policy,
         voting_policy=policy,
         victory_policy=core.victory_policy,
     )
@@ -190,6 +240,81 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
         Action.vote("p3", "p1"),
     ):
         game.submit(action)
+    return game
+
+
+def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
+    definition = RuleSetDefinition(
+        player_count=3,
+        role_counts={"villager": 2, "werewolf": 1},
+        rules=LocalRules(
+            day_speech_limit_per_player=1,
+            allow_self_vote=False,
+            allow_vote_revision=False,
+            allow_night_action_revision=False,
+            vote_tie_resolution="no_elimination",
+            starting_phase="night",
+            reveal_role_on_death=False,
+        ),
+        roles=RoleCatalog(
+            {
+                "villager": RoleDefinition("village", "village", ("immunity",)),
+                "werewolf": RoleDefinition("werewolf", "werewolf", ("attack",)),
+            }
+        ),
+        abilities={
+            "attack": AbilityDefinition(
+                kind="attack",
+                phase=Phase.NIGHT,
+                target_policy="other_alive_non_faction",
+                start_day=1,
+                max_uses=None,
+                result_visibility="none",
+                resolution_priority=100,
+                allow_repeat_target=True,
+                enabled_first_night=True,
+                result_detail=None,
+                knowledge_mode=None,
+                tie_resolution="no_action",
+                source_kinds=(),
+            ),
+            "immunity": AbilityDefinition(
+                kind="immunity",
+                phase=Phase.NIGHT,
+                target_policy="none",
+                start_day=1,
+                max_uses=1,
+                result_visibility="none",
+                resolution_priority=100,
+                allow_repeat_target=True,
+                enabled_first_night=True,
+                result_detail=None,
+                knowledge_mode=None,
+                tie_resolution=None,
+                source_kinds=("attack",),
+            ),
+        },
+    )
+    core = CoreRulePack().compile(definition)
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=ExternalVictoryPack().manifest,
+        ability_policy=policy,
+        voting_policy=core.voting_policy,
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup(
+            (
+                Player("p1", "Wolf", "werewolf"),
+                Player("p2", "Alice", "villager"),
+                Player("p3", "Bob", "villager"),
+            )
+        ),
+        rules=rules,
+        random=random.Random(7),
+    )
+    game.submit(Action.use_ability("p1", "attack", "p2"))
     return game
 
 
@@ -232,6 +357,7 @@ def test_invalid_external_outcome_is_rejected_atomically() -> None:
     rules = CompiledRuleSet(
         config=core.config,
         manifest=ExternalVictoryPack().manifest,
+        ability_policy=core.ability_policy,
         voting_policy=core.voting_policy,
         victory_policy=InvalidVictoryPolicy(),
     )
@@ -277,3 +403,37 @@ def test_invalid_voting_outcome_is_rejected_atomically() -> None:
 
     assert game.snapshot() is before
     assert random_source.getstate() == random_state
+
+
+def test_external_ability_policy_changes_night_resolution_without_mutating_directly() -> None:
+    game = _game_with_ability_policy(RedirectAbilityPolicy())
+
+    events = game.advance(random.Random(13))
+
+    assert game.snapshot().players["p2"].is_alive
+    assert not game.snapshot().players["p3"].is_alive
+    assert game.snapshot().history.nights[-1].attacked_player_id == "p2"
+    assert events[0].event_type == "night_resolved"
+
+
+def test_invalid_ability_outcome_is_rejected_atomically() -> None:
+    game = _game_with_ability_policy(InvalidAbilityPolicy())
+    before = game.snapshot()
+    random_source = random.Random(13)
+    random_state = random_source.getstate()
+
+    with pytest.raises(GameError, match="Unknown player id"):
+        game.advance(random_source)
+
+    assert game.snapshot() is before
+    assert random_source.getstate() == random_state
+
+
+def test_ability_outcome_cannot_exceed_passive_use_limit() -> None:
+    game = _game_with_ability_policy(ExcessPassiveUsePolicy())
+    before = game.snapshot()
+
+    with pytest.raises(ValueError, match="exceeds max uses"):
+        game.advance(random.Random(13))
+
+    assert game.snapshot() is before
