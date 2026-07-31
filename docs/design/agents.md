@@ -40,12 +40,14 @@ scriptedとfaultは通常品質、Simulationのfallback、timeout、close検証�
 
 ## LLMプロバイダー境界
 
-`agents.models`と`agents.ports`は既存LLM pipelineの内部DTOを所有する。`adapters.llm`は
-LangChain型への変換とFake fixtureを所有する。providerはcomposition rootで一度だけ選び、その後はFakeと実LLMが
+`adapters.llm`はLLM pipelineのPydantic DTO、provider port、LangChain型への変換、Fake fixtureを
+所有する。`werewolf_agent.agents`へPydanticやLangChainを持ち込まない。providerはcomposition rootで
+一度だけ選び、その後はFakeと実LLMが
 同じchat request、応答正規化、schema検証、合法手検証、fallbackを通る。
 
 意思決定は`観測正規化 → context構築 → model呼出し → JSON正規化 → schema・合法手検証
-→ fallback → trace`の明示的なpipelineである。LLM自身が利用可能なactionと合法対象から
+→ trace`の明示的なpipelineである。LLMアダプター内で検出した旧pipelineのfallback結果は
+公開Sessionでは成功とせず`AgentDecisionError`へ変換する。LLM自身が利用可能なactionと合法対象から
 一つを選ぶ。完全なactionが一意で発言や対象を必要としない場合だけmodel呼出しを省略する。
 `quick`、`standard`、`deep`は参照event上限と最大出力だけを変え、呼出しは一回に固定する。
 発言の`focus_id`と`evidence_id`は公開発言記録へ保存し、次の発言・投票で本人を含む全プレイヤーが
@@ -56,6 +58,8 @@ LangChain型への変換とFake fixtureを所有する。providerはcomposition 
 
 `adapters/agents/game_driver.py`がapplicationとagentsを接続する唯一の変換点である。
 公開状態をobservationに変換し、decisionをapplication actionに変換する。
+プレイヤーIDごとの外部`AgentFactory`を明示注入でき、未指定プレイヤーだけを設定済みLangChain Factoryへ
+接続する。Sessionの生成とclose、最終合法性検証、決定的fallback、`DecisionTrace`はdriverが所有する。
 agentsはdomainとapplicationに依存せず、applicationもagentsに依存しない。
 
 ## worker

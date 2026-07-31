@@ -232,14 +232,19 @@ def test_replay_verifies_every_create_command_checksum() -> None:
 
 
 def test_standard_sdk_uses_only_the_standard_library_and_owned_modules() -> None:
-    """Domainとsetupへvalidation frameworkや提供層を持ち込まない。"""
+    """Domain、setup、公開Agent SDKへframeworkや提供層を持ち込まない。"""
+    roots = {
+        PACKAGE / "agents": ("werewolf_agent.agents",),
+        PACKAGE / "domain": ("werewolf_agent.domain",),
+        PACKAGE / "setup": ("werewolf_agent.domain", "werewolf_agent.setup"),
+    }
     offenders = [
         (path.relative_to(ROOT), imported)
-        for root in (PACKAGE / "domain", PACKAGE / "setup")
+        for root, owned_modules in roots.items()
         for path in root.rglob("*.py")
         for imported in _imports(path)
         if imported.split(".", maxsplit=1)[0] not in sys.stdlib_module_names
-        and not imported.startswith(("werewolf_agent.domain", "werewolf_agent.setup"))
+        and not imported.startswith(owned_modules)
     ]
     assert not offenders
 

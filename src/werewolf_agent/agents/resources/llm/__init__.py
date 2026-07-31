@@ -1,1 +1,0 @@
-"""Packaged LLM provider resources."""

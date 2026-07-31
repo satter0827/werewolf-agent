@@ -13,7 +13,7 @@ from werewolf_agent.adapters.llm.messages import (
     MESSAGE_NO_TARGET,
     MESSAGE_NO_VALID_VOTE_TARGETS,
 )
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentDecision,

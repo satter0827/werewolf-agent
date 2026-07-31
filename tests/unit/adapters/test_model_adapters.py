@@ -13,7 +13,7 @@ from werewolf_agent.adapters.llm.model_adapters import (
     LangChainChatDecisionModel,
     LlmModelInvocationError,
 )
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentModelDecision,
     AgentObservation,
     DecisionTask,

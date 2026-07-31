@@ -1,7 +1,11 @@
 import pytest
 from pydantic import ValidationError
 
-from werewolf_agent.agents.models import AgentActionType, AgentAvailableAction, AgentModelDecision
+from werewolf_agent.adapters.llm.models import (
+    AgentActionType,
+    AgentAvailableAction,
+    AgentModelDecision,
+)
 
 
 def test_agent_ability_decision_uses_generic_action_and_ability_id() -> None:

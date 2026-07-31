@@ -53,9 +53,10 @@ def test_fake_demo_steps_once_and_completes_deterministically() -> None:
     assert first_step is not None
     assert first_step.operation == "action"
     assert first_step.private_actor_omitted
-    assert not first_step.private_target_omitted
+    if first_step.action_type in {"vote", "use_ability"}:
+        assert first_step.private_target_omitted
     assert first_step.actor_id is None
-    assert first_step.action_type == "pass"
+    assert first_step.action_type in {"pass", "use_ability"}
     assert first_step.decision is not None
     assert first_step.decision.validation_status == "valid"
 

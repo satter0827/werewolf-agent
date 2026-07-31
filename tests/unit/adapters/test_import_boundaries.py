@@ -31,3 +31,24 @@ def test_adapter_packages_do_not_eagerly_load_optional_integrations() -> None:
     )
 
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+def test_llm_configuration_does_not_eagerly_load_langchain() -> None:
+    """API-only構成がLLM extraなしで設定型をimportできる."""
+    checked = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import sys; "
+                "import werewolf_agent.adapters.llm.configuration; "
+                "assert not any(name == 'langchain' or name.startswith('langchain_') "
+                "for name in sys.modules)"
+            ),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert checked.returncode == 0, checked.stdout + checked.stderr

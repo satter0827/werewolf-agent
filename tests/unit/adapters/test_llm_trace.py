@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
 from werewolf_agent.adapters.supabase.llm_trace import SupabaseLlmTraceSink
-from werewolf_agent.agents.tracing import LlmInvocationTrace
 
 
 class RecordingConnection:
