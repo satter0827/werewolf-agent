@@ -12,6 +12,7 @@ from werewolf_agent.application.errors import (
     ResourceNotFoundError,
 )
 from werewolf_agent.application.facade import GameApplication
+from werewolf_agent.application.memory import InMemoryGameRepository, InMemorySetupRepository
 from werewolf_agent.application.models import (
     AdvanceGameResult,
     ApplicationContext,
@@ -83,6 +84,8 @@ __all__ = [
     "GameStatus",
     "GameTimelineResult",
     "GeneratedPlayerInput",
+    "InMemoryGameRepository",
+    "InMemorySetupRepository",
     "InternalError",
     "OperationQueue",
     "PlayerActionCommand",

@@ -7,7 +7,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_serializer, field_validator, model_validator
 
 from werewolf_agent.application.constants import (
     DEFAULT_DELIBERATION_LEVEL,
@@ -62,6 +62,11 @@ class CreateGameCommand(ApplicationModel):
     llm_mode: Literal["fake", "paid"] = "fake"
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
     rule_pack_provider_id: str = CORE_RULE_PACK_ID
+
+    @field_serializer("setup")
+    def serialize_setup(self, setup: GameSetupDocument) -> dict[str, object]:
+        """Immutable setupをJSON互換mappingとして返す."""
+        return setup.to_mapping()
 
     @field_validator("rule_pack_provider_id")
     @classmethod
