@@ -1,9 +1,10 @@
 # Werewolf Agent
 
-Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かすPython
-バックエンドである。決定的なドメインコアが完全状態とルールを管理し、FastAPI、CLI、
-Streamlit、workerを明示した境界で接続する。公開状態、public timeline、本人のobservationを分離し、
-既定のFakeListChatModelだけで外部APIなしに再現できる。
+Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かす決定的な
+Python SDKである。標準インストールは第三者パッケージに依存せず、完全状態とルールを管理する
+domain coreを提供する。FastAPI、CLI、Streamlit、workerはextraとして明示した境界で接続する。
+公開状態、public timeline、本人のobservationを分離し、既定のFakeListChatModelだけで
+外部APIなしに再現できる。
 
 Streamlitが唯一のブラウザーUIである。CLIとStreamlitは同じHTTP APIを使い、Supabaseが
 Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
@@ -28,6 +29,18 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 ```powershell
 python -m pip install .
 ```
+
+標準インストールにruntimeの第三者依存はない。提供層を使う場合は利用単位のextraを指定する。
+
+```powershell
+python -m pip install ".[cli]"
+python -m pip install ".[api]"
+python -m pip install ".[streamlit]"
+python -m pip install ".[worker]"
+```
+
+`application`はuse case contract、`llm`はLangChainアダプターだけを組み込む場合に指定する。
+複数の提供層を同じ環境で使う場合は、`".[api,cli,streamlit,worker]"`のようにまとめて指定する。
 
 主要なdomain型は`werewolf_agent.domain`からimportする。次の例は外部serviceや設定fileを使わずに
 3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を

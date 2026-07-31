@@ -4,7 +4,7 @@ import pytest
 
 from werewolf_agent.adapters import factory
 from werewolf_agent.adapters.http import HttpGameClient
-from werewolf_agent.adapters.supabase import SupabaseSession
+from werewolf_agent.adapters.supabase.session_store import SupabaseSession
 from werewolf_agent.contracts import AppError
 from werewolf_agent.settings import AppSettings
 

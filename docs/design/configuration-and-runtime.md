@@ -47,6 +47,10 @@ queue障害時も既存operationの参照を維持する。
 | CLI | `werewolf-agent` | 診断とHTTP client操作 |
 | Streamlit | `streamlit run .../app.py` | ブラウザーUI |
 
+標準のPython packageは第三者runtime依存を持たず、`werewolf_agent.domain`を単独で利用できる。
+提供層は`application`、`api`、`cli`、`llm`、`streamlit`、`worker`のextraで導入する。
+console scriptは対応するextraを遅延して読み込み、不足時は導入コマンドを表示する。
+
 起動はconsole entrypoint、VS Code task、Docker Composeのいずれでも同じ設定モデルを
 使う。起動手段ごとの設定コピーを作らない。
 

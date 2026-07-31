@@ -12,7 +12,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /workspace
 
 COPY pyproject.toml uv.lock README.md ./
-RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
+RUN uv sync --frozen --group dev --all-extras --no-install-project
 RUN python -m playwright install --with-deps chromium
 
 CMD ["python", "-m", "pytest", "scripts/browser/scenarios/test_streamlit.py"]
