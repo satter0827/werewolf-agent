@@ -12,7 +12,6 @@ from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_t
 from werewolf_agent.agents.models import AgentScenario, DeliberationLevel, PlayerProfile
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.domain import (
     EventVisibility,
     Game,
@@ -24,7 +23,12 @@ from werewolf_agent.domain import (
     RuleSet,
     build_game_rules,
 )
-from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
+from werewolf_agent.setup import (
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
+)
 
 StopReason = Literal["finished", "max_actions", "max_phases"]
 Operation = Literal["action", "advance"]
@@ -145,12 +149,10 @@ class FakeGameDemo:
         rule_definition = rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.model_dump(mode="json"),
-            roles={
-                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
-            },
+            rules=mechanics.rules.to_mapping(),
+            roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
             abilities={
-                ability_id: ability.model_dump(mode="json")
+                ability_id: ability.to_mapping()
                 for ability_id, ability in mechanics.abilities.items()
             },
         )

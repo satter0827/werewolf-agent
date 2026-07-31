@@ -34,11 +34,15 @@ from werewolf_agent.agents.models import (
 )
 from werewolf_agent.agents.tracing import LlmInvocationTrace
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
 from werewolf_agent.settings import get_settings
-from werewolf_agent.setup import checksum_payload, generate_players, namespace_seed
+from werewolf_agent.setup import (
+    GameSetupDocument,
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
+)
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
@@ -691,11 +695,9 @@ def _run_preset(
     rule_definition = rule_definition_from_values(
         player_count=sum(mechanics.role_counts.values()),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.model_dump(mode="json"),
-        roles={key: value.model_dump(mode="json") for key, value in mechanics.roles.items()},
-        abilities={
-            key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
-        },
+        rules=mechanics.rules.to_mapping(),
+        roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
+        abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
     )
     players = generate_players(
         setup.player_generation,
@@ -716,9 +718,7 @@ def _run_preset(
         random=role_rng,
     )
     trace_sink = InMemoryTraceSink(trace_callback)
-    contexts = _game_contexts(
-        setup, game, setup_checksum=checksum_payload(setup.model_dump(mode="json"))
-    )
+    contexts = _game_contexts(setup, game, setup_checksum=checksum_payload(setup.to_mapping()))
     factory = langchain_agent_factory(
         config,
         definitions=llm_definitions,
@@ -771,7 +771,7 @@ def _run_preset(
         contexts = _game_contexts(
             setup,
             game,
-            setup_checksum=checksum_payload(setup.model_dump(mode="json")),
+            setup_checksum=checksum_payload(setup.to_mapping()),
         )
         factory = langchain_agent_factory(
             config,
@@ -827,8 +827,8 @@ def _run_preset(
         "average_prompt_characters": round(prompt_characters / len(traces), 3) if traces else 0,
         "response_characters": response_characters,
         "gameplay_metrics": _gameplay_metrics(traces),
-        "setup_checksum": checksum_payload(setup.model_dump(mode="json")),
-        "mechanics_checksum": checksum_payload(mechanics.model_dump(mode="json")),
+        "setup_checksum": checksum_payload(setup.to_mapping()),
+        "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
         "public_timeline": public_timeline,
         "private_traces": traces,
     }
@@ -938,8 +938,8 @@ def _game_contexts(
 ) -> dict[str, AgentGameContext]:
     snapshot = game.snapshot()
     mechanics = setup.mechanics
-    mechanics_checksum = checksum_payload(mechanics.model_dump(mode="json"))
-    rules = mechanics.rules.model_dump(mode="json")
+    mechanics_checksum = checksum_payload(mechanics.to_mapping())
+    rules = mechanics.rules.to_mapping()
     contexts: dict[str, AgentGameContext] = {}
     for player in snapshot.players.values():
         if player.role is None:

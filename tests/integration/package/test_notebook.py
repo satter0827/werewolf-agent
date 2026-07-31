@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tomllib
 import venv
 from pathlib import Path
 
@@ -55,6 +57,23 @@ def test_wheel_installs_and_exposes_the_owned_domain_api(
     environment, python, runtime_environment = installed_wheel_environment
     package_environment = runtime_environment.copy()
     package_environment.pop("PYTHONPATH", None)
+    setup_path = environment.parent / "setup.json"
+    setup_path.write_text(
+        json.dumps(
+            tomllib.loads(
+                (
+                    ROOT
+                    / "src"
+                    / "werewolf_agent"
+                    / "application"
+                    / "resources"
+                    / "setups"
+                    / "standard_6.toml"
+                ).read_text(encoding="utf-8")
+            )
+        ),
+        encoding="utf-8",
+    )
 
     checked = subprocess.run(
         [
@@ -63,11 +82,12 @@ def test_wheel_installs_and_exposes_the_owned_domain_api(
             (
                 "from importlib.metadata import version; "
                 "from pathlib import Path; "
+                "import json; "
                 "import sys; "
                 "from werewolf_agent.domain import "
                 "Action, Game, GameSetup, Player, build_game_rules; "
                 "from werewolf_agent.setup import "
-                "PlayerGenerationDefinition, PlayerIdentityDefinition, "
+                "GameSetupDocument, PlayerGenerationDefinition, PlayerIdentityDefinition, "
                 "PrivateStrategyDefinition, PublicPersonaDefinition, generate_players; "
                 "import werewolf_agent; "
                 "generation = PlayerGenerationDefinition("
@@ -77,6 +97,14 @@ def test_wheel_installs_and_exposes_the_owned_domain_api(
                 "'analytic', 'low', 'claims'),)); "
                 "assert generate_players(generation, player_count=1, seed=41) == "
                 "generate_players(generation, player_count=1, seed=41); "
+                "setup = GameSetupDocument.from_mapping("
+                "json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))); "
+                "first = generate_players(setup.player_generation, player_count=6, seed=41); "
+                "second = generate_players(setup.player_generation, player_count=6, seed=41); "
+                "assert first == second; "
+                "rules = setup.to_rule_definition(); "
+                "assert rules.player_count == 6; "
+                "assert rules.role_counts == setup.mechanics.role_counts; "
                 "assert Path(werewolf_agent.__file__).resolve().is_relative_to("
                 "Path(sys.argv[1]).resolve()); "
                 "assert all((Action, Game, GameSetup, Player, build_game_rules)); "
@@ -85,6 +113,7 @@ def test_wheel_installs_and_exposes_the_owned_domain_api(
                 "assert werewolf_agent.__version__ == version('werewolf-agent')"
             ),
             str(environment),
+            str(setup_path),
         ],
         cwd=environment.parent,
         env=package_environment,

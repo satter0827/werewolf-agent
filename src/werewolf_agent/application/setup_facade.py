@@ -24,7 +24,6 @@ from werewolf_agent.application.models import (
 )
 from werewolf_agent.application.ports import SetupRepository
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_options import (
     prepare_create_command,
     preview_players,
@@ -33,7 +32,7 @@ from werewolf_agent.application.setup_options import (
 )
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.validation import non_blank
-from werewolf_agent.setup import checksum_payload
+from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 
 class SetupApplication:
@@ -196,8 +195,8 @@ class SetupApplication:
 
 def _checksums(document: GameSetupDocument) -> tuple[str, str]:
     return (
-        checksum_payload(document.model_dump(mode="json")),
-        checksum_payload(document.mechanics.model_dump(mode="json")),
+        checksum_payload(document.to_mapping()),
+        checksum_payload(document.mechanics.to_mapping()),
     )
 
 

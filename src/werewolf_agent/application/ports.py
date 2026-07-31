@@ -15,9 +15,9 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.types import GameStatus
+from werewolf_agent.setup import GameSetupDocument
 
 
 class GameRepository(Protocol):

@@ -7,7 +7,6 @@ from typing import Any
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.rules import rule_definition_from_values
 from werewolf_agent.domain import Game, GameSetup, build_game_rules
 from werewolf_agent.domain.state import (
     Action,
@@ -16,7 +15,7 @@ from werewolf_agent.domain.state import (
     EventVisibility,
     Player,
 )
-from werewolf_agent.setup import generate_players
+from werewolf_agent.setup import generate_players, rule_definition_from_values
 
 MAX_PHASES = 64
 
@@ -30,12 +29,10 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     rule_definition = rule_definition_from_values(
         player_count=player_count,
         role_counts=role_counts,
-        rules=setup.mechanics.rules.model_dump(mode="json"),
-        roles={
-            role_id: role.model_dump(mode="json") for role_id, role in setup.mechanics.roles.items()
-        },
+        rules=setup.mechanics.rules.to_mapping(),
+        roles={role_id: role.to_mapping() for role_id, role in setup.mechanics.roles.items()},
         abilities={
-            ability_id: ability.model_dump(mode="json")
+            ability_id: ability.to_mapping()
             for ability_id, ability in setup.mechanics.abilities.items()
         },
     )

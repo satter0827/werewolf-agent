@@ -98,9 +98,10 @@ game.submit(Action.speech("p1", "状況を確認します。"))
 observation = game.view_for("p1")
 ```
 
-`werewolf_agent.setup`は第三者packageに依存せず、用途別seed、正規checksum、immutableな
-プレイヤー generation定義を提供する。同じ定義とseedを`generate_players()`へ渡すと、同じ公開personaと
-private strategyを持つrosterを再生成できる。
+`werewolf_agent.setup`は第三者packageに依存せず、完全setupの検証、Domain Rule Definition変換、
+用途別seed、正規checksum、immutableなプレイヤー generation定義を提供する。
+`GameSetupDocument.from_mapping()`で完全setupを構築し、同じ定義とseedを`generate_players()`へ
+渡すと、同じ公開personaとprivate strategyを持つrosterを再生成できる。
 
 設定済みの6人ゲームとFakeListChatModelを使った一連の操作は
 [quickstart Notebook](notebooks/quickstart.ipynb)で確認できる。Notebook専用コードは製品の

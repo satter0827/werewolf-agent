@@ -15,7 +15,7 @@ from werewolf_agent.application.setup_catalog import (
     SetupTemplateCatalog,
     SetupTemplateCatalogDefinition,
 )
-from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.setup import GameSetupDocument
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
@@ -109,7 +109,7 @@ def load_setup_template_catalog() -> SetupTemplateCatalog:
         load_packaged_toml(SETUPS_PACKAGE, SETUP_CATALOG_FILE)
     )
     documents = {
-        template_id: GameSetupDocument.model_validate(
+        template_id: GameSetupDocument.from_mapping(
             load_packaged_toml(SETUPS_PACKAGE, metadata.file)
         )
         for template_id, metadata in definition.templates.items()

@@ -14,7 +14,6 @@ from werewolf_agent.application.constants import (
     NarrationMode,
 )
 from werewolf_agent.application.models.base import ApplicationModel
-from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
     Faction,
     GamePhase,
@@ -23,6 +22,7 @@ from werewolf_agent.application.types import (
     RoleId,
     Winner,
 )
+from werewolf_agent.setup import LocalRulesDefinition
 
 if TYPE_CHECKING:
     pass

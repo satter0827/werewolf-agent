@@ -21,10 +21,9 @@ from werewolf_agent.application.messages import (
 )
 from werewolf_agent.application.models.base import ApplicationModel
 from werewolf_agent.application.models.results import GameEventCreate
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.types import GamePhase, GameStatus
 from werewolf_agent.application.validation import generated_player_ids, non_blank
-from werewolf_agent.setup import checksum_payload
+from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 if TYPE_CHECKING:
     from werewolf_agent.domain import Game, GameEvent
@@ -83,8 +82,8 @@ class CreateGameCommand(ApplicationModel):
         if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
             raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
         expected_checksums = {
-            "setup_checksum": checksum_payload(self.setup.model_dump(mode="json")),
-            "mechanics_checksum": checksum_payload(self.setup.mechanics.model_dump(mode="json")),
+            "setup_checksum": checksum_payload(self.setup.to_mapping()),
+            "mechanics_checksum": checksum_payload(self.setup.mechanics.to_mapping()),
             "roster_checksum": checksum_payload(
                 [player.model_dump(mode="json") for player in self.players]
             ),
