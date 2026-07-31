@@ -142,6 +142,10 @@ class PreparedAdvanceGame:
     config: dict[str, Any]
     game: Game
     created_at: datetime
+    phase_seed: int
+    prepared_phase: str
+    prepared_day: int
+    domain_transition_complete: bool = False
     domain_events: tuple[GameEvent, ...] = ()
 
 

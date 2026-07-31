@@ -63,6 +63,8 @@ workerはqueue取得、operation dispatch、transaction lifecycle、完了時の
 調整する。PGMQ操作、参加者確認、完了・失敗記録、private view materializeのSQLは
 `SupabaseWorkerStore`が所有する。自動進行は準備、DB外計算、version付きcommitへ分け、
 古い計算結果を保存しない。commitもapplication facadeがactorを認可してから保存する。
+DB外計算ではworkerがAgent runtimeを構築し、Simulationがaction適用とphase進行を一度だけ行う。
+applicationはtransition完了済みのGameから保存用projectionを作り、phaseを重ねて進めない。
 APIとworkerはプロセス所有poolからconnectionを借用し、
 リポジトリとstoreはtransactionを開始しない。
 

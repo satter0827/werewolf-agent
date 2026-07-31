@@ -3,11 +3,10 @@
 from __future__ import annotations
 
 import logging
-import time
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from importlib import import_module
-from typing import Any, Protocol
+from typing import Any
 
 import httpx
 
@@ -19,8 +18,7 @@ from werewolf_agent.adapters.agents.constants import (
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
 from werewolf_agent.adapters.agents.game_context import (
-    agent_metadata_from_game_context,
-    build_agent_game_contexts,
+    SetupAgentMetadataProvider,
 )
 from werewolf_agent.adapters.agents.messages import (
     message_langchain_openai_required,
@@ -36,26 +34,10 @@ from werewolf_agent.adapters.llm.model_adapters import (
     FakeDecisionModel,
     LangChainChatDecisionModel,
 )
-from werewolf_agent.adapters.llm.models import (
-    AgentGameContext,
-    DeliberationLevel,
-    PlayerProfile,
-)
+from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
 from werewolf_agent.adapters.llm.tracing import LlmTraceSink, NullLlmTraceSink
 from werewolf_agent.adapters.resources import LlmDefinitions
-from werewolf_agent.agents import (
-    AgentContext,
-    AgentDecisionError,
-    AgentFactory,
-    AgentObservation,
-    DecisionOption,
-    DecisionRequest,
-    DecisionResponse,
-    DecisionTrace,
-    HeuristicAgentFactory,
-    ObservedPlayer,
-    PublicTimelineEvent,
-)
+from werewolf_agent.agents import AgentFactory
 from werewolf_agent.application.handlers import (
     commit_prepared_advance,
     prepare_advance_game,
@@ -76,7 +58,17 @@ from werewolf_agent.contracts import (
     LLM_PROVIDER_ERROR_NO_LOADED_MODEL,
     LlmProviderError,
 )
-from werewolf_agent.domain import Action, GameView
+from werewolf_agent.domain import GameEvent, GameState, Phase, PlayerStatus
+from werewolf_agent.simulation import (
+    DecisionTraceSink,
+    NullDecisionTraceSink,
+    PlayerController,
+    SimulationLimits,
+    SimulationRunner,
+    SimulationSpec,
+    SimulationStepKind,
+    SimulationStopReason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -90,21 +82,6 @@ class AgentRuntime:
     trace_sink: LlmTraceSink = field(default_factory=NullLlmTraceSink)
     agent_factories: Mapping[str, AgentFactory] = field(default_factory=dict)
     decision_trace_sink: DecisionTraceSink = field(default_factory=lambda: NullDecisionTraceSink())
-
-
-class DecisionTraceSink(Protocol):
-    """一回のAgent意思決定traceを受け取る外部adapter境界."""
-
-    def record_decision(self, trace: DecisionTrace) -> None:
-        """Chain-of-thoughtを含まない意思決定traceを保存する."""
-
-
-class NullDecisionTraceSink:
-    """Decision traceを破棄する既定sink."""
-
-    def record_decision(self, trace: DecisionTrace) -> None:
-        """何も保存しない."""
-        _ = trace
 
 
 def advance_game(
@@ -140,15 +117,14 @@ def drive_prepared_game(
         str(player_id): str(profile_id)
         for player_id, profile_id in dict(prepared.config.get("player_profile_ids") or {}).items()
     }
-    game_contexts = _agent_game_contexts(prepared, snapshot)
+    metadata_provider = _metadata_provider(prepared)
     profiles: dict[str, PlayerProfile] | None = None
     provider: LangChainDecisionProvider | None = None
-    events = []
+    controllers: dict[str, PlayerController] = {}
     for index, player in enumerate(snapshot.players.values()):
-        if player.status.value != "alive" or player.id in manual_player_ids:
-            continue
         observation = game.view_for(player.id)
-        if not observation.available_actions:
+        if player.id in manual_player_ids or not observation.available_actions:
+            controllers[player.id] = PlayerController(player.id)
             continue
         decision_seed = (prepared.seed or 0) + prepared.version * 1009 + index * 131
         factory = runtime.agent_factories.get(player.id)
@@ -173,37 +149,57 @@ def drive_prepared_game(
                     profile_ids_by_player=profile_ids,
                 ),
             )
-        context = AgentContext(
-            session_id=f"{prepared.game_id}:{prepared.version}:{player.id}",
-            game_id=prepared.game_id,
-            player_id=player.id,
-            session_seed=decision_seed,
-        )
-        request = _decision_request_from_game(
-            context,
-            observation,
-            game_context=game_contexts.get(player.id),
-            decision_seed=decision_seed,
-        )
-        action = _decide_action(
+        controllers[player.id] = PlayerController(
+            player.id,
             factory,
-            context,
-            request,
-            trace_sink=runtime.decision_trace_sink,
+            metadata_provider=metadata_provider,
         )
-        events.extend(game.submit(action))
-        snapshot = game.snapshot()
-        logger.debug(
-            "game.agent_action.generated",
-            extra={
-                "event_action": "game.agent_action.generated",
-                "game_phase": snapshot.phase.value,
-                "game_day": snapshot.day,
-                "game_version": prepared.version,
-                "agent_type": "llm",
-            },
-        )
-    return replace(prepared, domain_events=tuple(events))
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            simulation_id=f"worker:{prepared.game_id}:{prepared.version}",
+            game_id=prepared.game_id,
+            seed=prepared.seed or 0,
+            controllers=controllers,
+            limits=SimulationLimits(
+                max_actions=_phase_action_limit(snapshot),
+                max_phases=1,
+            ),
+            phase_seed=prepared.phase_seed,
+            speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+        ),
+        trace_sink=runtime.decision_trace_sink,
+    )
+    events: list[GameEvent] = []
+    try:
+        while True:
+            step = session.step()
+            events.extend(step.events)
+            if step.kind is SimulationStepKind.AGENT_ACTION:
+                current = game.snapshot()
+                logger.debug(
+                    "game.agent_action.generated",
+                    extra={
+                        "event_action": "game.agent_action.generated",
+                        "game_phase": current.phase.value,
+                        "game_day": current.day,
+                        "game_version": prepared.version,
+                        "agent_type": "llm",
+                    },
+                )
+            if step.kind is SimulationStepKind.PHASE_ADVANCED:
+                break
+            if step.stop_reason is not None:
+                if step.stop_reason is SimulationStopReason.WAITING_FOR_MANUAL:
+                    raise RuntimeError("prepared advance unexpectedly requires manual input")
+                raise RuntimeError(f"prepared advance stopped: {step.stop_reason}")
+    finally:
+        session.close()
+    return replace(
+        prepared,
+        domain_events=tuple(events),
+        domain_transition_complete=True,
+    )
 
 
 def langchain_agent_factory(
@@ -374,218 +370,14 @@ def _is_lmstudio_auto_connection_error(exc: LlmProviderError) -> bool:
     }
 
 
-def _decide_action(
-    factory: AgentFactory,
-    context: AgentContext,
-    request: DecisionRequest,
-    *,
-    trace_sink: DecisionTraceSink,
-) -> Action:
-    """一つのSessionで決定し、失敗時だけ決定的fallbackを適用する."""
-    started_at = time.perf_counter()
-    session = None
-    try:
-        try:
-            session = factory.create(context)
-            response = session.decide(request)
-            _require_legal_response(request, response)
-        except Exception as exc:
-            error = (
-                exc
-                if isinstance(exc, AgentDecisionError)
-                else AgentDecisionError(
-                    "agent_decision_failed",
-                    {"error_type": type(exc).__name__},
-                )
-            )
-            fallback_factory = HeuristicAgentFactory()
-            fallback_session = fallback_factory.create(context)
-            try:
-                response = fallback_session.decide(request)
-                _require_legal_response(request, response)
-            finally:
-                fallback_session.close()
-            trace_sink.record_decision(
-                DecisionTrace(
-                    decision_id=request.decision_id,
-                    agent_spec=factory.spec,
-                    response=response,
-                    latency_ms=_elapsed_milliseconds(started_at),
-                    fallback_used=True,
-                    error_code=error.code,
-                    diagnostics=error.diagnostics,
-                )
-            )
-        else:
-            trace_sink.record_decision(
-                DecisionTrace(
-                    decision_id=request.decision_id,
-                    agent_spec=factory.spec,
-                    response=response,
-                    latency_ms=_elapsed_milliseconds(started_at),
-                )
-            )
-        return _game_action_from_response(context.player_id, response)
-    finally:
-        if session is not None:
-            session.close()
-
-
-def decide_game_action(
-    factory: AgentFactory,
-    *,
-    context: AgentContext,
-    observation: GameView,
-    decision_seed: int,
-    game_context: AgentGameContext | None = None,
-    trace_sink: DecisionTraceSink | None = None,
-) -> Action:
-    """直接gameを駆動する実験環境向けに標準Agent Sessionを一回実行する."""
-    request = _decision_request_from_game(
-        context,
-        observation,
-        game_context=game_context,
-        decision_seed=decision_seed,
-    )
-    return _decide_action(
-        factory,
-        context,
-        request,
-        trace_sink=trace_sink or NullDecisionTraceSink(),
-    )
-
-
-def _decision_request_from_game(
-    context: AgentContext,
-    observation: GameView,
-    *,
-    game_context: AgentGameContext | None,
-    decision_seed: int,
-) -> DecisionRequest:
-    """Domainの本人用viewを標準Agent SDKの入力へ変換する."""
-    players = tuple(
-        ObservedPlayer(player.id, player.name, player.status.value == "alive")
-        for player in observation.players
-    )
-    me = next(player for player in players if player.player_id == observation.me.id)
-    metadata = agent_metadata_from_game_context(game_context)
-    return DecisionRequest(
-        decision_id=(
-            f"{context.session_id}:{observation.phase.value}:{observation.day}:{decision_seed}"
-        ),
-        context=context,
-        observation=AgentObservation(
-            phase=observation.phase.value,
-            day=observation.day,
-            me=me,
-            players=players,
-            known_roles=dict(observation.known_roles),
-            known_factions=dict(observation.known_factions),
-            identity=metadata.identity,
-            world=metadata.world,
-        ),
-        public_timeline=_public_timeline(observation),
-        options=tuple(
-            DecisionOption(
-                action_type=action.type.value,
-                ability_id=action.ability_id,
-                legal_target_ids=tuple(observation.legal_targets.get(action.key, ())),
-                message_max_chars=(
-                    LLM_SPEECH_MESSAGE_MAX_CHARS if action.type.value == "speech" else None
-                ),
-            )
-            for action in observation.available_actions
-        ),
-        decision_seed=decision_seed,
-    )
-
-
-def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
-    items: list[tuple[int, int, str, str | None, dict[str, object]]] = []
-    for index, speech in enumerate(observation.history.speeches):
-        items.append(
-            (
-                speech.day,
-                index,
-                "speech",
-                speech.player_id,
-                {
-                    "message": speech.message,
-                    "focus_id": speech.focus_id,
-                    "evidence_id": speech.evidence_id,
-                },
-            )
-        )
-    speech_count = len(observation.history.speeches)
-    for index, vote in enumerate(observation.history.votes):
-        items.append(
-            (
-                vote.day,
-                speech_count + index,
-                "vote_round",
-                None,
-                {
-                    "votes": dict(vote.votes),
-                    "counts": dict(vote.counts),
-                    "eliminated_player_id": vote.eliminated_player_id,
-                },
-            )
-        )
-    items.sort(key=lambda item: (item[0], item[1]))
-    return tuple(
-        PublicTimelineEvent(
-            sequence=sequence,
-            event_type=event_type,
-            day=day,
-            actor_id=actor_id,
-            payload=payload,
-        )
-        for sequence, (day, _, event_type, actor_id, payload) in enumerate(items, start=1)
-    )
-
-
-def _require_legal_response(request: DecisionRequest, response: DecisionResponse) -> None:
-    option = next(
-        (
-            item
-            for item in request.options
-            if item.action_type == response.action_type and item.ability_id == response.ability_id
-        ),
-        None,
-    )
-    if option is None:
-        raise AgentDecisionError("agent_action_not_available")
-    if response.target_id is not None and response.target_id not in option.legal_target_ids:
-        raise AgentDecisionError("agent_target_not_legal")
-    if option.legal_target_ids and response.target_id is None:
-        raise AgentDecisionError("agent_target_required")
-    if response.action_type == "speech":
-        if response.message is None:
-            raise AgentDecisionError("agent_message_required")
-        if (
-            option.message_max_chars is not None
-            and len(response.message) > option.message_max_chars
-        ):
-            raise AgentDecisionError("agent_message_too_long")
-    elif response.message is not None:
-        raise AgentDecisionError("agent_message_not_allowed")
-
-
-def _elapsed_milliseconds(started_at: float) -> int:
-    return max(0, round((time.perf_counter() - started_at) * 1000))
-
-
-def _agent_game_contexts(
-    prepared: PreparedAdvanceGame,
-    snapshot: Any,
-) -> dict[str, AgentGameContext]:
-    """Build player-private setup facts without exposing another role or pending action."""
+def _metadata_provider(prepared: PreparedAdvanceGame) -> SetupAgentMetadataProvider | None:
+    """準備済みsetupがある場合だけ動的な本人用metadata providerを返す."""
     setup = prepared.config.get("setup_document")
     if not isinstance(setup, dict):
-        return {}
-    return build_agent_game_contexts(
-        setup,
-        snapshot,
+        return None
+    return SetupAgentMetadataProvider(
+        setup=setup,
+        snapshot=prepared.game.snapshot,
         setup_checksum=str(prepared.config.get("setup_checksum") or ""),
         mechanics_checksum=str(prepared.config.get("mechanics_checksum") or ""),
         scenario_name=str(prepared.config.get("scenario_name") or ""),
@@ -593,29 +385,19 @@ def _agent_game_contexts(
     )
 
 
-def _game_action_from_response(player_id: str, response: DecisionResponse) -> Action:
-    if response.action_type == "speech":
-        if response.message is None:
-            raise AgentDecisionError("agent_message_required")
-        return Action.speech(
-            player_id,
-            response.message,
-            focus_id=response.focus_id,
-            evidence_id=response.evidence_id,
-        )
-
-    if response.action_type == "vote":
-        if response.target_id is None:
-            raise AgentDecisionError("agent_target_required")
-        return Action.vote(player_id, response.target_id)
-
-    if response.action_type == "use_ability":
-        if response.target_id is None or response.ability_id is None:
-            raise AgentDecisionError("agent_ability_payload_required")
-        return Action.use_ability(
-            player_id,
-            response.ability_id,
-            response.target_id,
-        )
-
-    return Action.pass_(player_id)
+def _phase_action_limit(snapshot: GameState) -> int:
+    """現在phaseでdomain設定上適用可能な最大action数を返す."""
+    alive_ids = {
+        player.id for player in snapshot.players.values() if player.status is PlayerStatus.ALIVE
+    }
+    if snapshot.phase is not Phase.DAY_DISCUSSION:
+        return max(len(alive_ids), 1)
+    speech_counts = {player_id: 0 for player_id in alive_ids}
+    for speech in snapshot.history.speeches:
+        if speech.day == snapshot.day and speech.player_id in speech_counts:
+            speech_counts[speech.player_id] += 1
+    speech_limit = snapshot.config.rules.day_speech_limit_per_player
+    remaining_speeches = sum(
+        max(0, speech_limit - speech_counts[player_id]) for player_id in alive_ids
+    )
+    return max(remaining_speeches + len(alive_ids), 1)

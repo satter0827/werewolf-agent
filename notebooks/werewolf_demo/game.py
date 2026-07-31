@@ -9,6 +9,7 @@ from typing import Literal
 from werewolf_agent.adapters.agents.game_context import SetupAgentMetadataProvider
 from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
 from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
 from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
@@ -215,6 +216,7 @@ class FakeGameDemo:
                     max_actions=execution_limits.max_actions,
                     max_phases=execution_limits.max_phases,
                 ),
+                speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
             ),
         )
         return cls(

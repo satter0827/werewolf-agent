@@ -209,6 +209,32 @@ def test_limits_and_cancellation_are_explicit_stop_reasons() -> None:
         session.close()
 
 
+def test_action_limit_does_not_block_a_ready_phase_advance() -> None:
+    game = _game()
+    base = _spec(game)
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            base.controllers,
+            SimulationLimits(
+                max_actions=len(game.snapshot().players),
+                max_phases=1,
+            ),
+        ),
+    )
+    try:
+        result = session.run()
+    finally:
+        session.close()
+
+    assert result.stop_reason is SimulationStopReason.PHASE_LIMIT
+    assert result.phase_count == 1
+    assert result.action_count <= len(game.snapshot().players)
+
+
 def test_metadata_provider_is_resolved_for_every_decision() -> None:
     game = _game()
     factory = _CapturingFactory()

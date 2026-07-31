@@ -40,11 +40,11 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "agent": "0.4.0",
         "architecture": "0.12.0",
         "event": "0.1.0",
-        "product": "0.20.0",
+        "product": "0.21.0",
         "quality-evidence": "0.2.0",
         "replay": "0.4.0",
         "rule-pack": "0.6.0",
-        "simulation": "0.2.0",
+        "simulation": "0.3.0",
         "setup": "0.2.0",
     }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}
