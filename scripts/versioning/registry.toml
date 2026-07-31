@@ -32,6 +32,14 @@ pattern = 'RULE_PACK_CONTRACT_VERSION\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/domain/rule_packs.py", "src/werewolf_agent/domain/definitions.py", "src/werewolf_agent/domain/game.py", "src/werewolf_agent/domain/rules/"]
 
 [[boundaries]]
+name = "agent"
+owner = "agents"
+standard = "semver"
+path = "src/werewolf_agent/agents/contracts.py"
+pattern = 'AGENT_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/agents/contracts.py", "src/werewolf_agent/agents/__init__.py"]
+
+[[boundaries]]
 name = "event"
 owner = "contracts"
 standard = "semver"
