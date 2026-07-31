@@ -4,7 +4,7 @@ public_modules = [
   "werewolf_agent.application",
   "werewolf_agent.domain",
 ]
-public_alias_modules = ["werewolf_agent"]
+public_alias_modules = []
 root_entries = [
   ".dockerignore",
   ".env.example",
