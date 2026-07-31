@@ -17,6 +17,7 @@ domain
 game-setup
 application-and-api
 agents
+simulation
 data-and-security
 clients
 configuration-and-runtime
@@ -36,6 +37,7 @@ operations
 | ゲームルールと状態遷移 | {doc}`domain` |
 | HTTP、worker、永続化 | {doc}`application-and-api` |
 | LLMエージェントと自動進行 | {doc}`agents` |
+| 単一ゲームのheadless実行 | {doc}`simulation` |
 | 秘密情報とリプレイ | {doc}`data-and-security` |
 | 開発と検証 | {ref}`development`、{ref}`verification` |
 | 品質証拠と診断 | {ref}`evidence-diagnostics` |
