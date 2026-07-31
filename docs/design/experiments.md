@@ -30,6 +30,19 @@ experimentsは複数試行と評価を所有し、一局の進行を再実装し
 `SimulationRunner`を使う。外部Rule Pack、Agent Factory、persona、artifact storeは利用者または
 composition rootが明示注入し、設定値から任意モジュールをimportしない。
 
+`TrialSessionFactory`は計画へ対応する未実行`SimulationSession`を返す。`TrialRunner`は既存の
+Trial artifactを先に検証し、未完了分だけを計画順に実行する。`max_new_trials`は一回の実行量を
+制限し、残りのTrial IDを返す。例外またはプロセス停止で完成しなかったTrialは保存せず、次回に
+同じIDで再実行する。
+
+`TrialArtifactStore`は`.werewolf-agent/experiments/<experiment-id>/trials/`へtrial単位のJSONを
+保存する。artifactはplan、最終状態、step、event、chain-of-thoughtを含まないdecision traceを持つ。
+checksumを検証し、一時fileのflush後に新規pathへatomic publishする。既存artifactとplanが一致しない場合は
+再実行せず失敗する。
+
+Runnerは実行前にSessionのsimulation ID、seed、Rule Pack manifest、プレイヤー、明示役職、Agent specを
+Trial planと照合する。Factoryが異なる実装を返した場合はSessionをcloseし、artifactを保存しない。
+
 実時間、token、費用は運用観測値として保存できるが、Trial IDと決定性の判定へ含めない。
 LLM judgeは標準評価に使わず、説得や欺瞞の観測値を因果効果として断定しない。
 
