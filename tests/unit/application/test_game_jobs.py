@@ -32,6 +32,23 @@ def test_create_command_contains_a_complete_resolved_setup_and_generated_players
     assert command.roster_checksum == checksum_payload(
         [player.model_dump(mode="json") for player in command.players]
     )
+    assert command.rule_pack_provider_id == "core"
+
+
+def test_create_command_preserves_an_explicit_rule_pack_provider() -> None:
+    """Queueへ送る前に選択したprovider IDを一局のcommandへ固定する."""
+    setup = build_setup_catalog().require_document("standard_6")
+
+    command = prepare_create_command(
+        setup,
+        seed=17,
+        manual_player_id=None,
+        llm_mode="fake",
+        deliberation_level="standard",
+        rule_pack_provider_id="experimental",
+    )
+
+    assert command.rule_pack_provider_id == "experimental"
 
 
 def test_preview_omits_private_strategy_and_role() -> None:

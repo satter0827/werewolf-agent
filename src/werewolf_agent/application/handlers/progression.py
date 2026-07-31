@@ -73,7 +73,7 @@ def prepare_advance_game(
     if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     snapshot = game.snapshot()
     manual_player_ids = _manual_player_ids(run.config)
     if _manual_input_required(game, manual_player_ids):

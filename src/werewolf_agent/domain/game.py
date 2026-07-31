@@ -6,7 +6,7 @@ import random
 from dataclasses import replace
 
 from werewolf_agent.domain.errors import RuleViolation
-from werewolf_agent.domain.rule_packs import CompiledRuleSet
+from werewolf_agent.domain.rule_packs import CompiledRuleSet, RulePackManifest
 from werewolf_agent.domain.rules import engine, game_setup
 from werewolf_agent.domain.state import (
     Action,
@@ -114,6 +114,11 @@ class Game:
     def pending_actions(self) -> PendingActions:
         """現在のimmutableなpending-action bufferを返す."""
         return self._state.pending_actions
+
+    @property
+    def rule_pack_manifest(self) -> RulePackManifest:
+        """一局へ固定したRule Pack identityを返す."""
+        return self._rules.manifest
 
 
 __all__ = ["Game"]

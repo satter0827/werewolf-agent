@@ -24,6 +24,14 @@ pattern = 'REPLAY_FORMAT_VERSION:\s*Final\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/application/replay.py", "src/werewolf_agent/adapters/supabase/worker_store.py"]
 
 [[boundaries]]
+name = "rule-pack"
+owner = "domain"
+standard = "semver"
+path = "src/werewolf_agent/domain/rule_packs.py"
+pattern = 'RULE_PACK_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/domain/rule_packs.py", "src/werewolf_agent/domain/definitions.py", "src/werewolf_agent/domain/game.py", "src/werewolf_agent/domain/rules/"]
+
+[[boundaries]]
 name = "event"
 owner = "contracts"
 standard = "semver"

@@ -4,6 +4,8 @@ from werewolf_agent.domain.definitions import CoreRulePack, RuleSetDefinition, b
 from werewolf_agent.domain.errors import GameError, GamePhaseError, RuleViolation
 from werewolf_agent.domain.game import Game
 from werewolf_agent.domain.rule_packs import (
+    CORE_RULE_PACK_ID,
+    RULE_PACK_CONTRACT_VERSION,
     AbilityPolicy,
     CompiledRuleSet,
     RulePackManifest,
@@ -44,6 +46,8 @@ from werewolf_agent.domain.state import (
 )
 
 __all__ = [
+    "CORE_RULE_PACK_ID",
+    "RULE_PACK_CONTRACT_VERSION",
     "AbilityDefinition",
     "AbilityPolicy",
     "Action",

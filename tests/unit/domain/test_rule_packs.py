@@ -89,7 +89,7 @@ class ExternalVictoryPack:
             provider_id="external-victory",
             contract_version=RULE_PACK_CONTRACT_VERSION,
             implementation_version="1.0.0",
-            fingerprint="external-victory-1",
+            fingerprint="1" * 64,
         )
 
     def compile(self, definition: RuleSetDefinition) -> CompiledRuleSet:
@@ -577,6 +577,42 @@ def test_external_provider_is_used_only_after_explicit_registration() -> None:
         registry.require("not-registered")
     with pytest.raises(ValueError, match="duplicate rule pack provider"):
         RulePolicyRegistry((provider, provider))
+
+
+def test_registry_compiles_only_the_registered_manifest() -> None:
+    """Providerとcompile結果のidentity不一致を一局へ固定する前に拒否する."""
+    provider = ExternalVictoryPack()
+    registry = RulePolicyRegistry((provider,))
+    definition = _definition()
+
+    rules = registry.compile(provider.manifest.provider_id, definition)
+
+    assert rules.manifest == provider.manifest
+    with pytest.raises(ValueError, match="persisted manifest"):
+        registry.compile(
+            provider.manifest.provider_id,
+            definition,
+            expected_manifest=RulePackManifest(
+                provider_id=provider.manifest.provider_id,
+                contract_version=RULE_PACK_CONTRACT_VERSION,
+                implementation_version="different",
+                fingerprint=provider.manifest.fingerprint,
+            ),
+        )
+
+
+def test_rule_pack_manifest_mapping_rejects_coerced_identity_values() -> None:
+    """永続化したidentityの欠損や型違いを文字列へ黙って変換しない."""
+    manifest = ExternalVictoryPack().manifest
+
+    assert RulePackManifest.from_mapping(manifest.to_mapping()) == manifest
+    invalid: dict[str, object] = manifest.to_mapping()
+    invalid["fingerprint"] = 1
+    with pytest.raises(ValueError, match="fingerprint must be a string"):
+        RulePackManifest.from_mapping(invalid)
+    invalid["fingerprint"] = "not-a-digest"
+    with pytest.raises(ValueError, match="lowercase SHA-256"):
+        RulePackManifest.from_mapping(invalid)
 
 
 def test_external_victory_policy_changes_outcome_without_mutating_state() -> None:

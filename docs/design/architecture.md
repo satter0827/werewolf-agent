@@ -59,7 +59,8 @@
 Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
 applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証は`setup`の標準ライブラリ契約へ委譲する。
 domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
-replay 0.3.0は同じ標準ライブラリ契約でgenesis setupを再検証する。
+replay 0.4.0はgenesis setupとRule Pack manifestを再検証する。復元時は明示登録済みproviderの
+contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
 seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは

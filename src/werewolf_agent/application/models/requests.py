@@ -23,6 +23,7 @@ from werewolf_agent.application.models.base import ApplicationModel
 from werewolf_agent.application.models.results import GameEventCreate
 from werewolf_agent.application.types import GamePhase, GameStatus
 from werewolf_agent.application.validation import generated_player_ids, non_blank
+from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 if TYPE_CHECKING:
@@ -60,6 +61,13 @@ class CreateGameCommand(ApplicationModel):
     manual_player_id: str | None = None
     llm_mode: Literal["fake", "paid"] = "fake"
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
+    rule_pack_provider_id: str = CORE_RULE_PACK_ID
+
+    @field_validator("rule_pack_provider_id")
+    @classmethod
+    def validate_rule_pack_provider_id(cls, value: str) -> str:
+        """空白を除去した明示的なRule Pack provider IDを返す."""
+        return non_blank(value, "rule_pack_provider_id")
 
     @field_validator("manual_player_id")
     @classmethod

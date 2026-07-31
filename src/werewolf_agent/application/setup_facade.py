@@ -32,6 +32,7 @@ from werewolf_agent.application.setup_options import (
 )
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.validation import non_blank
+from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 
@@ -79,6 +80,7 @@ class SetupApplication:
         manual_player_id: str | None,
         llm_mode: Literal["fake", "paid"],
         deliberation_level: DeliberationLevel,
+        rule_pack_provider_id: str = CORE_RULE_PACK_ID,
     ) -> CreateGameCommand:
         """Queue送信前に完全でimmutableなcommandを解決する."""
         self._validate_player_count(document)
@@ -88,6 +90,7 @@ class SetupApplication:
             manual_player_id=manual_player_id,
             llm_mode=llm_mode,
             deliberation_level=deliberation_level,
+            rule_pack_provider_id=rule_pack_provider_id,
         )
 
     def create(

@@ -17,6 +17,7 @@ from werewolf_agent.application.models import (
     SetupValidationResult,
 )
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
+from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload, generate_players
 
 ABILITY_KINDS = (
@@ -111,6 +112,7 @@ def prepare_create_command(
     manual_player_id: str | None,
     llm_mode: Literal["fake", "paid"],
     deliberation_level: DeliberationLevel,
+    rule_pack_provider_id: str = CORE_RULE_PACK_ID,
 ) -> CreateGameCommand:
     """Resolve every random setup value before a command reaches the queue."""
     concrete_seed = secrets.randbits(63) if seed is None else seed
@@ -132,6 +134,7 @@ def prepare_create_command(
         manual_player_id=manual_player_id,
         llm_mode=llm_mode,
         deliberation_level=deliberation_level,
+        rule_pack_provider_id=rule_pack_provider_id,
     )
 
 
