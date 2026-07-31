@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from contextlib import AbstractContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -21,10 +20,27 @@ from werewolf_agent.application.types import GameStatus
 from werewolf_agent.setup import GameSetupDocument
 
 
+class Transaction(Protocol):
+    """Application更新単位の開始と終了を表すcontext契約."""
+
+    def __enter__(self) -> None:
+        """更新単位を開始する."""
+        ...
+
+    def __exit__(
+        self,
+        exc_type: object | None,
+        exc_value: object | None,
+        traceback: object | None,
+    ) -> object | None:
+        """更新単位を確定または破棄する."""
+        ...
+
+
 class GameRepository(Protocol):
     """Statelessなゲーム処理が必要とする永続化操作を定義する."""
 
-    def transaction(self) -> AbstractContextManager[None]:
+    def transaction(self) -> Transaction:
         """複数のrepository操作を一つのatomic unitとして実行する."""
 
     def create(self, game: GameRecordCreate) -> StoredGame:

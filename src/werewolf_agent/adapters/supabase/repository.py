@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
 from datetime import UTC, datetime
 from typing import Any, cast
 from uuid import UUID
@@ -30,7 +29,7 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.application.ports import GameRepository
+from werewolf_agent.application.ports import GameRepository, Transaction
 from werewolf_agent.contracts import GAME_STATUS_COMPLETED, GameStatus
 from werewolf_agent.setup import checksum_payload
 
@@ -48,9 +47,9 @@ class SupabaseGameRepository(GameRepository):
         self._connection = connection
         self._owner_user_id = owner_user_id
 
-    def transaction(self) -> AbstractContextManager[None]:
+    def transaction(self) -> Transaction:
         """複数のrepository操作を一つのdatabase transactionで実行する."""
-        return cast(AbstractContextManager[None], self._connection.transaction())
+        return cast(Transaction, self._connection.transaction())
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """Persist a new game and private snapshot."""

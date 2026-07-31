@@ -6,7 +6,7 @@ from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from threading import RLock
-from typing import Protocol
+from typing import Any, Protocol, cast
 from uuid import UUID, uuid4
 
 from werewolf_agent.application.errors import AppError, ErrorCode, GameNotFoundError, GamePhaseError
@@ -20,7 +20,7 @@ from werewolf_agent.application.models import (
     StoredGameSummary,
     StoredGameTurn,
 )
-from werewolf_agent.application.ports import GameRepository, SetupRepository
+from werewolf_agent.application.ports import GameRepository, SetupRepository, Transaction
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.types import GAME_STATUS_COMPLETED, GameStatus
 from werewolf_agent.setup import GameSetupDocument
@@ -46,11 +46,9 @@ class InMemoryGameRepository(GameRepository):
         self._turns: dict[UUID, list[StoredGameTurn]] = {}
         self._lock = RLock()
 
-    @contextmanager
-    def transaction(self) -> Iterator[None]:
+    def transaction(self) -> Transaction:
         """Applicationの一更新単位を同じlockで直列化する."""
-        with self._lock:
-            yield
+        return cast(Transaction, _locked(self._lock))
 
     def create(self, game: GameRecordCreate) -> StoredGame:
         """新しいゲームsnapshotを保存する."""
@@ -349,6 +347,13 @@ class InMemorySetupRepository(SetupRepository):
 
 def _optional_text(value: object) -> str | None:
     return value if isinstance(value, str) else None
+
+
+@contextmanager
+def _locked(lock: Any) -> Iterator[None]:
+    """一つのreentrant lockをcontext managerへ変換する."""
+    with lock:
+        yield
 
 
 def _optional_object(value: object) -> dict[str, object] | None:
