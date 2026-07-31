@@ -11,7 +11,7 @@ from werewolf_agent.agents import AgentSpec
 from werewolf_agent.domain import RulePackManifest
 from werewolf_agent.setup import checksum_payload
 
-EXPERIMENT_CONTRACT_VERSION = "0.2.0"
+EXPERIMENT_CONTRACT_VERSION = "0.3.0"
 
 
 class ExperimentKind(StrEnum):
@@ -261,11 +261,10 @@ class TrialPlan:
             "setup_checksum",
             _sha256(self.setup_checksum, "setup_checksum"),
         )
-        object.__setattr__(
-            self,
-            "agent_specs",
-            MappingProxyType(dict(sorted(self.agent_specs.items()))),
-        )
+        agent_specs = _agent_specs(self.agent_specs)
+        if set(agent_specs) != {item.controller_id for item in assignments}:
+            raise ValueError("agent_specs keys must match assigned controller IDs")
+        object.__setattr__(self, "agent_specs", agent_specs)
 
     def to_mapping(self) -> dict[str, object]:
         """artifactへ保存できる正規JSON表現を返す。."""

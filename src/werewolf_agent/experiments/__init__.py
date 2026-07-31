@@ -12,6 +12,14 @@ from werewolf_agent.experiments.contracts import (
     TrialPlan,
     plan_trials,
 )
+from werewolf_agent.experiments.execution import (
+    TrialArtifactStore,
+    TrialPlayerResult,
+    TrialResult,
+    TrialRunner,
+    TrialRunSummary,
+    TrialSessionFactory,
+)
 
 __all__ = [
     "EXPERIMENT_CONTRACT_VERSION",
@@ -22,6 +30,12 @@ __all__ = [
     "PlayerAssignment",
     "RotationMode",
     "RulesCondition",
+    "TrialArtifactStore",
     "TrialPlan",
+    "TrialPlayerResult",
+    "TrialResult",
+    "TrialRunSummary",
+    "TrialRunner",
+    "TrialSessionFactory",
     "plan_trials",
 ]
