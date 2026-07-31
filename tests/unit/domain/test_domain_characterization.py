@@ -11,6 +11,7 @@ import pytest
 from werewolf_agent.domain import (
     AbilityDefinition,
     Action,
+    ActionType,
     EventVisibility,
     Game,
     GameEvent,
@@ -439,3 +440,35 @@ def test_living_fox_overrides_normal_village_victory() -> None:
     assert game.snapshot().winner_id == "fox"
     assert game.snapshot().win_result is not None
     assert game.snapshot().win_result.winning_player_ids == ("p2",)
+    visible_result = game.view_for("p3").win_result
+    assert visible_result is not None
+    assert visible_result.winner == "fox"
+    assert not hasattr(visible_result, "winning_player_ids")
+
+
+def test_player_observation_removes_private_speech_reason() -> None:
+    game = _game(
+        (
+            Player("p1", "Wolf", "werewolf"),
+            Player("p2", "Villager A", "villager"),
+            Player("p3", "Villager B", "villager"),
+        ),
+        roles={
+            "werewolf": RoleDefinition("werewolf", "werewolf"),
+            "villager": RoleDefinition("village", "village"),
+        },
+        starting_phase="day_discussion",
+    )
+
+    game.submit(
+        Action(
+            ActionType.SPEECH,
+            "p2",
+            message="公開する発言です。",
+            reason="外部へ公開しない内部理由",
+        )
+    )
+
+    speech = game.view_for("p1").history.speeches[0]
+    assert speech.message == "公開する発言です。"
+    assert speech.reason == ""

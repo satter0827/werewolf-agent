@@ -14,8 +14,7 @@ from werewolf_agent.api.dependencies import (
     RequestServices,
     ServicesDependency,
 )
-from werewolf_agent.application import Actor, parse_setup_document
-from werewolf_agent.application.errors import AppError, ErrorCode
+from werewolf_agent.application import Actor, AppError, ErrorCode, parse_setup_document
 from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
     PlayerPreviewResponse,

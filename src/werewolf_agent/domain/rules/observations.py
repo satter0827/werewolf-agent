@@ -16,6 +16,8 @@ from werewolf_agent.domain.state import (
     PendingActions,
     Phase,
     Player,
+    SpeechRecord,
+    VisibleWinResult,
 )
 
 
@@ -62,8 +64,28 @@ def build_player_observation(
             key: tuple(targets)
             for key, targets in legal_targets(snapshot, pending_actions, player_id).items()
         },
-        history=GameHistory(speeches=snapshot.history.speeches, votes=snapshot.history.votes),
-        win_result=snapshot.win_result,
+        history=GameHistory(
+            speeches=tuple(
+                SpeechRecord(
+                    day=speech.day,
+                    player_id=speech.player_id,
+                    message=speech.message,
+                    focus_id=speech.focus_id,
+                    evidence_id=speech.evidence_id,
+                )
+                for speech in snapshot.history.speeches
+            ),
+            votes=snapshot.history.votes,
+        ),
+        win_result=(
+            None
+            if snapshot.win_result is None
+            else VisibleWinResult(
+                winner=snapshot.win_result.winner,
+                reason=snapshot.win_result.reason,
+                day=snapshot.win_result.day,
+            )
+        ),
     )
 
 

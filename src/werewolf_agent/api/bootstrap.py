@@ -50,9 +50,7 @@ from werewolf_agent.api.middleware.limits import PrincipalRateLimiter, RequestLi
 from werewolf_agent.api.middleware.security_headers import ApiSecurityHeadersMiddleware
 from werewolf_agent.api.routes import admin, config, games, operations, setups
 from werewolf_agent.api.runtime import AvailabilityGuardedOperationQueue, RuntimeDependencies
-from werewolf_agent.application import GameApplication
-from werewolf_agent.application.models import ApplicationContext
-from werewolf_agent.application.setup_facade import SetupApplication
+from werewolf_agent.application import ApplicationContext, GameApplication, SetupApplication
 from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PublicRuntimeConfig,

@@ -2,14 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.clients.streamlit.icons import action_icon
-from werewolf_agent.clients.streamlit.view_models.formatting import (
-    _nested_text,
-    _player_name,
-)
+from werewolf_agent.clients.streamlit.view_models.formatting import _player_name
 from werewolf_agent.clients.streamlit.view_models.types import (
     ActionChoiceView,
     HandPanelView,
@@ -18,6 +13,7 @@ from werewolf_agent.clients.streamlit.view_models.types import (
 )
 from werewolf_agent.contracts.schemas import (
     GAME_STATUS_COMPLETED,
+    PlayerObservation,
     PlayerObservationResponse,
     PublicGameState,
 )
@@ -33,29 +29,19 @@ def observation_view_from_response(
 ) -> ObservationView:
     """Return private observation display data."""
     observation = response.observation
-    role = _nested_text(observation, "me", "role")
+    role = observation.me.role
     actions: list[tuple[str, str | None]] = [
-        (
-            str(item.get("type")),
-            str(item["ability_id"]) if item.get("ability_id") else None,
-        )
-        for item in observation.get("available_actions", [])
-        if isinstance(item, dict)
+        (item.type, item.ability_id) for item in observation.available_actions
     ]
     action_keys = [
         f"{action_type}:{ability_id}" if ability_id else action_type
         for action_type, ability_id in actions
     ]
-    known_roles = observation.get("known_roles")
-    known_role_lines = (
-        [
-            f"{_player_name(state.players, player_id)}: "
-            f"{_theme_term(state, 'role_names', role_id, catalog.label(lang, 'role', role_id))}"
-            for player_id, role_id in sorted(known_roles.items())
-        ]
-        if isinstance(known_roles, dict)
-        else []
-    )
+    known_role_lines = [
+        f"{_player_name(state.players, player_id)}: "
+        f"{_theme_term(state, 'role_names', role_id, catalog.label(lang, 'role', role_id))}"
+        for player_id, role_id in sorted(observation.known_roles.items())
+    ]
     target_candidates = {
         action: target_candidates_for_action(
             action,
@@ -146,18 +132,16 @@ def target_candidates_for_action(
     action_type: str,
     *,
     state: PublicGameState,
-    observation: dict[str, Any],
+    observation: PlayerObservation,
     manual_player_id: str | None,
 ) -> list[str]:
     """Return visible player ids that can be offered as target candidates."""
     _ = state, manual_player_id
-    legal_targets = observation.get("legal_targets")
-    if not isinstance(legal_targets, dict):
-        return []
-    candidates = legal_targets.get(action_type)
-    if not isinstance(candidates, list):
-        return []
-    return [str(player_id) for player_id in candidates]
+    descriptor = next(
+        (item for item in observation.available_actions if item.key == action_type),
+        None,
+    )
+    return [] if descriptor is None else list(descriptor.legal_target_ids)
 
 
 def hand_panel_view(

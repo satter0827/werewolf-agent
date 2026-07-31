@@ -149,29 +149,17 @@ def print_observation(
         return
 
     observation = response.observation
-    raw_me = observation.get("me")
-    me = raw_me if isinstance(raw_me, dict) else {}
     table = Table(title=table_title_observation(response.player_id))
     table.add_column(COLUMN_FIELD, style="cyan", no_wrap=True)
     table.add_column(COLUMN_VALUE, overflow="fold")
-    table.add_row(ROW_PHASE, str(observation.get("phase", EMPTY_VALUE)))
-    table.add_row(ROW_DAY, str(observation.get("day", EMPTY_VALUE)))
-    table.add_row(ROW_ROLE, str(me.get("role", EMPTY_VALUE)))
+    table.add_row(ROW_PHASE, observation.phase)
+    table.add_row(ROW_DAY, str(observation.day))
+    table.add_row(ROW_ROLE, observation.me.role or EMPTY_VALUE)
     table.add_row(
         ROW_AVAILABLE_ACTIONS,
-        ", ".join(
-            (
-                f"{item.get('type')}:{item.get('ability_id')}"
-                if isinstance(item, dict) and item.get("ability_id")
-                else str(item.get("type"))
-                if isinstance(item, dict)
-                else str(item)
-            )
-            for item in observation.get("available_actions") or []
-        )
-        or EMPTY_VALUE,
+        ", ".join(item.key for item in observation.available_actions) or EMPTY_VALUE,
     )
-    table.add_row(ROW_KNOWN_ROLES, str(observation.get("known_roles") or {}))
+    table.add_row(ROW_KNOWN_ROLES, str(observation.known_roles))
     console.print(table)
 
 

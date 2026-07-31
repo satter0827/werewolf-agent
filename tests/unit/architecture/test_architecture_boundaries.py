@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 from scripts.architecture.analysis import (
+    _project_module_name,
     _public_export_findings,
     _public_type_closure,
     graph_cycles,
@@ -424,13 +425,15 @@ def test_packaged_toml_owns_non_secret_runtime_defaults() -> None:
 
 def test_api_routes_only_use_application_contracts() -> None:
     """Path単位のimport制約をmanifestから評価する。"""
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
     offenders = [
-        (name, path.relative_to(ROOT), imported)
+        (name, path.relative_to(ROOT), imported_module)
         for name, rule in PATH_RULES.items()
         for source_root in rule.roots
         for path in (ROOT / source_root).rglob("*.py")
         for imported in _imports(path)
-        if imported.startswith(rule.forbidden)
+        if (imported_module := _project_module_name(imported, modules)) is not None
+        and imported_module.startswith(rule.forbidden)
     ]
     assert not offenders
 

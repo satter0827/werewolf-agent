@@ -41,6 +41,7 @@ from werewolf_agent.domain.state import (
     RoleCatalog,
     RoleDefinition,
     SpeechRecord,
+    VisibleWinResult,
     VoteResult,
     WinResult,
 )
@@ -86,6 +87,7 @@ __all__ = [
     "RuleViolation",
     "SpeechRecord",
     "VictoryPolicy",
+    "VisibleWinResult",
     "VoteResult",
     "VotingPolicy",
     "WinResult",
