@@ -40,6 +40,15 @@ HTTP、database、workerを必要としないsingle-tenant applicationを構築�
 :language: python
 ```
 
+## Rule Packの最小利用例
+
+外部Rule Packはversion付き`manifest`と`compile()`だけを実装する。公開テストキットは同じ入力と
+seedによる決定性、復元、秘匿性、不正actionのatomicity、停止性を組み込み実装と同じ条件で検証する。
+
+```{literalinclude} ../snippets/python_api_rule_pack.py
+:language: python
+```
+
 ## Setupの最小利用例
 
 `GameSetupDocument.from_mapping()`はJSON互換値をimmutableなsetupへ変換する。
@@ -54,10 +63,24 @@ HTTP、database、workerを必要としないsingle-tenant applicationを構築�
 
 `AgentFactory`はgameとプレイヤーごとに状態を共有しない`AgentSession`を生成する。
 標準Agentは本人用observationと合法候補から、同じdecision seedに対して同じ応答を返す。
+`assert_agent_factory_contract()`は外部Agentへ決定性を強制せず、Session分離、合法応答、
+resourceの冪等な解放を検証する。品質判定では有料providerではなくfake実装を渡す。
 
 ```{literalinclude} ../snippets/python_api_agents.py
 :language: python
 ```
+
+## 外部実装の診断
+
+Rule PackとAgentは上記の公開テストキットを外部package自身のテストで実行する。gameとsetupの
+リポジトリ実装は隔離した検証用リポジトリに対して
+`werewolf_agent.application.assert_game_repository_contract()`と
+`assert_setup_repository_contract()`を適用する。両関数は渡したリポジトリへ検証dataを保存する。
+実行環境と任意依存の診断操作は
+`scripts/README.md`を参照する。
+
+各manifest、`AgentSpec`、setup checksum、seedを実験結果と一緒に保存し、実装を変更した結果を
+同じidentityとして扱わない。
 
 ## Domain API
 

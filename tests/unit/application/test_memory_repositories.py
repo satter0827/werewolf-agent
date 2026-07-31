@@ -7,13 +7,14 @@ from threading import Event, Thread
 from uuid import UUID
 
 import pytest
-from tests.contracts.repository_contracts import (
+
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.application import (
+    InMemoryGameRepository,
+    InMemorySetupRepository,
     assert_game_repository_contract,
     assert_setup_repository_contract,
 )
-
-from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.application import InMemoryGameRepository, InMemorySetupRepository
 from werewolf_agent.application.errors import AppError, ErrorCode, GameNotFoundError, GamePhaseError
 from werewolf_agent.application.models import GameEventCreate, GameRecordCreate, GameRecordUpdate
 

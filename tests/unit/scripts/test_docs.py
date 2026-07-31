@@ -128,6 +128,7 @@ def test_python_api_snippets_execute_without_external_services() -> None:
         "python_api_application.py",
         "python_api_domain.py",
         "python_api_experiments.py",
+        "python_api_rule_pack.py",
         "python_api_setup.py",
         "python_api_simulation.py",
     ):

@@ -6,6 +6,7 @@ from werewolf_agent.agents.builtins import (
     RandomLegalAgentFactory,
     ScriptedAgentFactory,
 )
+from werewolf_agent.agents.conformance import assert_agent_factory_contract
 from werewolf_agent.agents.contracts import (
     AGENT_CONTRACT_VERSION,
     AgentAbility,
@@ -46,4 +47,5 @@ __all__ = [
     "PublicTimelineEvent",
     "RandomLegalAgentFactory",
     "ScriptedAgentFactory",
+    "assert_agent_factory_contract",
 ]
