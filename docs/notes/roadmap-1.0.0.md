@@ -133,6 +133,10 @@ Reportは保存済みTrialから再生成する。
 完了条件は、外部Rule Packと外部Agentをそれぞれ比較でき、中断再開してもTrialが重複せず、
 同じ成果物から同じReportを再生成できることである。
 
+実験条件と試行計画は実装済みである。Rules条件とAgent条件を分離し、paired seed、明示的な
+席順・役職・persona・controller割当、均衡rotation、決定的なTrial IDと実装fingerprintを公開する。
+Trial実行、checkpoint、resume、Evaluator、Reportは後続工程で実装する。
+
 ### 7. applicationの組み込み境界を完成させる
 
 現在の`GameApplication`をstateless facadeとして維持する。

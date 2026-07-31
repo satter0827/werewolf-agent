@@ -15,6 +15,7 @@
 | `application` | use case、authorization、transaction、コマンド/result、port、projection |
 | `agents` | provider非依存のobservation、decision、プレイヤー port |
 | `simulation` | 単一ゲームのAgent呼び出し、action適用、phase進行、停止・再開 |
+| `experiments` | paired seed、割当rotation、複数試行、評価、checkpoint、report |
 | `adapters` | HTTP client、Supabase、LangChain、外部I/O |
 | `contracts` | wire schema、error、Problem Details |
 | `settings` | runtime設定と環境変数の検証 |
@@ -42,6 +43,7 @@
   agentsを参照しない。
 - agentsはdomainとapplicationを参照しない。
 - simulationはagents、domain、setupだけを参照し、I/O、永続化、provider設定を所有しない。
+- experimentsはagents、domain、setup、simulationだけを参照し、外部providerの探索を行わない。
 - LangChainはアダプター、workerは独立プロセスとして扱う。
 - package resourceと外部定義fileのI/Oおよび相互参照検証はアダプターに置く。
 - API routeはapplicationの公開contractだけを呼ぶ。
@@ -121,7 +123,8 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 ## 公開面
 
 Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.application`、
-`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.simulation`、
+`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.experiments`、
+`werewolf_agent.simulation`、
 `werewolf_agent.setup`に限定する。
 package直下は`__version__`だけを公開し、型と関数は責務を所有する公開モジュールからimportする。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を

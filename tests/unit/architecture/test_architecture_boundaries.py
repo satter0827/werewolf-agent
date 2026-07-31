@@ -37,6 +37,7 @@ import werewolf_agent as package
 import werewolf_agent.agents as agents
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
+import werewolf_agent.experiments as experiments
 import werewolf_agent.setup as setup
 import werewolf_agent.simulation as simulation
 
@@ -73,7 +74,7 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
     """Pythonの公開面を責務別moduleに限定する。"""
-    assert (package, application, agents, domain, simulation, setup) == PUBLIC_MODULES
+    assert (package, application, agents, domain, experiments, simulation, setup) == PUBLIC_MODULES
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
@@ -233,10 +234,17 @@ def test_replay_verifies_every_create_command_checksum() -> None:
 
 
 def test_standard_sdk_uses_only_the_standard_library_and_owned_modules() -> None:
-    """Domain、setup、Agent、simulationへframeworkや提供層を持ち込まない。"""
+    """標準SDKへframeworkや提供層を持ち込まない。"""
     roots = {
         PACKAGE / "agents": ("werewolf_agent.agents",),
         PACKAGE / "domain": ("werewolf_agent.domain",),
+        PACKAGE / "experiments": (
+            "werewolf_agent.agents",
+            "werewolf_agent.domain",
+            "werewolf_agent.experiments",
+            "werewolf_agent.setup",
+            "werewolf_agent.simulation",
+        ),
         PACKAGE / "simulation": (
             "werewolf_agent.agents",
             "werewolf_agent.domain",

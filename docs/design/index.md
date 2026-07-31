@@ -18,6 +18,7 @@ game-setup
 application-and-api
 agents
 simulation
+experiments
 data-and-security
 clients
 configuration-and-runtime
@@ -38,6 +39,7 @@ operations
 | HTTP、worker、永続化 | {doc}`application-and-api` |
 | LLMエージェントと自動進行 | {doc}`agents` |
 | 単一ゲームのheadless実行 | {doc}`simulation` |
+| 反復比較と評価 | {doc}`experiments` |
 | 秘密情報とリプレイ | {doc}`data-and-security` |
 | 開発と検証 | {ref}`development`、{ref}`verification` |
 | 品質証拠と診断 | {ref}`evidence-diagnostics` |
