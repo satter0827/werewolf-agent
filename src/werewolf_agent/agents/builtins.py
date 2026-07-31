@@ -10,6 +10,7 @@ from hashlib import sha256
 
 from werewolf_agent.agents.contracts import (
     AgentContext,
+    AgentDecisionError,
     AgentSession,
     AgentSpec,
     DecisionOption,
@@ -181,7 +182,7 @@ class _FaultSession(_Session):
     def decide(self, request: DecisionRequest) -> DecisionResponse:
         """設定済みerror codeで必ず失敗する."""
         self._require_request(request)
-        raise RuntimeError(self._error_code)
+        raise AgentDecisionError(self._error_code)
 
 
 def _response(

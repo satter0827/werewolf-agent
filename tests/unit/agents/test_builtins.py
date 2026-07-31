@@ -6,6 +6,8 @@ import pytest
 
 from werewolf_agent.agents import (
     AgentContext,
+    AgentDecisionError,
+    AgentFactory,
     AgentObservation,
     DecisionOption,
     DecisionRequest,
@@ -75,9 +77,33 @@ def test_fault_agent_fails_without_affecting_other_sessions() -> None:
     context = AgentContext("session", "game", "p1", 1)
     factory = FaultAgentFactory("expected_fault")
 
-    with pytest.raises(RuntimeError, match="expected_fault"):
+    with pytest.raises(AgentDecisionError, match="expected_fault") as captured:
         factory.create(context).decide(_request(context))
+    assert captured.value.code == "expected_fault"
     assert factory.create(context) is not factory.create(context)
+
+
+@pytest.mark.parametrize(
+    "factory",
+    (
+        RandomLegalAgentFactory(),
+        HeuristicAgentFactory(),
+        ScriptedAgentFactory((DecisionResponse("pass"),)),
+        FaultAgentFactory(),
+    ),
+)
+def test_builtin_factories_share_the_public_session_lifecycle(factory: AgentFactory) -> None:
+    """全組み込み実装へ同じFactory、状態分離、close契約を適用する."""
+    context = AgentContext("session", "game", "p1", 1)
+    first = factory.create(context)
+    second = factory.create(context)
+
+    assert isinstance(factory, AgentFactory)
+    assert first is not second
+    first.close()
+    first.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        first.decide(_request(context))
 
 
 @pytest.mark.parametrize(

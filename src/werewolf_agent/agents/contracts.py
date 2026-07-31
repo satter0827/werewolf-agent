@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.3.0"
+AGENT_CONTRACT_VERSION = "0.4.0"
 
 
 @dataclass(frozen=True)
@@ -32,10 +32,7 @@ class AgentSpec:
             non_blank(self.implementation_version, "implementation_version"),
         )
         object.__setattr__(self, "fingerprint", non_blank(self.fingerprint, "fingerprint"))
-        if len(self.fingerprint) != 64 or any(
-            character not in "0123456789abcdef" for character in self.fingerprint
-        ):
-            raise ValueError("fingerprint must be a lowercase SHA-256 digest")
+        _require_sha256(self.fingerprint, "fingerprint")
         object.__setattr__(self, "parameters", _freeze_mapping(self.parameters))
 
 
@@ -56,6 +53,7 @@ class AgentContext:
                 field_name,
                 non_blank(getattr(self, field_name), field_name),
             )
+        _require_integer(self.session_seed, "session_seed")
 
 
 @dataclass(frozen=True)
@@ -73,6 +71,105 @@ class ObservedPlayer:
 
 
 @dataclass(frozen=True)
+class AgentAbility:
+    """本人が利用できる一つの能力と残り回数を表す."""
+
+    ability_id: str
+    name: str
+    kind: str
+    remaining_uses: int | None = None
+
+    def __post_init__(self) -> None:
+        """能力の安定IDと表示情報を検証する."""
+        for field_name in ("ability_id", "name", "kind"):
+            object.__setattr__(
+                self,
+                field_name,
+                non_blank(getattr(self, field_name), field_name),
+            )
+        if self.remaining_uses is not None:
+            _require_non_negative_integer(self.remaining_uses, "remaining_uses")
+
+
+@dataclass(frozen=True)
+class AgentIdentity:
+    """本人だけが知る役職、陣営、目的、能力を表す."""
+
+    role_id: str
+    role_name: str
+    identity_faction_id: str
+    identity_faction_name: str
+    victory_team_id: str
+    victory_team_name: str
+    objective: str
+    abilities: tuple[AgentAbility, ...] = ()
+
+    def __post_init__(self) -> None:
+        """本人知識をimmutableな一意の能力集合として検証する."""
+        for field_name in (
+            "role_id",
+            "role_name",
+            "identity_faction_id",
+            "identity_faction_name",
+            "victory_team_id",
+            "victory_team_name",
+            "objective",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                non_blank(getattr(self, field_name), field_name),
+            )
+        abilities = tuple(self.abilities)
+        ability_ids = tuple(ability.ability_id for ability in abilities)
+        if len(ability_ids) != len(set(ability_ids)):
+            raise ValueError("abilities must have unique ability IDs")
+        object.__setattr__(self, "abilities", abilities)
+
+
+@dataclass(frozen=True)
+class AgentWorld:
+    """全Agentへ公開できる世界観、用語、規則provenanceを表す."""
+
+    theme_id: str
+    theme_name: str
+    premise: str
+    setup_checksum: str
+    mechanics_checksum: str
+    relevant_rules: Mapping[str, object] = field(default_factory=dict)
+    action_names: Mapping[str, str] = field(default_factory=dict)
+    phase_names: Mapping[str, str] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """公開世界観と追跡情報をimmutableに検証する."""
+        for field_name in (
+            "theme_id",
+            "theme_name",
+            "premise",
+        ):
+            object.__setattr__(
+                self,
+                field_name,
+                non_blank(getattr(self, field_name), field_name),
+            )
+        for field_name in ("setup_checksum", "mechanics_checksum"):
+            value = non_blank(getattr(self, field_name), field_name)
+            _require_sha256(value, field_name)
+            object.__setattr__(self, field_name, value)
+        object.__setattr__(self, "relevant_rules", _freeze_mapping(self.relevant_rules))
+        object.__setattr__(
+            self,
+            "action_names",
+            _text_mapping(self.action_names, "action_names"),
+        )
+        object.__setattr__(
+            self,
+            "phase_names",
+            _text_mapping(self.phase_names, "phase_names"),
+        )
+
+
+@dataclass(frozen=True)
 class AgentObservation:
     """完全stateを含まない本人用のimmutable observation."""
 
@@ -82,12 +179,13 @@ class AgentObservation:
     players: tuple[ObservedPlayer, ...]
     known_roles: Mapping[str, str] = field(default_factory=dict)
     known_factions: Mapping[str, str] = field(default_factory=dict)
+    identity: AgentIdentity | None = None
+    world: AgentWorld | None = None
 
     def __post_init__(self) -> None:
         """Observation内部の所有者と可視identityを検証する."""
         object.__setattr__(self, "phase", non_blank(self.phase, "phase"))
-        if self.day < 1:
-            raise ValueError("day must be at least 1")
+        _require_positive_integer(self.day, "day")
         object.__setattr__(self, "players", tuple(self.players))
         player_ids = tuple(player.player_id for player in self.players)
         if len(player_ids) != len(set(player_ids)):
@@ -109,6 +207,13 @@ class AgentObservation:
             "known_factions",
             _identity_mapping(self.known_factions, player_ids, "known_factions"),
         )
+        if self.identity is not None:
+            known_role = self.known_roles.get(self.me.player_id)
+            if known_role is not None and known_role != self.identity.role_id:
+                raise ValueError("identity role must match the known self role")
+            known_faction = self.known_factions.get(self.me.player_id)
+            if known_faction is not None and known_faction != self.identity.identity_faction_id:
+                raise ValueError("identity faction must match the known self faction")
 
 
 @dataclass(frozen=True)
@@ -123,10 +228,8 @@ class PublicTimelineEvent:
 
     def __post_init__(self) -> None:
         """公開eventの順序値、identity、payloadを検証する."""
-        if self.sequence < 1:
-            raise ValueError("sequence must be at least 1")
-        if self.day < 1:
-            raise ValueError("day must be at least 1")
+        _require_positive_integer(self.sequence, "sequence")
+        _require_positive_integer(self.day, "day")
         object.__setattr__(self, "event_type", non_blank(self.event_type, "event_type"))
         object.__setattr__(
             self,
@@ -157,8 +260,8 @@ class DecisionOption:
         if len(targets) != len(set(targets)):
             raise ValueError("legal_target_ids must be unique")
         object.__setattr__(self, "legal_target_ids", targets)
-        if self.message_max_chars is not None and self.message_max_chars < 1:
-            raise ValueError("message_max_chars must be at least 1")
+        if self.message_max_chars is not None:
+            _require_positive_integer(self.message_max_chars, "message_max_chars")
 
     @property
     def key(self) -> str:
@@ -181,6 +284,7 @@ class DecisionRequest:
     def __post_init__(self) -> None:
         """一回の意思決定入力の秘匿性と参照整合を検証する."""
         object.__setattr__(self, "decision_id", non_blank(self.decision_id, "decision_id"))
+        _require_integer(self.decision_seed, "decision_seed")
         if self.context.player_id != self.observation.me.player_id:
             raise ValueError("context player must match observation owner")
         object.__setattr__(self, "public_timeline", tuple(self.public_timeline))
@@ -265,8 +369,7 @@ class DecisionTrace:
     def __post_init__(self) -> None:
         """公開可能な診断値を正規化する."""
         object.__setattr__(self, "decision_id", non_blank(self.decision_id, "decision_id"))
-        if self.latency_ms < 0:
-            raise ValueError("latency_ms must not be negative")
+        _require_non_negative_integer(self.latency_ms, "latency_ms")
         object.__setattr__(
             self,
             "error_code",
@@ -281,6 +384,20 @@ class DecisionTrace:
         if not self.fallback_used and self.response is not None and self.error_code is not None:
             raise ValueError("successful trace must not contain an error_code")
         object.__setattr__(self, "diagnostics", _freeze_mapping(self.diagnostics))
+
+
+class AgentDecisionError(RuntimeError):
+    """予定されたAgent失敗を安定codeと診断値で通知する."""
+
+    def __init__(
+        self,
+        code: str,
+        diagnostics: Mapping[str, object] | None = None,
+    ) -> None:
+        """検証済みcodeとimmutableな診断値を保持する."""
+        self.code = non_blank(code, "code")
+        self.diagnostics = _freeze_mapping(diagnostics or {})
+        super().__init__(self.code)
 
 
 @runtime_checkable
@@ -325,6 +442,38 @@ def _identity_mapping(
     return MappingProxyType(normalized)
 
 
+def _text_mapping(values: Mapping[str, str], field_name: str) -> Mapping[str, str]:
+    return MappingProxyType(
+        {
+            non_blank(key, f"{field_name} key"): non_blank(value, field_name)
+            for key, value in values.items()
+        }
+    )
+
+
+def _require_integer(value: object, field_name: str) -> int:
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be an integer")
+    return value
+
+
+def _require_non_negative_integer(value: object, field_name: str) -> None:
+    normalized = _require_integer(value, field_name)
+    if normalized < 0:
+        raise ValueError(f"{field_name} must not be negative")
+
+
+def _require_positive_integer(value: object, field_name: str) -> None:
+    normalized = _require_integer(value, field_name)
+    if normalized < 1:
+        raise ValueError(f"{field_name} must be at least 1")
+
+
+def _require_sha256(value: str, field_name: str) -> None:
+    if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+
+
 def _freeze_mapping(values: Mapping[str, object]) -> Mapping[str, object]:
     frozen: dict[str, object] = {}
     for key, value in values.items():
@@ -348,11 +497,15 @@ def _freeze_value(value: object) -> object:
 
 __all__ = [
     "AGENT_CONTRACT_VERSION",
+    "AgentAbility",
     "AgentContext",
+    "AgentDecisionError",
     "AgentFactory",
+    "AgentIdentity",
     "AgentObservation",
     "AgentSession",
     "AgentSpec",
+    "AgentWorld",
     "DecisionOption",
     "DecisionRequest",
     "DecisionResponse",

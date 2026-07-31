@@ -8,11 +8,15 @@ from werewolf_agent.agents.builtins import (
 )
 from werewolf_agent.agents.contracts import (
     AGENT_CONTRACT_VERSION,
+    AgentAbility,
     AgentContext,
+    AgentDecisionError,
     AgentFactory,
+    AgentIdentity,
     AgentObservation,
     AgentSession,
     AgentSpec,
+    AgentWorld,
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
@@ -23,11 +27,15 @@ from werewolf_agent.agents.contracts import (
 
 __all__ = [
     "AGENT_CONTRACT_VERSION",
+    "AgentAbility",
     "AgentContext",
+    "AgentDecisionError",
     "AgentFactory",
+    "AgentIdentity",
     "AgentObservation",
     "AgentSession",
     "AgentSpec",
+    "AgentWorld",
     "DecisionOption",
     "DecisionRequest",
     "DecisionResponse",

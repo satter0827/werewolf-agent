@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
 
 from werewolf_agent.agents import (
+    AgentAbility,
     AgentContext,
+    AgentDecisionError,
+    AgentIdentity,
     AgentObservation,
     AgentSession,
     AgentSpec,
+    AgentWorld,
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
@@ -128,6 +133,111 @@ def test_contract_rejects_non_string_text_without_leaking_attribute_errors() -> 
         AgentSpec(1, "1.0.0", "1" * 64)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="speech must be a string"):
         RandomLegalAgentFactory(1)  # type: ignore[arg-type]
+
+
+def test_observation_separates_owner_identity_from_public_world() -> None:
+    """本人知識と全員に公開する世界観を型付きの別領域として保持する."""
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    identity = AgentIdentity(
+        role_id="oracle",
+        role_name="観測者",
+        identity_faction_id="village",
+        identity_faction_name="探索側",
+        victory_team_id="village",
+        victory_team_name="探索側",
+        objective="情報を集める",
+        abilities=(AgentAbility("scan", "観測", "inspect", 1),),
+    )
+    world = AgentWorld(
+        theme_id="laboratory",
+        theme_name="研究施設",
+        premise="正体を隠した侵入者を見つける",
+        setup_checksum="a" * 64,
+        mechanics_checksum="b" * 64,
+        relevant_rules={"allow_self_vote": False},
+        action_names={"vote": "投票する"},
+        phase_names={"night": "夜"},
+    )
+
+    observation = AgentObservation(
+        "night",
+        1,
+        me,
+        (me, other),
+        known_roles={"p1": "oracle"},
+        known_factions={"p1": "village"},
+        identity=identity,
+        world=world,
+    )
+
+    assert observation.identity == identity
+    assert observation.world == world
+    assert observation.world.relevant_rules == {"allow_self_vote": False}
+    with pytest.raises(TypeError):
+        observation.world.action_names["vote"] = "変更"  # type: ignore[index]
+
+
+def test_observation_rejects_identity_inconsistent_with_self_knowledge() -> None:
+    """同じ本人情報を二つの表現で食い違わせない."""
+    me = ObservedPlayer("p1", "Alice", True)
+    identity = AgentIdentity(
+        "oracle",
+        "観測者",
+        "village",
+        "探索側",
+        "village",
+        "探索側",
+        "情報を集める",
+    )
+
+    with pytest.raises(ValueError, match="identity role"):
+        AgentObservation(
+            "night",
+            1,
+            me,
+            (me,),
+            known_roles={"p1": "werewolf"},
+            identity=identity,
+        )
+
+
+def test_agent_decision_error_freezes_safe_diagnostics() -> None:
+    """予定された失敗を安定codeとimmutableな診断値で通知する."""
+    error = AgentDecisionError("agent.invalid_response", {"stage": "schema"})
+
+    assert str(error) == "agent.invalid_response"
+    assert error.code == "agent.invalid_response"
+    assert error.diagnostics == {"stage": "schema"}
+    with pytest.raises(TypeError):
+        error.diagnostics["stage"] = "changed"  # type: ignore[index]
+
+
+@pytest.mark.parametrize(
+    "build",
+    (
+        lambda: AgentContext("s1", "g1", "p1", True),
+        lambda: AgentObservation(
+            "night",
+            True,
+            ObservedPlayer("p1", "Alice", True),
+            (ObservedPlayer("p1", "Alice", True),),
+        ),
+        lambda: DecisionOption("speech", message_max_chars=True),
+    ),
+)
+def test_contract_rejects_boolean_values_for_integer_fields(
+    build: Callable[[], object],
+) -> None:
+    """Pythonでintのsubclassであるboolを数値契約として受理しない."""
+    with pytest.raises(ValueError, match="must be an integer"):
+        build()
+
+
+def test_agent_world_requires_sha256_provenance() -> None:
+    """実験とtraceへ使用するchecksumを曖昧な文字列にしない."""
+    with pytest.raises(ValueError, match="setup_checksum"):
+        AgentWorld("theme", "Theme", "Premise", "not-a-checksum", "b" * 64)
 
 
 def test_decision_trace_requires_an_outcome_and_a_fallback_response() -> None:
