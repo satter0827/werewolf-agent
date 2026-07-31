@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal
 
+from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
 from werewolf_agent.adapters.agents.game_driver import decide_game_action, langchain_agent_factory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
@@ -125,6 +126,9 @@ class FakeGameDemo:
     _gameplay_random: random.Random
     _trace_sink: _SummaryTraceSink
     _public_events: list[GameEvent]
+    _setup_document: Mapping[str, object]
+    _setup_checksum: str
+    _mechanics_checksum: str
     _player_index: int = 0
     _action_count: int = 0
     _phase_count: int = 0
@@ -187,6 +191,7 @@ class FakeGameDemo:
         creation_events = [
             event for event in game.creation_events if event.visibility is EventVisibility.PUBLIC
         ]
+        setup_document = setup.to_mapping()
         return cls(
             game=game,
             rules=rules,
@@ -196,6 +201,9 @@ class FakeGameDemo:
             _gameplay_random=random.Random(namespace_seed(seed, "gameplay")),
             _trace_sink=trace_sink,
             _public_events=creation_events,
+            _setup_document=setup_document,
+            _setup_checksum=checksum_payload(setup_document),
+            _mechanics_checksum=checksum_payload(mechanics.to_mapping()),
         )
 
     @property
@@ -234,11 +242,18 @@ class FakeGameDemo:
                 player_id=player.id,
                 session_seed=namespace_seed(self.seed, f"demo-session:{player.id}"),
             )
+            game_contexts = build_agent_game_contexts(
+                self._setup_document,
+                snapshot,
+                setup_checksum=self._setup_checksum,
+                mechanics_checksum=self._mechanics_checksum,
+            )
             action = decide_game_action(
                 self._factories[player.id],
                 context=context,
                 observation=observation,
                 decision_seed=decision_seed,
+                game_context=game_contexts.get(player.id),
             )
             emitted = self.game.submit(action)
             public_events = self._public(emitted)

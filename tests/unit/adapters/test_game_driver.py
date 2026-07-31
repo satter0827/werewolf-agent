@@ -14,6 +14,8 @@ from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions
 from werewolf_agent.agents import (
     AgentContext,
+    AgentSession,
+    AgentSpec,
     DecisionResponse,
     DecisionTrace,
     FaultAgentFactory,
@@ -184,6 +186,44 @@ def test_driver_rejects_illegal_external_response_before_domain_mutation() -> No
 
     assert action.target_id == "p2"
     assert sink.records[0].error_code == "agent_target_not_legal"
+
+
+class _CreateFaultFactory:
+    @property
+    def spec(self) -> AgentSpec:
+        return FaultAgentFactory("create_failed").spec
+
+    def create(self, context: AgentContext) -> AgentSession:
+        _ = context
+        raise RuntimeError("create failed")
+
+
+def test_driver_falls_back_when_external_session_creation_fails() -> None:
+    observation = GameView(
+        phase=Phase.VOTING,
+        day=1,
+        me=Player(id="p1", name="Alice", role="villager"),
+        players=(
+            Player(id="p1", name="Alice", role="villager"),
+            Player(id="p2", name="Bob", role="werewolf"),
+        ),
+        available_actions=(AvailableAction(ActionType.VOTE),),
+        legal_targets={"vote": ("p2",)},
+    )
+    context = AgentContext("session", "game", "p1", 1)
+    request = _decision_request_from_game(
+        context,
+        observation,
+        game_context=None,
+        decision_seed=3,
+    )
+    sink = _TraceSink()
+
+    action = _decide_action(_CreateFaultFactory(), context, request, trace_sink=sink)
+
+    assert action.target_id == "p2"
+    assert sink.records[0].error_code == "agent_decision_failed"
+    assert sink.records[0].diagnostics["error_type"] == "RuntimeError"
 
 
 class _InjectedGame:

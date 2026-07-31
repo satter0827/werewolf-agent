@@ -19,6 +19,7 @@ import httpx
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
+from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
 from werewolf_agent.adapters.agents.game_driver import decide_game_action, langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
     build_llm_definitions,
@@ -26,8 +27,6 @@ from werewolf_agent.adapters.application_bridge import (
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.llm.models import (
-    AgentAbilityContext,
-    AgentGameContext,
     DeliberationLevel,
     PlayerProfile,
 )
@@ -37,7 +36,6 @@ from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
 from werewolf_agent.settings import get_settings
 from werewolf_agent.setup import (
-    GameSetupDocument,
     checksum_payload,
     generate_players,
     namespace_seed,
@@ -718,7 +716,15 @@ def _run_preset(
         random=role_rng,
     )
     trace_sink = InMemoryTraceSink(trace_callback)
-    contexts = _game_contexts(setup, game, setup_checksum=checksum_payload(setup.to_mapping()))
+    setup_document = setup.to_mapping()
+    setup_checksum = checksum_payload(setup_document)
+    mechanics_checksum = checksum_payload(mechanics.to_mapping())
+    contexts = build_agent_game_contexts(
+        setup_document,
+        game.snapshot(),
+        setup_checksum=setup_checksum,
+        mechanics_checksum=mechanics_checksum,
+    )
     factories: dict[str, AgentFactory] = {
         player_id: langchain_agent_factory(
             config,
@@ -776,10 +782,11 @@ def _run_preset(
             domain_to_data(event) for event in emitted if event.visibility is EventVisibility.PUBLIC
         )
         phase_count += 1
-        contexts = _game_contexts(
-            setup,
-            game,
-            setup_checksum=checksum_payload(setup.to_mapping()),
+        contexts = build_agent_game_contexts(
+            setup_document,
+            game.snapshot(),
+            setup_checksum=setup_checksum,
+            mechanics_checksum=mechanics_checksum,
         )
     snapshot = game.snapshot()
     traces = [_trace_document(trace) for trace in trace_sink.records]
@@ -926,61 +933,6 @@ def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, objec
             profile: len(values) for profile, values in sorted(profile_choices.items())
         },
     }
-
-
-def _game_contexts(
-    setup: GameSetupDocument,
-    game: Game,
-    *,
-    setup_checksum: str,
-) -> dict[str, AgentGameContext]:
-    snapshot = game.snapshot()
-    mechanics = setup.mechanics
-    mechanics_checksum = checksum_payload(mechanics.to_mapping())
-    rules = mechanics.rules.to_mapping()
-    contexts: dict[str, AgentGameContext] = {}
-    for player in snapshot.players.values():
-        if player.role is None:
-            continue
-        role = mechanics.roles[player.role]
-        abilities = []
-        for ability_id in role.abilities:
-            ability = mechanics.abilities[ability_id]
-            used = snapshot.ability_uses.get(player.id, {}).get(ability_id, 0)
-            remaining = (
-                max(0, ability.max_uses - used) if isinstance(ability.max_uses, int) else None
-            )
-            abilities.append(
-                AgentAbilityContext(
-                    id=ability_id,
-                    name=setup.theme.ability_names[ability_id],
-                    kind=ability.kind,
-                    remaining_uses=remaining,
-                )
-            )
-        identity_faction = role.identity_faction
-        victory_team = role.victory_team
-        contexts[player.id] = AgentGameContext(
-            theme_id=setup.theme.id,
-            theme_name=setup.theme.name,
-            premise=setup.theme.premise,
-            role_id=player.role,
-            role_name=setup.theme.role_names[player.role],
-            identity_faction=identity_faction,
-            identity_faction_name=setup.theme.faction_names[identity_faction],
-            victory_team=victory_team,
-            victory_team_name=setup.theme.faction_names[victory_team],
-            objective=setup.theme.role_objectives[player.role],
-            abilities=tuple(abilities),
-            relevant_rules={
-                key: value for key, value in rules.items() if isinstance(value, (str, bool, int))
-            },
-            action_names=dict(setup.theme.action_names),
-            phase_names=dict(setup.theme.phase_names),
-            setup_checksum=setup_checksum,
-            mechanics_checksum=mechanics_checksum,
-        )
-    return contexts
 
 
 def _trace_document(trace: LlmInvocationTrace) -> dict[str, object]:

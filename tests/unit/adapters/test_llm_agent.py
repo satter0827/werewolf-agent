@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 import pytest
 from langchain_core.language_models.fake_chat_models import FakeListChatModel
 
-from werewolf_agent.adapters.llm import LangChainAgentFactory
+from werewolf_agent.adapters.llm.agent import LangChainAgentFactory
 from werewolf_agent.adapters.llm.langchain.service import LangChainDecisionProvider
 from werewolf_agent.adapters.llm.model_adapters import LangChainChatDecisionModel
 from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile

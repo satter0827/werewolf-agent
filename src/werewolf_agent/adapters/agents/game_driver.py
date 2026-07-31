@@ -18,6 +18,7 @@ from werewolf_agent.adapters.agents.constants import (
     LLM_PROVIDER_OPENAI,
     LLM_STUDIO_API_KEY_PLACEHOLDER,
 )
+from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
 from werewolf_agent.adapters.agents.messages import (
     message_langchain_openai_required,
     message_unsupported_llm_provider,
@@ -33,7 +34,6 @@ from werewolf_agent.adapters.llm.model_adapters import (
     LangChainChatDecisionModel,
 )
 from werewolf_agent.adapters.llm.models import (
-    AgentAbilityContext,
     AgentGameContext,
     DeliberationLevel,
     PlayerProfile,
@@ -383,9 +383,10 @@ def _decide_action(
 ) -> Action:
     """一つのSessionで決定し、失敗時だけ決定的fallbackを適用する."""
     started_at = time.perf_counter()
-    session = factory.create(context)
+    session = None
     try:
         try:
+            session = factory.create(context)
             response = session.decide(request)
             _require_legal_response(request, response)
         except Exception as exc:
@@ -426,7 +427,8 @@ def _decide_action(
             )
         return _game_action_from_response(context.player_id, response)
     finally:
-        session.close()
+        if session is not None:
+            session.close()
 
 
 def decide_game_action(
@@ -620,94 +622,14 @@ def _agent_game_contexts(
     setup = prepared.config.get("setup_document")
     if not isinstance(setup, dict):
         return {}
-    mechanics = setup.get("mechanics")
-    theme = setup.get("theme")
-    if not isinstance(mechanics, dict) or not isinstance(theme, dict):
-        return {}
-    roles = mechanics.get("roles")
-    abilities = mechanics.get("abilities")
-    rules = mechanics.get("rules")
-    if (
-        not isinstance(roles, dict)
-        or not isinstance(abilities, dict)
-        or not isinstance(rules, dict)
-    ):
-        return {}
-    role_names_value = theme.get("role_names")
-    role_names = role_names_value if isinstance(role_names_value, dict) else {}
-    role_objectives_value = theme.get("role_objectives")
-    role_objectives = role_objectives_value if isinstance(role_objectives_value, dict) else {}
-    faction_names_value = theme.get("faction_names")
-    faction_names = faction_names_value if isinstance(faction_names_value, dict) else {}
-    ability_names_value = theme.get("ability_names")
-    ability_names = ability_names_value if isinstance(ability_names_value, dict) else {}
-    scenario_name = str(prepared.config.get("scenario_name") or "").strip()
-    scenario_premise = str(prepared.config.get("scenario_prompt_premise") or "").strip()
-    contexts: dict[str, AgentGameContext] = {}
-    for player in snapshot.players.values():
-        if player.role is None:
-            continue
-        role = roles.get(player.role)
-        if not isinstance(role, dict):
-            continue
-        ability_contexts: list[AgentAbilityContext] = []
-        for ability_id in role.get("abilities") or []:
-            ability = abilities.get(str(ability_id))
-            if not isinstance(ability, dict):
-                continue
-            max_uses = ability.get("max_uses")
-            used = snapshot.ability_uses.get(player.id, {}).get(str(ability_id), 0)
-            if max_uses == "unlimited":
-                remaining = None
-            elif isinstance(max_uses, int) and not isinstance(max_uses, bool):
-                remaining = max(0, max_uses - used)
-            else:
-                raise ValueError("ability max_uses must be an integer or unlimited")
-            ability_contexts.append(
-                AgentAbilityContext(
-                    id=str(ability_id),
-                    name=str(
-                        ability_names.get(str(ability_id)) or ability.get("label") or ability_id
-                    ),
-                    kind=str(ability.get("kind") or ""),
-                    remaining_uses=remaining,
-                )
-            )
-        relevant_keys = {
-            "day_speech_limit_per_player",
-            "allow_self_vote",
-            "allow_vote_revision",
-            "allow_night_action_revision",
-            "vote_tie_resolution",
-            "starting_phase",
-            "reveal_role_on_death",
-            "require_all_actions_before_advance",
-        }
-        identity_faction = str(role.get("identity_faction") or "")
-        victory_team = str(role.get("victory_team") or "")
-        contexts[player.id] = AgentGameContext(
-            theme_id=str(theme.get("id") or ""),
-            theme_name=scenario_name or str(theme.get("name") or ""),
-            premise=scenario_premise or str(theme.get("premise") or ""),
-            role_id=player.role,
-            role_name=str(role_names.get(player.role) or role.get("label") or player.role),
-            identity_faction=identity_faction,
-            identity_faction_name=str(faction_names.get(identity_faction) or identity_faction),
-            victory_team=victory_team,
-            victory_team_name=str(faction_names.get(victory_team) or victory_team),
-            objective=str(role_objectives.get(player.role) or role.get("objective") or ""),
-            abilities=tuple(ability_contexts),
-            relevant_rules={key: rules[key] for key in sorted(relevant_keys) if key in rules},
-            action_names={
-                str(key): str(value) for key, value in dict(theme.get("action_names") or {}).items()
-            },
-            phase_names={
-                str(key): str(value) for key, value in dict(theme.get("phase_names") or {}).items()
-            },
-            setup_checksum=str(prepared.config.get("setup_checksum") or ""),
-            mechanics_checksum=str(prepared.config.get("mechanics_checksum") or ""),
-        )
-    return contexts
+    return build_agent_game_contexts(
+        setup,
+        snapshot,
+        setup_checksum=str(prepared.config.get("setup_checksum") or ""),
+        mechanics_checksum=str(prepared.config.get("mechanics_checksum") or ""),
+        scenario_name=str(prepared.config.get("scenario_name") or ""),
+        scenario_premise=str(prepared.config.get("scenario_prompt_premise") or ""),
+    )
 
 
 def _game_action_from_response(player_id: str, response: DecisionResponse) -> Action:
