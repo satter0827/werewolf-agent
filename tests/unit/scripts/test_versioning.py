@@ -25,6 +25,7 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     items = versioning.inspect()
 
     assert {item["name"] for item in items} == {
+        "agent",
         "architecture",
         "event",
         "product",
@@ -35,9 +36,10 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     }
     versions = {str(item["name"]): str(item["version"]) for item in items}
     assert versions == {
+        "agent": "0.1.0",
         "architecture": "0.9.0",
         "event": "0.1.0",
-        "product": "0.13.0",
+        "product": "0.14.0",
         "quality-evidence": "0.2.0",
         "replay": "0.4.0",
         "rule-pack": "0.6.0",

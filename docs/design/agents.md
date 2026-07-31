@@ -14,11 +14,22 @@ LLMの自由文は直接ゲーム操作へ変換しない。生JSONをPydantic s
 意味を変えない正規化は完全なMarkdown fenceの除去だけとする。不正応答は書き換えず、
 再問い合わせを行わず、決定的fallbackへ送る。
 
+## Agent SDK契約
+
+`werewolf_agent.agents`は標準ライブラリだけで`AgentFactory`、`AgentSession`、`AgentContext`、
+`AgentSpec`、`AgentObservation`、`DecisionRequest`、`DecisionResponse`、`DecisionTrace`を公開する。
+Factoryはgameとプレイヤーごとに新しいSessionを生成し、Sessionは同期`decide()`と冪等な`close()`だけを
+提供する。timeoutとcancelは呼出し側のSimulationまたはアダプターが管理する。
+
+Requestは本人用observation、公開timeline、合法action、合法target、timezone付きdeadline、
+decision seedだけを保持する。完全state、application service、リポジトリ、provider credentialは
+含めない。Responseのbelief、confidence、intent、metadataは任意であり、chain-of-thoughtを要求または
+保存しない。Agent identityはimplementation version、SHA-256 fingerprint、固定parameterで記録する。
+
 ## LLMプロバイダー境界
 
-`werewolf_agent.agents`は観測、`DecisionTask`、`ModelRequest`、`ModelResponse`、
-`DecisionModel`、trace、プレイヤーportを定義する。`adapters.llm`はLangChain型への変換と
-Fake fixtureを所有する。providerはcomposition rootで一度だけ選び、その後はFakeと実LLMが
+`agents.models`と`agents.ports`は既存LLM pipelineの内部DTOを所有する。`adapters.llm`は
+LangChain型への変換とFake fixtureを所有する。providerはcomposition rootで一度だけ選び、その後はFakeと実LLMが
 同じchat request、応答正規化、schema検証、合法手検証、fallbackを通る。
 
 意思決定は`観測正規化 → context構築 → model呼出し → JSON正規化 → schema・合法手検証
