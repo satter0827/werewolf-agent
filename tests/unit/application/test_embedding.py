@@ -16,6 +16,7 @@ from werewolf_agent.application import (
     GameApplicationConfig,
     InMemoryGameRepository,
     InMemorySetupRepository,
+    SingleTenantAccessPolicy,
     create_embedded_application,
 )
 
@@ -55,7 +56,51 @@ def test_embedded_application_runs_without_http_database_or_worker() -> None:
     assert [game["game_id"] for game in listed.games] == [created.game_id]
     observation = embedded.games.observation(created.game_id, embedded.actor, "p1")
     assert observation.player_id == "p1"
+
+    with pytest.raises(AppError) as reveal:
+        embedded.games.reveal(created.game_id, embedded.actor)
+    assert reveal.value.code is ErrorCode.AUTHORIZATION_FAILED
+
+
+def test_embedded_application_explicitly_enables_trusted_reveal() -> None:
+    catalog = build_setup_catalog()
+    embedded = create_embedded_application(
+        user_id=USER_ID,
+        config=_config(),
+        setup_catalog=catalog,
+        allow_reveal=True,
+    )
+    created = embedded.commands.execute(
+        embedded.setups.prepare_create(
+            catalog.require_document("standard_6"),
+            seed=19,
+            manual_player_id=None,
+            llm_mode="fake",
+            deliberation_level="standard",
+        )
+    )
+
     assert embedded.games.reveal(created.game_id, embedded.actor).game_id == created.game_id
+
+
+def test_embedded_application_rejects_non_boolean_reveal_flag() -> None:
+    with pytest.raises(ConfigError, match="boolean"):
+        create_embedded_application(
+            user_id=USER_ID,
+            config=_config(),
+            setup_catalog=build_setup_catalog(),
+            allow_reveal="false",  # type: ignore[arg-type]
+        )
+
+
+def test_embedded_application_rejects_unknown_create_llm_mode() -> None:
+    with pytest.raises(ConfigError, match="create_llm_mode"):
+        create_embedded_application(
+            user_id=USER_ID,
+            config=_config(),
+            setup_catalog=build_setup_catalog(),
+            create_llm_mode="unknown",  # type: ignore[arg-type]
+        )
 
 
 def test_embedded_application_keeps_state_in_injected_repositories() -> None:
@@ -68,6 +113,7 @@ def test_embedded_application_keeps_state_in_injected_repositories() -> None:
         setup_catalog=catalog,
         game_repository=games,
         setup_repository=setups,
+        access_policy=SingleTenantAccessPolicy(user_id=USER_ID, repository=games),
     )
     created = first.commands.execute(
         first.setups.prepare_create(
@@ -85,10 +131,21 @@ def test_embedded_application_keeps_state_in_injected_repositories() -> None:
         setup_catalog=catalog,
         game_repository=games,
         setup_repository=setups,
+        access_policy=SingleTenantAccessPolicy(user_id=USER_ID, repository=games),
     )
 
     assert second.games.get(created.game_id, second.actor).game_id == created.game_id
     assert games.get(UUID(created.game_id)) is not None
+
+
+def test_embedded_application_requires_policy_for_external_game_repository() -> None:
+    with pytest.raises(ConfigError, match="access_policy"):
+        create_embedded_application(
+            user_id=USER_ID,
+            config=_config(),
+            setup_catalog=build_setup_catalog(),
+            game_repository=InMemoryGameRepository(owner_user_id=USER_ID),
+        )
 
 
 def test_embedded_application_does_not_share_default_state() -> None:

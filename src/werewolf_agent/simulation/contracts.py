@@ -20,7 +20,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.3.0"
+SIMULATION_CONTRACT_VERSION = "0.3.1"
 
 
 class SimulationStepKind(StrEnum):
@@ -58,6 +58,10 @@ class SimulationLimits:
         _positive_integer(self.max_actions, "max_actions")
         _positive_integer(self.max_phases, "max_phases")
         if self.decision_timeout_seconds is not None:
+            if not isinstance(self.decision_timeout_seconds, (int, float)) or isinstance(
+                self.decision_timeout_seconds, bool
+            ):
+                raise ValueError("decision_timeout_seconds must be a number")
             value = float(self.decision_timeout_seconds)
             if value <= 0 or value == float("inf") or value != value:
                 raise ValueError("decision_timeout_seconds must be positive and finite")

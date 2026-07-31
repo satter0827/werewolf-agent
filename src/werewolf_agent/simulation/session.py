@@ -99,9 +99,11 @@ class SimulationSession:
         """一局の依存と実行位置を初期化する."""
         self._game = game
         self._spec = spec
-        self._executor = decision_executor or SynchronousDecisionExecutor()
-        self._trace_sink = trace_sink or NullDecisionTraceSink()
-        self._cancellation = cancellation or CancellationToken()
+        self._executor = (
+            decision_executor if decision_executor is not None else SynchronousDecisionExecutor()
+        )
+        self._trace_sink = trace_sink if trace_sink is not None else NullDecisionTraceSink()
+        self._cancellation = cancellation if cancellation is not None else CancellationToken()
         self._phase_random = random.Random(
             spec.phase_seed
             if spec.phase_seed is not None

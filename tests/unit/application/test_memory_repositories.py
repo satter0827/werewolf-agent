@@ -33,6 +33,11 @@ class _Clock:
         return current
 
 
+class _FalseyClock(_Clock):
+    def __bool__(self) -> bool:
+        return False
+
+
 def _game_create() -> GameRecordCreate:
     return GameRecordCreate(
         id=GAME_ID,
@@ -87,6 +92,24 @@ def test_game_repository_persists_isolated_snapshots_and_updates() -> None:
     assert updated.config == {"llm_mode": "fake"}
     assert updated.created_at == STARTED_AT
     assert updated.updated_at > updated.created_at
+
+
+def test_memory_repositories_honor_falsey_injected_clocks() -> None:
+    game_repository = InMemoryGameRepository(owner_user_id=OWNER_ID, clock=_FalseyClock())
+    setup_repository = InMemorySetupRepository(clock=_FalseyClock())
+    document = build_setup_catalog().require_document("standard_6")
+
+    game = game_repository.create(_game_create())
+    setup = setup_repository.create(
+        owner_user_id=OWNER_ID,
+        display_name="実験設定",
+        document=document,
+        setup_checksum="a" * 64,
+        mechanics_checksum="b" * 64,
+    )
+
+    assert game.created_at == STARTED_AT
+    assert setup.created_at == STARTED_AT
 
 
 def test_game_repository_satisfies_shared_contract() -> None:

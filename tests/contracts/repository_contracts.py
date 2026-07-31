@@ -81,6 +81,46 @@ def assert_game_repository_contract(
     assert turns[0].payload == {"message": "hello"}
     assert repository.list_public_turns(game_id, after=1, limit=10) == []
 
+    try:
+        with repository.transaction():
+            repository.save(
+                GameRecordUpdate(
+                    id=game_id,
+                    status="completed",
+                    phase="finished",
+                    day=2,
+                    public_state={
+                        "players": [{"id": "p1"}, {"id": "p2"}],
+                        "summary": {"alive_count": 1},
+                        "winner": "village",
+                    },
+                    private_state={"secret": ["changed"]},
+                    pending_actions={},
+                    version=3,
+                )
+            )
+            repository.append_events(
+                game_id,
+                [
+                    GameEventCreate(
+                        visibility="public",
+                        phase="finished",
+                        day=2,
+                        event_type="game_finished",
+                        payload={"winner": "village"},
+                    )
+                ],
+            )
+            raise RuntimeError("rollback probe")
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("transaction must propagate the original failure")
+
+    rolled_back = repository.get(game_id)
+    assert rolled_back == updated
+    assert repository.latest_public_turn_sequence(game_id) == 1
+
 
 def assert_setup_repository_contract(
     repository: SetupRepository,

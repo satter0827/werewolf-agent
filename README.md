@@ -34,8 +34,10 @@ python -m pip install .
 標準インストールにruntimeの第三者依存はない。提供層を使う場合は利用単位のextraを指定する。
 
 ```powershell
+python -m pip install ".[application]"
 python -m pip install ".[cli]"
 python -m pip install ".[api]"
+python -m pip install ".[llm]"
 python -m pip install ".[streamlit]"
 python -m pip install ".[worker]"
 ```

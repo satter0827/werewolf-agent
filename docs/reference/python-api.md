@@ -32,7 +32,9 @@
 `create_embedded_application()`は設定、setup catalog、任意のリポジトリとRule Packを受け取り、
 HTTP、database、workerを必要としないsingle-tenant applicationを構築する。設定とcatalogは暗黙に
 読み込まず、利用者が実験条件として固定する。`InlineCommandExecutor`は型付きコマンドをqueueなしで
-同期実行する。状態はfactoryやfacadeではなく、注入したリポジトリが所有する。
+同期実行する。状態はfactoryやfacadeではなく、注入したリポジトリが所有する。外部gameリポジトリを
+使う場合は、その保存境界に対応する`AccessPolicy`も明示する。完全状態の`reveal()`は既定で無効とし、
+信頼済みの単一利用者実験だけ`allow_reveal=True`で有効化する。
 
 ```{literalinclude} ../snippets/python_api_application.py
 :language: python

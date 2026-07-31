@@ -14,6 +14,7 @@ from werewolf_agent.agents import (
     AgentWorld,
     DecisionRequest,
     DecisionResponse,
+    DecisionTrace,
     FaultAgentFactory,
     RandomLegalAgentFactory,
 )
@@ -72,6 +73,41 @@ class _ChangingMetadata:
                 "1" * 64,
             )
         )
+
+
+class _FalseyExecutor:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __bool__(self) -> bool:
+        return False
+
+    def decide(
+        self,
+        session: AgentSession,
+        request: DecisionRequest,
+        *,
+        timeout_seconds: float | None,
+    ) -> DecisionResponse:
+        _ = timeout_seconds
+        self.calls += 1
+        return session.decide(request)
+
+
+class _FalseyTraceSink:
+    def __init__(self) -> None:
+        self.traces: list[DecisionTrace] = []
+
+    def __bool__(self) -> bool:
+        return False
+
+    def record_decision(self, trace: DecisionTrace) -> None:
+        self.traces.append(trace)
+
+
+class _FalseyCancellation(CancellationToken):
+    def __bool__(self) -> bool:
+        return False
 
 
 def _game(seed: int = 41) -> Game:
@@ -133,6 +169,40 @@ def test_same_seed_produces_same_steps_and_state() -> None:
         None if step.decision_trace is None else step.decision_trace.response
         for step in second.steps
     )
+
+
+def test_simulation_honors_falsey_injected_runtime_dependencies() -> None:
+    game = _game()
+    executor = _FalseyExecutor()
+    sink = _FalseyTraceSink()
+    session = SimulationRunner().start(
+        game,
+        _spec(game),
+        decision_executor=executor,
+        trace_sink=sink,
+    )
+    try:
+        step = session.step()
+        while step.kind is SimulationStepKind.PHASE_ADVANCED:
+            step = session.step()
+        assert step.kind is SimulationStepKind.AGENT_ACTION
+        assert executor.calls == 1
+        assert len(sink.traces) == 1
+    finally:
+        session.close()
+
+    cancelled = _FalseyCancellation()
+    cancelled.cancel()
+    cancelled_game = _game()
+    cancelled_session = SimulationRunner().start(
+        cancelled_game,
+        _spec(cancelled_game),
+        cancellation=cancelled,
+    )
+    try:
+        assert cancelled_session.step().stop_reason is SimulationStopReason.CANCELLED
+    finally:
+        cancelled_session.close()
 
 
 def test_manual_player_waits_without_blocking_available_agent_action() -> None:
@@ -276,5 +346,11 @@ def test_spec_rejects_controller_mismatch_and_invalid_limits() -> None:
         )
     with pytest.raises(ValueError, match="positive"):
         SimulationLimits(max_actions=0)
+    with pytest.raises(ValueError, match="number"):
+        SimulationLimits(decision_timeout_seconds=True)
+    with pytest.raises(ValueError, match="number"):
+        SimulationLimits(decision_timeout_seconds="1")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="positive and finite"):
+        SimulationLimits(decision_timeout_seconds=float("inf"))
     with pytest.raises(TypeError):
         spec.controllers["new"] = PlayerController("new")  # type: ignore[index]
