@@ -882,7 +882,7 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": "0.2.0",
+            "const": "0.3.0",
             "title": "Schema Version",
             "type": "string"
           },
@@ -3710,7 +3710,7 @@
   },
   "info": {
     "title": "Werewolf Agent API",
-    "version": "0.25.0"
+    "version": "0.26.0"
   },
   "openapi": "3.1.0",
   "paths": {

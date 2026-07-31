@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from threading import RLock
+from typing import Protocol
 from uuid import UUID, uuid4
 
 from werewolf_agent.application.errors import AppError, ErrorCode, GameNotFoundError, GamePhaseError
@@ -23,7 +24,13 @@ from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSe
 from werewolf_agent.application.types import GAME_STATUS_COMPLETED, GameStatus
 from werewolf_agent.setup import GameSetupDocument
 
-Clock = Callable[[], datetime]
+
+class Clock(Protocol):
+    """Repositoryへ現在時刻を注入する契約."""
+
+    def __call__(self) -> datetime:
+        """Timezoneを持つ現在時刻を返す."""
+        ...
 
 
 class InMemoryGameRepository(GameRepository):
@@ -345,4 +352,4 @@ def _utc_now() -> datetime:
     return datetime.now(UTC)
 
 
-__all__ = ["InMemoryGameRepository", "InMemorySetupRepository"]
+__all__ = ["Clock", "InMemoryGameRepository", "InMemorySetupRepository"]
