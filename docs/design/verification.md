@@ -86,6 +86,10 @@ domainテストは状態遷移、復元snapshot、役職構成、終局結果、
 検証する。リプレイテストはコマンド、event、state、projection、rule snapshotの改変を最初の
 不一致versionで検出する。
 
+Rule Pack contractテストはCoreと外部providerを同じsetup、seed、合法action選択へ通し、
+state、event、プレイヤーviewの完全traceが再生成できることを確認する。各stepを同じrulesで復元し、
+未観測roleをviewへ含めず、不正actionでstateを変更しないことも同じシナリオで確認する。
+
 client faultテストはAPI、Auth、database、operation queue、worker、LLM、翻訳overrideを個別に
 故障させ、停止範囲が依存するfeatureに限られることを確認する。環境準備テストはfingerprint、
 Docker、image、隔離Supabase projectを独立して検証する。
