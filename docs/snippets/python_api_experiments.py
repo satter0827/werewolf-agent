@@ -1,15 +1,18 @@
 from hashlib import sha256
 
+from werewolf_agent.agents import RandomLegalAgentFactory
 from werewolf_agent.domain import RULE_PACK_CONTRACT_VERSION, RulePackManifest
 from werewolf_agent.experiments import ExperimentSpec, RotationMode, RulesCondition, plan_trials
 
 digest = lambda value: sha256(value.encode()).hexdigest()  # noqa: E731
+agents = {controller_id: RandomLegalAgentFactory().spec for controller_id in ("c1", "c2", "c3")}
 conditions = tuple(
     RulesCondition(
         condition_id,
         digest(f"setup:{condition_id}"),
         RulePackManifest(condition_id, RULE_PACK_CONTRACT_VERSION, "1.0.0", digest(condition_id)),
         ("villager", "seer", "werewolf"),
+        agents,
     )
     for condition_id in ("baseline", "candidate")
 )

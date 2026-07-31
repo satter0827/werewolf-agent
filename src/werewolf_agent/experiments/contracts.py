@@ -11,7 +11,7 @@ from werewolf_agent.agents import AgentSpec
 from werewolf_agent.domain import RulePackManifest
 from werewolf_agent.setup import checksum_payload
 
-EXPERIMENT_CONTRACT_VERSION = "0.1.0"
+EXPERIMENT_CONTRACT_VERSION = "0.2.0"
 
 
 class ExperimentKind(StrEnum):
@@ -36,6 +36,7 @@ class RulesCondition:
     setup_checksum: str
     rule_pack: RulePackManifest
     role_ids: tuple[str, ...]
+    agents: Mapping[str, AgentSpec]
 
     def __post_init__(self) -> None:
         """再現に必要な識別子と役職multisetを検証する。."""
@@ -46,6 +47,7 @@ class RulesCondition:
             _sha256(self.setup_checksum, "setup_checksum"),
         )
         object.__setattr__(self, "role_ids", _text_tuple(self.role_ids, "role_ids"))
+        object.__setattr__(self, "agents", _agent_specs(self.agents))
 
     @property
     def kind(self) -> ExperimentKind:
@@ -60,6 +62,9 @@ class RulesCondition:
             "setup_checksum": self.setup_checksum,
             "rule_pack": self.rule_pack.to_mapping(),
             "role_ids": list(self.role_ids),
+            "agents": {
+                key: _agent_spec_mapping(value) for key, value in sorted(self.agents.items())
+            },
         }
 
 
@@ -82,10 +87,7 @@ class AgentCondition:
             _sha256(self.setup_checksum, "setup_checksum"),
         )
         object.__setattr__(self, "role_ids", _text_tuple(self.role_ids, "role_ids"))
-        agents = {_non_blank(key, "controller_id"): value for key, value in self.agents.items()}
-        if not agents:
-            raise ValueError("agents must not be empty")
-        object.__setattr__(self, "agents", MappingProxyType(dict(sorted(agents.items()))))
+        object.__setattr__(self, "agents", _agent_specs(self.agents))
 
     @property
     def kind(self) -> ExperimentKind:
@@ -156,6 +158,8 @@ class ExperimentSpec:
             raise ValueError("every condition must provide one role per player")
         if conditions[0].kind is ExperimentKind.AGENTS:
             self._validate_agent_conditions()
+        else:
+            self._validate_rules_conditions()
         object.__setattr__(self, "rotation_mode", RotationMode(self.rotation_mode))
 
     @property
@@ -175,6 +179,14 @@ class ExperimentSpec:
         expected = set(self.controller_ids)
         if any(set(item.agents) != expected for item in conditions):
             raise ValueError("agent condition keys must exactly match controller_ids")
+
+    def _validate_rules_conditions(self) -> None:
+        conditions = tuple(item for item in self.conditions if isinstance(item, RulesCondition))
+        expected = set(self.controller_ids)
+        if any(set(item.agents) != expected for item in conditions):
+            raise ValueError("rules condition keys must exactly match controller_ids")
+        if any(item.agents != conditions[0].agents for item in conditions[1:]):
+            raise ValueError("rules conditions must share fixed agent specifications")
 
 
 @dataclass(frozen=True)
@@ -314,9 +326,7 @@ def plan_trials(spec: ExperimentSpec) -> tuple[TrialPlan, ...]:
                         setup_checksum=condition.setup_checksum,
                         rule_pack=condition.rule_pack,
                         implementation_fingerprint=implementation_fingerprint,
-                        agent_specs=(
-                            condition.agents if isinstance(condition, AgentCondition) else {}
-                        ),
+                        agent_specs=condition.agents,
                     )
                 )
     return tuple(plans)
@@ -355,8 +365,25 @@ def _agent_spec_mapping(value: AgentSpec) -> dict[str, object]:
         "agent_id": value.agent_id,
         "implementation_version": value.implementation_version,
         "fingerprint": value.fingerprint,
-        "parameters": dict(value.parameters),
+        "parameters": _json_value(value.parameters),
     }
+
+
+def _agent_specs(values: Mapping[str, AgentSpec]) -> Mapping[str, AgentSpec]:
+    agents = {_non_blank(key, "controller_id"): value for key, value in values.items()}
+    if not agents:
+        raise ValueError("agents must not be empty")
+    if any(not isinstance(value, AgentSpec) for value in agents.values()):
+        raise ValueError("agents must contain AgentSpec values")
+    return MappingProxyType(dict(sorted(agents.items())))
+
+
+def _json_value(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {key: _json_value(item) for key, item in sorted(value.items())}
+    if isinstance(value, tuple):
+        return [_json_value(item) for item in value]
+    return value
 
 
 def _condition_implementation_mapping(

@@ -32,7 +32,11 @@ def _rule_pack(name: str = "core") -> RulePackManifest:
 
 def _rules_condition(condition_id: str, roles: tuple[str, ...]) -> RulesCondition:
     return RulesCondition(
-        condition_id, _digest(f"setup:{condition_id}"), _rule_pack(condition_id), roles
+        condition_id,
+        _digest(f"setup:{condition_id}"),
+        _rule_pack(condition_id),
+        roles,
+        {f"c{index}": _agent(f"fixed-{index}") for index in range(1, len(roles) + 1)},
     )
 
 
@@ -61,8 +65,8 @@ def test_rules_plan_pairs_conditions_and_identifies_implementations() -> None:
     assert first.pair_id == second.pair_id
     assert first.trial_id != second.trial_id
     assert first.implementation_fingerprint != second.implementation_fingerprint
-    assert first.agent_specs == {}
-    assert first.to_mapping()["contract_version"] == "0.1.0"
+    assert set(first.agent_specs) == {"c1", "c2", "c3"}
+    assert first.to_mapping()["contract_version"] == "0.2.0"
 
 
 def test_balanced_rotation_removes_controller_role_and_persona_bias() -> None:
@@ -126,11 +130,12 @@ def test_condition_label_is_not_part_of_implementation_fingerprint() -> None:
     manifest = _rule_pack()
     setup_checksum = _digest("setup")
     roles = ("villager", "werewolf")
+    fixed_agents = {"c1": _agent("fixed-1"), "c2": _agent("fixed-2")}
     spec = ExperimentSpec(
         "labels",
         (
-            RulesCondition("before", setup_checksum, manifest, roles),
-            RulesCondition("after", setup_checksum, manifest, roles),
+            RulesCondition("before", setup_checksum, manifest, roles, fixed_agents),
+            RulesCondition("after", setup_checksum, manifest, roles, fixed_agents),
         ),
         (1,),
         ("p1", "p2"),
@@ -143,6 +148,49 @@ def test_condition_label_is_not_part_of_implementation_fingerprint() -> None:
 
     assert first.implementation_fingerprint == second.implementation_fingerprint
     assert first.trial_id != second.trial_id
+
+
+def test_nested_agent_parameters_are_json_compatible_in_trial_identity() -> None:
+    """AgentSpecの再帰immutable値をhash可能なJSON表現へ戻す。"""
+    nested = AgentSpec(
+        "nested",
+        "1.0.0",
+        _digest("nested"),
+        {"generation": {"temperature": 0, "stops": ["END"]}},
+    )
+    manifest = _rule_pack()
+    setup_checksum = _digest("setup")
+    roles = ("villager", "werewolf")
+    condition_agents = {"c1": nested, "c2": _agent("fixed")}
+    spec = ExperimentSpec(
+        "nested-parameters",
+        (
+            RulesCondition("before", setup_checksum, manifest, roles, condition_agents),
+            RulesCondition("after", setup_checksum, manifest, roles, condition_agents),
+        ),
+        (1,),
+        ("p1", "p2"),
+        ("c1", "c2"),
+        ("calm", "bold"),
+        RotationMode.NONE,
+    )
+
+    plans = plan_trials(spec)
+
+    assert plans[0].to_mapping()["agent_specs"] == {
+        "c1": {
+            "agent_id": "nested",
+            "implementation_version": "1.0.0",
+            "fingerprint": _digest("nested"),
+            "parameters": {"generation": {"stops": ["END"], "temperature": 0}},
+        },
+        "c2": {
+            "agent_id": "fixed",
+            "implementation_version": "1.0.0",
+            "fingerprint": _digest("fixed"),
+            "parameters": {"temperature": 0},
+        },
+    }
 
 
 def test_agent_conditions_share_environment_and_bind_every_controller() -> None:
@@ -211,6 +259,29 @@ def test_experiment_rejects_mixed_conditions_and_unpaired_agent_environment() ->
         ExperimentSpec(
             "invalid",
             (agents, changed_environment),
+            (1,),
+            ("p1", "p2"),
+            ("c1", "c2"),
+            ("calm", "bold"),
+        )
+
+
+def test_rules_experiment_rejects_agent_changes_between_conditions() -> None:
+    """Rules比較へAgent差分を混入させない。"""
+    roles = ("villager", "werewolf")
+    first = _rules_condition("first", roles)
+    second = RulesCondition(
+        "second",
+        _digest("second"),
+        _rule_pack("second"),
+        roles,
+        {"c1": _agent("changed"), "c2": _agent("fixed-2")},
+    )
+
+    with pytest.raises(ValueError, match="must share fixed agent"):
+        ExperimentSpec(
+            "invalid-rules",
+            (first, second),
             (1,),
             ("p1", "p2"),
             ("c1", "c2"),

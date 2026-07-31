@@ -8,10 +8,11 @@ Rule PackまたはAgentだけを条件差として分離し、同じseedと割�
 
 ## 条件
 
-`RulesCondition`はsetup checksum、Rule Pack manifest、役職multisetを固定する。
+`RulesCondition`はsetup checksum、Rule Pack manifest、役職multiset、固定Agent仕様を保持する。
 `AgentCondition`は同じ環境に加えてcontrollerごとの`AgentSpec`を固定する。Agent比較ではsetup、
 Rule Pack、役職multisetを全条件で一致させ、同時にルールを変える交絡を拒否する。
-Rules条件とAgent条件は一つの`ExperimentSpec`へ混在させない。
+Rules比較では全条件のAgent仕様を一致させる。Rules条件とAgent条件は一つの`ExperimentSpec`へ
+混在させない。
 
 ## Trial計画
 
