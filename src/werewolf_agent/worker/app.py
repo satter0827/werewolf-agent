@@ -21,6 +21,7 @@ from werewolf_agent.security.redaction import redact_text
 from werewolf_agent.settings import (
     AppSettings,
 )
+from werewolf_agent.worker.composition import create_core_worker_dependencies
 from werewolf_agent.worker.events import (
     LOG_WORKER_APPLICATION_ERROR_HANDLED,
     LOG_WORKER_APPLICATION_STARTED,
@@ -56,7 +57,10 @@ def _once() -> None:
     )
     _require_worker_config(settings)
     _log_worker_started(settings, mode="once")
-    processed = process_worker_batch(settings)
+    processed = process_worker_batch(
+        settings,
+        dependencies=create_core_worker_dependencies(),
+    )
     typer.echo(f"processed={processed}")
     _log_worker_stopped(mode="once")
 
@@ -68,7 +72,10 @@ def _run() -> None:
     )
     _require_worker_config(settings)
     _log_worker_started(settings, mode="run")
-    run_worker_forever(settings)
+    run_worker_forever(
+        settings,
+        dependencies=create_core_worker_dependencies(),
+    )
 
 
 def _require_worker_config(settings: AppSettings) -> None:

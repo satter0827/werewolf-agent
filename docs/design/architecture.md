@@ -88,6 +88,8 @@ Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者
 `CompiledRuleSet`は`GameConfig`、`RulePackManifest`、副作用を持たないPolicyを一局へ固定する。
 外部Rule Packは`RulePackProvider`を実装し、利用者またはcomposition rootが
 `RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
+applicationは最小の`RulePackRegistry` Protocolだけに依存する。API、組み込みapplication、workerの
+composition rootは組み込みproviderまたは利用者が構築したregistryを明示注入する。
 
 `RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
 `AbilityPolicy`は検証済みのnight actionから`NightResolution`、新たな死亡から順序付き
@@ -112,6 +114,8 @@ schema検証後のresponseだけを返し、simulationは本人用`GameView`か�
 複数試行、統計、artifactは所有しない。状態・event・action/response列は同じ入力とseedで再現できる。
 `latency_ms`は運用診断値であり、決定性の比較対象に含めない。
 能力残数などの可変metadataは`AgentMetadataProvider`が本人用`GameView`から都度解決する。
+workerは`WorkerDependencies.agent_factories`からプレイヤーID別factoryを注入し、未指定seatだけを
+既定のLangChainアダプターで構築する。外部factoryの探索や設定値からの動的importは行わない。
 
 modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
 modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに

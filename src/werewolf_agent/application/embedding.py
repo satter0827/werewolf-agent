@@ -25,9 +25,12 @@ from werewolf_agent.application.models import (
 )
 from werewolf_agent.application.operations import AccessPolicy
 from werewolf_agent.application.ports import GameRepository, SetupRepository
+from werewolf_agent.application.rule_packs import (
+    RulePackRegistry,
+    create_core_rule_policy_registry,
+)
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
 from werewolf_agent.application.setup_facade import SetupApplication
-from werewolf_agent.domain import RulePolicyRegistry
 
 
 class SingleTenantAccessPolicy(AccessPolicy):
@@ -117,7 +120,7 @@ def create_embedded_application(
     access_policy: AccessPolicy | None = None,
     allow_reveal: bool = False,
     create_llm_mode: Literal["fake", "paid"] = "fake",
-    rule_packs: RulePolicyRegistry | None = None,
+    rule_packs: RulePackRegistry | None = None,
 ) -> EmbeddedApplication:
     """明示した依存だけからsingle-tenant applicationを構築する."""
     if not isinstance(allow_reveal, bool):
@@ -133,19 +136,12 @@ def create_embedded_application(
         else InMemoryGameRepository(owner_user_id=actor.user_id)
     )
     setups_store = setup_repository if setup_repository is not None else InMemorySetupRepository()
-    if rule_packs is None:
-        context = ApplicationContext(
-            repository=games_store,
-            config=config,
-            create_llm_mode=create_llm_mode,
-        )
-    else:
-        context = ApplicationContext(
-            repository=games_store,
-            config=config,
-            create_llm_mode=create_llm_mode,
-            rule_packs=rule_packs,
-        )
+    context = ApplicationContext(
+        repository=games_store,
+        config=config,
+        create_llm_mode=create_llm_mode,
+        rule_packs=(rule_packs if rule_packs is not None else create_core_rule_policy_registry()),
+    )
     games = GameApplication(
         context,
         access_policy=(

@@ -276,10 +276,18 @@ def test_api_routes_do_not_invoke_access_or_queue_adapters_directly() -> None:
 
 def test_worker_invokes_application_through_the_public_facade() -> None:
     """Workerからapplication handlerの直接実行を禁止する。"""
-    worker = PACKAGE / "worker" / "service.py"
-    imports = _imports(worker)
-    assert "werewolf_agent.application.handlers" not in imports
-    assert "build_setup_catalog" not in worker.read_text(encoding="utf-8")
+    workers = tuple((PACKAGE / "worker").glob("*.py"))
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
+    imports = {
+        _project_module_name(imported, modules) or imported
+        for worker in workers
+        for imported in _imports(worker)
+    }
+    assert not {
+        imported for imported in imports if imported.startswith("werewolf_agent.application.")
+    }
+    service = (PACKAGE / "worker" / "service.py").read_text(encoding="utf-8")
+    assert "build_setup_catalog" not in service
 
 
 def test_persisted_game_versions_are_append_only() -> None:

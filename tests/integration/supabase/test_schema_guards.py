@@ -19,11 +19,13 @@ from werewolf_agent.adapters.application_bridge import (
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker.composition import create_core_worker_dependencies
 from werewolf_agent.worker.service import process_worker_batch
 
 pytestmark = [pytest.mark.supabase]
 
 INSTANCE_ID = UUID(int=0)
+WORKER_DEPENDENCIES = create_core_worker_dependencies()
 
 
 def _insert_user(connection: psycopg.Connection, user_id: UUID) -> None:
@@ -359,7 +361,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         connection.commit()
 
         assert settings.llm_provider == "fake"
-        assert process_worker_batch(settings) == 1
+        assert process_worker_batch(settings, dependencies=WORKER_DEPENDENCIES) == 1
 
         created = connection.execute(
             """
@@ -390,7 +392,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         assert advance_id is not None
         _enqueue_operation_message(connection, advance_id[0])
         connection.commit()
-        assert process_worker_batch(settings) == 1
+        assert process_worker_batch(settings, dependencies=WORKER_DEPENDENCIES) == 1
 
         advanced = connection.execute(
             """

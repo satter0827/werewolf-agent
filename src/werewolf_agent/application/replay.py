@@ -18,8 +18,9 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
 )
 from werewolf_agent.application.randomness import runtime_seed
+from werewolf_agent.application.rule_packs import RulePackRegistry
 from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
-from werewolf_agent.domain import Game, RulePackManifest, RulePolicyRegistry
+from werewolf_agent.domain import Game, RulePackManifest
 from werewolf_agent.setup import (
     GameSetupDocument,
     checksum_payload,
@@ -39,7 +40,7 @@ class ReplayRepository(Protocol):
 def verify_replay(
     game_id: str,
     repository: ReplayRepository,
-    rule_packs: RulePolicyRegistry,
+    rule_packs: RulePackRegistry,
 ) -> ReplayVerificationResult:
     """Verify replay data without leaking malformed persistence exceptions."""
     try:
@@ -57,7 +58,7 @@ def verify_replay(
 def _verify_replay_records(
     game_id: str,
     repository: ReplayRepository,
-    rule_packs: RulePolicyRegistry,
+    rule_packs: RulePackRegistry,
 ) -> ReplayVerificationResult:
     """Verify checksums, version continuity, and rebuilt public projections."""
     records = repository.replay_records(game_id)
@@ -236,7 +237,7 @@ def _verify_execution(
     game_id: str,
     records: Mapping[str, Sequence[Mapping[str, Any]]],
     checked_versions: set[int],
-    rule_packs: RulePolicyRegistry,
+    rule_packs: RulePackRegistry,
 ) -> ReplayVerificationResult | None:
     commands = list(records.get("commands", ()))
     states = {int(record["version"]): record for record in records.get("states", ())}
