@@ -136,9 +136,20 @@ def advance_phase(
     return next_state, next_pending, events
 
 
-def build_view(state: GameState, pending: PendingActions, player_id: str) -> GameView:
+def build_view(
+    state: GameState,
+    pending: PendingActions,
+    player_id: str,
+    *,
+    ability_policy: AbilityPolicy,
+) -> GameView:
     """Build the only supported visibility-filtered player observation."""
-    return observations.build_player_observation(state, pending, player_id)
+    return observations.build_player_observation(
+        state,
+        pending,
+        player_id,
+        ability_policy=ability_policy,
+    )
 
 
 def _private_submission_event(
