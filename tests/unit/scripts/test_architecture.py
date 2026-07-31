@@ -28,6 +28,7 @@ def test_architecture_analysis_passes_and_exposes_evidence() -> None:
     ]
     assert set(document["public_symbols"]) == {
         "werewolf_agent",
+        "werewolf_agent.agents",
         "werewolf_agent.application",
         "werewolf_agent.domain",
         "werewolf_agent.setup",

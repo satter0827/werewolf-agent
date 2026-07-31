@@ -2,6 +2,7 @@ canonical_openapi = "contracts/openapi.json"
 public_modules = [
   "werewolf_agent",
   "werewolf_agent.application",
+  "werewolf_agent.agents",
   "werewolf_agent.domain",
   "werewolf_agent.setup",
 ]

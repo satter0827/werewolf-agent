@@ -4,6 +4,7 @@
 `werewolf_agent.domain`はゲーム規則、明示登録するRule Pack、決定的な状態遷移を提供する。
 `werewolf_agent.setup`は完全setupの検証、Domain Rule Definition変換、用途別seed、checksum、
 プレイヤー generationを提供する。
+`werewolf_agent.agents`は外部Agentの注入契約と標準Agent実装を提供する。
 `werewolf_agent.application`は認可、保存port、公開resultを含む利用手順を提供する。
 列挙されない内部モジュールは公開契約に含めない。
 
@@ -43,6 +44,15 @@
 :language: python
 ```
 
+## Agentの最小利用例
+
+`AgentFactory`はgameとプレイヤーごとに状態を共有しない`AgentSession`を生成する。
+標準Agentは本人用observationと合法候補から、同じdecision seedに対して同じ応答を返す。
+
+```{literalinclude} ../snippets/python_api_agents.py
+:language: python
+```
+
 ## Domain API
 
 ```{eval-rst}
@@ -61,5 +71,12 @@
 
 ```{eval-rst}
 .. automodule:: werewolf_agent.setup
+   :members:
+```
+
+## Agent API
+
+```{eval-rst}
+.. automodule:: werewolf_agent.agents
    :members:
 ```

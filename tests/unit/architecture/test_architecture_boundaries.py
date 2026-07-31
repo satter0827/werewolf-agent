@@ -34,6 +34,7 @@ from scripts.architecture.definition import (
 )
 
 import werewolf_agent as package
+import werewolf_agent.agents as agents
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
 import werewolf_agent.setup as setup
@@ -71,7 +72,7 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
     """Pythonの公開面を責務別moduleに限定する。"""
-    assert (package, application, domain, setup) == PUBLIC_MODULES
+    assert (package, application, agents, domain, setup) == PUBLIC_MODULES
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)

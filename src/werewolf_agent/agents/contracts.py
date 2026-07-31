@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.2.0"
+AGENT_CONTRACT_VERSION = "0.3.0"
 
 
 @dataclass(frozen=True)
@@ -255,7 +255,7 @@ class DecisionTrace:
     """chain-of-thoughtを含まない一回の意思決定診断."""
 
     decision_id: str
-    agent_id: str
+    agent_spec: AgentSpec
     response: DecisionResponse | None
     latency_ms: int
     fallback_used: bool = False
@@ -265,7 +265,6 @@ class DecisionTrace:
     def __post_init__(self) -> None:
         """公開可能な診断値を正規化する."""
         object.__setattr__(self, "decision_id", non_blank(self.decision_id, "decision_id"))
-        object.__setattr__(self, "agent_id", non_blank(self.agent_id, "agent_id"))
         if self.latency_ms < 0:
             raise ValueError("latency_ms must not be negative")
         object.__setattr__(
@@ -273,6 +272,14 @@ class DecisionTrace:
             "error_code",
             optional_non_blank(self.error_code, "error_code"),
         )
+        if self.response is None and self.error_code is None:
+            raise ValueError("trace must contain a response or error_code")
+        if self.fallback_used and self.response is None:
+            raise ValueError("fallback trace must contain a response")
+        if self.fallback_used and self.error_code is None:
+            raise ValueError("fallback trace must contain an error_code")
+        if not self.fallback_used and self.response is not None and self.error_code is not None:
+            raise ValueError("successful trace must not contain an error_code")
         object.__setattr__(self, "diagnostics", _freeze_mapping(self.diagnostics))
 
 
