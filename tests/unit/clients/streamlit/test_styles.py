@@ -6,11 +6,14 @@ def test_streamlit_css_is_packaged_and_token_driven() -> None:
     css = load_css()
 
     assert "--wa-page: #f6f3ec" in css
+    assert "--wa-muted-strong: #596476" in css
     assert "--wa-space-6: 1.5rem" in css
     assert ".wa-status-grid" in css
     assert ".wa-seat-grid" in css
     assert "gradient(" not in css
     assert "<style>" not in css
+    assert ".wa-seat-dead" in css
+    assert "opacity: 0.72" not in css
 
 
 def test_style_tag_uses_only_packaged_css() -> None:
