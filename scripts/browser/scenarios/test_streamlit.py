@@ -90,7 +90,12 @@ def test_gameplay_waiting_speech_and_target(
     page.wait_for_timeout(1_000)
     page.context.set_offline(False)
     expect(page.get_by_role("heading", name="月明かりの卓")).to_be_visible(timeout=30_000)
-    expect(page.get_by_label("対象を選ぶ")).to_be_visible(timeout=30_000)
+    reconnected_submit = page.get_by_role("button", name="入力を送信")
+    expect(reconnected_submit).to_be_enabled(timeout=30_000)
+    vote_result = page.get_by_text("投票の結果が示されました。", exact=True)
+    expect(vote_result).to_have_count(0)
+    reconnected_submit.click()
+    expect(vote_result).to_be_visible(timeout=30_000)
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
 

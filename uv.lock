@@ -4300,7 +4300,7 @@ requires-dist = [
     { name = "python-dotenv", marker = "extra == 'streamlit'", specifier = ">=1.0,<2" },
     { name = "python-dotenv", marker = "extra == 'worker'", specifier = ">=1.0,<2" },
     { name = "rich", marker = "extra == 'cli'", specifier = ">=13.9,<15" },
-    { name = "streamlit", marker = "extra == 'streamlit'", specifier = ">=1.41,<2" },
+    { name = "streamlit", marker = "extra == 'streamlit'", specifier = ">=1.48,<2" },
     { name = "structlog", marker = "extra == 'api'", specifier = ">=24.4,<26" },
     { name = "structlog", marker = "extra == 'cli'", specifier = ">=24.4,<26" },
     { name = "structlog", marker = "extra == 'streamlit'", specifier = ">=24.4,<26" },

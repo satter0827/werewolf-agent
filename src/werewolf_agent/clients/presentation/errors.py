@@ -72,24 +72,11 @@ def present_error(error: AppError, *, language: PresentationLanguage) -> ErrorPr
     """Build consistent recovery guidance from the stable error catalog."""
     recovery = get_error_spec(error.code).recovery
     return ErrorPresentation(
-        detail=(
-            error.detail
-            if language == "ja" and _contains_japanese(error.detail)
-            else _JAPANESE_STATE_MESSAGES[error.code]
-            if language == "ja"
-            else error.detail
-        ),
+        detail=_JAPANESE_STATE_MESSAGES[error.code] if language == "ja" else error.detail,
         code=error.code.value,
         retryable=error.retryable,
         recovery=recovery,
         next_action=_RECOVERY_MESSAGES[language][recovery],
-    )
-
-
-def _contains_japanese(value: str) -> bool:
-    return any(
-        "\u3040" <= character <= "\u30ff" or "\u4e00" <= character <= "\u9fff"
-        for character in value
     )
 
 

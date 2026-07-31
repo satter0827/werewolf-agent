@@ -29,7 +29,7 @@ def test_english_error_presentation_preserves_safe_context() -> None:
     assert presentation.next_action == "Wait briefly, then try again."
 
 
-def test_japanese_error_presentation_preserves_specific_japanese_guidance() -> None:
+def test_japanese_error_presentation_uses_the_stable_message_for_japanese_detail() -> None:
     error = AppError(
         "継続取得ではjsonl出力を使用してください。",
         code=ErrorCode.CONFIG_INVALID_VALUE,
@@ -37,7 +37,7 @@ def test_japanese_error_presentation_preserves_specific_japanese_guidance() -> N
 
     presentation = present_error(error, language="ja")
 
-    assert presentation.detail == "継続取得ではjsonl出力を使用してください。"
+    assert presentation.detail == "設定に不備があります。"
 
 
 @pytest.mark.parametrize("code", tuple(ErrorCode))
