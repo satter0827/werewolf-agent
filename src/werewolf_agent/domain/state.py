@@ -86,6 +86,16 @@ class SubmissionMode(StrEnum):
     ORDERED = "ordered"
 
 
+class SpeechAct(StrEnum):
+    """公開議論で発言が果たす意味上の役割を表す."""
+
+    QUESTION = "question"
+    ANSWER = "answer"
+    SUPPORT = "support"
+    CHALLENGE = "challenge"
+    REVISE = "revise"
+
+
 class EventVisibility(StrEnum):
     """Domain eventへ付与する可視性区分を表す."""
 
@@ -267,6 +277,7 @@ class NightConfig:
     """一局へ固定する夜行動規則を表す."""
 
     allow_action_revision: bool = False
+    allow_pass: bool = True
 
 
 @dataclass(frozen=True)
@@ -439,14 +450,16 @@ class SpeechIntent:
     """公開発言として提出する型付きpayloadを表す."""
 
     message: str
-    focus_id: str | None = None
+    speech_act: SpeechAct
+    subject_id: str
     evidence_id: str | None = None
     response_to_id: str | None = None
 
     def __post_init__(self) -> None:
         """発言本文と任意参照IDを正規化する."""
         object.__setattr__(self, "message", non_blank(self.message, "message"))
-        object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
+        object.__setattr__(self, "speech_act", SpeechAct(self.speech_act))
+        object.__setattr__(self, "subject_id", non_blank(self.subject_id, "subject_id"))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,
@@ -461,11 +474,13 @@ class VoteIntent:
 
     target_id: str
     reason: str
+    evidence_id: str | None = None
 
     def __post_init__(self) -> None:
         """投票先と公開理由を正規化する."""
         object.__setattr__(self, "target_id", non_blank(self.target_id, "target_id"))
         object.__setattr__(self, "reason", non_blank(self.reason, "reason"))
+        object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
 
 
 @dataclass(frozen=True)
@@ -533,14 +548,21 @@ class Action:
         return self.intent.message if isinstance(self.intent, SpeechIntent) else None
 
     @property
-    def focus_id(self) -> str | None:
-        """発言intentなら注目player IDを返す."""
-        return self.intent.focus_id if isinstance(self.intent, SpeechIntent) else None
+    def speech_act(self) -> SpeechAct | None:
+        """発言intentなら発言の役割を返す."""
+        return self.intent.speech_act if isinstance(self.intent, SpeechIntent) else None
+
+    @property
+    def subject_id(self) -> str | None:
+        """発言intentなら議論対象player IDを返す."""
+        return self.intent.subject_id if isinstance(self.intent, SpeechIntent) else None
 
     @property
     def evidence_id(self) -> str | None:
-        """発言intentなら根拠IDを返す."""
-        return self.intent.evidence_id if isinstance(self.intent, SpeechIntent) else None
+        """公開根拠を持つintentなら根拠IDを返す."""
+        return (
+            self.intent.evidence_id if isinstance(self.intent, (SpeechIntent, VoteIntent)) else None
+        )
 
     @property
     def response_to_id(self) -> str | None:
@@ -563,17 +585,28 @@ class Action:
         player_id: str,
         message: str,
         *,
-        focus_id: str | None = None,
+        speech_act: SpeechAct,
+        subject_id: str,
         evidence_id: str | None = None,
         response_to_id: str | None = None,
     ) -> Self:
         """公開speech actionを作成して返す."""
-        return cls(player_id, SpeechIntent(message, focus_id, evidence_id, response_to_id))
+        return cls(
+            player_id,
+            SpeechIntent(message, speech_act, subject_id, evidence_id, response_to_id),
+        )
 
     @classmethod
-    def vote(cls, player_id: str, target_id: str, *, reason: str) -> Self:
+    def vote(
+        cls,
+        player_id: str,
+        target_id: str,
+        *,
+        reason: str,
+        evidence_id: str | None = None,
+    ) -> Self:
         """生存player一人を対象とするvote actionを作成して返す."""
-        return cls(player_id, VoteIntent(target_id, reason))
+        return cls(player_id, VoteIntent(target_id, reason, evidence_id))
 
     @classmethod
     def use_ability(
@@ -599,6 +632,7 @@ class VoteResolution:
     tie_break_policy: str
     votes: Mapping[str, str] = field(default_factory=dict)
     reasons: Mapping[str, str] = field(default_factory=dict)
+    evidence_ids: Mapping[str, str] = field(default_factory=dict)
     counts: Mapping[str, int] = field(default_factory=dict)
     tied_player_ids: tuple[str, ...] = ()
     missing_voter_ids: tuple[str, ...] = ()
@@ -610,6 +644,7 @@ class VoteResolution:
         """投票Outcomeのmappingと順序付きcollectionを固定する."""
         object.__setattr__(self, "votes", frozen_mapping(self.votes))
         object.__setattr__(self, "reasons", frozen_mapping(self.reasons))
+        object.__setattr__(self, "evidence_ids", frozen_mapping(self.evidence_ids))
         object.__setattr__(self, "counts", frozen_mapping(self.counts))
         object.__setattr__(self, "tied_player_ids", tuple(self.tied_player_ids))
         object.__setattr__(self, "missing_voter_ids", tuple(self.missing_voter_ids))
@@ -745,7 +780,8 @@ class SpeechRecord:
     round_kind: DiscussionRoundKind
     player_id: str
     message: str
-    focus_id: str | None = None
+    speech_act: SpeechAct
+    subject_id: str
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -756,7 +792,8 @@ class SpeechRecord:
         object.__setattr__(self, "round_kind", DiscussionRoundKind(self.round_kind))
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
         object.__setattr__(self, "message", non_blank(self.message, "message"))
-        object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
+        object.__setattr__(self, "speech_act", SpeechAct(self.speech_act))
+        object.__setattr__(self, "subject_id", non_blank(self.subject_id, "subject_id"))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,

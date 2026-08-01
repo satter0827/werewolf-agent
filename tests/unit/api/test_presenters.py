@@ -37,8 +37,10 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                             "player_id": "p2",
                             "message": "公開発言",
                             "reason": "公開しない内部理由",
-                            "focus_id": None,
+                            "speech_act": "question",
+                            "subject_id": "p1",
                             "evidence_id": None,
+                            "response_to_id": None,
                         }
                     ],
                     "votes": [],

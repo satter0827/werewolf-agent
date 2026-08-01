@@ -139,21 +139,35 @@ class FakeDecisionModel:
 
         action = _fake_action(request)
         target_id = _fake_target(request, action)
-        focus_id = _fake_focus(request, target_id)
-        evidence_id = _fake_evidence_id(request)
         response_to_id = _fake_reference(request, action)
+        subject_id = _fake_subject(request, action, target_id, response_to_id)
+        evidence_id = _fake_evidence_id(
+            request,
+            action,
+            subject_id=subject_id,
+            target_id=target_id,
+            response_to_id=response_to_id,
+        )
+        speech_act = _fake_speech_act(request, action, evidence_id, response_to_id)
         names = _player_names(request)
+        evidence = _evidence_item(request, evidence_id)
+        reference = _evidence_item(request, response_to_id)
+        evidence_actor_id = _nested_id(evidence, "actor")
+        reference_actor_id = _nested_id(reference, "actor")
+        template_key = _fake_template_key(action, evidence_id, response_to_id)
         response = self.catalog.render(
-            action.type.value,
+            template_key,
             context={
                 "player_name": names.get(request.task.player_id, request.task.player_id),
                 "day": request.task.observation.day,
                 "target_id": target_id or "",
                 "target_name": names.get(target_id or "", target_id or ""),
-                "focus_id": focus_id or "",
-                "focus_name": names.get(focus_id or "", focus_id or ""),
+                "subject_id": subject_id or "",
+                "subject_name": names.get(subject_id or "", subject_id or ""),
                 "evidence_id": evidence_id or "",
+                "evidence_actor_name": names.get(evidence_actor_id, evidence_actor_id),
                 "response_to_id": response_to_id or "",
+                "reference_actor_name": names.get(reference_actor_id, reference_actor_id),
                 "persona": (
                     request.task.observation.profile.personality
                     if request.task.observation.profile is not None
@@ -168,16 +182,20 @@ class FakeDecisionModel:
         payload.pop("player_id", None)
         if action.ability_id is not None:
             payload["ability_id"] = action.ability_id
-        previous_focus = _latest_own_speech_focus(request)
+        previous_subject = _latest_own_speech_subject(request)
         if (
             action.type is AgentActionType.VOTE
-            and previous_focus is not None
-            and target_id != previous_focus
+            and previous_subject is not None
+            and target_id != previous_subject
         ):
             payload["reason"] = "公開情報を見直し、直前の疑い先から判断を更新したため"
-        if action.type is AgentActionType.SPEECH and focus_id is not None:
-            payload["focus_id"] = focus_id
-        if action.type is not AgentActionType.PASS and evidence_id is not None:
+        if action.type is AgentActionType.SPEECH and subject_id is not None:
+            payload["speech_act"] = speech_act
+            payload["subject_id"] = subject_id
+        if (
+            action.type in {AgentActionType.SPEECH, AgentActionType.VOTE}
+            and evidence_id is not None
+        ):
             payload["evidence_id"] = evidence_id
         if action.type is AgentActionType.SPEECH and response_to_id is not None:
             payload["response_to_id"] = response_to_id
@@ -224,8 +242,13 @@ def _fake_action(request: ModelRequest) -> AgentAvailableAction:
     actions = request.task.observation.available_actions
     if not actions:
         return AgentAvailableAction(type=AgentActionType.PASS)
-    digest = hashlib.sha256(f"{request.task.context_checksum}:action".encode()).digest()
-    return actions[int.from_bytes(digest[:8], "big") % len(actions)]
+    priority = {
+        AgentActionType.USE_ABILITY: 0,
+        AgentActionType.VOTE: 1,
+        AgentActionType.SPEECH: 2,
+        AgentActionType.PASS: 3,
+    }
+    return min(actions, key=lambda item: (priority[item.type], item.key))
 
 
 def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | None:
@@ -233,11 +256,11 @@ def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | N
     if not candidates:
         return None
     if action.type is AgentActionType.VOTE:
-        previous_focus = _latest_own_speech_focus(request)
-        if previous_focus in candidates:
-            if not _should_change_public_focus(request):
-                return previous_focus
-            alternatives = [candidate for candidate in candidates if candidate != previous_focus]
+        previous_subject = _latest_own_speech_subject(request)
+        if previous_subject in candidates:
+            if not _should_change_public_subject(request):
+                return previous_subject
+            alternatives = [candidate for candidate in candidates if candidate != previous_subject]
             if alternatives:
                 candidates = alternatives
     digest = hashlib.sha256(
@@ -246,45 +269,69 @@ def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | N
     return candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
 
 
-def _fake_focus(request: ModelRequest, target_id: str | None) -> str | None:
+def _fake_subject(
+    request: ModelRequest,
+    action: AgentAvailableAction,
+    target_id: str | None,
+    response_to_id: str | None,
+) -> str | None:
     if target_id is not None:
         return target_id
-    candidates = [
-        player.id
-        for player in request.task.observation.players
-        if player.id != request.task.player_id and player.status.value == "alive"
-    ]
+    candidates = request.task.observation.legal_subjects.get(action.key, [])
     if not candidates:
         return None
-    digest = hashlib.sha256(f"{request.task.context_checksum}:focus".encode()).digest()
+    reference = next(
+        (
+            speech
+            for speech in request.task.observation.speeches
+            if speech.speech_id == response_to_id
+        ),
+        None,
+    )
+    if reference is not None:
+        if reference.subject_id in candidates:
+            return reference.subject_id
+        if reference.player_id in candidates:
+            return reference.player_id
+    digest = hashlib.sha256(f"{request.task.context_checksum}:subject".encode()).digest()
     return candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
 
 
-def _latest_own_speech_focus(request: ModelRequest) -> str | None:
+def _latest_own_speech_subject(request: ModelRequest) -> str | None:
     observation = request.task.observation
     for speech in reversed(observation.speeches):
-        if speech.player_id == observation.me.id and speech.focus_id is not None:
-            return speech.focus_id
+        if speech.player_id == observation.me.id:
+            return speech.subject_id
     return None
 
 
-def _should_change_public_focus(request: ModelRequest) -> bool:
+def _should_change_public_subject(request: ModelRequest) -> bool:
     profile = request.task.observation.profile
     risk = profile.risk_tolerance if profile is not None else "medium"
     change_slots = {"low": 1, "medium": 2, "high": 3}.get(risk, 2)
-    digest = hashlib.sha256(f"{request.task.context_checksum}:change-focus".encode()).digest()
+    digest = hashlib.sha256(f"{request.task.context_checksum}:change-subject".encode()).digest()
     return digest[0] % 10 < change_slots
 
 
-def _fake_evidence_id(request: ModelRequest) -> str | None:
-    evidence = request.task.context.get("evidence")
-    if not isinstance(evidence, list) or not evidence:
+def _fake_evidence_id(
+    request: ModelRequest,
+    action: AgentAvailableAction,
+    *,
+    subject_id: str | None,
+    target_id: str | None,
+    response_to_id: str | None,
+) -> str | None:
+    if response_to_id is not None:
+        return response_to_id
+    legal_ids = request.task.observation.legal_evidence.get(action.key, [])
+    if not legal_ids:
         return None
-    first = evidence[0]
-    if not isinstance(first, Mapping):
-        return None
-    value = first.get("id")
-    return str(value) if value else None
+    expected_id = target_id or subject_id
+    for evidence_id in reversed(legal_ids):
+        item = _evidence_item(request, evidence_id)
+        if expected_id in {_nested_id(item, "actor"), _nested_id(item, "subject")}:
+            return evidence_id
+    return legal_ids[-1]
 
 
 def _fake_reference(
@@ -298,6 +345,57 @@ def _fake_reference(
         f"{request.task.context_checksum}:{action.key}:reference".encode()
     ).digest()
     return references[int.from_bytes(digest[:8], "big") % len(references)]
+
+
+def _fake_speech_act(
+    request: ModelRequest,
+    action: AgentAvailableAction,
+    evidence_id: str | None,
+    response_to_id: str | None,
+) -> str | None:
+    if action.type is not AgentActionType.SPEECH:
+        return None
+    if response_to_id is not None:
+        return "challenge"
+    if evidence_id is None:
+        return "question"
+    previous_subject = _latest_own_speech_subject(request)
+    return "revise" if previous_subject is not None else "challenge"
+
+
+def _fake_template_key(
+    action: AgentAvailableAction,
+    evidence_id: str | None,
+    response_to_id: str | None,
+) -> str:
+    if action.type is not AgentActionType.SPEECH:
+        return action.type.value
+    if response_to_id is not None:
+        return "speech_response"
+    return "speech_opening_evidence" if evidence_id is not None else "speech_opening_question"
+
+
+def _evidence_item(request: ModelRequest, evidence_id: str | None) -> Mapping[str, object]:
+    if evidence_id is None:
+        return {}
+    evidence = request.task.context.get("public_evidence")
+    if not isinstance(evidence, list):
+        return {}
+    return next(
+        (
+            item
+            for item in evidence
+            if isinstance(item, Mapping) and str(item.get("id") or "") == evidence_id
+        ),
+        {},
+    )
+
+
+def _nested_id(item: Mapping[str, object], key: str) -> str:
+    nested = item.get(key)
+    if not isinstance(nested, Mapping):
+        return ""
+    return str(nested.get("id") or "")
 
 
 def _player_names(request: ModelRequest) -> dict[str, str]:

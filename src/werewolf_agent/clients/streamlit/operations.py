@@ -290,6 +290,9 @@ def submit_screen_action(
     ability_id: str | None,
     target_id: str | None,
     message: str | None,
+    speech_act: str | None = None,
+    subject_id: str | None = None,
+    evidence_id: str | None = None,
     reason: str | None = None,
     response_to_id: str | None = None,
 ) -> None:
@@ -299,6 +302,9 @@ def submit_screen_action(
         "ability_id": ability_id,
         "target_id": target_id,
         "message": message,
+        "speech_act": speech_act,
+        "subject_id": subject_id,
+        "evidence_id": evidence_id,
         "reason": reason,
         "response_to_id": response_to_id,
     }.items():

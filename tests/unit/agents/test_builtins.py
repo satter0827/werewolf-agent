@@ -15,6 +15,7 @@ from werewolf_agent.agents import (
     FaultAgentFactory,
     HeuristicAgentFactory,
     ObservedPlayer,
+    PublicTimelineEvent,
     RandomLegalAgentFactory,
     ScriptedAgentFactory,
 )
@@ -54,6 +55,45 @@ def test_heuristic_agent_uses_stable_priority_and_legal_target() -> None:
 
     assert response.action_type == "vote"
     assert response.target_id == "p2"
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_agent_response_contributes_new_content(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    """参照元と同じ定型文を応答として再送しない。"""
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {"speech_id": "speech-1", "message": factory.speech},
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_subject_ids=("p2",),
+                legal_evidence_ids=("speech-1",),
+                legal_reference_ids=("speech-1",),
+                message_max_chars=120,
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.message != factory.speech
+    assert response.response_to_id == "speech-1"
 
 
 def test_scripted_agent_state_is_isolated_by_session_and_close_is_idempotent() -> None:

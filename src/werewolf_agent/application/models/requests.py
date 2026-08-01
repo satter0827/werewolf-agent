@@ -185,7 +185,8 @@ class SpeechActionInput(ApplicationModel):
 
     type: Literal["speech"]
     message: str
-    focus_id: str | None = None
+    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
+    subject_id: str
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -196,6 +197,7 @@ class VoteActionInput(ApplicationModel):
     type: Literal["vote"]
     target_id: str
     reason: str
+    evidence_id: str | None = None
 
 
 class UseAbilityActionInput(ApplicationModel):

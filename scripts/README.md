@@ -180,6 +180,7 @@ uv run --no-sync python -m scripts.browser --capture gameplay-complete --device 
 uv run --no-sync python -m scripts.agents preflight
 uv run --no-sync python -m scripts.agents run --provider fake --suite standard
 uv run --no-sync python -m scripts.agents run --provider local --suite smoke
+uv run --no-sync python -m scripts.agents run --provider local --suite full-game
 uv run --no-sync python -m scripts.agents local-ui
 uv run --no-sync python -m scripts.review ui
 uv run --no-sync python -m scripts.review gameplay
@@ -188,9 +189,11 @@ uv run --no-sync python -m scripts.review local-llm
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。
 `preflight`と`review local-llm`はloopback上の実モデルへopening、参照必須response、理由必須voteを
-一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず120秒で打ち切る。
-Local smokeはloopbackだけを許可し、
-一局完走とStreamlitの統合確認は`local-ui`へ分離する。
+一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず240秒で打ち切る。
+Local smokeは3回の意思決定に制限する。Local `full-game`は`standard_6`を一局だけ実行し、
+128回の意思決定と90分の上限内で、公開根拠の整合、重複発言、投票・再投票、夜行動、勝敗、
+フェーズ別token数と応答時間を記録する。response候補は各話者2件に絞り、全話者が同じ参照へ
+集中しないよう話者順で回転する。Streamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
 public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。
 

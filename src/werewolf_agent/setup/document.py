@@ -31,7 +31,7 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.4.0"
+SETUP_SCHEMA_VERSION: Final = "0.5.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(
@@ -392,17 +392,24 @@ class NightDefinition:
     """一局で使用する夜行動規則を表す."""
 
     allow_action_revision: bool
+    allow_pass: bool
 
     @classmethod
     def from_mapping(cls, value: object) -> NightDefinition:
         """JSON互換mappingを検証して夜行動定義を返す."""
         source = _mapping(value, "night")
-        _strict(source, {"allow_action_revision"}, "night")
-        return cls(_boolean(source["allow_action_revision"], "allow_action_revision"))
+        _strict(source, {"allow_action_revision", "allow_pass"}, "night")
+        return cls(
+            _boolean(source["allow_action_revision"], "allow_action_revision"),
+            _boolean(source["allow_pass"], "allow_pass"),
+        )
 
     def to_mapping(self) -> dict[str, object]:
         """永続化できるJSON互換mappingを返す."""
-        return {"allow_action_revision": self.allow_action_revision}
+        return {
+            "allow_action_revision": self.allow_action_revision,
+            "allow_pass": self.allow_pass,
+        }
 
 
 @dataclass(frozen=True)

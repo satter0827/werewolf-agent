@@ -16,6 +16,7 @@ from werewolf_agent.domain.state import (
     DiscussionRoundKind,
     GameEvent,
     GameState,
+    SpeechAct,
     SpeechIntent,
     SpeechRecord,
     SubmissionMode,
@@ -128,17 +129,53 @@ def record_discussion_submission(
     if isinstance(action.intent, SpeechIntent):
         if len(action.intent.message) > state.config.discussion.message_max_chars:
             raise GameError("Speech message exceeds the configured maximum length.")
-        if action.intent.focus_id is not None and (
-            action.intent.focus_id not in state.players
-            or action.intent.focus_id == action.player_id
+        if (
+            action.intent.subject_id not in state.players
+            or action.intent.subject_id == action.player_id
         ):
-            raise GameError("Speech focus must identify another visible player.")
+            raise GameError("Speech subject must identify another visible player.")
         if round_.kind is DiscussionRoundKind.OPENING and action.intent.response_to_id is not None:
             raise GameError("Opening speech cannot reference another speech.")
+        if round_.kind is DiscussionRoundKind.OPENING and action.intent.speech_act not in {
+            SpeechAct.QUESTION,
+            SpeechAct.SUPPORT,
+            SpeechAct.CHALLENGE,
+            SpeechAct.REVISE,
+        }:
+            raise GameError("Opening speech act is not supported.")
+        if (
+            round_.kind is DiscussionRoundKind.OPENING
+            and action.intent.speech_act is not SpeechAct.QUESTION
+            and action.intent.evidence_id is None
+        ):
+            raise GameError("Non-question opening speech requires public evidence.")
         if round_.kind is DiscussionRoundKind.RESPONSE and (
             action.intent.response_to_id not in round_.reference_ids
         ):
             raise GameError("Response speech must reference a visible opening speech.")
+        if round_.kind is DiscussionRoundKind.RESPONSE:
+            referenced = next(
+                speech
+                for speech in state.history.speeches
+                if speech.speech_id == action.intent.response_to_id
+            )
+            if referenced.player_id == action.player_id:
+                raise GameError("Response speech must reference another player's speech.")
+            if _normalized_message(referenced.message) == _normalized_message(
+                action.intent.message
+            ):
+                raise GameError("Response speech must contribute new content.")
+        if round_.kind is DiscussionRoundKind.RESPONSE and action.intent.speech_act not in {
+            SpeechAct.ANSWER,
+            SpeechAct.SUPPORT,
+            SpeechAct.CHALLENGE,
+            SpeechAct.REVISE,
+        }:
+            raise GameError("Response speech act is not supported.")
+        if round_.kind is DiscussionRoundKind.RESPONSE and (
+            action.intent.evidence_id != action.intent.response_to_id
+        ):
+            raise GameError("Response speech must use its referenced speech as evidence.")
     updated = dict(pending)
     updated[action.player_id] = action
     return updated
@@ -178,7 +215,8 @@ def resolve_discussion_round(
                 "round_id": speech.round_id,
                 "round_kind": speech.round_kind.value,
                 "message": speech.message,
-                "focus_id": speech.focus_id,
+                "speech_act": speech.speech_act.value,
+                "subject_id": speech.subject_id,
                 "evidence_id": speech.evidence_id,
                 "response_to_id": speech.response_to_id,
             },
@@ -202,10 +240,15 @@ def _speech_record(
         round_kind=round_.kind,
         player_id=action.player_id,
         message=action.intent.message,
-        focus_id=action.intent.focus_id,
+        speech_act=action.intent.speech_act,
+        subject_id=action.intent.subject_id,
         evidence_id=action.intent.evidence_id,
         response_to_id=action.intent.response_to_id,
     )
+
+
+def _normalized_message(value: str) -> str:
+    return " ".join(value.split()).casefold()
 
 
 def _validate_resolution(

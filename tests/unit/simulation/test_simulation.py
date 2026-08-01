@@ -83,8 +83,20 @@ class _LongSpeechSession:
         self._inner = inner
 
     def decide(self, request: DecisionRequest) -> DecisionResponse:
-        if any(option.action_type == "speech" for option in request.options):
-            return DecisionResponse("speech", message="長すぎる発言です")
+        option = next(
+            (item for item in request.options if item.action_type == "speech"),
+            None,
+        )
+        if option is not None:
+            reference_id = option.legal_reference_ids[0] if option.legal_reference_ids else None
+            return DecisionResponse(
+                "speech",
+                message="長すぎる発言です",
+                speech_act="challenge" if reference_id else "question",
+                subject_id=option.legal_subject_ids[0],
+                evidence_id=reference_id,
+                response_to_id=reference_id,
+            )
         return self._inner.decide(request)
 
     def close(self) -> None:
@@ -319,12 +331,27 @@ def test_manual_player_waits_without_blocking_available_agent_action() -> None:
         targets = view.legal_targets.get(available.key, ())
         if available.type.value == "speech":
             round_ = view.discussion_round
+            speeches = {speech.speech_id: speech for speech in view.history.speeches}
+            reference_id = (
+                next(
+                    reference_id
+                    for reference_id in round_.reference_ids
+                    if speeches[reference_id].player_id != manual_id
+                )
+                if round_ is not None and round_.reference_ids
+                else None
+            )
             action = Action.speech(
                 manual_id,
-                "状況を確認します。",
-                response_to_id=(
-                    round_.reference_ids[0] if round_ is not None and round_.reference_ids else None
+                "その発言には異論があります。" if reference_id else "状況を確認します。",
+                speech_act="challenge" if reference_id else "question",
+                subject_id=next(
+                    player.id
+                    for player in view.players
+                    if player.id != manual_id and player.is_alive
                 ),
+                evidence_id=reference_id,
+                response_to_id=reference_id,
             )
         elif available.type.value == "vote":
             action = Action.vote(manual_id, targets[0], reason="状況から判断します。")
@@ -491,6 +518,7 @@ def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
         "game-1",
         23,
         {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
+        response_reference_limit=2,
     )
     session = SimulationRunner().start(game, spec)
     try:
@@ -519,6 +547,25 @@ def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
         "structured_discussion",
         1,
         "ordered",
+    )
+    response_request = next(
+        request
+        for request in factory.requests
+        if request.observation.procedure is not None
+        and request.observation.procedure.stage_id == "response"
+    )
+    speech_option = next(
+        option for option in response_request.options if option.action_type == "speech"
+    )
+    assert len(speech_option.legal_reference_ids) == 2
+    speech_actors = {
+        str(event.payload["speech_id"]): event.actor_id
+        for event in response_request.public_timeline
+        if event.event_type == "speech"
+    }
+    assert all(
+        speech_actors[reference_id] != response_request.context.player_id
+        for reference_id in speech_option.legal_reference_ids
     )
 
 

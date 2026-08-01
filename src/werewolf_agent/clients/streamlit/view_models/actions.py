@@ -62,7 +62,7 @@ def observation_view_from_response(
             if observation.discussion_round is not None
             else ()
         )
-        if reference_id in speech_by_id
+        if reference_id in speech_by_id and speech_by_id[reference_id].player_id != manual_player_id
     }
     return ObservationView(
         role=_theme_term(state, "role_names", role, catalog.label(lang, "role", role)),

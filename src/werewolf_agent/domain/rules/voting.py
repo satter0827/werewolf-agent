@@ -126,6 +126,11 @@ class CoreVotingPolicy:
             player_id: _vote_target(action) for player_id, action in pending_votes.items()
         }
         vote_reasons = {player_id: action.reason for player_id, action in pending_votes.items()}
+        evidence_ids = {
+            player_id: action.evidence_id
+            for player_id, action in pending_votes.items()
+            if action.evidence_id is not None
+        }
         counts = dict(Counter(vote_targets.values()))
         alive_voter_ids = [player.id for player in alive_players(state)]
         missing_voter_ids = [
@@ -152,6 +157,7 @@ class CoreVotingPolicy:
             day=state.day,
             votes=vote_targets,
             reasons=vote_reasons,
+            evidence_ids=evidence_ids,
             counts=counts,
             tied_player_ids=tuple(tied_player_ids),
             missing_voter_ids=tuple(missing_voter_ids),
@@ -187,6 +193,13 @@ def _validate_outcome(
     expected_reasons = {player_id: action.reason for player_id, action in pending_votes.items()}
     if dict(result.reasons) != expected_reasons:
         raise ValueError("voting outcome reasons must match pending votes")
+    expected_evidence_ids = {
+        player_id: action.evidence_id
+        for player_id, action in pending_votes.items()
+        if action.evidence_id is not None
+    }
+    if dict(result.evidence_ids) != expected_evidence_ids:
+        raise ValueError("voting outcome evidence must match pending votes")
     if set(result.counts) - alive_ids or any(
         not isinstance(count, int) or isinstance(count, bool) or count < 0
         for count in result.counts.values()

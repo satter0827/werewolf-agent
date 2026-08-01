@@ -109,7 +109,8 @@ class GameRevealAction(ApplicationModel):
     target_id: str | None = None
     message: str | None = None
     reason: str | None = None
-    focus_id: str | None = None
+    speech_act: str | None = None
+    subject_id: str | None = None
     evidence_id: str | None = None
     response_to_id: str | None = None
 

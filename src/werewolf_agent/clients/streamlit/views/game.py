@@ -306,6 +306,9 @@ def _render_action_form(
             st.warning(catalog.t(lang, "common.none"))
 
     message = None
+    speech_act = None
+    subject_id = None
+    evidence_id = None
     response_to_id = None
     if selected_action.requires_message:
         message = st.text_area(
@@ -320,6 +323,16 @@ def _render_action_form(
                 list(screen.observation.reference_choices),
                 format_func=screen.observation.reference_choices.get,
             )
+        subject_id = next(
+            (
+                seat.player_id
+                for seat in screen.seats
+                if seat.player_id != manual_player_id and seat.status == "alive"
+            ),
+            None,
+        )
+        speech_act = "challenge" if response_to_id else "question"
+        evidence_id = str(response_to_id) if response_to_id else None
 
     reason = None
     if selected_action.action_type == "vote":
@@ -349,6 +362,9 @@ def _render_action_form(
                 ability_id=selected_action.ability_id,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
+                speech_act=speech_act,
+                subject_id=subject_id,
+                evidence_id=evidence_id,
                 response_to_id=str(response_to_id) if response_to_id else None,
                 reason=str(reason).strip() if reason else None,
             )

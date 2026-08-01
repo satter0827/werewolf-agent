@@ -52,7 +52,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.4.0"
+        assert setup.schema_version == "0.5.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -88,7 +88,9 @@ def test_arbitrary_role_id_runs_through_ability_envelope() -> None:
 
 
 def test_night_ability_can_be_explicitly_passed() -> None:
-    setup = _standard()
+    payload = _standard().to_mapping()
+    payload["mechanics"]["night"]["allow_pass"] = True
+    setup = GameSetupDocument.from_mapping(payload)
     players = generate_players(setup.player_generation, player_count=6, seed=41)
     game = Game.create(
         GameSetup(
@@ -130,7 +132,15 @@ def test_structured_discussion_repeats_configured_cycles_with_default_one() -> N
     first_round = game.snapshot().pending_actions.discussion_round
     assert first_round is not None
     for player_id in first_round.actor_order:
-        game.submit(Action.speech(player_id, f"{player_id}の意見です。"))
+        subject_id = next(item for item in first_round.actor_order if item != player_id)
+        game.submit(
+            Action.speech(
+                player_id,
+                f"{player_id}の意見です。",
+                speech_act="question",
+                subject_id=subject_id,
+            )
+        )
     game.advance(random.Random(1))
 
     response_round = game.snapshot().pending_actions.discussion_round
@@ -228,14 +238,25 @@ def test_packaged_setup_reaches_a_winner_deterministically() -> None:
                 targets = view.legal_targets.get(available.key, ())
                 if available.type is ActionType.SPEECH:
                     round_ = view.discussion_round
+                    speeches = {speech.speech_id: speech for speech in view.history.speeches}
                     reference_id = (
-                        round_.reference_ids[0]
+                        next(
+                            reference_id
+                            for reference_id in round_.reference_ids
+                            if speeches[reference_id].player_id != player.id
+                        )
                         if round_ is not None and round_.reference_ids
                         else None
                     )
+                    subject_id = next(
+                        item.id for item in view.players if item.id != player.id and item.is_alive
+                    )
                     action = Action.speech(
                         player.id,
-                        "状況を確認します。",
+                        "その発言には異論があります。" if reference_id else "状況を確認します。",
+                        speech_act="challenge" if reference_id else "question",
+                        subject_id=subject_id,
+                        evidence_id=reference_id,
                         response_to_id=reference_id,
                     )
                 elif available.type is ActionType.VOTE:

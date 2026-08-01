@@ -132,7 +132,7 @@ TestGameStateMachine = pytest.mark.monkey(GameStateMachine.TestCase)
 
 def test_public_actions_do_not_accept_ability_ids() -> None:
     vote = Action.vote("p1", "p2", reason="疑わしいため")
-    speech = Action.speech("p1", "確認します。")
+    speech = Action.speech("p1", "確認します。", speech_act="question", subject_id="p2")
 
     assert vote.ability_id is None
     assert speech.ability_id is None

@@ -246,7 +246,9 @@ def test_same_definition_seed_and_actions_reproduce_state_and_events() -> None:
             starting_phase="day_discussion",
         )
         events = list(game.creation_events)
-        events.extend(game.submit(Action.speech("p2", "確認します。")))
+        events.extend(
+            game.submit(Action.speech("p2", "確認します。", speech_act="question", subject_id="p1"))
+        )
         phase_seed = 11
         while game.snapshot().phase is Phase.DAY_DISCUSSION:
             events.extend(game.advance(random.Random(phase_seed)))
@@ -284,12 +286,14 @@ def test_rejected_action_preserves_state_and_pending_actions() -> None:
         },
         starting_phase="day_discussion",
     )
-    game.submit(Action.speech("p2", "一度だけ話します。"))
+    game.submit(Action.speech("p2", "一度だけ話します。", speech_act="question", subject_id="p1"))
     before_state = game.snapshot()
     before_pending = game.pending_actions
 
     with pytest.raises(RuleViolation, match="not available"):
-        game.submit(Action.speech("p2", "二度目は拒否されます。"))
+        game.submit(
+            Action.speech("p2", "二度目は拒否されます。", speech_act="question", subject_id="p1")
+        )
 
     assert game.snapshot() is before_state
     assert game.pending_actions is before_pending
@@ -464,7 +468,7 @@ def test_sealed_opening_is_hidden_until_the_round_resolves() -> None:
         starting_phase="day_discussion",
     )
 
-    game.submit(Action.speech("p2", "公開する発言です。"))
+    game.submit(Action.speech("p2", "公開する発言です。", speech_act="question", subject_id="p1"))
 
     assert game.view_for("p1").history.speeches == ()
     game.advance(random.Random(0))

@@ -751,7 +751,19 @@ def test_discussion_policy_cannot_skip_response_after_opening() -> None:
         for player_id in game.snapshot().players
         if game.view_for(player_id).available_actions
     )
-    game.submit(Action.speech(actor_id, "意見を述べます。"))
+    subject_id = next(
+        player.id
+        for player in game.snapshot().players.values()
+        if player.id != actor_id and player.is_alive
+    )
+    game.submit(
+        Action.speech(
+            actor_id,
+            "意見を述べます。",
+            speech_act="question",
+            subject_id=subject_id,
+        )
+    )
     before = game.snapshot()
 
     with pytest.raises(ValueError, match="cannot complete"):
@@ -783,6 +795,77 @@ def test_discussion_policy_cannot_start_outside_first_opening() -> None:
         )
 
     assert random_source.getstate() == random_state
+
+
+def test_response_must_advance_another_players_opening() -> None:
+    """responseは自己反復と再質問を許可せず、他者のopeningへ前進回答する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    for actor_id in opening.actor_order:
+        subject_id = next(item for item in opening.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                "判断材料を確認します。",
+                speech_act="question",
+                subject_id=subject_id,
+            )
+        )
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    actor_id = response.current_actor_id
+    speeches = {speech.speech_id: speech for speech in game.snapshot().history.speeches}
+    own_reference = next(
+        reference_id
+        for reference_id in response.reference_ids
+        if speeches[reference_id].player_id == actor_id
+    )
+    other_reference = next(
+        reference_id
+        for reference_id in response.reference_ids
+        if speeches[reference_id].player_id != actor_id
+    )
+    subject_id = next(item for item in response.actor_order if item != actor_id)
+
+    with pytest.raises(GameError, match="another player's speech"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "自分の問いを繰り返します。",
+                speech_act="answer",
+                subject_id=subject_id,
+                evidence_id=own_reference,
+                response_to_id=own_reference,
+            )
+        )
+    with pytest.raises(GameError, match="act is not supported"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "別の問いを重ねます。",
+                speech_act="question",
+                subject_id=subject_id,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    with pytest.raises(GameError, match="contribute new content"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                speeches[other_reference].message,
+                speech_act="answer",
+                subject_id=subject_id,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
 
 
 def test_discussion_round_rejects_duplicate_reference_ids() -> None:

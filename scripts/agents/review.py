@@ -66,9 +66,12 @@ ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
 LOCAL_BASE_URL_DEFAULT = "http://127.0.0.1:1234/v1"
 LOCAL_MODEL_DEFAULT = "google/gemma-3-4b"
-LOCAL_TIMEOUT_SECONDS = 120.0
-LOCAL_MAX_TOKENS = 256
+LOCAL_TIMEOUT_SECONDS = 240.0
+LOCAL_MAX_TOKENS = 1024
 LOCAL_MAX_INVOCATIONS = 3
+FULL_GAME_MAX_INVOCATIONS = 128
+FULL_GAME_MAX_DURATION_SECONDS = 5400.0
+REVIEW_RESPONSE_REFERENCE_LIMIT = 2
 MAX_PHASES = 64
 MAX_INVOCATIONS = 512
 SMOKE_PRESETS = ("standard_6",)
@@ -394,14 +397,25 @@ def _structured_discussion_requests(
             "speech",
             1,
             "p2",
-            {"speech_id": "opening:p2", "message": "私はまだ判断材料が足りません。"},
+            {
+                "speech_id": "opening:p2",
+                "message": "私はまだ判断材料が足りません。",
+                "speech_act": "question",
+                "subject_id": "p1",
+            },
         ),
         PublicTimelineEvent(
             2,
             "speech",
             1,
             "p3",
-            {"speech_id": "opening:p3", "message": "結衣の慎重さが気になります。"},
+            {
+                "speech_id": "opening:p3",
+                "message": "結衣の慎重さが気になります。",
+                "speech_act": "challenge",
+                "subject_id": "p1",
+                "evidence_id": "opening:p2",
+            },
         ),
     )
     opening = DecisionRequest(
@@ -409,7 +423,13 @@ def _structured_discussion_requests(
         context,
         observation("day_discussion", procedure_stage="opening"),
         (),
-        (DecisionOption("speech", message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS),),
+        (
+            DecisionOption(
+                "speech",
+                legal_subject_ids=("p2", "p3"),
+                message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+            ),
+        ),
         11,
     )
     response = DecisionRequest(
@@ -420,6 +440,8 @@ def _structured_discussion_requests(
         (
             DecisionOption(
                 "speech",
+                legal_subject_ids=("p2", "p3"),
+                legal_evidence_ids=("opening:p2", "opening:p3"),
                 legal_reference_ids=("opening:p2", "opening:p3"),
                 message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
             ),
@@ -431,7 +453,13 @@ def _structured_discussion_requests(
         context,
         observation("voting"),
         timeline,
-        (DecisionOption("vote", legal_target_ids=("p2", "p3")),),
+        (
+            DecisionOption(
+                "vote",
+                legal_target_ids=("p2", "p3"),
+                legal_evidence_ids=("opening:p2", "opening:p3"),
+            ),
+        ),
         17,
     )
     return (("opening", opening), ("response", response), ("vote", vote))
@@ -444,18 +472,24 @@ def _probe_response_is_legal(probe_id: str, response: object) -> bool:
         return (
             response.get("action_type") == "speech"
             and bool(response.get("message"))
+            and response.get("speech_act") == "question"
+            and response.get("subject_id") in {"p2", "p3"}
             and response.get("response_to_id") is None
         )
     if probe_id == "response":
         return (
             response.get("action_type") == "speech"
             and bool(response.get("message"))
+            and response.get("speech_act") in {"answer", "support", "challenge", "revise"}
+            and response.get("subject_id") in {"p2", "p3"}
             and response.get("response_to_id") in {"opening:p2", "opening:p3"}
+            and response.get("evidence_id") == response.get("response_to_id")
         )
     return (
         response.get("action_type") == "vote"
         and response.get("target_id") in {"p2", "p3"}
         and bool(response.get("reason"))
+        and response.get("evidence_id") in {"opening:p2", "opening:p3"}
     )
 
 
@@ -492,11 +526,8 @@ def run_suite(
         config = provider_config(provider, confirm_paid=confirm_paid)
         configuration_checksum = _configuration_checksum(config)
         if provider == "local":
-            if suite != "smoke" or selected_presets:
-                raise ValueError(
-                    "Local LLM review supports only the bounded smoke suite; "
-                    "use local-ui for an explicitly requested full game."
-                )
+            if suite not in {"smoke", "full-game"} or selected_presets:
+                raise ValueError("Local LLM review supports smoke or full-game without --preset.")
             model_ids = _local_model_ids(config)
             if config.model not in model_ids:
                 raise AgentReviewBlockedError(
@@ -511,8 +542,18 @@ def run_suite(
             if unknown:
                 raise ValueError(f"Unknown setup presets: {', '.join(unknown)}")
             presets = tuple(sorted(set(selected_presets)))
+        elif suite in {"smoke", "full-game"}:
+            presets = SMOKE_PRESETS
         else:
-            presets = SMOKE_PRESETS if suite == "smoke" else available_presets
+            presets = available_presets
+        invocation_limit = (
+            LOCAL_MAX_INVOCATIONS
+            if provider == "local" and suite == "smoke"
+            else FULL_GAME_MAX_INVOCATIONS
+            if suite == "full-game"
+            else MAX_INVOCATIONS
+        )
+        duration_limit_seconds = FULL_GAME_MAX_DURATION_SECONDS if suite == "full-game" else None
         _write_checkpoint(
             run_dir,
             provider=provider,
@@ -588,9 +629,8 @@ def run_suite(
                 preset_id,
                 seed=seed,
                 deliberation_level=DeliberationLevel(deliberation_level),
-                invocation_limit=(
-                    LOCAL_MAX_INVOCATIONS if provider == "local" else MAX_INVOCATIONS
-                ),
+                invocation_limit=invocation_limit,
+                duration_limit_seconds=duration_limit_seconds,
                 trace_callback=persist_invocation,
             )
             traces = scenario.pop("private_traces")
@@ -645,9 +685,8 @@ def run_suite(
             "finished_at": datetime.now(UTC).isoformat(),
             "limits": {
                 "max_phases": MAX_PHASES,
-                "max_invocations": (
-                    LOCAL_MAX_INVOCATIONS if provider == "local" else MAX_INVOCATIONS
-                ),
+                "max_invocations": invocation_limit,
+                "max_duration_seconds": duration_limit_seconds,
             },
             "presets": list(presets),
         }
@@ -885,8 +924,10 @@ def _run_preset(
     seed: int,
     deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD,
     invocation_limit: int = MAX_INVOCATIONS,
+    duration_limit_seconds: float | None = None,
     trace_callback: Callable[[LlmInvocationTrace], None] | None = None,
 ) -> dict[str, object]:
+    scenario_started = time.perf_counter()
     settings = get_settings()
     setup_catalog = build_setup_catalog(settings)
     llm_definitions = build_llm_definitions(settings)
@@ -960,6 +1001,7 @@ def _run_preset(
                 decision_timeout_seconds=config.timeout_seconds,
             ),
             speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+            response_reference_limit=REVIEW_RESPONSE_REFERENCE_LIMIT,
         ),
     )
     public_timeline = [
@@ -970,8 +1012,15 @@ def _run_preset(
     phase_count = 0
     action_count = 0
     stopped_for_preflight = False
+    stopped_for_duration = False
     try:
         while True:
+            if (
+                duration_limit_seconds is not None
+                and time.perf_counter() - scenario_started >= duration_limit_seconds
+            ):
+                stopped_for_duration = True
+                break
             if len(trace_sink.records) >= invocation_limit:
                 stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
                 break
@@ -1003,13 +1052,16 @@ def _run_preset(
     prompt_characters = sum(_as_int(trace["prompt_characters"]) for trace in traces)
     response_characters = sum(_as_int(trace["response_characters"]) for trace in traces)
     completed = snapshot.is_finished
+    gameplay_metrics = _gameplay_metrics(traces, public_timeline)
     state = _classify_scenario_state(
         stopped_for_preflight=stopped_for_preflight,
+        stopped_for_duration=stopped_for_duration,
         has_traces=bool(traces),
         completed=completed,
         fallbacks=fallbacks,
         provider_errors=provider_errors,
         provider=config.provider,
+        integrity_failed=bool(gameplay_metrics["integrity_flags"]),
     )
     return {
         "preset_id": preset_id,
@@ -1017,6 +1069,7 @@ def _run_preset(
         "deliberation_level": deliberation_level.value,
         "state": state,
         "completed": completed,
+        "stopped_for_duration": stopped_for_duration,
         "phase_count": phase_count,
         "finished_day": snapshot.day,
         "winner": snapshot.winner_id,
@@ -1032,7 +1085,8 @@ def _run_preset(
         "prompt_characters": prompt_characters,
         "average_prompt_characters": round(prompt_characters / len(traces), 3) if traces else 0,
         "response_characters": response_characters,
-        "gameplay_metrics": _gameplay_metrics(traces),
+        "phase_quality": _phase_quality_metrics(traces),
+        "gameplay_metrics": gameplay_metrics,
         "setup_checksum": checksum_payload(setup.to_mapping()),
         "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
         "public_timeline": public_timeline,
@@ -1048,12 +1102,18 @@ def _classify_scenario_state(
     fallbacks: int,
     provider_errors: int,
     provider: str,
+    stopped_for_duration: bool = False,
+    integrity_failed: bool = False,
 ) -> ReviewState:
     """Classify model availability before bounded-preflight completion."""
     if provider_errors and provider == "lmstudio":
         return "blocked"
+    if stopped_for_duration:
+        return "failed"
     if stopped_for_preflight:
         return "passed" if has_traces and not fallbacks else "degraded"
+    if integrity_failed:
+        return "failed"
     if not completed:
         return "failed"
     if fallbacks or provider_errors:
@@ -1061,15 +1121,22 @@ def _classify_scenario_state(
     return "passed"
 
 
-def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, object]:
-    """Return descriptive gameplay observations without inventing pass/fail thresholds."""
+def _gameplay_metrics(
+    traces: Sequence[Mapping[str, object]],
+    public_timeline: Sequence[Mapping[str, object]] = (),
+) -> dict[str, object]:
+    """一局の会話、根拠、投票、夜、終了整合を決定的に集計する。"""
     speeches: list[str] = []
-    speech_focus: dict[tuple[str, int], str] = {}
+    speech_subject: dict[tuple[str, int], str] = {}
     vote_pairs: list[tuple[str, int, str]] = []
     targets: list[str] = []
+    subjects: list[str] = []
+    speech_acts: dict[str, int] = {}
     profile_choices: dict[str, set[str]] = {}
-    empty_focus = 0
+    missing_subject = 0
     invalid_evidence = 0
+    grounded_decisions = 0
+    ungrounded_assertions = 0
     changed_votes = 0
     changed_vote_reason_missing = 0
     for trace in traces:
@@ -1084,20 +1151,33 @@ def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, objec
         player_id = str(trace.get("player_id") or "")
         day = _as_int(trace.get("day"))
         target_id = str(decision.get("target_id") or "")
-        focus_id = str(request.get("focus_id") or "")
+        subject_id = str(decision.get("subject_id") or "")
+        evidence_id = str(decision.get("evidence_id") or "")
         profile_key = f"{request.get('risk_tolerance', '')}:{request.get('evidence_focus', '')}"
         if action == "speech":
             message = str(decision.get("message") or "").strip()
+            speech_act = str(decision.get("speech_act") or "")
             if message:
                 speeches.append(message)
-            if focus_id:
-                speech_focus[(player_id, day)] = focus_id
+            if speech_act:
+                speech_acts[speech_act] = speech_acts.get(speech_act, 0) + 1
+            if subject_id:
+                subjects.append(subject_id)
+                speech_subject[(player_id, day)] = subject_id
             else:
-                empty_focus += 1
+                missing_subject += 1
+            if evidence_id:
+                grounded_decisions += 1
+            elif speech_act and speech_act != "question":
+                ungrounded_assertions += 1
         if action == "vote" and target_id:
             vote_pairs.append((player_id, day, target_id))
-            previous_focus = speech_focus.get((player_id, day))
-            if previous_focus is not None and previous_focus != target_id:
+            if evidence_id:
+                grounded_decisions += 1
+            else:
+                ungrounded_assertions += 1
+            previous_subject = speech_subject.get((player_id, day))
+            if previous_subject is not None and previous_subject != target_id:
                 changed_votes += 1
                 changed_vote_reason_missing += not str(decision.get("reason") or "").strip()
         if target_id:
@@ -1105,23 +1185,28 @@ def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, objec
             profile_choices.setdefault(profile_key, set()).add(target_id)
     duplicate_count = len(speeches) - len(set(speeches))
     consistent_votes = sum(
-        speech_focus.get((player_id, day)) == target_id
+        speech_subject.get((player_id, day)) == target_id
         for player_id, day, target_id in vote_pairs
-        if (player_id, day) in speech_focus
+        if (player_id, day) in speech_subject
     )
     comparable_votes = sum(
-        (player_id, day) in speech_focus for player_id, day, _target_id in vote_pairs
+        (player_id, day) in speech_subject for player_id, day, _target_id in vote_pairs
     )
     fixed_target_rate = (
         max(targets.count(target) for target in set(targets)) / len(targets) if targets else 0.0
     )
+    timeline_metrics = _timeline_gameplay_metrics(public_timeline)
     return {
         "speech_count": len(speeches),
         "speech_exact_duplicate_rate": round(duplicate_count / len(speeches), 4)
         if speeches
         else 0.0,
-        "speech_empty_focus_count": empty_focus,
+        "speech_missing_subject_count": missing_subject,
+        "speech_act_counts": dict(sorted(speech_acts.items())),
+        "subject_variety": len(set(subjects)),
         "invalid_evidence_count": invalid_evidence,
+        "grounded_decision_count": grounded_decisions,
+        "ungrounded_assertion_count": ungrounded_assertions,
         "speech_vote_comparable_count": comparable_votes,
         "speech_vote_consistency_rate": round(consistent_votes / comparable_votes, 4)
         if comparable_votes
@@ -1133,6 +1218,135 @@ def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, objec
         "profile_target_variety": {
             profile: len(values) for profile, values in sorted(profile_choices.items())
         },
+        **timeline_metrics,
+    }
+
+
+def _timeline_gameplay_metrics(
+    public_timeline: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """公開timelineだけから一局の参照整合と進行結果を検証する。"""
+    speech_ids: set[str] = set()
+    integrity_flags: list[str] = []
+    response_count = 0
+    response_alignment_count = 0
+    vote_round_count = 0
+    tied_vote_round_count = 0
+    revote_count = 0
+    elimination_count = 0
+    night_round_count = 0
+    night_kill_count = 0
+    finished_count = 0
+    winner = ""
+    for event in public_timeline:
+        event_type = str(event.get("event_type") or "")
+        payload_value = event.get("payload")
+        payload = payload_value if isinstance(payload_value, Mapping) else {}
+        if event_type == "speech_recorded":
+            speech_id = str(payload.get("speech_id") or "")
+            evidence_id = str(payload.get("evidence_id") or "")
+            response_to_id = str(payload.get("response_to_id") or "")
+            if evidence_id and evidence_id not in speech_ids:
+                integrity_flags.append(f"unknown_speech_evidence:{evidence_id}")
+            if response_to_id:
+                response_count += 1
+                if evidence_id == response_to_id:
+                    response_alignment_count += 1
+                else:
+                    integrity_flags.append(f"response_evidence_mismatch:{speech_id}")
+            if speech_id:
+                if speech_id in speech_ids:
+                    integrity_flags.append(f"duplicate_speech_id:{speech_id}")
+                speech_ids.add(speech_id)
+        elif event_type == "vote_resolved":
+            vote_round_count += 1
+            tied = payload.get("tied_player_ids")
+            if isinstance(tied, list) and len(tied) > 1:
+                tied_vote_round_count += 1
+            if bool(payload.get("requires_revote")):
+                revote_count += 1
+            if payload.get("eliminated_player_id"):
+                elimination_count += 1
+            evidence_value = payload.get("evidence_ids")
+            evidence_ids = evidence_value if isinstance(evidence_value, Mapping) else {}
+            for evidence_id in evidence_ids.values():
+                normalized = str(evidence_id or "")
+                if normalized and normalized not in speech_ids:
+                    integrity_flags.append(f"unknown_vote_evidence:{normalized}")
+        elif event_type == "night_resolved":
+            night_round_count += 1
+            killed = payload.get("killed_player_ids")
+            if isinstance(killed, list):
+                night_kill_count += len(killed)
+            elif payload.get("killed_player_id"):
+                night_kill_count += 1
+        elif event_type == "game_finished":
+            finished_count += 1
+            winner = str(payload.get("winner") or "")
+    if public_timeline and finished_count != 1:
+        integrity_flags.append(f"game_finished_event_count:{finished_count}")
+    if finished_count == 1 and winner not in {"village", "werewolf", "fox"}:
+        integrity_flags.append(f"invalid_winner:{winner}")
+    return {
+        "public_speech_count": len(speech_ids),
+        "response_count": response_count,
+        "response_evidence_alignment_rate": (
+            round(response_alignment_count / response_count, 4) if response_count else None
+        ),
+        "vote_round_count": vote_round_count,
+        "tied_vote_round_count": tied_vote_round_count,
+        "revote_count": revote_count,
+        "elimination_count": elimination_count,
+        "night_round_count": night_round_count,
+        "night_kill_count": night_kill_count,
+        "game_finished_event_count": finished_count,
+        "public_winner": winner or None,
+        "integrity_flags": sorted(set(integrity_flags)),
+    }
+
+
+def _phase_quality_metrics(
+    traces: Sequence[Mapping[str, object]],
+) -> dict[str, object]:
+    """フェーズごとの応答時間、token、fallbackを集計する。"""
+    result: dict[str, object] = {}
+    phases = sorted({str(trace.get("phase") or "unknown") for trace in traces})
+    for phase in phases:
+        items = [trace for trace in traces if str(trace.get("phase") or "unknown") == phase]
+        latencies = [_as_float(item.get("latency_ms")) for item in items]
+        token_values = [
+            _as_int(item["total_tokens"])
+            for item in items
+            if isinstance(item.get("total_tokens"), int)
+        ]
+        result[phase] = {
+            "invocations": len(items),
+            "fallbacks": sum(bool(item.get("fallback_used")) for item in items),
+            "usage_unavailable": sum(item.get("usage_source") == "unavailable" for item in items),
+            "latency_ms": _distribution(latencies),
+            "total_tokens": _distribution(token_values),
+        }
+    return result
+
+
+def _distribution(values: Sequence[int | float]) -> dict[str, int | float | None]:
+    """小標本でも再現可能なnearest-rank分布を返す。"""
+    ordered = sorted(values)
+    if not ordered:
+        return {"count": 0, "total": 0, "average": None, "p50": None, "p95": None, "max": None}
+
+    def percentile(fraction: float) -> int | float:
+        index = max(0, min(len(ordered) - 1, int(len(ordered) * fraction + 0.999999) - 1))
+        return ordered[index]
+
+    total = sum(ordered)
+    return {
+        "count": len(ordered),
+        "total": round(total, 3),
+        "average": round(total / len(ordered), 3),
+        "p50": percentile(0.5),
+        "p95": percentile(0.95),
+        "max": ordered[-1],
     }
 
 
@@ -1205,6 +1419,8 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
                     "usage_unavailable",
                     "latency_ms",
                     "duration_seconds",
+                    "phase_quality",
+                    "gameplay_metrics",
                 )
             }
             for item in scenarios
@@ -1255,11 +1471,21 @@ def _summary_markdown(
             f"invocations={scenario.get('invocations', 'unavailable')}, "
             f"fallbacks={scenario.get('fallbacks', 'unavailable')}"
         )
+        gameplay_value = scenario.get("gameplay_metrics")
+        gameplay = gameplay_value if isinstance(gameplay_value, Mapping) else {}
+        lines.append(
+            f"  - speeches={gameplay.get('speech_count', 'unavailable')}, "
+            f"responses={gameplay.get('response_count', 'unavailable')}, "
+            f"vote rounds={gameplay.get('vote_round_count', 'unavailable')}, "
+            f"night rounds={gameplay.get('night_round_count', 'unavailable')}, "
+            f"integrity flags={gameplay.get('integrity_flags', [])}"
+        )
     lines.extend(
         [
             "",
-            "このreviewは完走性、契約適合、再現性、実行指標だけを記録します。",
-            "面白さと発言内容の評価は行いません。",
+            "このreviewは完走性、契約適合、公開根拠の参照整合、会話の重複、",
+            "投票・夜・勝敗とフェーズ別のtoken・応答時間を記録します。",
+            "発言内容の事実性と面白さの最終判断は、公開timelineの人手レビューで補います。",
             "",
         ]
     )

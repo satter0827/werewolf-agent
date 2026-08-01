@@ -33,7 +33,9 @@ from werewolf_agent.domain import GameEvent, GameState
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
     "phase_started": frozenset({"phase"}),
-    "speech_recorded": frozenset({"message", "focus_id", "evidence_id"}),
+    "speech_recorded": frozenset(
+        {"message", "speech_act", "subject_id", "evidence_id", "response_to_id"}
+    ),
     "vote_resolved": frozenset(
         {
             "eliminated_player_id",

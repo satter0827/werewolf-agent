@@ -19,6 +19,7 @@ from werewolf_agent.adapters.llm.models import (
     AgentProcedureContext,
     AgentScenario,
     AgentSpeech,
+    AgentSpeechAct,
     AgentVoteRound,
     PlayerProfile,
     VisiblePlayer,
@@ -36,7 +37,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.4.0"
+_IMPLEMENTATION_VERSION = "1.6.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -137,7 +138,8 @@ class _LangChainAgentSession:
             ability_id=decision.ability_id,
             target_id=decision.target_id,
             message=decision.message,
-            focus_id=decision.focus_id,
+            speech_act=decision.speech_act.value if decision.speech_act is not None else None,
+            subject_id=decision.subject_id,
             evidence_id=decision.evidence_id,
             response_to_id=decision.response_to_id,
             reason=(decision.reason or None if decision.type is AgentActionType.VOTE else None),
@@ -197,7 +199,8 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
                         ),
                         player_id=event.actor_id,
                         message=message,
-                        focus_id=_optional_text(event.payload.get("focus_id")),
+                        speech_act=AgentSpeechAct(str(event.payload["speech_act"])),
+                        subject_id=str(event.payload["subject_id"]),
                         evidence_id=_optional_text(event.payload.get("evidence_id")),
                         response_to_id=_optional_text(event.payload.get("response_to_id")),
                     )
@@ -274,6 +277,8 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
             for option in request.options
         ],
         legal_targets={option.key: list(option.legal_target_ids) for option in request.options},
+        legal_subjects={option.key: list(option.legal_subject_ids) for option in request.options},
+        legal_evidence={option.key: list(option.legal_evidence_ids) for option in request.options},
         legal_references={
             option.key: list(option.legal_reference_ids) for option in request.options
         },
@@ -305,6 +310,10 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
     if decision.type is AgentActionType.SPEECH:
         if decision.message is None:
             raise AgentDecisionError("llm_message_required")
+        if decision.speech_act is None:
+            raise AgentDecisionError("llm_speech_act_required")
+        if decision.subject_id not in option.legal_subject_ids:
+            raise AgentDecisionError("llm_subject_not_legal")
         if (
             option.message_max_chars is not None
             and len(decision.message) > option.message_max_chars
@@ -319,6 +328,12 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
             raise AgentDecisionError("llm_reference_not_legal")
     elif decision.type is AgentActionType.VOTE and not decision.reason.strip():
         raise AgentDecisionError("llm_vote_reason_required")
+    elif (
+        decision.type is AgentActionType.VOTE
+        and option.legal_evidence_ids
+        and decision.evidence_id not in option.legal_evidence_ids
+    ):
+        raise AgentDecisionError("llm_vote_evidence_required")
     elif decision.message is not None:
         raise AgentDecisionError("llm_message_not_allowed")
     elif decision.response_to_id is not None:

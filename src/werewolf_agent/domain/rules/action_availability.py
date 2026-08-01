@@ -61,7 +61,7 @@ def available_actions(
         if ability.max_uses is not None and used >= ability.max_uses:
             continue
         actions.append(AvailableAction(ActionType.USE_ABILITY, ability_id))
-    if actions:
+    if actions and snapshot.config.night.allow_pass:
         actions.append(AvailableAction(ActionType.PASS))
     return actions
 

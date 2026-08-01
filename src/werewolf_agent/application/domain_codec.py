@@ -30,6 +30,7 @@ from werewolf_agent.domain.state import (
     PlayerStatus,
     RoleCatalog,
     RoleDefinition,
+    SpeechAct,
     SpeechRecord,
     SubmissionMode,
     VoteResult,
@@ -46,7 +47,8 @@ def domain_to_data(value: Any) -> Any:
             "ability_id",
             "target_id",
             "message",
-            "focus_id",
+            "speech_act",
+            "subject_id",
             "evidence_id",
             "response_to_id",
         ):
@@ -83,7 +85,8 @@ def action_from_data(data: Mapping[str, Any]) -> Action:
         return Action.speech(
             player_id,
             str(data["message"]),
-            focus_id=_optional_text(data.get("focus_id")),
+            speech_act=SpeechAct(str(data["speech_act"])),
+            subject_id=str(data["subject_id"]),
             evidence_id=_optional_text(data.get("evidence_id")),
             response_to_id=_optional_text(data.get("response_to_id")),
         )
@@ -92,6 +95,7 @@ def action_from_data(data: Mapping[str, Any]) -> Action:
             player_id,
             str(data["target_id"]),
             reason=str(data["reason"]),
+            evidence_id=_optional_text(data.get("evidence_id")),
         )
     if action_type is ActionType.USE_ABILITY:
         return Action.use_ability(
@@ -196,7 +200,8 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
                 round_kind=DiscussionRoundKind(str(item["round_kind"])),
                 player_id=str(item["player_id"]),
                 message=str(item["message"]),
-                focus_id=_optional_text(item.get("focus_id")),
+                speech_act=SpeechAct(str(item["speech_act"])),
+                subject_id=str(item["subject_id"]),
                 evidence_id=_optional_text(item.get("evidence_id")),
                 response_to_id=_optional_text(item.get("response_to_id")),
             )
@@ -222,6 +227,9 @@ def _vote(data: Mapping[str, Any]) -> VoteResult:
         tie_break_policy=str(data["tie_break_policy"]),
         votes={str(key): str(value) for key, value in _mapping(data.get("votes", {})).items()},
         reasons={str(key): str(value) for key, value in _mapping(data.get("reasons", {})).items()},
+        evidence_ids={
+            str(key): str(value) for key, value in _mapping(data.get("evidence_ids", {})).items()
+        },
         counts={str(key): int(value) for key, value in _mapping(data.get("counts", {})).items()},
         tied_player_ids=tuple(str(value) for value in _sequence(data.get("tied_player_ids"))),
         missing_voter_ids=tuple(str(value) for value in _sequence(data.get("missing_voter_ids"))),

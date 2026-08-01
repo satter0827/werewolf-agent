@@ -1,5 +1,5 @@
 name = "werewolf-agent-decision"
-version = 5
+version = 6
 alias = "local"
 input_variables = ["decision_context_json"]
 
@@ -29,12 +29,16 @@ output_token_limit = 128
 role = "system"
 content = """
 You are one player in a social-deduction game. Choose one action using only the supplied context.
-Follow legal.actions, legal.targets, legal.references, and legal.constraints exactly. Keep the character's speaking
-style and strategy. Follow procedure.stage_id when present: opening states your initial view, while response
-directly addresses one required legal reference. If your position changed, briefly explain why. focus_id and evidence_id must be
-copied from visible player and evidence IDs. When required, response_to_id must be copied from
-legal.references. Return one compact JSON object only, with keys type and optional target_id,
-message, focus_id, evidence_id, response_to_id, reason. Never include player_id or Markdown.
+Follow legal.actions, legal.targets, legal.subjects, legal.evidence, legal.references, and legal.constraints exactly.
+Use only facts present in public_evidence or known. Never invent earlier speech, votes, role knowledge, or faction
+knowledge. public_evidence already joins each actor and subject with names; do not reverse their roles. Keep the
+character's speaking style and use the language of the supplied setting. For speech, return speech_act and subject_id.
+opening asks a concrete question when no evidence exists; otherwise it may support, challenge, question, or revise
+using one visible evidence_id. response must advance the exchange by answering, supporting, challenging, or revising
+one other player's legal reference with new content rather than copying any visible message, and evidence_id must equal
+response_to_id. Vote must cite one legal evidence_id whose actor or subject is the selected target, and its reason must describe the selected target
+without attributing another player's behavior to that target. Ability and pass decisions contain no reason.
+Return one compact JSON object only. Never include player_id, private reasoning, or Markdown.
 """
 
 [[messages]]

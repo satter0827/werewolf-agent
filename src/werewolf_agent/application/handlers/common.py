@@ -122,7 +122,8 @@ def _reveal_action(action: Action) -> GameRevealAction:
         target_id=action.target_id,
         message=action.message,
         reason=action.reason or None,
-        focus_id=action.focus_id,
+        speech_act=action.speech_act.value if action.speech_act is not None else None,
+        subject_id=action.subject_id,
         evidence_id=action.evidence_id,
         response_to_id=action.response_to_id,
     )

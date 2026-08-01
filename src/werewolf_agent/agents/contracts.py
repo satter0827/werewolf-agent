@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.8.0"
+AGENT_CONTRACT_VERSION = "0.9.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -271,6 +271,8 @@ class DecisionOption:
     action_type: str
     ability_id: str | None = None
     legal_target_ids: tuple[str, ...] = ()
+    legal_subject_ids: tuple[str, ...] = ()
+    legal_evidence_ids: tuple[str, ...] = ()
     legal_reference_ids: tuple[str, ...] = ()
     message_max_chars: int | None = None
 
@@ -286,6 +288,16 @@ class DecisionOption:
         if len(targets) != len(set(targets)):
             raise ValueError("legal_target_ids must be unique")
         object.__setattr__(self, "legal_target_ids", targets)
+        subjects = tuple(
+            non_blank(subject, "legal_subject_id") for subject in self.legal_subject_ids
+        )
+        if len(subjects) != len(set(subjects)):
+            raise ValueError("legal_subject_ids must be unique")
+        object.__setattr__(self, "legal_subject_ids", subjects)
+        evidence = tuple(non_blank(item, "legal_evidence_id") for item in self.legal_evidence_ids)
+        if len(evidence) != len(set(evidence)):
+            raise ValueError("legal_evidence_ids must be unique")
+        object.__setattr__(self, "legal_evidence_ids", evidence)
         references = tuple(
             non_blank(reference, "legal_reference_id") for reference in self.legal_reference_ids
         )
@@ -339,6 +351,12 @@ class DecisionRequest:
             for target in option.legal_target_ids
         ):
             raise ValueError("legal targets must be visible players")
+        if any(
+            subject not in visible_ids or subject == self.observation.me.player_id
+            for option in self.options
+            for subject in option.legal_subject_ids
+        ):
+            raise ValueError("legal subjects must identify other visible players")
         visible_reference_ids = {
             reference_id
             for event in self.public_timeline
@@ -367,7 +385,8 @@ class DecisionResponse:
     ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
-    focus_id: str | None = None
+    speech_act: str | None = None
+    subject_id: str | None = None
     evidence_id: str | None = None
     response_to_id: str | None = None
     reason: str | None = None
@@ -383,7 +402,8 @@ class DecisionResponse:
             "ability_id",
             "target_id",
             "message",
-            "focus_id",
+            "speech_act",
+            "subject_id",
             "evidence_id",
             "response_to_id",
             "reason",

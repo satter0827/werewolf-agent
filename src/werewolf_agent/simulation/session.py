@@ -27,6 +27,7 @@ from werewolf_agent.domain import (
     GameSetup,
     GameState,
     GameView,
+    SpeechAct,
 )
 from werewolf_agent.setup import namespace_seed
 from werewolf_agent.simulation.contracts import (
@@ -363,6 +364,33 @@ class SimulationSession:
         )
         if not isinstance(metadata, AgentMetadata):
             raise TypeError("metadata provider must return AgentMetadata")
+        public_timeline = _public_timeline(observation)
+        evidence_ids = _latest_speech_ids_by_actor(public_timeline)
+        subject_ids = tuple(
+            player.player_id
+            for player in players
+            if player.player_id != context.player_id and player.alive
+        )
+        discussion_round = observation.discussion_round
+        legal_reference_ids: tuple[str, ...] = ()
+        if discussion_round is not None:
+            legal_reference_ids = tuple(
+                reference_id
+                for reference_id in discussion_round.reference_ids
+                if next(
+                    speech.player_id
+                    for speech in observation.history.speeches
+                    if speech.speech_id == reference_id
+                )
+                != context.player_id
+            )
+        if legal_reference_ids and self._spec.response_reference_limit is not None:
+            if discussion_round is None:
+                raise RuntimeError("discussion references require an active round")
+            actor_index = discussion_round.actor_order.index(context.player_id)
+            offset = actor_index % len(legal_reference_ids)
+            rotated_references = (*legal_reference_ids[offset:], *legal_reference_ids[:offset])
+            legal_reference_ids = rotated_references[: self._spec.response_reference_limit]
         return DecisionRequest(
             decision_id=(
                 f"{context.session_id}:{observation.phase.value}:{observation.day}:"
@@ -389,17 +417,22 @@ class SimulationSession:
                     else None
                 ),
             ),
-            public_timeline=_public_timeline(observation),
+            public_timeline=public_timeline,
             options=tuple(
                 DecisionOption(
                     action_type=action.type.value,
                     ability_id=action.ability_id,
                     legal_target_ids=tuple(observation.legal_targets.get(action.key, ())),
-                    legal_reference_ids=(
-                        observation.discussion_round.reference_ids
-                        if action.type.value == "speech"
-                        and observation.discussion_round is not None
+                    legal_subject_ids=subject_ids if action.type.value == "speech" else (),
+                    legal_evidence_ids=(
+                        legal_reference_ids
+                        if action.type.value == "speech" and legal_reference_ids
+                        else evidence_ids
+                        if action.type.value in {"speech", "vote"}
                         else ()
+                    ),
+                    legal_reference_ids=(
+                        legal_reference_ids if action.type.value == "speech" else ()
                     ),
                     message_max_chars=(
                         min(
@@ -570,7 +603,8 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
                 speech.player_id,
                 {
                     "message": speech.message,
-                    "focus_id": speech.focus_id,
+                    "speech_act": speech.speech_act.value,
+                    "subject_id": speech.subject_id,
                     "evidence_id": speech.evidence_id,
                     "speech_id": speech.speech_id,
                     "round_id": speech.round_id,
@@ -590,6 +624,7 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
                 {
                     "votes": dict(vote.votes),
                     "reasons": dict(vote.reasons),
+                    "evidence_ids": dict(vote.evidence_ids),
                     "counts": dict(vote.counts),
                     "eliminated_player_id": vote.eliminated_player_id,
                 },
@@ -600,6 +635,25 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
         PublicTimelineEvent(sequence, event_type, day, actor_id, payload)
         for sequence, (day, _, event_type, actor_id, payload) in enumerate(items, start=1)
     )
+
+
+def _latest_speech_ids_by_actor(
+    public_timeline: tuple[PublicTimelineEvent, ...],
+) -> tuple[str, ...]:
+    """各話者の最新発言だけを時系列順の根拠候補として返す."""
+    selected: list[str] = []
+    seen_actors: set[str] = set()
+    for event in reversed(public_timeline):
+        speech_id = event.payload.get("speech_id")
+        if (
+            event.event_type == "speech"
+            and event.actor_id is not None
+            and event.actor_id not in seen_actors
+            and speech_id
+        ):
+            seen_actors.add(event.actor_id)
+            selected.append(str(speech_id))
+    return tuple(reversed(selected))
 
 
 def _require_legal_response(request: DecisionRequest, response: DecisionResponse) -> None:
@@ -619,6 +673,32 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
         raise AgentDecisionError("agent_target_required")
     if response.action_type == "speech" and response.message is None:
         raise AgentDecisionError("agent_message_required")
+    if response.action_type == "speech":
+        if response.speech_act not in {
+            "question",
+            "answer",
+            "support",
+            "challenge",
+            "revise",
+        }:
+            raise AgentDecisionError("agent_speech_act_required")
+        if option.legal_reference_ids and response.speech_act == "question":
+            raise AgentDecisionError("agent_response_must_advance_exchange")
+        if not option.legal_reference_ids and response.speech_act == "answer":
+            raise AgentDecisionError("agent_opening_answer_not_allowed")
+        if (
+            not option.legal_reference_ids
+            and response.speech_act != "question"
+            and response.evidence_id is None
+        ):
+            raise AgentDecisionError("agent_opening_evidence_required")
+        if (
+            response.evidence_id is not None
+            and response.evidence_id not in option.legal_evidence_ids
+        ):
+            raise AgentDecisionError("agent_evidence_not_legal")
+        if response.subject_id not in option.legal_subject_ids:
+            raise AgentDecisionError("agent_subject_not_legal")
     if (
         response.message is not None
         and option.message_max_chars is not None
@@ -635,22 +715,57 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
             and response.response_to_id not in option.legal_reference_ids
         ):
             raise AgentDecisionError("agent_reference_not_legal")
+        if option.legal_reference_ids and response.evidence_id != response.response_to_id:
+            raise AgentDecisionError("agent_response_evidence_mismatch")
+        if option.legal_reference_ids and response.response_to_id is not None:
+            referenced_message = next(
+                str(event.payload.get("message") or "")
+                for event in request.public_timeline
+                if event.payload.get("speech_id") == response.response_to_id
+            )
+            if (
+                " ".join(referenced_message.split()).casefold()
+                == " ".join((response.message or "").split()).casefold()
+            ):
+                raise AgentDecisionError("agent_response_must_contribute_new_content")
     elif response.response_to_id is not None:
         raise AgentDecisionError("agent_reference_not_allowed")
     if response.action_type == "vote" and response.reason is None:
         raise AgentDecisionError("agent_vote_reason_required")
+    if (
+        response.action_type == "vote"
+        and option.legal_evidence_ids
+        and response.evidence_id not in option.legal_evidence_ids
+    ):
+        raise AgentDecisionError("agent_vote_evidence_required")
+    if (
+        response.action_type == "vote"
+        and response.evidence_id is not None
+        and response.target_id is not None
+    ):
+        evidence_event = next(
+            event
+            for event in request.public_timeline
+            if event.payload.get("speech_id") == response.evidence_id
+        )
+        if response.target_id not in {
+            evidence_event.actor_id,
+            evidence_event.payload.get("subject_id"),
+        }:
+            raise AgentDecisionError("agent_vote_evidence_target_mismatch")
     if response.action_type != "vote" and response.reason is not None:
         raise AgentDecisionError("agent_vote_reason_not_allowed")
 
 
 def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
     if response.action_type == "speech":
-        if response.message is None:
-            raise AgentDecisionError("agent_message_required")
+        if response.message is None or response.speech_act is None or response.subject_id is None:
+            raise AgentDecisionError("agent_speech_payload_required")
         return Action.speech(
             player_id,
             response.message,
-            focus_id=response.focus_id,
+            speech_act=SpeechAct(response.speech_act),
+            subject_id=response.subject_id,
             evidence_id=response.evidence_id,
             response_to_id=response.response_to_id,
         )
@@ -659,7 +774,12 @@ def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
             raise AgentDecisionError("agent_target_required")
         if response.reason is None:
             raise AgentDecisionError("agent_vote_reason_required")
-        return Action.vote(player_id, response.target_id, reason=response.reason)
+        return Action.vote(
+            player_id,
+            response.target_id,
+            reason=response.reason,
+            evidence_id=response.evidence_id,
+        )
     if response.action_type == "use_ability":
         if response.target_id is None or response.ability_id is None:
             raise AgentDecisionError("agent_ability_payload_required")

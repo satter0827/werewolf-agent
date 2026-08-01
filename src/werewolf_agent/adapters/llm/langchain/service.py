@@ -39,7 +39,7 @@ from werewolf_agent.adapters.llm.ports import DecisionModel
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 
-PIPELINE_REVISION = "decision-v3"
+PIPELINE_REVISION = "decision-v4"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
 
 
@@ -167,7 +167,7 @@ class LangChainDecisionProvider:
         raw_response = response.model_dump(mode="json") if response is not None else None
         response_text = response.content if response is not None else ""
         usage = response.usage if response is not None else {}
-        evidence_id, focus_id = _response_annotations(response)
+        evidence_id, subject_id = _response_annotations(response)
         self.trace_sink.record_invocation(
             LlmInvocationTrace(
                 provider=response.provider if response is not None else self.provider_name,
@@ -216,7 +216,7 @@ class LangChainDecisionProvider:
                         if observation.profile is not None
                         else ""
                     ),
-                    "focus_id": focus_id,
+                    "subject_id": subject_id,
                     "evidence_id": evidence_id,
                 },
                 raw_response=raw_response,
@@ -265,11 +265,16 @@ def _decision_context(
         for action in actions
         for reference_id in observation.legal_references.get(action.key, [])
     }
+    names = {player.id: player.name for player in observation.players}
     reference_speeches = {
         speech.speech_id: {
-            "player_id": speech.player_id,
+            "actor": {"id": speech.player_id, "name": names[speech.player_id]},
             "message": speech.message,
-            "focus_id": speech.focus_id,
+            "speech_act": speech.speech_act.value,
+            "subject": {
+                "id": speech.subject_id,
+                "name": names[speech.subject_id],
+            },
             "evidence_id": speech.evidence_id,
         }
         for speech in observation.speeches
@@ -298,6 +303,16 @@ def _decision_context(
                 for action in actions
                 if action.type in AgentDecision.TARGET_TYPES
             },
+            "subjects": {
+                action.key: list(observation.legal_subjects.get(action.key, []))
+                for action in actions
+                if observation.legal_subjects.get(action.key)
+            },
+            "evidence": {
+                action.key: list(observation.legal_evidence.get(action.key, []))
+                for action in actions
+                if observation.legal_evidence.get(action.key)
+            },
             "references": {
                 action.key: list(observation.legal_references.get(action.key, []))
                 for action in actions
@@ -306,6 +321,10 @@ def _decision_context(
             "reference_speeches": reference_speeches,
             "constraints": {
                 "speech_max_chars": LLM_SPEECH_MESSAGE_MAX_CHARS,
+                "vote_reason_max_chars": _positive_rule_integer(
+                    game.relevant_rules.get("reason_max_chars") if game is not None else None,
+                    default=120,
+                ),
                 "target_required_for": [
                     action.key for action in actions if action.type in AgentDecision.TARGET_TYPES
                 ],
@@ -326,10 +345,10 @@ def _decision_context(
             "factions": dict(observation.known_factions),
         },
         "public_position": {
-            "current_suspicion_id": _current_suspicion_id(observation),
+            "current_subject_id": _current_subject_id(observation),
         },
         "candidate_signals": _candidate_signals(observation),
-        "evidence": _evidence(observation, event_limit=event_limit),
+        "public_evidence": _evidence(observation, event_limit=event_limit),
     }
     if game is not None:
         context["setting"] = {
@@ -385,11 +404,18 @@ def _candidate_signals(observation: AgentObservation) -> dict[str, dict[str, int
     }
 
 
-def _current_suspicion_id(observation: AgentObservation) -> str | None:
+def _positive_rule_integer(value: object, *, default: int) -> int:
+    """検証済みrule値をprompt制約へ安全に投影する."""
+    return (
+        value if isinstance(value, int) and not isinstance(value, bool) and value > 0 else default
+    )
+
+
+def _current_subject_id(observation: AgentObservation) -> str | None:
     """Return the player's latest public speech focus or resolved vote target."""
     for speech in reversed(observation.speeches):
-        if speech.player_id == observation.me.id and speech.focus_id is not None:
-            return speech.focus_id
+        if speech.player_id == observation.me.id:
+            return speech.subject_id
     for vote_round in reversed(observation.vote_rounds):
         target_id = vote_round.votes.get(observation.me.id)
         if target_id is not None:
@@ -400,6 +426,7 @@ def _current_suspicion_id(observation: AgentObservation) -> str | None:
 def _evidence(observation: AgentObservation, *, event_limit: int) -> list[dict[str, object]]:
     ordered_events: list[tuple[int, int, int, dict[str, object]]] = []
     previous_speech_by_player: dict[str, str] = {}
+    names = {player.id: player.name for player in observation.players}
     for index, speech in enumerate(observation.speeches):
         previous_message = previous_speech_by_player.get(speech.player_id)
         previous_speech_by_player[speech.player_id] = speech.message
@@ -412,9 +439,13 @@ def _evidence(observation: AgentObservation, *, event_limit: int) -> list[dict[s
                     "id": speech.speech_id,
                     "type": "my_speech" if speech.player_id == observation.me.id else "speech",
                     "day": speech.day,
-                    "player_id": speech.player_id,
+                    "actor": {"id": speech.player_id, "name": names[speech.player_id]},
                     "message": speech.message,
-                    "focus_id": speech.focus_id,
+                    "speech_act": speech.speech_act.value,
+                    "subject": {
+                        "id": speech.subject_id,
+                        "name": names[speech.subject_id],
+                    },
                     "evidence_id": speech.evidence_id,
                     "response_to_id": speech.response_to_id,
                     "changed": (
@@ -434,8 +465,8 @@ def _evidence(observation: AgentObservation, *, event_limit: int) -> list[dict[s
                         "id": f"vote:d{vote_round.day}:r{round_index + 1}:{voter_id}",
                         "type": "my_vote" if voter_id == observation.me.id else "vote",
                         "day": vote_round.day,
-                        "player_id": voter_id,
-                        "target_id": target_id,
+                        "actor": {"id": voter_id, "name": names[voter_id]},
+                        "subject": {"id": target_id, "name": names[target_id]},
                     },
                 )
             )
@@ -559,17 +590,53 @@ def _validated_decision(
     ):
         raise ValueError("speech reference is not legal")
     visible_ids = {player.id for player in observation.players}
-    if model_decision.focus_id is not None and (
-        model_decision.focus_id not in visible_ids or model_decision.focus_id == player_id
+    if model_decision.subject_id is not None and (
+        model_decision.subject_id not in visible_ids or model_decision.subject_id == player_id
     ):
-        raise ValueError("focus is not visible")
-    evidence_value = context.get("evidence")
+        raise ValueError("subject is not visible")
+    if model_decision.type is AgentActionType.SPEECH and model_decision.speech_act is None:
+        raise ValueError("speech act is required")
+    if (
+        model_decision.type is AgentActionType.SPEECH
+        and model_decision.message is not None
+        and model_decision.response_to_id is not None
+    ):
+        normalized_message = " ".join(model_decision.message.split()).casefold()
+        referenced = next(
+            speech
+            for speech in observation.speeches
+            if speech.speech_id == model_decision.response_to_id
+        )
+        if " ".join(referenced.message.split()).casefold() == normalized_message:
+            raise ValueError("speech must contribute new content")
+    evidence_value = context.get("public_evidence")
     evidence = evidence_value if isinstance(evidence_value, list) else []
     evidence_ids = {
         str(item["id"]) for item in evidence if isinstance(item, Mapping) and item.get("id")
     }
     if model_decision.evidence_id is not None and model_decision.evidence_id not in evidence_ids:
         raise ValueError("evidence is not visible")
+    if legal_references and model_decision.evidence_id != model_decision.response_to_id:
+        raise ValueError("response evidence must match response_to_id")
+    legal_evidence = observation.legal_evidence.get(requested_key, [])
+    if (
+        model_decision.type is AgentActionType.VOTE
+        and legal_evidence
+        and model_decision.evidence_id not in legal_evidence
+    ):
+        raise ValueError("vote requires visible evidence")
+    if (
+        model_decision.type is AgentActionType.VOTE
+        and model_decision.evidence_id is not None
+        and model_decision.target_id is not None
+    ):
+        selected_evidence = next(
+            item
+            for item in evidence
+            if isinstance(item, Mapping) and item.get("id") == model_decision.evidence_id
+        )
+        if model_decision.target_id not in _evidence_party_ids(selected_evidence):
+            raise ValueError("vote evidence must concern the selected target")
     if (
         model_decision.type is AgentActionType.SPEECH
         and model_decision.message is not None
@@ -582,11 +649,21 @@ def _validated_decision(
         ability_id=model_decision.ability_id,
         target_id=model_decision.target_id,
         message=model_decision.message,
-        focus_id=model_decision.focus_id,
+        speech_act=model_decision.speech_act,
+        subject_id=model_decision.subject_id,
         evidence_id=model_decision.evidence_id,
         response_to_id=model_decision.response_to_id,
         reason=model_decision.reason,
     )
+
+
+def _evidence_party_ids(evidence: Mapping[str, object]) -> set[str]:
+    ids: set[str] = set()
+    for key in ("actor", "subject"):
+        value = evidence.get(key)
+        if isinstance(value, Mapping) and value.get("id"):
+            ids.add(str(value["id"]))
+    return ids
 
 
 def _fallback(
@@ -613,8 +690,8 @@ def _response_annotations(response: ModelResponse | None) -> tuple[str | None, s
     if not isinstance(parsed, Mapping):
         return None, None
     evidence_id = str(parsed.get("evidence_id") or "").strip() or None
-    focus_id = str(parsed.get("focus_id") or "").strip() or None
-    return evidence_id, focus_id
+    subject_id = str(parsed.get("subject_id") or "").strip() or None
+    return evidence_id, subject_id
 
 
 def _provider_error(error_payload: Mapping[str, object] | None) -> str:

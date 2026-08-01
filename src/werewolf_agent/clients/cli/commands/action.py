@@ -23,6 +23,9 @@ def action(
     ] = None,
     target_id: Annotated[str | None, typer.Option("--target", help="対象player ID")] = None,
     message: Annotated[str | None, typer.Option(help="発言内容")] = None,
+    speech_act: Annotated[str | None, typer.Option("--speech-act", help="発言の役割")] = None,
+    subject_id: Annotated[str | None, typer.Option("--subject", help="議論対象player ID")] = None,
+    evidence_id: Annotated[str | None, typer.Option("--evidence", help="公開根拠ID")] = None,
     reason: Annotated[str | None, typer.Option(help="公開する投票理由")] = None,
     response_to_id: Annotated[
         str | None, typer.Option("--response-to", help="応答する公開発言ID")
@@ -42,6 +45,9 @@ def action(
                         ability_id=ability_id,
                         target_id=target_id,
                         message=message,
+                        speech_act=speech_act,
+                        subject_id=subject_id,
+                        evidence_id=evidence_id,
                         reason=reason,
                         response_to_id=response_to_id,
                     )

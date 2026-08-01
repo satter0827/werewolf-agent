@@ -584,17 +584,6 @@
             ],
             "title": "Evidence Id"
           },
-          "focus_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus Id"
-          },
           "message": {
             "anyOf": [
               {
@@ -631,6 +620,35 @@
               }
             ],
             "title": "Response To Id"
+          },
+          "speech_act": {
+            "anyOf": [
+              {
+                "enum": [
+                  "question",
+                  "answer",
+                  "support",
+                  "challenge",
+                  "revise"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speech Act"
+          },
+          "subject_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subject Id"
           },
           "target_id": {
             "anyOf": [
@@ -1091,7 +1109,7 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": "0.4.0",
+            "const": "0.5.0",
             "title": "Schema Version",
             "type": "string"
           },
@@ -1298,10 +1316,15 @@
           "allow_action_revision": {
             "title": "Allow Action Revision",
             "type": "boolean"
+          },
+          "allow_pass": {
+            "title": "Allow Pass",
+            "type": "boolean"
           }
         },
         "required": [
-          "allow_action_revision"
+          "allow_action_revision",
+          "allow_pass"
         ],
         "title": "NightSettings",
         "type": "object"
@@ -1770,17 +1793,6 @@
             ],
             "title": "Evidence Id"
           },
-          "focus_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus Id"
-          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -1812,8 +1824,23 @@
             "title": "Round Kind",
             "type": "string"
           },
+          "speech_act": {
+            "enum": [
+              "question",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Speech Act",
+            "type": "string"
+          },
           "speech_id": {
             "title": "Speech Id",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
             "type": "string"
           }
         },
@@ -1823,7 +1850,9 @@
           "round_id",
           "round_kind",
           "player_id",
-          "message"
+          "message",
+          "speech_act",
+          "subject_id"
         ],
         "title": "PlayerObservationSpeech",
         "type": "object"
@@ -1854,6 +1883,13 @@
               }
             ],
             "title": "Eliminated Player Id"
+          },
+          "evidence_ids": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "object"
           },
           "missing_voter_ids": {
             "items": {
@@ -4087,17 +4123,6 @@
             ],
             "title": "Evidence Id"
           },
-          "focus_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Focus Id"
-          },
           "message": {
             "title": "Message",
             "type": "string"
@@ -4113,6 +4138,21 @@
             ],
             "title": "Response To Id"
           },
+          "speech_act": {
+            "enum": [
+              "question",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Speech Act",
+            "type": "string"
+          },
+          "subject_id": {
+            "title": "Subject Id",
+            "type": "string"
+          },
           "type": {
             "const": "speech",
             "title": "Type",
@@ -4121,7 +4161,9 @@
         },
         "required": [
           "type",
-          "message"
+          "message",
+          "speech_act",
+          "subject_id"
         ],
         "title": "SpeechActionRequest",
         "type": "object"
@@ -4331,6 +4373,17 @@
         "additionalProperties": false,
         "description": "公開理由付き投票request.",
         "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
           "reason": {
             "title": "Reason",
             "type": "string"

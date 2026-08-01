@@ -73,7 +73,8 @@ def build_player_observation(
                     round_kind=speech.round_kind,
                     player_id=speech.player_id,
                     message=speech.message,
-                    focus_id=speech.focus_id,
+                    speech_act=speech.speech_act,
+                    subject_id=speech.subject_id,
                     evidence_id=speech.evidence_id,
                     response_to_id=speech.response_to_id,
                 )

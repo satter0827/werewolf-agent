@@ -117,12 +117,31 @@ def _prompt_and_submit_manual_action(
     action_key = selected.key
     target_id = None
     message = None
+    speech_act = None
+    subject_id = None
+    evidence_id = None
     response_to_id = None
     if action_type == "speech":
         message = typer.prompt(PROMPT_SPEECH)
+        subject_id = next(
+            player.id
+            for player in observation.observation.players
+            if player.id != player_id and player.status == "alive"
+        )
         round_ = observation.observation.discussion_round
         if round_ is not None and round_.reference_ids:
-            response_to_id = round_.reference_ids[0]
+            speeches = {
+                speech.speech_id: speech for speech in observation.observation.history.speeches
+            }
+            response_to_id = next(
+                reference_id
+                for reference_id in round_.reference_ids
+                if speeches[reference_id].player_id != player_id
+            )
+            evidence_id = response_to_id
+            speech_act = "challenge"
+        else:
+            speech_act = "question"
     elif action_type != "pass":
         target_id = typer.prompt(message_target_prompt(action_key))
     response = client.submit_player_action(
@@ -134,6 +153,9 @@ def _prompt_and_submit_manual_action(
                 ability_id=ability_id,
                 target_id=target_id,
                 message=message,
+                speech_act=speech_act,
+                subject_id=subject_id,
+                evidence_id=evidence_id,
                 reason=(typer.prompt("投票理由") if action_type == "vote" else None),
                 response_to_id=response_to_id,
             )
@@ -159,6 +181,9 @@ def _action_payload(
     ability_id: str | None,
     target_id: str | None,
     message: str | None,
+    speech_act: str | None,
+    subject_id: str | None,
+    evidence_id: str | None,
     reason: str | None,
     response_to_id: str | None = None,
 ) -> dict[str, object]:
@@ -169,6 +194,12 @@ def _action_payload(
         payload["target_id"] = target_id
     if message is not None:
         payload["message"] = message
+    if speech_act is not None:
+        payload["speech_act"] = speech_act
+    if subject_id is not None:
+        payload["subject_id"] = subject_id
+    if evidence_id is not None:
+        payload["evidence_id"] = evidence_id
     if reason is not None:
         payload["reason"] = reason
     if response_to_id is not None:

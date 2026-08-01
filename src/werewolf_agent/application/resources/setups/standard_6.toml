@@ -1,4 +1,4 @@
-schema_version = "0.4.0"
+schema_version = "0.5.0"
 
 [mechanics.role_counts]
 werewolf = 1
@@ -82,11 +82,12 @@ cycles_per_day = 1
 [mechanics.voting]
 allow_self_vote = false
 allow_revision = false
-tie_resolution = "no_elimination"
+tie_resolution = "revote"
 reason_max_chars = 120
 
 [mechanics.night]
 allow_action_revision = false
+allow_pass = false
 
 [mechanics.lifecycle]
 starting_phase = "night"

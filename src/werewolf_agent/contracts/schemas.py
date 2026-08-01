@@ -88,6 +88,7 @@ class NightSettings(BaseModel):
     """夜行動のwire設定."""
 
     allow_action_revision: bool
+    allow_pass: bool
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -242,7 +243,7 @@ class PlayerGenerationSettings(BaseModel):
 
 
 class GameSetupDocumentRequest(BaseModel):
-    schema_version: Literal["0.4.0"]
+    schema_version: Literal["0.5.0"]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
     player_generation: PlayerGenerationSettings
@@ -456,7 +457,8 @@ class GameRevealAction(BaseModel):
     target_id: str | None = None
     message: str | None = None
     reason: str | None = None
-    focus_id: str | None = None
+    speech_act: Literal["question", "answer", "support", "challenge", "revise"] | None = None
+    subject_id: str | None = None
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -585,7 +587,8 @@ class PlayerObservationSpeech(BaseModel):
     round_kind: Literal["opening", "response"]
     player_id: str
     message: str
-    focus_id: str | None = None
+    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
+    subject_id: str
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -599,6 +602,7 @@ class PlayerObservationVote(BaseModel):
     tie_break_policy: str
     votes: dict[str, str] = Field(default_factory=dict)
     reasons: dict[str, str] = Field(default_factory=dict)
+    evidence_ids: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)
@@ -674,7 +678,8 @@ class SpeechActionRequest(BaseModel):
 
     type: Literal["speech"]
     message: str
-    focus_id: str | None = None
+    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
+    subject_id: str
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -687,6 +692,7 @@ class VoteActionRequest(BaseModel):
     type: Literal["vote"]
     target_id: str
     reason: str
+    evidence_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 

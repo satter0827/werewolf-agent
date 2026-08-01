@@ -76,6 +76,7 @@ def build_agent_game_contexts(
         "allow_self_vote",
         "allow_revision",
         "allow_action_revision",
+        "allow_pass",
         "tie_resolution",
         "reason_max_chars",
         "starting_phase",

@@ -16,6 +16,7 @@ from werewolf_agent.domain.state import (
     GameState,
     GameView,
     Phase,
+    SpeechAct,
 )
 
 
@@ -85,10 +86,25 @@ def _first_legal_action(game: Game) -> Action | None:
         targets = view.legal_targets.get(available.key, ())
         if available.type is ActionType.SPEECH:
             round_ = view.discussion_round
-            reference_id = round_.reference_ids[0] if round_ and round_.reference_ids else None
+            speeches = {speech.speech_id: speech for speech in view.history.speeches}
+            reference_id = (
+                next(
+                    reference_id
+                    for reference_id in round_.reference_ids
+                    if speeches[reference_id].player_id != player_id
+                )
+                if round_ and round_.reference_ids
+                else None
+            )
+            subject_id = next(
+                player.id for player in view.players if player.id != player_id and player.is_alive
+            )
             return Action.speech(
                 player_id,
-                "契約を確認します。",
+                "参照発言への見解を示します。" if reference_id else "契約を確認します。",
+                speech_act=SpeechAct.CHALLENGE if reference_id else SpeechAct.QUESTION,
+                subject_id=subject_id,
+                evidence_id=reference_id,
                 response_to_id=reference_id,
             )
         if available.type is ActionType.VOTE:

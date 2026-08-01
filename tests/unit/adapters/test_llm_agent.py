@@ -39,7 +39,7 @@ def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> No
     assert response.action_type == "vote"
     assert response.target_id == "p2"
     assert response.metadata == {"reason": "公開発言から判断"}
-    assert factory.spec.implementation_version == "1.4.0"
+    assert factory.spec.implementation_version == "1.6.0"
     assert factory.spec.parameters["provider"] == "openai-compatible"
     assert factory.spec.parameters["base_url"] == "http://localhost:1234/v1"
     assert str(factory.spec.parameters["decision_model_type"]).endswith(
@@ -86,7 +86,9 @@ def test_langchain_session_rejects_request_for_another_context() -> None:
 
 def test_langchain_session_preserves_model_selected_discussion_reference() -> None:
     factory = _factory(
-        '{"type":"speech","message":"二つ目の意見に応答します","response_to_id":"speech-2"}'
+        '{"type":"speech","message":"二つ目の意見に応答します",'
+        '"speech_act":"challenge","subject_id":"p2",'
+        '"evidence_id":"speech-2","response_to_id":"speech-2"}'
     )
     context = AgentContext("session-1", "game-1", "p1", 11)
     request = _request(context)
@@ -99,19 +101,32 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
                 "speech",
                 1,
                 "p2",
-                {"speech_id": "speech-1", "message": "一つ目"},
+                {
+                    "speech_id": "speech-1",
+                    "message": "一つ目",
+                    "speech_act": "question",
+                    "subject_id": "p1",
+                },
             ),
             PublicTimelineEvent(
                 2,
                 "speech",
                 1,
                 "p2",
-                {"speech_id": "speech-2", "message": "二つ目"},
+                {
+                    "speech_id": "speech-2",
+                    "message": "二つ目",
+                    "speech_act": "challenge",
+                    "subject_id": "p1",
+                    "evidence_id": "speech-1",
+                },
             ),
         ),
         options=(
             DecisionOption(
                 "speech",
+                legal_subject_ids=("p2",),
+                legal_evidence_ids=("speech-1", "speech-2"),
                 legal_reference_ids=("speech-1", "speech-2"),
                 message_max_chars=120,
             ),
@@ -124,7 +139,11 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
 
 
 def test_langchain_session_rejects_model_reference_outside_visible_options() -> None:
-    factory = _factory('{"type":"speech","message":"応答します","response_to_id":"hidden-speech"}')
+    factory = _factory(
+        '{"type":"speech","message":"応答します","speech_act":"challenge",'
+        '"subject_id":"p2","evidence_id":"hidden-speech",'
+        '"response_to_id":"hidden-speech"}'
+    )
     context = AgentContext("session-1", "game-1", "p1", 11)
     request = replace(
         _request(context),
@@ -135,12 +154,19 @@ def test_langchain_session_rejects_model_reference_outside_visible_options() -> 
                 "speech",
                 1,
                 "p2",
-                {"speech_id": "speech-1", "message": "公開意見"},
+                {
+                    "speech_id": "speech-1",
+                    "message": "公開意見",
+                    "speech_act": "question",
+                    "subject_id": "p1",
+                },
             ),
         ),
         options=(
             DecisionOption(
                 "speech",
+                legal_subject_ids=("p2",),
+                legal_evidence_ids=("speech-1",),
                 legal_reference_ids=("speech-1",),
                 message_max_chars=120,
             ),
@@ -244,7 +270,12 @@ def _request(context: AgentContext) -> DecisionRequest:
                 event_type="speech",
                 day=1,
                 actor_id="p2",
-                payload={"message": "Aliceの主張を確認したい"},
+                payload={
+                    "speech_id": "speech-1",
+                    "message": "Aliceの主張を確認したい",
+                    "speech_act": "question",
+                    "subject_id": "p1",
+                },
             ),
         ),
         options=(DecisionOption("vote", legal_target_ids=("p2",)),),

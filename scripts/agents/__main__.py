@@ -16,7 +16,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     subparsers.add_parser("preflight")
     run = subparsers.add_parser("run")
     run.add_argument("--provider", choices=("fake", "local", "openai"), default="local")
-    run.add_argument("--suite", choices=("smoke", "standard"), default="smoke")
+    run.add_argument("--suite", choices=("smoke", "full-game", "standard"), default="smoke")
     run.add_argument("--seed", type=int, default=7)
     run.add_argument(
         "--deliberation-level",

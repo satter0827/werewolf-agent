@@ -143,6 +143,7 @@ def _advance_from_voting(
                 "counts": result.counts,
                 "votes": result.votes,
                 "reasons": result.reasons,
+                "evidence_ids": result.evidence_ids,
                 "tied_player_ids": result.tied_player_ids,
                 "round": result.round,
                 "requires_revote": result.requires_revote,
