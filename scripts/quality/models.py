@@ -22,6 +22,7 @@ CPU_INTENSIVE_RESOURCE = "cpu-intensive"
 class QualitySettings:
     """pyproject.tomlから読む品質runner設定。"""
 
+    default_jobs: int
     max_jobs: int
     benchmark_min_rounds: int
     timeouts: dict[str, int]

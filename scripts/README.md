@@ -74,6 +74,10 @@ Version gateはリリース基準の`origin/main`を使用し、reportの実コ�
 検査する場合は、そのcommitを専用worktreeへcheckoutしてから実行する。未commitの変更を検査する場合は
 `--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
 
+通常実行は`default_jobs`の2並列で動作し、ローカルPCのCPUとDocker負荷を抑える。必要な場合だけ
+`--jobs`で並列数を指定できるが、`max_jobs`の4を超える値は受け付けない。品質プロファイルの判定範囲と
+CIの実行条件は並列数に依存しない。
+
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
 根拠のない閾値だけで不合格にしない。
