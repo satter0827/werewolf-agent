@@ -10,6 +10,7 @@ import pytest
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.agents import (
     AgentContext,
+    AgentDecisionError,
     AgentSession,
     AgentSpec,
     AgentWorld,
@@ -141,6 +142,24 @@ class _FalseyExecutor:
         _ = timeout_seconds
         self.calls += 1
         return session.decide(request)
+
+
+class _FallbackTimeoutExecutor:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def decide(
+        self,
+        session: AgentSession,
+        request: DecisionRequest,
+        *,
+        timeout_seconds: float | None,
+    ) -> DecisionResponse:
+        _ = session, request, timeout_seconds
+        self.calls += 1
+        if self.calls == 1:
+            raise AgentDecisionError("primary_failed")
+        raise AgentDecisionError("agent_timeout")
 
 
 class _FalseyTraceSink:
@@ -539,6 +558,36 @@ def test_deadline_expiry_after_primary_failure_skips_fallback(monkeypatch) -> No
 
     assert step.stop_reason is SimulationStopReason.DEADLINE_REACHED
     assert fallback.requests == []
+
+
+def test_fallback_timeout_becomes_deadline_stop_with_trace() -> None:
+    game = _game()
+    base = _spec(game)
+    executor = _FallbackTimeoutExecutor()
+    sink = _FalseyTraceSink()
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            base.controllers,
+            SimulationLimits(decision_timeout_seconds=60),
+        ),
+        decision_executor=executor,
+        trace_sink=sink,
+    )
+    try:
+        step = session.step()
+        while step.kind is SimulationStepKind.PHASE_ADVANCED:
+            step = session.step()
+    finally:
+        session.close()
+
+    assert step.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert executor.calls == 2
+    assert len(sink.traces) == 1
+    assert sink.traces[0].error_code == "agent_timeout"
 
 
 def test_action_limit_does_not_block_a_ready_phase_advance() -> None:

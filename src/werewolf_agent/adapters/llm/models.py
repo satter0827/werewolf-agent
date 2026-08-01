@@ -372,6 +372,7 @@ class AgentObservation(_LlmModel):
     legal_topics: dict[str, list[str]] = Field(default_factory=dict)
     evidence_options: dict[str, list[AgentEvidence]] = Field(default_factory=dict)
     legal_references: dict[str, list[str]] = Field(default_factory=dict)
+    decision_constraints: dict[str, int] = Field(default_factory=dict)
     speeches: list[AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[AgentVoteRound] = Field(default_factory=list)
 
@@ -403,6 +404,17 @@ class AgentObservation(_LlmModel):
             ]
             for action_key, player_ids in value.items()
         }
+
+    @field_validator("decision_constraints")
+    @classmethod
+    def validate_decision_constraints(cls, value: dict[str, int]) -> dict[str, int]:
+        """Return positive effective constraints independent of optional metadata."""
+        if any(
+            not isinstance(item, int) or isinstance(item, bool) or item < 1
+            for item in value.values()
+        ):
+            raise ValueError("decision constraints must be positive integers")
+        return value
 
 
 class PlayerProfileCatalog(_LlmModel):

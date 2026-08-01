@@ -59,6 +59,25 @@ def test_heuristic_agent_uses_stable_priority_and_legal_target() -> None:
 
 
 @pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_vote_reason_respects_authorized_limit(factory: AgentFactory) -> None:
+    context = AgentContext("session", "game", "p1", 1)
+    request = _request(context)
+    request = DecisionRequest(
+        request.decision_id,
+        request.context,
+        request.observation,
+        request.public_timeline,
+        (DecisionOption("vote", legal_target_ids=("p2",), reason_max_chars=4),),
+        request.decision_seed,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.reason is not None
+    assert len(response.reason) <= 4
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
 def test_builtin_agent_response_contributes_new_content(
     factory: RandomLegalAgentFactory | HeuristicAgentFactory,
 ) -> None:

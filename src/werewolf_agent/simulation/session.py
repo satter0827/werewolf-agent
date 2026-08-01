@@ -349,12 +349,34 @@ class SimulationSession:
             if fallback is None:
                 fallback = controller.fallback_factory.create(context)
                 self._fallback_sessions[controller.player_id] = fallback
-            response = self._executor.decide(
-                fallback,
-                request,
-                timeout_seconds=_effective_timeout(self._spec, request),
-            )
-            _require_legal_response(request, response)
+            try:
+                response = self._executor.decide(
+                    fallback,
+                    request,
+                    timeout_seconds=_effective_timeout(self._spec, request),
+                )
+                _require_legal_response(request, response)
+            except Exception as fallback_exc:
+                fallback_error = (
+                    fallback_exc
+                    if isinstance(fallback_exc, AgentDecisionError)
+                    else AgentDecisionError(
+                        "agent_fallback_failed",
+                        {"error_type": type(fallback_exc).__name__},
+                    )
+                )
+                if _request_deadline_expired(request) or fallback_error.code == "agent_timeout":
+                    trace = DecisionTrace(
+                        decision_id=request.decision_id,
+                        agent_spec=controller.fallback_factory.spec,
+                        response=None,
+                        latency_ms=_elapsed_milliseconds(started_at),
+                        error_code=fallback_error.code,
+                        diagnostics={**error.diagnostics, "primary_error_code": error.code},
+                    )
+                    self._trace_sink.record_decision(trace)
+                    raise _SimulationDeadlineReached from fallback_exc
+                raise
             trace = DecisionTrace(
                 decision_id=request.decision_id,
                 agent_spec=controller.fallback_factory.spec,
@@ -676,34 +698,38 @@ def _validate_resume_result(
 
 def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
     items: list[tuple[int, int, str, str | None, dict[str, object]]] = []
-    for index, speech in enumerate(observation.history.speeches):
-        items.append(
-            (
-                speech.day,
-                index,
-                "speech",
-                speech.player_id,
-                {
-                    "utterance": speech.utterance,
-                    "topic_id": speech.topic_id,
-                    "position": speech.position.value,
-                    "relation": speech.relation.value,
-                    "evidence_id": speech.evidence_id,
-                    "speech_id": speech.speech_id,
-                    "round_id": speech.round_id,
-                    "round_kind": speech.round_kind.value,
-                    "response_to_id": speech.response_to_id,
-                },
-            )
-        )
-    offset = len(observation.history.speeches)
-    pass_index = 0
+    speeches = {speech.speech_id: speech for speech in observation.history.speeches}
+    emitted_speech_ids: set[str] = set()
+    event_index = 0
     for discussion in observation.history.discussions:
+        for speech_id in discussion.speech_ids:
+            speech = speeches[speech_id]
+            items.append(
+                (
+                    discussion.day,
+                    event_index,
+                    "speech",
+                    speech.player_id,
+                    {
+                        "utterance": speech.utterance,
+                        "topic_id": speech.topic_id,
+                        "position": speech.position.value,
+                        "relation": speech.relation.value,
+                        "evidence_id": speech.evidence_id,
+                        "speech_id": speech.speech_id,
+                        "round_id": speech.round_id,
+                        "round_kind": speech.round_kind.value,
+                        "response_to_id": speech.response_to_id,
+                    },
+                )
+            )
+            emitted_speech_ids.add(speech_id)
+            event_index += 1
         for player_id in discussion.passed_player_ids:
             items.append(
                 (
                     discussion.day,
-                    offset + pass_index,
+                    event_index,
                     "discussion_pass",
                     player_id,
                     {
@@ -714,13 +740,15 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
                     },
                 )
             )
-            pass_index += 1
-    offset += pass_index
+            event_index += 1
+    for speech in observation.history.speeches:
+        if speech.speech_id not in emitted_speech_ids:
+            raise ValueError("speech history must belong to a resolved discussion round")
     for index, vote in enumerate(observation.history.votes):
         items.append(
             (
                 vote.day,
-                offset + index,
+                event_index + index,
                 "vote_round",
                 None,
                 {

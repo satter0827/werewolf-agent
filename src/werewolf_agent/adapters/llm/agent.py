@@ -40,7 +40,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.7.0"
+_IMPLEMENTATION_VERSION = "1.8.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -232,13 +232,16 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     scenario = None
     if world is not None:
         scenario = AgentScenario(name=world.theme_name, premise=world.premise)
+    decision_constraints = {
+        key: value
+        for option in request.options
+        for key, value in (
+            ("speech_max_chars", option.message_max_chars),
+            ("reason_max_chars", option.reason_max_chars),
+        )
+        if value is not None
+    }
     if world is not None and identity is not None:
-        relevant_rules = dict(world.relevant_rules)
-        for option in request.options:
-            if option.action_type == "speech" and option.message_max_chars is not None:
-                relevant_rules["speech_max_chars"] = option.message_max_chars
-            if option.action_type == "vote" and option.reason_max_chars is not None:
-                relevant_rules["reason_max_chars"] = option.reason_max_chars
         game_context = AgentGameContext(
             theme_id=world.theme_id,
             theme_name=world.theme_name,
@@ -259,7 +262,7 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
                 )
                 for ability in identity.abilities
             ),
-            relevant_rules=relevant_rules,
+            relevant_rules=dict(world.relevant_rules),
             action_names=dict(world.action_names),
             phase_names=dict(world.phase_names),
             setup_checksum=world.setup_checksum,
@@ -316,6 +319,7 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
         legal_references={
             option.key: list(option.legal_reference_ids) for option in request.options
         },
+        decision_constraints=decision_constraints,
         speeches=speeches,
         vote_rounds=vote_rounds,
     )

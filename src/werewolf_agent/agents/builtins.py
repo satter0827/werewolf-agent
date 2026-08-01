@@ -19,7 +19,7 @@ from werewolf_agent.agents.contracts import (
 )
 from werewolf_agent.agents.validation import non_blank
 
-_BUILTIN_IMPLEMENTATION_VERSION = "1.1.0"
+_BUILTIN_IMPLEMENTATION_VERSION = "1.2.0"
 
 
 @dataclass(frozen=True)
@@ -224,6 +224,9 @@ def _response(
             ),
             option.evidence_options[0].evidence_id,
         )
+    reason = "この対象が最も疑わしいため" if option.action_type == "vote" else None
+    if reason is not None and option.reason_max_chars is not None:
+        reason = reason[: option.reason_max_chars]
     return DecisionResponse(
         action_type=option.action_type,
         ability_id=option.ability_id,
@@ -234,7 +237,7 @@ def _response(
         relation=relation,
         evidence_id=evidence_id,
         response_to_id=(option.legal_reference_ids[0] if option.legal_reference_ids else None),
-        reason="この対象が最も疑わしいため" if option.action_type == "vote" else None,
+        reason=reason,
     )
 
 

@@ -359,11 +359,11 @@ def _decision_context(
             "reference_speeches": reference_speeches,
             "constraints": {
                 "speech_max_chars": _positive_rule_integer(
-                    game.relevant_rules.get("speech_max_chars") if game is not None else None,
+                    observation.decision_constraints.get("speech_max_chars"),
                     default=LLM_SPEECH_MESSAGE_MAX_CHARS,
                 ),
                 "vote_reason_max_chars": _positive_rule_integer(
-                    game.relevant_rules.get("reason_max_chars") if game is not None else None,
+                    observation.decision_constraints.get("reason_max_chars"),
                     default=120,
                 ),
                 "target_required_for": [
