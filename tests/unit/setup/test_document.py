@@ -3,14 +3,8 @@ from __future__ import annotations
 import random
 
 import pytest
-from pydantic import ValidationError
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.replay import checksum_payload
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_options import validate_setup_document
 from werewolf_agent.domain import (
     Action,
@@ -21,6 +15,13 @@ from werewolf_agent.domain import (
     Phase,
     Player,
     build_game_rules,
+)
+from werewolf_agent.setup import (
+    GameSetupDocument,
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
 )
 
 
@@ -34,11 +35,9 @@ def _rules(setup: GameSetupDocument):
         rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.model_dump(mode="json"),
-            roles={key: value.model_dump(mode="json") for key, value in mechanics.roles.items()},
-            abilities={
-                key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
-            },
+            rules=mechanics.rules.to_mapping(),
+            roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
+            abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
     )
 
@@ -50,7 +49,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.1.0"
+        assert setup.schema_version == "0.3.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -59,14 +58,14 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
 
 def test_arbitrary_role_id_runs_through_ability_envelope() -> None:
     setup = _standard()
-    payload = setup.model_dump(mode="json")
+    payload = setup.to_mapping()
     role = payload["mechanics"]["roles"].pop("seer")
     count = payload["mechanics"]["role_counts"].pop("seer")
     payload["mechanics"]["roles"]["oracle_custom"] = role
     payload["mechanics"]["role_counts"]["oracle_custom"] = count
     for field in ("role_names", "role_objectives", "role_descriptions"):
         payload["theme"][field]["oracle_custom"] = payload["theme"][field].pop("seer")
-    custom = GameSetupDocument.model_validate(payload)
+    custom = GameSetupDocument.from_mapping(payload)
     players = generate_players(custom.player_generation, player_count=6, seed=41)
     game = Game.create(
         GameSetup(
@@ -112,7 +111,7 @@ def test_night_ability_can_be_explicitly_passed() -> None:
 
 def test_resolution_priority_controls_protection_order() -> None:
     setup = _standard()
-    payload = setup.model_dump(mode="json")
+    payload = setup.to_mapping()
     payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
 
     def resolve(guard_priority: int) -> bool:
@@ -122,7 +121,7 @@ def test_resolution_priority_controls_protection_order() -> None:
             key: dict(value) for key, value in payload["mechanics"]["abilities"].items()
         }
         configured["mechanics"]["abilities"]["guard"]["resolution_priority"] = guard_priority
-        document = GameSetupDocument.model_validate(configured)
+        document = GameSetupDocument.from_mapping(configured)
         players = generate_players(document.player_generation, player_count=6, seed=13)
         game = Game.create(
             GameSetup(
@@ -145,10 +144,10 @@ def test_resolution_priority_controls_protection_order() -> None:
 
 
 def test_repeat_target_rule_applies_to_every_active_ability_kind() -> None:
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["mechanics"]["abilities"]["inspect"]["allow_repeat_target"] = False
     payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
-    setup = GameSetupDocument.model_validate(payload)
+    setup = GameSetupDocument.from_mapping(payload)
     players = generate_players(setup.player_generation, player_count=6, seed=29)
     game = Game.create(
         GameSetup(
@@ -221,51 +220,51 @@ def test_player_generation_is_reproducible_and_preview_safe() -> None:
 
 
 def test_setup_rejects_missing_theme_coverage_and_kind_specific_extras() -> None:
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     del payload["theme"]["role_objectives"]["werewolf"]
-    with pytest.raises(ValidationError, match="theme coverage"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="theme coverage"):
+        GameSetupDocument.from_mapping(payload)
 
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["mechanics"]["abilities"]["guard"]["result_detail"] = "role"
-    with pytest.raises(ValidationError, match="extra"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="extra"):
+        GameSetupDocument.from_mapping(payload)
 
 
 def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["player_generation"]["public_personas"][0]["personality"] = "  "
-    with pytest.raises(ValidationError, match="public persona text"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="personality must not be blank"):
+        GameSetupDocument.from_mapping(payload)
 
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["theme"]["narration_enabled"] = True
     payload["theme"]["narration"] = {}
-    with pytest.raises(ValidationError, match="enabled narration"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="enabled narration"):
+        GameSetupDocument.from_mapping(payload)
 
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     del payload["theme"]["narration"]["game_finished"]
-    with pytest.raises(ValidationError, match="cover every supported event"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="cover every supported event"):
+        GameSetupDocument.from_mapping(payload)
 
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["theme"]["narration"]["game_started"] = ["秘密: {private_role}"]
-    with pytest.raises(ValidationError, match="unknown fields"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="unknown fields"):
+        GameSetupDocument.from_mapping(payload)
 
 
 def test_behavioral_ability_fields_are_explicit() -> None:
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     del payload["mechanics"]["abilities"]["inspect"]["max_uses"]
 
-    with pytest.raises(ValidationError, match="max_uses"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="max_uses"):
+        GameSetupDocument.from_mapping(payload)
 
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     payload["mechanics"]["role_counts"]["villager"] = 0
-    with pytest.raises(ValidationError, match="greater than or equal to 1"):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError, match="role count"):
+        GameSetupDocument.from_mapping(payload)
 
 
 @pytest.mark.parametrize(
@@ -283,7 +282,7 @@ def test_setup_rejects_passive_combinations_without_runtime_meaning(
     phase: str,
     source_kinds: list[str] | None,
 ) -> None:
-    payload = _standard().model_dump(mode="json")
+    payload = _standard().to_mapping()
     ability: dict[str, object] = {
         "kind": kind,
         "phase": phase,
@@ -302,15 +301,15 @@ def test_setup_rejects_passive_combinations_without_runtime_meaning(
     payload["theme"]["ability_names"]["custom_passive"] = "追加能力"
     payload["theme"]["ability_descriptions"]["custom_passive"] = "追加した能力です。"
 
-    with pytest.raises(ValidationError):
-        GameSetupDocument.model_validate(payload)
+    with pytest.raises(ValueError):
+        GameSetupDocument.from_mapping(payload)
 
 
 def test_setup_validation_returns_canonical_checksums() -> None:
     setup = _standard()
 
-    result = validate_setup_document(setup.model_dump(mode="json"))
+    result = validate_setup_document(setup.to_mapping())
 
     assert result.player_count == 6
-    assert result.setup_checksum == checksum_payload(setup.model_dump(mode="json"))
-    assert result.mechanics_checksum == checksum_payload(setup.mechanics.model_dump(mode="json"))
+    assert result.setup_checksum == checksum_payload(setup.to_mapping())
+    assert result.mechanics_checksum == checksum_payload(setup.mechanics.to_mapping())

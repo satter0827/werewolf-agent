@@ -123,7 +123,7 @@ def _render_sidebar_auth(
     session = session_store.load()
     if session is not None and not session.is_anonymous:
         st.sidebar.caption(session.email or catalog.t(lang, "auth.signed_in"))
-        if st.sidebar.button(catalog.t(lang, "auth.sign_out"), use_container_width=True):
+        if st.sidebar.button(catalog.t(lang, "auth.sign_out"), width="stretch"):
             try:
                 sign_out(settings, store=session_store)
             except AppError as exc:
@@ -141,9 +141,7 @@ def _render_sidebar_auth(
                 type="password",
                 max_chars=128,
             )
-            submitted = st.form_submit_button(
-                catalog.t(lang, "auth.sign_in"), use_container_width=True
-            )
+            submitted = st.form_submit_button(catalog.t(lang, "auth.sign_in"), width="stretch")
         if submitted:
             try:
                 sign_in_with_password(
@@ -171,7 +169,7 @@ def _render_sidebar_navigation(
             catalog.t(lang, label_key),
             key=f"navigation_{workspace}",
             type="primary" if current_view(st.session_state) == view else "secondary",
-            use_container_width=True,
+            width="stretch",
         ):
             switch_view(st.session_state, view)
             st.rerun()
@@ -189,7 +187,7 @@ def _render_unavailable_navigation(
         st.sidebar.button(
             catalog.t(lang, label_key),
             key=f"unavailable_navigation_{workspace}",
-            use_container_width=True,
+            width="stretch",
             disabled=True,
         )
     st.sidebar.caption(catalog.t(lang, "runtime.navigation_unavailable"))
@@ -248,7 +246,7 @@ def _render_history_selector(
         format_func=lambda option: option.label,
     )
     selected_option = cast(SavedGameOptionView, selected_option)
-    if st.sidebar.button(catalog.t(lang, "history.open"), use_container_width=True):
+    if st.sidebar.button(catalog.t(lang, "history.open"), width="stretch"):
         remember_selected_history(st.session_state, selected_option.option_id)
         switch_view(st.session_state, VIEW_GAME)
         st.rerun()

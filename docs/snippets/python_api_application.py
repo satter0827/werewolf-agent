@@ -1,13 +1,7 @@
-from typing import cast
-
 from werewolf_agent.application import (
-    Actor,
-    ApplicationContext,
-    ConfigError,
-    ErrorCode,
-    GameApplication,
     GameApplicationConfig,
-    GameRepository,
+    SetupTemplateCatalog,
+    create_embedded_application,
 )
 
 config = GameApplicationConfig(
@@ -18,14 +12,16 @@ config = GameApplicationConfig(
     timeline_default_limit=50,
     timeline_max_limit=200,
 )
-context = ApplicationContext(
-    repository=cast(GameRepository, object()),
-    config=config,
+catalog = SetupTemplateCatalog(
+    recommended_template_id="external",
+    template_order=(),
+    metadata={},
+    documents={},
 )
-games = GameApplication(context)
-actor = Actor("user-1")
+embedded = create_embedded_application(
+    user_id="user-1",
+    config=config,
+    setup_catalog=catalog,
+)
 
-try:
-    games.operation("operation-1", actor)
-except ConfigError as error:
-    assert error.code is ErrorCode.CONFIG_INVALID_VALUE
+assert embedded.games.list(embedded.actor).games == []

@@ -34,10 +34,11 @@ from werewolf_agent.adapters.supabase.repository import (
     SupabaseGameRepository,
 )
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
-from werewolf_agent.application import Actor, GameApplication
-from werewolf_agent.application.models import (
+from werewolf_agent.application import (
+    Actor,
     ApplicationContext,
     CreateGameCommand,
+    GameApplication,
     PlayerActionCommand,
 )
 from werewolf_agent.contracts import (
@@ -64,6 +65,7 @@ from werewolf_agent.observability.constants import (
 )
 from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.settings import AppSettings
+from werewolf_agent.worker.composition import WorkerDependencies
 from werewolf_agent.worker.events import (
     LOG_WORKER_APPLICATION_STOPPED,
     LOG_WORKER_DATABASE_UNAVAILABLE,
@@ -84,14 +86,22 @@ logger = logging.getLogger(__name__)
 TModel = TypeVar("TModel", bound=BaseModel)
 
 
-def run_worker_forever(settings: AppSettings) -> None:
+def run_worker_forever(
+    settings: AppSettings,
+    *,
+    dependencies: WorkerDependencies,
+) -> None:
     """Run the queue worker until the process is interrupted."""
     pool = _worker_pool(settings)
     try:
         open_database_pool(pool, timeout=settings.supabase_pool_timeout_seconds)
         while True:
             try:
-                processed = process_worker_batch(settings, pool=pool)
+                processed = process_worker_batch(
+                    settings,
+                    dependencies=dependencies,
+                    pool=pool,
+                )
             except SupabaseDatabaseUnavailableError:
                 logger.warning(
                     LOG_WORKER_DATABASE_UNAVAILABLE,
@@ -126,7 +136,12 @@ def run_worker_forever(settings: AppSettings) -> None:
         )
 
 
-def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> int:
+def process_worker_batch(
+    settings: AppSettings,
+    *,
+    dependencies: WorkerDependencies,
+    pool: Any | None = None,
+) -> int:
     """Claim and process at most one configured batch of requests."""
     if not settings.supabase_worker_configured:
         raise AppError(MESSAGE_SUPABASE_WORKER_DSN_REQUIRED)
@@ -137,7 +152,11 @@ def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> i
                 owned_pool,
                 timeout=settings.supabase_pool_timeout_seconds,
             )
-            return process_worker_batch(settings, pool=owned_pool)
+            return process_worker_batch(
+                settings,
+                dependencies=dependencies,
+                pool=owned_pool,
+            )
         finally:
             owned_pool.close()
     with borrow_database_connection(pool) as connection:
@@ -178,7 +197,7 @@ def process_worker_batch(settings: AppSettings, *, pool: Any | None = None) -> i
             )
             processed += 1
             continue
-        _process_request(pool, settings, request)
+        _process_request(pool, settings, dependencies, request)
         processed += 1
     return processed
 
@@ -197,17 +216,19 @@ def _worker_pool(settings: AppSettings) -> Any:
 def _process_request(
     pool: Any,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     request: Mapping[str, Any],
 ) -> None:
     try:
         if str(request["operation_type"]) == "advance_game":
-            _execute_advance_request(pool, settings, request)
+            _execute_advance_request(pool, settings, dependencies, request)
         else:
             with borrow_database_connection(pool) as connection, connection.transaction():
                 _execute_request(
                     connection,
                     SupabaseWorkerStore(connection),
                     settings,
+                    dependencies,
                     request,
                 )
     except Exception as exc:
@@ -260,15 +281,16 @@ def _execute_request(
     connection: Any,
     store: SupabaseWorkerStore,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     request: Mapping[str, Any],
 ) -> None:
     """Execute one claimed command inside a rollback-only savepoint."""
     operation_type = str(request["operation_type"])
     result: BaseModel
     if operation_type == "create_game":
-        result = _create_game(connection, store, settings, request)
+        result = _create_game(connection, store, settings, dependencies, request)
     elif operation_type == "submit_action":
-        result = _submit_action(connection, store, settings, request)
+        result = _submit_action(connection, store, settings, dependencies, request)
     else:
         raise AppError(message_unsupported_operation_type(operation_type))
     _complete_result(store, request, result)
@@ -297,13 +319,14 @@ def _complete_result(
 def _execute_advance_request(
     pool: Any,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     request: Mapping[str, Any],
 ) -> None:
     """Run the Agent decision pipeline without retaining a database transaction."""
     game_id = str(request.get("game_id") or "")
     user_id = str(request["owner_user_id"])
     with borrow_database_connection(pool) as connection, connection.transaction():
-        context = _service(connection, settings)
+        context = _service(connection, settings, dependencies)
         application = GameApplication(
             context,
             access_policy=SupabaseAccessPolicy(connection),
@@ -321,6 +344,7 @@ def _execute_advance_request(
         config=build_worker_llm_provider_config(llm_mode, settings),
         definitions=build_llm_definitions(settings),
         trace_sink=traces,
+        agent_factories=dependencies.agent_factories,
     )
     with _LeaseHeartbeat(pool, settings, request) as heartbeat:
         driven = drive_prepared_game(
@@ -332,7 +356,7 @@ def _execute_advance_request(
 
         with borrow_database_connection(pool) as connection, connection.transaction():
             store = SupabaseWorkerStore(connection)
-            context = _service(connection, settings)
+            context = _service(connection, settings, dependencies)
             result = GameApplication(
                 context,
                 access_policy=SupabaseAccessPolicy(connection),
@@ -350,6 +374,7 @@ def _execute_advance_request(
                 connection,
                 store,
                 settings,
+                dependencies,
                 response.game_id,
                 actor_user_id=user_id,
             )
@@ -405,6 +430,7 @@ def _create_game(
     connection: Any,
     store: SupabaseWorkerStore,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     request: Mapping[str, Any],
 ) -> GameResponse:
     payload = _json_object(request.get("request_payload"))
@@ -417,6 +443,7 @@ def _create_game(
     service = _service(
         connection,
         settings,
+        dependencies,
         owner_user_id=owner_user_id,
         create_llm_mode=llm_mode,
     )
@@ -435,6 +462,7 @@ def _create_game(
         connection,
         store,
         settings,
+        dependencies,
         response.game_id,
         actor_user_id=owner_user_id,
     )
@@ -445,6 +473,7 @@ def _submit_action(
     connection: Any,
     store: SupabaseWorkerStore,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     request: Mapping[str, Any],
 ) -> PlayerActionResponse:
     game_id = str(request.get("game_id") or "")
@@ -453,7 +482,7 @@ def _submit_action(
     action_request = PlayerActionRequest.model_validate(
         _json_object(request.get("request_payload"))
     )
-    service = _service(connection, settings)
+    service = _service(connection, settings, dependencies)
     application = GameApplication(service, access_policy=SupabaseAccessPolicy(connection))
     result = application.submit_action(
         Actor(user_id=user_id),
@@ -473,6 +502,7 @@ def _submit_action(
         connection,
         store,
         settings,
+        dependencies,
         response.game_id,
         actor_user_id=user_id,
     )
@@ -483,11 +513,12 @@ def _materialize_private_views(
     connection: Any,
     store: SupabaseWorkerStore,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     game_id: str,
     *,
     actor_user_id: str,
 ) -> None:
-    service = _service(connection, settings)
+    service = _service(connection, settings, dependencies)
     state_version = _materialize_reveal_view(
         connection,
         store,
@@ -549,6 +580,7 @@ def _materialize_reveal_view(
 def _service(
     connection: Any,
     settings: AppSettings,
+    dependencies: WorkerDependencies,
     *,
     owner_user_id: str | None = None,
     create_llm_mode: Literal["fake", "paid"] = "fake",
@@ -557,6 +589,7 @@ def _service(
         repository=SupabaseGameRepository(connection, owner_user_id=owner_user_id),
         config=build_game_application_config(settings),
         create_llm_mode=create_llm_mode,
+        rule_packs=dependencies.rule_packs,
     )
 
 

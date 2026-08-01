@@ -10,8 +10,8 @@ from psycopg.types.json import Jsonb
 
 from werewolf_agent.application.errors import AppError, ErrorCode
 from werewolf_agent.application.ports import SetupRepository
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
+from werewolf_agent.setup import GameSetupDocument
 
 
 class SupabaseSetupRepository(SetupRepository):
@@ -70,7 +70,12 @@ class SupabaseSetupRepository(SetupRepository):
             """,
             (UUID(owner_user_id),),
         ).fetchall()
-        return [SavedSetupSummary.model_validate(dict(row)) for row in rows]
+        summaries: list[SavedSetupSummary] = []
+        for row in rows:
+            payload = dict(row)
+            payload["setup_id"] = str(payload["setup_id"])
+            summaries.append(SavedSetupSummary.model_validate(payload))
+        return summaries
 
     def get(
         self,
@@ -206,7 +211,7 @@ class SupabaseSetupRepository(SetupRepository):
                 setup_id,
                 revision,
                 document.schema_version,
-                Jsonb(document.model_dump(mode="json")),
+                Jsonb(document.to_mapping()),
                 setup_checksum,
                 mechanics_checksum,
             ),
@@ -216,7 +221,7 @@ class SupabaseSetupRepository(SetupRepository):
 def _revision(row: Mapping[str, Any]) -> SavedSetupRevision:
     payload = dict(row)
     payload["setup_id"] = str(payload["setup_id"])
-    payload["document"] = GameSetupDocument.model_validate(payload["document"])
+    payload["document"] = GameSetupDocument.from_mapping(payload["document"])
     return SavedSetupRevision.model_validate(payload)
 
 

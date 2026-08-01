@@ -1,5 +1,4 @@
 import logging
-from types import SimpleNamespace
 from typing import Any
 
 from werewolf_agent.clients.streamlit.i18n import load_i18n
@@ -127,24 +126,16 @@ def test_app_does_not_block_game_views_for_anonymous_session(monkeypatch) -> Non
     assert rendered == ["setup"]
 
 
-def test_pending_view_scroll_is_rendered_once(monkeypatch) -> None:
+def test_pending_view_scroll_is_rendered_once() -> None:
     streamlit = _StreamlitStub()
-    rendered: list[tuple[str, int, bool]] = []
     streamlit.session_state[KEY_PENDING_VIEW_SCROLL] = True
-    monkeypatch.setattr(
-        app.importlib,
-        "import_module",
-        lambda _name: SimpleNamespace(
-            html=lambda value, *, height, scrolling: rendered.append((value, height, scrolling))
-        ),
-    )
 
     app._render_pending_view_scroll(streamlit)
     app._render_pending_view_scroll(streamlit)
 
-    assert len(rendered) == 1
-    assert "stMain" in rendered[0][0]
-    assert rendered[0][1:] == (0, False)
+    assert len(streamlit.html_calls) == 1
+    assert "stMain" in streamlit.html_calls[0][0]
+    assert streamlit.html_calls[0][1:] == (True, "content")
 
 
 def test_app_shows_supabase_config_error_before_rendering_game_views(
@@ -209,6 +200,16 @@ class _StreamlitStub:
     def __init__(self) -> None:
         self.session_state: dict[str, object] = {}
         self.sidebar = _SidebarStub()
+        self.html_calls: list[tuple[str, bool, str]] = []
+
+    def html(
+        self,
+        value: str,
+        *,
+        unsafe_allow_javascript: bool,
+        width: str,
+    ) -> None:
+        self.html_calls.append((value, unsafe_allow_javascript, width))
 
     def rerun(self) -> None:
         raise AssertionError("rerun should not be called when no button is clicked")

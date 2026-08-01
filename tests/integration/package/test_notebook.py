@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
+import tomllib
 import venv
 from pathlib import Path
 
@@ -48,13 +50,30 @@ def installed_wheel_environment(
 
 
 @pytest.mark.serial
-def test_wheel_installs_and_exposes_the_root_domain_api(
+def test_wheel_installs_and_exposes_the_owned_domain_api(
     installed_wheel_environment: tuple[Path, Path, dict[str, str]],
 ) -> None:
-    """source checkout外のvenvでwheelのroot APIをimportする。"""
+    """source checkout外のvenvでversionとdomain APIをimportする。"""
     environment, python, runtime_environment = installed_wheel_environment
     package_environment = runtime_environment.copy()
     package_environment.pop("PYTHONPATH", None)
+    setup_path = environment.parent / "setup.json"
+    setup_path.write_text(
+        json.dumps(
+            tomllib.loads(
+                (
+                    ROOT
+                    / "src"
+                    / "werewolf_agent"
+                    / "application"
+                    / "resources"
+                    / "setups"
+                    / "standard_6.toml"
+                ).read_text(encoding="utf-8")
+            )
+        ),
+        encoding="utf-8",
+    )
 
     checked = subprocess.run(
         [
@@ -63,15 +82,50 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
             (
                 "from importlib.metadata import version; "
                 "from pathlib import Path; "
+                "import json; "
                 "import sys; "
-                "from werewolf_agent import Action, Game, GameSetup, Player, build_game_rules; "
+                "from werewolf_agent.domain import "
+                "Action, Game, GameSetup, Player, assert_rule_pack_contract, build_game_rules; "
+                "from werewolf_agent.agents import "
+                "AgentContext, AgentFactory, AgentSession, DecisionRequest, "
+                "assert_agent_factory_contract; "
+                "from werewolf_agent.experiments import "
+                "ExperimentSpec, TrialRunner, plan_trials; "
+                "from werewolf_agent.simulation import "
+                "SimulationRunner, SimulationSession, SimulationSpec; "
+                "from werewolf_agent.setup import "
+                "GameSetupDocument, PlayerGenerationDefinition, PlayerIdentityDefinition, "
+                "PrivateStrategyDefinition, PublicPersonaDefinition, generate_players; "
                 "import werewolf_agent; "
+                "generation = PlayerGenerationDefinition("
+                "identities=(PlayerIdentityDefinition('Alice', 20, 30, 'female'),), "
+                "public_personas=(PublicPersonaDefinition('calm', 'brief'),), "
+                "private_strategies=(PrivateStrategyDefinition("
+                "'analytic', 'low', 'claims'),)); "
+                "assert generate_players(generation, player_count=1, seed=41) == "
+                "generate_players(generation, player_count=1, seed=41); "
+                "setup = GameSetupDocument.from_mapping("
+                "json.loads(Path(sys.argv[2]).read_text(encoding='utf-8'))); "
+                "first = generate_players(setup.player_generation, player_count=6, seed=41); "
+                "second = generate_players(setup.player_generation, player_count=6, seed=41); "
+                "assert first == second; "
+                "rules = setup.to_rule_definition(); "
+                "assert rules.player_count == 6; "
+                "assert rules.role_counts == setup.mechanics.role_counts; "
                 "assert Path(werewolf_agent.__file__).resolve().is_relative_to("
                 "Path(sys.argv[1]).resolve()); "
                 "assert all((Action, Game, GameSetup, Player, build_game_rules)); "
+                "assert all((assert_rule_pack_contract,)); "
+                "assert all((AgentContext, AgentFactory, AgentSession, DecisionRequest, "
+                "assert_agent_factory_contract)); "
+                "assert all((ExperimentSpec, TrialRunner, plan_trials)); "
+                "assert all((SimulationRunner, SimulationSession, SimulationSpec)); "
+                "assert werewolf_agent.__all__ == ['__version__']; "
+                "assert not hasattr(werewolf_agent, 'Game'); "
                 "assert werewolf_agent.__version__ == version('werewolf-agent')"
             ),
             str(environment),
+            str(setup_path),
         ],
         cwd=environment.parent,
         env=package_environment,
@@ -80,6 +134,49 @@ def test_wheel_installs_and_exposes_the_root_domain_api(
         check=False,
     )
     assert checked.returncode == 0, checked.stdout + checked.stderr
+
+
+@pytest.mark.serial
+@pytest.mark.parametrize(
+    ("command", "extra"),
+    (
+        ("werewolf-agent", "cli"),
+        ("werewolf-agent-api", "api"),
+        ("werewolf-agent-worker", "worker"),
+    ),
+)
+def test_standard_install_entrypoints_explain_the_required_extra(
+    installed_wheel_environment: tuple[Path, Path, dict[str, str]],
+    command: str,
+    extra: str,
+) -> None:
+    """標準installのconsole scriptはtracebackなしで必要なextraを示す。"""
+    environment, python, runtime_environment = installed_wheel_environment
+    package_environment = runtime_environment.copy()
+    package_environment.pop("PYTHONPATH", None)
+    arguments = (
+        [
+            str(python),
+            "-c",
+            f"from werewolf_agent._entrypoints import {extra}; {extra}()",
+        ]
+        if sys.platform == "win32"
+        else [str(environment / "bin" / command), "--help"]
+    )
+
+    executed = subprocess.run(
+        arguments,
+        cwd=environment.parent,
+        env=package_environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    output = executed.stdout + executed.stderr
+    assert executed.returncode != 0
+    assert f"werewolf-agent[{extra}]" in output
+    assert "Traceback" not in output
 
 
 @pytest.mark.serial

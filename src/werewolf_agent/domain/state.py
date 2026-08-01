@@ -532,6 +532,71 @@ class InspectionResult:
 
 
 @dataclass(frozen=True)
+class NightResolution:
+    """Night ability policyが返すstate非変更の解決Outcomeを表す."""
+
+    attacked_player_ids: tuple[str, ...] = ()
+    protected_player_ids: tuple[str, ...] = ()
+    killed_player_ids: tuple[str, ...] = ()
+    inspections: tuple[InspectionResult, ...] = ()
+    passive_uses: tuple[tuple[str, str], ...] = ()
+
+    def __post_init__(self) -> None:
+        """順序付きcollectionをimmutableなtupleへ固定する."""
+        object.__setattr__(self, "attacked_player_ids", tuple(self.attacked_player_ids))
+        object.__setattr__(self, "protected_player_ids", tuple(self.protected_player_ids))
+        object.__setattr__(self, "killed_player_ids", tuple(self.killed_player_ids))
+        object.__setattr__(self, "inspections", tuple(self.inspections))
+        object.__setattr__(
+            self,
+            "passive_uses",
+            tuple((player_id, ability_id) for player_id, ability_id in self.passive_uses),
+        )
+
+
+@dataclass(frozen=True)
+class DeathReaction:
+    """一つの死亡反応が選んだ能力所有者と死亡対象を表す."""
+
+    player_id: str
+    ability_id: str
+    target_id: str
+
+
+@dataclass(frozen=True)
+class DeathReactionResolution:
+    """Ability policyが返す順序付き死亡反応Outcomeを表す."""
+
+    reactions: tuple[DeathReaction, ...] = ()
+
+    def __post_init__(self) -> None:
+        """反応列をimmutableなtupleへ固定する."""
+        object.__setattr__(self, "reactions", tuple(self.reactions))
+
+
+@dataclass(frozen=True)
+class KnowledgeClaim:
+    """設定済みknowledge能力が一人について返すroleまたはfactionを表す."""
+
+    player_id: str
+    ability_id: str
+    target_id: str
+    role: str | None = None
+    faction: str | None = None
+
+
+@dataclass(frozen=True)
+class KnowledgeResolution:
+    """Ability policyが返すstate非変更の知識候補を表す."""
+
+    claims: tuple[KnowledgeClaim, ...] = ()
+
+    def __post_init__(self) -> None:
+        """知識候補列をimmutableなtupleへ固定する."""
+        object.__setattr__(self, "claims", tuple(self.claims))
+
+
+@dataclass(frozen=True)
 class NightResult:
     """一回のnight phaseで解決したfactを表す."""
 
@@ -613,6 +678,25 @@ class WinResult:
         object.__setattr__(self, "winner", winner)
         object.__setattr__(self, "reason", non_blank(self.reason, "reason"))
         object.__setattr__(self, "winning_player_ids", player_ids)
+
+
+@dataclass(frozen=True)
+class VisibleWinResult:
+    """Player observationへ公開できる勝敗情報を表す."""
+
+    winner: str
+    reason: str
+    day: int
+
+    def __post_init__(self) -> None:
+        """勝利陣営、理由、日数を公開値として検証する."""
+        winner = non_blank(self.winner, "winner")
+        if winner not in SUPPORTED_FACTIONS:
+            raise ValueError(message_unsupported_faction(winner))
+        if self.day < 1:
+            raise ValueError("visible win result day must be at least 1.")
+        object.__setattr__(self, "winner", winner)
+        object.__setattr__(self, "reason", non_blank(self.reason, "reason"))
 
 
 @dataclass(frozen=True)
@@ -738,7 +822,7 @@ class GameView:
     available_actions: tuple[AvailableAction, ...] = ()
     legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
-    win_result: WinResult | None = None
+    win_result: VisibleWinResult | None = None
 
     def __post_init__(self) -> None:
         """Freeze visible collections and legal targets."""
@@ -798,6 +882,8 @@ __all__ = [
     "Action",
     "ActionType",
     "AvailableAction",
+    "DeathReaction",
+    "DeathReactionResolution",
     "EventVisibility",
     "GameConfig",
     "GameEvent",
@@ -806,7 +892,10 @@ __all__ = [
     "GameState",
     "GameView",
     "InspectionResult",
+    "KnowledgeClaim",
+    "KnowledgeResolution",
     "LocalRules",
+    "NightResolution",
     "NightResult",
     "PendingActions",
     "Phase",

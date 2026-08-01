@@ -175,13 +175,13 @@ def _render_next_actions(
         return
     st.divider()
     first, second = st.columns(2)
-    if first.button(catalog.t(lang, "next_actions.return_setup"), use_container_width=True):
+    if first.button(catalog.t(lang, "next_actions.return_setup"), width="stretch"):
         switch_view(
             st.session_state,
             VIEW_PLAY_SETUP if selected_option.mode == "playable" else VIEW_OBSERVE_SETUP,
         )
         st.rerun()
-    if second.button(catalog.t(lang, "next_actions.saves"), use_container_width=True):
+    if second.button(catalog.t(lang, "next_actions.saves"), width="stretch"):
         st.info(catalog.t(lang, "next_actions.saved_hint"))
 
 
@@ -323,7 +323,7 @@ def _render_action_form(
     if st.button(
         catalog.t(lang, "action.send"),
         type="primary",
-        use_container_width=True,
+        width="stretch",
         disabled=missing_target or missing_message,
     ):
         try:
@@ -381,14 +381,14 @@ def _render_auto_advance_controls(
         progress.write(f"{state.steps} / {settings.streamlit_max_auto_steps}")
         if st.button(
             catalog.t(lang, "action.auto_advance_pause"),
-            use_container_width=True,
+            width="stretch",
         ):
             pause_auto_advance(st.session_state)
             st.rerun()
     elif screen.hand_panel.can_advance and st.button(
         catalog.t(lang, "action.advance_one_step"),
         type="secondary",
-        use_container_width=True,
+        width="stretch",
     ):
         start_auto_advance(st.session_state, selected_option.game_id)
         st.rerun()

@@ -12,6 +12,7 @@ from werewolf_agent.domain._messages import (
     MESSAGE_SELF_VOTING_DISABLED,
 )
 from werewolf_agent.domain.errors import GameError
+from werewolf_agent.domain.rule_packs import AbilityPolicy, VotingPolicy
 from werewolf_agent.domain.rules.player_rules import (
     alive_players,
     mark_dead,
@@ -60,68 +61,147 @@ def record_vote(
 
 def resolve_votes(
     snapshot: GameState,
-    config: GameConfig,
     pending_votes: Mapping[str, Action],
     rng: random.Random,
     *,
     vote_round: int = 1,
+    ability_policy: AbilityPolicy,
+    policy: VotingPolicy,
 ) -> tuple[GameState, VoteResult]:
-    """Resolve all currently pending votes."""
+    """Policy Outcomeを検証し、死亡と履歴をDomainで一括適用する."""
     require_phase(snapshot, Phase.VOTING)
-
-    vote_targets = {player_id: _vote_target(action) for player_id, action in pending_votes.items()}
-    counts = dict(Counter(vote_targets.values()))
-    alive_voter_ids = [player.id for player in alive_players(snapshot)]
-    missing_voter_ids = [
-        player_id for player_id in alive_voter_ids if player_id not in pending_votes
-    ]
-
-    eliminated_player_id: str | None = None
-    tied_player_ids: list[str] = []
-    if counts:
-        max_votes = max(counts.values())
-        tied_player_ids = sorted(
-            player_id for player_id, count in counts.items() if count == max_votes
-        )
-        if len(tied_player_ids) == 1:
-            eliminated_player_id = tied_player_ids[0]
-        elif config.rules.vote_tie_resolution == "random_elimination":
-            eliminated_player_id = rng.choice(tied_player_ids)
-
-    requires_revote = bool(
-        counts
-        and len(tied_player_ids) > 1
-        and config.rules.vote_tie_resolution == "revote"
-        and vote_round == 1
-    )
-
-    updated_snapshot = snapshot
-    if eliminated_player_id is not None:
-        updated_snapshot = mark_dead(
+    random_state = rng.getstate()
+    try:
+        result = policy.resolve(
             snapshot,
-            eliminated_player_id,
-            eliminated_day=snapshot.day,
-        )
-        updated_snapshot, _reaction_deaths = resolve_death_reactions(
-            updated_snapshot,
-            [eliminated_player_id],
+            pending_votes,
             rng,
-            during_night=False,
+            vote_round=vote_round,
+        )
+        _validate_outcome(snapshot, pending_votes, result, vote_round=vote_round)
+
+        updated_snapshot = snapshot
+        if result.eliminated_player_id is not None:
+            updated_snapshot = mark_dead(
+                snapshot,
+                result.eliminated_player_id,
+                eliminated_day=snapshot.day,
+            )
+            updated_snapshot, _reaction_deaths = resolve_death_reactions(
+                updated_snapshot,
+                [result.eliminated_player_id],
+                rng,
+                policy=ability_policy,
+                during_night=False,
+            )
+
+        history = replace(
+            updated_snapshot.history,
+            votes=(*updated_snapshot.history.votes, result),
+        )
+        return replace(updated_snapshot, history=history), result
+    except Exception:
+        rng.setstate(random_state)
+        raise
+
+
+class CoreVotingPolicy:
+    """組み込みの単純多数、tie、revote規則を実装する."""
+
+    def resolve(
+        self,
+        state: GameState,
+        pending_votes: Mapping[str, Action],
+        random: random.Random,
+        *,
+        vote_round: int,
+    ) -> VoteResult:
+        """現在の組み込み投票規則からstate非変更Outcomeを返す."""
+        vote_targets = {
+            player_id: _vote_target(action) for player_id, action in pending_votes.items()
+        }
+        counts = dict(Counter(vote_targets.values()))
+        alive_voter_ids = [player.id for player in alive_players(state)]
+        missing_voter_ids = [
+            player_id for player_id in alive_voter_ids if player_id not in pending_votes
+        ]
+        eliminated_player_id: str | None = None
+        tied_player_ids: list[str] = []
+        if counts:
+            max_votes = max(counts.values())
+            tied_player_ids = sorted(
+                player_id for player_id, count in counts.items() if count == max_votes
+            )
+            if len(tied_player_ids) == 1:
+                eliminated_player_id = tied_player_ids[0]
+            elif state.config.rules.vote_tie_resolution == "random_elimination":
+                eliminated_player_id = random.choice(tied_player_ids)
+        requires_revote = bool(
+            counts
+            and len(tied_player_ids) > 1
+            and state.config.rules.vote_tie_resolution == "revote"
+            and vote_round == 1
+        )
+        return VoteResult(
+            day=state.day,
+            votes=vote_targets,
+            counts=counts,
+            tied_player_ids=tuple(tied_player_ids),
+            missing_voter_ids=tuple(missing_voter_ids),
+            eliminated_player_id=eliminated_player_id,
+            tie_break_policy=state.config.rules.vote_tie_resolution,
+            round=vote_round,
+            requires_revote=requires_revote,
         )
 
-    result = VoteResult(
-        day=snapshot.day,
-        votes=vote_targets,
-        counts=counts,
-        tied_player_ids=tuple(tied_player_ids),
-        missing_voter_ids=tuple(missing_voter_ids),
-        eliminated_player_id=eliminated_player_id,
-        tie_break_policy=(config.rules.vote_tie_resolution),
-        round=vote_round,
-        requires_revote=requires_revote,
-    )
-    history = replace(updated_snapshot.history, votes=(*updated_snapshot.history.votes, result))
-    return replace(updated_snapshot, history=history), result
+
+def _validate_outcome(
+    snapshot: GameState,
+    pending_votes: Mapping[str, Action],
+    result: VoteResult,
+    *,
+    vote_round: int,
+) -> None:
+    alive_ids = {player.id for player in alive_players(snapshot)}
+    expected_votes = {
+        player_id: _vote_target(action) for player_id, action in pending_votes.items()
+    }
+    if (
+        not isinstance(result.day, int)
+        or isinstance(result.day, bool)
+        or not isinstance(result.round, int)
+        or isinstance(result.round, bool)
+        or result.day != snapshot.day
+        or result.round != vote_round
+    ):
+        raise ValueError("voting outcome day and round must match the current vote")
+    if dict(result.votes) != expected_votes:
+        raise ValueError("voting outcome votes must match pending votes")
+    if set(result.counts) - alive_ids or any(
+        not isinstance(count, int) or isinstance(count, bool) or count < 0
+        for count in result.counts.values()
+    ):
+        raise ValueError("voting outcome counts must reference alive players")
+    if set(result.tied_player_ids) - alive_ids:
+        raise ValueError("voting outcome tied players must be alive")
+    if len(result.tied_player_ids) != len(set(result.tied_player_ids)):
+        raise ValueError("voting outcome tied players must be unique")
+    if set(result.missing_voter_ids) - alive_ids:
+        raise ValueError("voting outcome missing voters must be alive")
+    if len(result.missing_voter_ids) != len(set(result.missing_voter_ids)):
+        raise ValueError("voting outcome missing voters must be unique")
+    if set(result.missing_voter_ids) != alive_ids - set(pending_votes):
+        raise ValueError("voting outcome missing voters must match pending votes")
+    if not isinstance(result.tie_break_policy, str) or not result.tie_break_policy.strip():
+        raise ValueError("voting outcome tie break policy must not be blank")
+    if result.eliminated_player_id is not None and result.eliminated_player_id not in alive_ids:
+        raise ValueError("voting outcome eliminated player must be alive")
+    if not isinstance(result.requires_revote, bool):
+        raise ValueError("voting outcome requires_revote must be a boolean")
+    if result.requires_revote and (
+        not result.tied_player_ids or result.eliminated_player_id is not None
+    ):
+        raise ValueError("voting outcome revote requires candidates")
 
 
 def _vote_target(action: Action) -> str:

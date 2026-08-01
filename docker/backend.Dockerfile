@@ -15,11 +15,11 @@ COPY pyproject.toml uv.lock README.md ./
 
 FROM base AS runtime-dependencies
 
-RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
+RUN uv sync --frozen --no-dev --all-extras --no-install-project
 
 FROM base AS dev-dependencies
 
-RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker --no-install-project
+RUN uv sync --frozen --group dev --all-extras --no-install-project
 
 FROM dev-dependencies AS dev
 
@@ -35,7 +35,7 @@ COPY notebooks ./notebooks
 COPY tests ./tests
 COPY .env.example AGENTS.md compose.yaml ./
 COPY contracts/openapi.json ./contracts/openapi.json
-RUN uv sync --frozen --group dev --extra api --extra llm --extra streamlit --extra worker
+RUN uv sync --frozen --group dev --all-extras
 
 CMD ["pytest"]
 
@@ -55,7 +55,7 @@ ENV WEREWOLF_LOG_DIR=.werewolf-agent/logs/application \
     WEREWOLF_LOG_FILE_BACKUP_COUNT=3 \
     WEREWOLF_LOG_THIRD_PARTY_LEVEL=WARNING
 
-RUN uv sync --frozen --no-dev --extra api --extra llm --extra streamlit --extra worker
+RUN uv sync --frozen --no-dev --all-extras
 RUN groupadd --system app \
     && useradd --system --gid app --home-dir /app app \
     && chown -R app:app /app

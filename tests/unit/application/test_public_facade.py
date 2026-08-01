@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import AbstractContextManager, nullcontext
 from typing import Any, NoReturn, cast
 
 import pytest
@@ -9,10 +10,14 @@ import pytest
 from werewolf_agent import application
 from werewolf_agent.application import handlers
 from werewolf_agent.application.errors import GameNotFoundError, InvalidGameIdError
+from werewolf_agent.domain import CoreRulePack, RulePolicyRegistry
 
 
 class _Repository:
     """例外境界だけを検証する空repository。"""
+
+    def transaction(self) -> AbstractContextManager[None]:
+        return nullcontext()
 
 
 class _ReplayRepository(_Repository):
@@ -84,6 +89,7 @@ def _games(
     context = application.ApplicationContext(
         repository=cast(application.GameRepository, repository or _Repository()),
         config=_config(),
+        rule_packs=RulePolicyRegistry((CoreRulePack(),)),
     )
     return application.GameApplication(
         context,

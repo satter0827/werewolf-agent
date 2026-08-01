@@ -334,8 +334,7 @@ def _render_pending_view_scroll(st: Any) -> None:
     """Reset scroll once after an intentional workspace transition."""
     if not consume_pending_view_scroll(st.session_state):
         return
-    components = importlib.import_module("streamlit.components.v1")
-    components.html(_VIEW_SCROLL_SCRIPT, height=0, scrolling=False)
+    st.html(_VIEW_SCROLL_SCRIPT, unsafe_allow_javascript=True, width="content")
 
 
 def _component_available(runtime_status: Any, component: str) -> bool:

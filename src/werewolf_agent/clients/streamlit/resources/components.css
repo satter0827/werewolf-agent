@@ -95,8 +95,7 @@
 
 .wa-seat-dead {
     border-left-color: var(--wa-border-interactive);
-    color: var(--wa-muted);
-    opacity: 0.72;
+    color: var(--wa-muted-strong);
 }
 
 .wa-seat-marker {
@@ -121,7 +120,7 @@
     font-weight: var(--wa-weight-semibold);
 }
 
-.wa-chip-muted { color: var(--wa-muted); }
+.wa-chip-muted { color: var(--wa-muted-strong); }
 .wa-activity { margin-top: var(--wa-space-3); font-size: var(--wa-font-14); line-height: var(--wa-line-body); }
 
 .wa-timeline-section {

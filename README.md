@@ -1,9 +1,10 @@
 # Werewolf Agent
 
-Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かすPython
-バックエンドである。決定的なドメインコアが完全状態とルールを管理し、FastAPI、CLI、
-Streamlit、workerを明示した境界で接続する。公開状態、public timeline、本人のobservationを分離し、
-既定のFakeListChatModelだけで外部APIなしに再現できる。
+Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かす決定的な
+Python SDKである。標準インストールは第三者パッケージに依存せず、完全状態とルールを管理する
+domain coreを提供する。FastAPI、CLI、Streamlit、workerはextraとして明示した境界で接続する。
+公開状態、public timeline、本人のobservationを分離し、既定のFakeListChatModelだけで
+外部APIなしに再現できる。
 
 Streamlitが唯一のブラウザーUIである。CLIとStreamlitは同じHTTP APIを使い、Supabaseが
 Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
@@ -16,6 +17,7 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 ## 主な機能
 
 - seedと設定を固定してゲームを再現する。
+- manifest付き外部Rule Packを明示登録し、能力・投票・勝敗Policyを一局へ固定する。
 - 公開状態、public timeline、本人のobservationを分離する。
 - CLI、Streamlit、workerを同じHTTP APIへ接続する。
 - Fake LLMとlocalhostだけで通常の品質検証を完結する。
@@ -29,14 +31,28 @@ Auth、PostgreSQL永続化、PGMQ操作キューを担当する。
 python -m pip install .
 ```
 
-主要なdomain型はpackage直下からimportする。次の例は外部serviceや設定fileを使わずに
+標準インストールにruntimeの第三者依存はない。提供層を使う場合は利用単位のextraを指定する。
+
+```powershell
+python -m pip install ".[application]"
+python -m pip install ".[cli]"
+python -m pip install ".[api]"
+python -m pip install ".[llm]"
+python -m pip install ".[streamlit]"
+python -m pip install ".[worker]"
+```
+
+`application`はuse case contract、`llm`はLangChainアダプターだけを組み込む場合に指定する。
+複数の提供層を同じ環境で使う場合は、`".[api,cli,streamlit,worker]"`のようにまとめて指定する。
+
+主要なdomain型は`werewolf_agent.domain`からimportする。次の例は外部serviceや設定fileを使わずに
 3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を
 明示して渡し、状態変更は`Game`を通じて行う。
 
 ```python
 import random
 
-from werewolf_agent import (
+from werewolf_agent.domain import (
     Action,
     Game,
     GameSetup,
@@ -84,6 +100,11 @@ game = Game.create(
 game.submit(Action.speech("p1", "状況を確認します。"))
 observation = game.view_for("p1")
 ```
+
+`werewolf_agent.setup`は第三者packageに依存せず、完全setupの検証、Domain Rule Definition変換、
+用途別seed、正規checksum、immutableなプレイヤー generation定義を提供する。
+`GameSetupDocument.from_mapping()`で完全setupを構築し、同じ定義とseedを`generate_players()`へ
+渡すと、同じ公開personaとprivate strategyを持つrosterを再生成できる。
 
 設定済みの6人ゲームとFakeListChatModelを使った一連の操作は
 [quickstart Notebook](notebooks/quickstart.ipynb)で確認できる。Notebook専用コードは製品の

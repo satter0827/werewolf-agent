@@ -4,7 +4,9 @@ from pydantic import ValidationError
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.clients.streamlit.constants import SETUP_DRAFT_KEY
 from werewolf_agent.clients.streamlit.views.game_settings import (
+    _SOURCE_KEY,
     _new_ability,
+    _source_index,
     _validation_sections,
 )
 from werewolf_agent.clients.streamlit.views.setup import (
@@ -32,7 +34,7 @@ def test_preview_fingerprint_changes_with_seed_or_revision() -> None:
 
 def test_inline_editor_draft_reaches_game_creation_selection() -> None:
     document = build_setup_catalog().require_document("standard_6")
-    inline_document = _inline_draft({SETUP_DRAFT_KEY: document.model_dump(mode="json")})
+    inline_document = _inline_draft({SETUP_DRAFT_KEY: document.to_mapping()})
 
     selection = _selection("inline:draft", inline_document=inline_document)
 
@@ -53,10 +55,18 @@ def test_new_passive_abilities_start_with_executable_conditions() -> None:
 
 
 def test_editor_validation_reports_beginner_facing_sections() -> None:
-    payload = build_setup_catalog().require_document("standard_6").model_dump(mode="json")
+    payload = build_setup_catalog().require_document("standard_6").to_mapping()
     del payload["player_generation"]["public_personas"][0]["personality"]
 
     with pytest.raises(ValidationError) as raised:
         GameSetupDocumentRequest.model_validate(payload)
 
     assert _validation_sections(raised.value) == ("プレイヤー生成",)
+
+
+def test_editor_keeps_loaded_revision_when_a_new_revision_appears() -> None:
+    selected = "saved:setup-id:1"
+    state = {_SOURCE_KEY: selected}
+    sources = ["template:standard_6", selected, "saved:setup-id:2"]
+
+    assert _source_index(state, sources) == 1

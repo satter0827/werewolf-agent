@@ -9,8 +9,8 @@ from typing import Any
 from psycopg.types.json import Jsonb
 
 from werewolf_agent.application.operations import QueuedOperation
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.contracts import AppError, ErrorCode, ResourceNotFoundError
+from werewolf_agent.setup import checksum_payload
 
 
 class SupabaseOperationQueue:

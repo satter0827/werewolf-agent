@@ -6,27 +6,38 @@ import random
 from dataclasses import dataclass, field
 from typing import Literal
 
-from werewolf_agent import (
+from werewolf_agent.adapters.agents.game_context import SetupAgentMetadataProvider
+from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
+from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
+from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
+from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
+from werewolf_agent.application.domain_codec import domain_to_data
+from werewolf_agent.domain import (
+    CompiledRuleSet,
     EventVisibility,
     Game,
     GameEvent,
     GameSetup,
-    Phase,
     Player,
-    PlayerStatus,
-    RuleSet,
     build_game_rules,
 )
-from werewolf_agent.adapters.agents.game_driver import LlmAgentFactory, langchain_agent_factory
-from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.adapters.resources import load_llm_definitions, load_setup_template_catalog
-from werewolf_agent.agents.models import AgentScenario, DeliberationLevel, PlayerProfile
-from werewolf_agent.agents.tracing import LlmInvocationTrace
-from werewolf_agent.application.checksums import checksum_payload
-from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.rules import rule_definition_from_values
+from werewolf_agent.setup import (
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
+)
+from werewolf_agent.simulation import (
+    PlayerController,
+    SimulationLimits,
+    SimulationRunner,
+    SimulationSession,
+    SimulationSpec,
+    SimulationStepKind,
+    SimulationStopReason,
+)
 
 StopReason = Literal["finished", "max_actions", "max_phases"]
 Operation = Literal["action", "advance"]
@@ -114,16 +125,12 @@ class FakeGameDemo:
     """Notebook composition root for one deterministic Fake LLM game."""
 
     game: Game
-    rules: RuleSet
+    rules: CompiledRuleSet
     limits: DemoLimits
     seed: int
-    _factory: LlmAgentFactory
-    _gameplay_random: random.Random
+    _session: SimulationSession
     _trace_sink: _SummaryTraceSink
     _public_events: list[GameEvent]
-    _player_index: int = 0
-    _action_count: int = 0
-    _phase_count: int = 0
 
     @classmethod
     def create(
@@ -147,12 +154,10 @@ class FakeGameDemo:
         rule_definition = rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.model_dump(mode="json"),
-            roles={
-                role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()
-            },
+            rules=mechanics.rules.to_mapping(),
+            roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
             abilities={
-                ability_id: ability.model_dump(mode="json")
+                ability_id: ability.to_mapping()
                 for ability_id, ability in mechanics.abilities.items()
             },
         )
@@ -167,29 +172,59 @@ class FakeGameDemo:
             random=random.Random(namespace_seed(seed, "role_assignment")),
         )
         profiles = {
-            player.player_id: PlayerProfile.model_validate(player.profile.model_dump(mode="json"))
+            player.player_id: PlayerProfile.model_validate(player.profile.to_mapping())
             for player in generated
         }
         trace_sink = _SummaryTraceSink()
-        factory = langchain_agent_factory(
-            _fake_provider_config(),
-            definitions=load_llm_definitions(prompt_path=None, fake_responses_path=None),
-            profiles=profiles,
-            profile_ids_by_player={player_id: player_id for player_id in profiles},
-            scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-            trace_sink=trace_sink,
-            deliberation_level=DeliberationLevel(deliberation_level),
-        )
+        definitions = load_llm_definitions(prompt_path=None, fake_responses_path=None)
+        factories = {
+            player_id: langchain_agent_factory(
+                _fake_provider_config(),
+                definitions=definitions,
+                profile=profile,
+                trace_sink=trace_sink,
+                deliberation_level=DeliberationLevel(deliberation_level),
+            )
+            for player_id, profile in profiles.items()
+        }
         creation_events = [
             event for event in game.creation_events if event.visibility is EventVisibility.PUBLIC
         ]
+        setup_document = setup.to_mapping()
+        execution_limits = limits or DemoLimits()
+        metadata_provider = SetupAgentMetadataProvider(
+            setup=setup_document,
+            snapshot=game.snapshot,
+            setup_checksum=checksum_payload(setup_document),
+            mechanics_checksum=checksum_payload(mechanics.to_mapping()),
+        )
+        session = SimulationRunner().start(
+            game,
+            SimulationSpec(
+                simulation_id=f"demo:{seed}",
+                game_id=f"demo:{seed}",
+                seed=seed,
+                controllers={
+                    player_id: PlayerController(
+                        player_id,
+                        factory,
+                        metadata_provider=metadata_provider,
+                    )
+                    for player_id, factory in factories.items()
+                },
+                limits=SimulationLimits(
+                    max_actions=execution_limits.max_actions,
+                    max_phases=execution_limits.max_phases,
+                ),
+                speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+            ),
+        )
         return cls(
             game=game,
             rules=rules,
-            limits=limits or DemoLimits(),
+            limits=execution_limits,
             seed=seed,
-            _factory=factory,
-            _gameplay_random=random.Random(namespace_seed(seed, "gameplay")),
+            _session=session,
             _trace_sink=trace_sink,
             _public_events=creation_events,
         )
@@ -208,51 +243,32 @@ class FakeGameDemo:
         """Perform one action or phase transition unless the game is finished or bounded."""
         if self._stop_reason() is not None:
             return None
-        snapshot = self.game.snapshot()
-        players = tuple(snapshot.players.values())
-        while self._player_index < len(players):
-            player = players[self._player_index]
-            if player.status is not PlayerStatus.ALIVE:
-                self._player_index += 1
-                continue
-            observation = self.game.view_for(player.id)
-            if not observation.available_actions:
-                self._player_index += 1
-                continue
-            decision_index = len(self._trace_sink.decisions)
-            agent = self._factory.create(
-                player.id,
-                seed=namespace_seed(
-                    self.seed,
-                    f"demo:{snapshot.day}:{snapshot.phase.value}:{player.id}:{self._action_count}",
-                ),
-            )
-            action = agent.act(observation)
-            emitted = self.game.submit(action)
-            public_events = self._public(emitted)
-            self._action_count += 1
-            if not self.game.view_for(player.id).available_actions:
-                self._player_index += 1
-            is_public_action = action.type.value == "speech"
+        decision_index = len(self._trace_sink.decisions)
+        step = self._session.step()
+        if step.stop_reason is not None:
+            return None
+        public_events = self._public(list(step.events))
+        if step.kind is SimulationStepKind.AGENT_ACTION:
+            is_public_action = step.action_type == "speech"
             return DemoStep(
                 operation="action",
-                day=snapshot.day,
-                phase=snapshot.phase.value,
-                actor_id=action.player_id if is_public_action else None,
-                action_type=action.type.value,
+                day=step.day_before,
+                phase=step.phase_before,
+                actor_id=step.actor_id if is_public_action else None,
+                action_type=step.action_type,
                 private_actor_omitted=not is_public_action,
-                private_target_omitted=not is_public_action and action.target_id is not None,
+                private_target_omitted=(
+                    not is_public_action and step.action_type in {"vote", "use_ability"}
+                ),
                 public_events=public_events,
                 decision=self._trace_sink.decisions[decision_index],
             )
-        emitted = self.game.advance(self._gameplay_random)
-        public_events = self._public(emitted)
-        self._phase_count += 1
-        self._player_index = 0
+        if step.kind is not SimulationStepKind.PHASE_ADVANCED:
+            raise RuntimeError(f"unexpected simulation step: {step.kind}")
         return DemoStep(
             operation="advance",
-            day=snapshot.day,
-            phase=snapshot.phase.value,
+            day=step.day_before,
+            phase=step.phase_before,
             actor_id=None,
             action_type=None,
             private_actor_omitted=False,
@@ -262,19 +278,26 @@ class FakeGameDemo:
 
     def run(self) -> DemoResult:
         """Run until completion or a configured limit and return a safe summary."""
-        while self.step() is not None:
-            pass
+        try:
+            while self.step() is not None:
+                pass
+        except BaseException:
+            self.close()
+            raise
         snapshot = self.game.snapshot()
         stop_reason = self._stop_reason()
         if stop_reason is None:
+            self.close()
             raise RuntimeError("demo stopped without a terminal reason")
+        result = self._session.result(_simulation_stop_reason(stop_reason))
+        self.close()
         payload = {
             "completed": snapshot.is_finished,
             "stop_reason": stop_reason,
             "day": snapshot.day,
             "winner_id": snapshot.winner_id,
-            "action_count": self._action_count,
-            "phase_count": self._phase_count,
+            "action_count": result.action_count,
+            "phase_count": result.phase_count,
             "public_events": [domain_to_data(event) for event in self._public_events],
             "decisions": [
                 {
@@ -294,12 +317,16 @@ class FakeGameDemo:
             stop_reason=stop_reason,
             day=snapshot.day,
             winner_id=snapshot.winner_id,
-            action_count=self._action_count,
-            phase_count=self._phase_count,
+            action_count=result.action_count,
+            phase_count=result.phase_count,
             public_events=tuple(self._public_events),
             decisions=tuple(self._trace_sink.decisions),
             checksum=checksum_payload(payload),
         )
+
+    def close(self) -> None:
+        """Agent Sessionを冪等に解放する."""
+        self._session.close()
 
     def _public(self, events: list[GameEvent]) -> tuple[GameEvent, ...]:
         public = tuple(event for event in events if event.visibility is EventVisibility.PUBLIC)
@@ -307,13 +334,26 @@ class FakeGameDemo:
         return public
 
     def _stop_reason(self) -> StopReason | None:
-        if self.game.snapshot().phase is Phase.FINISHED:
+        if not self._session.steps or self._session.steps[-1].stop_reason is None:
+            return None
+        reason = self._session.steps[-1].stop_reason
+        if reason is SimulationStopReason.FINISHED:
             return "finished"
-        if self._action_count >= self.limits.max_actions:
+        if reason is SimulationStopReason.ACTION_LIMIT:
             return "max_actions"
-        if self._phase_count >= self.limits.max_phases:
+        if reason is SimulationStopReason.PHASE_LIMIT:
             return "max_phases"
-        return None
+        raise RuntimeError(f"unexpected demo stop reason: {reason}")
+
+
+def _simulation_stop_reason(reason: StopReason) -> SimulationStopReason:
+    if reason == "finished":
+        return SimulationStopReason.FINISHED
+    if reason == "max_actions":
+        return SimulationStopReason.ACTION_LIMIT
+    if reason == "max_phases":
+        return SimulationStopReason.PHASE_LIMIT
+    raise ValueError(reason)
 
 
 def _fake_provider_config() -> LlmProviderConfig:

@@ -19,28 +19,36 @@ import httpx
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
+from werewolf_agent.adapters.agents.game_context import SetupAgentMetadataProvider
 from werewolf_agent.adapters.agents.game_driver import langchain_agent_factory
 from werewolf_agent.adapters.application_bridge import (
     build_llm_definitions,
     build_setup_catalog,
 )
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.agents.models import (
-    AgentAbilityContext,
-    AgentGameContext,
-    AgentScenario,
+from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
+from werewolf_agent.adapters.llm.models import (
     DeliberationLevel,
     PlayerProfile,
 )
-from werewolf_agent.agents.tracing import LlmInvocationTrace
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
+from werewolf_agent.agents import AgentFactory
 from werewolf_agent.application.domain_codec import domain_to_data
-from werewolf_agent.application.players import generate_players
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.replay import checksum_payload
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import GameSetupDocument
-from werewolf_agent.domain import EventVisibility, Game, GameSetup, Phase, Player, build_game_rules
+from werewolf_agent.domain import EventVisibility, Game, GameSetup, Player, build_game_rules
 from werewolf_agent.settings import get_settings
+from werewolf_agent.setup import (
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
+)
+from werewolf_agent.simulation import (
+    PlayerController,
+    SimulationLimits,
+    SimulationRunner,
+    SimulationSpec,
+    SimulationStepKind,
+)
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
@@ -693,11 +701,9 @@ def _run_preset(
     rule_definition = rule_definition_from_values(
         player_count=sum(mechanics.role_counts.values()),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.model_dump(mode="json"),
-        roles={key: value.model_dump(mode="json") for key, value in mechanics.roles.items()},
-        abilities={
-            key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
-        },
+        rules=mechanics.rules.to_mapping(),
+        roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
+        abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
     )
     players = generate_players(
         setup.player_generation,
@@ -705,31 +711,59 @@ def _run_preset(
         seed=seed,
     )
     profiles = {
-        player.player_id: PlayerProfile.model_validate(player.profile.model_dump(mode="json"))
+        player.player_id: PlayerProfile.model_validate(player.profile.to_mapping())
         for player in players
     }
-    role_rng = random.Random(namespace_seed(seed, "role_assignment"))
-    gameplay_rng = random.Random(namespace_seed(seed, "gameplay"))
-    game = Game.create(
-        GameSetup(
-            players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
-        ),
-        rules=build_game_rules(rule_definition),
-        random=role_rng,
-    )
     trace_sink = InMemoryTraceSink(trace_callback)
-    contexts = _game_contexts(
-        setup, game, setup_checksum=checksum_payload(setup.model_dump(mode="json"))
+    setup_document = setup.to_mapping()
+    setup_checksum = checksum_payload(setup_document)
+    mechanics_checksum = checksum_payload(mechanics.to_mapping())
+    factories: dict[str, AgentFactory] = {
+        player_id: langchain_agent_factory(
+            config,
+            definitions=llm_definitions,
+            profile=profile,
+            trace_sink=trace_sink,
+            deliberation_level=deliberation_level,
+        )
+        for player_id, profile in profiles.items()
+    }
+    player_setup = GameSetup(
+        players=tuple(Player(id=item.player_id, name=item.profile.name) for item in players)
     )
-    factory = langchain_agent_factory(
-        config,
-        definitions=llm_definitions,
-        profiles=profiles,
-        profile_ids_by_player={player_id: player_id for player_id in profiles},
-        scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-        game_contexts=contexts,
-        trace_sink=trace_sink,
-        deliberation_level=deliberation_level,
+    rules = build_game_rules(rule_definition)
+    game = Game.create(
+        player_setup,
+        rules=rules,
+        random=random.Random(namespace_seed(seed, "role_assignment")),
+    )
+    metadata_provider = SetupAgentMetadataProvider(
+        setup=setup_document,
+        snapshot=game.snapshot,
+        setup_checksum=setup_checksum,
+        mechanics_checksum=mechanics_checksum,
+    )
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            simulation_id=f"review:{seed}",
+            game_id=f"review:{seed}",
+            seed=seed,
+            controllers={
+                player_id: PlayerController(
+                    player_id,
+                    factory,
+                    metadata_provider=metadata_provider,
+                )
+                for player_id, factory in factories.items()
+            },
+            limits=SimulationLimits(
+                max_actions=MAX_INVOCATIONS,
+                max_phases=MAX_PHASES,
+                decision_timeout_seconds=config.timeout_seconds,
+            ),
+            speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+        ),
     )
     public_timeline = [
         domain_to_data(event)
@@ -739,52 +773,25 @@ def _run_preset(
     phase_count = 0
     action_count = 0
     stopped_for_preflight = False
-    while game.snapshot().phase is not Phase.FINISHED and phase_count < MAX_PHASES:
-        for index, player in enumerate(tuple(game.snapshot().players.values())):
-            if player.status.value != "alive":
-                continue
-            observation = game.view_for(player.id)
-            while observation.available_actions:
-                if len(trace_sink.records) >= invocation_limit:
-                    stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
-                    break
-                agent = factory.create(
-                    player.id,
-                    seed=seed + phase_count * 1009 + index * 131 + action_count,
-                )
-                action = agent.act(observation)
-                emitted = game.submit(action)
-                action_count += 1
-                public_timeline.extend(
-                    domain_to_data(event)
-                    for event in emitted
-                    if event.visibility is EventVisibility.PUBLIC
-                )
-                observation = game.view_for(player.id)
-            if stopped_for_preflight:
+    try:
+        while True:
+            if len(trace_sink.records) >= invocation_limit:
+                stopped_for_preflight = invocation_limit < MAX_INVOCATIONS
                 break
-        if stopped_for_preflight:
-            break
-        emitted = game.advance(gameplay_rng)
-        public_timeline.extend(
-            domain_to_data(event) for event in emitted if event.visibility is EventVisibility.PUBLIC
-        )
-        phase_count += 1
-        contexts = _game_contexts(
-            setup,
-            game,
-            setup_checksum=checksum_payload(setup.model_dump(mode="json")),
-        )
-        factory = langchain_agent_factory(
-            config,
-            definitions=llm_definitions,
-            profiles=profiles,
-            profile_ids_by_player={player_id: player_id for player_id in profiles},
-            scenario=AgentScenario(name=setup.theme.name, premise=setup.theme.premise),
-            game_contexts=contexts,
-            trace_sink=trace_sink,
-            deliberation_level=deliberation_level,
-        )
+            step = session.step()
+            public_timeline.extend(
+                domain_to_data(event)
+                for event in step.events
+                if event.visibility is EventVisibility.PUBLIC
+            )
+            if step.kind is SimulationStepKind.AGENT_ACTION:
+                action_count += 1
+            elif step.kind is SimulationStepKind.PHASE_ADVANCED:
+                phase_count += 1
+            if step.stop_reason is not None:
+                break
+    finally:
+        session.close()
     snapshot = game.snapshot()
     traces = [_trace_document(trace) for trace in trace_sink.records]
     fallbacks = sum(bool(trace["fallback_used"]) for trace in traces)
@@ -798,7 +805,7 @@ def _run_preset(
     )
     prompt_characters = sum(_as_int(trace["prompt_characters"]) for trace in traces)
     response_characters = sum(_as_int(trace["response_characters"]) for trace in traces)
-    completed = snapshot.phase is Phase.FINISHED
+    completed = snapshot.is_finished
     state = _classify_scenario_state(
         stopped_for_preflight=stopped_for_preflight,
         has_traces=bool(traces),
@@ -829,8 +836,8 @@ def _run_preset(
         "average_prompt_characters": round(prompt_characters / len(traces), 3) if traces else 0,
         "response_characters": response_characters,
         "gameplay_metrics": _gameplay_metrics(traces),
-        "setup_checksum": checksum_payload(setup.model_dump(mode="json")),
-        "mechanics_checksum": checksum_payload(mechanics.model_dump(mode="json")),
+        "setup_checksum": checksum_payload(setup.to_mapping()),
+        "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
         "public_timeline": public_timeline,
         "private_traces": traces,
     }
@@ -930,61 +937,6 @@ def _gameplay_metrics(traces: Sequence[Mapping[str, object]]) -> dict[str, objec
             profile: len(values) for profile, values in sorted(profile_choices.items())
         },
     }
-
-
-def _game_contexts(
-    setup: GameSetupDocument,
-    game: Game,
-    *,
-    setup_checksum: str,
-) -> dict[str, AgentGameContext]:
-    snapshot = game.snapshot()
-    mechanics = setup.mechanics
-    mechanics_checksum = checksum_payload(mechanics.model_dump(mode="json"))
-    rules = mechanics.rules.model_dump(mode="json")
-    contexts: dict[str, AgentGameContext] = {}
-    for player in snapshot.players.values():
-        if player.role is None:
-            continue
-        role = mechanics.roles[player.role]
-        abilities = []
-        for ability_id in role.abilities:
-            ability = mechanics.abilities[ability_id]
-            used = snapshot.ability_uses.get(player.id, {}).get(ability_id, 0)
-            remaining = (
-                max(0, ability.max_uses - used) if isinstance(ability.max_uses, int) else None
-            )
-            abilities.append(
-                AgentAbilityContext(
-                    id=ability_id,
-                    name=setup.theme.ability_names[ability_id],
-                    kind=ability.kind,
-                    remaining_uses=remaining,
-                )
-            )
-        identity_faction = role.identity_faction
-        victory_team = role.victory_team
-        contexts[player.id] = AgentGameContext(
-            theme_id=setup.theme.id,
-            theme_name=setup.theme.name,
-            premise=setup.theme.premise,
-            role_id=player.role,
-            role_name=setup.theme.role_names[player.role],
-            identity_faction=identity_faction,
-            identity_faction_name=setup.theme.faction_names[identity_faction],
-            victory_team=victory_team,
-            victory_team_name=setup.theme.faction_names[victory_team],
-            objective=setup.theme.role_objectives[player.role],
-            abilities=tuple(abilities),
-            relevant_rules={
-                key: value for key, value in rules.items() if isinstance(value, (str, bool, int))
-            },
-            action_names=dict(setup.theme.action_names),
-            phase_names=dict(setup.theme.phase_names),
-            setup_checksum=setup_checksum,
-            mechanics_checksum=mechanics_checksum,
-        )
-    return contexts
 
 
 def _trace_document(trace: LlmInvocationTrace) -> dict[str, object]:

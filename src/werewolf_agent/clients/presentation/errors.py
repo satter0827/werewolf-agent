@@ -44,6 +44,7 @@ _JAPANESE_STATE_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.AUTHORIZATION_FAILED: "この操作を行う権限がありません。",
     ErrorCode.API_UNAVAILABLE: "APIに接続できません。",
     ErrorCode.RESOURCE_NOT_FOUND: "対象が見つかりません。",
+    ErrorCode.SETUP_REVISION_CONFLICT: "別の操作で新しい設定版が保存されています。",
     ErrorCode.HTTP_ERROR: "通信を完了できませんでした。",
     ErrorCode.GAME_INVALID_PHASE: "現在のフェーズではこの操作を行えません。",
     ErrorCode.GAME_INVALID_ACTION: "このゲームでは選択した操作を行えません。",
@@ -71,24 +72,11 @@ def present_error(error: AppError, *, language: PresentationLanguage) -> ErrorPr
     """Build consistent recovery guidance from the stable error catalog."""
     recovery = get_error_spec(error.code).recovery
     return ErrorPresentation(
-        detail=(
-            error.detail
-            if language == "ja" and _contains_japanese(error.detail)
-            else _JAPANESE_STATE_MESSAGES[error.code]
-            if language == "ja"
-            else error.detail
-        ),
+        detail=_JAPANESE_STATE_MESSAGES[error.code] if language == "ja" else error.detail,
         code=error.code.value,
         retryable=error.retryable,
         recovery=recovery,
         next_action=_RECOVERY_MESSAGES[language][recovery],
-    )
-
-
-def _contains_japanese(value: str) -> bool:
-    return any(
-        "\u3040" <= character <= "\u30ff" or "\u4e00" <= character <= "\u9fff"
-        for character in value
     )
 
 

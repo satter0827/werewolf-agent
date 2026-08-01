@@ -10,6 +10,7 @@ from pathlib import Path
 from types import ModuleType
 
 from scripts.architecture.analysis import (
+    _project_module_name,
     _public_export_findings,
     _public_type_closure,
     graph_cycles,
@@ -34,8 +35,12 @@ from scripts.architecture.definition import (
 )
 
 import werewolf_agent as package
+import werewolf_agent.agents as agents
 import werewolf_agent.application as application
 import werewolf_agent.domain as domain
+import werewolf_agent.experiments as experiments
+import werewolf_agent.setup as setup
+import werewolf_agent.simulation as simulation
 
 ROOT = Path(__file__).resolve().parents[3]
 PACKAGE = ROOT / "src" / "werewolf_agent"
@@ -69,14 +74,12 @@ def test_repository_layout_matches_the_architecture_manifest() -> None:
 
 
 def test_public_surfaces_are_minimal_and_explicit() -> None:
-    """Pythonの公開面をroot、domain、applicationに限定する。"""
-    assert (package, application, domain) == PUBLIC_MODULES
+    """Pythonの公開面を責務別moduleに限定する。"""
+    assert (package, application, agents, domain, experiments, simulation, setup) == PUBLIC_MODULES
     for module in PUBLIC_MODULES:
         assert module.__all__
         assert all(hasattr(module, name) for name in module.__all__)
-    assert set(package.__all__) == {*domain.__all__, "__version__"}
-    for name in domain.__all__:
-        assert getattr(package, name) is getattr(domain, name)
+    assert package.__all__ == ["__version__"]
     assert not _public_export_findings()
 
 
@@ -205,7 +208,7 @@ def test_public_export_findings_allow_an_explicit_convenience_alias(monkeypatch)
     assert not _public_export_findings()
 
 
-def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
+def test_create_restore_and_replay_use_the_explicit_rule_pack_registry() -> None:
     owners = (
         PACKAGE / "application" / "handlers" / "games.py",
         PACKAGE / "application" / "handlers" / "common.py",
@@ -214,8 +217,8 @@ def test_create_restore_and_replay_share_the_domain_rule_factory() -> None:
 
     for owner in owners:
         source = owner.read_text(encoding="utf-8")
-        assert "build_game_rules(" in source, owner
-        assert "RuleRegistry" not in source, owner
+        assert "rule_packs.compile(" in source, owner
+        assert "build_game_rules(" not in source, owner
 
 
 def test_replay_verifies_every_create_command_checksum() -> None:
@@ -227,16 +230,37 @@ def test_replay_verifies_every_create_command_checksum() -> None:
     for checksum in ("setup_checksum", "mechanics_checksum", "roster_checksum"):
         assert f'"{checksum}": stored_config.get("{checksum}")' in worker_store
         assert f'genesis["{checksum}"]' in replay
+    assert '"rule_pack_manifest": _object(stored_config.get("rule_pack_manifest"))' in worker_store
+    assert 'genesis["rule_pack_manifest"]' in replay
 
 
-def test_domain_uses_only_the_standard_library_and_domain_modules() -> None:
-    """Domainへvalidation frameworkや他layerを持ち込まない。"""
+def test_standard_sdk_uses_only_the_standard_library_and_owned_modules() -> None:
+    """標準SDKへframeworkや提供層を持ち込まない。"""
+    roots = {
+        PACKAGE / "agents": ("werewolf_agent.agents",),
+        PACKAGE / "domain": ("werewolf_agent.domain",),
+        PACKAGE / "experiments": (
+            "werewolf_agent.agents",
+            "werewolf_agent.domain",
+            "werewolf_agent.experiments",
+            "werewolf_agent.setup",
+            "werewolf_agent.simulation",
+        ),
+        PACKAGE / "simulation": (
+            "werewolf_agent.agents",
+            "werewolf_agent.domain",
+            "werewolf_agent.setup",
+            "werewolf_agent.simulation",
+        ),
+        PACKAGE / "setup": ("werewolf_agent.domain", "werewolf_agent.setup"),
+    }
     offenders = [
         (path.relative_to(ROOT), imported)
-        for path in (PACKAGE / "domain").rglob("*.py")
+        for root, owned_modules in roots.items()
+        for path in root.rglob("*.py")
         for imported in _imports(path)
         if imported.split(".", maxsplit=1)[0] not in sys.stdlib_module_names
-        and not imported.startswith("werewolf_agent.domain")
+        and not imported.startswith(owned_modules)
     ]
     assert not offenders
 
@@ -252,10 +276,18 @@ def test_api_routes_do_not_invoke_access_or_queue_adapters_directly() -> None:
 
 def test_worker_invokes_application_through_the_public_facade() -> None:
     """Workerからapplication handlerの直接実行を禁止する。"""
-    worker = PACKAGE / "worker" / "service.py"
-    imports = _imports(worker)
-    assert "werewolf_agent.application.handlers" not in imports
-    assert "build_setup_catalog" not in worker.read_text(encoding="utf-8")
+    workers = tuple((PACKAGE / "worker").glob("*.py"))
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
+    imports = {
+        _project_module_name(imported, modules) or imported
+        for worker in workers
+        for imported in _imports(worker)
+    }
+    assert not {
+        imported for imported in imports if imported.startswith("werewolf_agent.application.")
+    }
+    service = (PACKAGE / "worker" / "service.py").read_text(encoding="utf-8")
+    assert "build_setup_catalog" not in service
 
 
 def test_persisted_game_versions_are_append_only() -> None:
@@ -401,13 +433,15 @@ def test_packaged_toml_owns_non_secret_runtime_defaults() -> None:
 
 def test_api_routes_only_use_application_contracts() -> None:
     """Path単位のimport制約をmanifestから評価する。"""
+    modules = {module_name(path): path for path in PACKAGE.rglob("*.py")}
     offenders = [
-        (name, path.relative_to(ROOT), imported)
+        (name, path.relative_to(ROOT), imported_module)
         for name, rule in PATH_RULES.items()
         for source_root in rule.roots
         for path in (ROOT / source_root).rglob("*.py")
         for imported in _imports(path)
-        if imported.startswith(rule.forbidden)
+        if (imported_module := _project_module_name(imported, modules)) is not None
+        and imported_module.startswith(rule.forbidden)
     ]
     assert not offenders
 
@@ -445,6 +479,14 @@ def test_console_entrypoints_match_the_architecture_manifest() -> None:
         "werewolf-agent-api": ENTRYPOINTS["api"],
         "werewolf-agent-worker": ENTRYPOINTS["worker"],
     }
+
+
+def test_streamlit_extra_supports_the_width_contract() -> None:
+    """全幅widgetで使用するwidth引数をoptional依存の下限でも保証する。"""
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)["project"]
+
+    assert "streamlit>=1.48,<2" in project["optional-dependencies"]["streamlit"]
 
 
 def test_domain_and_application_have_no_io_or_logging_dependencies() -> None:

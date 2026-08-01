@@ -9,7 +9,7 @@ from uuid import uuid4
 
 from werewolf_agent.application.constants import AUTOMATED_AGENT_TYPE, MANUAL_AGENT_TYPE
 from werewolf_agent.application.domain_codec import domain_to_data, game_setup_from_data
-from werewolf_agent.application.errors import GameNotFoundError
+from werewolf_agent.application.errors import ConfigError, GameNotFoundError
 from werewolf_agent.application.handlers.common import (
     _config_text,
     _narration_mode,
@@ -43,15 +43,13 @@ from werewolf_agent.application.projections import (
     public_state_payload_from_snapshot,
     winner_from_snapshot,
 )
-from werewolf_agent.application.randomness import namespace_seed
-from werewolf_agent.application.rules import rule_definition_from_values
-from werewolf_agent.application.setup_document import LocalRulesDefinition
 from werewolf_agent.application.types import (
     Faction,
     GamePhase,
     GameStatus,
 )
-from werewolf_agent.domain import Game, build_game_rules
+from werewolf_agent.domain import Game
+from werewolf_agent.setup import LocalRulesDefinition, namespace_seed, rule_definition_from_values
 
 
 def create_game(
@@ -74,15 +72,17 @@ def create_game(
     definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.model_dump(mode="json"),
-        roles={role_id: role.model_dump(mode="json") for role_id, role in mechanics.roles.items()},
+        rules=mechanics.rules.to_mapping(),
+        roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
         abilities={
-            ability_id: ability.model_dump(mode="json")
-            for ability_id, ability in mechanics.abilities.items()
+            ability_id: ability.to_mapping() for ability_id, ability in mechanics.abilities.items()
         },
     )
-    rules = build_game_rules(definition)
-    setup_payload = setup.model_dump(mode="json")
+    try:
+        rules = dependencies.rule_packs.compile(command.rule_pack_provider_id, definition)
+    except ValueError as exc:
+        raise ConfigError("要求されたRule Packが構成されていません。") from exc
+    setup_payload = setup.to_mapping()
     scenario_config = {
         "scenario_id": setup.theme.id,
         "scenario_name": setup.theme.name,
@@ -110,6 +110,7 @@ def create_game(
             player.player_id: player.model_dump(mode="json", exclude={"player_id"})
             for player in command.players
         },
+        "rule_pack_manifest": rules.manifest.to_mapping(),
     }
     game = Game.create(
         game_setup_from_data({"players": players}),
@@ -181,7 +182,7 @@ def get_game_reveal(
     if run is None:
         raise GameNotFoundError(str(game_id))
 
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     snapshot = game.snapshot()
     pending_actions = snapshot.pending_actions
     alive_player_ids = [player.id for player in snapshot.players.values() if player.is_alive]
@@ -207,7 +208,7 @@ def get_game_reveal(
         narration_mode=_narration_mode(run.config),
         theme=dict(setup_theme) if setup_theme is not None else None,
         role_counts=dict(snapshot.config.role_counts),
-        rules=LocalRulesDefinition.model_validate(domain_to_data(snapshot.config.rules)),
+        rules=LocalRulesDefinition.from_mapping(domain_to_data(snapshot.config.rules)),
         players=[
             GameRevealPlayer(
                 id=player.id,

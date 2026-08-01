@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import random
+from collections import Counter
 from dataclasses import replace
+from typing import TYPE_CHECKING
 
 from werewolf_agent.domain._messages import (
     message_expected_phase,
@@ -15,12 +17,17 @@ from werewolf_agent.domain.state import (
     FACTION_FOX,
     FACTION_VILLAGE,
     FACTION_WEREWOLF,
+    DeathReaction,
+    DeathReactionResolution,
     GameState,
     Phase,
     Player,
     PlayerStatus,
     WinResult,
 )
+
+if TYPE_CHECKING:
+    from werewolf_agent.domain.rule_packs import AbilityPolicy
 
 
 def faction_for_role(snapshot: GameState, role: str) -> str:
@@ -89,43 +96,115 @@ def resolve_death_reactions(
     newly_dead_player_ids: list[str],
     rng: random.Random,
     *,
+    policy: AbilityPolicy,
     during_night: bool,
 ) -> tuple[GameState, tuple[str, ...]]:
-    """Resolve passive hunter reactions, including deterministic chained deaths."""
-    updated = snapshot
+    """Policy Outcomeを検証し、連鎖死亡と使用回数をatomicに適用する."""
+    random_state = rng.getstate()
+    try:
+        resolution = policy.resolve_death_reactions(
+            snapshot,
+            tuple(newly_dead_player_ids),
+            rng,
+        )
+        return _apply_death_reaction_resolution(
+            snapshot,
+            newly_dead_player_ids,
+            resolution,
+            during_night=during_night,
+        )
+    except Exception:
+        rng.setstate(random_state)
+        raise
+
+
+def resolve_core_death_reactions(
+    snapshot: GameState,
+    newly_dead_player_ids: tuple[str, ...],
+    rng: random.Random,
+) -> DeathReactionResolution:
+    """組み込みの決定的な死亡反応連鎖をstate変更なしで計算する."""
+    alive_ids = {player.id for player in alive_players(snapshot)}
     queue = list(newly_dead_player_ids)
-    reaction_deaths: list[str] = []
+    reactions: list[DeathReaction] = []
+    pending_uses: Counter[tuple[str, str]] = Counter()
     while queue:
         dead_id = queue.pop(0)
-        dead = updated.players[dead_id]
+        dead = snapshot.players[dead_id]
         if dead.role is None:
             continue
-        role = updated.config.roles.require_role(dead.role)
+        role = snapshot.config.roles.require_role(dead.role)
         reaction_abilities = sorted(
             (
                 ability_id
                 for ability_id in role.abilities
-                if _death_reaction_is_enabled(updated, dead_id, ability_id)
+                if _death_reaction_is_enabled(
+                    snapshot,
+                    dead_id,
+                    ability_id,
+                    pending_uses=pending_uses,
+                )
             ),
             key=lambda ability_id: (
-                updated.config.abilities[ability_id].resolution_priority,
+                snapshot.config.abilities[ability_id].resolution_priority,
                 ability_id,
             ),
         )
         for ability_id in reaction_abilities:
-            targets = sorted(player.id for player in alive_players(updated))
+            targets = sorted(alive_ids)
             if not targets:
                 break
             target_id = rng.choice(targets)
-            updated = _consume_passive_use(updated, dead_id, ability_id)
-            updated = mark_dead(
-                updated,
-                target_id,
-                killed_night=updated.day if during_night else None,
-                eliminated_day=None if during_night else updated.day,
-            )
-            reaction_deaths.append(target_id)
+            alive_ids.remove(target_id)
+            pending_uses[(dead_id, ability_id)] += 1
+            reactions.append(DeathReaction(dead_id, ability_id, target_id))
             queue.append(target_id)
+    return DeathReactionResolution(tuple(reactions))
+
+
+def _apply_death_reaction_resolution(
+    snapshot: GameState,
+    newly_dead_player_ids: list[str],
+    resolution: DeathReactionResolution,
+    *,
+    during_night: bool,
+) -> tuple[GameState, tuple[str, ...]]:
+    """検証済み死亡反応を順序どおりGameStateへ適用する."""
+    if not isinstance(resolution, DeathReactionResolution):
+        raise TypeError("ability policy must return DeathReactionResolution")
+    updated = snapshot
+    dead_ids = set(newly_dead_player_ids)
+    reaction_deaths: list[str] = []
+    resolved_abilities: set[tuple[str, str]] = set()
+    for reaction in resolution.reactions:
+        if reaction.player_id not in dead_ids:
+            raise ValueError("death reaction owner must already be dead")
+        owner = updated.players[reaction.player_id]
+        if owner.role is None:
+            raise ValueError("death reaction owner must have a role")
+        role = updated.config.roles.require_role(owner.role)
+        if reaction.ability_id not in role.abilities:
+            raise ValueError("death reaction ability must belong to its owner")
+        ability_key = (reaction.player_id, reaction.ability_id)
+        if ability_key in resolved_abilities:
+            raise ValueError("death reaction ability can resolve only once")
+        if not _death_reaction_is_enabled(
+            updated,
+            reaction.player_id,
+            reaction.ability_id,
+        ):
+            raise ValueError("death reaction ability is not enabled")
+        require_alive(updated, reaction.target_id)
+        resolved_abilities.add(ability_key)
+        updated = _consume_passive_use(updated, reaction.player_id, reaction.ability_id)
+        updated = mark_dead(
+            updated,
+            reaction.target_id,
+            killed_night=updated.day if during_night else None,
+            eliminated_day=None if during_night else updated.day,
+        )
+        reaction_deaths.append(reaction.target_id)
+        dead_ids.add(reaction.target_id)
     return updated, tuple(reaction_deaths)
 
 
@@ -133,9 +212,13 @@ def _death_reaction_is_enabled(
     snapshot: GameState,
     player_id: str,
     ability_id: str,
+    *,
+    pending_uses: Counter[tuple[str, str]] | None = None,
 ) -> bool:
     ability = snapshot.config.abilities[ability_id]
     used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
+    if pending_uses is not None:
+        used += pending_uses[(player_id, ability_id)]
     return (
         ability.kind == "death_reaction"
         and ability.phase is snapshot.phase

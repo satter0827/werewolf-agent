@@ -27,13 +27,21 @@ def test_wheel_contains_entrypoints_and_packaged_resources() -> None:
     assert "werewolf-agent-api =" in entrypoint_text
     assert "werewolf-agent-worker =" in entrypoint_text
     assert "werewolf_agent/settings/resources/defaults.toml" in names
-    assert "werewolf_agent/agents/resources/prompts/agent_decision.toml" in names
+    assert "werewolf_agent/adapters/llm/resources/agent_decision.toml" in names
     assert not any("notebooks/" in name for name in names)
     assert (
-        "Summary: Deterministic Werewolf backend for LLM agents with FastAPI, Streamlit, and "
-        "Supabase."
+        "Summary: Deterministic headless Werewolf SDK for agent experiments and applications."
     ) in metadata_text
     assert "Keywords: ai-agents,llm,multi-agent-systems,social-deduction,werewolf" in metadata_text
+    requires_dist = [
+        line.removeprefix("Requires-Dist: ")
+        for line in metadata_text.splitlines()
+        if line.startswith("Requires-Dist: ")
+    ]
+    assert requires_dist
+    assert all("extra ==" in requirement for requirement in requires_dist)
+    for extra in ("application", "api", "cli", "llm", "streamlit", "worker"):
+        assert f"Provides-Extra: {extra}" in metadata_text
     for label, url in (
         ("Homepage", "https://github.com/satter0827/werewolf-agent"),
         ("Documentation", "https://github.com/satter0827/werewolf-agent/tree/main/docs"),

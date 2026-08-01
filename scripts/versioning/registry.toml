@@ -8,12 +8,12 @@ watch = ["src/", "pyproject.toml", "supabase/migrations/"]
 
 [[boundaries]]
 name = "setup"
-owner = "application"
+owner = "setup"
 standard = "semver"
 change_detection = "python_ast"
-path = "src/werewolf_agent/application/versions.py"
+path = "src/werewolf_agent/setup/document.py"
 pattern = 'SETUP_SCHEMA_VERSION:\s*Final\s*=\s*"([^"]+)"'
-watch = ["src/werewolf_agent/application/setup_document.py", "src/werewolf_agent/contracts/schemas.py", "src/werewolf_agent/application/resources/setups/", "src/werewolf_agent/adapters/supabase/setup_repository.py", "supabase/migrations/"]
+watch = ["src/werewolf_agent/setup/document.py", "src/werewolf_agent/application/resources/setups/", "src/werewolf_agent/adapters/supabase/setup_repository.py", "supabase/migrations/"]
 
 [[boundaries]]
 name = "replay"
@@ -24,12 +24,52 @@ pattern = 'REPLAY_FORMAT_VERSION:\s*Final\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/application/replay.py", "src/werewolf_agent/adapters/supabase/worker_store.py"]
 
 [[boundaries]]
+name = "rule-pack"
+owner = "domain"
+standard = "semver"
+path = "src/werewolf_agent/domain/rule_packs.py"
+pattern = 'RULE_PACK_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/domain/rule_packs.py", "src/werewolf_agent/domain/definitions.py", "src/werewolf_agent/domain/game.py", "src/werewolf_agent/domain/rules/"]
+
+[[boundaries]]
+name = "agent"
+owner = "agents"
+standard = "semver"
+path = "src/werewolf_agent/agents/contracts.py"
+pattern = 'AGENT_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/agents/contracts.py", "src/werewolf_agent/agents/builtins.py", "src/werewolf_agent/agents/__init__.py"]
+
+[[boundaries]]
 name = "event"
 owner = "contracts"
 standard = "semver"
 path = "src/werewolf_agent/contracts/versions.py"
 pattern = 'EVENT_SCHEMA_VERSION:\s*Final\s*=\s*"([^"]+)"'
 watch = ["src/werewolf_agent/contracts/events.py"]
+
+[[boundaries]]
+name = "simulation"
+owner = "simulation"
+standard = "semver"
+path = "src/werewolf_agent/simulation/contracts.py"
+pattern = 'SIMULATION_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/simulation/"]
+
+[[boundaries]]
+name = "experiment"
+owner = "experiments"
+standard = "semver"
+path = "src/werewolf_agent/experiments/contracts.py"
+pattern = 'EXPERIMENT_CONTRACT_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/experiments/"]
+
+[[boundaries]]
+name = "experiment-evaluator"
+owner = "experiments"
+standard = "semver"
+path = "src/werewolf_agent/experiments/evaluation.py"
+pattern = 'STANDARD_EVALUATOR_VERSION\s*=\s*"([^"]+)"'
+watch = ["src/werewolf_agent/experiments/evaluation.py"]
 
 [[boundaries]]
 name = "architecture"
@@ -45,4 +85,4 @@ owner = "scripts.quality"
 standard = "semver"
 path = "scripts/versioning/versions.py"
 pattern = 'QUALITY_EVIDENCE_VERSION\s*=\s*"([^"]+)"'
-watch = ["scripts/quality/reporting.py", "scripts/quality/artifacts.py", "scripts/quality/retention.py"]
+watch = ["scripts/quality/runner.py", "scripts/quality/reporting.py", "scripts/quality/artifacts.py", "scripts/quality/retention.py"]

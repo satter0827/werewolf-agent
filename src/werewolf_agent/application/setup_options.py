@@ -6,9 +6,6 @@ import secrets
 from collections.abc import Mapping
 from typing import Literal
 
-from pydantic import ValidationError
-
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.constants import DeliberationLevel
 from werewolf_agent.application.errors import ConfigError
 from werewolf_agent.application.models import (
@@ -19,9 +16,9 @@ from werewolf_agent.application.models import (
     PlayerPreviewResult,
     SetupValidationResult,
 )
-from werewolf_agent.application.players import generate_players
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog
-from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.domain import CORE_RULE_PACK_ID
+from werewolf_agent.setup import GameSetupDocument, checksum_payload, generate_players
 
 ABILITY_KINDS = (
     "attack",
@@ -58,8 +55,8 @@ def setup_catalog_options(
 def validate_setup_document(payload: Mapping[str, object]) -> SetupValidationResult:
     """ゲームを作成せず、一つの完全setupを検証して正規化する."""
     try:
-        setup = GameSetupDocument.model_validate(payload)
-    except ValidationError as exc:
+        setup = GameSetupDocument.from_mapping(payload)
+    except (TypeError, ValueError) as exc:
         raise ConfigError(str(exc)) from exc
     mechanics = setup.mechanics
     warnings: list[str] = []
@@ -78,10 +75,18 @@ def validate_setup_document(payload: Mapping[str, object]) -> SetupValidationRes
         theme_name=setup.theme.name,
         role_ids=tuple(sorted(mechanics.roles)),
         ability_ids=tuple(sorted(mechanics.abilities)),
-        setup_checksum=checksum_payload(setup.model_dump(mode="json")),
-        mechanics_checksum=checksum_payload(mechanics.model_dump(mode="json")),
+        setup_checksum=checksum_payload(setup.to_mapping()),
+        mechanics_checksum=checksum_payload(mechanics.to_mapping()),
         warnings=tuple(warnings),
     )
+
+
+def parse_setup_document(payload: Mapping[str, object]) -> GameSetupDocument:
+    """外部入力をapplicationが受理する完全setupへ変換する."""
+    try:
+        return GameSetupDocument.from_mapping(payload)
+    except (TypeError, ValueError) as exc:
+        raise ConfigError(str(exc)) from exc
 
 
 def preview_players(setup: GameSetupDocument, *, seed: int | None) -> PlayerPreviewResult:
@@ -107,6 +112,7 @@ def prepare_create_command(
     manual_player_id: str | None,
     llm_mode: Literal["fake", "paid"],
     deliberation_level: DeliberationLevel,
+    rule_pack_provider_id: str = CORE_RULE_PACK_ID,
 ) -> CreateGameCommand:
     """Resolve every random setup value before a command reaches the queue."""
     concrete_seed = secrets.randbits(63) if seed is None else seed
@@ -122,17 +128,19 @@ def prepare_create_command(
         seed=concrete_seed,
         setup=setup,
         players=players,
-        setup_checksum=checksum_payload(setup.model_dump(mode="json")),
-        mechanics_checksum=checksum_payload(setup.mechanics.model_dump(mode="json")),
+        setup_checksum=checksum_payload(setup.to_mapping()),
+        mechanics_checksum=checksum_payload(setup.mechanics.to_mapping()),
         roster_checksum=checksum_payload([player.model_dump(mode="json") for player in players]),
         manual_player_id=manual_player_id,
         llm_mode=llm_mode,
         deliberation_level=deliberation_level,
+        rule_pack_provider_id=rule_pack_provider_id,
     )
 
 
 __all__ = [
     "ABILITY_KINDS",
+    "parse_setup_document",
     "prepare_create_command",
     "preview_players",
     "setup_catalog_options",

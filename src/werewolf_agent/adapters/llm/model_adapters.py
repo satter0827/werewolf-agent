@@ -12,7 +12,7 @@ from langchain_core.language_models.fake_chat_models import FakeListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentModelDecision,
@@ -55,6 +55,8 @@ class LangChainChatDecisionModel:
     base_url: str = ""
     timeout_seconds: float | None = None
     max_tokens: int | None = None
+    temperature: float | None = None
+    max_retries: int | None = None
 
     def invoke(self, request: ModelRequest) -> ModelResponse:
         """Return one normalized chat response."""

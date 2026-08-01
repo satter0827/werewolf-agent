@@ -11,8 +11,11 @@
 | レイヤー | 責務 |
 | --- | --- |
 | `domain` | 標準libraryだけで構成するaggregate、immutable state、event、rule policy |
+| `setup` | 標準libraryだけで構成するsetup定義、seed、checksum、roster生成 |
 | `application` | use case、authorization、transaction、コマンド/result、port、projection |
 | `agents` | provider非依存のobservation、decision、プレイヤー port |
+| `simulation` | 単一ゲームのAgent呼び出し、action適用、phase進行、停止・再開 |
+| `experiments` | paired seed、割当rotation、複数試行、評価、checkpoint、report |
 | `adapters` | HTTP client、Supabase、LangChain、外部I/O |
 | `contracts` | wire schema、error、Problem Details |
 | `settings` | runtime設定と環境変数の検証 |
@@ -35,9 +38,12 @@
 ## 境界
 
 - domainは他layerを参照しない。
-- applicationはdomainとapplication内部だけを参照し、wire schema、外部service、delivery、
+- setupはdomainとsetup内部だけを参照する。
+- applicationはdomain、setup、application内部だけを参照し、wire schema、外部service、delivery、
   agentsを参照しない。
 - agentsはdomainとapplicationを参照しない。
+- simulationはagents、domain、setupだけを参照し、I/O、永続化、provider設定を所有しない。
+- experimentsはagents、domain、setup、simulationだけを参照し、外部providerの探索を行わない。
 - LangChainはアダプター、workerは独立プロセスとして扱う。
 - package resourceと外部定義fileのI/Oおよび相互参照検証はアダプターに置く。
 - API routeはapplicationの公開contractだけを呼ぶ。
@@ -51,10 +57,14 @@
 
 ## ゲーム設定
 
-`GameSetupDocument` v2はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
+`GameSetupDocument` 0.3.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
 同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
-所有しない。役職はidentity faction、victory team、ability IDだけを持つ。applicationが能力種別の
-判別共用体を検証し、domainの`build_game_rules()`が決定的な実行規則へ変換する。
+所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
+Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
+applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証は`setup`の標準ライブラリ契約へ委譲する。
+domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
+replay 0.4.0はgenesis setupとRule Pack manifestを再検証する。復元時は明示登録済みproviderの
+contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
 seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは
@@ -70,15 +80,42 @@ role assignmentとprivate strategyを返さない。
 構造規則の正本は`scripts/architecture/rules.toml`とする。
 公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
 公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
-Package rootの`werewolf_agent`は外部利用者向けconvenience APIとし、内部モジュールはroot aliasを
-経由せず、値と型を所有するモジュールを直接参照する。
+Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者と内部モジュールはroot aliasを
+経由せず、値と型を所有する責務別モジュールを直接参照する。
 
-## Agent意思決定
+## Rule Pack
 
-`agents`は`DecisionTask`、`ModelRequest`、`ModelResponse`、`DecisionModel`を所有する。
-workerのcomposition rootはゲーム作成時に固定したproviderから`FakeDecisionModel`または
-`LangChainChatDecisionModel`を一度だけ選ぶ。以後はproviderに関係なく、観測正規化、context構築、
-model呼び出し、JSON正規化、schema検証、合法手検証、決定的fallback、trace記録の順に処理する。
+`CompiledRuleSet`は`GameConfig`、`RulePackManifest`、副作用を持たないPolicyを一局へ固定する。
+外部Rule Packは`RulePackProvider`を実装し、利用者またはcomposition rootが
+`RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
+applicationは最小の`RulePackRegistry` Protocolだけに依存する。API、組み込みapplication、workerの
+composition rootは組み込みproviderまたは利用者が構築したregistryを明示注入する。
+
+`RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
+`AbilityPolicy`は検証済みのnight actionから`NightResolution`、新たな死亡から順序付き
+`DeathReactionResolution`、完全stateからobserver非依存の`KnowledgeResolution`を返す。
+能動能力、immunity、vulnerability、death reaction、knowledgeの解決意味論を所有する。
+Domainは死亡適用、発動条件、使用回数、履歴、eventに加え、knowledge能力の所有、開始時期、
+detail、visibilityを検証する。本人roleと設定済み死亡公開はPolicyの主張で上書きできない。
+`VictoryPolicy`はimmutableな`GameState`から`WinResult`だけを返す。
+`VotingPolicy`は検証済みのpending voteから`VoteResult`だけを返し、投票の合法性、死亡、
+履歴、eventはDomainが所有する。Gameは各Outcomeを新しい`GameState`へ適用する際に整合性を
+検証し、不正Outcomeまたは例外では元のstateと乱数状態を維持する。
+
+## Agent意思決定と単一ゲーム実行
+
+`agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
+秘匿性検証済み`DecisionRequest`、構造化`DecisionResponse`を所有する。外部LLMアダプターは
+schema検証後のresponseだけを返し、simulationは本人用`GameView`からrequestを構築する。
+
+`SimulationRunner`は一局の`Game`、プレイヤー別controller、用途別seed、実行上限を固定する。
+`SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、
+手動入力待ち、終局、上限、cancelを明示的な停止理由として返す。リポジトリ、HTTP、provider preflight、
+複数試行、統計、artifactは所有しない。状態・event・action/response列は同じ入力とseedで再現できる。
+`latency_ms`は運用診断値であり、決定性の比較対象に含めない。
+能力残数などの可変metadataは`AgentMetadataProvider`が本人用`GameView`から都度解決する。
+workerは`WorkerDependencies.agent_factories`からプレイヤーID別factoryを注入し、未指定seatだけを
+既定のLangChainアダプターで構築する。外部factoryの探索や設定値からの動的importは行わない。
 
 modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
 modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに
@@ -89,9 +126,11 @@ modelが返した行動や対象は書き換えず、不正値は再問い合わ
 
 ## 公開面
 
-Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.domain`、
-`werewolf_agent.application`に限定する。package直下はdomainの型と関数を同一objectのまま
-再公開し、application、アダプター、settings、agentをimportしない。
+Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.application`、
+`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.experiments`、
+`werewolf_agent.simulation`、
+`werewolf_agent.setup`に限定する。
+package直下は`__version__`だけを公開し、型と関数は責務を所有する公開モジュールからimportする。
 applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
 公開する。HTTPの正本は`contracts/openapi.json`とする。
 

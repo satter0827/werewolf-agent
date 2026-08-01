@@ -129,9 +129,51 @@ def create_completed_game(client: httpx.Client, api_url: str, token: str) -> str
     raise RuntimeError("game did not complete within 64 steps")
 
 
+def create_saved_setup(
+    client: httpx.Client,
+    api_url: str,
+    token: str,
+    *,
+    display_name: str,
+) -> tuple[str, dict[str, Any]]:
+    """同梱setupから認証利用者の第1版を作成する。"""
+    document = response_json(client.get(f"{api_url}/api/v1/setup-templates/standard_6"))["document"]
+    if not isinstance(document, dict):
+        raise TypeError("setup template document must be an object")
+    saved = response_json(
+        client.post(
+            f"{api_url}/api/v1/setups",
+            json={"display_name": display_name, "document": document},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    )
+    return str(saved["setup_id"]), document
+
+
+def add_setup_revision(
+    client: httpx.Client,
+    api_url: str,
+    token: str,
+    *,
+    setup_id: str,
+    expected_revision: int,
+    document: dict[str, Any],
+) -> None:
+    """画面外の更新としてsetup revisionを追加する。"""
+    response_json(
+        client.post(
+            f"{api_url}/api/v1/setups/{setup_id}/revisions",
+            json={"expected_revision": expected_revision, "document": document},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    )
+
+
 __all__ = [
+    "add_setup_revision",
     "create_authenticated_user",
     "create_completed_game",
+    "create_saved_setup",
     "post_operation",
     "response_json",
     "wait_for_operation",

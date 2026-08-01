@@ -16,6 +16,7 @@ from werewolf_agent.application.messages import (
     MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX,
     MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE,
 )
+from werewolf_agent.application.rule_packs import RulePackRegistry
 
 if TYPE_CHECKING:
     from werewolf_agent.application.ports import GameRepository
@@ -61,4 +62,5 @@ class ApplicationContext:
 
     repository: GameRepository
     config: GameApplicationConfig
+    rule_packs: RulePackRegistry
     create_llm_mode: Literal["fake", "paid"] = "fake"

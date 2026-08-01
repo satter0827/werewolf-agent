@@ -6,5 +6,6 @@
 ```{toctree}
 :maxdepth: 1
 
+roadmap-1.0.0
 retired-browser-ui-reintroduction
 ```

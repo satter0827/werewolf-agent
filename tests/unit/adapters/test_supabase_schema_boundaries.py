@@ -58,7 +58,7 @@ def test_user_setup_revisions_are_private_immutable_and_semver_versioned() -> No
     assert 'create table if not exists "private"."user_setups"' in migration
     assert 'create table if not exists "private"."user_setup_revisions"' in migration
     assert '"schema_version" "text" not null' in migration
-    assert "'0.1.0'" in migration
+    assert "'0.3.0'" in migration
     assert (
         'grant select,insert on table "private"."user_setup_revisions" to "service_role"'
         in migration

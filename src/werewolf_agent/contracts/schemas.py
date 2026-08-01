@@ -215,7 +215,7 @@ class PlayerGenerationSettings(BaseModel):
 
 
 class GameSetupDocumentRequest(BaseModel):
-    schema_version: Literal["0.1.0"]
+    schema_version: Literal["0.3.0"]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
     player_generation: PlayerGenerationSettings
@@ -515,12 +515,100 @@ class GameTimelineQuery(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class PlayerObservationPlayer(BaseModel):
+    """One player as visible to the authenticated observer."""
+
+    id: str
+    name: str
+    status: PlayerStatus
+    role: str | None = None
+    eliminated_day: int | None = None
+    killed_night: int | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class AvailableActionDescriptor(BaseModel):
+    """One legal action and its server-authorized target candidates."""
+
+    key: str
+    type: ActionType
+    ability_id: str | None = None
+    legal_target_ids: list[str] = Field(default_factory=list)
+    message_required: bool = False
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerObservationSpeech(BaseModel):
+    """One public speech visible in a player observation."""
+
+    day: int = Field(ge=1)
+    player_id: str
+    message: str
+    focus_id: str | None = None
+    evidence_id: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerObservationVote(BaseModel):
+    """One resolved public vote round visible in a player observation."""
+
+    day: int = Field(ge=1)
+    tie_break_policy: str
+    votes: dict[str, str] = Field(default_factory=dict)
+    counts: dict[str, int] = Field(default_factory=dict)
+    tied_player_ids: list[str] = Field(default_factory=list)
+    missing_voter_ids: list[str] = Field(default_factory=list)
+    eliminated_player_id: str | None = None
+    round: int = Field(default=1, ge=1)
+    requires_revote: bool = False
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerObservationHistory(BaseModel):
+    """Public history included in one player observation."""
+
+    speeches: list[PlayerObservationSpeech] = Field(default_factory=list)
+    votes: list[PlayerObservationVote] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerObservationOutcome(BaseModel):
+    """Public game outcome without hidden winning player identities."""
+
+    winner: Winner
+    reason: str
+    day: int = Field(ge=1)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class PlayerObservation(BaseModel):
+    """Typed private observation used to build an independent game client."""
+
+    phase: GamePhase
+    day: int = Field(ge=1)
+    me: PlayerObservationPlayer
+    players: list[PlayerObservationPlayer]
+    known_roles: dict[str, str] = Field(default_factory=dict)
+    known_factions: dict[str, Winner] = Field(default_factory=dict)
+    available_actions: list[AvailableActionDescriptor] = Field(default_factory=list)
+    history: PlayerObservationHistory = Field(default_factory=PlayerObservationHistory)
+    win_result: PlayerObservationOutcome | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class PlayerObservationResponse(BaseModel):
     """Private observation visible to one authenticated player."""
 
     game_id: str
     player_id: str
-    observation: dict[str, Any]
+    observation: PlayerObservation
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -650,6 +738,7 @@ __all__ = [
     "AdvanceGameJobResponse",
     "AdvanceGameResponse",
     "AdvanceJobStatus",
+    "AvailableActionDescriptor",
     "CreateGameRequest",
     "DeliberationLevel",
     "ErrorEventPayload",
@@ -671,7 +760,13 @@ __all__ = [
     "NarrationMode",
     "PlayerActionRequest",
     "PlayerActionResponse",
+    "PlayerObservation",
+    "PlayerObservationHistory",
+    "PlayerObservationOutcome",
+    "PlayerObservationPlayer",
     "PlayerObservationResponse",
+    "PlayerObservationSpeech",
+    "PlayerObservationVote",
     "PlayerStatus",
     "ProblemDetails",
     "ProblemIssue",

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentDecision,
     AgentObservation,
     ModelRequest,

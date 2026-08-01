@@ -14,20 +14,26 @@ from werewolf_agent.domain._messages import (
     MESSAGE_UNSUPPORTED_NIGHT_ACTION,
 )
 from werewolf_agent.domain.errors import GameError
+from werewolf_agent.domain.rule_packs import AbilityPolicy
+from werewolf_agent.domain.rules.observations import resolve_core_knowledge
 from werewolf_agent.domain.rules.player_rules import (
     faction_for_role,
     mark_dead,
     player_by_id,
     require_alive,
     require_phase,
+    resolve_core_death_reactions,
     resolve_death_reactions,
 )
 from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
     ActionType,
+    DeathReactionResolution,
     GameState,
     InspectionResult,
+    KnowledgeResolution,
+    NightResolution,
     NightResult,
     Phase,
 )
@@ -50,13 +56,110 @@ def resolve_night(
     snapshot: GameState,
     pending_actions: Mapping[str, Action],
     rng: random.Random,
+    *,
+    policy: AbilityPolicy,
 ) -> tuple[GameState, NightResult]:
-    """Resolve configured active abilities by component kind."""
+    """PolicyのOutcomeを検証し、Domain stateへatomicに適用する."""
     require_phase(snapshot, Phase.NIGHT)
+    random_state = rng.getstate()
+    try:
+        resolution = policy.resolve_night(snapshot, pending_actions, rng)
+        _validate_resolution(snapshot, pending_actions, resolution)
+        return _apply_night_resolution(
+            snapshot,
+            pending_actions,
+            resolution,
+            rng,
+            policy=policy,
+        )
+    except Exception:
+        rng.setstate(random_state)
+        raise
+
+
+def _apply_night_resolution(
+    snapshot: GameState,
+    pending_actions: Mapping[str, Action],
+    resolution: NightResolution,
+    rng: random.Random,
+    *,
+    policy: AbilityPolicy,
+) -> tuple[GameState, NightResult]:
+    """検証済み夜Outcomeと死亡反応を一つのstate遷移へ適用する."""
+    updated_snapshot = snapshot
+    for player_id in sorted(resolution.killed_player_ids):
+        updated_snapshot = mark_dead(updated_snapshot, player_id, killed_night=snapshot.day)
+    updated_snapshot, reaction_deaths = resolve_death_reactions(
+        updated_snapshot,
+        sorted(resolution.killed_player_ids),
+        rng,
+        policy=policy,
+        during_night=True,
+    )
+    killed_ids = tuple(sorted((*resolution.killed_player_ids, *reaction_deaths)))
+    ordered = _ordered_ability_actions(snapshot, pending_actions)
+    updated_snapshot = _consume_limited_abilities(
+        updated_snapshot,
+        ordered,
+        passive_uses=resolution.passive_uses,
+    )
+    result = NightResult(
+        day=snapshot.day,
+        attacked_player_id=resolution.attacked_player_ids[0]
+        if resolution.attacked_player_ids
+        else None,
+        protected_player_id=resolution.protected_player_ids[0]
+        if resolution.protected_player_ids
+        else None,
+        killed_player_id=killed_ids[0] if killed_ids else None,
+        killed_player_ids=killed_ids,
+        inspections=resolution.inspections,
+        ability_targets={
+            action.player_id: {action.ability_id: _target(action)}
+            for action in ordered
+            if action.ability_id is not None
+        },
+    )
+    history = replace(updated_snapshot.history, nights=(*updated_snapshot.history.nights, result))
+    return replace(updated_snapshot, history=history), result
+
+
+class CoreAbilityPolicy:
+    """組み込みの夜能力と受動耐性の解決意味論を実装する."""
+
+    def resolve_night(
+        self,
+        state: GameState,
+        pending_actions: Mapping[str, Action],
+        random: random.Random,
+    ) -> NightResolution:
+        """設定済み能力を優先順位順に解決してOutcomeを返す."""
+        ordered = _ordered_ability_actions(state, pending_actions)
+        return _resolve_core_night(state, ordered, random)
+
+    def resolve_death_reactions(
+        self,
+        state: GameState,
+        newly_dead_player_ids: tuple[str, ...],
+        random: random.Random,
+    ) -> DeathReactionResolution:
+        """組み込みの死亡反応連鎖をstate変更なしで解決する."""
+        return resolve_core_death_reactions(state, newly_dead_player_ids, random)
+
+    def resolve_knowledge(self, state: GameState) -> KnowledgeResolution:
+        """組み込みknowledge能力の知識候補を返す."""
+        return resolve_core_knowledge(state)
+
+
+def _ordered_ability_actions(
+    snapshot: GameState,
+    pending_actions: Mapping[str, Action],
+) -> list[Action]:
+    """能動能力を設定済み優先順位で安定して並べる."""
     ability_actions = [
         action for action in pending_actions.values() if action.type is ActionType.USE_ABILITY
     ]
-    ordered = sorted(
+    return sorted(
         ability_actions,
         key=lambda action: (
             _ability_for_action(snapshot, action).resolution_priority,
@@ -64,6 +167,14 @@ def resolve_night(
             action.player_id,
         ),
     )
+
+
+def _resolve_core_night(
+    snapshot: GameState,
+    ordered: list[Action],
+    rng: random.Random,
+) -> NightResolution:
+    """組み込み能力のOutcomeをstate変更なしで計算する."""
     protected_player_ids: set[str] = set()
     killed_player_ids: set[str] = set()
     attacked_player_ids: list[str] = []
@@ -99,6 +210,7 @@ def resolve_night(
                 target_id,
                 "immunity",
                 source_kind="attack",
+                pending_uses=passive_uses,
             )
             if immunity_id is not None:
                 passive_uses.append((target_id, immunity_id))
@@ -115,6 +227,7 @@ def resolve_night(
                     target_id,
                     "immunity",
                     source_kind="eliminate",
+                    pending_uses=passive_uses,
                 )
                 if immunity_id is not None:
                     passive_uses.append((target_id, immunity_id))
@@ -130,6 +243,7 @@ def resolve_night(
                     inspection.target_id,
                     "vulnerability",
                     source_kind="inspect",
+                    pending_uses=passive_uses,
                 )
                 if vulnerability_id is not None:
                     passive_uses.append((inspection.target_id, vulnerability_id))
@@ -138,44 +252,76 @@ def resolve_night(
                         inspection.target_id,
                         "immunity",
                         source_kind="inspect",
+                        pending_uses=passive_uses,
                     )
                     if immunity_id is not None:
                         passive_uses.append((inspection.target_id, immunity_id))
                     else:
                         killed_player_ids.add(inspection.target_id)
 
-    updated_snapshot = snapshot
-    for player_id in sorted(killed_player_ids):
-        if updated_snapshot.players[player_id].is_alive:
-            updated_snapshot = mark_dead(updated_snapshot, player_id, killed_night=snapshot.day)
-    updated_snapshot, reaction_deaths = resolve_death_reactions(
-        updated_snapshot,
-        sorted(killed_player_ids),
-        rng,
-        during_night=True,
-    )
-    killed_player_ids.update(reaction_deaths)
-    updated_snapshot = _consume_limited_abilities(
-        updated_snapshot,
-        ordered,
-        passive_uses=passive_uses,
-    )
-    killed_ids = tuple(sorted(killed_player_ids))
-    result = NightResult(
-        day=snapshot.day,
-        attacked_player_id=attacked_player_ids[0] if attacked_player_ids else None,
-        protected_player_id=next(iter(sorted(protected_player_ids)), None),
-        killed_player_id=killed_ids[0] if killed_ids else None,
-        killed_player_ids=killed_ids,
+    return NightResolution(
+        attacked_player_ids=tuple(attacked_player_ids),
+        protected_player_ids=tuple(sorted(protected_player_ids)),
+        killed_player_ids=tuple(sorted(killed_player_ids)),
         inspections=tuple(inspection_results),
-        ability_targets={
-            action.player_id: {action.ability_id: _target(action)}
-            for action in ordered
-            if action.ability_id is not None
-        },
+        passive_uses=tuple(passive_uses),
     )
-    history = replace(updated_snapshot.history, nights=(*updated_snapshot.history.nights, result))
-    return replace(updated_snapshot, history=history), result
+
+
+def _validate_resolution(
+    snapshot: GameState,
+    pending_actions: Mapping[str, Action],
+    resolution: NightResolution,
+) -> None:
+    """外部PolicyのOutcomeがDomain invariantを満たすことを検証する."""
+    if not isinstance(resolution, NightResolution):
+        raise TypeError("ability policy must return NightResolution")
+    for label, player_ids in (
+        ("attacked", resolution.attacked_player_ids),
+        ("protected", resolution.protected_player_ids),
+        ("killed", resolution.killed_player_ids),
+    ):
+        if len(set(player_ids)) != len(player_ids):
+            raise ValueError(f"{label} player ids must be unique")
+        for player_id in player_ids:
+            require_alive(snapshot, player_id)
+    submitted = {
+        (action.player_id, action.ability_id)
+        for action in pending_actions.values()
+        if action.type is ActionType.USE_ABILITY
+    }
+    for inspection in resolution.inspections:
+        if inspection.day != snapshot.day:
+            raise ValueError("inspection day must match current day")
+        require_alive(snapshot, inspection.player_id)
+        require_alive(snapshot, inspection.target_id)
+        if (inspection.player_id, inspection.ability_id) not in submitted:
+            raise ValueError("inspection must correspond to a submitted ability")
+        ability = snapshot.config.abilities.get(inspection.ability_id)
+        if ability is None or ability.kind != "inspect":
+            raise ValueError("inspection ability must be configured as inspect")
+        if not inspection.target_role or not inspection.target_faction:
+            raise ValueError("inspection result must be nonblank")
+    passive_use_counts = Counter(resolution.passive_uses)
+    for (player_id, ability_id), outcome_uses in passive_use_counts.items():
+        player = require_alive(snapshot, player_id)
+        if player.role is None:
+            raise ValueError("passive ability owner must have a role")
+        role = snapshot.config.roles.require_role(player.role)
+        if ability_id not in role.abilities:
+            raise ValueError("passive ability must belong to its owner")
+        ability = snapshot.config.abilities[ability_id]
+        if ability.kind not in {"immunity", "vulnerability"}:
+            raise ValueError("night passive use must be immunity or vulnerability")
+        used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
+        if ability.max_uses is not None and used + outcome_uses > ability.max_uses:
+            raise ValueError("passive ability outcome exceeds max uses")
+        if (
+            ability.phase is not snapshot.phase
+            or snapshot.day < ability.start_day
+            or (snapshot.day == 1 and not ability.enabled_first_night)
+        ):
+            raise ValueError("passive ability is not enabled")
 
 
 def _validate_night_action(snapshot: GameState, action: Action) -> None:
@@ -251,6 +397,7 @@ def _eligible_passive(
     kind: str,
     *,
     source_kind: str,
+    pending_uses: Iterable[tuple[str, str]] = (),
 ) -> str | None:
     role_id = snapshot.players[player_id].role
     if role_id is None:
@@ -261,7 +408,10 @@ def _eligible_passive(
         key=lambda item: (snapshot.config.abilities[item].resolution_priority, item),
     ):
         ability = snapshot.config.abilities[ability_id]
-        used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0)
+        used = snapshot.ability_uses.get(player_id, {}).get(ability_id, 0) + sum(
+            pending_player_id == player_id and pending_ability_id == ability_id
+            for pending_player_id, pending_ability_id in pending_uses
+        )
         if (
             ability.kind == kind
             and ability.phase is snapshot.phase
@@ -296,3 +446,6 @@ def _consume_limited_abilities(
         player_uses = uses.setdefault(player_id, {})
         player_uses[ability_id] = player_uses.get(ability_id, 0) + 1
     return replace(snapshot, ability_uses=uses)
+
+
+__all__ = ["CoreAbilityPolicy", "record_night_action", "resolve_night"]

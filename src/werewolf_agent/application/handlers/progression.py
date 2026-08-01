@@ -22,6 +22,7 @@ from werewolf_agent.application.messages import (
     MESSAGE_ADVANCE_JOB_STATE_CHANGED,
     MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED,
     MESSAGE_MANUAL_INPUT_REQUIRED,
+    MESSAGE_PREPARED_TRANSITION_STATE_MISMATCH,
 )
 from werewolf_agent.application.models import (
     AdvanceGameCommand,
@@ -73,7 +74,7 @@ def prepare_advance_game(
     if run.status == GAME_STATUS_COMPLETED:
         raise GamePhaseError(MESSAGE_FINISHED_GAMES_CANNOT_BE_ADVANCED)
 
-    game = _restore_game(run)
+    game = _restore_game(run, dependencies)
     snapshot = game.snapshot()
     manual_player_ids = _manual_player_ids(run.config)
     if _manual_input_required(game, manual_player_ids):
@@ -92,6 +93,9 @@ def prepare_advance_game(
         config=dict(run.config),
         game=game,
         created_at=run.created_at,
+        phase_seed=_runtime_seed(run.seed, run.version),
+        prepared_phase=snapshot.phase.value,
+        prepared_day=snapshot.day,
     )
 
 
@@ -109,13 +113,22 @@ def compute_prepared_advance(
 ) -> ComputedAdvanceGame:
     """Compute an advance using definition data without retaining application I/O."""
     game = prepared.game
-    runtime_rng = random.Random(_runtime_seed(prepared.seed, prepared.version))
     action_events = list(prepared.domain_events)
-    try:
-        phase_events = game.advance(runtime_rng)
-        next_snapshot = game.snapshot()
-    except DomainRuleViolation as exc:
-        raise GameError(str(exc), context=exc.context) from exc
+    current = game.snapshot()
+    transition_position_changed = (
+        current.phase.value != prepared.prepared_phase or current.day != prepared.prepared_day
+    )
+    if transition_position_changed != prepared.domain_transition_complete:
+        raise GameError(MESSAGE_PREPARED_TRANSITION_STATE_MISMATCH)
+    if prepared.domain_transition_complete:
+        phase_events = []
+        next_snapshot = current
+    else:
+        try:
+            phase_events = game.advance(random.Random(prepared.phase_seed))
+            next_snapshot = game.snapshot()
+        except DomainRuleViolation as exc:
+            raise GameError(str(exc), context=exc.context) from exc
     next_public_state = public_state_payload_from_snapshot(
         next_snapshot,
         game_id=prepared.game_id,

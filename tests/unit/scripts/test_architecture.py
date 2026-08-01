@@ -28,8 +28,12 @@ def test_architecture_analysis_passes_and_exposes_evidence() -> None:
     ]
     assert set(document["public_symbols"]) == {
         "werewolf_agent",
+        "werewolf_agent.agents",
         "werewolf_agent.application",
         "werewolf_agent.domain",
+        "werewolf_agent.experiments",
+        "werewolf_agent.simulation",
+        "werewolf_agent.setup",
     }
     assert all(edge["line"] > 0 for edge in document["import_evidence"])
 
@@ -132,11 +136,11 @@ def test_project_module_resolution_prefers_the_deepest_real_module() -> None:
     assert architecture._project_module_name("httpx.Client", modules) is None
 
 
-def test_internal_modules_cannot_import_the_public_root_alias(
+def test_analysis_rejects_imports_from_an_explicit_public_alias(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    """外部向けpackage rootで内部依存規則を迂回させない。"""
+    """明示構成した公開aliasで内部依存規則を迂回させない。"""
     package = tmp_path / "src" / "werewolf_agent"
     application = package / "application"
     domain = package / "domain"
@@ -160,6 +164,11 @@ def test_internal_modules_cannot_import_the_public_root_alias(
     (domain / "__init__.py").write_text("class Game: pass\n", encoding="utf-8")
     monkeypatch.setattr(architecture, "REPOSITORY_ROOT", tmp_path)
     monkeypatch.setattr(architecture, "PACKAGE_ROOT", package)
+    monkeypatch.setattr(
+        architecture,
+        "PUBLIC_ALIAS_MODULE_NAMES",
+        frozenset({"werewolf_agent"}),
+    )
     modules = {architecture.module_name(path): path for path in sorted(package.rglob("*.py"))}
 
     findings = architecture._internal_public_alias_findings(modules)

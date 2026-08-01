@@ -7,6 +7,7 @@ from dataclasses import replace
 
 from werewolf_agent.domain._messages import MESSAGE_UNSUPPORTED_AGENT_ACTION
 from werewolf_agent.domain.errors import GameError, RuleViolation
+from werewolf_agent.domain.rule_packs import AbilityPolicy, VictoryPolicy, VotingPolicy
 from werewolf_agent.domain.rules import (
     action_availability,
     day_speech,
@@ -15,7 +16,6 @@ from werewolf_agent.domain.rules import (
     phase_transitions,
     voting,
 )
-from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
@@ -91,6 +91,10 @@ def advance_phase(
     state: GameState,
     pending: PendingActions,
     random_source: random.Random,
+    *,
+    ability_policy: AbilityPolicy,
+    voting_policy: VotingPolicy,
+    victory_policy: VictoryPolicy,
 ) -> tuple[GameState, PendingActions, list[GameEvent]]:
     """Advance one phase and evaluate the fixed faction victory boundary."""
     outcome = phase_transitions.advance_game_phase(
@@ -100,6 +104,8 @@ def advance_phase(
         pending.night_actions,
         random_source,
         vote_round=pending.vote_round,
+        ability_policy=ability_policy,
+        voting_policy=voting_policy,
         victory_evaluator=lambda _state: None,
     )
     next_pending = replace(
@@ -111,7 +117,7 @@ def advance_phase(
     )
     next_state = outcome.snapshot
     events = outcome.events
-    win_result = check_win(next_state)
+    win_result = victory_policy.evaluate(next_state)
     if win_result is not None:
         next_state = replace(next_state, phase=Phase.FINISHED, win_result=win_result)
         events = [
@@ -130,9 +136,20 @@ def advance_phase(
     return next_state, next_pending, events
 
 
-def build_view(state: GameState, pending: PendingActions, player_id: str) -> GameView:
+def build_view(
+    state: GameState,
+    pending: PendingActions,
+    player_id: str,
+    *,
+    ability_policy: AbilityPolicy,
+) -> GameView:
     """Build the only supported visibility-filtered player observation."""
-    return observations.build_player_observation(state, pending, player_id)
+    return observations.build_player_observation(
+        state,
+        pending,
+        player_id,
+        ability_policy=ability_policy,
+    )
 
 
 def _private_submission_event(

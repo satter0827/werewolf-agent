@@ -10,6 +10,7 @@ from werewolf_agent.clients.streamlit.view_models import (
 from werewolf_agent.clients.streamlit.view_models.formatting import _display_player_name
 from werewolf_agent.contracts.schemas import (
     GameTimelineItem,
+    PlayerObservation,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -67,9 +68,24 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
         game_id="game-1",
         player_id="player-1",
         observation={
-            "me": {"id": "player-1", "role": "seer"},
+            "phase": "day_discussion",
+            "day": 2,
+            "me": {
+                "id": "player-1",
+                "name": "P1",
+                "status": "alive",
+                "role": "seer",
+            },
+            "players": [],
             "known_roles": {"player-2": "werewolf"},
-            "available_actions": [{"type": "speech"}],
+            "available_actions": [
+                {
+                    "key": "speech",
+                    "type": "speech",
+                    "legal_target_ids": [],
+                    "message_required": True,
+                }
+            ],
         },
     )
 
@@ -142,7 +158,7 @@ def test_observer_mode_uses_only_public_timeline_without_action_state() -> None:
     assert screen.observation is None
     assert screen.observer_log is not None
     assert screen.observer_log.entries
-    assert "村人陣営" in screen.observer_log.entries[0]
+    assert screen.observer_log.entries[0] == "1日目 決着: 村人陣営の勝利です。"
     assert screen.result_summary is not None
     summary = " ".join(screen.result_summary.facts)
     assert "全役職" not in summary
@@ -164,8 +180,28 @@ def test_play_result_summary_uses_public_information_only() -> None:
     assert screen.result_summary is not None
     summary_text = " ".join(screen.result_summary.facts)
     assert "勝利陣営" in summary_text
+    assert "2日目で終了しました。" in summary_text
+    assert "Day" not in summary_text
+    assert "勝利の勝利" not in summary_text
     assert "全役職" not in summary_text
     assert "werewolf" not in summary_text
+
+
+def test_winner_label_leaves_victory_sentence_to_each_language() -> None:
+    catalog = _catalog()
+    screen = build_game_screen_view(
+        state=_state(status="completed", winner="village"),
+        turns=[_turn("game_finished", {"winner": "village"})],
+        observation=None,
+        manual_player_id=None,
+        screen_mode="observer",
+        catalog=catalog,
+        lang="en",
+    )
+
+    assert screen.result_summary is not None
+    assert screen.result_summary.facts[0] == "Winner: Village Team."
+    assert screen.result_summary.facts[-1] == "Last public event: Village Team won."
 
 
 def test_status_metrics_use_public_game_context_without_ids() -> None:
@@ -194,7 +230,25 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     candidates = target_candidates_for_action(
         "vote",
         state=_state(),
-        observation={"legal_targets": {"vote": ["player-2"]}},
+        observation=PlayerObservation.model_validate(
+            {
+                "phase": "voting",
+                "day": 1,
+                "me": {
+                    "id": "player-1",
+                    "name": "P1",
+                    "status": "alive",
+                },
+                "players": [],
+                "available_actions": [
+                    {
+                        "key": "vote",
+                        "type": "vote",
+                        "legal_target_ids": ["player-2"],
+                    }
+                ],
+            }
+        ),
         manual_player_id="player-1",
     )
 
@@ -221,7 +275,7 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
     assert event_icon("unknown_event").symbol == "•"
     assert action_icon("unknown_action").symbol == "•"
     assert catalog.label("ja", "event", "unknown_event") == "unknown_event"
-    assert "進行中 / Day 1 / 6" in game_option_label(game, catalog, "ja")
+    assert "進行中 / 1日目 / 6" in game_option_label(game, catalog, "ja")
 
 
 def test_observation_memo_uses_public_timeline_sanitization() -> None:

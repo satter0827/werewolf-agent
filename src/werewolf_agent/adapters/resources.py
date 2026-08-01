@@ -9,19 +9,18 @@ from typing import TypeVar
 
 from pydantic import BaseModel, ConfigDict
 
+from werewolf_agent.adapters.llm.definitions import PromptDefinition
 from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
-from werewolf_agent.agents.definitions import PromptDefinition
 from werewolf_agent.application.setup_catalog import (
     SetupTemplateCatalog,
     SetupTemplateCatalogDefinition,
 )
-from werewolf_agent.application.setup_document import GameSetupDocument
+from werewolf_agent.setup import GameSetupDocument
 
 TModel = TypeVar("TModel", bound=BaseModel)
 
-LLM_DEFINITIONS_PACKAGE = "werewolf_agent.agents.resources.llm"
 FAKE_DEFINITIONS_PACKAGE = "werewolf_agent.adapters.llm.resources"
-PROMPTS_PACKAGE = "werewolf_agent.agents.resources.prompts"
+PROMPTS_PACKAGE = "werewolf_agent.adapters.llm.resources"
 SETUPS_PACKAGE = "werewolf_agent.application.resources.setups"
 CATALOG_FILE = "catalog.toml"
 PROMPT_FILE = "agent_decision.toml"
@@ -109,7 +108,7 @@ def load_setup_template_catalog() -> SetupTemplateCatalog:
         load_packaged_toml(SETUPS_PACKAGE, SETUP_CATALOG_FILE)
     )
     documents = {
-        template_id: GameSetupDocument.model_validate(
+        template_id: GameSetupDocument.from_mapping(
             load_packaged_toml(SETUPS_PACKAGE, metadata.file)
         )
         for template_id, metadata in definition.templates.items()

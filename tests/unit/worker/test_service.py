@@ -18,6 +18,9 @@ from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import GameResponse, ProblemDetails
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker import service
+from werewolf_agent.worker.composition import create_core_worker_dependencies
+
+WORKER_DEPENDENCIES = create_core_worker_dependencies()
 
 
 @dataclass
@@ -133,6 +136,7 @@ def test_worker_archives_exhausted_message_without_executing_it(
 
     processed = service.process_worker_batch(
         AppSettings(_env_file=None, supabase_db_dsn=SecretStr("postgresql://local")),
+        dependencies=WORKER_DEPENDENCIES,
         pool=_Pool(connection),
     )
 
@@ -232,6 +236,7 @@ def test_advance_revalidates_participant_access_at_worker_execution() -> None:
         service._execute_advance_request(
             _Pool(connection),
             AppSettings(_env_file=None),
+            WORKER_DEPENDENCIES,
             request,
         )
 
@@ -261,6 +266,7 @@ def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(
     service._process_request(
         _Pool(connection),
         AppSettings(_env_file=None),
+        WORKER_DEPENDENCIES,
         request,
     )
 
@@ -296,6 +302,7 @@ def test_retry_logs_state_change_once_and_each_attempt_at_debug(
         service._process_request(
             _Pool(connection),
             AppSettings(_env_file=None, supabase_worker_max_attempts=3),
+            WORKER_DEPENDENCIES,
             request,
         )
 

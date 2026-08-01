@@ -1,7 +1,17 @@
 """公開Python application facade."""
 
 from werewolf_agent.application.actor import Actor
+from werewolf_agent.application.conformance import (
+    assert_game_repository_contract,
+    assert_setup_repository_contract,
+)
 from werewolf_agent.application.constants import DeliberationLevel
+from werewolf_agent.application.embedding import (
+    EmbeddedApplication,
+    InlineCommandExecutor,
+    SingleTenantAccessPolicy,
+    create_embedded_application,
+)
 from werewolf_agent.application.errors import (
     AppError,
     ConfigError,
@@ -12,7 +22,9 @@ from werewolf_agent.application.errors import (
     ResourceNotFoundError,
 )
 from werewolf_agent.application.facade import GameApplication
+from werewolf_agent.application.memory import Clock, InMemoryGameRepository, InMemorySetupRepository
 from werewolf_agent.application.models import (
+    AdvanceGameCommand,
     AdvanceGameResult,
     ApplicationContext,
     ComputedAdvanceGame,
@@ -45,47 +57,30 @@ from werewolf_agent.application.models import (
     StoredGameTurn,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
-from werewolf_agent.application.ports import GameRepository, SetupRepository
-from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
-from werewolf_agent.application.setup_document import (
-    AbilityDefinition,
-    AttackAbility,
-    DeathReactionAbility,
-    EliminateAbility,
-    GameSetupDocument,
-    ImmunityAbility,
-    InspectAbility,
-    KnowledgeAbility,
-    LocalRulesDefinition,
-    MechanicsDefinition,
-    PlayerGenerationDefinition,
-    PlayerIdentityDefinition,
-    PrivateStrategyDefinition,
-    ProtectAbility,
-    PublicPersonaDefinition,
-    RoleDefinition,
-    ThemeDefinition,
-    VulnerabilityAbility,
+from werewolf_agent.application.ports import GameRepository, SetupRepository, Transaction
+from werewolf_agent.application.rule_packs import (
+    RulePackRegistry,
+    create_core_rule_policy_registry,
 )
+from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
 from werewolf_agent.application.setup_facade import SetupApplication
-from werewolf_agent.application.setup_options import validate_setup_document
+from werewolf_agent.application.setup_options import parse_setup_document, validate_setup_document
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
 from werewolf_agent.application.types import GameStatus
 
 __all__ = [
-    "AbilityDefinition",
     "AccessPolicy",
     "Actor",
+    "AdvanceGameCommand",
     "AdvanceGameResult",
     "AppError",
     "ApplicationContext",
-    "AttackAbility",
+    "Clock",
     "ComputedAdvanceGame",
     "ConfigError",
     "CreateGameCommand",
-    "DeathReactionAbility",
     "DeliberationLevel",
-    "EliminateAbility",
+    "EmbeddedApplication",
     "ErrorCode",
     "GameApplication",
     "GameApplicationConfig",
@@ -103,32 +98,24 @@ __all__ = [
     "GameRevealPlayer",
     "GameRevealResult",
     "GameRevealVote",
-    "GameSetupDocument",
     "GameSetupOptionsResult",
     "GameStatus",
     "GameTimelineResult",
     "GeneratedPlayerInput",
-    "ImmunityAbility",
-    "InspectAbility",
+    "InMemoryGameRepository",
+    "InMemorySetupRepository",
+    "InlineCommandExecutor",
     "InternalError",
-    "KnowledgeAbility",
-    "LocalRulesDefinition",
-    "MechanicsDefinition",
     "OperationQueue",
     "PlayerActionCommand",
     "PlayerActionResult",
-    "PlayerGenerationDefinition",
-    "PlayerIdentityDefinition",
     "PlayerObservationResult",
     "PlayerPreviewResult",
     "PreparedAdvanceGame",
-    "PrivateStrategyDefinition",
-    "ProtectAbility",
-    "PublicPersonaDefinition",
     "QueuedOperation",
     "ReplayVerificationResult",
     "ResourceNotFoundError",
-    "RoleDefinition",
+    "RulePackRegistry",
     "SavedSetupRevision",
     "SavedSetupSummary",
     "SetupApplication",
@@ -136,11 +123,16 @@ __all__ = [
     "SetupTemplateCatalog",
     "SetupTemplateMetadata",
     "SetupValidationResult",
+    "SingleTenantAccessPolicy",
     "StoredGame",
     "StoredGameEvent",
     "StoredGameSummary",
     "StoredGameTurn",
-    "ThemeDefinition",
-    "VulnerabilityAbility",
+    "Transaction",
+    "assert_game_repository_contract",
+    "assert_setup_repository_contract",
+    "create_core_rule_policy_registry",
+    "create_embedded_application",
+    "parse_setup_document",
     "validate_setup_document",
 ]

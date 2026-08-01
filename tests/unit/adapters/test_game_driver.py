@@ -1,91 +1,151 @@
-from types import SimpleNamespace
+"""Agent adapterとSimulationのprepared transition接続を検証する."""
 
-from werewolf_agent.adapters.agents.game_driver import (
-    _agent_game_contexts,
-    _agent_observation_from_game,
-    _game_action_from_decision,
+from __future__ import annotations
+
+import random
+from dataclasses import replace
+from datetime import UTC, datetime
+
+import pytest
+
+from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
+from werewolf_agent.adapters.agents.game_driver import AgentRuntime, drive_prepared_game
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
+from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
+from werewolf_agent.adapters.resources import load_llm_definitions
+from werewolf_agent.agents import DecisionTrace, RandomLegalAgentFactory
+from werewolf_agent.application import PreparedAdvanceGame
+from werewolf_agent.application.errors import GameError
+from werewolf_agent.application.handlers import compute_prepared_advance
+from werewolf_agent.domain import Game, GameSetup, Player, build_game_rules
+from werewolf_agent.setup import (
+    checksum_payload,
+    generate_players,
+    namespace_seed,
+    rule_definition_from_values,
 )
-from werewolf_agent.agents.models import AgentDecision
-from werewolf_agent.domain.state import (
-    ActionType,
-    AvailableAction,
-    GameHistory,
-    GameView,
-    Phase,
-    Player,
-)
 
 
-def test_agent_observation_preserves_generic_ability_options() -> None:
-    observation = GameView(
-        phase=Phase.NIGHT,
-        day=1,
-        me=Player(id="p1", name="Alice", role="oracle"),
-        players=(Player(id="p1", name="Alice", role="oracle"), Player(id="p2", name="Bob")),
-        available_actions=(AvailableAction(ActionType.USE_ABILITY, "custom_scan"),),
-        legal_targets={"use_ability:custom_scan": ("p2",)},
-        history=GameHistory(),
+class _TraceSink:
+    def __init__(self) -> None:
+        self.records: list[DecisionTrace] = []
+
+    def record_decision(self, trace: DecisionTrace) -> None:
+        self.records.append(trace)
+
+
+def _prepared(seed: int = 7) -> tuple[PreparedAdvanceGame, tuple[str, ...]]:
+    catalog = build_setup_catalog()
+    setup = catalog.require_document(catalog.recommended_template_id)
+    mechanics = setup.mechanics
+    player_count = sum(mechanics.role_counts.values())
+    generated = generate_players(
+        setup.player_generation,
+        player_count=player_count,
+        seed=seed,
     )
-
-    result = _agent_observation_from_game(observation)
-
-    assert result.available_actions[0].ability_id == "custom_scan"
-    assert result.legal_targets == {"use_ability:custom_scan": ["p2"]}
-
-
-def test_agent_decision_maps_to_generic_domain_action() -> None:
-    action = _game_action_from_decision(
-        AgentDecision(
-            type="use_ability",
-            player_id="p1",
-            ability_id="custom_scan",
-            target_id="p2",
-            reason="確認するため",
+    players = tuple(Player(item.player_id, item.profile.name) for item in generated)
+    rules = build_game_rules(
+        rule_definition_from_values(
+            player_count=player_count,
+            role_counts=mechanics.role_counts,
+            rules=mechanics.rules.to_mapping(),
+            roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
+            abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
     )
-
-    assert action.type is ActionType.USE_ABILITY
-    assert action.ability_id == "custom_scan"
-
-
-def test_agent_context_reads_kind_without_role_name_branching() -> None:
-    prepared = SimpleNamespace(
-        config={
-            "setup_document": {
-                "mechanics": {
-                    "roles": {
-                        "oracle": {
-                            "identity_faction": "village",
-                            "victory_team": "village",
-                            "abilities": ["custom_scan"],
-                        }
-                    },
-                    "abilities": {"custom_scan": {"kind": "inspect", "max_uses": "unlimited"}},
-                    "rules": {"allow_night_action_revision": False},
-                },
-                "theme": {
-                    "id": "custom",
-                    "name": "Custom",
-                    "premise": "Test",
-                    "role_names": {"oracle": "観測者"},
-                    "role_objectives": {"oracle": "情報を集める"},
-                    "faction_names": {"village": "探索側"},
-                    "ability_names": {"custom_scan": "観測"},
-                    "action_names": {"use_ability": "能力を使う"},
-                    "phase_names": {"night": "夜"},
-                },
+    game = Game.create(
+        GameSetup(players),
+        rules=rules,
+        random=random.Random(namespace_seed(seed, "role_assignment")),
+    )
+    player_ids = tuple(game.snapshot().players)
+    setup_document = setup.to_mapping()
+    return (
+        PreparedAdvanceGame(
+            game_id="game-1",
+            version=1,
+            seed=seed,
+            config={
+                "player_agent_types": {player_id: "external" for player_id in player_ids},
+                "setup_document": setup_document,
+                "setup_checksum": checksum_payload(setup_document),
+                "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
             },
-            "setup_checksum": "setup",
-            "mechanics_checksum": "mechanics",
-        }
-    )
-    snapshot = SimpleNamespace(
-        players={"p1": Player(id="p1", name="Alice", role="oracle")},
-        ability_uses={},
-        phase=Phase.NIGHT,
+            game=game,
+            created_at=datetime(2030, 1, 1, tzinfo=UTC),
+            phase_seed=namespace_seed(seed, "prepared-phase"),
+            prepared_phase=game.snapshot().phase.value,
+            prepared_day=game.snapshot().day,
+        ),
+        player_ids,
     )
 
-    contexts = _agent_game_contexts(prepared, snapshot)
 
-    assert contexts["p1"].abilities[0].kind == "inspect"
-    assert contexts["p1"].role_name == "観測者"
+def _runtime(player_ids: tuple[str, ...], sink: _TraceSink) -> AgentRuntime:
+    return AgentRuntime(
+        config=LlmProviderConfig(
+            provider="fake",
+            model="unused",
+            base_url="",
+            api_key="",
+            timeout_seconds=1,
+            max_retries=0,
+            max_tokens=1,
+            temperature=0,
+        ),
+        definitions=load_llm_definitions(prompt_path=None, fake_responses_path=None),
+        agent_factories={player_id: RandomLegalAgentFactory() for player_id in player_ids},
+        decision_trace_sink=sink,
+    )
+
+
+def test_prepared_game_uses_simulation_and_advances_exactly_once() -> None:
+    prepared, player_ids = _prepared()
+    before = prepared.game.snapshot()
+    sink = _TraceSink()
+
+    driven = drive_prepared_game(prepared, runtime=_runtime(player_ids, sink))
+    after = driven.game.snapshot()
+
+    assert driven.domain_transition_complete
+    assert driven.domain_events
+    assert after.phase != before.phase or after.day != before.day
+    assert sink.records
+
+    computed = compute_prepared_advance(driven)
+
+    assert computed.phase == after.phase.value
+    assert computed.day == after.day
+    assert computed.private_state["phase"] == after.phase.value
+
+
+def test_game_context_keeps_only_each_players_current_private_metadata() -> None:
+    prepared, _ = _prepared()
+    snapshot = prepared.game.snapshot()
+    setup = prepared.config["setup_document"]
+    assert isinstance(setup, dict)
+
+    contexts = build_agent_game_contexts(
+        setup,
+        snapshot,
+        setup_checksum="1" * 64,
+        mechanics_checksum="2" * 64,
+    )
+
+    assert set(contexts) == set(snapshot.players)
+    assert all(
+        context.role_id == snapshot.players[player_id].role
+        for player_id, context in contexts.items()
+    )
+    assert all(context.setup_checksum == "1" * 64 for context in contexts.values())
+
+
+def test_application_rejects_missing_or_unmarked_prepared_transition() -> None:
+    missing, player_ids = _prepared()
+    with pytest.raises(GameError, match="transition state"):
+        compute_prepared_advance(replace(missing, domain_transition_complete=True))
+
+    driven = drive_prepared_game(missing, runtime=_runtime(player_ids, _TraceSink()))
+    with pytest.raises(GameError, match="transition state"):
+        compute_prepared_advance(replace(driven, domain_transition_complete=False))

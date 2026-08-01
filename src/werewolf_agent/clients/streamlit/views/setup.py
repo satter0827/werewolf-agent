@@ -115,7 +115,7 @@ def _render_setup_screen(
         return
     selection = _selection(selected, inline_document=inline_document)
     fingerprint = _preview_fingerprint(selection, seed)
-    if st.button("プレイヤーを生成", use_container_width=True):
+    if st.button("プレイヤーを生成", width="stretch"):
         try:
             st.session_state[_PREVIEW_KEY] = preview_players(
                 settings=settings,
@@ -148,7 +148,7 @@ def _render_setup_screen(
             }
             for player in preview.players
         ],
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
     )
     manual_player_id = None
@@ -175,7 +175,7 @@ def _render_setup_screen(
     if not mutations_available:
         st.warning("現在はゲームを作成できません。しばらく待ってから再試行してください。")
         return
-    if st.button("この内容でゲームを作成", type="primary", use_container_width=True):
+    if st.button("この内容でゲームを作成", type="primary", width="stretch"):
         try:
             created = create_game_from_setup(
                 settings=settings,

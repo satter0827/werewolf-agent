@@ -1,1 +1,1 @@
-"""LLM provider adapter."""
+"""LLM provider adapter package."""

@@ -9,6 +9,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Literal, cast
 
+from werewolf_agent.adapters.llm.definitions import PromptDefinition
 from werewolf_agent.adapters.llm.langchain.constants import (
     LLM_SPEECH_MESSAGE_MAX_CHARS,
     SECONDS_TO_MILLISECONDS,
@@ -21,8 +22,7 @@ from werewolf_agent.adapters.llm.langchain.decisions import (
 )
 from werewolf_agent.adapters.llm.messages import message_invalid_llm_decision
 from werewolf_agent.adapters.llm.model_adapters import LlmModelInvocationError
-from werewolf_agent.agents.definitions import PromptDefinition
-from werewolf_agent.agents.models import (
+from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentDecision,
     AgentModelDecision,
@@ -35,8 +35,8 @@ from werewolf_agent.agents.models import (
     ModelRequest,
     ModelResponse,
 )
-from werewolf_agent.agents.ports import DecisionModel
-from werewolf_agent.agents.tracing import LlmInvocationTrace, LlmTraceSink
+from werewolf_agent.adapters.llm.ports import DecisionModel
+from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 
 PIPELINE_REVISION = "decision-v2"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]

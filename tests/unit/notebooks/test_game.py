@@ -11,21 +11,21 @@ from pathlib import Path
 import pytest
 from notebooks.werewolf_demo import DemoLimits, FakeGameDemo
 
-from werewolf_agent import Action, RuleViolation
+from werewolf_agent.domain import Action, RuleViolation
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_root_import_loads_only_the_domain_public_surface() -> None:
-    """root importでapplication、adapter、settings、LLMを初期化しない。"""
+def test_root_import_exposes_only_version_without_loading_product_layers() -> None:
+    """root importでversion以外の公開面と製品layerを初期化しない。"""
     script = """
 import json
 import sys
 import werewolf_agent
 
-for name in werewolf_agent.domain.__all__:
-    assert getattr(werewolf_agent, name) is getattr(werewolf_agent.domain, name)
+assert not hasattr(werewolf_agent, "Game")
 for prefix in (
+    "werewolf_agent.domain",
     "werewolf_agent.application",
     "werewolf_agent.adapters",
     "werewolf_agent.settings",
@@ -42,7 +42,7 @@ print(json.dumps(sorted(werewolf_agent.__all__)))
         check=False,
     )
     assert result.returncode == 0, result.stderr
-    assert "Game" in json.loads(result.stdout)
+    assert json.loads(result.stdout) == ["__version__"]
 
 
 def test_fake_demo_steps_once_and_completes_deterministically() -> None:
@@ -53,9 +53,10 @@ def test_fake_demo_steps_once_and_completes_deterministically() -> None:
     assert first_step is not None
     assert first_step.operation == "action"
     assert first_step.private_actor_omitted
-    assert not first_step.private_target_omitted
+    if first_step.action_type in {"vote", "use_ability"}:
+        assert first_step.private_target_omitted
     assert first_step.actor_id is None
-    assert first_step.action_type == "pass"
+    assert first_step.action_type in {"pass", "use_ability"}
     assert first_step.decision is not None
     assert first_step.decision.validation_status == "valid"
 

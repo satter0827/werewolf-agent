@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import TypeVar, cast
+
 import werewolf_agent.application.handlers as handlers
 from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.boundary import public_result
@@ -33,8 +36,11 @@ from werewolf_agent.application.models import (
     ReplayVerificationResult,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
-from werewolf_agent.application.replay import verify_replay
+from werewolf_agent.application.replay import ReplayRepository, verify_replay
 from werewolf_agent.application.types import GameStatus
+from werewolf_agent.domain import RulePolicyRegistry
+
+ResultT = TypeVar("ResultT")
 
 
 class GameApplication:
@@ -58,7 +64,11 @@ class GameApplication:
     ) -> GameResult:
         """一つのゲームを作成して現在状態を返す."""
         trusted = command.model_copy(update={"llm_mode": self._dependencies.create_llm_mode})
-        return public_result(lambda: handlers.create_game(trusted, dependencies=self._dependencies))
+        return public_result(
+            lambda: self._mutate(
+                lambda: handlers.create_game(trusted, dependencies=self._dependencies)
+            )
+        )
 
     def get(self, game_id: str, actor: Actor) -> GameResult:
         """検証済みactorが閲覧できる一つの公開ゲームを返す."""
@@ -92,7 +102,9 @@ class GameApplication:
         self._require_player_access(str(command.game_id), command.player_id, actor)
         trusted = command.model_copy(update={"trusted_user_id": actor.user_id})
         return public_result(
-            lambda: handlers.submit_player_action(trusted, dependencies=self._dependencies)
+            lambda: self._mutate(
+                lambda: handlers.submit_player_action(trusted, dependencies=self._dependencies)
+            )
         )
 
     def advance(
@@ -105,7 +117,9 @@ class GameApplication:
         self._require_game_access(game_id, actor)
         command = AdvanceGameCommand(game_id=game_id, expected_version=expected_version)
         return public_result(
-            lambda: handlers.advance_game(command, dependencies=self._dependencies)
+            lambda: self._mutate(
+                lambda: handlers.advance_game(command, dependencies=self._dependencies)
+            )
         )
 
     def prepare_advance(
@@ -136,7 +150,9 @@ class GameApplication:
         """計算済み進行を認可してcommitする."""
         self._require_game_access(computed.game_id, actor)
         return public_result(
-            lambda: handlers.commit_prepared_advance(computed, dependencies=self._dependencies)
+            lambda: self._mutate(
+                lambda: handlers.commit_prepared_advance(computed, dependencies=self._dependencies)
+            )
         )
 
     def timeline(
@@ -194,7 +210,11 @@ class GameApplication:
         query = GetGameQuery(game_id=game_id)
         public_result(lambda: handlers.get_game(query, dependencies=self._dependencies))
         return public_result(
-            lambda: verify_replay(game_id, repository)  # type: ignore[arg-type]
+            lambda: verify_replay(
+                game_id,
+                cast(ReplayRepository, repository),
+                cast(RulePolicyRegistry, self._dependencies.rule_packs),
+            )
         )
 
     def enqueue_create(
@@ -274,6 +294,11 @@ class GameApplication:
         if self._operation_queue is None:
             raise ConfigError("operation queueが構成されていません。")
         return self._operation_queue
+
+    def _mutate(self, operation: Callable[[], ResultT]) -> ResultT:
+        repository = self._dependencies.repository
+        with repository.transaction():
+            return operation()
 
     def _require_game_access(self, game_id: str, actor: Actor) -> None:
         policy = self._access_policy

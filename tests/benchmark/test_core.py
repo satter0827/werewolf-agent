@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from pytest_benchmark.fixture import BenchmarkFixture
 
-from werewolf_agent.application.checksums import checksum_payload
+from werewolf_agent.setup import checksum_payload
 
 
 @pytest.mark.benchmark

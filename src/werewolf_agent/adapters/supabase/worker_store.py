@@ -7,11 +7,11 @@ from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 from werewolf_agent.adapters.supabase.json import jsonb
-from werewolf_agent.application.replay import checksum_payload
 from werewolf_agent.application.versions import REPLAY_FORMAT_VERSION
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import ProblemDetails
+from werewolf_agent.setup import checksum_payload
 
 
 @dataclass(frozen=True, slots=True)
@@ -345,6 +345,7 @@ class SupabaseWorkerStore:
                 "setup_checksum": stored_config.get("setup_checksum"),
                 "mechanics_checksum": stored_config.get("mechanics_checksum"),
                 "roster_checksum": stored_config.get("roster_checksum"),
+                "rule_pack_manifest": _object(stored_config.get("rule_pack_manifest")),
                 "players": [
                     {"id": str(player["id"]), "name": str(player["name"])}
                     for player in map(_object, players.values())

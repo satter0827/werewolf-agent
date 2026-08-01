@@ -19,6 +19,7 @@ from werewolf_agent.application.definitions import (
 from werewolf_agent.application.domain_codec import action_from_data, game_state_from_data
 from werewolf_agent.application.errors import (
     AppError,
+    ConfigError,
     ErrorCode,
     GameError,
     InvalidGameIdError,
@@ -31,6 +32,7 @@ from werewolf_agent.application.messages import (
     message_unsupported_action_type,
 )
 from werewolf_agent.application.models import (
+    ApplicationContext,
     GameRevealAction,
     PlayerActionCommand,
     StoredGame,
@@ -41,7 +43,7 @@ from werewolf_agent.domain import (
     Action,
     Game,
     GameState,
-    build_game_rules,
+    RulePackManifest,
 )
 
 
@@ -150,9 +152,21 @@ def _action_from_command(command: PlayerActionCommand) -> Action:
         ) from exc
 
 
-def _restore_game(run: StoredGame) -> Game:
+def _restore_game(run: StoredGame, dependencies: ApplicationContext) -> Game:
+    """保存済みmanifestと一致する明示登録済みRule Packでゲームを復元する."""
     state = game_state_from_data({**run.private_state, "pending_actions": run.pending_actions})
-    rules = build_game_rules(rule_definition_from_state(state))
+    raw_manifest = run.config.get("rule_pack_manifest")
+    if not isinstance(raw_manifest, Mapping):
+        raise ConfigError("保存済みゲームにRule Pack manifestがありません。")
+    try:
+        manifest = RulePackManifest.from_mapping(raw_manifest)
+        rules = dependencies.rule_packs.compile(
+            manifest.provider_id,
+            rule_definition_from_state(state),
+            expected_manifest=manifest,
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ConfigError("保存済みゲームのRule Packを再構築できません。") from exc
     return Game.restore(state, rules=rules)
 
 

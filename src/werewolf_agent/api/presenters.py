@@ -4,15 +4,22 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from werewolf_agent.application.operations import QueuedOperation
-from werewolf_agent.contracts.api import OperationResponse
+from werewolf_agent.application import QueuedOperation, SavedSetupRevision
+from werewolf_agent.contracts.api import OperationResponse, SavedSetupRevisionResponse
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
+    AvailableActionDescriptor,
     GameListResponse,
     GameResponse,
     GameRevealResponse,
+    GameSetupDocumentRequest,
     GameTimelineResponse,
+    PlayerObservation,
+    PlayerObservationHistory,
+    PlayerObservationOutcome,
     PlayerObservationResponse,
+    PlayerObservationSpeech,
+    PlayerObservationVote,
     ProblemDetails,
 )
 
@@ -39,7 +46,69 @@ def timeline_response(source: BaseModel) -> GameTimelineResponse:
 
 def observation_response(source: BaseModel) -> PlayerObservationResponse:
     """Return allowlisted private player observation."""
-    return wire_model(PlayerObservationResponse, source)
+    payload = source.model_dump(mode="json")
+    observation = payload["observation"]
+    legal_targets = observation.get("legal_targets", {})
+    actions: list[AvailableActionDescriptor] = []
+    for item in observation.get("available_actions", []):
+        ability_id = item.get("ability_id")
+        key = f"{item['type']}:{ability_id}" if ability_id is not None else item["type"]
+        actions.append(
+            AvailableActionDescriptor(
+                key=key,
+                type=item["type"],
+                ability_id=ability_id,
+                legal_target_ids=legal_targets.get(key, []),
+                message_required=item["type"] == "speech",
+            )
+        )
+    history = observation.get("history", {})
+    win_result = observation.get("win_result")
+    return PlayerObservationResponse(
+        game_id=payload["game_id"],
+        player_id=payload["player_id"],
+        observation=PlayerObservation(
+            phase=observation["phase"],
+            day=observation["day"],
+            me=observation["me"],
+            players=observation["players"],
+            known_roles=observation.get("known_roles", {}),
+            known_factions=observation.get("known_factions", {}),
+            available_actions=actions,
+            history=PlayerObservationHistory(
+                speeches=[
+                    PlayerObservationSpeech.model_validate(
+                        {
+                            key: speech[key]
+                            for key in (
+                                "day",
+                                "player_id",
+                                "message",
+                                "focus_id",
+                                "evidence_id",
+                            )
+                            if key in speech
+                        }
+                    )
+                    for speech in history.get("speeches", [])
+                ],
+                votes=[
+                    PlayerObservationVote.model_validate(vote) for vote in history.get("votes", [])
+                ],
+            ),
+            win_result=(
+                None
+                if win_result is None
+                else PlayerObservationOutcome.model_validate(
+                    {
+                        key: win_result[key]
+                        for key in ("winner", "reason", "day")
+                        if key in win_result
+                    }
+                )
+            ),
+        ),
+    )
 
 
 def reveal_response(source: BaseModel) -> GameRevealResponse:
@@ -63,11 +132,25 @@ def operation_response(source: QueuedOperation) -> OperationResponse:
     )
 
 
+def saved_setup_revision_response(source: SavedSetupRevision) -> SavedSetupRevisionResponse:
+    """Return one setup revision after explicitly crossing the domain document boundary."""
+    return SavedSetupRevisionResponse(
+        setup_id=source.setup_id,
+        display_name=source.display_name,
+        revision=source.revision,
+        document=GameSetupDocumentRequest.model_validate(source.document.to_mapping()),
+        setup_checksum=source.setup_checksum,
+        mechanics_checksum=source.mechanics_checksum,
+        created_at=source.created_at,
+    )
+
+
 __all__ = [
     "game_list_response",
     "game_response",
     "observation_response",
     "operation_response",
     "reveal_response",
+    "saved_setup_revision_response",
     "timeline_response",
 ]

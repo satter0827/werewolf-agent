@@ -7,8 +7,8 @@ from typing import Self
 from pydantic import ConfigDict, field_validator, model_validator
 
 from werewolf_agent.application.models.base import ApplicationModel
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.validation import non_blank
+from werewolf_agent.setup import GameSetupDocument
 
 
 class SetupTemplateMetadata(ApplicationModel):

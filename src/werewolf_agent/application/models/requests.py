@@ -7,9 +7,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_serializer, field_validator, model_validator
 
-from werewolf_agent.application.checksums import checksum_payload
 from werewolf_agent.application.constants import (
     DEFAULT_DELIBERATION_LEVEL,
     MIN_PAGE_LIMIT,
@@ -22,9 +21,10 @@ from werewolf_agent.application.messages import (
 )
 from werewolf_agent.application.models.base import ApplicationModel
 from werewolf_agent.application.models.results import GameEventCreate
-from werewolf_agent.application.setup_document import GameSetupDocument
 from werewolf_agent.application.types import GamePhase, GameStatus
 from werewolf_agent.application.validation import generated_player_ids, non_blank
+from werewolf_agent.domain import CORE_RULE_PACK_ID
+from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 if TYPE_CHECKING:
     from werewolf_agent.domain import Game, GameEvent
@@ -61,6 +61,18 @@ class CreateGameCommand(ApplicationModel):
     manual_player_id: str | None = None
     llm_mode: Literal["fake", "paid"] = "fake"
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
+    rule_pack_provider_id: str = CORE_RULE_PACK_ID
+
+    @field_serializer("setup")
+    def serialize_setup(self, setup: GameSetupDocument) -> dict[str, object]:
+        """Immutable setupをJSON互換mappingとして返す."""
+        return setup.to_mapping()
+
+    @field_validator("rule_pack_provider_id")
+    @classmethod
+    def validate_rule_pack_provider_id(cls, value: str) -> str:
+        """空白を除去した明示的なRule Pack provider IDを返す."""
+        return non_blank(value, "rule_pack_provider_id")
 
     @field_validator("manual_player_id")
     @classmethod
@@ -83,8 +95,8 @@ class CreateGameCommand(ApplicationModel):
         if self.manual_player_id is not None and self.manual_player_id not in valid_player_ids:
             raise ValueError(MESSAGE_MANUAL_PLAYER_ID_MUST_MATCH_PLAYERS)
         expected_checksums = {
-            "setup_checksum": checksum_payload(self.setup.model_dump(mode="json")),
-            "mechanics_checksum": checksum_payload(self.setup.mechanics.model_dump(mode="json")),
+            "setup_checksum": checksum_payload(self.setup.to_mapping()),
+            "mechanics_checksum": checksum_payload(self.setup.mechanics.to_mapping()),
             "roster_checksum": checksum_payload(
                 [player.model_dump(mode="json") for player in self.players]
             ),
@@ -135,6 +147,10 @@ class PreparedAdvanceGame:
     config: dict[str, Any]
     game: Game
     created_at: datetime
+    phase_seed: int
+    prepared_phase: str
+    prepared_day: int
+    domain_transition_complete: bool = False
     domain_events: tuple[GameEvent, ...] = ()
 
 

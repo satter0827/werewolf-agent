@@ -9,7 +9,7 @@ from werewolf_agent.worker import app as worker_app
 
 
 def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -> None:
-    def fail_process(_settings: object) -> int:
+    def fail_process(_settings: object, **_kwargs: object) -> int:
         raise AssertionError("worker should not poll without WEREWOLF_SUPABASE_DB_DSN")
 
     monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
@@ -41,7 +41,7 @@ def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> 
         supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
     )
 
-    def fail_process(_settings: object) -> int:
+    def fail_process(_settings: object, **_kwargs: object) -> int:
         try:
             raise RuntimeError("private worker detail")
         except RuntimeError as cause:
@@ -80,7 +80,11 @@ def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> N
         "configure_entrypoint_logging",
         lambda *args, **kwargs: settings,
     )
-    monkeypatch.setattr(worker_app, "process_worker_batch", lambda _settings: 0)
+    monkeypatch.setattr(
+        worker_app,
+        "process_worker_batch",
+        lambda _settings, **_kwargs: 0,
+    )
 
     with caplog.at_level(logging.INFO, logger=worker_app.__name__):
         result = CliRunner().invoke(worker_app.app, ["once"])
