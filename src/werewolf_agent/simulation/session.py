@@ -95,6 +95,7 @@ class SimulationSession:
         decision_executor: DecisionExecutor | None = None,
         trace_sink: DecisionTraceSink | None = None,
         cancellation: CancellationToken | None = None,
+        resume_from: SimulationResult | None = None,
     ) -> None:
         """一局の依存と実行位置を初期化する."""
         self._game = game
@@ -104,20 +105,18 @@ class SimulationSession:
         )
         self._trace_sink = trace_sink if trace_sink is not None else NullDecisionTraceSink()
         self._cancellation = cancellation if cancellation is not None else CancellationToken()
-        self._phase_random = random.Random(
-            spec.phase_seed
-            if spec.phase_seed is not None
-            else namespace_seed(spec.seed, "simulation:phase")
-        )
         self._agent_sessions: dict[str, AgentSession] = {}
         self._fallback_sessions: dict[str, AgentSession] = {}
-        self._steps: list[SimulationStep] = []
-        self._action_count = 0
-        self._phase_count = 0
+        self._steps = list(resume_from.steps) if resume_from is not None else []
+        self._action_count = resume_from.action_count if resume_from is not None else 0
+        self._phase_count = resume_from.phase_count if resume_from is not None else 0
         self._closed = False
-        player_ids = set(game.snapshot().players)
+        state = game.snapshot()
+        player_ids = set(state.players)
         if set(spec.controllers) != player_ids:
             raise ValueError("controllers must exactly match game players")
+        if resume_from is not None:
+            _validate_resume_result(resume_from, spec=spec, state=state)
 
     @property
     def game(self) -> Game:
@@ -201,7 +200,7 @@ class SimulationSession:
     def result(self, stop_reason: SimulationStopReason) -> SimulationResult:
         """現在位置を再開可能な結果として返す."""
         return SimulationResult(
-            simulation_id=self._spec.simulation_id,
+            spec=self._spec,
             stop_reason=stop_reason,
             state=self._game.snapshot(),
             steps=tuple(self._steps),
@@ -259,7 +258,15 @@ class SimulationSession:
 
     def _advance_phase(self) -> SimulationStep:
         before = self._game.snapshot()
-        events = tuple(self._game.advance(self._phase_random))
+        phase_seed = (
+            self._spec.phase_seed
+            if self._spec.phase_seed is not None
+            else namespace_seed(self._spec.seed, "simulation:phase")
+        )
+        phase_random = random.Random(
+            namespace_seed(phase_seed, f"simulation:phase:{self._phase_count + 1}")
+        )
+        events = tuple(self._game.advance(phase_random))
         self._phase_count += 1
         return self._record(SimulationStepKind.PHASE_ADVANCED, before=before, events=events)
 
@@ -309,7 +316,7 @@ class SimulationSession:
             _require_legal_response(request, response)
             trace = DecisionTrace(
                 decision_id=request.decision_id,
-                agent_spec=controller.factory.spec,
+                agent_spec=controller.fallback_factory.spec,
                 response=response,
                 latency_ms=_elapsed_milliseconds(started_at),
                 fallback_used=True,
@@ -459,21 +466,21 @@ class SimulationRunner:
 
     def restore(
         self,
-        state: GameState,
+        result: SimulationResult,
         *,
         rules: CompiledRuleSet,
-        spec: SimulationSpec,
         decision_executor: DecisionExecutor | None = None,
         trace_sink: DecisionTraceSink | None = None,
         cancellation: CancellationToken | None = None,
     ) -> SimulationSession:
-        """検証済みstateをI/Oなしで復元してSessionを開始する."""
-        return self.start(
-            Game.restore(state, rules=rules),
-            spec,
+        """再開情報を検証し、乱数位置と実行上限を保ってSessionを復元する."""
+        return SimulationSession(
+            Game.restore(result.state, rules=rules),
+            result.spec,
             decision_executor=decision_executor,
             trace_sink=trace_sink,
             cancellation=cancellation,
+            resume_from=result,
         )
 
     def start(
@@ -501,6 +508,34 @@ class SimulationRunner:
             return session.run()
         finally:
             session.close()
+
+
+def _validate_resume_result(
+    result: SimulationResult,
+    *,
+    spec: SimulationSpec,
+    state: GameState,
+) -> None:
+    """改変または別条件のresultを再開位置として受け付けない."""
+    if result.spec != spec:
+        raise ValueError("result spec must match resumed session spec")
+    if result.state != state:
+        raise ValueError("result state must match restored game state")
+    if tuple(step.index for step in result.steps) != tuple(range(1, len(result.steps) + 1)):
+        raise ValueError("result step indexes must be contiguous")
+    action_count = sum(
+        step.kind in {SimulationStepKind.AGENT_ACTION, SimulationStepKind.MANUAL_ACTION}
+        for step in result.steps
+    )
+    phase_count = sum(step.kind is SimulationStepKind.PHASE_ADVANCED for step in result.steps)
+    if result.action_count != action_count:
+        raise ValueError("result action count must match steps")
+    if result.phase_count != phase_count:
+        raise ValueError("result phase count must match steps")
+    if result.steps:
+        last = result.steps[-1]
+        if last.phase_after != state.phase.value or last.day_after != state.day:
+            raise ValueError("result final step must match state position")
 
 
 def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:

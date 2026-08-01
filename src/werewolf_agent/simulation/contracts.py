@@ -20,7 +20,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.4.1"
+SIMULATION_CONTRACT_VERSION = "0.5.0"
 
 
 class SimulationStepKind(StrEnum):
@@ -192,7 +192,7 @@ class SimulationStep:
 class SimulationResult:
     """停止時点の再利用可能な一局実行結果を表す."""
 
-    simulation_id: str
+    spec: SimulationSpec
     stop_reason: SimulationStopReason
     state: GameState
     steps: tuple[SimulationStep, ...]
@@ -201,15 +201,17 @@ class SimulationResult:
 
     def __post_init__(self) -> None:
         """結果collectionと件数を固定する."""
-        object.__setattr__(
-            self,
-            "simulation_id",
-            _non_blank(self.simulation_id, "simulation_id"),
-        )
+        if not isinstance(self.spec, SimulationSpec):
+            raise ValueError("spec must be a SimulationSpec")
         object.__setattr__(self, "stop_reason", SimulationStopReason(self.stop_reason))
         object.__setattr__(self, "steps", tuple(self.steps))
         _non_negative_integer(self.action_count, "action_count")
         _non_negative_integer(self.phase_count, "phase_count")
+
+    @property
+    def simulation_id(self) -> str:
+        """実行仕様へ固定したsimulation IDを返す."""
+        return self.spec.simulation_id
 
     @property
     def winner_id(self) -> str | None:

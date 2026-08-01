@@ -18,7 +18,15 @@ from werewolf_agent.agents import (
     FaultAgentFactory,
     RandomLegalAgentFactory,
 )
-from werewolf_agent.domain import Action, Game, GameSetup, GameView, Player, build_game_rules
+from werewolf_agent.domain import (
+    Action,
+    CompiledRuleSet,
+    Game,
+    GameSetup,
+    GameView,
+    Player,
+    build_game_rules,
+)
 from werewolf_agent.setup import generate_players, namespace_seed, rule_definition_from_values
 from werewolf_agent.simulation import (
     AgentMetadata,
@@ -135,12 +143,12 @@ class _FalseyCancellation(CancellationToken):
         return False
 
 
-def _game(seed: int = 41) -> Game:
+def _rules() -> CompiledRuleSet:
     catalog = build_setup_catalog()
     document = catalog.require_document(catalog.template_order[0])
     mechanics = document.mechanics
     player_count = sum(mechanics.role_counts.values())
-    rules = build_game_rules(
+    return build_game_rules(
         rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
@@ -149,12 +157,18 @@ def _game(seed: int = 41) -> Game:
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
     )
+
+
+def _game(seed: int = 41) -> Game:
+    catalog = build_setup_catalog()
+    document = catalog.require_document(catalog.template_order[0])
+    player_count = sum(document.mechanics.role_counts.values())
     generated = generate_players(document.player_generation, player_count=player_count, seed=seed)
     return Game.create(
         GameSetup(
             players=tuple(Player(id=item.player_id, name=item.profile.name) for item in generated)
         ),
-        rules=rules,
+        rules=_rules(),
         random=random.Random(namespace_seed(seed, "role_assignment")),
     )
 
@@ -194,6 +208,65 @@ def test_same_seed_produces_same_steps_and_state() -> None:
         None if step.decision_trace is None else step.decision_trace.response
         for step in second.steps
     )
+
+
+def test_restore_preserves_execution_position_and_determinism() -> None:
+    interrupted_game = _game()
+    interrupted_spec = _spec(interrupted_game)
+    cancellation = CancellationToken()
+    interrupted = SimulationRunner().start(
+        interrupted_game,
+        interrupted_spec,
+        cancellation=cancellation,
+    )
+    try:
+        while interrupted.step().kind is not SimulationStepKind.PHASE_ADVANCED:
+            pass
+        cancellation.cancel()
+        stopped = interrupted.run()
+    finally:
+        interrupted.close()
+
+    resumed = SimulationRunner().restore(stopped, rules=_rules())
+    try:
+        resumed_result = resumed.run()
+    finally:
+        resumed.close()
+
+    reference_game = _game()
+    reference = SimulationRunner().run(reference_game, _spec(reference_game))
+    resumed_effects = tuple(
+        (step.kind, step.events, step.action_type)
+        for step in resumed_result.steps
+        if step.kind is not SimulationStepKind.CANCELLED
+    )
+    reference_effects = tuple(
+        (step.kind, step.events, step.action_type) for step in reference.steps
+    )
+
+    assert resumed_result.stop_reason is SimulationStopReason.FINISHED
+    assert resumed_result.state == reference.state
+    assert resumed_result.action_count == reference.action_count
+    assert resumed_result.phase_count == reference.phase_count
+    assert resumed_effects == reference_effects
+
+
+def test_restore_uses_the_spec_recorded_in_the_result() -> None:
+    game = _game()
+    spec = _spec(game)
+    cancellation = CancellationToken()
+    cancellation.cancel()
+    session = SimulationRunner().start(game, spec, cancellation=cancellation)
+    try:
+        result = session.run()
+    finally:
+        session.close()
+
+    restored = SimulationRunner().restore(result, rules=_rules())
+    try:
+        assert restored.spec is spec
+    finally:
+        restored.close()
 
 
 def test_simulation_honors_falsey_injected_runtime_dependencies() -> None:
@@ -274,8 +347,10 @@ def test_agent_failure_uses_fallback_and_records_stable_error() -> None:
         while step.kind is SimulationStepKind.PHASE_ADVANCED:
             step = session.step()
         assert step.decision_trace is not None
+        assert step.actor_id is not None
         assert step.decision_trace.fallback_used
         assert step.decision_trace.error_code == "broken"
+        assert step.decision_trace.agent_spec == controllers[step.actor_id].fallback_factory.spec
     finally:
         session.close()
 
