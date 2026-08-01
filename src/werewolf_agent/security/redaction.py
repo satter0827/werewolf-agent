@@ -14,9 +14,9 @@ from werewolf_agent.security.constants import (
 )
 
 _SENSITIVE_ASSIGNMENT_PATTERN: Final = re.compile(
-    r"(?i)\b(secret|token|api[_-]?key|apikey|authorization|password|"
+    r"(?i)(?<![A-Za-z0-9_-])([\"']?)(secret|token|api[_-]?key|apikey|authorization|password|"
     r"night_action|private_state|role|target|target_id)"
-    r"(\s*[:=]\s*)((?:Bearer\s+)?[^,\s;]+)"
+    r"\1(\s*[:=]\s*)((?:Bearer\s+)?(?:[\"'][^\"']*[\"']|[^,\s;]+))"
 )
 _URI_CREDENTIALS_PATTERN: Final = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@")
 
@@ -44,8 +44,21 @@ def redact_value(key: str | None, value: object) -> object:
 
 def redact_text(value: str) -> str:
     """Mask common sensitive key assignments inside free-form log strings."""
-    redacted = _SENSITIVE_ASSIGNMENT_PATTERN.sub(r"\1\2[REDACTED]", value)
+    redacted = _SENSITIVE_ASSIGNMENT_PATTERN.sub(_redact_assignment, value)
     return _URI_CREDENTIALS_PATTERN.sub(r"\1[REDACTED]@", redacted)
+
+
+def _redact_assignment(match: re.Match[str]) -> str:
+    """Preserve assignment syntax while replacing only the sensitive value."""
+    key_quote = match.group(1)
+    raw_value = match.group(4)
+    value_quote = ""
+    if len(raw_value) >= 2 and raw_value[0] in {'"', "'"} and raw_value[-1] == raw_value[0]:
+        value_quote = raw_value[0]
+    return (
+        f"{key_quote}{match.group(2)}{key_quote}{match.group(3)}"
+        f"{value_quote}{REDACTED}{value_quote}"
+    )
 
 
 def is_sensitive_key(key: str) -> bool:

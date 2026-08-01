@@ -20,8 +20,10 @@ from werewolf_agent.adapters.supabase.paid_llm_admission import (
     PaidLlmAdmission,
     SupabasePaidLlmAdmissionGate,
 )
+from werewolf_agent.adapters.supabase.repository import SupabaseGameRepository
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
 from werewolf_agent.application.errors import AppError
+from werewolf_agent.application.replay import verify_replay
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.settings import AppSettings
@@ -396,6 +398,27 @@ def test_data_api_roles_cannot_access_game_tables_directly() -> None:
 
 
 @pytest.mark.serial
+def test_runtime_seed_exists_only_in_private_snapshot() -> None:
+    """利用者が操作できるpublic tableへruntime seedを保存しない。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        rows = connection.execute(
+            """
+            select table_schema, table_name
+            from information_schema.columns
+            where column_name = 'seed'
+              and (table_schema, table_name) in (
+                ('public', 'games'),
+                ('public', 'game_summaries'),
+                ('private', 'game_snapshots')
+              )
+            order by table_schema, table_name
+            """
+        ).fetchall()
+
+    assert rows == [("private", "game_snapshots")]
+
+
+@pytest.mark.serial
 def test_rls_hides_another_users_game_and_private_reveal() -> None:
     """RLSを実際に評価し、他利用者とrevealを公開しない。"""
 
@@ -556,6 +579,13 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         assert advanced == ("succeeded",)
         assert current_version is not None
         assert current_version[0] > initial_version[0]
+        with psycopg.connect(dsn, row_factory=dict_row) as replay_connection:
+            replay = verify_replay(
+                str(game_id),
+                SupabaseGameRepository(replay_connection, owner_user_id=str(owner_id)),
+                WORKER_DEPENDENCIES.rule_packs,
+            )
+        assert replay.valid is True
     finally:
         connection.rollback()
         if game_id is not None:

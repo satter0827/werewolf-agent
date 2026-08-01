@@ -30,7 +30,6 @@ def _state(*, status: str = "running", winner: str | None = None) -> PublicGameS
         phase="finished" if status == "completed" else "day_discussion",
         day=2,
         version=3,
-        seed=1,
         players=[
             PublicPlayerState(id="player-1", name="P1", alive=True, status="alive"),
             PublicPlayerState(id="player-2", name="P2", alive=True, status="alive"),
@@ -263,7 +262,6 @@ def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
         phase="day_discussion",
         day=1,
         version=1,
-        seed=None,
         player_count=6,
         alive_count=6,
         step_count=0,

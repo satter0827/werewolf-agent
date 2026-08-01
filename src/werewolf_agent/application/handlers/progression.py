@@ -133,7 +133,6 @@ def compute_prepared_advance(
         next_snapshot,
         game_id=prepared.game_id,
         version=prepared.version + 1,
-        seed=prepared.seed,
         created_at=prepared.created_at,
         scenario_id=_config_text(prepared.config, "scenario_id"),
         scenario_name=_config_text(prepared.config, "scenario_name"),

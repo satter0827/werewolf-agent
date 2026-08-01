@@ -254,7 +254,7 @@ GameSetupSelectionRequest = Annotated[
 class CreateGameRequest(BaseModel):
     """Payload for creating one game."""
 
-    seed: int | None = None
+    seed: int | None = Field(default=None, description="Public roster reproduction seed.")
     setup: GameSetupSelectionRequest
     manual_player_id: str | None = None
     deliberation_level: DeliberationLevel = DEFAULT_DELIBERATION_LEVEL
@@ -307,7 +307,6 @@ class PublicGameState(BaseModel):
     phase: GamePhase
     day: int
     version: int
-    seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
@@ -351,7 +350,6 @@ class PublicGameSummary(BaseModel):
     phase: GamePhase
     day: int
     version: int
-    seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
     theme: PublicTheme | None = None

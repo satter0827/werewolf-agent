@@ -42,7 +42,6 @@ class StoredGameSummary(ApplicationModel):
     phase: GamePhase
     day: int
     version: int
-    seed: int | None
     scenario_id: str | None = None
     scenario_name: str | None = None
     theme: dict[str, Any] | None = None

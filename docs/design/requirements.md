@@ -28,7 +28,7 @@
 | `REQ-GAME-009` | 背景固有の名称を画面とLLMへ反映し、mechanicsの安定IDと分離する | projection、agents |
 | `REQ-GAME-010` | setup、mechanics、生成rosterのchecksumを保存し、replayとLLM traceで追跡できる | persistence、LLM |
 | `REQ-GAME-011` | 自動プレイヤーが公開根拠に基づいて合法な行動と対象を選び、発言・投票・役職行動へ一貫して反映する | agents、gameplayレビュー |
-| `REQ-GAME-012` | 同じsetupとseedから同じプレイヤー、役職割当、ゲーム進行を生成し、用途別seedを相互に分離する | setup、application、domain |
+| `REQ-GAME-012` | 同じsetupとroster seedから同じ公開プロファイルを生成し、非公開runtime seed内では同じprivate strategy、役職割当、ゲーム進行を再現し、両seedを相互に分離する | setup、application、domain |
 | `REQ-GAME-013` | プレイヤー previewは公開personaだけを返し、役職とprivate strategyを返さない | API、clients |
 | `REQ-LLM-001` | Fakeと実LLMが同じchat request、応答検証、fallbackを通り、意思決定ごとの呼び出しを最大1回にする | アダプター contract、trace |
 | `REQ-LLM-002` | quick、standard、deepで参照履歴と出力上限を切り替え、ゲーム作成時の選択を保存する | API、worker、clients、persistence |
@@ -59,9 +59,10 @@
 
 | ID | 要件 | 受入方法 |
 | --- | --- | --- |
-| `REQ-QUALITY-001` | 同じseed、定義、入力列から同じ状態とevent列を得る | unit、monkey |
+| `REQ-QUALITY-001` | 同じ非公開runtime seed、定義、入力列から同じ状態とevent列を得る | unit、monkey |
 | `REQ-QUALITY-002` | 失敗した状態遷移でstateを変更しない | domain unit |
 | `REQ-SECURITY-001` | public response、timeline、ログへprivate情報を出さない | unit、integration |
+| `REQ-SECURITY-002` | 公開seedと入力から未公開role、private strategy、内部乱数状態を復元できない | unit、integration |
 | `REQ-ARCH-001` | layer依存、公開面、循環を機械検査できる | architecture |
 | `REQ-OPS-001` | リポジトリ内の検証と運用準備をCLIから再現できる | quality、リリース |
 | `REQ-QUALITY-003` | 実行せずにテスト結果、画面、設定、ログを成果物一式からレビューできる | manifest、レビュー |

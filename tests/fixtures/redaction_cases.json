@@ -10,5 +10,9 @@
   {
     "input": "Authorization: Bearer secret-value",
     "expected": "Authorization: [REDACTED]"
+  },
+  {
+    "input": "{\"Authorization\": \"Bearer secret-value\", \"api_key\":\"sk-value\"}",
+    "expected": "{\"Authorization\": \"[REDACTED]\", \"api_key\":\"[REDACTED]\"}"
   }
 ]
