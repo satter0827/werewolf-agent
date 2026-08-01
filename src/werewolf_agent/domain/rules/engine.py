@@ -179,7 +179,10 @@ def advance_phase(
     if next_state.phase is Phase.DAY_DISCUSSION:
         next_pending = replace(
             next_pending,
-            discussion_round=discussion_policy.start(next_state),
+            discussion_round=discussion.start_discussion(
+                next_state,
+                policy=discussion_policy,
+            ),
             discussion_actions={},
         )
     else:

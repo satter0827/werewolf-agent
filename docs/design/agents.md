@@ -10,7 +10,7 @@ agents層はプレイヤーが観測できる情報から意思決定を作る�
 の役職、未公開の夜行動、運用上の秘密情報をpromptに渡さない。
 
 LLMの自由文は直接ゲーム操作へ変換しない。生JSONをPydantic schemaで検証し、
-利用可能なaction、対象、発言対象、公開evidenceを確認してからdomain操作へ渡す。
+利用可能なaction、対象、応答先の公開発言ID、発言対象、公開evidenceを確認してからdomain操作へ渡す。
 意味を変えない正規化は完全なMarkdown fenceの除去だけとする。不正応答は書き換えず、
 再問い合わせを行わず、決定的fallbackへ送る。
 

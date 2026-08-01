@@ -16,6 +16,9 @@ from werewolf_agent.domain import (
     DeathReaction,
     DeathReactionResolution,
     DiscussionConfig,
+    DiscussionResolution,
+    DiscussionRound,
+    DiscussionRoundKind,
     Game,
     GameError,
     GameSetup,
@@ -38,6 +41,7 @@ from werewolf_agent.domain import (
     WinResult,
 )
 from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
+from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy
 
 
 def _definition() -> RuleSetDefinition:
@@ -175,6 +179,45 @@ class InvalidVotingPolicy:
             eliminated_player_id="unknown",
             tie_break_policy="invalid",
             round=vote_round,
+        )
+
+
+class SkipResponseDiscussionPolicy:
+    """openingの公開後に必要なresponseを省略するfault policy."""
+
+    def __init__(self) -> None:
+        self._core = CoreDiscussionPolicy()
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """組み込みと同じopeningから開始する."""
+        return self._core.start(state)
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        """opening発言を保持したままresponseを不正に省略する."""
+        resolution = self._core.resolve(state, round_, submissions)
+        if round_.kind is DiscussionRoundKind.OPENING and resolution.speeches:
+            return DiscussionResolution(resolution.speeches, None, True)
+        return resolution
+
+
+class InvalidStartDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """初日をresponseから始めるfault policy."""
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """構造化議論の開始条件に反するroundを返す."""
+        opening = self._core.start(state)
+        return DiscussionRound(
+            "invalid-response",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            opening.actor_order,
+            reference_ids=("not-published",),
         )
 
 
@@ -685,6 +728,84 @@ def test_invalid_voting_outcome_is_rejected_atomically() -> None:
 
     assert game.snapshot() is before
     assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_skip_response_after_opening() -> None:
+    """外部Policyが構造化議論の必須responseを省略してもstateを変更しない."""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=SkipResponseDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    actor_id = next(
+        player_id
+        for player_id in game.snapshot().players
+        if game.view_for(player_id).available_actions
+    )
+    game.submit(Action.speech(actor_id, "意見を述べます。"))
+    before = game.snapshot()
+
+    with pytest.raises(ValueError, match="cannot complete"):
+        game.advance(random.Random(11))
+
+    assert game.snapshot() is before
+
+
+def test_discussion_policy_cannot_start_outside_first_opening() -> None:
+    """外部Policyも初回openingと全生存者を省略できない."""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=InvalidStartDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+
+    random_source = random.Random(7)
+    random_state = random_source.getstate()
+
+    with pytest.raises(ValueError, match="first opening"):
+        Game.create(
+            GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+            rules=rules,
+            random=random_source,
+        )
+
+    assert random_source.getstate() == random_state
+
+
+def test_discussion_round_rejects_duplicate_reference_ids() -> None:
+    """応答候補を集合比較で曖昧にしない."""
+    with pytest.raises(ValueError, match="unique speeches"):
+        DiscussionRound(
+            "response-1",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            ("p1", "p2"),
+            reference_ids=("speech-1", "speech-1"),
+        )
+    with pytest.raises(ValueError, match="cursor is outside"):
+        DiscussionRound(
+            "response-1",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            ("p1", "p2"),
+            cursor=2,
+            reference_ids=("speech-1",),
+        )
 
 
 def test_external_ability_policy_changes_night_resolution_without_mutating_directly() -> None:

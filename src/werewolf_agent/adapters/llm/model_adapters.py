@@ -127,6 +127,7 @@ class FakeDecisionModel:
         target_id = _fake_target(request, action)
         focus_id = _fake_focus(request, target_id)
         evidence_id = _fake_evidence_id(request)
+        response_to_id = _fake_reference(request, action)
         names = _player_names(request)
         response = self.catalog.render(
             action.type.value,
@@ -138,6 +139,7 @@ class FakeDecisionModel:
                 "focus_id": focus_id or "",
                 "focus_name": names.get(focus_id or "", focus_id or ""),
                 "evidence_id": evidence_id or "",
+                "response_to_id": response_to_id or "",
                 "persona": (
                     request.task.observation.profile.personality
                     if request.task.observation.profile is not None
@@ -163,6 +165,8 @@ class FakeDecisionModel:
             payload["focus_id"] = focus_id
         if action.type is not AgentActionType.PASS and evidence_id is not None:
             payload["evidence_id"] = evidence_id
+        if action.type is AgentActionType.SPEECH and response_to_id is not None:
+            payload["response_to_id"] = response_to_id
         response = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         raw = FakeListChatModel(responses=[response]).invoke(_langchain_messages(request.messages))
         return _model_response(raw, provider=self.provider_name, model=self.model_name)
@@ -267,6 +271,19 @@ def _fake_evidence_id(request: ModelRequest) -> str | None:
         return None
     value = first.get("id")
     return str(value) if value else None
+
+
+def _fake_reference(
+    request: ModelRequest,
+    action: AgentAvailableAction,
+) -> str | None:
+    references = request.task.observation.legal_references.get(action.key, [])
+    if not references:
+        return None
+    digest = hashlib.sha256(
+        f"{request.task.context_checksum}:{action.key}:reference".encode()
+    ).digest()
+    return references[int.from_bytes(digest[:8], "big") % len(references)]
 
 
 def _player_names(request: ModelRequest) -> dict[str, str]:

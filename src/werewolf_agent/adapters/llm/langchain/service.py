@@ -38,7 +38,7 @@ from werewolf_agent.adapters.llm.models import (
 from werewolf_agent.adapters.llm.ports import DecisionModel
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 
-PIPELINE_REVISION = "decision-v2"
+PIPELINE_REVISION = "decision-v3"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
 
 
@@ -259,6 +259,21 @@ def _decision_context(
 ) -> dict[str, object]:
     game = observation.game_context
     actions = list(observation.available_actions)
+    legal_reference_ids = {
+        reference_id
+        for action in actions
+        for reference_id in observation.legal_references.get(action.key, [])
+    }
+    reference_speeches = {
+        speech.speech_id: {
+            "player_id": speech.player_id,
+            "message": speech.message,
+            "focus_id": speech.focus_id,
+            "evidence_id": speech.evidence_id,
+        }
+        for speech in observation.speeches
+        if speech.speech_id in legal_reference_ids
+    }
     context: dict[str, object] = {
         "phase": observation.phase.value,
         "day": observation.day,
@@ -277,6 +292,12 @@ def _decision_context(
                 for action in actions
                 if action.type in AgentDecision.TARGET_TYPES
             },
+            "references": {
+                action.key: list(observation.legal_references.get(action.key, []))
+                for action in actions
+                if observation.legal_references.get(action.key)
+            },
+            "reference_speeches": reference_speeches,
             "constraints": {
                 "speech_max_chars": LLM_SPEECH_MESSAGE_MAX_CHARS,
                 "target_required_for": [
@@ -285,6 +306,9 @@ def _decision_context(
                 "message_required_for": [AgentActionType.SPEECH.value]
                 if any(action.type is AgentActionType.SPEECH for action in actions)
                 else [],
+                "response_to_required_for": [
+                    action.key for action in actions if observation.legal_references.get(action.key)
+                ],
             },
         },
         "players": [
@@ -379,13 +403,14 @@ def _evidence(observation: AgentObservation, *, event_limit: int) -> list[dict[s
                 0,
                 index,
                 {
-                    "id": f"speech:d{speech.day}:{speech.player_id}:{index + 1}",
+                    "id": speech.speech_id,
                     "type": "my_speech" if speech.player_id == observation.me.id else "speech",
                     "day": speech.day,
                     "player_id": speech.player_id,
                     "message": speech.message,
                     "focus_id": speech.focus_id,
                     "evidence_id": speech.evidence_id,
+                    "response_to_id": speech.response_to_id,
                     "changed": (
                         previous_message is not None and previous_message != speech.message
                     ),
@@ -519,6 +544,14 @@ def _validated_decision(
             raise ValueError("target is not legal")
     if model_decision.type is AgentActionType.VOTE and not model_decision.reason.strip():
         raise ValueError("vote requires a public reason")
+    legal_references = observation.legal_references.get(requested_key, [])
+    if legal_references and model_decision.response_to_id is None:
+        raise ValueError("response speech requires a reference")
+    if (
+        model_decision.response_to_id is not None
+        and model_decision.response_to_id not in legal_references
+    ):
+        raise ValueError("speech reference is not legal")
     visible_ids = {player.id for player in observation.players}
     if model_decision.focus_id is not None and (
         model_decision.focus_id not in visible_ids or model_decision.focus_id == player_id
@@ -545,6 +578,7 @@ def _validated_decision(
         message=model_decision.message,
         focus_id=model_decision.focus_id,
         evidence_id=model_decision.evidence_id,
+        response_to_id=model_decision.response_to_id,
         reason=model_decision.reason,
     )
 

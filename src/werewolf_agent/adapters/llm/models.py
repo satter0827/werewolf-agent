@@ -97,18 +97,20 @@ class AgentSpeech(_LlmModel):
     """Public speech visible to a decision provider."""
 
     day: int = Field(ge=1)
+    speech_id: str
     player_id: str
     message: str
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
 
-    @field_validator("player_id", "message")
+    @field_validator("speech_id", "player_id", "message")
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
         return non_blank(value, str(info.field_name))
 
-    @field_validator("focus_id", "evidence_id")
+    @field_validator("focus_id", "evidence_id", "response_to_id")
     @classmethod
     def validate_optional_reference(cls, value: str | None, info: Any) -> str | None:
         return optional_non_blank(value, str(info.field_name))
@@ -202,9 +204,12 @@ class AgentModelDecision(_LlmModel):
     message: str | None = None
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
     reason: str = ""
 
-    @field_validator("ability_id", "target_id", "message", "focus_id", "evidence_id")
+    @field_validator(
+        "ability_id", "target_id", "message", "focus_id", "evidence_id", "response_to_id"
+    )
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return normalized optional output text."""
@@ -219,8 +224,8 @@ class AgentModelDecision(_LlmModel):
             if self.target_id is not None:
                 raise ValueError(MESSAGE_SPEECH_DECISION_FORBIDS_TARGET)
             return self
-        if self.focus_id is not None:
-            raise ValueError("focus_id is allowed only for speech")
+        if self.focus_id is not None or self.response_to_id is not None:
+            raise ValueError("focus_id and response_to_id are allowed only for speech")
         if (self.type is AgentActionType.USE_ABILITY) != (self.ability_id is not None):
             raise ValueError("use_abilityだけがability_idを持ちます")
         if self.type in AgentDecision.TARGET_TYPES:
@@ -299,6 +304,7 @@ class AgentObservation(_LlmModel):
     known_factions: dict[str, str] = Field(default_factory=dict)
     available_actions: list[AgentAvailableAction] = Field(default_factory=list)
     legal_targets: dict[str, list[str]] = Field(default_factory=dict)
+    legal_references: dict[str, list[str]] = Field(default_factory=dict)
     speeches: list[AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[AgentVoteRound] = Field(default_factory=list)
 
@@ -317,7 +323,7 @@ class AgentObservation(_LlmModel):
             for player_id, role in value.items()
         }
 
-    @field_validator("legal_targets")
+    @field_validator("legal_targets", "legal_references")
     @classmethod
     def validate_legal_targets(
         cls,
@@ -368,6 +374,7 @@ class AgentDecision(_LlmModel):
     message: str | None = None
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
     reason: str = ""
 
     TARGET_TYPES: ClassVar[frozenset[AgentActionType]] = frozenset(
@@ -380,7 +387,9 @@ class AgentDecision(_LlmModel):
         """Return a trimmed non-empty player id."""
         return non_blank(value, "player_id")
 
-    @field_validator("ability_id", "target_id", "message", "focus_id", "evidence_id")
+    @field_validator(
+        "ability_id", "target_id", "message", "focus_id", "evidence_id", "response_to_id"
+    )
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
@@ -396,8 +405,8 @@ class AgentDecision(_LlmModel):
                 raise ValueError(MESSAGE_SPEECH_DECISION_FORBIDS_TARGET)
             return self
 
-        if self.focus_id is not None:
-            raise ValueError("focus_id is allowed only for speech decisions")
+        if self.focus_id is not None or self.response_to_id is not None:
+            raise ValueError("focus_id and response_to_id are allowed only for speech decisions")
 
         if (self.type is AgentActionType.USE_ABILITY) != (self.ability_id is not None):
             raise ValueError("use_abilityだけがability_idを持ちます")
@@ -428,6 +437,7 @@ class AgentDecision(_LlmModel):
         *,
         focus_id: str | None = None,
         evidence_id: str | None = None,
+        response_to_id: str | None = None,
     ) -> Self:
         """Create a speech decision."""
         return cls(
@@ -436,6 +446,7 @@ class AgentDecision(_LlmModel):
             message=message,
             focus_id=focus_id,
             evidence_id=evidence_id,
+            response_to_id=response_to_id,
         )
 
     @classmethod

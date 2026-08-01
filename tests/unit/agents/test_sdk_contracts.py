@@ -38,6 +38,7 @@ class _Session:
         return DecisionResponse(
             action_type=option.action_type,
             target_id=option.legal_target_ids[0] if option.legal_target_ids else None,
+            reason="公開情報から判断" if option.action_type == "vote" else None,
         )
 
     def close(self) -> None:
@@ -123,6 +124,15 @@ def test_request_rejects_secret_or_illegal_player_references() -> None:
             observation=AgentObservation("voting", 1, me, (me,)),
             public_timeline=(PublicTimelineEvent(1, "speech", 1, "secret-player"),),
             options=(DecisionOption("pass"),),
+            decision_seed=17,
+        )
+    with pytest.raises(ValueError, match="legal references"):
+        DecisionRequest(
+            decision_id="decision-1",
+            context=context,
+            observation=AgentObservation("day_discussion", 1, me, (me,)),
+            public_timeline=(),
+            options=(DecisionOption("speech", legal_reference_ids=("hidden-speech",)),),
             decision_seed=17,
         )
 

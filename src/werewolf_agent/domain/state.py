@@ -792,8 +792,10 @@ class DiscussionRound:
         references = tuple(non_blank(item, "reference_id") for item in self.reference_ids)
         if not actor_order or len(actor_order) != len(set(actor_order)):
             raise ValueError("discussion actor_order must contain unique players")
-        if not 0 <= self.cursor <= len(actor_order):
+        if not 0 <= self.cursor < len(actor_order):
             raise ValueError("discussion cursor is outside actor_order")
+        if len(references) != len(set(references)):
+            raise ValueError("discussion reference_ids must contain unique speeches")
         if self.kind is DiscussionRoundKind.OPENING:
             if self.submission_mode is not SubmissionMode.SEALED or references:
                 raise ValueError("opening round must be sealed without references")

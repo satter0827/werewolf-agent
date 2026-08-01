@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.6.0"
+AGENT_CONTRACT_VERSION = "0.7.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -318,6 +318,22 @@ class DecisionRequest:
             for target in option.legal_target_ids
         ):
             raise ValueError("legal targets must be visible players")
+        visible_reference_ids = {
+            reference_id
+            for event in self.public_timeline
+            if event.event_type == "speech"
+            and event.actor_id is not None
+            and isinstance(event.payload.get("message"), str)
+            and str(event.payload["message"]).strip()
+            for reference_id in (event.payload.get("speech_id"),)
+            if isinstance(reference_id, str) and reference_id.strip()
+        }
+        if any(
+            reference not in visible_reference_ids
+            for option in self.options
+            for reference in option.legal_reference_ids
+        ):
+            raise ValueError("legal references must identify visible speeches")
         if self.deadline_at is not None and self.deadline_at.utcoffset() is None:
             raise ValueError("deadline_at must be timezone-aware")
 
