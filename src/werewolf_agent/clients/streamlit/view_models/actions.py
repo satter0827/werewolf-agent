@@ -9,6 +9,7 @@ from werewolf_agent.clients.streamlit.icons import action_icon
 from werewolf_agent.clients.streamlit.view_models.formatting import _player_name
 from werewolf_agent.clients.streamlit.view_models.types import (
     ActionChoiceView,
+    DiscussionResponseOptionView,
     HandPanelView,
     ObservationView,
     ScreenMode,
@@ -125,6 +126,20 @@ def observation_view_from_response(
         reference_positions={
             reference_id: speech_by_id[reference_id].position for reference_id in reference_choices
         },
+        response_options=[
+            DiscussionResponseOptionView(
+                response_to_id=item.response_to_id,
+                evidence_id=item.evidence_id,
+                topic_id=item.topic_id,
+                position=item.position,
+                relation=item.relation,
+            )
+            for item in (
+                observation.discussion_round.response_options
+                if observation.discussion_round is not None
+                else ()
+            )
+        ],
         discussion_topic_ids=[
             player.id
             for player in observation.players

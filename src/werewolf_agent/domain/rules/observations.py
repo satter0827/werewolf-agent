@@ -101,6 +101,15 @@ def build_player_observation(
             votes=snapshot.history.votes,
         ),
         discussion_round=pending_actions.discussion_round,
+        allowed_discussion_relations=(
+            next(
+                stage.allowed_relations
+                for stage in snapshot.config.discussion.stages
+                if stage.stage is pending_actions.discussion_round.kind
+            )
+            if pending_actions.discussion_round is not None
+            else ()
+        ),
         win_result=(
             None
             if snapshot.win_result is None

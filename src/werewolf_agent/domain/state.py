@@ -268,13 +268,19 @@ class DiscussionStageConfig:
             raise ValueError("allowed_relations must contain unique values")
         object.__setattr__(self, "allowed_relations", relations)
         if self.stage is DiscussionRoundKind.OPENING:
+            if self.submission_mode is not SubmissionMode.SEALED:
+                raise ValueError("opening stage must use sealed submission")
             if reference_stage is not None or relations != (DiscussionRelation.INDEPENDENT,):
                 raise ValueError("opening stage must be independent and reference-free")
         else:
+            if self.submission_mode is not SubmissionMode.ORDERED:
+                raise ValueError("response stage must use ordered submission")
             if reference_stage is not DiscussionRoundKind.OPENING:
                 raise ValueError("response stage must reference opening")
             if DiscussionRelation.INDEPENDENT in relations:
                 raise ValueError("response stage cannot allow independent relations")
+            if DiscussionRelation.SUPPORT not in relations:
+                raise ValueError("response stage must allow support relations")
 
 
 DEFAULT_DISCUSSION_STAGES = (
@@ -1203,6 +1209,7 @@ class GameView:
     action_text_limits: Mapping[str, int] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
     discussion_round: DiscussionRound | None = None
+    allowed_discussion_relations: tuple[DiscussionRelation, ...] = ()
     win_result: VisibleWinResult | None = None
 
     def __post_init__(self) -> None:
@@ -1228,6 +1235,11 @@ class GameView:
         if any(value < 1 for value in action_text_limits.values()):
             raise ValueError("action text limits must be positive")
         object.__setattr__(self, "action_text_limits", frozen_mapping(action_text_limits))
+        object.__setattr__(
+            self,
+            "allowed_discussion_relations",
+            tuple(DiscussionRelation(value) for value in self.allowed_discussion_relations),
+        )
 
 
 @dataclass(frozen=True)

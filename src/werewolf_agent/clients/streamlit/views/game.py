@@ -314,23 +314,23 @@ def _render_action_form(
             placeholder=catalog.label(lang, "action", "speech"),
             max_chars=message_max_chars,
         )
-        if screen.observation.reference_choices:
-            response_to_id = st.selectbox(
+        if screen.observation.response_options:
+            response_option = st.selectbox(
                 catalog.t(lang, "action.response_to"),
-                list(screen.observation.reference_choices),
-                format_func=screen.observation.reference_choices.get,
+                screen.observation.response_options,
+                format_func=lambda item: (
+                    f"{screen.observation.reference_choices.get(item.response_to_id, '')}"
+                    f" / {catalog.t(lang, f'position.{item.position}')} / {item.relation}"
+                ),
             )
-        if response_to_id:
-            reference_id = str(response_to_id)
-            topic_id = screen.observation.reference_topics[reference_id]
-            referenced_position = screen.observation.reference_positions[reference_id]
-            if referenced_position == "undecided":
-                relation = "answer"
-                position = "support"
-            else:
-                relation = "challenge"
-                position = "oppose" if referenced_position == "support" else "support"
-            evidence_id = reference_id
+        else:
+            response_option = None
+        if response_option is not None:
+            response_to_id = response_option.response_to_id
+            evidence_id = response_option.evidence_id
+            topic_id = response_option.topic_id
+            position = response_option.position
+            relation = response_option.relation
         else:
             topic_id = st.selectbox(
                 catalog.t(lang, "action.topic"),

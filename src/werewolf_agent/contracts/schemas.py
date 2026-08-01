@@ -655,6 +655,18 @@ class PlayerObservationHistory(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class DiscussionResponseOptionDescriptor(BaseModel):
+    """Serverが許可する一つのresponse構造候補を表す."""
+
+    response_to_id: str = Field(min_length=1)
+    evidence_id: str = Field(min_length=1)
+    topic_id: str = Field(min_length=1)
+    position: Literal["support", "oppose", "undecided"]
+    relation: Literal["answer", "support", "challenge", "revise"]
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
 class DiscussionRoundDescriptor(BaseModel):
     """Playerへ公開できる現在の議論roundを表す."""
 
@@ -665,6 +677,10 @@ class DiscussionRoundDescriptor(BaseModel):
     actor_order: list[str]
     cursor: int = Field(ge=0)
     reference_ids: list[str] = Field(default_factory=list)
+    allowed_relations: list[Literal["independent", "answer", "support", "challenge", "revise"]] = (
+        Field(default_factory=list)
+    )
+    response_options: list[DiscussionResponseOptionDescriptor] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -710,12 +726,12 @@ class SpeechActionRequest(BaseModel):
     """公開発言request."""
 
     type: Literal["speech"]
-    utterance: str
-    topic_id: str
+    utterance: str = Field(min_length=1)
+    topic_id: str = Field(min_length=1)
     position: Literal["support", "oppose", "undecided"]
     relation: Literal["independent", "answer", "support", "challenge", "revise"]
-    evidence_id: str | None = None
-    response_to_id: str | None = None
+    evidence_id: str | None = Field(default=None, min_length=1)
+    response_to_id: str | None = Field(default=None, min_length=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -724,9 +740,9 @@ class VoteActionRequest(BaseModel):
     """公開理由付き投票request."""
 
     type: Literal["vote"]
-    target_id: str
-    reason: str
-    evidence_id: str | None = None
+    target_id: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    evidence_id: str | None = Field(default=None, min_length=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -735,8 +751,8 @@ class UseAbilityActionRequest(BaseModel):
     """能力使用request."""
 
     type: Literal["use_ability"]
-    ability_id: str
-    target_id: str | None = None
+    ability_id: str = Field(min_length=1)
+    target_id: str | None = Field(default=None, min_length=1)
 
     model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
 
@@ -861,6 +877,8 @@ __all__ = [
     "AvailableActionDescriptor",
     "CreateGameRequest",
     "DeliberationLevel",
+    "DiscussionResponseOptionDescriptor",
+    "DiscussionRoundDescriptor",
     "DiscussionSettings",
     "ErrorEventPayload",
     "EvidenceFactDescriptor",

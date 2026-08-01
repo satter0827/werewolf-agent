@@ -430,6 +430,55 @@
         "title": "CreateGameRequest",
         "type": "object"
       },
+      "DiscussionResponseOptionDescriptor": {
+        "additionalProperties": false,
+        "description": "Serverが許可する一つのresponse構造候補を表す.",
+        "properties": {
+          "evidence_id": {
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "response_to_id": {
+            "minLength": 1,
+            "title": "Response To Id",
+            "type": "string"
+          },
+          "topic_id": {
+            "minLength": 1,
+            "title": "Topic Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response_to_id",
+          "evidence_id",
+          "topic_id",
+          "position",
+          "relation"
+        ],
+        "title": "DiscussionResponseOptionDescriptor",
+        "type": "object"
+      },
       "DiscussionRoundDescriptor": {
         "additionalProperties": false,
         "description": "Playerへ公開できる現在の議論roundを表す.",
@@ -439,6 +488,20 @@
               "type": "string"
             },
             "title": "Actor Order",
+            "type": "array"
+          },
+          "allowed_relations": {
+            "items": {
+              "enum": [
+                "independent",
+                "answer",
+                "support",
+                "challenge",
+                "revise"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Relations",
             "type": "array"
           },
           "cursor": {
@@ -464,6 +527,13 @@
               "type": "string"
             },
             "title": "Reference Ids",
+            "type": "array"
+          },
+          "response_options": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionResponseOptionDescriptor"
+            },
+            "title": "Response Options",
             "type": "array"
           },
           "round_id": {
@@ -4290,6 +4360,7 @@
           "evidence_id": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4321,6 +4392,7 @@
           "response_to_id": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4330,6 +4402,7 @@
             "title": "Response To Id"
           },
           "topic_id": {
+            "minLength": 1,
             "title": "Topic Id",
             "type": "string"
           },
@@ -4339,6 +4412,7 @@
             "type": "string"
           },
           "utterance": {
+            "minLength": 1,
             "title": "Utterance",
             "type": "string"
           }
@@ -4487,12 +4561,14 @@
         "description": "能力使用request.",
         "properties": {
           "ability_id": {
+            "minLength": 1,
             "title": "Ability Id",
             "type": "string"
           },
           "target_id": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4561,6 +4637,7 @@
           "evidence_id": {
             "anyOf": [
               {
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -4570,10 +4647,12 @@
             "title": "Evidence Id"
           },
           "reason": {
+            "minLength": 1,
             "title": "Reason",
             "type": "string"
           },
           "target_id": {
+            "minLength": 1,
             "title": "Target Id",
             "type": "string"
           },

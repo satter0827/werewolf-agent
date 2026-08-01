@@ -120,8 +120,8 @@ def _prompt_and_submit_manual_action(
     target_id = None
     utterance = None
     topic_id = None
-    position = None
-    relation = None
+    position: str | None = None
+    relation: str | None = None
     evidence_id = None
     response_to_id = None
     if action_type == "speech":
@@ -133,23 +133,17 @@ def _prompt_and_submit_manual_action(
         )
         round_ = observation.observation.discussion_round
         if round_ is not None and round_.reference_ids:
-            speeches = {
-                speech.speech_id: speech for speech in observation.observation.history.speeches
-            }
-            response_to_id = next(
-                reference_id
-                for reference_id in round_.reference_ids
-                if speeches[reference_id].player_id != player_id
-            )
-            evidence_id = response_to_id
-            referenced = speeches[response_to_id]
-            topic_id = referenced.topic_id
-            if referenced.position == "undecided":
-                relation = "answer"
-                position = "support"
-            else:
-                relation = "challenge"
-                position = "oppose" if referenced.position == "support" else "support"
+            if not round_.response_options:
+                raise AppError(
+                    "選択できる応答候補がありません。",
+                    code=ErrorCode.INTERNAL_UNEXPECTED,
+                )
+            response_option = round_.response_options[0]
+            response_to_id = response_option.response_to_id
+            evidence_id = response_option.evidence_id
+            topic_id = response_option.topic_id
+            relation = response_option.relation
+            position = response_option.position
         else:
             relation = "independent"
             position = "undecided"

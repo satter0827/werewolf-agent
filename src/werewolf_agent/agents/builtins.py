@@ -19,7 +19,7 @@ from werewolf_agent.agents.contracts import (
 )
 from werewolf_agent.agents.validation import non_blank
 
-_BUILTIN_IMPLEMENTATION_VERSION = "1.2.0"
+_BUILTIN_IMPLEMENTATION_VERSION = "1.3.0"
 
 
 @dataclass(frozen=True)
@@ -208,8 +208,10 @@ def _response(
                 if item.evidence_id == option.legal_reference_ids[0]
             )
             topic_id = referenced.topic_id
-            relation = "answer" if referenced.position == "undecided" else "challenge"
-            position = "oppose" if referenced.position == "support" else "support"
+            if "support" not in option.legal_relations:
+                raise AgentDecisionError("agent_response_relation_unavailable")
+            relation = "support"
+            position = referenced.position
         if option.message_max_chars:
             utterance = utterance[: option.message_max_chars]
     evidence_id = None

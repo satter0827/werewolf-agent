@@ -99,6 +99,17 @@ class TimelineItemView:
 
 
 @dataclass(frozen=True)
+class DiscussionResponseOptionView:
+    """Serverが許可したresponse構造候補を表示用に保持する."""
+
+    response_to_id: str
+    evidence_id: str
+    topic_id: str
+    position: str
+    relation: str
+
+
+@dataclass(frozen=True)
 class ObservationView:
     """Private information visible only to the controlled player."""
 
@@ -110,6 +121,7 @@ class ObservationView:
     reference_choices: dict[str, str]
     reference_topics: dict[str, str]
     reference_positions: dict[str, str]
+    response_options: list[DiscussionResponseOptionView]
     discussion_topic_ids: list[str]
     vote_evidence_choices: dict[str, dict[str, str]]
     action_text_limits: dict[str, int]

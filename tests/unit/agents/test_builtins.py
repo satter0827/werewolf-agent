@@ -124,6 +124,54 @@ def test_builtin_agent_response_contributes_new_content(
     assert response.response_to_id == "speech-1"
 
 
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_agent_honors_support_only_response_protocol(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    """組み込みAgentはsetupで許可されたsupportだけを返す."""
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "判断を保留します。",
+                    "topic_id": "p2",
+                    "position": "undecided",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(
+                    EvidenceOption("speech-1", "discussion", "p2", "p2", "undecided"),
+                ),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("support",),
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.relation == "support"
+    assert response.position == "undecided"
+
+
 def test_scripted_agent_state_is_isolated_by_session_and_close_is_idempotent() -> None:
     context = AgentContext("session", "game", "p1", 1)
     factory = ScriptedAgentFactory(

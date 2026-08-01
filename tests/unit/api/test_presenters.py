@@ -46,6 +46,16 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                     ],
                 },
                 "action_text_limits": {"speech": 180, "vote": 75},
+                "discussion_round": {
+                    "round_id": "round-2",
+                    "cycle": 1,
+                    "kind": "response",
+                    "submission_mode": "ordered",
+                    "actor_order": ["p1", "p2"],
+                    "cursor": 0,
+                    "reference_ids": ["speech:1:round-1:p2"],
+                },
+                "allowed_discussion_relations": ["support"],
                 "history": {
                     "speeches": [
                         {
@@ -87,6 +97,19 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
     assert response.observation.available_actions[1].legal_target_ids == ["p2"]
     assert response.observation.available_actions[2].evidence_options[0].actor_id == "p2"
     assert response.observation.available_actions[2].reason_max_chars == 75
+    assert response.observation.discussion_round is not None
+    assert response.observation.discussion_round.allowed_relations == ["support"]
+    assert [
+        item.model_dump() for item in response.observation.discussion_round.response_options
+    ] == [
+        {
+            "response_to_id": "speech:1:round-1:p2",
+            "evidence_id": "speech:1:round-1:p2",
+            "topic_id": "p1",
+            "position": "undecided",
+            "relation": "support",
+        }
+    ]
     payload = response.model_dump(mode="json")
     assert "legal_targets" not in payload["observation"]
     assert "reason" not in payload["observation"]["history"]["speeches"][0]

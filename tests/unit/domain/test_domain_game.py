@@ -26,6 +26,50 @@ def test_response_stage_rejects_independent_relation() -> None:
 
 
 @pytest.mark.parametrize(
+    ("stage", "submission_mode", "reference_stage", "relations", "message"),
+    [
+        (
+            DiscussionRoundKind.OPENING,
+            SubmissionMode.ORDERED,
+            None,
+            (DiscussionRelation.INDEPENDENT,),
+            "opening stage must use sealed",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.SEALED,
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.SUPPORT,),
+            "response stage must use ordered",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.ORDERED,
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.CHALLENGE,),
+            "response stage must allow support",
+        ),
+    ],
+)
+def test_discussion_stage_rejects_unexecutable_protocols(
+    stage: DiscussionRoundKind,
+    submission_mode: SubmissionMode,
+    reference_stage: DiscussionRoundKind | None,
+    relations: tuple[DiscussionRelation, ...],
+    message: str,
+) -> None:
+    """Core policyが実行できないstage定義をsetup境界で拒否する."""
+    with pytest.raises(ValueError, match=message):
+        DiscussionStageConfig(
+            stage=stage,
+            submission_mode=submission_mode,
+            actor_order=("rotating" if stage is DiscussionRoundKind.OPENING else "reverse_opening"),
+            reference_stage=reference_stage,
+            allowed_relations=relations,
+        )
+
+
+@pytest.mark.parametrize(
     ("kind", "target_policy", "knowledge_mode", "phase", "source_kinds"),
     [
         ("attack", "other_alive", None, Phase.NIGHT, ()),
