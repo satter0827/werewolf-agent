@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -247,7 +248,7 @@ def _rules() -> CompiledRuleSet:
     )
 
 
-def _game(seed: int = 41) -> Game:
+def _game(seed: int = 41, *, rules: CompiledRuleSet | None = None) -> Game:
     catalog = build_setup_catalog()
     document = catalog.require_document(catalog.template_order[0])
     player_count = sum(document.mechanics.role_counts.values())
@@ -256,7 +257,7 @@ def _game(seed: int = 41) -> Game:
         GameSetup(
             players=tuple(Player(id=item.player_id, name=item.profile.name) for item in generated)
         ),
-        rules=_rules(),
+        rules=rules or _rules(),
         random=random.Random(namespace_seed(seed, "role_assignment")),
     )
 
@@ -731,6 +732,60 @@ def test_metadata_provider_is_resolved_for_every_decision() -> None:
         "call-2",
         "call-3",
     ]
+
+
+def test_response_relations_are_derived_from_active_setup() -> None:
+    """Agentへ広告するresponse relationをactive setupの許可値へ限定する."""
+    rules = _rules()
+    opening_stage, response_stage = rules.config.discussion.stages
+    rules = replace(
+        rules,
+        config=replace(
+            rules.config,
+            discussion=replace(
+                rules.config.discussion,
+                stages=(
+                    opening_stage,
+                    replace(
+                        response_stage,
+                        allowed_relations=(DiscussionRelation.SUPPORT,),
+                    ),
+                ),
+            ),
+        ),
+    )
+    game = _game(rules=rules)
+    factory = _CapturingFactory()
+    base = _spec(game)
+    controllers = {
+        player_id: PlayerController(player_id, factory) for player_id in base.controllers
+    }
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        for _ in range(100):
+            session.step()
+            response_request = next(
+                (
+                    request
+                    for request in factory.requests
+                    if request.observation.procedure is not None
+                    and request.observation.procedure.stage_id == "response"
+                ),
+                None,
+            )
+            if response_request is not None:
+                break
+        else:
+            pytest.fail("response decision was not reached")
+    finally:
+        session.close()
+
+    assert response_request is not None
+    speech = next(item for item in response_request.options if item.action_type == "speech")
+    assert speech.legal_relations == ("support",)
 
 
 def test_per_call_timeout_is_propagated_as_request_deadline() -> None:

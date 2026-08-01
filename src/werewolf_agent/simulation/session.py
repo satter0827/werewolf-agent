@@ -477,6 +477,14 @@ class SimulationSession:
             offset = actor_index % len(legal_reference_ids)
             rotated_references = (*legal_reference_ids[offset:], *legal_reference_ids[:offset])
             legal_reference_ids = rotated_references[: self._spec.response_reference_limit]
+        discussion_config = self._game.snapshot().config.discussion
+        active_discussion_stage = (
+            next(
+                stage for stage in discussion_config.stages if stage.stage is discussion_round.kind
+            )
+            if discussion_round is not None
+            else None
+        )
         return DecisionRequest(
             decision_id=(
                 f"{context.session_id}:{observation.phase.value}:{observation.day}:"
@@ -530,17 +538,17 @@ class SimulationSession:
                         ("support", "oppose", "undecided") if action.type.value == "speech" else ()
                     ),
                     legal_relations=(
-                        ("answer", "support", "challenge", "revise")
-                        if action.type.value == "speech" and legal_reference_ids
-                        else ("independent",)
-                        if action.type.value == "speech"
+                        tuple(
+                            relation.value for relation in active_discussion_stage.allowed_relations
+                        )
+                        if action.type.value == "speech" and active_discussion_stage is not None
                         else ()
                     ),
                     message_max_chars=(
                         min(
-                            self._game.snapshot().config.discussion.message_max_chars,
+                            discussion_config.message_max_chars,
                             self._spec.speech_message_max_chars
-                            or self._game.snapshot().config.discussion.message_max_chars,
+                            or discussion_config.message_max_chars,
                         )
                         if action.type.value == "speech"
                         else None
