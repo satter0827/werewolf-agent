@@ -86,7 +86,6 @@ def test_wire_mapping_excludes_internal_story_theme_fields() -> None:
             "phase": "day_discussion",
             "day": 1,
             "version": 1,
-            "seed": 1,
             "theme": theme,
             "players": [],
             "alive_player_ids": [],

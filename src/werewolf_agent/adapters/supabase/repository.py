@@ -57,13 +57,13 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into public.games (
-              game_id, owner_user_id, status, phase, day, version, seed,
+              game_id, owner_user_id, status, phase, day, version,
               scenario_id, scenario_name, narration_mode, public_state,
               llm_mode, state_checksum,
               created_at, updated_at, completed_at
             )
             values (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s
             )
             """,
@@ -74,7 +74,6 @@ class SupabaseGameRepository(GameRepository):
                 game.phase,
                 game.day,
                 game.version,
-                game.seed,
                 _state_text(game.public_state, "scenario_id"),
                 _state_text(game.public_state, "scenario_name"),
                 str(game.public_state.get("narration_mode") or "standard"),
@@ -89,12 +88,13 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into private.game_snapshots (
-              game_id, config, private_state, pending_actions, checksum, updated_at
+              game_id, seed, config, private_state, pending_actions, checksum, updated_at
             )
-            values (%s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 game.id,
+                game.seed,
                 Jsonb(game.config),
                 Jsonb(game.private_state),
                 Jsonb(game.pending_actions),
@@ -127,7 +127,7 @@ class SupabaseGameRepository(GameRepository):
         row = self._connection.execute(
             """
             select
-              g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
+              g.game_id, g.status, g.phase, g.day, s.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
               s.config, s.private_state, s.pending_actions
             from public.games g
@@ -143,7 +143,7 @@ class SupabaseGameRepository(GameRepository):
         row = self._connection.execute(
             """
             select
-              g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
+              g.game_id, g.status, g.phase, g.day, s.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
               s.config, s.private_state, s.pending_actions
             from public.games g
@@ -383,18 +383,17 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into public.game_summaries (
-              game_id, owner_user_id, status, phase, day, version, seed,
+              game_id, owner_user_id, status, phase, day, version,
               scenario_id, scenario_name, theme,
               player_count, alive_count, winner, step_count, turn_count,
               created_at, updated_at, completed_at
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (game_id) do update set
               status = excluded.status,
               phase = excluded.phase,
               day = excluded.day,
               version = excluded.version,
-              seed = excluded.seed,
               scenario_id = excluded.scenario_id,
               scenario_name = excluded.scenario_name,
               theme = excluded.theme,
@@ -413,7 +412,6 @@ class SupabaseGameRepository(GameRepository):
                 game.phase,
                 game.day,
                 game.version,
-                game.seed,
                 public_state.get("scenario_id"),
                 public_state.get("scenario_name"),
                 Jsonb(_json_object(public_state.get("theme")))

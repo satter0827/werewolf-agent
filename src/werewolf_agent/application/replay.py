@@ -12,7 +12,7 @@ from werewolf_agent.application.domain_codec import (
     game_setup_from_data,
     game_state_from_data,
 )
-from werewolf_agent.application.models import ReplayVerificationResult
+from werewolf_agent.application.models import GeneratedPlayerInput, ReplayVerificationResult
 from werewolf_agent.application.projections import (
     event_to_create,
     public_state_payload_from_snapshot,
@@ -23,7 +23,6 @@ from werewolf_agent.domain import Game, RulePackManifest, RulePolicyRegistry
 from werewolf_agent.setup import (
     GameSetupDocument,
     checksum_payload,
-    generate_players,
     namespace_seed,
     rule_definition_from_values,
 )
@@ -278,17 +277,17 @@ def _verify_execution(
         seed = _optional_int(genesis.get("seed"))
         if seed is None:
             raise ValueError("replay seed is required")
-        generated_players = generate_players(
-            setup_document.player_generation,
-            player_count=sum(mechanics.role_counts.values()),
-            seed=seed,
+        request = _mapping(create_payload["request"])
+        generated_players = tuple(
+            GeneratedPlayerInput.model_validate(player) for player in _sequence(request["players"])
         )
-        if checksum_payload([player.private_payload() for player in generated_players]) != str(
-            genesis["roster_checksum"]
-        ):
+        if len(generated_players) != sum(mechanics.role_counts.values()):
+            raise ValueError("player count mismatch")
+        public_roster = [player.public_payload() for player in generated_players]
+        if checksum_payload(public_roster) != str(genesis["roster_checksum"]):
             raise ValueError("roster checksum mismatch")
         expected_players = [
-            {"id": player.player_id, "name": player.profile.name} for player in generated_players
+            {"id": player.player_id, "name": player.name} for player in generated_players
         ]
         if list(_sequence(genesis["players"])) != expected_players:
             raise ValueError("replay players do not match generated roster")
@@ -414,7 +413,6 @@ def _compare_replayed_version(
         game.snapshot(),
         game_id=game_id,
         version=version,
-        seed=seed,
         created_at=expected_public.get("created_at"),
         scenario_id=_optional_text(expected_public.get("scenario_id")),
         scenario_name=_optional_text(expected_public.get("scenario_name")),
@@ -513,7 +511,6 @@ def _verify_public_projection(
             snapshot,
             game_id=game_id,
             version=version,
-            seed=_optional_int(public_state.get("seed")),
             created_at=public_state.get("created_at"),
             scenario_id=_optional_text(public_state.get("scenario_id")),
             scenario_name=_optional_text(public_state.get("scenario_name")),

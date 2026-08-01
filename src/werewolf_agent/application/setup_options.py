@@ -101,7 +101,7 @@ def preview_players(setup: GameSetupDocument, *, seed: int | None) -> PlayerPrev
     return PlayerPreviewResult(
         seed=concrete_seed,
         players=payload,
-        roster_checksum=checksum_payload([player.private_payload() for player in players]),
+        roster_checksum=checksum_payload(payload),
     )
 
 
@@ -114,23 +114,25 @@ def prepare_create_command(
     deliberation_level: DeliberationLevel,
     rule_pack_provider_id: str = CORE_RULE_PACK_ID,
 ) -> CreateGameCommand:
-    """Resolve every random setup value before a command reaches the queue."""
-    concrete_seed = secrets.randbits(63) if seed is None else seed
+    """Resolve public roster values and a private game seed before queueing."""
+    roster_seed = secrets.randbits(63) if seed is None else seed
+    private_seed = secrets.randbits(63)
     generated = generate_players(
         setup.player_generation,
         player_count=sum(setup.mechanics.role_counts.values()),
-        seed=concrete_seed,
+        seed=roster_seed,
+        private_strategy_seed=private_seed,
     )
     players = tuple(
         GeneratedPlayerInput.model_validate(player.private_payload()) for player in generated
     )
     return CreateGameCommand(
-        seed=concrete_seed,
+        seed=private_seed,
         setup=setup,
         players=players,
         setup_checksum=checksum_payload(setup.to_mapping()),
         mechanics_checksum=checksum_payload(setup.mechanics.to_mapping()),
-        roster_checksum=checksum_payload([player.model_dump(mode="json") for player in players]),
+        roster_checksum=checksum_payload([player.public_payload() for player in players]),
         manual_player_id=manual_player_id,
         llm_mode=llm_mode,
         deliberation_level=deliberation_level,

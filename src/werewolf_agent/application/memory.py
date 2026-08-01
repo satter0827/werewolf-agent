@@ -207,7 +207,6 @@ class InMemoryGameRepository(GameRepository):
             phase=game.phase,
             day=game.day,
             version=game.version,
-            seed=game.seed,
             scenario_id=_optional_text(public_state.get("scenario_id")),
             scenario_name=_optional_text(public_state.get("scenario_name")),
             theme=_optional_object(public_state.get("theme")),

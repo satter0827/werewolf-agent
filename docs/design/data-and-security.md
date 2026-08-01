@@ -58,6 +58,9 @@ domain actionを保存する。作成時のrule snapshotから集約を再構築
 - `secret`、`token`、`api_key`、`authorization`、`password`をログ記録前にmaskする。
 - 例外、HTTP応答、ブラウザーstateに内部設定やstack traceを含めない。
 - 外部入力を未検証のままprompt、file path、shellコマンドに渡さない。
+- 公開するroster生成seedは公開プロファイルだけに使い、private strategy、role割当、gameplay、replayに
+  使うprivate seedと分離する。private seedは
+  operation payloadと永続化境界の内側だけに保持し、public stateとgame一覧へ返さない。
 
 ## 認証と認可
 

@@ -57,6 +57,19 @@ def test_player_observation_is_a_typed_client_contract() -> None:
     assert action["additionalProperties"] is False
 
 
+def test_public_game_contracts_do_not_expose_private_runtime_seed() -> None:
+    components = create_app().openapi()["components"]["schemas"]
+
+    assert "seed" not in components["PublicGameState"]["properties"]
+    assert "seed" not in components["PublicGameSummary"]["properties"]
+
+
+def test_admin_trace_contract_does_not_expose_private_decisions() -> None:
+    components = create_app().openapi()["components"]["schemas"]
+
+    assert "parsed_decision" not in components["AdminLlmTraceResponse"]["properties"]
+
+
 def test_public_setup_catalog_and_preview_do_not_require_authentication() -> None:
     """Anonymous editors can load templates and preview generated players."""
     with TestClient(create_app()) as client:

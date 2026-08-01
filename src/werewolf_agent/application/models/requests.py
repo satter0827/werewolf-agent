@@ -48,6 +48,20 @@ class GeneratedPlayerInput(ApplicationModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    def public_payload(self) -> dict[str, object]:
+        """公開roster checksumへ含めるprofileだけを返す."""
+        return self.model_dump(
+            mode="json",
+            include={
+                "player_id",
+                "name",
+                "age",
+                "gender",
+                "personality",
+                "speaking_style",
+            },
+        )
+
 
 class CreateGameCommand(ApplicationModel):
     """一つのゲームを作成するcommandを表す."""
@@ -98,7 +112,7 @@ class CreateGameCommand(ApplicationModel):
             "setup_checksum": checksum_payload(self.setup.to_mapping()),
             "mechanics_checksum": checksum_payload(self.setup.mechanics.to_mapping()),
             "roster_checksum": checksum_payload(
-                [player.model_dump(mode="json") for player in self.players]
+                [player.public_payload() for player in self.players]
             ),
         }
         for field_name, expected in expected_checksums.items():

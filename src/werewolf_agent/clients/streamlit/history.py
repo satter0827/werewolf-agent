@@ -112,7 +112,7 @@ def build_history_options(
                 ),
                 game_id=game.game_id,
                 mode="observer",
-                seed=game.seed,
+                seed=None,
             )
         )
     return options

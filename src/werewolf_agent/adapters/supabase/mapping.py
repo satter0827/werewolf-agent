@@ -60,7 +60,6 @@ def stored_summary(row: Mapping[str, Any]) -> StoredGameSummary:
             "phase": row["phase"],
             "day": row["day"],
             "version": row["version"],
-            "seed": row.get("seed"),
             "scenario_id": row.get("scenario_id"),
             "scenario_name": row.get("scenario_name"),
             "theme": _object(row.get("theme")) if row.get("theme") is not None else None,

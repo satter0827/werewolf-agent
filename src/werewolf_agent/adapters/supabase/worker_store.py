@@ -325,7 +325,7 @@ class SupabaseWorkerStore:
         if request["operation_type"] == "create_game":
             snapshot_row = self._connection.execute(
                 """
-                select config, private_state
+                select seed, config, private_state
                 from private.game_snapshots
                 where game_id = %s
                 """,
@@ -335,7 +335,7 @@ class SupabaseWorkerStore:
                 raise RuntimeError("Created game snapshot is missing.")
             private_state = _object(snapshot_row["private_state"])
             players = _object(private_state.get("players"))
-            effective_seed = state.get("seed")
+            effective_seed = snapshot_row["seed"]
             normalized_request["seed"] = effective_seed
             stored_config = _object(snapshot_row["config"])
             payload["replay"] = {

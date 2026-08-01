@@ -174,8 +174,9 @@ def generate_players(
     *,
     player_count: int,
     seed: int,
+    private_strategy_seed: int | None = None,
 ) -> tuple[GeneratedPlayer, ...]:
-    """独立したcomponent poolから決定的なrosterを生成する."""
+    """公開rosterと任意の非公開strategy seedからplayerを生成する."""
     if not isinstance(player_count, int) or isinstance(player_count, bool) or player_count < 1:
         raise ValueError("player_count must be a positive integer")
     if player_count > len(definition.identities):
@@ -184,9 +185,14 @@ def generate_players(
     personas = list(definition.public_personas)
     strategies = list(definition.private_strategies)
     roster_seed = namespace_seed(seed, "roster")
+    strategy_seed = (
+        roster_seed
+        if private_strategy_seed is None
+        else namespace_seed(private_strategy_seed, "private_strategy")
+    )
     random.Random(namespace_seed(roster_seed, "identity")).shuffle(identities)
     random.Random(namespace_seed(roster_seed, "persona")).shuffle(personas)
-    random.Random(namespace_seed(roster_seed, "strategy")).shuffle(strategies)
+    random.Random(namespace_seed(strategy_seed, "strategy")).shuffle(strategies)
     age_rng = random.Random(namespace_seed(roster_seed, "age"))
     return tuple(
         GeneratedPlayer(

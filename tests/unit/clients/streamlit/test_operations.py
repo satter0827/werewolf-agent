@@ -222,7 +222,6 @@ def _state(*, status: str, phase: str) -> PublicGameState:
         phase=phase,
         day=1,
         version=2,
-        seed=1,
         players=[
             PublicPlayerState(id="player-1", name="Player 1", alive=True, status="alive"),
             PublicPlayerState(id="player-2", name="Player 2", alive=True, status="alive"),

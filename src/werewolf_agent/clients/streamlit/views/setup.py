@@ -171,7 +171,7 @@ def _render_setup_screen(
             format_func={"quick": "短く", "standard": "標準", "deep": "深く"}.get,
         ),
     )
-    st.caption(f"確定した再現用の番号: {preview.seed}")
+    st.caption(f"公開player rosterの再現用番号: {preview.seed}")
     if not mutations_available:
         st.warning("現在はゲームを作成できません。しばらく待ってから再試行してください。")
         return
