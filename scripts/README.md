@@ -39,6 +39,7 @@ uv run --no-sync python -m scripts.versioning suggest --base-ref origin/main --h
 uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD --dry-run
 uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.versioning check --base-ref origin/main --head-ref HEAD
+uv run --no-sync python -m scripts.versioning check --base-ref origin/develop --head-ref HEAD --scope change
 uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality auto --explain
@@ -50,7 +51,8 @@ uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 
 `suggest`はmainとの差分に含まれるConventional Commitから`patch`、`minor`、`major`を提案するが、
 versionを変更しない。変更levelは利用者が決定し、`bump`へ明示する。`bump`はcommit済み、stage済み、
-未stage、未追跡の変更pathをregistryの所有範囲へ対応付け、productと影響を受ける境界だけを更新する。
+未stage、未追跡の変更pathをregistryの所有範囲へ対応付ける。develop向けの`change`では影響を受ける
+独立境界だけを更新し、main向けの`release`ではproductだけを更新する。
 同じlevelでの再実行は変更を増やさず、異なる手動versionが既にある場合は上書きせず停止する。
 最初に`--dry-run`で対象を確認する。
 
@@ -65,11 +67,16 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
 成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
 `--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。明示したrefは
-Version gateへそのまま渡す。baseを省略した場合だけ、Version gateはリリース基準の`origin/main`を
-使用し、reportの実コマンドにも既定refを明示する。
+Version gateへそのまま渡す。baseがregistryのリリース基準と同じrefならリリース、それ以外なら変更を
+自動選択する。SHAや別名のrefを使う検証と障害調査では`--scope`を明示する。baseを省略した場合だけ、
+Version gateはリリース基準の`origin/main`を使用し、reportの実コマンドにも既定refを明示する。
 `--head-ref`は現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitを
 検査する場合は、そのcommitを専用worktreeへcheckoutしてから実行する。未commitの変更を検査する場合は
 `--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
+
+通常実行は`default_jobs`の2並列で動作し、ローカルPCのCPUとDocker負荷を抑える。必要な場合だけ
+`--jobs`で並列数を指定できるが、`max_jobs`の4を超える値は受け付けない。品質プロファイルの判定範囲と
+CIの実行条件は並列数に依存しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、

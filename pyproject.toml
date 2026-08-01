@@ -168,6 +168,7 @@ tmp_path_retention_policy = "failed"
 
 [tool.werewolf-quality]
 benchmark_min_rounds = 5
+default_jobs = 2
 max_jobs = 4
 failure_runs_per_selector = 2
 failure_run_max_mib = 100
@@ -193,7 +194,7 @@ deep_steps = 100
 
 [tool.werewolf-quality.timeouts]
 focus = 120
-check = 180
+check = 300
 release = 900
 deep = 1200
 

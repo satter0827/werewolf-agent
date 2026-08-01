@@ -67,8 +67,10 @@ def load_quality_settings() -> QualitySettings:
     tool = _required_table(document, "tool", "tool")
     quality = _required_table(tool, "werewolf-quality", "tool.werewolf-quality")
     timeouts = _required_table(quality, "timeouts", "tool.werewolf-quality.timeouts")
+    max_jobs = _required_int(quality, "max_jobs", minimum=1)
     return QualitySettings(
-        max_jobs=_required_int(quality, "max_jobs", minimum=1),
+        default_jobs=_required_int(quality, "default_jobs", minimum=1, maximum=max_jobs),
+        max_jobs=max_jobs,
         benchmark_min_rounds=_required_int(quality, "benchmark_min_rounds", minimum=1),
         timeouts={
             profile: _required_int(timeouts, profile, minimum=1) for profile in PROFILE_ORDER
@@ -873,7 +875,7 @@ def build_parser(settings: QualitySettings | None = None) -> argparse.ArgumentPa
     parser.add_argument(
         "--jobs",
         type=lambda value: _bounded_positive_int(value, maximum=settings.max_jobs),
-        default=min(settings.max_jobs, os.cpu_count() or 1),
+        default=_default_jobs(settings),
     )
     parser.add_argument("--timeout", type=_positive_int)
     parser.add_argument("--confirm-deep", action="store_true")
@@ -898,6 +900,11 @@ def _bounded_positive_int(value: str, *, maximum: int) -> int:
     if parsed > maximum:
         raise argparse.ArgumentTypeError(f"{maximum}以下の整数を指定してください。")
     return parsed
+
+
+def _default_jobs(settings: QualitySettings) -> int:
+    """hostのCPU数を超えない既定並列数を返す。"""
+    return min(settings.default_jobs, os.cpu_count() or 1)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -943,7 +950,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.add_argument(
             "--jobs",
             type=lambda value: _bounded_positive_int(value, maximum=settings.max_jobs),
-            default=min(settings.max_jobs, os.cpu_count() or 1),
+            default=_default_jobs(settings),
         )
         parser.add_argument("--timeout", type=_positive_int, default=settings.timeouts["check"])
         arguments = parser.parse_args(raw_arguments)
