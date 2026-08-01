@@ -35,6 +35,12 @@ class GameApplicationConfig:
     game_list_max_limit: int
     timeline_default_limit: int
     timeline_max_limit: int
+    setup_revision_default_limit: int = 20
+    setup_revision_max_limit: int = 100
+    setup_list_default_limit: int = 20
+    setup_list_max_limit: int = 100
+    setup_max_saved_setups: int = 100
+    setup_max_revisions: int = 1000
 
     def __post_init__(self) -> None:
         """外側のlayerから渡されたbusiness設定を検証する."""
@@ -54,6 +60,24 @@ class GameApplicationConfig:
             raise ValueError(MESSAGE_TIMELINE_MAX_LIMIT_MUST_BE_AT_LEAST_ONE)
         if self.timeline_default_limit > self.timeline_max_limit:
             raise ValueError(MESSAGE_TIMELINE_DEFAULT_LIMIT_MUST_NOT_EXCEED_MAX)
+        if self.setup_revision_default_limit < MIN_PAGE_LIMIT:
+            raise ValueError("setup_revision_default_limit must be at least 1")
+        if self.setup_revision_max_limit < MIN_PAGE_LIMIT:
+            raise ValueError("setup_revision_max_limit must be at least 1")
+        if self.setup_revision_default_limit > self.setup_revision_max_limit:
+            raise ValueError(
+                "setup_revision_default_limit must not exceed setup_revision_max_limit"
+            )
+        if self.setup_max_revisions < MIN_PAGE_LIMIT:
+            raise ValueError("setup_max_revisions must be at least 1")
+        if self.setup_list_default_limit < MIN_PAGE_LIMIT:
+            raise ValueError("setup_list_default_limit must be at least 1")
+        if self.setup_list_max_limit < MIN_PAGE_LIMIT:
+            raise ValueError("setup_list_max_limit must be at least 1")
+        if self.setup_list_default_limit > self.setup_list_max_limit:
+            raise ValueError("setup_list_default_limit must not exceed setup_list_max_limit")
+        if self.setup_max_saved_setups < MIN_PAGE_LIMIT:
+            raise ValueError("setup_max_saved_setups must be at least 1")
 
 
 @dataclass(frozen=True)

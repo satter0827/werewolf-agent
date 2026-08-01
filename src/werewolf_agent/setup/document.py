@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from string import Formatter
 from types import MappingProxyType
 from typing import Final, Literal
 
@@ -20,6 +19,7 @@ from werewolf_agent.domain.state import (
 from werewolf_agent.domain.state import (
     RoleDefinition as DomainRoleDefinition,
 )
+from werewolf_agent.setup._narration import NARRATION_TEMPLATE_FIELDS, narration_fields
 from werewolf_agent.setup.players import (
     PlayerGenerationDefinition,
     PlayerIdentityDefinition,
@@ -27,24 +27,11 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.3.0"
+SETUP_SCHEMA_VERSION: Final = "0.4.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(
     {"game_started", "phase_started", "night_resolved", "vote_resolved", "game_finished"}
-)
-NARRATION_TEMPLATE_FIELDS: Final = frozenset(
-    {
-        "day",
-        "phase",
-        "phase_label",
-        "actor",
-        "player_count",
-        "eliminated_player",
-        "killed_player",
-        "winner",
-        "winner_label",
-    }
 )
 ABILITY_KINDS: Final = frozenset(
     {
@@ -518,7 +505,7 @@ class ThemeDefinition:
                 raise ValueError("narration template groups must not be empty")
             for template in group:
                 try:
-                    unknown = _narration_fields(template) - NARRATION_TEMPLATE_FIELDS
+                    unknown = narration_fields(template) - NARRATION_TEMPLATE_FIELDS
                 except ValueError as exc:
                     raise ValueError("narration template has invalid format syntax") from exc
                 if unknown:
@@ -564,16 +551,6 @@ class ThemeDefinition:
             "narration_enabled": self.narration_enabled,
             "narration": {key: list(value) for key, value in self.narration.items()},
         }
-
-
-def _narration_fields(template: str) -> set[str]:
-    fields: set[str] = set()
-    for _, field_name, format_spec, _ in Formatter().parse(template):
-        if field_name is not None:
-            fields.add(field_name)
-        if format_spec:
-            fields.update(_narration_fields(format_spec))
-    return fields
 
 
 @dataclass(frozen=True)

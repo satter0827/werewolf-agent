@@ -165,6 +165,14 @@ class SavedSetupListResponse(BaseModel):
     """Owned setup summaries visible to the current user."""
 
     items: list[SavedSetupSummaryResponse]
+    next_offset: int | None = Field(default=None, ge=0)
+
+
+class SavedSetupRevisionListResponse(BaseModel):
+    """Bounded immutable revision page for one owned setup."""
+
+    items: list[SavedSetupRevisionResponse]
+    next_offset: int | None = Field(default=None, ge=0)
 
 
 class RuntimeComponentStatus(BaseModel):
@@ -275,7 +283,6 @@ class AdminLlmTraceResponse(BaseModel):
     phase: str | None = None
     day: int | None = None
     prompt_hash: str
-    error: dict[str, Any] | None = None
     latency_ms: float | None = Field(default=None, ge=0)
     created_at: datetime
 
@@ -323,6 +330,7 @@ __all__ = [
     "RuntimeComponentStatus",
     "RuntimeStatusResponse",
     "SavedSetupListResponse",
+    "SavedSetupRevisionListResponse",
     "SavedSetupRevisionResponse",
     "SavedSetupSummaryResponse",
     "SessionResponse",

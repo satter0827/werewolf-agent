@@ -5,6 +5,7 @@ from werewolf_agent.application.definitions import (
 from werewolf_agent.application.projections import event_to_create
 from werewolf_agent.domain import GameEvent
 from werewolf_agent.domain.state import Phase
+from werewolf_agent.setup._narration import NARRATION_RENDER_MAX_CHARS
 
 
 def test_public_narration_uses_persisted_theme_terms() -> None:
@@ -55,3 +56,34 @@ def test_public_narration_has_a_fox_fallback_label() -> None:
     )
 
     assert created.payload["narration"] == "foxの勝利です。"
+
+
+def test_public_narration_fails_closed_for_unsafe_or_oversized_output() -> None:
+    event = GameEvent(
+        event_type="game_started",
+        phase=Phase.DAY_DISCUSSION,
+        day=1,
+        payload={"player_count": 6},
+    )
+    unsafe = NarrationProfileDefinition(
+        events={"game_started": NarrationEventDefinition(templates=("{player_count:1000000}",))}
+    )
+    oversized = NarrationProfileDefinition(
+        events={"game_started": NarrationEventDefinition(templates=("{phase_label}",))}
+    )
+
+    assert (
+        event_to_create(event, narration_profile=unsafe, narration_mode="template").payload.get(
+            "narration"
+        )
+        is None
+    )
+    assert (
+        event_to_create(
+            event,
+            narration_profile=oversized,
+            narration_mode="template",
+            theme={"phase_names": {"day_discussion": "x" * (NARRATION_RENDER_MAX_CHARS + 1)}},
+        ).payload.get("narration")
+        is None
+    )

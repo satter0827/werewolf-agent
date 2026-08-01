@@ -49,10 +49,10 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "experiment-evaluator": "0.4.0",
         "product": "0.32.4",
         "quality-evidence": "0.2.1",
-        "replay": "0.5.0",
+        "replay": "0.6.0",
         "rule-pack": "0.6.1",
         "simulation": "0.5.0",
-        "setup": "0.3.0",
+        "setup": "0.4.0",
     }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}
     assert {item["standard"] for item in items if item["name"] != "product"} == {"semver"}

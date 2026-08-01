@@ -31,6 +31,9 @@ setup、閲覧、operation送信に必要な権限だけを持ち、workerはque
 必要な権限だけを持つ。migration用owner接続をruntimeへ渡さず、新しいtableとfunctionは所有プロセスを
 migrationで明示するまでruntime roleへ許可しない。
 
+workerは`auth.users`を直接参照しない。登録状態の再確認はmigration ownerが所有する限定functionを通し、
+利用者IDに対応する`is_anonymous`だけを受け取る。
+
 有料LLMのadmission台帳はprivate schemaへ保存し、operation、利用者、worker、予約時刻、期限、結果を
 保持する。日次上限は成功件数ではなく外部呼出しを許可した予約件数で判定し、provider失敗やworker中断で
 予算を戻さない。同じoperationの再予約を許可せず、retryによる意図しない重複課金を防ぐ。
@@ -71,7 +74,8 @@ domain actionを保存する。作成時のrule snapshotから集約を再構築
 管理者権限は利用者が変更できない`app_metadata.role=admin`だけから候補を判定し、top-levelの
 `service_role`や`user_metadata`を利用者管理者へ昇格させない。管理者候補には`aal2`、空でない
 `session_id`、設定した最大発行経過時間を要求する。さらにSupabase Authへaccess tokenを再照会し、
-sessionが現在も有効で、返された利用者IDと最新の管理者roleが一致する場合だけ管理者として扱う。
+返された利用者IDと最新の管理者roleを確認したうえで、tokenの`session_id`と利用者IDに一致する
+`auth.sessions` rowが残っている場合だけ管理者として扱う。
 Authを確認できない場合は管理者権限だけを閉じ、通常利用者のlocal JWT認証は継続する。
 
 ## 検証

@@ -17,10 +17,16 @@ class _Verifier:
     def __init__(self, *, result: bool = True, unavailable: bool = False) -> None:
         self.result = result
         self.unavailable = unavailable
-        self.calls: list[tuple[str, str]] = []
+        self.calls: list[tuple[str, str, str]] = []
 
-    def verify(self, token: str, *, expected_user_id: str) -> bool:
-        self.calls.append((token, expected_user_id))
+    def verify(
+        self,
+        token: str,
+        *,
+        expected_user_id: str,
+        expected_session_id: str,
+    ) -> bool:
+        self.calls.append((token, expected_user_id, expected_session_id))
         if self.unavailable:
             raise AdminSessionUnavailable
         return self.result
@@ -73,7 +79,7 @@ def test_admin_requires_live_matching_auth_session(monkeypatch: pytest.MonkeyPat
     principal = _authenticate(monkeypatch, _claims(), verifier=verifier)
 
     assert principal.is_admin is True
-    assert verifier.calls == [("access-token", "user-1")]
+    assert verifier.calls == [("access-token", "user-1", "session-1")]
 
 
 def test_admin_token_is_accepted_at_configured_age_boundary(

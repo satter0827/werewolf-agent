@@ -1,13 +1,24 @@
 import logging
 from datetime import UTC, datetime
 
+import pytest
+
+from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.clients.streamlit import operations
 from werewolf_agent.clients.streamlit.i18n import load_i18n
+from werewolf_agent.contracts import AppError
+from werewolf_agent.contracts.api import (
+    SavedSetupListResponse,
+    SavedSetupRevisionListResponse,
+    SavedSetupRevisionResponse,
+    SavedSetupSummaryResponse,
+)
 from werewolf_agent.contracts.schemas import (
     AdvanceGameJobResponse,
     AdvanceGameResponse,
     CreateGameRequest,
     GameResponse,
+    GameSetupDocumentRequest,
     GameTimelineResponse,
     PlayerObservationResponse,
     PublicGameState,
@@ -215,6 +226,57 @@ def test_observer_screen_uses_public_data_without_private_observation(monkeypatc
     assert screen.observer_log.entries == []
 
 
+class _PagingSetupClient:
+    def __init__(self) -> None:
+        self.setup_offsets: list[int] = []
+        self.revision_offsets: list[int] = []
+
+    def list_setups(self, *, limit: int | None = None, offset: int = 0):
+        self.setup_offsets.append(offset)
+        items = [_setup_summary(offset + 1)]
+        return SavedSetupListResponse(
+            items=items,
+            next_offset=offset + 1 if offset == 0 else None,
+        )
+
+    def list_setup_revisions(
+        self,
+        setup_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ):
+        self.revision_offsets.append(offset)
+        items = [_setup_revision(offset + 1)]
+        return SavedSetupRevisionListResponse(
+            items=items,
+            next_offset=offset + 1 if offset == 0 else None,
+        )
+
+
+def test_setup_operations_follow_all_bounded_pages(monkeypatch) -> None:
+    client = _PagingSetupClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda _settings: client)
+    settings = AppSettings(_env_file=None)
+
+    setups = operations.list_saved_setups(settings=settings)
+    revisions = operations.list_setup_revisions(settings=settings, setup_id="setup-1")
+
+    assert [item.setup_id for item in setups.items] == ["setup-1", "setup-2"]
+    assert [item.revision for item in revisions] == [1, 2]
+    assert client.setup_offsets == [0, 1]
+    assert client.revision_offsets == [0, 1]
+
+
+def test_setup_page_collection_rejects_non_progressing_cursor() -> None:
+    with pytest.raises(AppError):
+        operations._collect_bounded_pages(
+            lambda _limit, _offset: ([1], 0),
+            page_limit=20,
+            max_items=100,
+        )
+
+
 def _state(*, status: str, phase: str) -> PublicGameState:
     return PublicGameState(
         game_id="game-1",
@@ -230,6 +292,31 @@ def _state(*, status: str, phase: str) -> PublicGameState:
         eliminated_player_ids=[],
         winner=None,
         summary={"alive_count": 2},
+    )
+
+
+def _setup_summary(index: int) -> SavedSetupSummaryResponse:
+    return SavedSetupSummaryResponse(
+        setup_id=f"setup-{index}",
+        display_name=f"設定{index}",
+        latest_revision=index,
+        created_at=_timestamp(),
+        updated_at=_timestamp(),
+    )
+
+
+def _setup_revision(revision: int) -> SavedSetupRevisionResponse:
+    document = GameSetupDocumentRequest.model_validate(
+        build_setup_catalog().require_document("standard_6").to_mapping()
+    )
+    return SavedSetupRevisionResponse(
+        setup_id="setup-1",
+        display_name="設定1",
+        revision=revision,
+        document=document,
+        setup_checksum="a" * 64,
+        mechanics_checksum="b" * 64,
+        created_at=_timestamp(),
     )
 
 

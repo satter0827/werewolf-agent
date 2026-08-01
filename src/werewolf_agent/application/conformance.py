@@ -130,6 +130,7 @@ def assert_setup_repository_contract(
         document=document,
         setup_checksum="a" * 64,
         mechanics_checksum="b" * 64,
+        max_setups=100,
     )
     second = repository.add_revision(
         first.setup_id,
@@ -138,6 +139,7 @@ def assert_setup_repository_contract(
         document=document,
         setup_checksum="c" * 64,
         mechanics_checksum="d" * 64,
+        max_revisions=100,
     )
     _require(first.revision == 1, "first setup revision must be 1")
     _require(second.revision == 2, "added setup revision must increment")
@@ -149,12 +151,17 @@ def assert_setup_repository_contract(
         repository.get(first.setup_id, owner_user_id=owner_user_id, revision=1) == first,
         "older setup revisions must remain immutable and readable",
     )
-    revisions = repository.list_revisions(first.setup_id, owner_user_id=owner_user_id)
+    revisions = repository.list_revisions(
+        first.setup_id,
+        owner_user_id=owner_user_id,
+        limit=100,
+        offset=0,
+    )
     _require(
         [item.revision for item in revisions] == [2, 1],
         "setup revisions must be ordered newest first",
     )
-    summaries = repository.list_setups(owner_user_id=owner_user_id)
+    summaries = repository.list_setups(owner_user_id=owner_user_id, limit=100, offset=0)
     _require(len(summaries) == 1, "owner must see one setup summary")
     _require(summaries[0].latest_revision == 2, "summary must expose the latest revision")
     _require(
@@ -162,7 +169,7 @@ def assert_setup_repository_contract(
         "setup timestamps must be ordered",
     )
     _require(
-        repository.list_setups(owner_user_id=other_user_id) == [],
+        repository.list_setups(owner_user_id=other_user_id, limit=100, offset=0) == [],
         "other owners must not list the setup",
     )
 

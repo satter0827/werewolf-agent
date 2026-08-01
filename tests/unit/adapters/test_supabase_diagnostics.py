@@ -26,4 +26,6 @@ def test_trace_diagnostics_do_not_select_private_decision_payload() -> None:
 
     assert SupabaseAdminDiagnostics(connection).traces("game-1", limit=10) == []
     assert "parsed_decision" not in connection.query
+    assert "error_payload" not in connection.query
     assert "parsed_decision" not in AdminLlmTraceResponse.model_fields
+    assert "error" not in AdminLlmTraceResponse.model_fields
