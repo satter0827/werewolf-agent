@@ -283,6 +283,26 @@ class InvalidStartDiscussionPolicy(SkipResponseDiscussionPolicy):
         )
 
 
+class ReusedRoundIdDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """stage変更時に直前のround IDを再利用するfault policy。"""
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        """Core outcomeの次stageだけを重複IDへ改変する。"""
+        resolution = self._core.resolve(state, round_, submissions)
+        if resolution.next_round is None:
+            return resolution
+        return DiscussionResolution(
+            resolution.speeches,
+            replace(resolution.next_round, round_id=round_.round_id),
+            False,
+        )
+
+
 class RedirectAbilityPolicy:
     """提出された攻撃先ではなくp3を死亡させる外部test policy."""
 
@@ -858,6 +878,42 @@ def test_discussion_policy_cannot_start_outside_first_opening() -> None:
         )
 
     assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_reuse_round_id_across_stages() -> None:
+    """発言・pass証拠IDが衝突するstage間のround ID再利用を拒否する。"""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=ReusedRoundIdDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    round_ = game.snapshot().pending_actions.discussion_round
+    assert round_ is not None
+    for actor_id in round_.actor_order:
+        topic_id = next(item for item in round_.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                "状況を確認します。",
+                topic_id=topic_id,
+                position=DiscussionPosition.UNDECIDED,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
+        )
+
+    before = game.snapshot()
+    with pytest.raises(ValueError, match="fresh round ID"):
+        game.advance(random.Random(11))
+    assert game.snapshot() is before
 
 
 def test_discussion_runs_configured_opening_response_cycles() -> None:

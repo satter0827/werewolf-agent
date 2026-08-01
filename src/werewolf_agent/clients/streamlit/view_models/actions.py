@@ -131,6 +131,18 @@ def observation_view_from_response(
             if player.id != manual_player_id and player.status == "alive"
         ],
         vote_evidence_choices=vote_evidence_choices,
+        action_text_limits={
+            item.key: limit
+            for item in observation.available_actions
+            for limit in (
+                item.message_max_chars
+                if item.type == "speech"
+                else item.reason_max_chars
+                if item.type == "vote"
+                else None,
+            )
+            if limit is not None
+        },
     )
 
 

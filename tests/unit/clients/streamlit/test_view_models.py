@@ -282,6 +282,7 @@ def test_vote_evidence_choices_are_projected_from_server_authorized_facts() -> N
                                 "position": "support",
                             }
                         ],
+                        "reason_max_chars": 75,
                     }
                 ],
                 "history": {
@@ -317,6 +318,7 @@ def test_vote_evidence_choices_are_projected_from_server_authorized_facts() -> N
     assert screen.observation.vote_evidence_choices["player-2"] == {
         "speech-1": "P2: player-1を疑います。"
     }
+    assert screen.observation.action_text_limits["vote"] == 75
 
 
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:

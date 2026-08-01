@@ -28,7 +28,6 @@ from werewolf_agent.clients.streamlit.i18n import (
 )
 from werewolf_agent.clients.streamlit.operations import (
     load_game_screen,
-    load_runtime_config,
     load_runtime_status,
     load_session,
     log_streamlit_rerun_started,
@@ -303,7 +302,6 @@ def _render_session_app(
 
     sync_auto_advance_game(st.session_state, selected_option.game_id)
     try:
-        runtime_config = load_runtime_config(settings=settings)
         screen = load_game_screen(
             settings=settings,
             game_id=selected_option.game_id,
@@ -325,7 +323,6 @@ def _render_session_app(
         selected_option=selected_option,
         catalog=catalog,
         lang=lang,
-        message_max_chars=runtime_config.limits.message_max_chars,
         mutations_available=queue_available,
     )
 

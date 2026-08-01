@@ -32,6 +32,15 @@ def test_local_preflight_provider_error_is_blocked_before_bounded_stop() -> None
     assert state == "blocked"
 
 
+def test_session_deadline_stop_is_classified_as_duration_stop() -> None:
+    reason, stopped_for_duration = review._simulation_stop_metadata(
+        review.SimulationStopReason.DEADLINE_REACHED
+    )
+
+    assert reason == "deadline_reached"
+    assert stopped_for_duration is True
+
+
 def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_MODEL", "local-model")

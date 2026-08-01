@@ -512,6 +512,36 @@ def test_expired_full_run_deadline_stops_before_any_action() -> None:
     assert result.phase_count == 0
 
 
+def test_deadline_expiry_after_primary_failure_skips_fallback(monkeypatch) -> None:
+    game = _game()
+    base = _spec(game)
+    fallback = _CapturingFactory()
+    controllers = {
+        player_id: PlayerController(
+            player_id,
+            FaultAgentFactory("broken"),
+            fallback_factory=fallback,
+        )
+        for player_id in base.controllers
+    }
+    checks = iter((False, False, True))
+    monkeypatch.setattr(
+        "werewolf_agent.simulation.session._deadline_expired",
+        lambda _spec: next(checks),
+    )
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        step = session.step()
+    finally:
+        session.close()
+
+    assert step.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert fallback.requests == []
+
+
 def test_action_limit_does_not_block_a_ready_phase_advance() -> None:
     game = _game()
     base = _spec(game)

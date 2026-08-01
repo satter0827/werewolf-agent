@@ -45,6 +45,7 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                         }
                     ],
                 },
+                "action_text_limits": {"speech": 180, "vote": 75},
                 "history": {
                     "speeches": [
                         {
@@ -81,8 +82,10 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
         "vote",
     ]
     assert response.observation.available_actions[0].message_required is True
+    assert response.observation.available_actions[0].message_max_chars == 180
     assert response.observation.available_actions[1].legal_target_ids == ["p2"]
     assert response.observation.available_actions[2].evidence_options[0].actor_id == "p2"
+    assert response.observation.available_actions[2].reason_max_chars == 75
     payload = response.model_dump(mode="json")
     assert "legal_targets" not in payload["observation"]
     assert "reason" not in payload["observation"]["history"]["speeches"][0]

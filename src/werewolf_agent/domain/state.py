@@ -1188,6 +1188,7 @@ class GameView:
     available_actions: tuple[AvailableAction, ...] = ()
     legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     legal_evidence: Mapping[str, tuple[EvidenceFact, ...]] = field(default_factory=dict)
+    action_text_limits: Mapping[str, int] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
     discussion_round: DiscussionRound | None = None
     win_result: VisibleWinResult | None = None
@@ -1208,6 +1209,13 @@ class GameView:
             "legal_evidence",
             frozen_mapping({key: tuple(value) for key, value in self.legal_evidence.items()}),
         )
+        action_text_limits = {
+            non_blank(key, "action text limit key"): int(value)
+            for key, value in self.action_text_limits.items()
+        }
+        if any(value < 1 for value in action_text_limits.values()):
+            raise ValueError("action text limits must be positive")
+        object.__setattr__(self, "action_text_limits", frozen_mapping(action_text_limits))
 
 
 @dataclass(frozen=True)

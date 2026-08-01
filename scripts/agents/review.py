@@ -62,6 +62,7 @@ from werewolf_agent.simulation import (
     SimulationRunner,
     SimulationSpec,
     SimulationStepKind,
+    SimulationStopReason,
 )
 
 ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
@@ -1093,6 +1094,7 @@ def _run_preset(
     action_count = 0
     stopped_for_preflight = False
     stopped_for_duration = False
+    simulation_stop_reason: str | None = None
     try:
         while True:
             if (
@@ -1115,6 +1117,8 @@ def _run_preset(
             elif step.kind is SimulationStepKind.PHASE_ADVANCED:
                 phase_count += 1
             if step.stop_reason is not None:
+                simulation_stop_reason, deadline_stop = _simulation_stop_metadata(step.stop_reason)
+                stopped_for_duration = stopped_for_duration or deadline_stop
                 break
     finally:
         session.close()
@@ -1154,6 +1158,7 @@ def _run_preset(
         "state": state,
         "completed": completed,
         "stopped_for_duration": stopped_for_duration,
+        "simulation_stop_reason": simulation_stop_reason,
         "phase_count": phase_count,
         "finished_day": snapshot.day,
         "winner": snapshot.winner_id,
@@ -1205,6 +1210,11 @@ def _classify_scenario_state(
     if fallbacks or provider_errors:
         return "degraded"
     return "passed"
+
+
+def _simulation_stop_metadata(reason: SimulationStopReason) -> tuple[str, bool]:
+    """Return the serialized stop reason and whether it exhausted the run deadline."""
+    return reason.value, reason is SimulationStopReason.DEADLINE_REACHED
 
 
 def _gameplay_metrics(

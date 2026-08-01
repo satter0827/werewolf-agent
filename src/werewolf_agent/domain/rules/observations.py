@@ -71,6 +71,15 @@ def build_player_observation(
             for action in actions
             if action.type.value == "vote"
         },
+        action_text_limits={
+            action.key: (
+                snapshot.config.discussion.message_max_chars
+                if action.type.value == "speech"
+                else snapshot.config.voting.reason_max_chars
+            )
+            for action in actions
+            if action.type.value in {"speech", "vote"}
+        },
         history=GameHistory(
             speeches=tuple(
                 SpeechRecord(

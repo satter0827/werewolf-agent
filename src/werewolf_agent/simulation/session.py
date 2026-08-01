@@ -67,6 +67,10 @@ class CancellationToken:
             return self._cancelled
 
 
+class _SimulationDeadlineReached(Exception):
+    """Signal that no fallback may start after the full-run deadline."""
+
+
 class SynchronousDecisionExecutor:
     """Agentを同じthreadで一回だけ呼び出す既定executor."""
 
@@ -253,7 +257,13 @@ class SimulationSession:
                 SimulationStepKind.DEADLINE_REACHED,
                 SimulationStopReason.DEADLINE_REACHED,
             )
-        response, trace = self._decide(controller, context, request)
+        try:
+            response, trace = self._decide(controller, context, request)
+        except _SimulationDeadlineReached:
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
         if self._cancellation.is_cancelled:
             return self._record_stop(
                 SimulationStepKind.CANCELLED,
@@ -324,6 +334,17 @@ class SimulationSession:
                     {"error_type": type(exc).__name__},
                 )
             )
+            if _deadline_expired(self._spec):
+                trace = DecisionTrace(
+                    decision_id=request.decision_id,
+                    agent_spec=controller.factory.spec,
+                    response=None,
+                    latency_ms=_elapsed_milliseconds(started_at),
+                    error_code=error.code,
+                    diagnostics=error.diagnostics,
+                )
+                self._trace_sink.record_decision(trace)
+                raise _SimulationDeadlineReached from exc
             fallback = self._fallback_sessions.get(controller.player_id)
             if fallback is None:
                 fallback = controller.fallback_factory.create(context)

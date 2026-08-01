@@ -315,10 +315,36 @@
             "title": "Legal Target Ids",
             "type": "array"
           },
+          "message_max_chars": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Max Chars"
+          },
           "message_required": {
             "default": false,
             "title": "Message Required",
             "type": "boolean"
+          },
+          "reason_max_chars": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Max Chars"
           },
           "type": {
             "enum": [

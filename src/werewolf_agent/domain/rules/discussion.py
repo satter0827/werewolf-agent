@@ -373,6 +373,13 @@ def _validate_resolution(
         next_cycle = resolution.next_round.cycle == round_.cycle + 1
         if not same_cycle and not next_cycle:
             raise ValueError("discussion cycle must stay or advance exactly once")
+        stage_changed = next_cycle or resolution.next_round.kind is not round_.kind
+        used_round_ids = {
+            round_.round_id,
+            *(result.round_id for result in state.history.discussions),
+        }
+        if stage_changed and resolution.next_round.round_id in used_round_ids:
+            raise ValueError("discussion stage transitions require a fresh round ID")
         if same_cycle:
             if round_.kind is DiscussionRoundKind.OPENING:
                 if (

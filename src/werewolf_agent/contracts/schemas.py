@@ -604,6 +604,8 @@ class AvailableActionDescriptor(BaseModel):
     legal_target_ids: list[str] = Field(default_factory=list)
     evidence_options: list[EvidenceFactDescriptor] = Field(default_factory=list)
     message_required: bool = False
+    message_max_chars: int | None = Field(default=None, ge=1, le=2000)
+    reason_max_chars: int | None = Field(default=None, ge=1, le=1000)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 

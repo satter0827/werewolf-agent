@@ -50,6 +50,7 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
     observation = payload["observation"]
     legal_targets = observation.get("legal_targets", {})
     legal_evidence = observation.get("legal_evidence", {})
+    action_text_limits = observation.get("action_text_limits", {})
     actions: list[AvailableActionDescriptor] = []
     for item in observation.get("available_actions", []):
         ability_id = item.get("ability_id")
@@ -62,6 +63,10 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                 legal_target_ids=legal_targets.get(key, []),
                 evidence_options=legal_evidence.get(key, []),
                 message_required=item["type"] == "speech",
+                message_max_chars=(
+                    action_text_limits.get(key) if item["type"] == "speech" else None
+                ),
+                reason_max_chars=(action_text_limits.get(key) if item["type"] == "vote" else None),
             )
         )
     history = observation.get("history", {})

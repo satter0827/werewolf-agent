@@ -73,7 +73,6 @@ def _render_game_screen(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
     mutations_available: bool = True,
 ) -> None:
     """Render the game as one tableau with an adjacent command rail."""
@@ -93,7 +92,6 @@ def _render_game_screen(
             selected_option=selected_option,
             catalog=catalog,
             lang=lang,
-            message_max_chars=message_max_chars,
             mutations_available=mutations_available,
         )
     _render_next_actions(
@@ -193,7 +191,6 @@ def _render_action_panel(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
     mutations_available: bool,
 ) -> None:
     has_active_job = bool(advance_job_id(st.session_state, selected_option.game_id))
@@ -246,7 +243,6 @@ def _render_action_panel(
                 selected_option=selected_option,
                 catalog=catalog,
                 lang=lang,
-                message_max_chars=message_max_chars,
             )
         elif is_playable and not screen.is_completed and mutations_available:
             _render_auto_advance_controls(
@@ -272,7 +268,6 @@ def _render_action_form(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
 ) -> None:
     manual_player_id = selected_option.manual_player_id
     if screen.observation is None or manual_player_id is None:
@@ -312,6 +307,7 @@ def _render_action_form(
     evidence_id = None
     response_to_id = None
     if selected_action.requires_message:
+        message_max_chars = screen.observation.action_text_limits[selected_action.action_type]
         utterance = st.text_area(
             catalog.t(lang, "action.message"),
             key=KEY_MESSAGE,
@@ -350,7 +346,10 @@ def _render_action_form(
 
     reason = None
     if selected_action.action_type == "vote":
-        reason = st.text_area(catalog.t(lang, "action.reason"), max_chars=120)
+        reason = st.text_area(
+            catalog.t(lang, "action.reason"),
+            max_chars=screen.observation.action_text_limits[selected_action.action_type],
+        )
         evidence_choices = screen.observation.vote_evidence_choices.get(target_id or "", {})
         if evidence_choices:
             selected_evidence = st.selectbox(

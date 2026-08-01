@@ -112,6 +112,7 @@ class ObservationView:
     reference_positions: dict[str, str]
     discussion_topic_ids: list[str]
     vote_evidence_choices: dict[str, dict[str, str]]
+    action_text_limits: dict[str, int]
 
 
 @dataclass(frozen=True)
