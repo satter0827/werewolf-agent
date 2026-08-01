@@ -236,6 +236,7 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
                 day=int(item["day"]),
                 round_id=str(item["round_id"]),
                 kind=DiscussionRoundKind(str(item["kind"])),
+                actor_ids=tuple(str(value) for value in _sequence(item.get("actor_ids"))),
                 speech_ids=tuple(str(value) for value in _sequence(item.get("speech_ids"))),
                 passed_player_ids=tuple(
                     str(value) for value in _sequence(item.get("passed_player_ids"))

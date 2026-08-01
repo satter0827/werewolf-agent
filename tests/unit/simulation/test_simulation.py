@@ -108,6 +108,53 @@ class _LongSpeechSession:
         self._inner.close()
 
 
+class _InvalidRelationFactory:
+    def __init__(self) -> None:
+        self._inner = RandomLegalAgentFactory()
+
+    @property
+    def spec(self) -> AgentSpec:
+        return self._inner.spec
+
+    def create(self, context: AgentContext) -> AgentSession:
+        return _InvalidRelationSession(self._inner.create(context))
+
+
+class _InvalidRelationSession:
+    def __init__(self, inner: AgentSession) -> None:
+        self._inner = inner
+
+    def decide(self, request: DecisionRequest) -> DecisionResponse:
+        option = next(
+            (
+                item
+                for item in request.options
+                if item.action_type == "speech" and item.legal_reference_ids
+            ),
+            None,
+        )
+        if option is None:
+            return self._inner.decide(request)
+        evidence = next(
+            item
+            for item in option.evidence_options
+            if item.evidence_id == option.legal_reference_ids[0]
+        )
+        incompatible_position = "oppose" if evidence.position == "support" else "support"
+        return DecisionResponse(
+            "speech",
+            utterance="参照発言とは異なる内容を述べます。",
+            topic_id=evidence.topic_id,
+            position=incompatible_position,
+            relation="support",
+            evidence_id=evidence.evidence_id,
+            response_to_id=evidence.evidence_id,
+        )
+
+    def close(self) -> None:
+        self._inner.close()
+
+
 class _ChangingMetadata:
     def __init__(self) -> None:
         self.calls = 0
@@ -158,8 +205,11 @@ class _FallbackTimeoutExecutor:
         _ = session, request, timeout_seconds
         self.calls += 1
         if self.calls == 1:
-            raise AgentDecisionError("primary_failed")
-        raise AgentDecisionError("agent_timeout")
+            raise AgentDecisionError("primary_failed", {"primary": "detail"})
+        raise AgentDecisionError(
+            "agent_timeout",
+            {"elapsed_seconds": 1.25, "timeout_seconds": 1.0},
+        )
 
 
 class _FalseyTraceSink:
@@ -482,6 +532,35 @@ def test_too_long_agent_speech_uses_fallback_and_records_stable_error() -> None:
         session.close()
 
 
+def test_invalid_response_relation_uses_fallback_before_domain_submit() -> None:
+    """relationとpositionの不正な組合せをAgent境界でfallbackへ送る。"""
+    game = _game()
+    base = _spec(game)
+    controllers = {
+        player_id: PlayerController(player_id, _InvalidRelationFactory())
+        for player_id in base.controllers
+    }
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        for _ in range(100):
+            step = session.step()
+            if (
+                step.decision_trace is not None
+                and step.decision_trace.error_code == "agent_response_support_mismatch"
+            ):
+                break
+        else:
+            pytest.fail("response decision was not reached")
+        assert step.decision_trace is not None
+        assert step.decision_trace.fallback_used
+        assert step.kind is SimulationStepKind.AGENT_ACTION
+    finally:
+        session.close()
+
+
 def test_limits_and_cancellation_are_explicit_stop_reasons() -> None:
     limited_game = _game()
     base = _spec(limited_game)
@@ -588,6 +667,12 @@ def test_fallback_timeout_becomes_deadline_stop_with_trace() -> None:
     assert executor.calls == 2
     assert len(sink.traces) == 1
     assert sink.traces[0].error_code == "agent_timeout"
+    assert sink.traces[0].diagnostics == {
+        "elapsed_seconds": 1.25,
+        "timeout_seconds": 1.0,
+        "primary_error_code": "primary_failed",
+        "primary_diagnostics": {"primary": "detail"},
+    }
 
 
 def test_action_limit_does_not_block_a_ready_phase_advance() -> None:

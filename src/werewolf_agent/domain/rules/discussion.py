@@ -203,6 +203,13 @@ def resolve_discussion_round(
         resolution.next_round.cycle,
         resolution.next_round.kind,
     ) != (round_.cycle, round_.kind)
+    implicitly_passed_actor_ids = (
+        {round_.current_actor_id}
+        if round_.submission_mode is SubmissionMode.ORDERED
+        and round_.current_actor_id is not None
+        and round_.current_actor_id not in submissions
+        else set()
+    )
     passed_player_ids = tuple(
         player_id
         for player_id in round_.actor_order
@@ -210,7 +217,14 @@ def resolve_discussion_round(
             submissions.get(player_id) is not None
             and submissions[player_id].type is ActionType.PASS
         )
+        or player_id in implicitly_passed_actor_ids
         or (round_ended and player_id not in previously_resolved and player_id not in submissions)
+    )
+    speech_by_player = {speech.player_id: speech for speech in resolution.speeches}
+    actor_ids = tuple(
+        player_id
+        for player_id in round_.actor_order
+        if player_id in speech_by_player or player_id in passed_player_ids
     )
     history = replace(
         state.history,
@@ -221,46 +235,50 @@ def resolve_discussion_round(
                 day=state.day,
                 round_id=round_.round_id,
                 kind=round_.kind,
+                actor_ids=actor_ids,
                 speech_ids=tuple(item.speech_id for item in resolution.speeches),
                 passed_player_ids=passed_player_ids,
             ),
         ),
     )
-    events = [
-        GameEvent(
-            event_type="speech_recorded",
-            phase=state.phase,
-            day=state.day,
-            actor_id=speech.player_id,
-            payload={
-                "speech_id": speech.speech_id,
-                "round_id": speech.round_id,
-                "round_kind": speech.round_kind.value,
-                "utterance": speech.utterance,
-                "topic_id": speech.topic_id,
-                "position": speech.position.value,
-                "relation": speech.relation.value,
-                "evidence_id": speech.evidence_id,
-                "response_to_id": speech.response_to_id,
-            },
-        )
-        for speech in resolution.speeches
-    ]
-    events.extend(
-        GameEvent(
-            event_type="discussion_passed",
-            phase=state.phase,
-            day=state.day,
-            actor_id=player_id,
-            payload={
-                "evidence_id": f"pass:{state.day}:{round_.round_id}:{player_id}",
-                "round_id": round_.round_id,
-                "round_kind": round_.kind.value,
-                "topic_id": player_id,
-            },
-        )
-        for player_id in passed_player_ids
-    )
+    events: list[GameEvent] = []
+    for player_id in actor_ids:
+        speech = speech_by_player.get(player_id)
+        if speech is not None:
+            events.append(
+                GameEvent(
+                    event_type="speech_recorded",
+                    phase=state.phase,
+                    day=state.day,
+                    actor_id=speech.player_id,
+                    payload={
+                        "speech_id": speech.speech_id,
+                        "round_id": speech.round_id,
+                        "round_kind": speech.round_kind.value,
+                        "utterance": speech.utterance,
+                        "topic_id": speech.topic_id,
+                        "position": speech.position.value,
+                        "relation": speech.relation.value,
+                        "evidence_id": speech.evidence_id,
+                        "response_to_id": speech.response_to_id,
+                    },
+                )
+            )
+        else:
+            events.append(
+                GameEvent(
+                    event_type="discussion_passed",
+                    phase=state.phase,
+                    day=state.day,
+                    actor_id=player_id,
+                    payload={
+                        "evidence_id": f"pass:{state.day}:{round_.round_id}:{player_id}",
+                        "round_id": round_.round_id,
+                        "round_kind": round_.kind.value,
+                        "topic_id": player_id,
+                    },
+                )
+            )
     return replace(state, history=history), resolution, events
 
 

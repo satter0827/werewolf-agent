@@ -984,6 +984,7 @@ class DiscussionResult:
     day: int
     round_id: str
     kind: DiscussionRoundKind
+    actor_ids: tuple[str, ...]
     speech_ids: tuple[str, ...]
     passed_player_ids: tuple[str, ...] = ()
 
@@ -993,6 +994,10 @@ class DiscussionResult:
             raise ValueError("discussion result day must be at least 1")
         object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
         object.__setattr__(self, "kind", DiscussionRoundKind(self.kind))
+        actor_ids = tuple(non_blank(item, "actor_id") for item in self.actor_ids)
+        if not actor_ids or len(actor_ids) != len(set(actor_ids)):
+            raise ValueError("discussion result actor IDs must be unique")
+        object.__setattr__(self, "actor_ids", actor_ids)
         speech_ids = tuple(non_blank(item, "speech_id") for item in self.speech_ids)
         if len(speech_ids) != len(set(speech_ids)):
             raise ValueError("discussion result speech IDs must be unique")
@@ -1000,6 +1005,10 @@ class DiscussionResult:
         passed = tuple(non_blank(item, "passed_player_id") for item in self.passed_player_ids)
         if len(passed) != len(set(passed)):
             raise ValueError("discussion result passed player IDs must be unique")
+        if not set(passed) <= set(actor_ids):
+            raise ValueError("discussion result pass actors must belong to actor IDs")
+        if len(actor_ids) != len(speech_ids) + len(passed):
+            raise ValueError("discussion result actors must map to one speech or pass")
         object.__setattr__(self, "passed_player_ids", passed)
 
 

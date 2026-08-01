@@ -907,7 +907,16 @@ def test_discussion_policy_cannot_reuse_round_id_at_day_start() -> None:
         day=2,
         history=replace(
             state.history,
-            discussions=(DiscussionResult(1, reused_id, DiscussionRoundKind.OPENING, (), ("p1",)),),
+            discussions=(
+                DiscussionResult(
+                    1,
+                    reused_id,
+                    DiscussionRoundKind.OPENING,
+                    ("p1",),
+                    (),
+                    ("p1",),
+                ),
+            ),
         ),
     )
 
@@ -1030,6 +1039,84 @@ def test_each_ended_discussion_round_records_implicit_passes() -> None:
     assert all(set(result.passed_player_ids) == {"p1", "p2", "p3"} for result in results)
     assert sum(event.event_type == "discussion_passed" for event in first_events) == 3
     assert sum(event.event_type == "discussion_passed" for event in second_events) == 3
+
+
+def test_sealed_discussion_preserves_mixed_submission_order() -> None:
+    """sealed roundのspeechとpassをactor順の公開事実として確定する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    actions = {
+        opening.actor_order[0]: Action.speech(
+            opening.actor_order[0],
+            "最初の意見です。",
+            topic_id=opening.actor_order[1],
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        ),
+        opening.actor_order[1]: Action.pass_(opening.actor_order[1]),
+        opening.actor_order[2]: Action.speech(
+            opening.actor_order[2],
+            "別の意見です。",
+            topic_id=opening.actor_order[0],
+            position=DiscussionPosition.OPPOSE,
+            relation=DiscussionRelation.INDEPENDENT,
+        ),
+    }
+    for actor_id in opening.actor_order:
+        game.submit(actions[actor_id])
+
+    events = game.advance(random.Random(11))
+
+    result = game.snapshot().history.discussions[-1]
+    discussion_events = [
+        event for event in events if event.event_type in {"speech_recorded", "discussion_passed"}
+    ]
+    assert result.actor_ids == opening.actor_order
+    assert tuple(event.actor_id for event in discussion_events) == opening.actor_order
+    assert tuple(event.event_type for event in discussion_events) == (
+        "speech_recorded",
+        "discussion_passed",
+        "speech_recorded",
+    )
+
+
+def test_ordered_discussion_records_each_skipped_actor_as_pass() -> None:
+    """ordered roundのcursor前進は未提出の現在話者を公開passとして確定する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    game.submit(
+        Action.speech(
+            opening.actor_order[0],
+            "議論を始めます。",
+            topic_id=opening.actor_order[1],
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    skipped_actor_id = response.current_actor_id
+    assert skipped_actor_id is not None
+
+    events = game.advance(random.Random(13))
+
+    result = game.snapshot().history.discussions[-1]
+    assert result.actor_ids == (skipped_actor_id,)
+    assert result.passed_player_ids == (skipped_actor_id,)
+    assert [(event.event_type, event.actor_id) for event in events] == [
+        ("discussion_passed", skipped_actor_id)
+    ]
 
 
 def test_response_must_advance_another_players_opening() -> None:

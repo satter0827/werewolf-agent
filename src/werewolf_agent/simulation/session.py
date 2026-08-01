@@ -372,7 +372,11 @@ class SimulationSession:
                         response=None,
                         latency_ms=_elapsed_milliseconds(started_at),
                         error_code=fallback_error.code,
-                        diagnostics={**error.diagnostics, "primary_error_code": error.code},
+                        diagnostics={
+                            **fallback_error.diagnostics,
+                            "primary_error_code": error.code,
+                            "primary_diagnostics": error.diagnostics,
+                        },
                     )
                     self._trace_sink.record_decision(trace)
                     raise _SimulationDeadlineReached from fallback_exc
@@ -702,44 +706,38 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
     emitted_speech_ids: set[str] = set()
     event_index = 0
     for discussion in observation.history.discussions:
-        for speech_id in discussion.speech_ids:
-            speech = speeches[speech_id]
-            items.append(
-                (
-                    discussion.day,
-                    event_index,
-                    "speech",
-                    speech.player_id,
-                    {
-                        "utterance": speech.utterance,
-                        "topic_id": speech.topic_id,
-                        "position": speech.position.value,
-                        "relation": speech.relation.value,
-                        "evidence_id": speech.evidence_id,
-                        "speech_id": speech.speech_id,
-                        "round_id": speech.round_id,
-                        "round_kind": speech.round_kind.value,
-                        "response_to_id": speech.response_to_id,
-                    },
-                )
-            )
-            emitted_speech_ids.add(speech_id)
-            event_index += 1
-        for player_id in discussion.passed_player_ids:
-            items.append(
-                (
-                    discussion.day,
-                    event_index,
-                    "discussion_pass",
-                    player_id,
-                    {
-                        "evidence_id": (f"pass:{discussion.day}:{discussion.round_id}:{player_id}"),
-                        "round_id": discussion.round_id,
-                        "round_kind": discussion.kind.value,
-                        "topic_id": player_id,
-                    },
-                )
-            )
+        round_speeches = {
+            speeches[speech_id].player_id: speeches[speech_id]
+            for speech_id in discussion.speech_ids
+        }
+        passed_player_ids = set(discussion.passed_player_ids)
+        for player_id in discussion.actor_ids:
+            speech = round_speeches.get(player_id)
+            if speech is not None:
+                event_type = "speech"
+                payload: dict[str, object] = {
+                    "utterance": speech.utterance,
+                    "topic_id": speech.topic_id,
+                    "position": speech.position.value,
+                    "relation": speech.relation.value,
+                    "evidence_id": speech.evidence_id,
+                    "speech_id": speech.speech_id,
+                    "round_id": speech.round_id,
+                    "round_kind": speech.round_kind.value,
+                    "response_to_id": speech.response_to_id,
+                }
+                emitted_speech_ids.add(speech.speech_id)
+            elif player_id in passed_player_ids:
+                event_type = "discussion_pass"
+                payload = {
+                    "evidence_id": f"pass:{discussion.day}:{discussion.round_id}:{player_id}",
+                    "round_id": discussion.round_id,
+                    "round_kind": discussion.kind.value,
+                    "topic_id": player_id,
+                }
+            else:
+                raise ValueError("discussion result actor must have a speech or pass")
+            items.append((discussion.day, event_index, event_type, player_id, payload))
             event_index += 1
     for speech in observation.history.speeches:
         if speech.speech_id not in emitted_speech_ids:
@@ -859,6 +857,7 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
             )
             if response.topic_id != referenced.payload.get("topic_id"):
                 raise AgentDecisionError("agent_response_topic_mismatch")
+            _require_legal_response_relation(request, response, referenced)
             referenced_message = str(referenced.payload.get("utterance") or "")
             if (
                 " ".join(referenced_message.split()).casefold()
@@ -890,6 +889,40 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
             raise AgentDecisionError("agent_vote_evidence_target_mismatch")
     if response.action_type != "vote" and response.reason is not None:
         raise AgentDecisionError("agent_vote_reason_not_allowed")
+
+
+def _require_legal_response_relation(
+    request: DecisionRequest,
+    response: DecisionResponse,
+    referenced: PublicTimelineEvent,
+) -> None:
+    """参照発言とresponseのrelation・positionを一つの組合せとして検証する."""
+    referenced_position = str(referenced.payload.get("position") or "")
+    if response.relation == "answer":
+        if referenced_position != "undecided" or response.position == "undecided":
+            raise AgentDecisionError("agent_response_answer_mismatch")
+        return
+    if response.relation == "support":
+        if response.position != referenced_position:
+            raise AgentDecisionError("agent_response_support_mismatch")
+        return
+    if response.relation == "challenge":
+        if {response.position, referenced_position} != {"support", "oppose"}:
+            raise AgentDecisionError("agent_response_challenge_mismatch")
+        return
+    if response.relation == "revise":
+        prior = next(
+            (
+                event
+                for event in reversed(request.public_timeline)
+                if event.event_type == "speech"
+                and event.actor_id == request.context.player_id
+                and event.payload.get("topic_id") == response.topic_id
+            ),
+            None,
+        )
+        if prior is None or prior.payload.get("position") == response.position:
+            raise AgentDecisionError("agent_response_revision_mismatch")
 
 
 def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
