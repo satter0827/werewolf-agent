@@ -2,6 +2,6 @@
 
 from typing import Final
 
-REPLAY_FORMAT_VERSION: Final = "0.5.0"
+REPLAY_FORMAT_VERSION: Final = "0.6.0"
 
 __all__ = ["REPLAY_FORMAT_VERSION"]

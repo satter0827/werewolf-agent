@@ -65,7 +65,7 @@ applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証�
 公開narrationは単純なallowlist field置換だけを許し、format指定とconversionを拒否する。rendererは
 保存済み定義を再信頼せず、出力上限まで逐次構築して上限超過を公開eventへ含めない。
 domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
-replay 0.5.0はgenesis setupとRule Pack manifestを再検証する。復元時は明示登録済みproviderの
+replay 0.6.0はgenesis setupとRule Pack manifestを再検証し、agent actionを生成順で保持する。復元時は明示登録済みproviderの
 contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
