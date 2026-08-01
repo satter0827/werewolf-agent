@@ -164,31 +164,35 @@ class SupabaseGameRepository(GameRepository):
         offset: int,
     ) -> list[StoredGameSummary]:
         """Return game summaries."""
-        params: list[object] = [_uuid_or_none(user_id)]
-        clauses: list[str] = [
-            """
-            exists (
+        user_uuid = _uuid_or_none(user_id)
+        if status is None:
+            query = """
+            select *
+            from public.game_summaries
+            where exists (
               select 1 from public.game_participants participant
               where participant.game_id = game_summaries.game_id
                 and participant.user_id = %s
             )
-            """
-        ]
-        if status is not None:
-            clauses.append("status = %s")
-            params.append(status)
-        where = f"where {' and '.join(clauses)}" if clauses else ""
-        params.extend([limit, offset])
-        rows = self._connection.execute(
-            f"""
-            select *
-            from public.game_summaries
-            {where}
             order by updated_at desc, created_at desc
             limit %s offset %s
-            """,
-            params,
-        ).fetchall()
+            """
+            params: tuple[object, ...] = (user_uuid, limit, offset)
+        else:
+            query = """
+            select *
+            from public.game_summaries
+            where exists (
+              select 1 from public.game_participants participant
+              where participant.game_id = game_summaries.game_id
+                and participant.user_id = %s
+            )
+              and status = %s
+            order by updated_at desc, created_at desc
+            limit %s offset %s
+            """
+            params = (user_uuid, status, limit, offset)
+        rows = self._connection.execute(query, params).fetchall()
         return [stored_summary(row) for row in rows]
 
     def save(self, update: GameRecordUpdate) -> StoredGame:

@@ -24,7 +24,8 @@ Supabaseアダプターはリポジトリportを実装し、公式Auth SDK、gam
 traceの接続を担当する。APIとworkerは用途別のプロセス所有connection poolを使う。
 Supabase Authとゲームテーブルを分離し、ゲームテーブルはData APIから参照させない。
 
-完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。
+完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。専用設定は
+既定で無効とし、必要なruntimeだけが明示的に有効化する。
 通常の`GameClient`からは呼び出せない。CLIとStreamlitの
 管理者領域は、管理者認可を通過した`AdminClient`だけから呼び出す。完全情報を通常clientで
 取得してから画面で隠す実装は禁止する。

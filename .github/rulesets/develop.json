@@ -25,7 +25,10 @@
     {
       "type": "required_status_checks",
       "parameters": {
-        "required_status_checks": [{"context": "Develop / Check"}],
+        "required_status_checks": [
+          {"context": "Develop / Check"},
+          {"context": "Security / Dependencies"}
+        ],
         "strict_required_status_checks_policy": false
       }
     }

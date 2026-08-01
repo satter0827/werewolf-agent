@@ -21,6 +21,8 @@ def test_meaningful_selector_expands_without_coupling_to_profile() -> None:
         "ruff",
         "format",
         "docstrings",
+        "bandit",
+        "secrets",
         "mypy",
     }
 
@@ -170,6 +172,10 @@ def test_python_static_gates_cover_every_configured_source() -> None:
 
     assert configured == ["src", "scripts", "notebooks/werewolf_demo", ".codex/hooks"]
     assert all(path not in gates["mypy"].command for path in configured)
+    assert gates["bandit"].command[-2:] == ("-ll", "src/werewolf_agent")
+    assert gates["secrets"].command[-2:] == ("scripts.security", "secrets")
+    assert gates["secrets"].reusable is False
+    assert gates["secrets"].inputs == ()
     for gate_name in ("ruff", "format", "mypy"):
         assert "notebooks/**/*.py" in gates[gate_name].inputs
         assert ".codex/**/*.py" in gates[gate_name].inputs

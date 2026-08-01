@@ -26,6 +26,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  security-dependencies:
+    if: >-
+      github.event_name == 'pull_request' ||
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
+    name: Security / Dependencies
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'schedule' && 'develop' || github.sha }}
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv run --no-project python -m scripts.environment setup python
+      - run: uv run --no-sync python -m scripts.security dependencies
+
   develop-check:
     if: >-
       (github.event_name == 'pull_request' && github.base_ref == 'develop') ||
@@ -270,6 +289,7 @@ jobs:
        (github.event_name == 'workflow_dispatch' && inputs.profile == 'nightly-deep'))
     name: Nightly / Notify
     needs:
+      - security-dependencies
       - nightly-preflight
       - scheduled-deep
     runs-on: ubuntu-24.04
@@ -288,19 +308,25 @@ jobs:
           MAIN_SHA: ${{ needs.nightly-preflight.outputs.main-sha }}
           NIGHTLY_REASON: ${{ needs.nightly-preflight.outputs.reason }}
           PREFLIGHT_RESULT: ${{ needs.nightly-preflight.result }}
+          SECURITY_RESULT: ${{ needs.security-dependencies.result }}
         with:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const title = "[CI] Nightly readiness failure";
             const preflight = process.env.PREFLIGHT_RESULT;
-            const stage = preflight === "success" ? "deep" : "preflight";
-            const result = stage === "deep" ? process.env.DEEP_RESULT : preflight;
+            const security = process.env.SECURITY_RESULT;
+            const stage = security !== "success" ? "security" : (
+              preflight === "success" ? "deep" : "preflight"
+            );
+            const result = stage === "security" ? security : (
+              stage === "deep" ? process.env.DEEP_RESULT : preflight
+            );
             const shouldRun = process.env.FORCE === "true" || (
               process.env.CHANGED === "true" && process.env.CACHE_HIT !== "true"
             );
             const validSkip = result === "skipped" && !shouldRun;
-            const recovered = preflight === "success" && (
+            const recovered = security === "success" && preflight === "success" && (
               result === "success" || validSkip
             );
             const issues = await github.paginate(github.rest.issues.listForRepo, {

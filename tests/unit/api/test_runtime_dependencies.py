@@ -4,6 +4,7 @@ from typing import Any, cast
 
 import pytest
 
+from werewolf_agent.api.dependencies import RequestServices
 from werewolf_agent.api.runtime import AvailabilityGuardedOperationQueue, RuntimeDependencies
 from werewolf_agent.contracts import AppError, ErrorCode
 
@@ -14,6 +15,17 @@ class _Pool:
 
     def close(self) -> None:
         self.closed = True
+
+
+def test_request_services_disable_reveal_by_default() -> None:
+    """組み立て漏れでも完全状態を公開しない。"""
+    services = RequestServices(
+        games=cast(Any, object()),
+        setups=cast(Any, object()),
+        message_max_chars=100,
+    )
+
+    assert services.reveal_api_enabled is False
 
 
 def test_database_open_failure_degrades_status_without_raising() -> None:

@@ -5,7 +5,7 @@ import sys
 from scripts._infra.process import TEMPORARY_ROOT
 from scripts.quality.models import CPU_INTENSIVE_RESOURCE, Gate
 
-GATES = ("ruff", "format", "docstrings", "mypy")
+GATES = ("ruff", "format", "docstrings", "bandit", "secrets", "mypy")
 
 
 def build(*, fresh: bool = False) -> list[Gate]:
@@ -57,6 +57,18 @@ def build(*, fresh: bool = False) -> list[Gate]:
             ),
             inputs=("src/**/*.py", "pyproject.toml"),
             reusable=True,
+        ),
+        Gate(
+            "bandit",
+            "Python security lint",
+            (python, "-m", "bandit", "-r", "-q", "-ll", "src/werewolf_agent"),
+            inputs=("src/**/*.py", "pyproject.toml", "uv.lock"),
+            reusable=True,
+        ),
+        Gate(
+            "secrets",
+            "Credential leak scan",
+            (python, "-m", "scripts.security", "secrets"),
         ),
         Gate(
             "mypy",
