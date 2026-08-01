@@ -176,7 +176,10 @@ uv run --no-sync python -m scripts.review local-llm
 ```
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。
-Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離する。
+`preflight`と`review local-llm`はloopback上の実モデルへopening、参照必須response、理由必須voteを
+一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず120秒で打ち切る。
+Local smokeはloopbackだけを許可し、
+一局完走とStreamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
 public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。
 

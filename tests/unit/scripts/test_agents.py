@@ -40,7 +40,7 @@ def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     assert config.model == "local-model"
     assert config.temperature == 0
     assert config.max_tokens == 256
-    assert config.timeout_seconds == 40
+    assert config.timeout_seconds == 120
 
 
 def test_openai_review_requires_explicit_paid_confirmation(monkeypatch) -> None:
@@ -92,6 +92,33 @@ def test_preflight_records_blocked_model_evidence(tmp_path: Path, monkeypatch) -
     assert (run_dir / "metrics.json").is_file()
     assert (run_dir / "events.jsonl").is_file()
     assert (run_dir / "summary.md").is_file()
+
+
+def test_structured_discussion_probes_cover_opening_response_and_vote() -> None:
+    config = review.provider_config("fake")
+
+    probes, traces = review._run_structured_discussion_probes(config)
+
+    assert [probe["id"] for probe in probes] == ["opening", "response", "vote"]
+    assert all(probe["passed"] for probe in probes)
+    assert len(traces) == 3
+    assert all(trace["validation_status"] == "valid" for trace in traces)
+    assert all(not trace["fallback_used"] for trace in traces)
+    responses = {str(probe["id"]): probe["response"] for probe in probes}
+    assert responses["opening"]["response_to_id"] is None
+    assert responses["response"]["response_to_id"] in {"opening:p2", "opening:p3"}
+    assert responses["vote"]["target_id"] in {"p2", "p3"}
+    assert responses["vote"]["reason"]
+    opening_context = json.loads(traces[0]["prompt_messages"][-1]["content"])
+    response_context = json.loads(traces[1]["prompt_messages"][-1]["content"])
+    assert opening_context["procedure"] == {
+        "procedure_id": "structured_discussion",
+        "stage_id": "opening",
+        "cycle": 1,
+        "submission_mode": "sealed",
+    }
+    assert response_context["procedure"]["stage_id"] == "response"
+    assert response_context["procedure"]["submission_mode"] == "ordered"
 
 
 def test_local_run_blocks_before_game_when_model_is_not_loaded(tmp_path: Path, monkeypatch) -> None:

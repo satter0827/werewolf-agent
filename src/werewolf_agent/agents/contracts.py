@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.7.0"
+AGENT_CONTRACT_VERSION = "0.8.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -174,6 +174,26 @@ class AgentWorld:
 
 
 @dataclass(frozen=True)
+class AgentProcedure:
+    """現在の意思決定が属する手続きと段階を汎用IDで表す."""
+
+    procedure_id: str
+    stage_id: str
+    cycle: int
+    submission_mode: str
+
+    def __post_init__(self) -> None:
+        """手続きIDと進行位置を正規化する."""
+        for field_name in ("procedure_id", "stage_id", "submission_mode"):
+            object.__setattr__(
+                self,
+                field_name,
+                non_blank(getattr(self, field_name), field_name),
+            )
+        _require_positive_integer(self.cycle, "cycle")
+
+
+@dataclass(frozen=True)
 class AgentObservation:
     """完全stateを含まない本人用のimmutable observation."""
 
@@ -185,6 +205,7 @@ class AgentObservation:
     known_factions: Mapping[str, str] = field(default_factory=dict)
     identity: AgentIdentity | None = None
     world: AgentWorld | None = None
+    procedure: AgentProcedure | None = None
 
     def __post_init__(self) -> None:
         """Observation内部の所有者と可視identityを検証する."""
@@ -545,6 +566,7 @@ __all__ = [
     "AgentFactory",
     "AgentIdentity",
     "AgentObservation",
+    "AgentProcedure",
     "AgentSession",
     "AgentSpec",
     "AgentWorld",

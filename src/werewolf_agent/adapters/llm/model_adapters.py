@@ -15,11 +15,11 @@ from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
 from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
-    AgentModelDecision,
     ModelMessage,
     ModelRequest,
     ModelResponse,
 )
+from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.contracts.error_catalog import (
     ERROR_CONTEXT_LLM_BASE_URL,
     ERROR_CONTEXT_LLM_ERROR_TYPE,
@@ -61,9 +61,19 @@ class LangChainChatDecisionModel:
     def invoke(self, request: ModelRequest) -> ModelResponse:
         """Return one normalized chat response."""
         invocation_model = self.model.bind(
-            max_tokens=min(request.task.output_token_limit, self.max_tokens)
-            if self.max_tokens is not None
-            else request.task.output_token_limit
+            max_tokens=(
+                min(request.task.output_token_limit, self.max_tokens)
+                if self.max_tokens is not None
+                else request.task.output_token_limit
+            ),
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "agent_model_decision",
+                    "strict": False,
+                    "schema": request.response_schema,
+                },
+            },
         )
         try:
             raw = invocation_model.invoke(_langchain_messages(request.messages))
@@ -118,7 +128,11 @@ class FakeDecisionModel:
         )
         if hashlib.sha256(prompt_text.encode("utf-8")).hexdigest() != request.prompt_checksum:
             raise LlmModelInvocationError("fake_prompt_checksum_mismatch")
-        if request.response_schema != AgentModelDecision.model_json_schema():
+        expected_schema = build_decision_response_schema(
+            request.task.observation,
+            request.task.context,
+        )
+        if request.response_schema != expected_schema:
             raise LlmModelInvocationError("fake_response_schema_mismatch")
         if context_text not in request.messages[-1].content:
             raise LlmModelInvocationError("fake_context_missing_from_prompt")

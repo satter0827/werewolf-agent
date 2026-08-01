@@ -258,6 +258,21 @@ class AgentScenario(_LlmModel):
         return non_blank(value, str(info.field_name))
 
 
+class AgentProcedureContext(_LlmModel):
+    """Providerへ渡す現在の手続き段階."""
+
+    procedure_id: str
+    stage_id: str
+    cycle: int = Field(ge=1)
+    submission_mode: str
+
+    @field_validator("procedure_id", "stage_id", "submission_mode")
+    @classmethod
+    def validate_non_blank(cls, value: str, info: Any) -> str:
+        """空でない手続き識別子を返す."""
+        return non_blank(value, str(info.field_name))
+
+
 class AgentAbilityContext(_LlmModel):
     """One ability and its remaining limited uses visible to its owner."""
 
@@ -298,6 +313,7 @@ class AgentObservation(_LlmModel):
     role: str | None = None
     profile: PlayerProfile | None = None
     scenario: AgentScenario | None = None
+    procedure: AgentProcedureContext | None = None
     game_context: AgentGameContext | None = None
     players: list[VisiblePlayer]
     known_roles: dict[str, str] = Field(default_factory=dict)
@@ -488,6 +504,7 @@ __all__ = [
     "AgentObservation",
     "AgentPhase",
     "AgentPlayerStatus",
+    "AgentProcedureContext",
     "AgentScenario",
     "DecisionTask",
     "DeliberationLevel",

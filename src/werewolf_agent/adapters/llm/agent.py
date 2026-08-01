@@ -16,6 +16,7 @@ from werewolf_agent.adapters.llm.models import (
     AgentGameContext,
     AgentPhase,
     AgentPlayerStatus,
+    AgentProcedureContext,
     AgentScenario,
     AgentSpeech,
     AgentVoteRound,
@@ -251,6 +252,16 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
         role=identity.role_id if identity is not None else None,
         profile=profile,
         scenario=scenario,
+        procedure=(
+            AgentProcedureContext(
+                procedure_id=observation.procedure.procedure_id,
+                stage_id=observation.procedure.stage_id,
+                cycle=observation.procedure.cycle,
+                submission_mode=observation.procedure.submission_mode,
+            )
+            if observation.procedure is not None
+            else None
+        ),
         game_context=game_context,
         players=players,
         known_roles=dict(observation.known_roles),

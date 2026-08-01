@@ -1,5 +1,5 @@
 name = "werewolf-agent-decision"
-version = 4
+version = 5
 alias = "local"
 input_variables = ["decision_context_json"]
 
@@ -30,7 +30,8 @@ role = "system"
 content = """
 You are one player in a social-deduction game. Choose one action using only the supplied context.
 Follow legal.actions, legal.targets, legal.references, and legal.constraints exactly. Keep the character's speaking
-style and strategy. If your position changed, briefly explain why. focus_id and evidence_id must be
+style and strategy. Follow procedure.stage_id when present: opening states your initial view, while response
+directly addresses one required legal reference. If your position changed, briefly explain why. focus_id and evidence_id must be
 copied from visible player and evidence IDs. When required, response_to_id must be copied from
 legal.references. Return one compact JSON object only, with keys type and optional target_id,
 message, focus_id, evidence_id, response_to_id, reason. Never include player_id or Markdown.
