@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 from werewolf_agent.clients.streamlit.i18n import I18nCatalog, Language
 from werewolf_agent.clients.streamlit.icons import action_icon
 from werewolf_agent.clients.streamlit.view_models.formatting import _player_name
@@ -15,6 +17,7 @@ from werewolf_agent.contracts.schemas import (
     GAME_STATUS_COMPLETED,
     PlayerObservation,
     PlayerObservationResponse,
+    PlayerObservationSpeech,
     PublicGameState,
 )
 
@@ -64,6 +67,25 @@ def observation_view_from_response(
         )
         if reference_id in speech_by_id and speech_by_id[reference_id].player_id != manual_player_id
     }
+    vote_action = next(
+        (item for item in observation.available_actions if item.type == "vote"),
+        None,
+    )
+    vote_evidence_choices = {
+        target_id: {
+            item.evidence_id: _evidence_label(
+                item.evidence_id,
+                item.actor_id,
+                speech_by_id=speech_by_id,
+                state=state,
+                catalog=catalog,
+                lang=lang,
+            )
+            for item in (vote_action.evidence_options if vote_action is not None else ())
+            if target_id in {item.actor_id, item.topic_id}
+        }
+        for target_id in target_candidates.get("vote", [])
+    }
     return ObservationView(
         role=_theme_term(state, "role_names", role, catalog.label(lang, "role", role)),
         available_actions=action_keys,
@@ -108,7 +130,26 @@ def observation_view_from_response(
             for player in observation.players
             if player.id != manual_player_id and player.status == "alive"
         ],
+        vote_evidence_choices=vote_evidence_choices,
     )
+
+
+def _evidence_label(
+    evidence_id: str,
+    actor_id: str,
+    *,
+    speech_by_id: Mapping[str, PlayerObservationSpeech],
+    state: PublicGameState,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    """Return a player-facing label for one server-authorized evidence fact."""
+    actor = _player_name(state.players, actor_id)
+    speech = speech_by_id.get(evidence_id)
+    utterance = getattr(speech, "utterance", None)
+    if isinstance(utterance, str):
+        return catalog.t(lang, "action.evidence_speech", actor=actor, utterance=utterance)
+    return catalog.t(lang, "action.evidence_pass", actor=actor)
 
 
 def action_choice(

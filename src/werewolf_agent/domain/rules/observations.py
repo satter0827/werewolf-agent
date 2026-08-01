@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from werewolf_agent.domain.rule_packs import AbilityPolicy
 from werewolf_agent.domain.rules.action_availability import available_actions, legal_targets
+from werewolf_agent.domain.rules.evidence import public_discussion_evidence
 from werewolf_agent.domain.rules.player_rules import player_by_id
 from werewolf_agent.domain.state import (
     SUPPORTED_FACTIONS,
@@ -34,6 +35,7 @@ def build_player_observation(
     visible_claims = _visible_knowledge_claims(snapshot, player_id, knowledge)
     known_roles = _known_roles(snapshot, player_id, visible_claims)
     known_factions = _known_factions(snapshot, player_id, known_roles, visible_claims)
+    actions = tuple(available_actions(snapshot, pending_actions, player_id))
     observed_players = [
         Player(
             id=player.id,
@@ -59,10 +61,15 @@ def build_player_observation(
         players=tuple(observed_players),
         known_roles=known_roles,
         known_factions=known_factions,
-        available_actions=tuple(available_actions(snapshot, pending_actions, player_id)),
+        available_actions=actions,
         legal_targets={
             key: tuple(targets)
             for key, targets in legal_targets(snapshot, pending_actions, player_id).items()
+        },
+        legal_evidence={
+            action.key: public_discussion_evidence(snapshot)
+            for action in actions
+            if action.type.value == "vote"
         },
         history=GameHistory(
             speeches=tuple(

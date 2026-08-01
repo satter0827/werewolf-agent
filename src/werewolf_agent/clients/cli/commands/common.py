@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import cast
 
 import typer
+from click import Choice
 from pydantic import ValidationError
 
 from werewolf_agent.adapters.auth import require_supabase_client_config
@@ -36,6 +37,7 @@ from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
     PLAYER_ACTION_REQUEST_ADAPTER,
+    AvailableActionDescriptor,
     CreateGameRequest,
     DeliberationLevel,
     GameSetupDocumentRequest,
@@ -152,7 +154,18 @@ def _prompt_and_submit_manual_action(
             relation = "independent"
             position = "undecided"
     elif action_type != "pass":
-        target_id = typer.prompt(message_target_prompt(action_key))
+        target_id = typer.prompt(
+            message_target_prompt(action_key),
+            type=Choice(list(selected.legal_target_ids)),
+        )
+        if action_type == "vote":
+            evidence_ids = _vote_evidence_ids(selected, str(target_id))
+            if not evidence_ids:
+                raise AppError(
+                    "対象に関係する投票根拠がありません。",
+                    code=ErrorCode.INTERNAL_UNEXPECTED,
+                )
+            evidence_id = typer.prompt("投票根拠", type=Choice(evidence_ids))
     response = client.submit_player_action(
         game_id,
         player_id,
@@ -183,6 +196,18 @@ def _prompt_and_submit_manual_action(
     )
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_timeline(response.timeline)
+
+
+def _vote_evidence_ids(
+    action: AvailableActionDescriptor,
+    target_id: str,
+) -> list[str]:
+    """Return server-authorized evidence ids concerning one selected target."""
+    return [
+        item.evidence_id
+        for item in action.evidence_options
+        if target_id in {item.actor_id, item.topic_id}
+    ]
 
 
 def _action_payload(

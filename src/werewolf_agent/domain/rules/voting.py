@@ -13,6 +13,10 @@ from werewolf_agent.domain._messages import (
 )
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rule_packs import AbilityPolicy, VotingPolicy
+from werewolf_agent.domain.rules.evidence import (
+    evidence_concerns_target,
+    public_discussion_evidence,
+)
 from werewolf_agent.domain.rules.player_rules import (
     alive_players,
     mark_dead,
@@ -68,25 +72,14 @@ def _require_target_evidence(snapshot: GameState, action: Action, target_id: str
     evidence_id = action.evidence_id
     if evidence_id is None:
         raise GameError("Vote requires public evidence concerning the selected target.")
-    speech = next(
-        (item for item in snapshot.history.speeches if item.speech_id == evidence_id),
+    fact = next(
+        (item for item in public_discussion_evidence(snapshot) if item.evidence_id == evidence_id),
         None,
     )
-    if speech is not None:
-        if target_id not in {speech.player_id, speech.topic_id}:
-            raise GameError("Vote evidence must concern the selected target.")
-        return
-    pass_actor = next(
-        (
-            player_id
-            for result in snapshot.history.discussions
-            for player_id in result.passed_player_ids
-            if evidence_id == f"pass:{result.day}:{result.round_id}:{player_id}"
-        ),
-        None,
-    )
-    if pass_actor != target_id:
+    if fact is None:
         raise GameError("Vote evidence must identify a public discussion fact.")
+    if not evidence_concerns_target(fact, target_id):
+        raise GameError("Vote evidence must concern the selected target.")
 
 
 def resolve_votes(

@@ -63,7 +63,13 @@ class LangChainDecisionProvider:
         """Compile static prompt fragments once for this provider."""
         object.__setattr__(self, "_compiled_messages", _compile_prompt(self.prompt))
 
-    def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
+    def choose_decision(
+        self,
+        player_id: str,
+        observation: AgentObservation,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> AgentDecision:
         """Run the bounded decision pipeline once."""
         preflight = _preflight_decision(player_id, observation)
         if preflight is not None:
@@ -104,6 +110,7 @@ class LangChainDecisionProvider:
                 ),
                 self.max_output_tokens,
             ),
+            timeout_seconds=timeout_seconds,
             context=context,
             context_checksum=context_checksum,
         )
@@ -213,6 +220,11 @@ class LangChainDecisionProvider:
                     "fallback_reason": fallback_reason,
                     "deliberation_level": self.deliberation_level.value,
                     "effective_output_token_limit": request.task.output_token_limit,
+                    "effective_timeout_seconds": (
+                        response.metadata.get("effective_timeout_seconds")
+                        if response is not None
+                        else request.task.timeout_seconds
+                    ),
                     "decision_type": decision.type.value,
                     "risk_tolerance": (
                         observation.profile.risk_tolerance

@@ -26,7 +26,7 @@ BASE_URL = "http://127.0.0.1:18765/v1"
 COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
 
 
-def request() -> ModelRequest:
+def request(*, timeout_seconds: float | None = None) -> ModelRequest:
     context = {"legal": {"actions": ["vote"], "targets": {"vote": ["p2"]}}}
     observation = AgentObservation.model_validate(
         {
@@ -47,6 +47,7 @@ def request() -> ModelRequest:
             observation=observation,
             deliberation_level=DeliberationLevel.STANDARD,
             output_token_limit=96,
+            timeout_seconds=timeout_seconds,
             context=context,
             context_checksum="checksum",
         ),
@@ -118,6 +119,34 @@ def test_openai_compatible_adapter_sends_chat_request_and_normalizes_usage() -> 
     assert response.content == '{"type":"vote","target_id":"p2"}'
     assert response.usage == {"input_tokens": 12, "output_tokens": 5, "total_tokens": 17}
     assert response.finish_reason == "stop"
+
+
+@respx.mock
+def test_openai_compatible_adapter_uses_the_shorter_request_timeout() -> None:
+    route = respx.post(COMPLETIONS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-timeout",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "stub-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": '{"type":"pass"}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    response = adapter().invoke(request(timeout_seconds=0.25))
+
+    timeout = route.calls[0].request.extensions["timeout"]
+    assert timeout["read"] == pytest.approx(0.25)
+    assert response.metadata["effective_timeout_seconds"] == pytest.approx(0.25)
 
 
 @respx.mock

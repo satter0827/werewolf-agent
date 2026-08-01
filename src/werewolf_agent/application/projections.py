@@ -36,6 +36,9 @@ PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "phase_started": frozenset({"phase"}),
     "speech_recorded": frozenset(
         {
+            "speech_id",
+            "round_id",
+            "round_kind",
             "utterance",
             "topic_id",
             "position",

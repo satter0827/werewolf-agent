@@ -98,6 +98,13 @@ class DiscussionRelation(StrEnum):
     REVISE = "revise"
 
 
+class EvidenceKind(StrEnum):
+    """行動根拠として公開できる議論事実の種別を表す."""
+
+    DISCUSSION = "discussion"
+    DISCUSSION_PASS = "discussion_pass"
+
+
 class EventVisibility(StrEnum):
     """Domain eventへ付与する可視性区分を表す."""
 
@@ -506,6 +513,29 @@ class AvailableAction:
             f"{self.type.value}:{self.ability_id}"
             if self.ability_id is not None
             else self.type.value
+        )
+
+
+@dataclass(frozen=True)
+class EvidenceFact:
+    """行動根拠として選択できる一つの公開議論事実を表す."""
+
+    evidence_id: str
+    kind: EvidenceKind
+    actor_id: str
+    topic_id: str
+    position: DiscussionPosition | None = None
+
+    def __post_init__(self) -> None:
+        """公開事実の識別子と構造値を正規化する."""
+        object.__setattr__(self, "evidence_id", non_blank(self.evidence_id, "evidence_id"))
+        object.__setattr__(self, "kind", EvidenceKind(self.kind))
+        object.__setattr__(self, "actor_id", non_blank(self.actor_id, "actor_id"))
+        object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
+        object.__setattr__(
+            self,
+            "position",
+            None if self.position is None else DiscussionPosition(self.position),
         )
 
 
@@ -1157,6 +1187,7 @@ class GameView:
     known_factions: Mapping[str, str] = field(default_factory=dict)
     available_actions: tuple[AvailableAction, ...] = ()
     legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    legal_evidence: Mapping[str, tuple[EvidenceFact, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
     discussion_round: DiscussionRound | None = None
     win_result: VisibleWinResult | None = None
@@ -1171,6 +1202,11 @@ class GameView:
             self,
             "legal_targets",
             frozen_mapping({key: tuple(value) for key, value in self.legal_targets.items()}),
+        )
+        object.__setattr__(
+            self,
+            "legal_evidence",
+            frozen_mapping({key: tuple(value) for key, value in self.legal_evidence.items()}),
         )
 
 
@@ -1231,6 +1267,8 @@ __all__ = [
     "DiscussionRound",
     "DiscussionRoundKind",
     "EventVisibility",
+    "EvidenceFact",
+    "EvidenceKind",
     "GameConfig",
     "GameEvent",
     "GameHistory",

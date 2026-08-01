@@ -60,6 +60,7 @@ class LangChainChatDecisionModel:
 
     def invoke(self, request: ModelRequest) -> ModelResponse:
         """Return one normalized chat response."""
+        effective_timeout = _effective_timeout(self.timeout_seconds, request.task.timeout_seconds)
         invocation_model = self.model.bind(
             max_tokens=(
                 min(request.task.output_token_limit, self.max_tokens)
@@ -74,6 +75,7 @@ class LangChainChatDecisionModel:
                     "schema": request.response_schema,
                 },
             },
+            **({"timeout": effective_timeout} if effective_timeout is not None else {}),
         )
         try:
             raw = invocation_model.invoke(_langchain_messages(request.messages))
@@ -81,11 +83,23 @@ class LangChainChatDecisionModel:
             error_type = type(exc).__name__
             raise LlmModelInvocationError(
                 error_type,
-                context=self._error_context(error_type),
+                context=self._error_context(error_type, effective_timeout),
             ) from exc
-        return _model_response(raw, provider=self.provider_name, model=self.model_name)
+        response = _model_response(raw, provider=self.provider_name, model=self.model_name)
+        return response.model_copy(
+            update={
+                "metadata": {
+                    **response.metadata,
+                    "effective_timeout_seconds": effective_timeout,
+                }
+            }
+        )
 
-    def _error_context(self, error_type: str) -> dict[str, object]:
+    def _error_context(
+        self,
+        error_type: str,
+        effective_timeout: float | None,
+    ) -> dict[str, object]:
         context: dict[str, object] = {
             ERROR_CONTEXT_LLM_ERROR_TYPE: error_type,
             ERROR_CONTEXT_LLM_PROVIDER: self.provider_name,
@@ -93,11 +107,17 @@ class LangChainChatDecisionModel:
         }
         if self.base_url:
             context[ERROR_CONTEXT_LLM_BASE_URL] = self.base_url
-        if self.timeout_seconds is not None:
-            context[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS] = self.timeout_seconds
+        if effective_timeout is not None:
+            context[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS] = effective_timeout
         if self.max_tokens is not None:
             context[ERROR_CONTEXT_LLM_MAX_TOKENS] = self.max_tokens
         return context
+
+
+def _effective_timeout(configured: float | None, requested: float | None) -> float | None:
+    """Return the shorter positive provider and simulation timeout."""
+    values = [value for value in (configured, requested) if value is not None]
+    return min(values) if values else None
 
 
 @dataclass(frozen=True)

@@ -25,8 +25,26 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                 "available_actions": [
                     {"type": "speech", "ability_id": None},
                     {"type": "use_ability", "ability_id": "inspect"},
+                    {"type": "vote", "ability_id": None},
                 ],
-                "legal_targets": {"speech": [], "use_ability:inspect": ["p2"]},
+                "legal_targets": {
+                    "speech": [],
+                    "use_ability:inspect": ["p2"],
+                    "vote": ["p2"],
+                },
+                "legal_evidence": {
+                    "speech": [],
+                    "use_ability:inspect": [],
+                    "vote": [
+                        {
+                            "evidence_id": "speech:1:round-1:p2",
+                            "kind": "discussion",
+                            "actor_id": "p2",
+                            "topic_id": "p1",
+                            "position": "undecided",
+                        }
+                    ],
+                },
                 "history": {
                     "speeches": [
                         {
@@ -60,9 +78,11 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
     assert [item.key for item in response.observation.available_actions] == [
         "speech",
         "use_ability:inspect",
+        "vote",
     ]
     assert response.observation.available_actions[0].message_required is True
     assert response.observation.available_actions[1].legal_target_ids == ["p2"]
+    assert response.observation.available_actions[2].evidence_options[0].actor_id == "p2"
     payload = response.model_dump(mode="json")
     assert "legal_targets" not in payload["observation"]
     assert "reason" not in payload["observation"]["history"]["speeches"][0]

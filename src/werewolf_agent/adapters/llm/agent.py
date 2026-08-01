@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from hashlib import sha256
 
 from werewolf_agent.adapters.llm.langchain.service import LangChainDecisionProvider
@@ -111,6 +112,7 @@ class _LangChainAgentSession:
             decision = self.provider.choose_decision(
                 self.context.player_id,
                 _llm_observation(request, self.profile),
+                timeout_seconds=_remaining_timeout(request),
             )
             trace = self.trace_capture.last_trace
             if trace is not None and trace.fallback_used:
@@ -175,6 +177,13 @@ class _TraceCapture:
         self.last_trace = trace
         if self.delegate is not None:
             self.delegate.record_invocation(trace)
+
+
+def _remaining_timeout(request: DecisionRequest) -> float | None:
+    """Return the positive time remaining before the simulation call deadline."""
+    if request.deadline_at is None:
+        return None
+    return max((request.deadline_at - datetime.now(UTC)).total_seconds(), 0.001)
 
 
 def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObservation:

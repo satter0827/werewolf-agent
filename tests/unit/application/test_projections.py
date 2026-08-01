@@ -87,3 +87,27 @@ def test_public_narration_fails_closed_for_unsafe_or_oversized_output() -> None:
         ).payload.get("narration")
         is None
     )
+
+
+def test_public_speech_preserves_structured_discussion_identifiers() -> None:
+    created = event_to_create(
+        GameEvent(
+            event_type="speech_recorded",
+            phase=Phase.DAY_DISCUSSION,
+            day=1,
+            actor_id="p1",
+            payload={
+                "speech_id": "speech:1:opening:p1",
+                "round_id": "day-1-cycle-1-opening",
+                "round_kind": "opening",
+                "utterance": "p2について確認します。",
+                "topic_id": "p2",
+                "position": "undecided",
+                "relation": "independent",
+            },
+        )
+    )
+
+    assert created.payload["speech_id"] == "speech:1:opening:p1"
+    assert created.payload["round_id"] == "day-1-cycle-1-opening"
+    assert created.payload["round_kind"] == "opening"

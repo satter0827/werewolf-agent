@@ -192,6 +192,7 @@ class DecisionTask(_LlmModel):
     observation: AgentObservation
     deliberation_level: DeliberationLevel = DeliberationLevel.STANDARD
     output_token_limit: int = Field(ge=1)
+    timeout_seconds: float | None = Field(default=None, gt=0)
     context: dict[str, object]
     context_checksum: str
 

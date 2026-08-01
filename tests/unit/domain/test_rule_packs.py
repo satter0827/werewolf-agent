@@ -22,6 +22,7 @@ from werewolf_agent.domain import (
     DiscussionResolution,
     DiscussionRound,
     DiscussionRoundKind,
+    EvidenceKind,
     Game,
     GameError,
     GameSetup,
@@ -95,6 +96,25 @@ def _definition() -> RuleSetDefinition:
         ),
         abilities={},
     )
+
+
+def test_vote_candidates_and_validation_share_typed_public_evidence() -> None:
+    """観測で提示した型付き根拠だけを同じdomain規則で投票へ受理する."""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    _advance_to_voting(game)
+
+    facts = game.view_for("p1").legal_evidence["vote"]
+    assert {fact.kind for fact in facts} == {EvidenceKind.DISCUSSION_PASS}
+    p2_pass = next(fact for fact in facts if fact.actor_id == "p2")
+    p3_pass = next(fact for fact in facts if fact.actor_id == "p3")
+
+    with pytest.raises(GameError, match="concern the selected target"):
+        game.submit(Action.vote("p1", "p2", reason="test", evidence_id=p3_pass.evidence_id))
+    game.submit(Action.vote("p1", "p2", reason="test", evidence_id=p2_pass.evidence_id))
 
 
 class ImmediateVillageVictory:
@@ -1002,6 +1022,37 @@ def test_response_must_advance_another_players_opening() -> None:
                 response_to_id=other_reference,
             )
         )
+
+
+def test_response_offers_only_pass_when_no_other_player_opening_exists() -> None:
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    game.submit(
+        Action.speech(
+            "p1",
+            "p2について判断材料を確認します。",
+            topic_id="p2",
+            position=DiscussionPosition.UNDECIDED,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
+    game.submit(Action.pass_("p2"))
+    game.submit(Action.pass_("p3"))
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    assert response.current_actor_id == "p3"
+    game.submit(Action.pass_("p3"))
+    game.advance(random.Random(12))
+    game.submit(Action.pass_("p2"))
+    game.advance(random.Random(13))
+
+    assert [action.type.value for action in game.view_for("p1").available_actions] == ["pass"]
 
 
 def test_discussion_round_rejects_duplicate_reference_ids() -> None:

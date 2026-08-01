@@ -254,6 +254,71 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     assert candidates == ["player-2"]
 
 
+def test_vote_evidence_choices_are_projected_from_server_authorized_facts() -> None:
+    catalog = _catalog()
+    observation = PlayerObservationResponse.model_validate(
+        {
+            "game_id": "game-1",
+            "player_id": "player-1",
+            "observation": {
+                "phase": "voting",
+                "day": 1,
+                "me": {"id": "player-1", "name": "P1", "status": "alive"},
+                "players": [
+                    {"id": "player-1", "name": "P1", "status": "alive"},
+                    {"id": "player-2", "name": "P2", "status": "alive"},
+                ],
+                "available_actions": [
+                    {
+                        "key": "vote",
+                        "type": "vote",
+                        "legal_target_ids": ["player-2"],
+                        "evidence_options": [
+                            {
+                                "evidence_id": "speech-1",
+                                "kind": "discussion",
+                                "actor_id": "player-2",
+                                "topic_id": "player-1",
+                                "position": "support",
+                            }
+                        ],
+                    }
+                ],
+                "history": {
+                    "speeches": [
+                        {
+                            "day": 1,
+                            "speech_id": "speech-1",
+                            "round_id": "opening-1",
+                            "round_kind": "opening",
+                            "player_id": "player-2",
+                            "utterance": "player-1を疑います。",
+                            "topic_id": "player-1",
+                            "position": "support",
+                            "relation": "independent",
+                        }
+                    ]
+                },
+            },
+        }
+    )
+
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[],
+        observation=observation,
+        manual_player_id="player-1",
+        screen_mode="playable",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert screen.observation is not None
+    assert screen.observation.vote_evidence_choices["player-2"] == {
+        "speech-1": "P2: player-1を疑います。"
+    }
+
+
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:
     catalog = _catalog()
     game = PublicGameSummary(

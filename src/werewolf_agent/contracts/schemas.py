@@ -583,6 +583,18 @@ class PlayerObservationPlayer(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class EvidenceFactDescriptor(BaseModel):
+    """One server-authorized public fact that may ground an action."""
+
+    evidence_id: str
+    kind: Literal["discussion", "discussion_pass"]
+    actor_id: str
+    topic_id: str
+    position: Literal["support", "oppose", "undecided"] | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
 class AvailableActionDescriptor(BaseModel):
     """One legal action and its server-authorized target candidates."""
 
@@ -590,6 +602,7 @@ class AvailableActionDescriptor(BaseModel):
     type: ActionType
     ability_id: str | None = None
     legal_target_ids: list[str] = Field(default_factory=list)
+    evidence_options: list[EvidenceFactDescriptor] = Field(default_factory=list)
     message_required: bool = False
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -848,6 +861,7 @@ __all__ = [
     "DeliberationLevel",
     "DiscussionSettings",
     "ErrorEventPayload",
+    "EvidenceFactDescriptor",
     "GameListQuery",
     "GameListResponse",
     "GamePhase",

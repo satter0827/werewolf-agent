@@ -297,6 +297,13 @@
             ],
             "title": "Ability Id"
           },
+          "evidence_options": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFactDescriptor"
+            },
+            "title": "Evidence Options",
+            "type": "array"
+          },
           "key": {
             "title": "Key",
             "type": "string"
@@ -557,6 +564,56 @@
           "allowed_relations"
         ],
         "title": "DiscussionStageSettings",
+        "type": "object"
+      },
+      "EvidenceFactDescriptor": {
+        "additionalProperties": false,
+        "description": "One server-authorized public fact that may ground an action.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "discussion",
+              "discussion_pass"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "support",
+                  "oppose",
+                  "undecided"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "topic_id": {
+            "title": "Topic Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "actor_id",
+          "topic_id"
+        ],
+        "title": "EvidenceFactDescriptor",
         "type": "object"
       },
       "GameListResponse": {

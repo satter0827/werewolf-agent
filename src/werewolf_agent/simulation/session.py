@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import random
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 
 from werewolf_agent.agents import (
@@ -368,7 +368,17 @@ class SimulationSession:
         if not isinstance(metadata, AgentMetadata):
             raise TypeError("metadata provider must return AgentMetadata")
         public_timeline = _public_timeline(observation)
-        evidence_options = _evidence_options(public_timeline)
+        reference_evidence_options = _evidence_options(public_timeline)
+        vote_evidence_options = tuple(
+            EvidenceOption(
+                evidence_id=item.evidence_id,
+                kind=item.kind.value,
+                actor_id=item.actor_id,
+                topic_id=item.topic_id,
+                position=None if item.position is None else item.position.value,
+            )
+            for item in observation.legal_evidence.get("vote", ())
+        )
         opening_topic_ids = tuple(
             player.player_id
             for player in players
@@ -441,12 +451,14 @@ class SimulationSession:
                     evidence_options=(
                         tuple(
                             item
-                            for item in evidence_options
+                            for item in reference_evidence_options
                             if item.evidence_id in legal_reference_ids
                         )
                         if action.type.value == "speech" and legal_reference_ids
-                        else evidence_options
-                        if action.type.value in {"speech", "vote"}
+                        else reference_evidence_options
+                        if action.type.value == "speech"
+                        else vote_evidence_options
+                        if action.type.value == "vote"
                         else ()
                     ),
                     legal_reference_ids=(
@@ -475,7 +487,7 @@ class SimulationSession:
                 for action in observation.available_actions
             ),
             decision_seed=seed,
-            deadline_at=self._spec.deadline_at,
+            deadline_at=_decision_deadline(self._spec),
         )
 
     def _record_stop(
@@ -849,6 +861,20 @@ def _effective_timeout(spec: SimulationSpec, request: DecisionRequest) -> float 
         return timeout
     remaining = max((request.deadline_at - datetime.now(UTC)).total_seconds(), 0.001)
     return remaining if timeout is None else min(timeout, remaining)
+
+
+def _decision_deadline(spec: SimulationSpec) -> datetime | None:
+    """Return one deadline combining the full-run and per-call limits."""
+    call_deadline = (
+        datetime.now(UTC) + timedelta(seconds=spec.limits.decision_timeout_seconds)
+        if spec.limits.decision_timeout_seconds is not None
+        else None
+    )
+    if spec.deadline_at is None:
+        return call_deadline
+    if call_deadline is None:
+        return spec.deadline_at
+    return min(spec.deadline_at, call_deadline)
 
 
 def _elapsed_milliseconds(started_at: float) -> int:

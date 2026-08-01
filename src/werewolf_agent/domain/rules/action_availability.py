@@ -9,6 +9,7 @@ from werewolf_agent.domain.state import (
     Action,
     ActionType,
     AvailableAction,
+    DiscussionRoundKind,
     GameState,
     PendingActions,
     Phase,
@@ -33,6 +34,11 @@ def available_actions(
             return []
         if round_.current_actor_id is not None and round_.current_actor_id != player_id:
             return []
+        if round_.kind is DiscussionRoundKind.RESPONSE and not any(
+            speech.speech_id in round_.reference_ids and speech.player_id != player_id
+            for speech in snapshot.history.speeches
+        ):
+            return [AvailableAction(ActionType.PASS)]
         return [AvailableAction(ActionType.SPEECH), AvailableAction(ActionType.PASS)]
     if snapshot.phase is Phase.VOTING:
         if snapshot.config.voting.allow_revision or player_id not in pending_actions.votes:

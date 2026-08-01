@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -542,6 +543,30 @@ def test_metadata_provider_is_resolved_for_every_decision() -> None:
         "call-2",
         "call-3",
     ]
+
+
+def test_per_call_timeout_is_propagated_as_request_deadline() -> None:
+    game = _game()
+    factory = _CapturingFactory()
+    started_at = datetime.now(UTC)
+    spec = SimulationSpec(
+        "call-deadline",
+        "game-1",
+        19,
+        {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
+        limits=SimulationLimits(decision_timeout_seconds=2.0),
+        deadline_at=started_at + timedelta(seconds=60),
+    )
+    session = SimulationRunner().start(game, spec)
+    try:
+        while not factory.requests:
+            assert session.step().stop_reason is None
+    finally:
+        session.close()
+
+    deadline = factory.requests[0].deadline_at
+    assert deadline is not None
+    assert started_at < deadline <= started_at + timedelta(seconds=2.1)
 
 
 def test_simulation_exposes_structured_discussion_procedure_stages() -> None:

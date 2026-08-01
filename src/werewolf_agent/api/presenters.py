@@ -49,6 +49,7 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
     payload = source.model_dump(mode="json")
     observation = payload["observation"]
     legal_targets = observation.get("legal_targets", {})
+    legal_evidence = observation.get("legal_evidence", {})
     actions: list[AvailableActionDescriptor] = []
     for item in observation.get("available_actions", []):
         ability_id = item.get("ability_id")
@@ -59,6 +60,7 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                 type=item["type"],
                 ability_id=ability_id,
                 legal_target_ids=legal_targets.get(key, []),
+                evidence_options=legal_evidence.get(key, []),
                 message_required=item["type"] == "speech",
             )
         )

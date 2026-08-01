@@ -351,21 +351,32 @@ def _render_action_form(
     reason = None
     if selected_action.action_type == "vote":
         reason = st.text_area(catalog.t(lang, "action.reason"), max_chars=120)
+        evidence_choices = screen.observation.vote_evidence_choices.get(target_id or "", {})
+        if evidence_choices:
+            selected_evidence = st.selectbox(
+                catalog.t(lang, "action.evidence"),
+                list(evidence_choices),
+                format_func=evidence_choices.get,
+            )
+            evidence_id = str(selected_evidence) if selected_evidence else None
 
     missing_target = selected_action.requires_target and not target_id
     missing_message = selected_action.requires_message and not str(utterance or "").strip()
     missing_reason = selected_action.action_type == "vote" and not str(reason or "").strip()
+    missing_evidence = selected_action.action_type == "vote" and not evidence_id
     if missing_target:
         st.caption(catalog.t(lang, "action.target_required"))
     if missing_message:
         st.caption(catalog.t(lang, "action.message_required"))
     if missing_reason:
         st.caption(catalog.t(lang, "action.reason_required"))
+    if missing_evidence:
+        st.caption(catalog.t(lang, "action.evidence_required"))
     if st.button(
         catalog.t(lang, "action.send"),
         type="primary",
         width="stretch",
-        disabled=missing_target or missing_message or missing_reason,
+        disabled=missing_target or missing_message or missing_reason or missing_evidence,
     ):
         try:
             submit_screen_action(
