@@ -13,8 +13,9 @@ importできる。HTTP request schemaと内部handlerは公開Python APIに含�
 `Actor`と例外変換はGame・Setup両facadeが共有するapplication所有境界とし、peer facade間で所有しない。
 handlerはリポジトリportから集約を読み、domainの操作を呼び、結果を保存して
 公開DTOへ射影する。application自身はログやtelemetryを出力しない。
-seed未指定の作成要求はapplicationが具体的なseedへ確定し、その値を結果、状態、コマンド記録へ
-一貫して保存する。以後の処理は暗黙の乱数源を使用しない。
+作成要求のseedは公開roster生成だけに使用する。applicationはprivate strategy、役職割当、ゲーム進行に
+使う非公開runtime seedを独立して生成し、コマンド記録とprivate snapshotへ保存する。公開結果と状態には
+runtime seedを含めず、以後のdomain処理は暗黙の乱数源を使用しない。
 
 リポジトリportは保存先の技術を規定しない。in-memory実装とSupabase実装は同じ
 契約に従い、applicationからdatabase SDKやSQLを隠す。

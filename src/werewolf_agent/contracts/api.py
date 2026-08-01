@@ -275,7 +275,6 @@ class AdminLlmTraceResponse(BaseModel):
     phase: str | None = None
     day: int | None = None
     prompt_hash: str
-    parsed_decision: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
     latency_ms: float | None = Field(default=None, ge=0)
     created_at: datetime

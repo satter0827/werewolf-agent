@@ -16,8 +16,16 @@ from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
     build_setup_catalog,
 )
+from werewolf_agent.adapters.supabase.paid_llm_admission import (
+    PaidLlmAdmission,
+    SupabasePaidLlmAdmissionGate,
+)
+from werewolf_agent.adapters.supabase.repository import SupabaseGameRepository
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
+from werewolf_agent.application.errors import AppError
+from werewolf_agent.application.replay import verify_replay
 from werewolf_agent.application.setup_facade import SetupApplication
+from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker.composition import create_core_worker_dependencies
 from werewolf_agent.worker.service import process_worker_batch
@@ -26,6 +34,23 @@ pytestmark = [pytest.mark.supabase]
 
 INSTANCE_ID = UUID(int=0)
 WORKER_DEPENDENCIES = create_core_worker_dependencies()
+
+RUNTIME_TABLE_PRIVILEGES = {
+    "werewolf_api": {
+        "public.game_operation_requests": {"SELECT", "INSERT", "UPDATE"},
+        "private.user_setups": {"SELECT", "INSERT"},
+        "private.llm_traces": {"SELECT"},
+        "private.paid_llm_admissions": set(),
+        "auth.users": set(),
+    },
+    "werewolf_worker": {
+        "public.game_operation_requests": {"SELECT", "UPDATE"},
+        "private.user_setups": set(),
+        "private.llm_traces": {"SELECT", "INSERT"},
+        "private.paid_llm_admissions": {"SELECT", "INSERT", "UPDATE"},
+        "auth.users": {"SELECT"},
+    },
+}
 
 
 def _insert_user(connection: psycopg.Connection, user_id: UUID) -> None:
@@ -62,6 +87,132 @@ def _enqueue_operation_message(
         (message_id, request_id),
     )
     return message_id
+
+
+@pytest.mark.serial
+def test_runtime_roles_are_non_login_and_non_privileged() -> None:
+    """APIとworkerの権限集合をlogin資格情報やDB全体の特権にしない。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        rows = connection.execute(
+            """
+            select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+                   rolreplication, rolbypassrls
+            from pg_roles
+            where rolname in ('werewolf_api', 'werewolf_worker')
+            order by rolname
+            """
+        ).fetchall()
+
+    assert [row[0] for row in rows] == ["werewolf_api", "werewolf_worker"]
+    assert all(not flag for row in rows for flag in row[1:])
+
+
+@pytest.mark.serial
+def test_runtime_roles_have_only_the_owned_table_operations() -> None:
+    """同じDSNへ権限を集約せず、process責務ごとの操作だけを許可する。"""
+    operations = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES")
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        for role, tables in RUNTIME_TABLE_PRIVILEGES.items():
+            for table, expected in tables.items():
+                actual = {
+                    operation
+                    for operation in operations
+                    if connection.execute(
+                        "select has_table_privilege(%s, %s, %s)",
+                        (role, table, operation),
+                    ).fetchone()[0]
+                }
+                assert actual == expected, (role, table, actual)
+
+
+@pytest.mark.serial
+def test_queue_functions_are_not_shared_between_runtime_roles() -> None:
+    """queue送信と消費をPUBLIC経由で両processへ漏らさない。"""
+    functions = {
+        "send": (True, False),
+        "list_queues": (True, False),
+        "read": (False, True),
+        "read_with_poll": (False, True),
+        "set_vt": (False, True),
+        "archive": (False, True),
+    }
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        for function_name, expected in functions.items():
+            rows = connection.execute(
+                """
+                select p.oid
+                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'pgmq' and p.proname = %s
+                """,
+                (function_name,),
+            ).fetchall()
+            assert rows, function_name
+            for (function_oid,) in rows:
+                actual = tuple(
+                    connection.execute(
+                        "select has_function_privilege(%s, %s, 'EXECUTE')",
+                        (role, function_oid),
+                    ).fetchone()[0]
+                    for role in ("werewolf_api", "werewolf_worker")
+                )
+                assert actual == expected, (function_name, function_oid, actual)
+
+
+@pytest.mark.serial
+def test_paid_llm_concurrency_limit_is_atomic_across_connections() -> None:
+    """別workerの同時予約をDB lock内で判定し、上限超過を一件だけ拒否する。"""
+    dsn = os.environ["WEREWOLF_SUPABASE_DB_DSN"]
+    actor_user_id = uuid4()
+    operation_ids: list[UUID] = []
+    with psycopg.connect(dsn) as connection:
+        _insert_user(connection, actor_user_id)
+        for key in ("paid-admission-1", "paid-admission-2"):
+            row = connection.execute(
+                """
+                insert into public.game_operation_requests (
+                  owner_user_id, operation_type, idempotency_key
+                ) values (%s, 'advance_game', %s)
+                returning request_id
+                """,
+                (actor_user_id, key),
+            ).fetchone()
+            assert row is not None
+            operation_ids.append(row[0])
+
+    def reserve(operation_id: UUID) -> PaidLlmAdmission | AppError:
+        try:
+            with psycopg.connect(dsn) as connection, connection.transaction():
+                return SupabasePaidLlmAdmissionGate(connection).reserve(
+                    operation_id=str(operation_id),
+                    actor_user_id=str(actor_user_id),
+                    worker_id=f"worker-{operation_id}",
+                    daily_limit=10,
+                    concurrency_limit=1,
+                    ttl_seconds=300,
+                )
+        except AppError as error:
+            return error
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(reserve, operation_ids))
+        admissions = [result for result in results if isinstance(result, PaidLlmAdmission)]
+        errors = [result for result in results if isinstance(result, AppError)]
+        assert len(admissions) == 1
+        assert len(errors) == 1
+        assert errors[0].code is ErrorCode.REQUEST_CONCURRENCY_LIMITED
+        assert errors[0].retryable is True
+    finally:
+        with psycopg.connect(dsn) as connection:
+            connection.execute(
+                "delete from private.paid_llm_admissions where actor_user_id = %s",
+                (actor_user_id,),
+            )
+            connection.execute(
+                "delete from public.game_operation_requests where owner_user_id = %s",
+                (actor_user_id,),
+            )
+            connection.execute("delete from auth.users where id = %s", (actor_user_id,))
 
 
 @pytest.mark.serial
@@ -247,6 +398,27 @@ def test_data_api_roles_cannot_access_game_tables_directly() -> None:
 
 
 @pytest.mark.serial
+def test_runtime_seed_exists_only_in_private_snapshot() -> None:
+    """利用者が操作できるpublic tableへruntime seedを保存しない。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        rows = connection.execute(
+            """
+            select table_schema, table_name
+            from information_schema.columns
+            where column_name = 'seed'
+              and (table_schema, table_name) in (
+                ('public', 'games'),
+                ('public', 'game_summaries'),
+                ('private', 'game_snapshots')
+              )
+            order by table_schema, table_name
+            """
+        ).fetchall()
+
+    assert rows == [("private", "game_snapshots")]
+
+
+@pytest.mark.serial
 def test_rls_hides_another_users_game_and_private_reveal() -> None:
     """RLSを実際に評価し、他利用者とrevealを公開しない。"""
 
@@ -332,7 +504,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         _insert_user(connection, owner_id)
         settings = AppSettings(
             llm_provider="fake",
-            supabase_db_dsn=dsn,
+            supabase_worker_db_dsn=dsn,
             supabase_worker_batch_size=1,
         )
         setup_catalog = build_setup_catalog(settings)
@@ -407,6 +579,13 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         assert advanced == ("succeeded",)
         assert current_version is not None
         assert current_version[0] > initial_version[0]
+        with psycopg.connect(dsn, row_factory=dict_row) as replay_connection:
+            replay = verify_replay(
+                str(game_id),
+                SupabaseGameRepository(replay_connection, owner_user_id=str(owner_id)),
+                WORKER_DEPENDENCIES.rule_packs,
+            )
+        assert replay.valid is True
     finally:
         connection.rollback()
         if game_id is not None:

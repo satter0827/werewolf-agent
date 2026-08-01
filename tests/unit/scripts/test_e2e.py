@@ -27,7 +27,12 @@ def test_compose_environment_uses_container_hosts_and_fake_provider() -> None:
     environment = e2e._compose_environment(_environment(), visual_regression=True)
 
     assert "host.docker.internal:54321" in environment["WEREWOLF_SUPABASE_URL"]
-    assert "host.docker.internal:54322" in environment["WEREWOLF_COMPOSE_SUPABASE_DB_DSN"]
+    for name in (
+        "WEREWOLF_COMPOSE_MIGRATION_DB_DSN",
+        "WEREWOLF_COMPOSE_API_DB_DSN",
+        "WEREWOLF_COMPOSE_WORKER_DB_DSN",
+    ):
+        assert "host.docker.internal:54322" in environment[name]
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
     assert environment["WEREWOLF_API_RATE_LIMIT_REQUESTS"] == "10000"
     assert environment["PLAYWRIGHT_VISUAL_REGRESSION"] == "1"

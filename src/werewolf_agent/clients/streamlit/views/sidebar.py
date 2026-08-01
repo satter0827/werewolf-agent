@@ -6,8 +6,10 @@ import logging
 from typing import Any, Protocol, cast
 
 from werewolf_agent.adapters.auth import (
+    list_totp_factors,
     sign_in_with_password,
     sign_out,
+    verify_totp,
 )
 from werewolf_agent.clients.streamlit.history import (
     build_history_options,
@@ -53,6 +55,7 @@ from werewolf_agent.settings import (
 
 logger = logging.getLogger(__name__)
 STREAMLIT_AUTH_SESSION_KEY = "_auth_session"
+STREAMLIT_MFA_FACTORS_KEY = "_auth_mfa_factors"
 _WORKSPACE_NAVIGATION = {
     "play": ("nav.play", VIEW_PLAY_SETUP),
     "game_settings": ("nav.game_settings", VIEW_GAME_SETTINGS),
@@ -96,6 +99,7 @@ def _render_sidebar(
             session_store=session_store,
             catalog=catalog,
             lang=lang,
+            is_admin=is_admin,
         )
     st.sidebar.divider()
     st.sidebar.subheader(catalog.t(lang, "sidebar.history"))
@@ -118,11 +122,20 @@ def _render_sidebar_auth(
     session_store: SessionStore,
     catalog: I18nCatalog,
     lang: Language,
+    is_admin: bool,
 ) -> None:
     """Render guest/member controls without exposing session credentials."""
     session = session_store.load()
     if session is not None and not session.is_anonymous:
         st.sidebar.caption(session.email or catalog.t(lang, "auth.signed_in"))
+        if not is_admin:
+            _render_sidebar_mfa(
+                st,
+                settings=settings,
+                session_store=session_store,
+                catalog=catalog,
+                lang=lang,
+            )
         if st.sidebar.button(catalog.t(lang, "auth.sign_out"), width="stretch"):
             try:
                 sign_out(settings, store=session_store)
@@ -154,6 +167,53 @@ def _render_sidebar_auth(
                 render_app_error(st, exc, lang=lang)
                 return
             st.rerun()
+
+
+def _render_sidebar_mfa(
+    st: Any,
+    *,
+    settings: AppSettings,
+    session_store: SessionStore,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> None:
+    """Let a signed-in user upgrade the current session with verified TOTP."""
+    with st.sidebar.expander(catalog.t(lang, "auth.mfa_title")):
+        if st.button(catalog.t(lang, "auth.mfa_start"), width="stretch"):
+            try:
+                factors = list_totp_factors(settings, store=session_store)
+            except AppError as exc:
+                render_app_error(st, exc, lang=lang)
+                return
+            st.session_state[STREAMLIT_MFA_FACTORS_KEY] = factors
+        factors = st.session_state.get(STREAMLIT_MFA_FACTORS_KEY, ())
+        if not factors:
+            st.caption(catalog.t(lang, "auth.mfa_enroll_cli"))
+            return
+        with st.form("account_mfa"):
+            factor = st.selectbox(
+                catalog.t(lang, "auth.mfa_factor"),
+                options=factors,
+                format_func=lambda item: item.friendly_name or item.id,
+            )
+            code = st.text_input(
+                catalog.t(lang, "auth.mfa_code"),
+                type="password",
+                max_chars=6,
+            )
+            submitted = st.form_submit_button(
+                catalog.t(lang, "auth.mfa_verify"),
+                width="stretch",
+            )
+        if not submitted:
+            return
+        try:
+            verify_totp(settings, factor.id, code, store=session_store)
+        except AppError as exc:
+            render_app_error(st, exc, lang=lang)
+            return
+        st.session_state.pop(STREAMLIT_MFA_FACTORS_KEY, None)
+        st.rerun()
 
 
 def _render_sidebar_navigation(

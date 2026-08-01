@@ -14,7 +14,7 @@ TEST_DATABASE_DSN = (
 
 def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -> None:
     def fail_process(_settings: object, **_kwargs: object) -> int:
-        raise AssertionError("worker should not poll without WEREWOLF_SUPABASE_DB_DSN")
+        raise AssertionError("worker should not poll without WEREWOLF_SUPABASE_WORKER_DB_DSN")
 
     monkeypatch.setenv("WEREWOLF_LOG_OUTPUT", "none")
     monkeypatch.setattr(
@@ -28,7 +28,7 @@ def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -
         result = CliRunner().invoke(worker_app.app, ["once"])
 
     assert result.exit_code == 1
-    assert "WEREWOLF_SUPABASE_DB_DSN" in result.output
+    assert "WEREWOLF_SUPABASE_WORKER_DB_DSN" in result.output
     records = [
         record
         for record in caplog.records
@@ -42,7 +42,7 @@ def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> 
     """安全化した内部障害の原因をworkerのERROR logへ保持する。"""
     settings = AppSettings(
         _env_file=None,
-        supabase_db_dsn=TEST_DATABASE_DSN,
+        supabase_worker_db_dsn=TEST_DATABASE_DSN,
     )
 
     def fail_process(_settings: object, **_kwargs: object) -> int:
@@ -76,7 +76,7 @@ def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> 
 def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> None:
     settings = AppSettings(
         _env_file=None,
-        supabase_db_dsn=TEST_DATABASE_DSN,
+        supabase_worker_db_dsn=TEST_DATABASE_DSN,
     )
 
     monkeypatch.setattr(

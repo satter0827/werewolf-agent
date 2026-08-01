@@ -41,6 +41,7 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
         "WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS",
         "WEREWOLF_API_TIMEOUT_SECONDS",
         "WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
+        "WEREWOLF_API_ADMIN_MAX_TOKEN_AGE_SECONDS",
     ):
         assert setting in api_block
     for setting in (
@@ -48,6 +49,10 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
         "WEREWOLF_SUPABASE_WORKER_BATCH_SIZE",
         "WEREWOLF_LLM_TIMEOUT_SECONDS",
         "WEREWOLF_WORKER_PAID_LLM_BASE_URL",
+        "WEREWOLF_WORKER_PAID_LLM_ENABLED",
+        "WEREWOLF_WORKER_PAID_LLM_DAILY_ADVANCE_LIMIT",
+        "WEREWOLF_WORKER_PAID_LLM_MAX_CONCURRENT_ADVANCES",
+        "WEREWOLF_WORKER_PAID_LLM_ADMISSION_TTL_SECONDS",
     ):
         assert setting in worker_block
     for setting in (
@@ -65,8 +70,13 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
 def test_compose_uses_a_container_reachable_database_dsn() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
 
-    assert compose.count("WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}") == 3
-    assert "WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_SUPABASE_DB_DSN:-}" not in compose
+    assert "WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_MIGRATION_DB_DSN:-}" in compose
+    assert "WEREWOLF_SUPABASE_API_DB_DSN: ${WEREWOLF_COMPOSE_API_DB_DSN:-}" in compose
+    assert "WEREWOLF_SUPABASE_WORKER_DB_DSN: ${WEREWOLF_COMPOSE_WORKER_DB_DSN:-}" in compose
+    api_block = compose.split("  api:", maxsplit=1)[1].split("\n  worker:", maxsplit=1)[0]
+    worker_block = compose.split("  worker:", maxsplit=1)[1].split("\n  streamlit:", maxsplit=1)[0]
+    assert "WORKER_DB_DSN" not in api_block
+    assert "API_DB_DSN" not in worker_block
 
 
 def test_host_services_resolve_the_host_gateway_on_every_platform() -> None:

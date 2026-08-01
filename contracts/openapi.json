@@ -86,18 +86,6 @@
             ],
             "title": "Operation Id"
           },
-          "parsed_decision": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Parsed Decision"
-          },
           "phase": {
             "anyOf": [
               {
@@ -389,6 +377,7 @@
                 "type": "null"
               }
             ],
+            "description": "Public roster reproduction seed.",
             "title": "Seed"
           },
           "setup": {
@@ -2337,17 +2326,6 @@
             ],
             "title": "Scenario Name"
           },
-          "seed": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Seed"
-          },
           "status": {
             "enum": [
               "running",
@@ -2410,7 +2388,6 @@
           "phase",
           "day",
           "version",
-          "seed",
           "players",
           "alive_player_ids",
           "eliminated_player_ids",
@@ -2488,17 +2465,6 @@
             ],
             "title": "Scenario Name"
           },
-          "seed": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Seed"
-          },
           "status": {
             "enum": [
               "running",
@@ -2557,7 +2523,6 @@
           "phase",
           "day",
           "version",
-          "seed",
           "player_count",
           "alive_count",
           "step_count",

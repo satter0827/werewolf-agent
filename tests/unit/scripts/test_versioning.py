@@ -58,6 +58,9 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     assert {item["standard"] for item in items if item["name"] != "product"} == {"semver"}
     assert {item["enforcement"] for item in items if item["name"] == "product"} == {"release"}
     assert {item["enforcement"] for item in items if item["name"] != "product"} == {"change"}
+    watches = {str(item["name"]): set(item["watch"]) for item in items}
+    assert "supabase/migrations/" in watches["product"]
+    assert "supabase/migrations/" not in watches["setup"]
 
 
 def test_auto_scope_uses_the_configured_release_ref_identity(

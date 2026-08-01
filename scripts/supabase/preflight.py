@@ -40,6 +40,12 @@ _ALLOWED_STATUS_KEYS = frozenset({"ANON_KEY", "API_URL", "DB_URL", "PUBLISHABLE_
 _RUNTIME_CONNECTION_KEYS = (
     "WEREWOLF_SUPABASE_URL",
     "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
+    "WEREWOLF_SUPABASE_API_DB_DSN",
+    "WEREWOLF_SUPABASE_WORKER_DB_DSN",
+)
+_CONNECTION_PROBE_KEYS = (
+    "WEREWOLF_SUPABASE_URL",
+    "WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
     "WEREWOLF_SUPABASE_DB_DSN",
 )
 SUPERVISOR_STATE_FILE = "supervisor-state.json"
@@ -103,7 +109,7 @@ def verify_supabase_connection(
     dsn = environment.get("WEREWOLF_SUPABASE_DB_DSN", "").strip()
     missing = [
         name
-        for name, value in zip(_RUNTIME_CONNECTION_KEYS, (url, key, dsn), strict=True)
+        for name, value in zip(_CONNECTION_PROBE_KEYS, (url, key, dsn), strict=True)
         if not value
     ]
     if missing:
@@ -144,7 +150,8 @@ def verify_runtime_settings_connection(
     runtime_environment = {
         "WEREWOLF_SUPABASE_URL": settings.supabase_url,
         "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": settings.supabase_publishable_key_value,
-        "WEREWOLF_SUPABASE_DB_DSN": settings.supabase_db_dsn_value,
+        "WEREWOLF_SUPABASE_API_DB_DSN": settings.supabase_api_db_dsn_value,
+        "WEREWOLF_SUPABASE_WORKER_DB_DSN": settings.supabase_worker_db_dsn_value,
     }
     mismatched = [
         name
@@ -157,7 +164,13 @@ def verify_runtime_settings_connection(
             "runtime接続設定がローカルSupabaseと一致しません: " + ", ".join(mismatched)
         )
     try:
-        verify_supabase_connection(runtime_environment, timeout_seconds=timeout_seconds)
+        verify_supabase_connection(
+            {
+                **runtime_environment,
+                "WEREWOLF_SUPABASE_DB_DSN": settings.supabase_api_db_dsn_value,
+            },
+            timeout_seconds=timeout_seconds,
+        )
     except SupabaseOperationError as error:
         raise EnvironmentBlockedError(
             "runtime接続設定でローカルSupabaseへ接続できません: "
@@ -350,6 +363,8 @@ def prepare_supabase(
                 "PUBLISHABLE_KEY", local_environment.get("ANON_KEY", "")
             ),
             "WEREWOLF_SUPABASE_DB_DSN": local_environment.get("DB_URL", ""),
+            "WEREWOLF_SUPABASE_API_DB_DSN": local_environment.get("DB_URL", ""),
+            "WEREWOLF_SUPABASE_WORKER_DB_DSN": local_environment.get("DB_URL", ""),
         }
     )
 

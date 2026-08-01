@@ -133,7 +133,6 @@ def create_game(
         snapshot,
         game_id=str(game_id),
         version=1,
-        seed=seed,
         scenario_id=_config_text(scenario_config, "scenario_id"),
         scenario_name=_config_text(scenario_config, "scenario_name"),
         narration_mode="standard" if setup.theme.narration_enabled else "none",

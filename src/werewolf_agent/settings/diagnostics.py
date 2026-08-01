@@ -32,7 +32,10 @@ def build_entrypoint_diagnostics(
         "supabase publishable key": (
             REDACTED if settings.supabase_publishable_key_value else "not configured"
         ),
-        "supabase worker dsn": REDACTED if settings.supabase_db_dsn_value else "not configured",
+        "supabase api dsn": REDACTED if settings.supabase_api_db_dsn_value else "not configured",
+        "supabase worker dsn": (
+            REDACTED if settings.supabase_worker_db_dsn_value else "not configured"
+        ),
         "provider": settings.llm_provider,
         "model": settings.model,
         "llm base url": settings.llm_base_url or "provider default",

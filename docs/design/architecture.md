@@ -67,9 +67,10 @@ replay 0.6.0はgenesis setupとRule Pack manifestを再検証する。復元時�
 contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
-seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは
-template resourceや保存revisionを再解決しない。roster、role assignment、gameplayの乱数は同じ
-game seedからSHA-256 namespaceで分離する。
+roster seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは
+template resourceや保存revisionを再解決しない。利用者が指定できるroster seedはプレイヤー生成だけに使う。
+applicationは独立した非公開runtime seedを生成し、private strategy、role assignment、gameplayの
+乱数をそのseed内でSHA-256 namespace分離する。
 
 本人の保存設定は`private.user_setups`と`private.user_setup_revisions`へ保存する。revisionは追記専用で、
 親行lockと`expected_revision`により競合を検出する。リポジトリは全queryへ所有者条件を付け、private

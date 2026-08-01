@@ -12,8 +12,11 @@ from werewolf_agent.application.setup_options import prepare_create_command, pre
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 
-def test_create_command_contains_a_complete_resolved_setup_and_generated_players() -> None:
+def test_create_command_contains_a_complete_resolved_setup_and_generated_players(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     setup = build_setup_catalog().require_document("standard_6")
+    monkeypatch.setattr("werewolf_agent.application.setup_options.secrets.randbits", lambda _n: 99)
 
     command = prepare_create_command(
         setup,
@@ -23,14 +26,14 @@ def test_create_command_contains_a_complete_resolved_setup_and_generated_players
         deliberation_level="standard",
     )
 
-    assert command.seed == 17
+    assert command.seed == 99
     assert command.setup == setup
     assert [player.player_id for player in command.players] == [f"p{i}" for i in range(1, 7)]
     assert command.players[0].reasoning_style
     assert command.setup_checksum == checksum_payload(setup.to_mapping())
     assert command.mechanics_checksum == checksum_payload(setup.mechanics.to_mapping())
     assert command.roster_checksum == checksum_payload(
-        [player.model_dump(mode="json") for player in command.players]
+        [player.public_payload() for player in command.players]
     )
     assert command.rule_pack_provider_id == "core"
     assert command.model_dump(mode="json")["setup"] == setup.to_mapping()
@@ -70,6 +73,39 @@ def test_preview_omits_private_strategy_and_role() -> None:
         deliberation_level="standard",
     )
     assert preview.roster_checksum == command.roster_checksum
+
+
+def test_public_roster_seed_does_not_control_private_game_randomness(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    setup = build_setup_catalog().require_document("standard_6")
+    private_seeds = iter((101, 202))
+    monkeypatch.setattr(
+        "werewolf_agent.application.setup_options.secrets.randbits",
+        lambda _n: next(private_seeds),
+    )
+
+    first = prepare_create_command(
+        setup,
+        seed=17,
+        manual_player_id=None,
+        llm_mode="fake",
+        deliberation_level="standard",
+    )
+    second = prepare_create_command(
+        setup,
+        seed=17,
+        manual_player_id=None,
+        llm_mode="fake",
+        deliberation_level="standard",
+    )
+
+    assert first.roster_checksum == second.roster_checksum
+    assert first.seed == 101
+    assert second.seed == 202
+    assert [player.reasoning_style for player in first.players] != [
+        player.reasoning_style for player in second.players
+    ]
 
 
 def test_anonymous_actor_cannot_persist_a_setup() -> None:

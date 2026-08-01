@@ -159,7 +159,6 @@ class GameScreenView:
     winner_label: str
     player_count: int
     alive_count: int
-    seed: int | None
     status_metrics: list[StatusMetricView]
     table_legend: list[TableLegendItemView]
     seats: list[PlayerSeatView]

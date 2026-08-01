@@ -9,8 +9,8 @@
 - `player_generation`: identity、公開persona、非公開strategyの候補
 
 同梱template、保存revision、inline documentはAPI受付時に完全なdocumentへ解決する。同じ時点で
-seedとプレイヤーを確定し、setup、mechanics、rosterのchecksumを含む正規化済みコマンドをqueueへ
-保存する。workerはtemplateや保存revisionを再解釈しない。
+公開roster seedとプレイヤーを確定した後、独立した非公開runtime seed、setup、mechanics、rosterの
+checksumを含む正規化済みコマンドをqueueへ保存する。workerはtemplateや保存revisionを再解釈しない。
 
 同梱templateと一覧catalogは`src/werewolf_agent/application/resources/setups`、runtimeの
 既定template IDは`src/werewolf_agent/settings/resources/defaults.toml`を正本とする。
@@ -39,9 +39,10 @@ phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`v
 ゲームごとに`p1`から始まるseatを生成する。identityは重複なしで抽選し、公開personaと非公開strategyは
 seed付きshuffleと巡回割当で分散する。identity不足、空の候補集合、重複名は設定エラーにする。
 
-ゲームseedから`roster`、`role_assignment`、`gameplay`のseedをSHA-256で分離する。同じdocumentと
-seedは同じプレイヤー、役職割当、ゲーム進行を再現する。previewはseat、名前、年齢、性別表現、性格、
-話し方だけを返し、役職と非公開strategyを返さない。
+利用者が指定できるroster seedからプレイヤー生成用途をSHA-256 namespaceで分離する。同じdocumentと
+roster seedは同じ公開プロファイルを生成する。applicationは別の非公開runtime seedを生成し、その内部で
+`private_strategy`、`role_assignment`、`gameplay`を分離する。previewはseat、名前、年齢、性別表現、
+性格、話し方だけを返し、役職、非公開strategy、runtime seedを返さない。
 
 ## themeと秘匿性
 

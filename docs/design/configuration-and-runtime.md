@@ -19,6 +19,9 @@ modelであり、個別fieldを直接定義しない。sectionの一覧はarchit
 
 同じ値に複数の名前や暗黙fallbackを設けない。秘密値はversion管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
+database接続はmigration用`WEREWOLF_SUPABASE_DB_DSN`、API用
+`WEREWOLF_SUPABASE_API_DB_DSN`、worker用`WEREWOLF_SUPABASE_WORKER_DB_DSN`を分ける。
+runtime接続にmigration用DSNをfallback適用しない。
 
 packaged resourceは所有機能へ配置する。applicationは`resources/setups`のtemplateとcatalog、
 agentsはprovider非依存prompt、LLMアダプターはFakeListChatModel fixture、Streamlit clientは
@@ -56,6 +59,9 @@ console scriptは対応するextraを遅延して読み込み、不足時は導�
 
 APIとworkerのpool size、取得timeout、workerのvisibility timeout、heartbeat、最大試行回数は
 同じ設定modelで検証する。instance IDはAPIプロセスの識別だけに使う。
+有料LLMは`WEREWOLF_WORKER_PAID_LLM_ENABLED`で明示的に有効化し、日次有料advance上限、
+全workerの同時有料advance上限、crash時のadmission TTLをworker設定から解決する。これらを
+provider既定値やAPI設定へfallbackしない。
 
 ## ログと観測
 

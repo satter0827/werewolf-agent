@@ -111,7 +111,6 @@ def build_game_screen_view(
         winner_label=_winner_label(state, catalog, lang),
         player_count=len(state.players),
         alive_count=len(state.alive_player_ids),
-        seed=state.seed,
         status_metrics=status_metrics(
             state,
             current_turn=current_title,

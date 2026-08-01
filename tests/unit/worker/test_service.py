@@ -86,7 +86,6 @@ def test_wire_mapping_excludes_internal_story_theme_fields() -> None:
             "phase": "day_discussion",
             "day": 1,
             "version": 1,
-            "seed": 1,
             "theme": theme,
             "players": [],
             "alive_player_ids": [],
@@ -135,7 +134,10 @@ def test_worker_archives_exhausted_message_without_executing_it(
     )
 
     processed = service.process_worker_batch(
-        AppSettings(_env_file=None, supabase_db_dsn=SecretStr("postgresql://local")),
+        AppSettings(
+            _env_file=None,
+            supabase_worker_db_dsn=SecretStr("postgresql://local"),
+        ),
         dependencies=WORKER_DEPENDENCIES,
         pool=_Pool(connection),
     )
@@ -241,6 +243,51 @@ def test_advance_revalidates_participant_access_at_worker_execution() -> None:
         )
 
     assert captured.value.code is ErrorCode.AUTHORIZATION_FAILED
+
+
+def test_paid_advance_is_fail_closed_before_runtime_when_switch_is_off(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _Connection([])
+
+    class Application:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def prepare_advance(self, *_args: object) -> object:
+            return object()
+
+    class Store:
+        def __init__(self, _connection: object) -> None:
+            pass
+
+        def game_llm_mode(self, _game_id: str) -> str:
+            return "paid"
+
+    monkeypatch.setattr(service, "_service", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(service, "GameApplication", Application)
+    monkeypatch.setattr(service, "SupabaseWorkerStore", Store)
+    monkeypatch.setattr(
+        service,
+        "drive_prepared_game",
+        lambda *_args, **_kwargs: pytest.fail("paid runtime must not start"),
+    )
+
+    with pytest.raises(AppError, match="disabled") as captured:
+        service._execute_advance_request(
+            _Pool(connection),
+            AppSettings(_env_file=None),
+            WORKER_DEPENDENCIES,
+            {
+                "request_id": "operation-1",
+                "owner_user_id": "user-1",
+                "game_id": "game-1",
+                "expected_version": 1,
+            },
+        )
+
+    assert captured.value.code is ErrorCode.LLM_PROVIDER_UNAVAILABLE
+    assert captured.value.retryable is False
 
 
 def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(

@@ -1,6 +1,8 @@
 import logging
+from contextlib import nullcontext
 from typing import Any
 
+from werewolf_agent.adapters.supabase.auth_client import MfaFactor
 from werewolf_agent.clients.streamlit.i18n import load_i18n
 from werewolf_agent.clients.streamlit.setup import KEY_PENDING_VIEW_SCROLL, VIEW_PLAY_SETUP
 from werewolf_agent.clients.streamlit.views import runtime as app
@@ -57,6 +59,59 @@ def test_sidebar_navigation_includes_admin_for_administrator(monkeypatch) -> Non
         "管理",
         "表示設定",
     ]
+
+
+def test_signed_in_non_admin_can_start_mfa_from_sidebar(monkeypatch) -> None:
+    settings = AppSettings(_env_file=None)
+    catalog = load_i18n(settings)
+    streamlit = _StreamlitStub()
+    rendered: list[str] = []
+    store = _SessionStore()
+
+    monkeypatch.setattr(
+        sidebar,
+        "_render_sidebar_mfa",
+        lambda *args, **kwargs: rendered.append("mfa"),
+    )
+
+    sidebar._render_sidebar_auth(
+        streamlit,
+        settings=settings,
+        session_store=store,
+        catalog=catalog,
+        lang="ja",
+        is_admin=False,
+    )
+
+    assert rendered == ["mfa"]
+
+
+def test_sidebar_mfa_verifies_selected_factor_and_reruns(monkeypatch) -> None:
+    settings = AppSettings(_env_file=None)
+    catalog = load_i18n(settings)
+    streamlit = _MfaStreamlitStub()
+    store = _SessionStore()
+    factor = MfaFactor(id="factor-1", friendly_name="operator phone")
+    streamlit.session_state[sidebar.STREAMLIT_MFA_FACTORS_KEY] = (factor,)
+    verified: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(
+        sidebar,
+        "verify_totp",
+        lambda _settings, factor_id, code, **_kwargs: verified.append((factor_id, code)),
+    )
+
+    sidebar._render_sidebar_mfa(
+        streamlit,
+        settings=settings,
+        session_store=store,
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert verified == [("factor-1", "123456")]
+    assert sidebar.STREAMLIT_MFA_FACTORS_KEY not in streamlit.session_state
+    assert streamlit.rerun_called is True
 
 
 def test_sidebar_definition_keeps_required_brand(monkeypatch) -> None:
@@ -196,6 +251,21 @@ class _SidebarStub:
         return False
 
 
+class _SessionStore:
+    def load(self) -> Any:
+        return type(
+            "Session",
+            (),
+            {"is_anonymous": False, "email": "admin@example.test"},
+        )()
+
+    def save(self, session: Any) -> None:
+        del session
+
+    def clear(self) -> None:
+        pass
+
+
 class _StreamlitStub:
     def __init__(self) -> None:
         self.session_state: dict[str, object] = {}
@@ -213,6 +283,45 @@ class _StreamlitStub:
 
     def rerun(self) -> None:
         raise AssertionError("rerun should not be called when no button is clicked")
+
+
+class _MfaSidebarStub(_SidebarStub):
+    def expander(self, label: str):
+        del label
+        return nullcontext()
+
+
+class _MfaStreamlitStub(_StreamlitStub):
+    def __init__(self) -> None:
+        super().__init__()
+        self.sidebar = _MfaSidebarStub()
+        self.rerun_called = False
+
+    def button(self, label: str, **kwargs: Any) -> bool:
+        del label, kwargs
+        return False
+
+    def form(self, key: str):
+        del key
+        return nullcontext()
+
+    def selectbox(self, label: str, options: tuple[Any, ...], **kwargs: Any) -> Any:
+        del label, kwargs
+        return options[0]
+
+    def text_input(self, label: str, **kwargs: Any) -> str:
+        del label, kwargs
+        return "123456"
+
+    def form_submit_button(self, label: str, **kwargs: Any) -> bool:
+        del label, kwargs
+        return True
+
+    def caption(self, value: str) -> None:
+        del value
+
+    def rerun(self) -> None:
+        self.rerun_called = True
 
 
 class _AppStub(_StreamlitStub):
