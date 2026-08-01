@@ -205,7 +205,7 @@ def process_worker_batch(
 def _worker_pool(settings: AppSettings) -> Any:
     """Return the closed process-owned worker pool."""
     return create_database_pool(
-        settings.supabase_db_dsn_value,
+        settings.supabase_worker_db_dsn_value,
         min_size=settings.supabase_worker_pool_min_size,
         max_size=settings.supabase_worker_pool_max_size,
         timeout=settings.supabase_pool_timeout_seconds,

@@ -24,7 +24,8 @@ log_third_party_level = "WARNING"
 
 supabase_url = ""
 supabase_publishable_key = ""
-supabase_db_dsn = ""
+supabase_api_db_dsn = ""
+supabase_worker_db_dsn = ""
 supabase_auth_timeout_seconds = 10.0
 supabase_rest_timeout_seconds = 10.0
 supabase_api_pool_min_size = 1

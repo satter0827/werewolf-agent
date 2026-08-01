@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 MESSAGE_SUPABASE_WORKER_DSN_REQUIRED = (
-    "WEREWOLF_SUPABASE_DB_DSN is required for the Supabase queue worker. "
+    "WEREWOLF_SUPABASE_WORKER_DB_DSN is required for the Supabase queue worker. "
     "Create .env from local Supabase values before starting the worker."
 )
 

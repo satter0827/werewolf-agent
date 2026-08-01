@@ -138,9 +138,14 @@ class AppSettings(
         return self.supabase_publishable_key.get_secret_value().strip()
 
     @property
-    def supabase_db_dsn_value(self) -> str:
+    def supabase_api_db_dsn_value(self) -> str:
+        """Return the API-only Supabase direct database DSN."""
+        return self.supabase_api_db_dsn.get_secret_value().strip()
+
+    @property
+    def supabase_worker_db_dsn_value(self) -> str:
         """Return the worker-only Supabase direct database DSN."""
-        return self.supabase_db_dsn.get_secret_value().strip()
+        return self.supabase_worker_db_dsn.get_secret_value().strip()
 
     @property
     def supabase_client_configured(self) -> bool:
@@ -150,7 +155,12 @@ class AppSettings(
     @property
     def supabase_worker_configured(self) -> bool:
         """Return whether the worker can connect to Supabase Postgres."""
-        return bool(self.supabase_db_dsn_value)
+        return bool(self.supabase_worker_db_dsn_value)
+
+    @property
+    def supabase_api_configured(self) -> bool:
+        """Return whether the API can connect to Supabase Postgres."""
+        return bool(self.supabase_api_db_dsn_value)
 
     @property
     def api_cors_origin_values(self) -> list[str]:

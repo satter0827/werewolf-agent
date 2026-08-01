@@ -135,7 +135,10 @@ def test_worker_archives_exhausted_message_without_executing_it(
     )
 
     processed = service.process_worker_batch(
-        AppSettings(_env_file=None, supabase_db_dsn=SecretStr("postgresql://local")),
+        AppSettings(
+            _env_file=None,
+            supabase_worker_db_dsn=SecretStr("postgresql://local"),
+        ),
         dependencies=WORKER_DEPENDENCIES,
         pool=_Pool(connection),
     )

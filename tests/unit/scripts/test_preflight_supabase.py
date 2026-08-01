@@ -201,7 +201,8 @@ def test_runtime_settings_mismatch_reports_names_without_values(
         {
             "supabase_url": "http://stale.invalid",
             "supabase_publishable_key_value": "stale-secret-key",
-            "supabase_db_dsn_value": "postgresql://stale-secret-dsn",
+            "supabase_api_db_dsn_value": "postgresql://stale-api-secret-dsn",
+            "supabase_worker_db_dsn_value": "postgresql://stale-worker-secret-dsn",
         },
     )()
     monkeypatch.setattr(settings_module, "AppSettings", lambda: fake_settings)
@@ -211,7 +212,8 @@ def test_runtime_settings_mismatch_reports_names_without_values(
             {
                 "WEREWOLF_SUPABASE_URL": "http://127.0.0.1:54321",
                 "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "expected-key",
-                "WEREWOLF_SUPABASE_DB_DSN": "postgresql://expected-dsn",
+                "WEREWOLF_SUPABASE_API_DB_DSN": "postgresql://expected-api-dsn",
+                "WEREWOLF_SUPABASE_WORKER_DB_DSN": "postgresql://expected-worker-dsn",
             }
         )
 

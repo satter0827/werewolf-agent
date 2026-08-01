@@ -79,19 +79,19 @@ def create_app(
     )
     pool = (
         create_database_pool(
-            runtime.supabase_db_dsn_value,
+            runtime.supabase_api_db_dsn_value,
             min_size=runtime.supabase_api_pool_min_size,
             max_size=runtime.supabase_api_pool_max_size,
             timeout=runtime.supabase_pool_timeout_seconds,
             name="werewolf-api",
         )
-        if runtime.supabase_worker_configured
+        if runtime.supabase_api_configured
         else None
     )
     dependencies = RuntimeDependencies(
         pool=pool,
         authentication_configured=runtime.supabase_client_configured,
-        database_configured=runtime.supabase_worker_configured,
+        database_configured=runtime.supabase_api_configured,
         open_pool=lambda target, timeout: open_database_pool(target, timeout=timeout),
         probe_database=_probe_database,
         probe_operation_queue=_probe_operation_queue,

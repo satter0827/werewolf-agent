@@ -295,7 +295,9 @@ def _compose_environment(
         "PLAYWRIGHT_SUPABASE_URL": container_api_url,
         # Browser E2Eは製品のrate limitを検査しないため、固定の余裕を持たせる。
         "WEREWOLF_API_RATE_LIMIT_REQUESTS": "10000",
-        "WEREWOLF_COMPOSE_SUPABASE_DB_DSN": container_database_dsn,
+        "WEREWOLF_COMPOSE_MIGRATION_DB_DSN": container_database_dsn,
+        "WEREWOLF_COMPOSE_API_DB_DSN": container_database_dsn,
+        "WEREWOLF_COMPOSE_WORKER_DB_DSN": container_database_dsn,
         "WEREWOLF_SUPABASE_JWKS_URL": (
             f"{container_api_url.rstrip('/')}/auth/v1/.well-known/jwks.json"
         ),

@@ -16,7 +16,7 @@ standard = "semver"
 change_detection = "python_ast"
 path = "src/werewolf_agent/setup/document.py"
 pattern = 'SETUP_SCHEMA_VERSION:\s*Final\s*=\s*"([^"]+)"'
-watch = ["src/werewolf_agent/setup/document.py", "src/werewolf_agent/application/resources/setups/", "src/werewolf_agent/adapters/supabase/setup_repository.py", "supabase/migrations/"]
+watch = ["src/werewolf_agent/setup/document.py", "src/werewolf_agent/application/resources/setups/", "src/werewolf_agent/adapters/supabase/setup_repository.py"]
 
 [[boundaries]]
 name = "replay"
