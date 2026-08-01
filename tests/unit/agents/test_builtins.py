@@ -12,6 +12,7 @@ from werewolf_agent.agents import (
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
+    EvidenceOption,
     FaultAgentFactory,
     HeuristicAgentFactory,
     ObservedPlayer,
@@ -75,15 +76,23 @@ def test_builtin_agent_response_contributes_new_content(
                 "speech",
                 1,
                 "p2",
-                {"speech_id": "speech-1", "message": factory.speech},
+                {
+                    "speech_id": "speech-1",
+                    "utterance": factory.speech,
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
             ),
         ),
         (
             DecisionOption(
                 "speech",
-                legal_subject_ids=("p2",),
-                legal_evidence_ids=("speech-1",),
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
                 legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
                 message_max_chars=120,
             ),
         ),
@@ -92,7 +101,7 @@ def test_builtin_agent_response_contributes_new_content(
 
     response = factory.create(context).decide(request)
 
-    assert response.message != factory.speech
+    assert response.utterance != factory.speech
     assert response.response_to_id == "speech-1"
 
 

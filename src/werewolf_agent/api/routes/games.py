@@ -185,7 +185,7 @@ def submit_action(
 
 def _validate_action_text(request: PlayerActionOperationRequest, max_chars: int) -> None:
     for value in (
-        getattr(request.action, "message", None),
+        getattr(request.action, "utterance", None),
         getattr(request.action, "reason", None),
     ):
         if value is not None and len(value) > max_chars:

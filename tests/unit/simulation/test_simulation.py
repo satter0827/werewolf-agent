@@ -21,6 +21,8 @@ from werewolf_agent.agents import (
 from werewolf_agent.domain import (
     Action,
     CompiledRuleSet,
+    DiscussionPosition,
+    DiscussionRelation,
     Game,
     GameSetup,
     GameView,
@@ -91,9 +93,10 @@ class _LongSpeechSession:
             reference_id = option.legal_reference_ids[0] if option.legal_reference_ids else None
             return DecisionResponse(
                 "speech",
-                message="長すぎる発言です",
-                speech_act="challenge" if reference_id else "question",
-                subject_id=option.legal_subject_ids[0],
+                utterance="長すぎる発言です",
+                topic_id=option.legal_topic_ids[0],
+                position="oppose" if reference_id else "support",
+                relation="challenge" if reference_id else "independent",
                 evidence_id=reference_id,
                 response_to_id=reference_id,
             )
@@ -344,17 +347,48 @@ def test_manual_player_waits_without_blocking_available_agent_action() -> None:
             action = Action.speech(
                 manual_id,
                 "その発言には異論があります。" if reference_id else "状況を確認します。",
-                speech_act="challenge" if reference_id else "question",
-                subject_id=next(
-                    player.id
-                    for player in view.players
-                    if player.id != manual_id and player.is_alive
+                topic_id=(
+                    speeches[reference_id].topic_id
+                    if reference_id
+                    else next(
+                        player.id
+                        for player in view.players
+                        if player.id != manual_id and player.is_alive
+                    )
+                ),
+                position=(
+                    DiscussionPosition.OPPOSE if reference_id else DiscussionPosition.SUPPORT
+                ),
+                relation=(
+                    DiscussionRelation.CHALLENGE if reference_id else DiscussionRelation.INDEPENDENT
                 ),
                 evidence_id=reference_id,
                 response_to_id=reference_id,
             )
         elif available.type.value == "vote":
-            action = Action.vote(manual_id, targets[0], reason="状況から判断します。")
+            speech = next(
+                (
+                    item
+                    for item in reversed(view.history.speeches)
+                    if targets[0] in {item.player_id, item.topic_id}
+                ),
+                None,
+            )
+            if speech is not None:
+                evidence_id = speech.speech_id
+            else:
+                result = next(
+                    item
+                    for item in reversed(view.history.discussions)
+                    if targets[0] in item.passed_player_ids
+                )
+                evidence_id = f"pass:{result.day}:{result.round_id}:{targets[0]}"
+            action = Action.vote(
+                manual_id,
+                targets[0],
+                reason="状況から判断します。",
+                evidence_id=evidence_id,
+            )
         elif available.type.value == "use_ability":
             action = Action.use_ability(manual_id, available.ability_id or "", targets[0])
         else:
@@ -423,7 +457,7 @@ def test_too_long_agent_speech_uses_fallback_and_records_stable_error() -> None:
         assert step.decision_trace.fallback_used
         assert step.decision_trace.error_code == "agent_message_too_long"
         assert step.decision_trace.response is not None
-        assert len(step.decision_trace.response.message or "") <= 4
+        assert len(step.decision_trace.response.utterance or "") <= 4
     finally:
         session.close()
 

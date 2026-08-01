@@ -86,9 +86,10 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                                 "round_id",
                                 "round_kind",
                                 "player_id",
-                                "message",
-                                "speech_act",
-                                "subject_id",
+                                "utterance",
+                                "topic_id",
+                                "position",
+                                "relation",
                                 "evidence_id",
                                 "response_to_id",
                             )

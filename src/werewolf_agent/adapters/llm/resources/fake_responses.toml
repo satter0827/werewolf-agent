@@ -8,13 +8,13 @@ provider = "fake-list-chat-model"
 
 [templates]
 speech_opening_question = [
-'''{"type":"speech","message":"$subject_nameさんは、現時点で誰をどの公開情報から疑っていますか。"}''',
+'''{"type":"speech","utterance":"$topic_nameさんについて、現時点の公開情報から立場を示します。"}''',
 ]
 speech_opening_evidence = [
-'''{"type":"speech","message":"$evidence_actor_nameさんの公開発言を踏まえ、$subject_nameさんの判断根拠を確認したいです。"}''',
+'''{"type":"speech","utterance":"$evidence_actor_nameさんの公開発言を踏まえ、$topic_nameさんへの見方を整理します。"}''',
 ]
 speech_response = [
-'''{"type":"speech","message":"$reference_actor_nameさんの発言では、$subject_nameさんを判断する根拠がまだ弱く見えます。どの公開事実を重視しましたか。"}''',
+'''{"type":"speech","utterance":"$reference_actor_nameさんの見方とは異なり、$topic_nameさんを判断する根拠はまだ十分ではありません。"}''',
 ]
 vote = [
 '''{"type":"vote","target_id":"$target_id","reason":"$evidence_actor_nameさんの公開発言を踏まえ、$target_nameさんの説明が最も不足していると判断したため"}''',

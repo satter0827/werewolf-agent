@@ -23,6 +23,7 @@ from werewolf_agent.agents.contracts import (
     DecisionRequest,
     DecisionResponse,
     DecisionTrace,
+    EvidenceOption,
     ObservedPlayer,
     PublicTimelineEvent,
 )
@@ -43,6 +44,7 @@ __all__ = [
     "DecisionRequest",
     "DecisionResponse",
     "DecisionTrace",
+    "EvidenceOption",
     "FaultAgentFactory",
     "HeuristicAgentFactory",
     "ObservedPlayer",

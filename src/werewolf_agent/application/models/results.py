@@ -107,10 +107,11 @@ class GameRevealAction(ApplicationModel):
     type: ActionTypeId
     ability_id: str | None = None
     target_id: str | None = None
-    message: str | None = None
+    utterance: str | None = None
     reason: str | None = None
-    speech_act: str | None = None
-    subject_id: str | None = None
+    topic_id: str | None = None
+    position: str | None = None
+    relation: str | None = None
     evidence_id: str | None = None
     response_to_id: str | None = None
 

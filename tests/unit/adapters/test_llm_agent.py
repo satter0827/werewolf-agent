@@ -23,9 +23,19 @@ from werewolf_agent.agents import (
     AgentWorld,
     DecisionOption,
     DecisionRequest,
+    EvidenceOption,
     ObservedPlayer,
     PublicTimelineEvent,
 )
+
+
+def test_default_prompt_owns_action_specific_effective_output_limits() -> None:
+    definitions = load_llm_definitions(prompt_path=None, fake_responses_path=None)
+
+    assert definitions.prompt.version == 7
+    assert definitions.prompt.deliberation["quick"].output_token_limits["vote"] == 160
+    assert definitions.prompt.deliberation["standard"].output_token_limits["vote"] == 192
+    assert definitions.prompt.deliberation["deep"].output_token_limits["vote"] == 224
 
 
 def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> None:
@@ -86,8 +96,8 @@ def test_langchain_session_rejects_request_for_another_context() -> None:
 
 def test_langchain_session_preserves_model_selected_discussion_reference() -> None:
     factory = _factory(
-        '{"type":"speech","message":"二つ目の意見に応答します",'
-        '"speech_act":"challenge","subject_id":"p2",'
+        '{"type":"speech","utterance":"二つ目の意見に応答します",'
+        '"topic_id":"p2","position":"oppose","relation":"challenge",'
         '"evidence_id":"speech-2","response_to_id":"speech-2"}'
     )
     context = AgentContext("session-1", "game-1", "p1", 11)
@@ -103,9 +113,10 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
                 "p2",
                 {
                     "speech_id": "speech-1",
-                    "message": "一つ目",
-                    "speech_act": "question",
-                    "subject_id": "p1",
+                    "utterance": "一つ目",
+                    "topic_id": "p2",
+                    "position": "undecided",
+                    "relation": "independent",
                 },
             ),
             PublicTimelineEvent(
@@ -115,9 +126,10 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
                 "p2",
                 {
                     "speech_id": "speech-2",
-                    "message": "二つ目",
-                    "speech_act": "challenge",
-                    "subject_id": "p1",
+                    "utterance": "二つ目",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
                     "evidence_id": "speech-1",
                 },
             ),
@@ -125,9 +137,14 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
         options=(
             DecisionOption(
                 "speech",
-                legal_subject_ids=("p2",),
-                legal_evidence_ids=("speech-1", "speech-2"),
+                legal_topic_ids=("p2",),
+                evidence_options=(
+                    EvidenceOption("speech-1", "discussion", "p2", "p2", "undecided"),
+                    EvidenceOption("speech-2", "discussion", "p2", "p2", "support"),
+                ),
                 legal_reference_ids=("speech-1", "speech-2"),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
                 message_max_chars=120,
             ),
         ),
@@ -140,8 +157,8 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
 
 def test_langchain_session_rejects_model_reference_outside_visible_options() -> None:
     factory = _factory(
-        '{"type":"speech","message":"応答します","speech_act":"challenge",'
-        '"subject_id":"p2","evidence_id":"hidden-speech",'
+        '{"type":"speech","utterance":"応答します","topic_id":"p2",'
+        '"position":"oppose","relation":"challenge","evidence_id":"hidden-speech",'
         '"response_to_id":"hidden-speech"}'
     )
     context = AgentContext("session-1", "game-1", "p1", 11)
@@ -156,18 +173,21 @@ def test_langchain_session_rejects_model_reference_outside_visible_options() -> 
                 "p2",
                 {
                     "speech_id": "speech-1",
-                    "message": "公開意見",
-                    "speech_act": "question",
-                    "subject_id": "p1",
+                    "utterance": "公開意見",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
                 },
             ),
         ),
         options=(
             DecisionOption(
                 "speech",
-                legal_subject_ids=("p2",),
-                legal_evidence_ids=("speech-1",),
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
                 legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
                 message_max_chars=120,
             ),
         ),
@@ -272,9 +292,10 @@ def _request(context: AgentContext) -> DecisionRequest:
                 actor_id="p2",
                 payload={
                     "speech_id": "speech-1",
-                    "message": "Aliceの主張を確認したい",
-                    "speech_act": "question",
-                    "subject_id": "p1",
+                    "utterance": "Aliceの主張を確認したい",
+                    "topic_id": "p1",
+                    "position": "support",
+                    "relation": "independent",
                 },
             ),
         ),

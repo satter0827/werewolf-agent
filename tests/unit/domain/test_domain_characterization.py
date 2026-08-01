@@ -12,6 +12,8 @@ from werewolf_agent.domain import (
     AbilityDefinition,
     Action,
     DiscussionConfig,
+    DiscussionPosition,
+    DiscussionRelation,
     EventVisibility,
     Game,
     GameEvent,
@@ -28,6 +30,28 @@ from werewolf_agent.domain import (
     VotingConfig,
     build_game_rules,
 )
+
+
+def _vote(game: Game, player_id: str, target_id: str) -> Action:
+    """対象に関する公開発言またはpassを根拠に投票する。"""
+    speech = next(
+        (
+            item
+            for item in reversed(game.snapshot().history.speeches)
+            if target_id in {item.player_id, item.topic_id}
+        ),
+        None,
+    )
+    if speech is not None:
+        evidence_id = speech.speech_id
+    else:
+        result = next(
+            item
+            for item in reversed(game.snapshot().history.discussions)
+            if target_id in item.passed_player_ids
+        )
+        evidence_id = f"pass:{result.day}:{result.round_id}:{target_id}"
+    return Action.vote(player_id, target_id, reason="test", evidence_id=evidence_id)
 
 
 def _active_ability(
@@ -144,6 +168,13 @@ def _submit_and_advance(
     return tuple(events)
 
 
+def _advance_to_voting(game: Game, *, seed: int = 0) -> None:
+    """全議論stageを暗黙passで完了して投票へ進める。"""
+    while game.snapshot().phase is Phase.DAY_DISCUSSION:
+        game.advance(random.Random(seed))
+        seed += 1
+
+
 def test_first_night_inspection_is_private_and_does_not_require_disabled_actions() -> None:
     game = _game(
         (
@@ -215,14 +246,14 @@ def test_last_eliminated_knowledge_reveals_role_only_to_ability_owner() -> None:
         },
         starting_phase="day_discussion",
     )
-    game.advance(random.Random(0))
+    _advance_to_voting(game)
     _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p3", reason="test"),
-            Action.vote("p2", "p3", reason="test"),
-            Action.vote("p3", "p1", reason="test"),
-            Action.vote("p4", "p3", reason="test"),
+            _vote(game, "p1", "p3"),
+            _vote(game, "p2", "p3"),
+            _vote(game, "p3", "p1"),
+            _vote(game, "p4", "p3"),
         ),
         seed=19,
     )
@@ -247,16 +278,24 @@ def test_same_definition_seed_and_actions_reproduce_state_and_events() -> None:
         )
         events = list(game.creation_events)
         events.extend(
-            game.submit(Action.speech("p2", "確認します。", speech_act="question", subject_id="p1"))
+            game.submit(
+                Action.speech(
+                    "p2",
+                    "確認します。",
+                    topic_id="p1",
+                    position=DiscussionPosition.SUPPORT,
+                    relation=DiscussionRelation.INDEPENDENT,
+                )
+            )
         )
         phase_seed = 11
         while game.snapshot().phase is Phase.DAY_DISCUSSION:
             events.extend(game.advance(random.Random(phase_seed)))
             phase_seed += 1
         for action in (
-            Action.vote("p1", "p2", reason="test"),
-            Action.vote("p2", "p1", reason="test"),
-            Action.vote("p3", "p1", reason="test"),
+            _vote(game, "p1", "p2"),
+            _vote(game, "p2", "p1"),
+            _vote(game, "p3", "p1"),
         ):
             events.extend(game.submit(action))
         events.extend(game.advance(random.Random(13)))
@@ -286,13 +325,27 @@ def test_rejected_action_preserves_state_and_pending_actions() -> None:
         },
         starting_phase="day_discussion",
     )
-    game.submit(Action.speech("p2", "一度だけ話します。", speech_act="question", subject_id="p1"))
+    game.submit(
+        Action.speech(
+            "p2",
+            "一度だけ話します。",
+            topic_id="p1",
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
     before_state = game.snapshot()
     before_pending = game.pending_actions
 
     with pytest.raises(RuleViolation, match="not available"):
         game.submit(
-            Action.speech("p2", "二度目は拒否されます。", speech_act="question", subject_id="p1")
+            Action.speech(
+                "p2",
+                "二度目は拒否されます。",
+                topic_id="p1",
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
         )
 
     assert game.snapshot() is before_state
@@ -394,15 +447,15 @@ def test_death_reaction_resolves_once_and_is_reported_without_hidden_ability_dat
         },
         starting_phase="day_discussion",
     )
-    game.advance(random.Random(0))
+    _advance_to_voting(game)
 
     events = _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p2", reason="test"),
-            Action.vote("p2", "p1", reason="test"),
-            Action.vote("p3", "p2", reason="test"),
-            Action.vote("p4", "p2", reason="test"),
+            _vote(game, "p1", "p2"),
+            _vote(game, "p2", "p1"),
+            _vote(game, "p3", "p2"),
+            _vote(game, "p4", "p2"),
         ),
         seed=23,
     )
@@ -432,15 +485,15 @@ def test_living_fox_overrides_normal_village_victory() -> None:
         },
         starting_phase="day_discussion",
     )
-    game.advance(random.Random(0))
+    _advance_to_voting(game)
 
     _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p3", reason="test"),
-            Action.vote("p2", "p1", reason="test"),
-            Action.vote("p3", "p1", reason="test"),
-            Action.vote("p4", "p1", reason="test"),
+            _vote(game, "p1", "p3"),
+            _vote(game, "p2", "p1"),
+            _vote(game, "p3", "p1"),
+            _vote(game, "p4", "p1"),
         ),
         seed=29,
     )
@@ -468,10 +521,18 @@ def test_sealed_opening_is_hidden_until_the_round_resolves() -> None:
         starting_phase="day_discussion",
     )
 
-    game.submit(Action.speech("p2", "公開する発言です。", speech_act="question", subject_id="p1"))
+    game.submit(
+        Action.speech(
+            "p2",
+            "公開する発言です。",
+            topic_id="p1",
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
 
     assert game.view_for("p1").history.speeches == ()
     game.advance(random.Random(0))
     speech = game.view_for("p1").history.speeches[0]
-    assert speech.message == "公開する発言です。"
+    assert speech.utterance == "公開する発言です。"
     assert speech.round_kind.value == "opening"

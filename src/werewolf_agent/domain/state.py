@@ -66,12 +66,6 @@ class ActionType(StrEnum):
     PASS = "pass"
 
 
-class DiscussionKind(StrEnum):
-    """設定可能な議論方式を表す."""
-
-    STRUCTURED = "structured"
-
-
 class DiscussionRoundKind(StrEnum):
     """一日の議論内で進行するroundを表す."""
 
@@ -86,10 +80,18 @@ class SubmissionMode(StrEnum):
     ORDERED = "ordered"
 
 
-class SpeechAct(StrEnum):
-    """公開議論で発言が果たす意味上の役割を表す."""
+class DiscussionPosition(StrEnum):
+    """議論対象の命題に対する公開立場を表す."""
 
-    QUESTION = "question"
+    SUPPORT = "support"
+    OPPOSE = "oppose"
+    UNDECIDED = "undecided"
+
+
+class DiscussionRelation(StrEnum):
+    """一つの議論手と参照発言の関係を表す."""
+
+    INDEPENDENT = "independent"
     ANSWER = "answer"
     SUPPORT = "support"
     CHALLENGE = "challenge"
@@ -235,20 +237,82 @@ class Player:
 
 
 @dataclass(frozen=True)
+class DiscussionStageConfig:
+    """一つの議論stageの提出方式と参照規則を表す."""
+
+    stage: DiscussionRoundKind
+    submission_mode: SubmissionMode
+    actor_order: str
+    reference_stage: DiscussionRoundKind | None
+    allowed_relations: tuple[DiscussionRelation, ...]
+
+    def __post_init__(self) -> None:
+        """Stage定義を正規化して相互整合を検証する."""
+        object.__setattr__(self, "stage", DiscussionRoundKind(self.stage))
+        object.__setattr__(self, "submission_mode", SubmissionMode(self.submission_mode))
+        if self.actor_order not in {"rotating", "reverse_opening"}:
+            raise ValueError(f"Unknown discussion actor order: {self.actor_order}")
+        reference_stage = (
+            DiscussionRoundKind(self.reference_stage) if self.reference_stage is not None else None
+        )
+        object.__setattr__(self, "reference_stage", reference_stage)
+        relations = tuple(DiscussionRelation(item) for item in self.allowed_relations)
+        if not relations or len(relations) != len(set(relations)):
+            raise ValueError("allowed_relations must contain unique values")
+        object.__setattr__(self, "allowed_relations", relations)
+        if self.stage is DiscussionRoundKind.OPENING:
+            if reference_stage is not None or relations != (DiscussionRelation.INDEPENDENT,):
+                raise ValueError("opening stage must be independent and reference-free")
+        elif reference_stage is not DiscussionRoundKind.OPENING:
+            raise ValueError("response stage must reference opening")
+
+
+DEFAULT_DISCUSSION_STAGES = (
+    DiscussionStageConfig(
+        DiscussionRoundKind.OPENING,
+        SubmissionMode.SEALED,
+        "rotating",
+        None,
+        (DiscussionRelation.INDEPENDENT,),
+    ),
+    DiscussionStageConfig(
+        DiscussionRoundKind.RESPONSE,
+        SubmissionMode.ORDERED,
+        "reverse_opening",
+        DiscussionRoundKind.OPENING,
+        (
+            DiscussionRelation.ANSWER,
+            DiscussionRelation.SUPPORT,
+            DiscussionRelation.CHALLENGE,
+            DiscussionRelation.REVISE,
+        ),
+    ),
+)
+
+
+@dataclass(frozen=True)
 class DiscussionConfig:
     """一局へ固定する議論規則を表す."""
 
-    kind: DiscussionKind = DiscussionKind.STRUCTURED
+    protocol_id: str = "structured_argument"
     message_max_chars: int = 200
     cycles_per_day: int = 1
+    stages: tuple[DiscussionStageConfig, ...] = DEFAULT_DISCUSSION_STAGES
 
     def __post_init__(self) -> None:
-        """議論方式、発言長、サイクル数を検証する."""
-        object.__setattr__(self, "kind", DiscussionKind(self.kind))
+        """議論protocol、発言長、サイクル数を検証する."""
+        object.__setattr__(self, "protocol_id", non_blank(self.protocol_id, "protocol_id"))
         if not 1 <= self.message_max_chars <= 2000:
             raise ValueError("message_max_chars must be between 1 and 2000.")
         if not 1 <= self.cycles_per_day <= 10:
             raise ValueError("cycles_per_day must be between 1 and 10.")
+        stages = tuple(self.stages)
+        if tuple(stage.stage for stage in stages) != (
+            DiscussionRoundKind.OPENING,
+            DiscussionRoundKind.RESPONSE,
+        ):
+            raise ValueError("discussion stages must be opening then response")
+        object.__setattr__(self, "stages", stages)
 
 
 @dataclass(frozen=True)
@@ -446,20 +510,22 @@ class AvailableAction:
 
 
 @dataclass(frozen=True)
-class SpeechIntent:
-    """公開発言として提出する型付きpayloadを表す."""
+class DiscussionMove:
+    """公開議論として提出する正規化された手を表す."""
 
-    message: str
-    speech_act: SpeechAct
-    subject_id: str
+    utterance: str
+    topic_id: str
+    position: DiscussionPosition
+    relation: DiscussionRelation
     evidence_id: str | None = None
     response_to_id: str | None = None
 
     def __post_init__(self) -> None:
-        """発言本文と任意参照IDを正規化する."""
-        object.__setattr__(self, "message", non_blank(self.message, "message"))
-        object.__setattr__(self, "speech_act", SpeechAct(self.speech_act))
-        object.__setattr__(self, "subject_id", non_blank(self.subject_id, "subject_id"))
+        """表示文、議論対象、立場、関係を正規化する."""
+        object.__setattr__(self, "utterance", non_blank(self.utterance, "utterance"))
+        object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
+        object.__setattr__(self, "position", DiscussionPosition(self.position))
+        object.__setattr__(self, "relation", DiscussionRelation(self.relation))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,
@@ -501,7 +567,7 @@ class PassIntent:
     """payloadを持たない明示的な棄権を表す."""
 
 
-ActionIntent = SpeechIntent | VoteIntent | UseAbilityIntent | PassIntent
+ActionIntent = DiscussionMove | VoteIntent | UseAbilityIntent | PassIntent
 
 
 @dataclass(frozen=True)
@@ -514,13 +580,13 @@ class Action:
     def __post_init__(self) -> None:
         """Player IDと対応可能なintent型を検証する."""
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
-        if not isinstance(self.intent, (SpeechIntent, VoteIntent, UseAbilityIntent, PassIntent)):
+        if not isinstance(self.intent, (DiscussionMove, VoteIntent, UseAbilityIntent, PassIntent)):
             raise TypeError("intent must be a supported action intent")
 
     @property
     def type(self) -> ActionType:
         """Intentに対応する安定action typeを返す."""
-        if isinstance(self.intent, SpeechIntent):
+        if isinstance(self.intent, DiscussionMove):
             return ActionType.SPEECH
         if isinstance(self.intent, VoteIntent):
             return ActionType.VOTE
@@ -543,31 +609,38 @@ class Action:
         return self.intent.ability_id if isinstance(self.intent, UseAbilityIntent) else None
 
     @property
-    def message(self) -> str | None:
-        """発言intentなら本文を返す."""
-        return self.intent.message if isinstance(self.intent, SpeechIntent) else None
+    def utterance(self) -> str | None:
+        """議論手なら表示用の自然文を返す."""
+        return self.intent.utterance if isinstance(self.intent, DiscussionMove) else None
 
     @property
-    def speech_act(self) -> SpeechAct | None:
-        """発言intentなら発言の役割を返す."""
-        return self.intent.speech_act if isinstance(self.intent, SpeechIntent) else None
+    def position(self) -> DiscussionPosition | None:
+        """議論手なら対象命題への立場を返す."""
+        return self.intent.position if isinstance(self.intent, DiscussionMove) else None
 
     @property
-    def subject_id(self) -> str | None:
-        """発言intentなら議論対象player IDを返す."""
-        return self.intent.subject_id if isinstance(self.intent, SpeechIntent) else None
+    def relation(self) -> DiscussionRelation | None:
+        """議論手なら参照発言との関係を返す."""
+        return self.intent.relation if isinstance(self.intent, DiscussionMove) else None
+
+    @property
+    def topic_id(self) -> str | None:
+        """議論手なら議論対象player IDを返す."""
+        return self.intent.topic_id if isinstance(self.intent, DiscussionMove) else None
 
     @property
     def evidence_id(self) -> str | None:
         """公開根拠を持つintentなら根拠IDを返す."""
         return (
-            self.intent.evidence_id if isinstance(self.intent, (SpeechIntent, VoteIntent)) else None
+            self.intent.evidence_id
+            if isinstance(self.intent, (DiscussionMove, VoteIntent))
+            else None
         )
 
     @property
     def response_to_id(self) -> str | None:
         """発言intentなら応答先の公開発言IDを返す."""
-        return self.intent.response_to_id if isinstance(self.intent, SpeechIntent) else None
+        return self.intent.response_to_id if isinstance(self.intent, DiscussionMove) else None
 
     @property
     def reason(self) -> str:
@@ -583,17 +656,25 @@ class Action:
     def speech(
         cls,
         player_id: str,
-        message: str,
+        utterance: str,
         *,
-        speech_act: SpeechAct,
-        subject_id: str,
+        topic_id: str,
+        position: DiscussionPosition,
+        relation: DiscussionRelation,
         evidence_id: str | None = None,
         response_to_id: str | None = None,
     ) -> Self:
-        """公開speech actionを作成して返す."""
+        """公開discussion actionを作成して返す."""
         return cls(
             player_id,
-            SpeechIntent(message, speech_act, subject_id, evidence_id, response_to_id),
+            DiscussionMove(
+                utterance,
+                topic_id,
+                position,
+                relation,
+                evidence_id,
+                response_to_id,
+            ),
         )
 
     @classmethod
@@ -779,9 +860,10 @@ class SpeechRecord:
     round_id: str
     round_kind: DiscussionRoundKind
     player_id: str
-    message: str
-    speech_act: SpeechAct
-    subject_id: str
+    utterance: str
+    topic_id: str
+    position: DiscussionPosition
+    relation: DiscussionRelation
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -791,9 +873,10 @@ class SpeechRecord:
         object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
         object.__setattr__(self, "round_kind", DiscussionRoundKind(self.round_kind))
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
-        object.__setattr__(self, "message", non_blank(self.message, "message"))
-        object.__setattr__(self, "speech_act", SpeechAct(self.speech_act))
-        object.__setattr__(self, "subject_id", non_blank(self.subject_id, "subject_id"))
+        object.__setattr__(self, "utterance", non_blank(self.utterance, "utterance"))
+        object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
+        object.__setattr__(self, "position", DiscussionPosition(self.position))
+        object.__setattr__(self, "relation", DiscussionRelation(self.relation))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
         object.__setattr__(
             self,
@@ -872,6 +955,7 @@ class DiscussionResult:
     round_id: str
     kind: DiscussionRoundKind
     speech_ids: tuple[str, ...]
+    passed_player_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """確定roundと公開発言IDを検証する."""
@@ -883,6 +967,10 @@ class DiscussionResult:
         if len(speech_ids) != len(set(speech_ids)):
             raise ValueError("discussion result speech IDs must be unique")
         object.__setattr__(self, "speech_ids", speech_ids)
+        passed = tuple(non_blank(item, "passed_player_id") for item in self.passed_player_ids)
+        if len(passed) != len(set(passed)):
+            raise ValueError("discussion result passed player IDs must be unique")
+        object.__setattr__(self, "passed_player_ids", passed)
 
 
 @dataclass(frozen=True)
@@ -1135,7 +1223,9 @@ __all__ = [
     "DeathReaction",
     "DeathReactionResolution",
     "DiscussionConfig",
-    "DiscussionKind",
+    "DiscussionMove",
+    "DiscussionPosition",
+    "DiscussionRelation",
     "DiscussionResolution",
     "DiscussionResult",
     "DiscussionRound",
@@ -1161,7 +1251,6 @@ __all__ = [
     "PlayerStatus",
     "RoleCatalog",
     "RoleDefinition",
-    "SpeechIntent",
     "SpeechRecord",
     "SubmissionMode",
     "UseAbilityIntent",

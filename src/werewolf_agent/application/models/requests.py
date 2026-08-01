@@ -181,12 +181,13 @@ class GetPlayerObservationQuery(ApplicationModel):
 
 
 class SpeechActionInput(ApplicationModel):
-    """公開発言を表すapplication入力."""
+    """構造化された公開議論手を表すapplication入力."""
 
     type: Literal["speech"]
-    message: str
-    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
-    subject_id: str
+    utterance: str
+    topic_id: str
+    position: Literal["support", "oppose", "undecided"]
+    relation: Literal["independent", "answer", "support", "challenge", "revise"]
     evidence_id: str | None = None
     response_to_id: str | None = None
 

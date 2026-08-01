@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Protocol
@@ -117,6 +118,7 @@ class SimulationSpec:
     phase_seed: int | None = None
     speech_message_max_chars: int | None = None
     response_reference_limit: int | None = None
+    deadline_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Controller mappingをimmutableにして参照整合を検証する."""
@@ -136,6 +138,8 @@ class SimulationSpec:
             _positive_integer(self.speech_message_max_chars, "speech_message_max_chars")
         if self.response_reference_limit is not None:
             _positive_integer(self.response_reference_limit, "response_reference_limit")
+        if self.deadline_at is not None and self.deadline_at.utcoffset() is None:
+            raise ValueError("deadline_at must be timezone-aware")
         controllers = dict(self.controllers)
         if not controllers:
             raise ValueError("controllers must not be empty")

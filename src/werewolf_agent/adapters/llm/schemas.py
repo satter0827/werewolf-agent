@@ -20,27 +20,18 @@ def build_decision_response_schema(
     for action in observation.available_actions:
         references = observation.legal_references.get(action.key, [])
         if action.type is AgentActionType.SPEECH and references:
-            branches.extend(
-                _action_schema(
-                    action,
-                    observation=observation,
-                    context=context,
-                    response_reference_id=reference_id,
-                )
-                for reference_id in references
-            )
-        elif action.type is AgentActionType.SPEECH and observation.legal_evidence.get(
-            action.key, []
-        ):
-            branches.extend(
-                _action_schema(
-                    action,
-                    observation=observation,
-                    context=context,
-                    opening_mode=opening_mode,
-                )
-                for opening_mode in ("question", "assertion")
-            )
+            for reference_id in references:
+                for relation, position in _response_variants(observation, reference_id):
+                    branches.append(
+                        _action_schema(
+                            action,
+                            observation=observation,
+                            context=context,
+                            response_reference_id=reference_id,
+                            response_relation=relation,
+                            response_position=position,
+                        )
+                    )
         elif action.type is AgentActionType.VOTE and observation.legal_targets.get(action.key, []):
             branches.extend(
                 _action_schema(
@@ -65,7 +56,8 @@ def _action_schema(
     observation: AgentObservation,
     context: Mapping[str, object],
     response_reference_id: str | None = None,
-    opening_mode: str | None = None,
+    response_relation: str | None = None,
+    response_position: str | None = None,
     vote_target_id: str | None = None,
 ) -> dict[str, object]:
     properties: dict[str, object] = {
@@ -78,34 +70,39 @@ def _action_schema(
         speech_max_chars = _speech_max_chars(context)
         if speech_max_chars is not None:
             message_schema["maxLength"] = speech_max_chars
-        properties["message"] = message_schema
-        required.append("message")
-        subject_ids = observation.legal_subjects.get(action.key, [])
-        if subject_ids:
-            properties["subject_id"] = {"type": "string", "enum": subject_ids}
-            required.append("subject_id")
+        properties["utterance"] = message_schema
+        required.append("utterance")
+        topic_ids = observation.legal_topics.get(action.key, [])
         references = observation.legal_references.get(action.key, [])
         if references:
-            properties["speech_act"] = {
-                "type": "string",
-                "enum": ["answer", "support", "challenge", "revise"],
-            }
-            if response_reference_id is None:
+            referenced = next(
+                speech
+                for speech in observation.speeches
+                if speech.speech_id == response_reference_id
+            )
+            if (
+                response_reference_id is None
+                or response_relation is None
+                or response_position is None
+            ):
                 raise ValueError("response schema requires one reference branch")
+            properties["topic_id"] = {"const": referenced.topic_id}
+            properties["position"] = {"const": response_position}
+            properties["relation"] = {"const": response_relation}
             properties["response_to_id"] = {"const": response_reference_id}
             properties["evidence_id"] = {"const": response_reference_id}
-            required.extend(("speech_act", "response_to_id", "evidence_id"))
+            required.extend(("topic_id", "position", "relation", "response_to_id", "evidence_id"))
         else:
-            evidence_ids = observation.legal_evidence.get(action.key, [])
-            properties["speech_act"] = (
-                {"type": "string", "enum": ["support", "challenge", "revise"]}
-                if opening_mode == "assertion"
-                else {"const": "question"}
-            )
-            required.append("speech_act")
-            if evidence_ids and opening_mode == "assertion":
+            properties["topic_id"] = {"type": "string", "enum": topic_ids}
+            properties["position"] = {
+                "type": "string",
+                "enum": ["support", "oppose", "undecided"],
+            }
+            properties["relation"] = {"const": "independent"}
+            required.extend(("topic_id", "position", "relation"))
+            evidence_ids = [item.id for item in observation.evidence_options.get(action.key, [])]
+            if evidence_ids:
                 properties["evidence_id"] = {"type": "string", "enum": evidence_ids}
-                required.append("evidence_id")
     elif action.type in {AgentActionType.VOTE, AgentActionType.USE_ABILITY}:
         properties["target_id"] = (
             {"const": vote_target_id}
@@ -123,15 +120,15 @@ def _action_schema(
                 "maxLength": _vote_reason_max_chars(context),
             }
             required.append("reason")
-            evidence_ids = observation.legal_evidence.get(action.key, [])
+            evidence_ids = _target_evidence_ids(
+                observation,
+                action_key=action.key,
+                target_id=vote_target_id,
+            )
             if evidence_ids:
                 properties["evidence_id"] = {
                     "type": "string",
-                    "enum": _target_evidence_ids(
-                        context,
-                        target_id=vote_target_id,
-                        legal_evidence_ids=evidence_ids,
-                    ),
+                    "enum": evidence_ids,
                 }
                 required.append("evidence_id")
         else:
@@ -169,25 +166,43 @@ def _vote_reason_max_chars(context: Mapping[str, object]) -> int:
 
 
 def _target_evidence_ids(
-    context: Mapping[str, object],
+    observation: AgentObservation,
     *,
+    action_key: str,
     target_id: str | None,
-    legal_evidence_ids: list[str],
 ) -> list[str]:
-    public_value = context.get("public_evidence")
-    public_evidence = public_value if isinstance(public_value, list) else []
-    related = [
-        str(item["id"])
-        for item in public_evidence
-        if isinstance(item, Mapping)
-        and item.get("id") in legal_evidence_ids
-        and target_id in {_nested_id(item.get("actor")), _nested_id(item.get("subject"))}
+    return [
+        item.id
+        for item in observation.evidence_options.get(action_key, [])
+        if target_id in {item.actor_id, item.topic_id}
     ]
-    return related or legal_evidence_ids
 
 
-def _nested_id(value: object) -> str | None:
-    return str(value.get("id")) if isinstance(value, Mapping) and value.get("id") else None
+def _response_variants(
+    observation: AgentObservation,
+    reference_id: str,
+) -> tuple[tuple[str, str], ...]:
+    referenced = next(speech for speech in observation.speeches if speech.speech_id == reference_id)
+    if referenced.position.value == "undecided":
+        variants: list[tuple[str, str]] = [("answer", "support"), ("answer", "oppose")]
+    else:
+        opposite = "oppose" if referenced.position.value == "support" else "support"
+        variants = [("support", referenced.position.value), ("challenge", opposite)]
+    prior = next(
+        (
+            speech
+            for speech in reversed(observation.speeches)
+            if speech.player_id == observation.me.id and speech.topic_id == referenced.topic_id
+        ),
+        None,
+    )
+    if prior is not None:
+        variants.extend(
+            ("revise", position)
+            for position in ("support", "oppose", "undecided")
+            if position != prior.position.value
+        )
+    return tuple(variants)
 
 
 __all__ = ["build_decision_response_schema"]

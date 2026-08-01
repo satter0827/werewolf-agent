@@ -55,7 +55,7 @@ def observation_view_from_response(
     reference_choices = {
         reference_id: (
             f"{_player_name(state.players, speech_by_id[reference_id].player_id)}: "
-            f"{speech_by_id[reference_id].message}"
+            f"{speech_by_id[reference_id].utterance}"
         )
         for reference_id in (
             observation.discussion_round.reference_ids
@@ -97,6 +97,17 @@ def observation_view_from_response(
         known_role_lines=known_role_lines,
         target_candidates=target_candidates,
         reference_choices=reference_choices,
+        reference_topics={
+            reference_id: speech_by_id[reference_id].topic_id for reference_id in reference_choices
+        },
+        reference_positions={
+            reference_id: speech_by_id[reference_id].position for reference_id in reference_choices
+        },
+        discussion_topic_ids=[
+            player.id
+            for player in observation.players
+            if player.id != manual_player_id and player.status == "alive"
+        ],
     )
 
 

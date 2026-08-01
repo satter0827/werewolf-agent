@@ -116,14 +116,15 @@ def _prompt_and_submit_manual_action(
     ability_id = selected.ability_id
     action_key = selected.key
     target_id = None
-    message = None
-    speech_act = None
-    subject_id = None
+    utterance = None
+    topic_id = None
+    position = None
+    relation = None
     evidence_id = None
     response_to_id = None
     if action_type == "speech":
-        message = typer.prompt(PROMPT_SPEECH)
-        subject_id = next(
+        utterance = typer.prompt(PROMPT_SPEECH)
+        topic_id = next(
             player.id
             for player in observation.observation.players
             if player.id != player_id and player.status == "alive"
@@ -139,9 +140,17 @@ def _prompt_and_submit_manual_action(
                 if speeches[reference_id].player_id != player_id
             )
             evidence_id = response_to_id
-            speech_act = "challenge"
+            referenced = speeches[response_to_id]
+            topic_id = referenced.topic_id
+            if referenced.position == "undecided":
+                relation = "answer"
+                position = "support"
+            else:
+                relation = "challenge"
+                position = "oppose" if referenced.position == "support" else "support"
         else:
-            speech_act = "question"
+            relation = "independent"
+            position = "undecided"
     elif action_type != "pass":
         target_id = typer.prompt(message_target_prompt(action_key))
     response = client.submit_player_action(
@@ -152,9 +161,10 @@ def _prompt_and_submit_manual_action(
                 action_type,
                 ability_id=ability_id,
                 target_id=target_id,
-                message=message,
-                speech_act=speech_act,
-                subject_id=subject_id,
+                utterance=utterance,
+                topic_id=topic_id,
+                position=position,
+                relation=relation,
                 evidence_id=evidence_id,
                 reason=(typer.prompt("投票理由") if action_type == "vote" else None),
                 response_to_id=response_to_id,
@@ -168,7 +178,7 @@ def _prompt_and_submit_manual_action(
             "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": target_id is not None,
-            "has_message": bool(message),
+            "has_message": bool(utterance),
         },
     )
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
@@ -180,9 +190,10 @@ def _action_payload(
     *,
     ability_id: str | None,
     target_id: str | None,
-    message: str | None,
-    speech_act: str | None,
-    subject_id: str | None,
+    utterance: str | None,
+    topic_id: str | None,
+    position: str | None,
+    relation: str | None,
     evidence_id: str | None,
     reason: str | None,
     response_to_id: str | None = None,
@@ -192,12 +203,14 @@ def _action_payload(
         payload["ability_id"] = ability_id
     if target_id is not None:
         payload["target_id"] = target_id
-    if message is not None:
-        payload["message"] = message
-    if speech_act is not None:
-        payload["speech_act"] = speech_act
-    if subject_id is not None:
-        payload["subject_id"] = subject_id
+    if utterance is not None:
+        payload["utterance"] = utterance
+    if topic_id is not None:
+        payload["topic_id"] = topic_id
+    if position is not None:
+        payload["position"] = position
+    if relation is not None:
+        payload["relation"] = relation
     if evidence_id is not None:
         payload["evidence_id"] = evidence_id
     if reason is not None:

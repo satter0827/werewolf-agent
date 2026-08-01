@@ -1,4 +1,4 @@
-schema_version = "0.5.0"
+schema_version = "0.6.0"
 
 [mechanics.role_counts]
 werewolf = 1
@@ -75,9 +75,22 @@ allow_repeat_target = true
 enabled_first_night = true
 
 [mechanics.discussion]
-kind = "structured"
+protocol_id = "structured_argument"
 message_max_chars = 200
 cycles_per_day = 1
+
+[[mechanics.discussion.stages]]
+stage = "opening"
+submission_mode = "sealed"
+actor_order = "rotating"
+allowed_relations = ["independent"]
+
+[[mechanics.discussion.stages]]
+stage = "response"
+submission_mode = "ordered"
+actor_order = "reverse_opening"
+reference_stage = "opening"
+allowed_relations = ["answer", "support", "challenge", "revise"]
 
 [mechanics.voting]
 allow_self_vote = false

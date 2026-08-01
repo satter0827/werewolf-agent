@@ -34,8 +34,16 @@ PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
     "phase_started": frozenset({"phase"}),
     "speech_recorded": frozenset(
-        {"message", "speech_act", "subject_id", "evidence_id", "response_to_id"}
+        {
+            "utterance",
+            "topic_id",
+            "position",
+            "relation",
+            "evidence_id",
+            "response_to_id",
+        }
     ),
+    "discussion_passed": frozenset({"evidence_id", "round_id", "round_kind", "topic_id"}),
     "vote_resolved": frozenset(
         {
             "eliminated_player_id",

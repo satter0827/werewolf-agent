@@ -51,7 +51,7 @@ scriptedとfaultは通常品質、Simulationのfallback、timeout、close検証�
 公開Sessionでは成功とせず`AgentDecisionError`へ変換する。LLM自身が利用可能なactionと合法対象から
 一つを選ぶ。完全なactionが一意で発言や対象を必要としない場合だけmodel呼出しを省略する。
 `quick`、`standard`、`deep`は参照event上限と最大出力だけを変え、呼出しは一回に固定する。
-発言の`speech_act`、`subject_id`、`evidence_id`は公開発言記録へ保存する。responseは
+発言の`topic_id`、`position`、`relation`、`evidence_id`は公開発言記録へ保存する。responseは
 他プレイヤーの`response_to_id`と同じ公開発言をevidenceに指定し、`answer`、`support`、
 `challenge`、`revise`のいずれかで議論を前進させる。投票も公開発言を根拠として指定する。これにより
 エージェント固有の非公開memoryを追加せず、応答関係、立場変更、投票整合を公開情報だけで評価する。

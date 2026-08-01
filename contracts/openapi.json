@@ -482,7 +482,7 @@
       },
       "DiscussionSettings": {
         "additionalProperties": false,
-        "description": "議論roundのwire設定.",
+        "description": "議論protocolのwire設定.",
         "properties": {
           "cycles_per_day": {
             "default": 1,
@@ -491,23 +491,95 @@
             "title": "Cycles Per Day",
             "type": "integer"
           },
-          "kind": {
-            "const": "structured",
-            "title": "Kind",
-            "type": "string"
-          },
           "message_max_chars": {
             "maximum": 2000.0,
             "minimum": 1.0,
             "title": "Message Max Chars",
             "type": "integer"
+          },
+          "protocol_id": {
+            "const": "structured_argument",
+            "title": "Protocol Id",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionStageSettings"
+            },
+            "title": "Stages",
+            "type": "array"
           }
         },
         "required": [
-          "kind",
-          "message_max_chars"
+          "protocol_id",
+          "message_max_chars",
+          "stages"
         ],
         "title": "DiscussionSettings",
+        "type": "object"
+      },
+      "DiscussionStageSettings": {
+        "additionalProperties": false,
+        "description": "一つの議論stageを表すwire設定.",
+        "properties": {
+          "actor_order": {
+            "enum": [
+              "rotating",
+              "reverse_opening"
+            ],
+            "title": "Actor Order",
+            "type": "string"
+          },
+          "allowed_relations": {
+            "items": {
+              "enum": [
+                "independent",
+                "answer",
+                "support",
+                "challenge",
+                "revise"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Relations",
+            "type": "array"
+          },
+          "reference_stage": {
+            "anyOf": [
+              {
+                "const": "opening",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Stage"
+          },
+          "stage": {
+            "enum": [
+              "opening",
+              "response"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "submission_mode": {
+            "enum": [
+              "sealed",
+              "ordered"
+            ],
+            "title": "Submission Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "submission_mode",
+          "actor_order",
+          "allowed_relations"
+        ],
+        "title": "DiscussionStageSettings",
         "type": "object"
       },
       "GameListResponse": {
@@ -584,20 +656,25 @@
             ],
             "title": "Evidence Id"
           },
-          "message": {
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "position": {
             "anyOf": [
               {
+                "enum": [
+                  "support",
+                  "oppose",
+                  "undecided"
+                ],
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Message"
-          },
-          "player_id": {
-            "title": "Player Id",
-            "type": "string"
+            "title": "Position"
           },
           "reason": {
             "anyOf": [
@@ -610,22 +687,11 @@
             ],
             "title": "Reason"
           },
-          "response_to_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Response To Id"
-          },
-          "speech_act": {
+          "relation": {
             "anyOf": [
               {
                 "enum": [
-                  "question",
+                  "independent",
                   "answer",
                   "support",
                   "challenge",
@@ -637,9 +703,9 @@
                 "type": "null"
               }
             ],
-            "title": "Speech Act"
+            "title": "Relation"
           },
-          "subject_id": {
+          "response_to_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -648,7 +714,7 @@
                 "type": "null"
               }
             ],
-            "title": "Subject Id"
+            "title": "Response To Id"
           },
           "target_id": {
             "anyOf": [
@@ -661,6 +727,17 @@
             ],
             "title": "Target Id"
           },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          },
           "type": {
             "enum": [
               "speech",
@@ -670,6 +747,17 @@
             ],
             "title": "Type",
             "type": "string"
+          },
+          "utterance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utterance"
           }
         },
         "required": [
@@ -1109,7 +1197,7 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": "0.5.0",
+            "const": "0.6.0",
             "title": "Schema Version",
             "type": "string"
           },
@@ -1793,12 +1881,28 @@
             ],
             "title": "Evidence Id"
           },
-          "message": {
-            "title": "Message",
-            "type": "string"
-          },
           "player_id": {
             "title": "Player Id",
+            "type": "string"
+          },
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "independent",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
             "type": "string"
           },
           "response_to_id": {
@@ -1824,23 +1928,16 @@
             "title": "Round Kind",
             "type": "string"
           },
-          "speech_act": {
-            "enum": [
-              "question",
-              "answer",
-              "support",
-              "challenge",
-              "revise"
-            ],
-            "title": "Speech Act",
-            "type": "string"
-          },
           "speech_id": {
             "title": "Speech Id",
             "type": "string"
           },
-          "subject_id": {
-            "title": "Subject Id",
+          "topic_id": {
+            "title": "Topic Id",
+            "type": "string"
+          },
+          "utterance": {
+            "title": "Utterance",
             "type": "string"
           }
         },
@@ -1850,9 +1947,10 @@
           "round_id",
           "round_kind",
           "player_id",
-          "message",
-          "speech_act",
-          "subject_id"
+          "utterance",
+          "topic_id",
+          "position",
+          "relation"
         ],
         "title": "PlayerObservationSpeech",
         "type": "object"
@@ -4123,8 +4221,24 @@
             ],
             "title": "Evidence Id"
           },
-          "message": {
-            "title": "Message",
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "independent",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
             "type": "string"
           },
           "response_to_id": {
@@ -4138,32 +4252,26 @@
             ],
             "title": "Response To Id"
           },
-          "speech_act": {
-            "enum": [
-              "question",
-              "answer",
-              "support",
-              "challenge",
-              "revise"
-            ],
-            "title": "Speech Act",
-            "type": "string"
-          },
-          "subject_id": {
-            "title": "Subject Id",
+          "topic_id": {
+            "title": "Topic Id",
             "type": "string"
           },
           "type": {
             "const": "speech",
             "title": "Type",
             "type": "string"
+          },
+          "utterance": {
+            "title": "Utterance",
+            "type": "string"
           }
         },
         "required": [
           "type",
-          "message",
-          "speech_act",
-          "subject_id"
+          "utterance",
+          "topic_id",
+          "position",
+          "relation"
         ],
         "title": "SpeechActionRequest",
         "type": "object"

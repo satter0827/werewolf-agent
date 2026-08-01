@@ -13,13 +13,15 @@ from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentDecision,
+    AgentDiscussionPosition,
+    AgentDiscussionRelation,
+    AgentEvidence,
     AgentGameContext,
     AgentPhase,
     AgentPlayerStatus,
     AgentProcedureContext,
     AgentScenario,
     AgentSpeech,
-    AgentSpeechAct,
     AgentVoteRound,
     PlayerProfile,
     VisiblePlayer,
@@ -137,9 +139,10 @@ class _LangChainAgentSession:
             action_type=decision.type.value,
             ability_id=decision.ability_id,
             target_id=decision.target_id,
-            message=decision.message,
-            speech_act=decision.speech_act.value if decision.speech_act is not None else None,
-            subject_id=decision.subject_id,
+            utterance=decision.utterance,
+            topic_id=decision.topic_id,
+            position=decision.position.value if decision.position is not None else None,
+            relation=decision.relation.value if decision.relation is not None else None,
             evidence_id=decision.evidence_id,
             response_to_id=decision.response_to_id,
             reason=(decision.reason or None if decision.type is AgentActionType.VOTE else None),
@@ -188,8 +191,8 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     vote_rounds: list[AgentVoteRound] = []
     for event in request.public_timeline:
         if event.event_type == "speech" and event.actor_id is not None:
-            message = event.payload.get("message")
-            if isinstance(message, str) and message.strip():
+            utterance = event.payload.get("utterance")
+            if isinstance(utterance, str) and utterance.strip():
                 speeches.append(
                     AgentSpeech(
                         day=event.day,
@@ -198,9 +201,10 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
                             or f"speech:event:{event.sequence}"
                         ),
                         player_id=event.actor_id,
-                        message=message,
-                        speech_act=AgentSpeechAct(str(event.payload["speech_act"])),
-                        subject_id=str(event.payload["subject_id"]),
+                        utterance=utterance,
+                        topic_id=str(event.payload["topic_id"]),
+                        position=AgentDiscussionPosition(str(event.payload["position"])),
+                        relation=AgentDiscussionRelation(str(event.payload["relation"])),
                         evidence_id=_optional_text(event.payload.get("evidence_id")),
                         response_to_id=_optional_text(event.payload.get("response_to_id")),
                     )
@@ -277,8 +281,24 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
             for option in request.options
         ],
         legal_targets={option.key: list(option.legal_target_ids) for option in request.options},
-        legal_subjects={option.key: list(option.legal_subject_ids) for option in request.options},
-        legal_evidence={option.key: list(option.legal_evidence_ids) for option in request.options},
+        legal_topics={option.key: list(option.legal_topic_ids) for option in request.options},
+        evidence_options={
+            option.key: [
+                AgentEvidence(
+                    id=item.evidence_id,
+                    kind=("discussion" if item.kind == "discussion" else "discussion_pass"),
+                    actor_id=item.actor_id,
+                    topic_id=item.topic_id,
+                    position=(
+                        AgentDiscussionPosition(item.position)
+                        if item.position is not None
+                        else None
+                    ),
+                )
+                for item in option.evidence_options
+            ]
+            for option in request.options
+        },
         legal_references={
             option.key: list(option.legal_reference_ids) for option in request.options
         },
@@ -308,15 +328,17 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
     if option.legal_target_ids and decision.target_id is None:
         raise AgentDecisionError("llm_target_required")
     if decision.type is AgentActionType.SPEECH:
-        if decision.message is None:
-            raise AgentDecisionError("llm_message_required")
-        if decision.speech_act is None:
-            raise AgentDecisionError("llm_speech_act_required")
-        if decision.subject_id not in option.legal_subject_ids:
-            raise AgentDecisionError("llm_subject_not_legal")
+        if decision.utterance is None:
+            raise AgentDecisionError("llm_utterance_required")
+        if decision.position is None or decision.position.value not in option.legal_positions:
+            raise AgentDecisionError("llm_position_not_legal")
+        if decision.relation is None or decision.relation.value not in option.legal_relations:
+            raise AgentDecisionError("llm_relation_not_legal")
+        if decision.topic_id not in option.legal_topic_ids:
+            raise AgentDecisionError("llm_topic_not_legal")
         if (
             option.message_max_chars is not None
-            and len(decision.message) > option.message_max_chars
+            and len(decision.utterance) > option.message_max_chars
         ):
             raise AgentDecisionError("llm_message_too_long")
         if option.legal_reference_ids and decision.response_to_id is None:
@@ -330,12 +352,12 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
         raise AgentDecisionError("llm_vote_reason_required")
     elif (
         decision.type is AgentActionType.VOTE
-        and option.legal_evidence_ids
-        and decision.evidence_id not in option.legal_evidence_ids
+        and option.evidence_options
+        and decision.evidence_id not in {item.evidence_id for item in option.evidence_options}
     ):
         raise AgentDecisionError("llm_vote_evidence_required")
-    elif decision.message is not None:
-        raise AgentDecisionError("llm_message_not_allowed")
+    elif decision.utterance is not None:
+        raise AgentDecisionError("llm_utterance_not_allowed")
     elif decision.response_to_id is not None:
         raise AgentDecisionError("llm_reference_not_allowed")
 

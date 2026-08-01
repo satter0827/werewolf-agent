@@ -56,10 +56,37 @@ def record_vote(
             MESSAGE_SELF_VOTING_DISABLED,
             context={"player_id": action.player_id, "target_id": target_id},
         )
+    _require_target_evidence(snapshot, action, target_id)
 
     updated_votes = dict(pending_votes)
     updated_votes[action.player_id] = action
     return updated_votes
+
+
+def _require_target_evidence(snapshot: GameState, action: Action, target_id: str) -> None:
+    """投票根拠が対象本人または対象についての公開事実か検証する."""
+    evidence_id = action.evidence_id
+    if evidence_id is None:
+        raise GameError("Vote requires public evidence concerning the selected target.")
+    speech = next(
+        (item for item in snapshot.history.speeches if item.speech_id == evidence_id),
+        None,
+    )
+    if speech is not None:
+        if target_id not in {speech.player_id, speech.topic_id}:
+            raise GameError("Vote evidence must concern the selected target.")
+        return
+    pass_actor = next(
+        (
+            player_id
+            for result in snapshot.history.discussions
+            for player_id in result.passed_player_ids
+            if evidence_id == f"pass:{result.day}:{result.round_id}:{player_id}"
+        ),
+        None,
+    )
+    if pass_actor != target_id:
+        raise GameError("Vote evidence must identify a public discussion fact.")
 
 
 def resolve_votes(

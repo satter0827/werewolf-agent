@@ -116,7 +116,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
 def test_timeline_renders_public_speech_vote_and_night_results() -> None:
     catalog = _catalog()
     turns = [
-        _turn("speech_recorded", {"message": "根拠を聞きたいです。"}),
+        _turn("speech_recorded", {"utterance": "根拠を聞きたいです。"}),
         _turn("vote_submitted", {"target_id": "player-2"}),
         _turn("vote_resolved", {"eliminated_player_id": "player-2", "counts": {"player-2": 2}}),
         _turn("night_resolved", {"killed_player_id": "player-3"}),

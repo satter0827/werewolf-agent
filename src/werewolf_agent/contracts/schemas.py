@@ -63,12 +63,30 @@ RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 SetupRoleCount = Annotated[int, Field(ge=1)]
 
 
-class DiscussionSettings(BaseModel):
-    """議論roundのwire設定."""
+class DiscussionStageSettings(BaseModel):
+    """一つの議論stageを表すwire設定."""
 
-    kind: Literal["structured"]
+    stage: Literal["opening", "response"]
+    submission_mode: Literal["sealed", "ordered"]
+    actor_order: Literal["rotating", "reverse_opening"]
+    allowed_relations: tuple[
+        Literal["independent", "answer", "support", "challenge", "revise"], ...
+    ]
+    reference_stage: Literal["opening"] | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class DiscussionSettings(BaseModel):
+    """議論protocolのwire設定."""
+
+    protocol_id: Literal["structured_argument"]
     message_max_chars: int = Field(ge=1, le=2000)
     cycles_per_day: int = Field(default=1, ge=1, le=10)
+    stages: tuple[DiscussionStageSettings, ...]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -243,7 +261,7 @@ class PlayerGenerationSettings(BaseModel):
 
 
 class GameSetupDocumentRequest(BaseModel):
-    schema_version: Literal["0.5.0"]
+    schema_version: Literal["0.6.0"]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
     player_generation: PlayerGenerationSettings
@@ -455,10 +473,11 @@ class GameRevealAction(BaseModel):
     type: ActionType
     ability_id: str | None = None
     target_id: str | None = None
-    message: str | None = None
+    utterance: str | None = None
     reason: str | None = None
-    speech_act: Literal["question", "answer", "support", "challenge", "revise"] | None = None
-    subject_id: str | None = None
+    topic_id: str | None = None
+    position: Literal["support", "oppose", "undecided"] | None = None
+    relation: Literal["independent", "answer", "support", "challenge", "revise"] | None = None
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -586,9 +605,10 @@ class PlayerObservationSpeech(BaseModel):
     round_id: str
     round_kind: Literal["opening", "response"]
     player_id: str
-    message: str
-    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
-    subject_id: str
+    utterance: str
+    topic_id: str
+    position: Literal["support", "oppose", "undecided"]
+    relation: Literal["independent", "answer", "support", "challenge", "revise"]
     evidence_id: str | None = None
     response_to_id: str | None = None
 
@@ -677,9 +697,10 @@ class SpeechActionRequest(BaseModel):
     """公開発言request."""
 
     type: Literal["speech"]
-    message: str
-    speech_act: Literal["question", "answer", "support", "challenge", "revise"]
-    subject_id: str
+    utterance: str
+    topic_id: str
+    position: Literal["support", "oppose", "undecided"]
+    relation: Literal["independent", "answer", "support", "challenge", "revise"]
     evidence_id: str | None = None
     response_to_id: str | None = None
 

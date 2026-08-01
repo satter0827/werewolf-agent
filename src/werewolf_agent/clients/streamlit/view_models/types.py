@@ -108,6 +108,9 @@ class ObservationView:
     known_role_lines: list[str]
     target_candidates: dict[str, list[str]]
     reference_choices: dict[str, str]
+    reference_topics: dict[str, str]
+    reference_positions: dict[str, str]
+    discussion_topic_ids: list[str]
 
 
 @dataclass(frozen=True)

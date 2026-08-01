@@ -16,9 +16,10 @@ from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentDecision,
+    AgentDiscussionPosition,
+    AgentDiscussionRelation,
     AgentObservation,
     AgentPlayerStatus,
-    AgentSpeechAct,
     VisiblePlayer,
 )
 
@@ -59,13 +60,31 @@ def _fallback_decision(
             return AgentDecision.pass_(player_id=player_id, reason=reason)
         references = observation.legal_references.get(action.key, [])
         reference_id = references[0] if references else None
-        evidence = observation.legal_evidence.get(action.key, [])
-        evidence_id = reference_id or (evidence[-1] if evidence else None)
+        evidence = observation.evidence_options.get(action.key, [])
+        evidence_id = reference_id or (evidence[-1].id if evidence else None)
+        topic_id = subject.id
+        position = AgentDiscussionPosition.SUPPORT
+        relation = AgentDiscussionRelation.INDEPENDENT
+        if reference_id is not None:
+            referenced = next(
+                speech for speech in observation.speeches if speech.speech_id == reference_id
+            )
+            topic_id = referenced.topic_id
+            if referenced.position is AgentDiscussionPosition.UNDECIDED:
+                relation = AgentDiscussionRelation.ANSWER
+            else:
+                relation = AgentDiscussionRelation.CHALLENGE
+                position = (
+                    AgentDiscussionPosition.OPPOSE
+                    if referenced.position is AgentDiscussionPosition.SUPPORT
+                    else AgentDiscussionPosition.SUPPORT
+                )
         return AgentDecision.speech(
             player_id,
             _fallback_speech(subject),
-            speech_act=(AgentSpeechAct.CHALLENGE if reference_id else AgentSpeechAct.QUESTION),
-            subject_id=subject.id,
+            topic_id=topic_id,
+            position=position,
+            relation=relation,
             evidence_id=evidence_id,
             response_to_id=reference_id,
         )
@@ -99,15 +118,10 @@ def _target_decision(
     reason: str,
 ) -> AgentDecision:
     if action.type is AgentActionType.VOTE:
-        evidence = observation.legal_evidence.get(action.key, [])
+        evidence = observation.evidence_options.get(action.key, [])
         evidence_id = next(
-            (
-                speech.speech_id
-                for speech in reversed(observation.speeches)
-                if speech.speech_id in evidence
-                and target_id in {speech.player_id, speech.subject_id}
-            ),
-            evidence[-1] if evidence else None,
+            (item.id for item in reversed(evidence) if target_id in {item.actor_id, item.topic_id}),
+            None,
         )
         return AgentDecision.vote(
             player_id,

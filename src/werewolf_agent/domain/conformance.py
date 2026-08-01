@@ -11,12 +11,13 @@ from werewolf_agent.domain.rule_packs import RulePackProvider, RulePolicyRegistr
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
+    DiscussionPosition,
+    DiscussionRelation,
     GameEvent,
     GameSetup,
     GameState,
     GameView,
     Phase,
-    SpeechAct,
 )
 
 
@@ -96,19 +97,62 @@ def _first_legal_action(game: Game) -> Action | None:
                 if round_ and round_.reference_ids
                 else None
             )
-            subject_id = next(
-                player.id for player in view.players if player.id != player_id and player.is_alive
+            referenced = speeches.get(reference_id) if reference_id is not None else None
+            topic_id = (
+                referenced.topic_id
+                if referenced is not None
+                else next(
+                    player.id
+                    for player in view.players
+                    if player.id != player_id and player.is_alive
+                )
             )
+            relation = DiscussionRelation.INDEPENDENT
+            position = DiscussionPosition.SUPPORT
+            if referenced is not None:
+                if referenced.position is DiscussionPosition.UNDECIDED:
+                    relation = DiscussionRelation.ANSWER
+                else:
+                    relation = DiscussionRelation.CHALLENGE
+                    position = (
+                        DiscussionPosition.OPPOSE
+                        if referenced.position is DiscussionPosition.SUPPORT
+                        else DiscussionPosition.SUPPORT
+                    )
             return Action.speech(
                 player_id,
                 "参照発言への見解を示します。" if reference_id else "契約を確認します。",
-                speech_act=SpeechAct.CHALLENGE if reference_id else SpeechAct.QUESTION,
-                subject_id=subject_id,
+                topic_id=topic_id,
+                position=position,
+                relation=relation,
                 evidence_id=reference_id,
                 response_to_id=reference_id,
             )
         if available.type is ActionType.VOTE:
-            return Action.vote(player_id, targets[0], reason="契約上の判断です。")
+            target_id = targets[0]
+            speech = next(
+                (
+                    item
+                    for item in reversed(view.history.speeches)
+                    if target_id in {item.player_id, item.topic_id}
+                ),
+                None,
+            )
+            if speech is not None:
+                evidence_id = speech.speech_id
+            else:
+                discussion = next(
+                    item
+                    for item in reversed(view.history.discussions)
+                    if target_id in item.passed_player_ids
+                )
+                evidence_id = f"pass:{discussion.day}:{discussion.round_id}:{target_id}"
+            return Action.vote(
+                player_id,
+                target_id,
+                reason="契約上の判断です。",
+                evidence_id=evidence_id,
+            )
         if available.type is ActionType.USE_ABILITY:
             return Action.use_ability(player_id, available.ability_id or "", targets[0])
         return Action.pass_(player_id)

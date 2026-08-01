@@ -67,7 +67,7 @@ def _request(context: AgentContext) -> DecisionRequest:
             players=(me, other),
             known_roles={context.player_id: "villager"},
         ),
-        public_timeline=(PublicTimelineEvent(1, "speech", 1, "p2", {"message": ["確認します"]}),),
+        public_timeline=(PublicTimelineEvent(1, "speech", 1, "p2", {"utterance": ["確認します"]}),),
         options=(DecisionOption("vote", legal_target_ids=("p2",)),),
         decision_seed=17,
         deadline_at=datetime(2030, 1, 1, tzinfo=UTC),
@@ -142,7 +142,7 @@ def test_contract_values_deeply_freeze_diagnostics_and_public_payloads() -> None
     request = _request(AgentContext("s1", "g1", "p1", 11))
 
     assert spec.parameters["nested"] == {"items": (1, 2)}
-    assert request.public_timeline[0].payload["message"] == ("確認します",)
+    assert request.public_timeline[0].payload["utterance"] == ("確認します",)
     with pytest.raises(TypeError):
         spec.parameters["other"] = True  # type: ignore[index]
     with pytest.raises(ValueError, match="mapping keys"):

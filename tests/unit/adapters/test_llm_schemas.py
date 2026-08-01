@@ -12,14 +12,24 @@ def test_pass_schema_forbids_speech_fields() -> None:
     validator = Draft202012Validator(schema)
 
     assert validator.is_valid({"type": "pass"})
-    assert not validator.is_valid({"type": "pass", "message": "見送る", "subject_id": "p2"})
+    assert not validator.is_valid({"type": "pass", "utterance": "見送る", "topic_id": "p2"})
 
 
 def test_response_schema_requires_one_visible_legal_reference() -> None:
     observation = _observation(
         actions=[{"type": "speech"}],
-        legal_subjects={"speech": ["p2", "p3"]},
+        legal_topics={"speech": ["p2", "p3"]},
+        evidence_options={
+            "speech": [
+                _evidence("opening:p2", "p2", "p3", "undecided"),
+                _evidence("opening:p3", "p3", "p2", "support"),
+            ]
+        },
         legal_references={"speech": ["opening:p2", "opening:p3"]},
+        speeches=[
+            _speech("opening:p2", "p2", "p3", "undecided"),
+            _speech("opening:p3", "p3", "p2", "support"),
+        ],
     )
     schema = build_decision_response_schema(observation, _context())
     validator = Draft202012Validator(schema)
@@ -27,9 +37,10 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert validator.is_valid(
         {
             "type": "speech",
-            "message": "その根拠を確認したい",
-            "speech_act": "answer",
-            "subject_id": "p2",
+            "utterance": "その根拠を確認したい",
+            "topic_id": "p3",
+            "position": "support",
+            "relation": "answer",
             "evidence_id": "opening:p2",
             "response_to_id": "opening:p2",
         }
@@ -37,9 +48,10 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert not validator.is_valid(
         {
             "type": "speech",
-            "message": "さらに質問します",
-            "speech_act": "question",
-            "subject_id": "p2",
+            "utterance": "さらに質問します",
+            "topic_id": "p3",
+            "position": "undecided",
+            "relation": "independent",
             "evidence_id": "opening:p2",
             "response_to_id": "opening:p2",
         }
@@ -47,9 +59,10 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert not validator.is_valid(
         {
             "type": "speech",
-            "message": "参照と根拠を混同します",
-            "speech_act": "challenge",
-            "subject_id": "p2",
+            "utterance": "参照と根拠を混同します",
+            "topic_id": "p3",
+            "position": "oppose",
+            "relation": "challenge",
             "evidence_id": "opening:p2",
             "response_to_id": "opening:p3",
         }
@@ -57,17 +70,19 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert not validator.is_valid(
         {
             "type": "speech",
-            "message": "根拠を確認したい",
-            "speech_act": "question",
-            "subject_id": "p2",
+            "utterance": "根拠を確認したい",
+            "topic_id": "p2",
+            "position": "undecided",
+            "relation": "independent",
         }
     )
     assert not validator.is_valid(
         {
             "type": "speech",
-            "message": "根拠を確認したい",
-            "speech_act": "challenge",
-            "subject_id": "p2",
+            "utterance": "根拠を確認したい",
+            "topic_id": "p2",
+            "position": "oppose",
+            "relation": "challenge",
             "evidence_id": "hidden:p4",
             "response_to_id": "hidden:p4",
         }
@@ -88,29 +103,32 @@ def test_vote_schema_constrains_target_and_requires_reason() -> None:
     assert not validator.is_valid({"type": "vote", "target_id": "p2"})
 
 
-def test_evidence_based_opening_requires_evidence_for_non_question_act() -> None:
+def test_opening_constrains_structured_semantics_and_optional_evidence() -> None:
     observation = _observation(
         actions=[{"type": "speech"}],
-        legal_subjects={"speech": ["p2"]},
-        legal_evidence={"speech": ["speech-1"]},
+        legal_topics={"speech": ["p2"]},
+        evidence_options={"speech": [_evidence("speech-1", "p2", "p2", "support")]},
     )
     validator = Draft202012Validator(build_decision_response_schema(observation, _context()))
 
     assert validator.is_valid(
         {
             "type": "speech",
-            "message": "前日の発言を支持します",
-            "speech_act": "support",
-            "subject_id": "p2",
+            "utterance": "前日の発言を踏まえます",
+            "topic_id": "p2",
+            "position": "support",
+            "relation": "independent",
             "evidence_id": "speech-1",
         }
     )
     assert not validator.is_valid(
         {
             "type": "speech",
-            "message": "根拠なしで支持します",
-            "speech_act": "support",
-            "subject_id": "p2",
+            "utterance": "不正な根拠を使います",
+            "topic_id": "p2",
+            "position": "support",
+            "relation": "independent",
+            "evidence_id": "hidden",
         }
     )
 
@@ -120,14 +138,16 @@ def test_vote_schema_binds_evidence_to_selected_target() -> None:
         phase="voting",
         actions=[{"type": "vote"}],
         legal_targets={"vote": ["p2", "p3"]},
-        legal_evidence={"vote": ["speech-p2", "speech-p3"]},
+        evidence_options={
+            "vote": [
+                _evidence("speech-p2", "p2", "p1", "support"),
+                _evidence("speech-p3", "p3", "p1", "support"),
+            ]
+        },
     )
     context = {
         **_context(),
-        "public_evidence": [
-            {"id": "speech-p2", "actor": {"id": "p2"}, "subject": {"id": "p1"}},
-            {"id": "speech-p3", "actor": {"id": "p3"}, "subject": {"id": "p1"}},
-        ],
+        "argument_ledger": [],
     }
     validator = Draft202012Validator(build_decision_response_schema(observation, context))
 
@@ -154,9 +174,10 @@ def _observation(
     phase: str = "day_discussion",
     actions: list[dict[str, object]],
     legal_targets: dict[str, list[str]] | None = None,
-    legal_subjects: dict[str, list[str]] | None = None,
-    legal_evidence: dict[str, list[str]] | None = None,
+    legal_topics: dict[str, list[str]] | None = None,
+    evidence_options: dict[str, list[dict[str, object]]] | None = None,
     legal_references: dict[str, list[str]] | None = None,
+    speeches: list[dict[str, object]] | None = None,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
         {
@@ -170,9 +191,10 @@ def _observation(
             ],
             "available_actions": actions,
             "legal_targets": legal_targets or {},
-            "legal_subjects": legal_subjects or {},
-            "legal_evidence": legal_evidence or {},
+            "legal_topics": legal_topics or {},
+            "evidence_options": evidence_options or {},
             "legal_references": legal_references or {},
+            "speeches": speeches or [],
         }
     )
 
@@ -181,4 +203,26 @@ def _context() -> dict[str, object]:
     return {
         "legal": {"constraints": {"speech_max_chars": 80}},
         "evidence": [],
+    }
+
+
+def _evidence(evidence_id: str, actor_id: str, topic_id: str, position: str) -> dict[str, object]:
+    return {
+        "id": evidence_id,
+        "kind": "discussion",
+        "actor_id": actor_id,
+        "topic_id": topic_id,
+        "position": position,
+    }
+
+
+def _speech(speech_id: str, player_id: str, topic_id: str, position: str) -> dict[str, object]:
+    return {
+        "day": 1,
+        "speech_id": speech_id,
+        "player_id": player_id,
+        "utterance": f"{speech_id}の発言",
+        "topic_id": topic_id,
+        "position": position,
+        "relation": "independent",
     }

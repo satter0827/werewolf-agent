@@ -12,10 +12,12 @@ from werewolf_agent.domain.state import (
     Action,
     ActionType,
     DiscussionConfig,
-    DiscussionKind,
+    DiscussionPosition,
+    DiscussionRelation,
     DiscussionResult,
     DiscussionRound,
     DiscussionRoundKind,
+    DiscussionStageConfig,
     GameConfig,
     GameHistory,
     GameSetup,
@@ -30,7 +32,6 @@ from werewolf_agent.domain.state import (
     PlayerStatus,
     RoleCatalog,
     RoleDefinition,
-    SpeechAct,
     SpeechRecord,
     SubmissionMode,
     VoteResult,
@@ -46,9 +47,10 @@ def domain_to_data(value: Any) -> Any:
         for field_name in (
             "ability_id",
             "target_id",
-            "message",
-            "speech_act",
-            "subject_id",
+            "utterance",
+            "topic_id",
+            "position",
+            "relation",
             "evidence_id",
             "response_to_id",
         ):
@@ -84,9 +86,10 @@ def action_from_data(data: Mapping[str, Any]) -> Action:
     if action_type is ActionType.SPEECH:
         return Action.speech(
             player_id,
-            str(data["message"]),
-            speech_act=SpeechAct(str(data["speech_act"])),
-            subject_id=str(data["subject_id"]),
+            str(data["utterance"]),
+            topic_id=str(data["topic_id"]),
+            position=DiscussionPosition(str(data["position"])),
+            relation=DiscussionRelation(str(data["relation"])),
             evidence_id=_optional_text(data.get("evidence_id")),
             response_to_id=_optional_text(data.get("response_to_id")),
         )
@@ -135,9 +138,29 @@ def game_config_from_data(data: Mapping[str, Any]) -> GameConfig:
         player_count=int(data["player_count"]),
         role_counts={str(key): int(value) for key, value in _mapping(data["role_counts"]).items()},
         discussion=DiscussionConfig(
-            kind=DiscussionKind(str(_mapping(data["discussion"])["kind"])),
+            protocol_id=str(_mapping(data["discussion"])["protocol_id"]),
             message_max_chars=int(_mapping(data["discussion"])["message_max_chars"]),
             cycles_per_day=int(_mapping(data["discussion"])["cycles_per_day"]),
+            stages=tuple(
+                DiscussionStageConfig(
+                    stage=DiscussionRoundKind(str(item["stage"])),
+                    submission_mode=SubmissionMode(str(item["submission_mode"])),
+                    actor_order=str(item["actor_order"]),
+                    reference_stage=(
+                        DiscussionRoundKind(str(item["reference_stage"]))
+                        if item.get("reference_stage") is not None
+                        else None
+                    ),
+                    allowed_relations=tuple(
+                        DiscussionRelation(str(value))
+                        for value in _sequence(item.get("allowed_relations"))
+                    ),
+                )
+                for item in map(
+                    _mapping,
+                    _sequence(_mapping(data["discussion"]).get("stages")),
+                )
+            ),
         ),
         voting=VotingConfig(**dict(_mapping(data["voting"]))),
         night=NightConfig(**dict(_mapping(data["night"]))),
@@ -199,9 +222,10 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
                 round_id=str(item["round_id"]),
                 round_kind=DiscussionRoundKind(str(item["round_kind"])),
                 player_id=str(item["player_id"]),
-                message=str(item["message"]),
-                speech_act=SpeechAct(str(item["speech_act"])),
-                subject_id=str(item["subject_id"]),
+                utterance=str(item["utterance"]),
+                topic_id=str(item["topic_id"]),
+                position=DiscussionPosition(str(item["position"])),
+                relation=DiscussionRelation(str(item["relation"])),
                 evidence_id=_optional_text(item.get("evidence_id")),
                 response_to_id=_optional_text(item.get("response_to_id")),
             )
@@ -213,6 +237,9 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
                 round_id=str(item["round_id"]),
                 kind=DiscussionRoundKind(str(item["kind"])),
                 speech_ids=tuple(str(value) for value in _sequence(item.get("speech_ids"))),
+                passed_player_ids=tuple(
+                    str(value) for value in _sequence(item.get("passed_player_ids"))
+                ),
             )
             for item in map(_mapping, _sequence(data.get("discussions")))
         ),

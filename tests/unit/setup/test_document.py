@@ -52,7 +52,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.5.0"
+        assert setup.schema_version == "0.6.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -132,13 +132,14 @@ def test_structured_discussion_repeats_configured_cycles_with_default_one() -> N
     first_round = game.snapshot().pending_actions.discussion_round
     assert first_round is not None
     for player_id in first_round.actor_order:
-        subject_id = next(item for item in first_round.actor_order if item != player_id)
+        topic_id = next(item for item in first_round.actor_order if item != player_id)
         game.submit(
             Action.speech(
                 player_id,
                 f"{player_id}の意見です。",
-                speech_act="question",
-                subject_id=subject_id,
+                topic_id=topic_id,
+                position="undecided",
+                relation="independent",
             )
         )
     game.advance(random.Random(1))
@@ -248,19 +249,34 @@ def test_packaged_setup_reaches_a_winner_deterministically() -> None:
                         if round_ is not None and round_.reference_ids
                         else None
                     )
-                    subject_id = next(
+                    topic_id = next(
                         item.id for item in view.players if item.id != player.id and item.is_alive
                     )
                     action = Action.speech(
                         player.id,
                         "その発言には異論があります。" if reference_id else "状況を確認します。",
-                        speech_act="challenge" if reference_id else "question",
-                        subject_id=subject_id,
+                        topic_id=(speeches[reference_id].topic_id if reference_id else topic_id),
+                        position=(
+                            "oppose"
+                            if reference_id and speeches[reference_id].position.value == "support"
+                            else "support"
+                        ),
+                        relation="challenge" if reference_id else "independent",
                         evidence_id=reference_id,
                         response_to_id=reference_id,
                     )
                 elif available.type is ActionType.VOTE:
-                    action = Action.vote(player.id, targets[0], reason="状況から判断します。")
+                    evidence_id = next(
+                        speech.speech_id
+                        for speech in reversed(view.history.speeches)
+                        if targets[0] in {speech.player_id, speech.topic_id}
+                    )
+                    action = Action.vote(
+                        player.id,
+                        targets[0],
+                        reason="状況から判断します。",
+                        evidence_id=evidence_id,
+                    )
                 elif available.type is ActionType.USE_ABILITY:
                     action = Action.use_ability(
                         player.id,

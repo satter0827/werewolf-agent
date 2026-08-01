@@ -192,7 +192,9 @@ Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証
 一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず240秒で打ち切る。
 Local smokeは3回の意思決定に制限する。Local `full-game`は`standard_6`を一局だけ実行し、
 128回の意思決定と90分の上限内で、公開根拠の整合、重複発言、投票・再投票、夜行動、勝敗、
-フェーズ別token数と応答時間を記録する。response候補は各話者2件に絞り、全話者が同じ参照へ
+フェーズ別token数と応答時間を記録する。同じLocal LLMへのfull-gameは排他lockで重複実行を拒否し、
+全体期限の残り時間を各model callの期限にする。期限超過、provider error、schema違反、fallbackは
+別々に集計する。response候補は各話者2件に絞り、全話者が同じ参照へ
 集中しないよう話者順で回転する。Streamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
 public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。

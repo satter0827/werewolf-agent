@@ -93,7 +93,8 @@ architectureテストは`scripts/architecture/rules.toml`を正本とし、impor
 照合し、配置だけが存在する未実装を許可しない。
 
 domainテストは状態遷移、復元snapshot、役職構成、終局結果、pending actionの参照整合を
-検証する。リプレイテストはコマンド、event、state、projection、rule snapshotの改変を最初の
+検証する。議論ではstage遷移、topic継承、relationとposition、revision、明示・暗黙pass、
+投票対象とevidenceの整合を検証する。リプレイテストはコマンド、event、state、projection、rule snapshotの改変を最初の
 不一致versionで検出する。
 
 Rule Pack contractテストはCoreと外部providerを同じsetup、seed、合法action選択へ通し、
@@ -107,6 +108,10 @@ Docker、image、隔離Supabase projectを独立して検証する。
 リリースとDeepはlocal Supabaseのschema lint、Data API grant、RLS、policy、公開view、privileged
 functionを検査する。認証user間のbehaviorテストは、本人の操作を許可し、他利用者と匿名userの
 操作を拒否することを確認する。
+
+Local LLMの一局レビューは同一base URLとmodelに対して排他実行し、全体期限の残り時間を各callの
+期限へ反映する。完走、fallback、provider error、schema違反、timeoutを個別集計する。tokenとlatencyは
+ローカル環境の観測値であり、通常品質ゲートや将来providerの固定性能基準にしない。
 
 runnerはgate開始前後のGit revision、tree、index、tracked差分、非ignore未追跡fileを比較する。
 品質実行がリポジトリを変更した場合は`repository-stability`として不合格にする。

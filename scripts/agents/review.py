@@ -9,7 +9,7 @@ import random
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import asdict, fields
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 from urllib.parse import urlsplit
@@ -17,6 +17,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from scripts._infra.artifacts import LAYOUT
+from scripts._infra.locking import LockTimeoutError, exclusive_file_lock
 from scripts._infra.operations import prune_review_runs
 from scripts._infra.process import redact
 from werewolf_agent.adapters.agents.game_context import SetupAgentMetadataProvider
@@ -42,6 +43,7 @@ from werewolf_agent.agents import (
     AgentWorld,
     DecisionOption,
     DecisionRequest,
+    EvidenceOption,
     ObservedPlayer,
     PublicTimelineEvent,
 )
@@ -399,9 +401,10 @@ def _structured_discussion_requests(
             "p2",
             {
                 "speech_id": "opening:p2",
-                "message": "私はまだ判断材料が足りません。",
-                "speech_act": "question",
-                "subject_id": "p1",
+                "utterance": "私はまだ判断材料が足りません。",
+                "topic_id": "p3",
+                "position": "undecided",
+                "relation": "independent",
             },
         ),
         PublicTimelineEvent(
@@ -411,9 +414,10 @@ def _structured_discussion_requests(
             "p3",
             {
                 "speech_id": "opening:p3",
-                "message": "結衣の慎重さが気になります。",
-                "speech_act": "challenge",
-                "subject_id": "p1",
+                "utterance": "結衣の慎重さが気になります。",
+                "topic_id": "p2",
+                "position": "support",
+                "relation": "independent",
                 "evidence_id": "opening:p2",
             },
         ),
@@ -426,7 +430,9 @@ def _structured_discussion_requests(
         (
             DecisionOption(
                 "speech",
-                legal_subject_ids=("p2", "p3"),
+                legal_topic_ids=("p2", "p3"),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("independent",),
                 message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
             ),
         ),
@@ -440,9 +446,14 @@ def _structured_discussion_requests(
         (
             DecisionOption(
                 "speech",
-                legal_subject_ids=("p2", "p3"),
-                legal_evidence_ids=("opening:p2", "opening:p3"),
+                legal_topic_ids=("p2", "p3"),
+                evidence_options=(
+                    EvidenceOption("opening:p2", "discussion", "p2", "p3", "undecided"),
+                    EvidenceOption("opening:p3", "discussion", "p3", "p2", "support"),
+                ),
                 legal_reference_ids=("opening:p2", "opening:p3"),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
                 message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
             ),
         ),
@@ -457,7 +468,10 @@ def _structured_discussion_requests(
             DecisionOption(
                 "vote",
                 legal_target_ids=("p2", "p3"),
-                legal_evidence_ids=("opening:p2", "opening:p3"),
+                evidence_options=(
+                    EvidenceOption("opening:p2", "discussion", "p2", "p3", "undecided"),
+                    EvidenceOption("opening:p3", "discussion", "p3", "p2", "support"),
+                ),
             ),
         ),
         17,
@@ -471,17 +485,19 @@ def _probe_response_is_legal(probe_id: str, response: object) -> bool:
     if probe_id == "opening":
         return (
             response.get("action_type") == "speech"
-            and bool(response.get("message"))
-            and response.get("speech_act") == "question"
-            and response.get("subject_id") in {"p2", "p3"}
+            and bool(response.get("utterance"))
+            and response.get("relation") == "independent"
+            and response.get("position") in {"support", "oppose", "undecided"}
+            and response.get("topic_id") in {"p2", "p3"}
             and response.get("response_to_id") is None
         )
     if probe_id == "response":
         return (
             response.get("action_type") == "speech"
-            and bool(response.get("message"))
-            and response.get("speech_act") in {"answer", "support", "challenge", "revise"}
-            and response.get("subject_id") in {"p2", "p3"}
+            and bool(response.get("utterance"))
+            and response.get("relation") in {"answer", "support", "challenge", "revise"}
+            and response.get("position") in {"support", "oppose", "undecided"}
+            and response.get("topic_id") in {"p2", "p3"}
             and response.get("response_to_id") in {"opening:p2", "opening:p3"}
             and response.get("evidence_id") == response.get("response_to_id")
         )
@@ -504,6 +520,61 @@ def _probe_usage(traces: Sequence[Mapping[str, object]]) -> dict[str, object]:
 
 
 def run_suite(
+    provider: str,
+    suite: str,
+    *,
+    confirm_paid: bool = False,
+    seed: int = 7,
+    deliberation_level: str = "standard",
+    selected_presets: Sequence[str] = (),
+) -> tuple[ReviewState, Path]:
+    """Local providerを排他して固定suiteを実行する."""
+    if provider != "local":
+        return _run_suite_unlocked(
+            provider,
+            suite,
+            confirm_paid=confirm_paid,
+            seed=seed,
+            deliberation_level=deliberation_level,
+            selected_presets=selected_presets,
+        )
+    lock_path = LAYOUT.reviews / "agents" / "local-review.lock"
+    try:
+        with exclusive_file_lock(lock_path, timeout_seconds=0.25):
+            return _run_suite_unlocked(
+                provider,
+                suite,
+                confirm_paid=confirm_paid,
+                seed=seed,
+                deliberation_level=deliberation_level,
+                selected_presets=selected_presets,
+            )
+    except LockTimeoutError:
+        run_dir = _new_run_dir(provider, suite)
+        started_at = datetime.now(UTC)
+        events: list[dict[str, object]] = [
+            {"event": "run.started", "started_at": started_at.isoformat()}
+        ]
+        _write_failure(
+            run_dir,
+            provider,
+            suite,
+            "blocked",
+            AgentReviewBlockedError("Another Local LLM review is already running."),
+            started_at,
+            scenarios=(),
+            private_traces={},
+            events=events,
+            model=local_settings()[1],
+            configuration_checksum="",
+            seed=seed,
+            deliberation_level=deliberation_level,
+        )
+        _finalize_review_run(run_dir)
+        return "blocked", run_dir
+
+
+def _run_suite_unlocked(
     provider: str,
     suite: str,
     *,
@@ -981,6 +1052,17 @@ def _run_preset(
         setup_checksum=setup_checksum,
         mechanics_checksum=mechanics_checksum,
     )
+    deadline_at = (
+        datetime.now(UTC)
+        + timedelta(
+            seconds=max(
+                0.001,
+                duration_limit_seconds - (time.perf_counter() - scenario_started),
+            )
+        )
+        if duration_limit_seconds is not None
+        else None
+    )
     session = SimulationRunner().start(
         game,
         SimulationSpec(
@@ -1002,6 +1084,7 @@ def _run_preset(
             ),
             speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
             response_reference_limit=REVIEW_RESPONSE_REFERENCE_LIMIT,
+            deadline_at=deadline_at,
         ),
     )
     public_timeline = [
@@ -1042,6 +1125,10 @@ def _run_preset(
     traces = [_trace_document(trace) for trace in trace_sink.records]
     fallbacks = sum(bool(trace["fallback_used"]) for trace in traces)
     provider_errors = sum(bool(trace["provider_error"]) for trace in traces)
+    schema_violations = sum(_has_schema_violation(trace) for trace in traces)
+    timeouts = sum(
+        "timeout" in str(trace.get("provider_error") or "").casefold() for trace in traces
+    )
     input_tokens = _sum_available(trace["input_tokens"] for trace in traces)
     output_tokens = _sum_available(trace["output_tokens"] for trace in traces)
     total_tokens = _sum_available(trace["total_tokens"] for trace in traces)
@@ -1077,6 +1164,8 @@ def _run_preset(
         "invocations": len(traces),
         "fallbacks": fallbacks,
         "provider_errors": provider_errors,
+        "schema_violations": schema_violations,
+        "timeouts": timeouts,
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
         "total_tokens": total_tokens,
@@ -1127,13 +1216,16 @@ def _gameplay_metrics(
 ) -> dict[str, object]:
     """一局の会話、根拠、投票、夜、終了整合を決定的に集計する。"""
     speeches: list[str] = []
-    speech_subject: dict[tuple[str, int], str] = {}
+    speech_topic: dict[tuple[str, int], str] = {}
+    latest_position: dict[tuple[str, str], str] = {}
     vote_pairs: list[tuple[str, int, str]] = []
     targets: list[str] = []
-    subjects: list[str] = []
-    speech_acts: dict[str, int] = {}
+    topics: list[str] = []
+    relations: dict[str, int] = {}
+    positions: dict[str, int] = {}
     profile_choices: dict[str, set[str]] = {}
-    missing_subject = 0
+    missing_topic = 0
+    stance_changes = 0
     invalid_evidence = 0
     grounded_decisions = 0
     ungrounded_assertions = 0
@@ -1151,33 +1243,41 @@ def _gameplay_metrics(
         player_id = str(trace.get("player_id") or "")
         day = _as_int(trace.get("day"))
         target_id = str(decision.get("target_id") or "")
-        subject_id = str(decision.get("subject_id") or "")
+        topic_id = str(decision.get("topic_id") or "")
         evidence_id = str(decision.get("evidence_id") or "")
         profile_key = f"{request.get('risk_tolerance', '')}:{request.get('evidence_focus', '')}"
         if action == "speech":
-            message = str(decision.get("message") or "").strip()
-            speech_act = str(decision.get("speech_act") or "")
-            if message:
-                speeches.append(message)
-            if speech_act:
-                speech_acts[speech_act] = speech_acts.get(speech_act, 0) + 1
-            if subject_id:
-                subjects.append(subject_id)
-                speech_subject[(player_id, day)] = subject_id
+            utterance = str(decision.get("utterance") or "").strip()
+            relation = str(decision.get("relation") or "")
+            position = str(decision.get("position") or "")
+            if utterance:
+                speeches.append(utterance)
+            if relation:
+                relations[relation] = relations.get(relation, 0) + 1
+            if position:
+                positions[position] = positions.get(position, 0) + 1
+            if topic_id:
+                topics.append(topic_id)
+                speech_topic[(player_id, day)] = topic_id
+                position_key = (player_id, topic_id)
+                previous_position = latest_position.get(position_key)
+                stance_changes += bool(
+                    previous_position is not None and position and previous_position != position
+                )
+                if position:
+                    latest_position[position_key] = position
             else:
-                missing_subject += 1
+                missing_topic += 1
             if evidence_id:
                 grounded_decisions += 1
-            elif speech_act and speech_act != "question":
-                ungrounded_assertions += 1
         if action == "vote" and target_id:
             vote_pairs.append((player_id, day, target_id))
             if evidence_id:
                 grounded_decisions += 1
             else:
                 ungrounded_assertions += 1
-            previous_subject = speech_subject.get((player_id, day))
-            if previous_subject is not None and previous_subject != target_id:
+            previous_topic = speech_topic.get((player_id, day))
+            if previous_topic is not None and previous_topic != target_id:
                 changed_votes += 1
                 changed_vote_reason_missing += not str(decision.get("reason") or "").strip()
         if target_id:
@@ -1185,12 +1285,12 @@ def _gameplay_metrics(
             profile_choices.setdefault(profile_key, set()).add(target_id)
     duplicate_count = len(speeches) - len(set(speeches))
     consistent_votes = sum(
-        speech_subject.get((player_id, day)) == target_id
+        speech_topic.get((player_id, day)) == target_id
         for player_id, day, target_id in vote_pairs
-        if (player_id, day) in speech_subject
+        if (player_id, day) in speech_topic
     )
     comparable_votes = sum(
-        (player_id, day) in speech_subject for player_id, day, _target_id in vote_pairs
+        (player_id, day) in speech_topic for player_id, day, _target_id in vote_pairs
     )
     fixed_target_rate = (
         max(targets.count(target) for target in set(targets)) / len(targets) if targets else 0.0
@@ -1201,9 +1301,11 @@ def _gameplay_metrics(
         "speech_exact_duplicate_rate": round(duplicate_count / len(speeches), 4)
         if speeches
         else 0.0,
-        "speech_missing_subject_count": missing_subject,
-        "speech_act_counts": dict(sorted(speech_acts.items())),
-        "subject_variety": len(set(subjects)),
+        "speech_missing_topic_count": missing_topic,
+        "discussion_relation_counts": dict(sorted(relations.items())),
+        "discussion_position_counts": dict(sorted(positions.items())),
+        "topic_variety": len(set(topics)),
+        "stance_change_count": stance_changes,
         "invalid_evidence_count": invalid_evidence,
         "grounded_decision_count": grounded_decisions,
         "ungrounded_assertion_count": ungrounded_assertions,
@@ -1227,6 +1329,9 @@ def _timeline_gameplay_metrics(
 ) -> dict[str, object]:
     """公開timelineだけから一局の参照整合と進行結果を検証する。"""
     speech_ids: set[str] = set()
+    evidence_ids: set[str] = set()
+    speech_topics: dict[str, str] = {}
+    speech_positions: dict[str, str] = {}
     integrity_flags: list[str] = []
     response_count = 0
     response_alignment_count = 0
@@ -1246,18 +1351,45 @@ def _timeline_gameplay_metrics(
             speech_id = str(payload.get("speech_id") or "")
             evidence_id = str(payload.get("evidence_id") or "")
             response_to_id = str(payload.get("response_to_id") or "")
-            if evidence_id and evidence_id not in speech_ids:
-                integrity_flags.append(f"unknown_speech_evidence:{evidence_id}")
+            topic_id = str(payload.get("topic_id") or "")
+            position = str(payload.get("position") or "")
+            relation = str(payload.get("relation") or "")
+            round_kind = str(payload.get("round_kind") or "")
+            if evidence_id and evidence_id not in evidence_ids:
+                integrity_flags.append(f"unknown_discussion_evidence:{evidence_id}")
+            if not topic_id or position not in {"support", "oppose", "undecided"}:
+                integrity_flags.append(f"invalid_discussion_semantics:{speech_id}")
+            if round_kind == "opening" and relation != "independent":
+                integrity_flags.append(f"invalid_opening_relation:{speech_id}")
             if response_to_id:
                 response_count += 1
                 if evidence_id == response_to_id:
                     response_alignment_count += 1
                 else:
                     integrity_flags.append(f"response_evidence_mismatch:{speech_id}")
+                if speech_topics.get(response_to_id) != topic_id:
+                    integrity_flags.append(f"response_topic_mismatch:{speech_id}")
+                referenced_position = speech_positions.get(response_to_id)
+                if relation == "support" and referenced_position != position:
+                    integrity_flags.append(f"support_position_mismatch:{speech_id}")
+                if relation == "challenge" and {
+                    referenced_position,
+                    position,
+                } != {"support", "oppose"}:
+                    integrity_flags.append(f"challenge_position_mismatch:{speech_id}")
             if speech_id:
                 if speech_id in speech_ids:
                     integrity_flags.append(f"duplicate_speech_id:{speech_id}")
                 speech_ids.add(speech_id)
+                evidence_ids.add(speech_id)
+                speech_topics[speech_id] = topic_id
+                speech_positions[speech_id] = position
+        elif event_type == "discussion_passed":
+            evidence_id = str(payload.get("evidence_id") or "")
+            if not evidence_id or evidence_id in evidence_ids:
+                integrity_flags.append(f"invalid_discussion_pass:{evidence_id}")
+            else:
+                evidence_ids.add(evidence_id)
         elif event_type == "vote_resolved":
             vote_round_count += 1
             tied = payload.get("tied_player_ids")
@@ -1268,10 +1400,10 @@ def _timeline_gameplay_metrics(
             if payload.get("eliminated_player_id"):
                 elimination_count += 1
             evidence_value = payload.get("evidence_ids")
-            evidence_ids = evidence_value if isinstance(evidence_value, Mapping) else {}
-            for evidence_id in evidence_ids.values():
+            vote_evidence_ids = evidence_value if isinstance(evidence_value, Mapping) else {}
+            for evidence_id in vote_evidence_ids.values():
                 normalized = str(evidence_id or "")
-                if normalized and normalized not in speech_ids:
+                if normalized and normalized not in evidence_ids:
                     integrity_flags.append(f"unknown_vote_evidence:{normalized}")
         elif event_type == "night_resolved":
             night_round_count += 1
@@ -1357,6 +1489,13 @@ def _trace_document(trace: LlmInvocationTrace) -> dict[str, object]:
     return {str(key): value for key, value in document.items()}
 
 
+def _has_schema_violation(trace: Mapping[str, object]) -> bool:
+    """Traceがschemaまたは合法性違反でfallbackしたか返す."""
+    value = trace.get("error_payload")
+    error = value if isinstance(value, Mapping) else {}
+    return bool(error.get("validation_error") or error.get("validation_detail"))
+
+
 def _safe_value(value: object, *, key: str = "") -> Any:
     if any(part in key.casefold() for part in SECRET_KEY_PARTS):
         return "[REDACTED]"
@@ -1388,6 +1527,8 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
         "invocations",
         "fallbacks",
         "provider_errors",
+        "schema_violations",
+        "timeouts",
         "usage_unavailable",
         "prompt_characters",
         "response_characters",
@@ -1413,6 +1554,8 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
                     "invocations",
                     "fallbacks",
                     "provider_errors",
+                    "schema_violations",
+                    "timeouts",
                     "input_tokens",
                     "output_tokens",
                     "total_tokens",
@@ -1455,6 +1598,7 @@ def _summary_markdown(
         f"- scenarios: `{metrics['completed_count']}/{metrics['scenario_count']}` completed",
         f"- invocations: `{metrics['invocations']}`",
         f"- provider errors: `{metrics['provider_errors']}`",
+        f"- schema violations/timeouts: `{metrics['schema_violations']}` / `{metrics['timeouts']}`",
         f"- input/output/total tokens: `{metrics['input_tokens']}` / "
         f"`{metrics['output_tokens']}` / `{metrics['total_tokens']}`",
         f"- LLM latency: `{metrics['latency_ms']}` ms",

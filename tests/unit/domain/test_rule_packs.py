@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Mapping
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +17,8 @@ from werewolf_agent.domain import (
     DeathReaction,
     DeathReactionResolution,
     DiscussionConfig,
+    DiscussionPosition,
+    DiscussionRelation,
     DiscussionResolution,
     DiscussionRound,
     DiscussionRoundKind,
@@ -42,6 +45,35 @@ from werewolf_agent.domain import (
 )
 from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
 from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy
+
+
+def _vote(game: Game, player_id: str, target_id: str) -> Action:
+    """対象に関する公開発言またはpassを根拠に投票する。"""
+    speech = next(
+        (
+            item
+            for item in reversed(game.snapshot().history.speeches)
+            if target_id in {item.player_id, item.topic_id}
+        ),
+        None,
+    )
+    if speech is not None:
+        evidence_id = speech.speech_id
+    else:
+        result = next(
+            item
+            for item in reversed(game.snapshot().history.discussions)
+            if target_id in item.passed_player_ids
+        )
+        evidence_id = f"pass:{result.day}:{result.round_id}:{target_id}"
+    return Action.vote(player_id, target_id, reason="test", evidence_id=evidence_id)
+
+
+def _advance_to_voting(game: Game, *, seed: int = 11) -> None:
+    """全議論stageを暗黙passで完了して投票へ進める。"""
+    while game.snapshot().phase is Phase.DAY_DISCUSSION:
+        game.advance(random.Random(seed))
+        seed += 1
 
 
 def _definition() -> RuleSetDefinition:
@@ -147,6 +179,11 @@ class RedirectVotingPolicy:
             day=state.day,
             votes=votes,
             reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
+            evidence_ids={
+                player_id: action.evidence_id
+                for player_id, action in pending_votes.items()
+                if action.evidence_id is not None
+            },
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -173,6 +210,11 @@ class InvalidVotingPolicy:
             day=state.day,
             votes={player_id: str(action.target_id) for player_id, action in pending_votes.items()},
             reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
+            evidence_ids={
+                player_id: action.evidence_id
+                for player_id, action in pending_votes.items()
+                if action.evidence_id is not None
+            },
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -398,11 +440,11 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
         rules=rules,
         random=random.Random(7),
     )
-    game.advance(random.Random(11))
+    _advance_to_voting(game)
     for action in (
-        Action.vote("p1", "p2", reason="test"),
-        Action.vote("p2", "p1", reason="test"),
-        Action.vote("p3", "p1", reason="test"),
+        _vote(game, "p1", "p2"),
+        _vote(game, "p2", "p1"),
+        _vote(game, "p3", "p1"),
     ):
         game.submit(action)
     return game
@@ -538,12 +580,12 @@ def _game_with_death_reaction_policy(
         rules=rules,
         random=random.Random(7),
     )
-    game.advance(random.Random(11))
+    _advance_to_voting(game)
     for action in (
-        Action.vote("p1", "p2", reason="test"),
-        Action.vote("p2", "p1", reason="test"),
-        Action.vote("p3", "p2", reason="test"),
-        Action.vote("p4", "p2", reason="test"),
+        _vote(game, "p1", "p2"),
+        _vote(game, "p2", "p1"),
+        _vote(game, "p3", "p2"),
+        _vote(game, "p4", "p2"),
     ):
         game.submit(action)
     return game
@@ -751,7 +793,7 @@ def test_discussion_policy_cannot_skip_response_after_opening() -> None:
         for player_id in game.snapshot().players
         if game.view_for(player_id).available_actions
     )
-    subject_id = next(
+    topic_id = next(
         player.id
         for player in game.snapshot().players.values()
         if player.id != actor_id and player.is_alive
@@ -760,8 +802,9 @@ def test_discussion_policy_cannot_skip_response_after_opening() -> None:
         Action.speech(
             actor_id,
             "意見を述べます。",
-            speech_act="question",
-            subject_id=subject_id,
+            topic_id=topic_id,
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
         )
     )
     before = game.snapshot()
@@ -797,6 +840,63 @@ def test_discussion_policy_cannot_start_outside_first_opening() -> None:
     assert random_source.getstate() == random_state
 
 
+def test_discussion_runs_configured_opening_response_cycles() -> None:
+    """一日内で設定回数のopeningとresponseを順に完了する。"""
+    definition = _definition()
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(
+            replace(definition, discussion=DiscussionConfig(cycles_per_day=2))
+        ),
+        random=random.Random(7),
+    )
+
+    while game.snapshot().phase is Phase.DAY_DISCUSSION:
+        submitted = False
+        for player_id in game.snapshot().players:
+            view = game.view_for(player_id)
+            if view.available_actions:
+                round_ = view.discussion_round
+                assert round_ is not None
+                action = (
+                    Action.speech(
+                        player_id,
+                        f"{round_.round_id}の立場です。",
+                        topic_id=next(
+                            player.id
+                            for player in view.players
+                            if player.id != player_id and player.is_alive
+                        ),
+                        position=DiscussionPosition.SUPPORT,
+                        relation=DiscussionRelation.INDEPENDENT,
+                    )
+                    if round_.kind is DiscussionRoundKind.OPENING
+                    else Action.pass_(player_id)
+                )
+                game.submit(action)
+                submitted = True
+        if not submitted:
+            game.advance(random.Random(11))
+
+    results = game.snapshot().history.discussions
+    assert tuple(result.kind.value for result in results) == (
+        "opening",
+        "response",
+        "response",
+        "response",
+        "opening",
+        "response",
+        "response",
+        "response",
+    )
+    assert {result.round_id for result in results} == {
+        "day-1-cycle-1-opening",
+        "day-1-cycle-1-response",
+        "day-1-cycle-2-opening",
+        "day-1-cycle-2-response",
+    }
+
+
 def test_response_must_advance_another_players_opening() -> None:
     """responseは自己反復と再質問を許可せず、他者のopeningへ前進回答する。"""
     game = Game.create(
@@ -807,13 +907,14 @@ def test_response_must_advance_another_players_opening() -> None:
     opening = game.snapshot().pending_actions.discussion_round
     assert opening is not None
     for actor_id in opening.actor_order:
-        subject_id = next(item for item in opening.actor_order if item != actor_id)
+        topic_id = next(item for item in opening.actor_order if item != actor_id)
         game.submit(
             Action.speech(
                 actor_id,
                 "判断材料を確認します。",
-                speech_act="question",
-                subject_id=subject_id,
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
             )
         )
     game.advance(random.Random(11))
@@ -831,26 +932,60 @@ def test_response_must_advance_another_players_opening() -> None:
         for reference_id in response.reference_ids
         if speeches[reference_id].player_id != actor_id
     )
-    subject_id = next(item for item in response.actor_order if item != actor_id)
+    topic_id = speeches[other_reference].topic_id
 
     with pytest.raises(GameError, match="another player's speech"):
         game.submit(
             Action.speech(
                 actor_id,
                 "自分の問いを繰り返します。",
-                speech_act="answer",
-                subject_id=subject_id,
+                topic_id=speeches[own_reference].topic_id,
+                position=DiscussionPosition.OPPOSE,
+                relation=DiscussionRelation.CHALLENGE,
                 evidence_id=own_reference,
                 response_to_id=own_reference,
             )
         )
-    with pytest.raises(GameError, match="act is not supported"):
+    with pytest.raises(GameError, match="relation is not allowed"):
         game.submit(
             Action.speech(
                 actor_id,
                 "別の問いを重ねます。",
-                speech_act="question",
-                subject_id=subject_id,
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    mismatched_topic = next(
+        player_id for player_id in response.actor_order if player_id != topic_id
+    )
+    with pytest.raises(GameError, match="inherit the referenced topic"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "別の対象へ話題を移します。",
+                topic_id=mismatched_topic,
+                position=speeches[other_reference].position,
+                relation=DiscussionRelation.SUPPORT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    opposing_position = (
+        DiscussionPosition.OPPOSE
+        if speeches[other_reference].position is DiscussionPosition.SUPPORT
+        else DiscussionPosition.SUPPORT
+    )
+    with pytest.raises(GameError, match="Support must preserve"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "同意を名乗りながら逆の立場は取れません。",
+                topic_id=topic_id,
+                position=opposing_position,
+                relation=DiscussionRelation.SUPPORT,
                 evidence_id=other_reference,
                 response_to_id=other_reference,
             )
@@ -859,9 +994,10 @@ def test_response_must_advance_another_players_opening() -> None:
         game.submit(
             Action.speech(
                 actor_id,
-                speeches[other_reference].message,
-                speech_act="answer",
-                subject_id=subject_id,
+                speeches[other_reference].utterance,
+                topic_id=topic_id,
+                position=speeches[other_reference].position,
+                relation=DiscussionRelation.SUPPORT,
                 evidence_id=other_reference,
                 response_to_id=other_reference,
             )

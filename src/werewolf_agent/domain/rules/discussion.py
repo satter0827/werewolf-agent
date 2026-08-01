@@ -10,14 +10,15 @@ from werewolf_agent.domain.rule_packs import DiscussionPolicy
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
+    DiscussionMove,
+    DiscussionPosition,
+    DiscussionRelation,
     DiscussionResolution,
     DiscussionResult,
     DiscussionRound,
     DiscussionRoundKind,
     GameEvent,
     GameState,
-    SpeechAct,
-    SpeechIntent,
     SpeechRecord,
     SubmissionMode,
 )
@@ -45,13 +46,14 @@ class CoreDiscussionPolicy:
             )
             if not speeches:
                 return _after_cycle(state, round_, ())
+            response_stage = state.config.discussion.stages[1]
             return DiscussionResolution(
                 speeches,
                 DiscussionRound(
                     round_id=f"day-{state.day}-cycle-{round_.cycle}-response",
                     cycle=round_.cycle,
                     kind=DiscussionRoundKind.RESPONSE,
-                    submission_mode=SubmissionMode.ORDERED,
+                    submission_mode=response_stage.submission_mode,
                     actor_order=tuple(reversed(round_.actor_order)),
                     reference_ids=tuple(speech.speech_id for speech in speeches),
                 ),
@@ -89,11 +91,12 @@ def _opening_round(state: GameState, *, cycle: int) -> DiscussionRound:
     alive = tuple(player.id for player in state.players.values() if player.is_alive)
     offset = (state.day + cycle - 2) % len(alive)
     order = (*alive[offset:], *alive[:offset])
+    opening_stage = state.config.discussion.stages[0]
     return DiscussionRound(
         round_id=f"day-{state.day}-cycle-{cycle}-opening",
         cycle=cycle,
         kind=DiscussionRoundKind.OPENING,
-        submission_mode=SubmissionMode.SEALED,
+        submission_mode=opening_stage.submission_mode,
         actor_order=order,
     )
 
@@ -126,29 +129,25 @@ def record_discussion_submission(
         action.player_id != round_.current_actor_id or pending
     ):
         raise GameError("Discussion action does not match the current speaker.")
-    if isinstance(action.intent, SpeechIntent):
-        if len(action.intent.message) > state.config.discussion.message_max_chars:
+    if isinstance(action.intent, DiscussionMove):
+        if len(action.intent.utterance) > state.config.discussion.message_max_chars:
             raise GameError("Speech message exceeds the configured maximum length.")
-        if (
-            action.intent.subject_id not in state.players
-            or action.intent.subject_id == action.player_id
-        ):
-            raise GameError("Speech subject must identify another visible player.")
-        if round_.kind is DiscussionRoundKind.OPENING and action.intent.response_to_id is not None:
-            raise GameError("Opening speech cannot reference another speech.")
-        if round_.kind is DiscussionRoundKind.OPENING and action.intent.speech_act not in {
-            SpeechAct.QUESTION,
-            SpeechAct.SUPPORT,
-            SpeechAct.CHALLENGE,
-            SpeechAct.REVISE,
-        }:
-            raise GameError("Opening speech act is not supported.")
+        if action.intent.topic_id not in state.players:
+            raise GameError("Discussion topic must identify a visible player.")
         if (
             round_.kind is DiscussionRoundKind.OPENING
-            and action.intent.speech_act is not SpeechAct.QUESTION
-            and action.intent.evidence_id is None
+            and action.intent.topic_id == action.player_id
         ):
-            raise GameError("Non-question opening speech requires public evidence.")
+            raise GameError("Opening topic must identify another visible player.")
+        if round_.kind is DiscussionRoundKind.OPENING and action.intent.response_to_id is not None:
+            raise GameError("Opening speech cannot reference another speech.")
+        if (
+            round_.kind is DiscussionRoundKind.OPENING
+            and action.intent.relation not in state.config.discussion.stages[0].allowed_relations
+        ):
+            raise GameError("Opening discussion move must be independent.")
+        if round_.kind is DiscussionRoundKind.OPENING and action.intent.evidence_id is not None:
+            _require_public_evidence(state, action.intent.evidence_id)
         if round_.kind is DiscussionRoundKind.RESPONSE and (
             action.intent.response_to_id not in round_.reference_ids
         ):
@@ -161,17 +160,15 @@ def record_discussion_submission(
             )
             if referenced.player_id == action.player_id:
                 raise GameError("Response speech must reference another player's speech.")
-            if _normalized_message(referenced.message) == _normalized_message(
-                action.intent.message
+            if referenced.topic_id != action.intent.topic_id:
+                raise GameError("Response discussion move must inherit the referenced topic.")
+            if _normalized_message(referenced.utterance) == _normalized_message(
+                action.intent.utterance
             ):
                 raise GameError("Response speech must contribute new content.")
-        if round_.kind is DiscussionRoundKind.RESPONSE and action.intent.speech_act not in {
-            SpeechAct.ANSWER,
-            SpeechAct.SUPPORT,
-            SpeechAct.CHALLENGE,
-            SpeechAct.REVISE,
-        }:
-            raise GameError("Response speech act is not supported.")
+            if action.intent.relation not in state.config.discussion.stages[1].allowed_relations:
+                raise GameError("Response relation is not allowed by the protocol.")
+            _validate_response_relation(state, action.player_id, referenced, action.intent)
         if round_.kind is DiscussionRoundKind.RESPONSE and (
             action.intent.evidence_id != action.intent.response_to_id
         ):
@@ -191,6 +188,28 @@ def resolve_discussion_round(
     """Policy Outcomeを検証し、公開履歴へ原子的に適用する."""
     resolution = policy.resolve(state, round_, submissions)
     _validate_resolution(state, round_, submissions, resolution)
+    previously_resolved = {
+        speech.player_id for speech in state.history.speeches if speech.round_id == round_.round_id
+    }
+    previously_resolved.update(
+        player_id
+        for result in state.history.discussions
+        if result.round_id == round_.round_id
+        for player_id in result.passed_player_ids
+    )
+    passed_player_ids = tuple(
+        player_id
+        for player_id in round_.actor_order
+        if (
+            submissions.get(player_id) is not None
+            and submissions[player_id].type is ActionType.PASS
+        )
+        or (
+            resolution.completed
+            and player_id not in previously_resolved
+            and player_id not in submissions
+        )
+    )
     history = replace(
         state.history,
         speeches=(*state.history.speeches, *resolution.speeches),
@@ -201,6 +220,7 @@ def resolve_discussion_round(
                 round_id=round_.round_id,
                 kind=round_.kind,
                 speech_ids=tuple(item.speech_id for item in resolution.speeches),
+                passed_player_ids=passed_player_ids,
             ),
         ),
     )
@@ -214,15 +234,31 @@ def resolve_discussion_round(
                 "speech_id": speech.speech_id,
                 "round_id": speech.round_id,
                 "round_kind": speech.round_kind.value,
-                "message": speech.message,
-                "speech_act": speech.speech_act.value,
-                "subject_id": speech.subject_id,
+                "utterance": speech.utterance,
+                "topic_id": speech.topic_id,
+                "position": speech.position.value,
+                "relation": speech.relation.value,
                 "evidence_id": speech.evidence_id,
                 "response_to_id": speech.response_to_id,
             },
         )
         for speech in resolution.speeches
     ]
+    events.extend(
+        GameEvent(
+            event_type="discussion_passed",
+            phase=state.phase,
+            day=state.day,
+            actor_id=player_id,
+            payload={
+                "evidence_id": f"pass:{state.day}:{round_.round_id}:{player_id}",
+                "round_id": round_.round_id,
+                "round_kind": round_.kind.value,
+                "topic_id": player_id,
+            },
+        )
+        for player_id in passed_player_ids
+    )
     return replace(state, history=history), resolution, events
 
 
@@ -231,7 +267,7 @@ def _speech_record(
     round_: DiscussionRound,
     action: Action,
 ) -> SpeechRecord:
-    if not isinstance(action.intent, SpeechIntent):
+    if not isinstance(action.intent, DiscussionMove):
         raise GameError("Expected a speech action.")
     return SpeechRecord(
         day=state.day,
@@ -239,9 +275,10 @@ def _speech_record(
         round_id=round_.round_id,
         round_kind=round_.kind,
         player_id=action.player_id,
-        message=action.intent.message,
-        speech_act=action.intent.speech_act,
-        subject_id=action.intent.subject_id,
+        utterance=action.intent.utterance,
+        topic_id=action.intent.topic_id,
+        position=action.intent.position,
+        relation=action.intent.relation,
         evidence_id=action.intent.evidence_id,
         response_to_id=action.intent.response_to_id,
     )
@@ -249,6 +286,55 @@ def _speech_record(
 
 def _normalized_message(value: str) -> str:
     return " ".join(value.split()).casefold()
+
+
+def _validate_response_relation(
+    state: GameState,
+    actor_id: str,
+    referenced: SpeechRecord,
+    move: DiscussionMove,
+) -> None:
+    """参照発言と応答手の立場関係を検証する."""
+    if move.relation is DiscussionRelation.INDEPENDENT:
+        raise GameError("Response discussion move cannot be independent.")
+    if move.relation is DiscussionRelation.ANSWER:
+        if referenced.position is not DiscussionPosition.UNDECIDED:
+            raise GameError("Answer must reference an undecided opening.")
+        if move.position is DiscussionPosition.UNDECIDED:
+            raise GameError("Answer must state a position.")
+        return
+    if move.relation is DiscussionRelation.SUPPORT:
+        if move.position is not referenced.position:
+            raise GameError("Support must preserve the referenced position.")
+        return
+    if move.relation is DiscussionRelation.CHALLENGE:
+        positions = {move.position, referenced.position}
+        if positions != {DiscussionPosition.SUPPORT, DiscussionPosition.OPPOSE}:
+            raise GameError("Challenge must state the opposing position.")
+        return
+    prior = next(
+        (
+            speech
+            for speech in reversed(state.history.speeches)
+            if speech.player_id == actor_id and speech.topic_id == move.topic_id
+        ),
+        None,
+    )
+    if prior is None or prior.position is move.position:
+        raise GameError("Revision must change the actor's prior position on the topic.")
+
+
+def _require_public_evidence(state: GameState, evidence_id: str) -> None:
+    """Evidence IDが確定済みの公開議論事実を指すことを検証する."""
+    if any(speech.speech_id == evidence_id for speech in state.history.speeches):
+        return
+    if any(
+        evidence_id == f"pass:{result.day}:{result.round_id}:{player_id}"
+        for result in state.history.discussions
+        for player_id in result.passed_player_ids
+    ):
+        return
+    raise GameError("Discussion evidence must identify a public discussion fact.")
 
 
 def _validate_resolution(

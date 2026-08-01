@@ -192,33 +192,46 @@ def _response(
     target: str | None,
     speech: str,
 ) -> DecisionResponse:
-    message = None
+    utterance = None
+    topic_id = None
+    position = None
+    relation = None
     if option.action_type == "speech":
-        message = f"反対です。{speech}" if option.legal_reference_ids else speech
+        utterance = f"反対です。{speech}" if option.legal_reference_ids else speech
+        topic_id = option.legal_topic_ids[0]
+        position = "support"
+        relation = "independent"
+        if option.legal_reference_ids:
+            referenced = next(
+                item
+                for item in option.evidence_options
+                if item.evidence_id == option.legal_reference_ids[0]
+            )
+            topic_id = referenced.topic_id
+            relation = "answer" if referenced.position == "undecided" else "challenge"
+            position = "oppose" if referenced.position == "support" else "support"
         if option.message_max_chars:
-            message = message[: option.message_max_chars]
+            utterance = utterance[: option.message_max_chars]
     evidence_id = None
     if option.action_type == "speech" and option.legal_reference_ids:
         evidence_id = option.legal_reference_ids[0]
-    elif option.action_type == "vote" and option.legal_evidence_ids:
+    elif option.action_type == "vote" and option.evidence_options:
         evidence_id = next(
             (
-                str(event.payload["speech_id"])
-                for event in reversed(request.public_timeline)
-                if event.payload.get("speech_id") in option.legal_evidence_ids
-                and target in {event.actor_id, event.payload.get("subject_id")}
+                item.evidence_id
+                for item in reversed(option.evidence_options)
+                if target in {item.actor_id, item.topic_id}
             ),
-            option.legal_evidence_ids[0],
+            option.evidence_options[0].evidence_id,
         )
     return DecisionResponse(
         action_type=option.action_type,
         ability_id=option.ability_id,
         target_id=target,
-        message=message,
-        speech_act=("challenge" if option.legal_reference_ids else "question")
-        if option.action_type == "speech"
-        else None,
-        subject_id=(option.legal_subject_ids[0] if option.legal_subject_ids else None),
+        utterance=utterance,
+        topic_id=topic_id,
+        position=position,
+        relation=relation,
         evidence_id=evidence_id,
         response_to_id=(option.legal_reference_ids[0] if option.legal_reference_ids else None),
         reason="この対象が最も疑わしいため" if option.action_type == "vote" else None,
@@ -241,9 +254,10 @@ def _response_payload(response: DecisionResponse) -> dict[str, object]:
         "action_type": response.action_type,
         "ability_id": response.ability_id,
         "target_id": response.target_id,
-        "message": response.message,
-        "speech_act": response.speech_act,
-        "subject_id": response.subject_id,
+        "utterance": response.utterance,
+        "topic_id": response.topic_id,
+        "position": response.position,
+        "relation": response.relation,
         "evidence_id": response.evidence_id,
         "response_to_id": response.response_to_id,
         "reason": response.reason,

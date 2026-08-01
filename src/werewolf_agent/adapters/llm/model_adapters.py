@@ -140,15 +140,15 @@ class FakeDecisionModel:
         action = _fake_action(request)
         target_id = _fake_target(request, action)
         response_to_id = _fake_reference(request, action)
-        subject_id = _fake_subject(request, action, target_id, response_to_id)
+        topic_id = _fake_topic(request, action, target_id, response_to_id)
         evidence_id = _fake_evidence_id(
             request,
             action,
-            subject_id=subject_id,
+            topic_id=topic_id,
             target_id=target_id,
             response_to_id=response_to_id,
         )
-        speech_act = _fake_speech_act(request, action, evidence_id, response_to_id)
+        position, relation = _fake_discussion_semantics(request, action, response_to_id)
         names = _player_names(request)
         evidence = _evidence_item(request, evidence_id)
         reference = _evidence_item(request, response_to_id)
@@ -162,8 +162,8 @@ class FakeDecisionModel:
                 "day": request.task.observation.day,
                 "target_id": target_id or "",
                 "target_name": names.get(target_id or "", target_id or ""),
-                "subject_id": subject_id or "",
-                "subject_name": names.get(subject_id or "", subject_id or ""),
+                "topic_id": topic_id or "",
+                "topic_name": names.get(topic_id or "", topic_id or ""),
                 "evidence_id": evidence_id or "",
                 "evidence_actor_name": names.get(evidence_actor_id, evidence_actor_id),
                 "response_to_id": response_to_id or "",
@@ -182,16 +182,17 @@ class FakeDecisionModel:
         payload.pop("player_id", None)
         if action.ability_id is not None:
             payload["ability_id"] = action.ability_id
-        previous_subject = _latest_own_speech_subject(request)
+        previous_subject = _latest_own_speech_topic(request)
         if (
             action.type is AgentActionType.VOTE
             and previous_subject is not None
             and target_id != previous_subject
         ):
             payload["reason"] = "公開情報を見直し、直前の疑い先から判断を更新したため"
-        if action.type is AgentActionType.SPEECH and subject_id is not None:
-            payload["speech_act"] = speech_act
-            payload["subject_id"] = subject_id
+        if action.type is AgentActionType.SPEECH and topic_id is not None:
+            payload["topic_id"] = topic_id
+            payload["position"] = position
+            payload["relation"] = relation
         if (
             action.type in {AgentActionType.SPEECH, AgentActionType.VOTE}
             and evidence_id is not None
@@ -256,7 +257,7 @@ def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | N
     if not candidates:
         return None
     if action.type is AgentActionType.VOTE:
-        previous_subject = _latest_own_speech_subject(request)
+        previous_subject = _latest_own_speech_topic(request)
         if previous_subject in candidates:
             if not _should_change_public_subject(request):
                 return previous_subject
@@ -269,7 +270,7 @@ def _fake_target(request: ModelRequest, action: AgentAvailableAction) -> str | N
     return candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
 
 
-def _fake_subject(
+def _fake_topic(
     request: ModelRequest,
     action: AgentAvailableAction,
     target_id: str | None,
@@ -277,7 +278,7 @@ def _fake_subject(
 ) -> str | None:
     if target_id is not None:
         return target_id
-    candidates = request.task.observation.legal_subjects.get(action.key, [])
+    candidates = request.task.observation.legal_topics.get(action.key, [])
     if not candidates:
         return None
     reference = next(
@@ -289,19 +290,16 @@ def _fake_subject(
         None,
     )
     if reference is not None:
-        if reference.subject_id in candidates:
-            return reference.subject_id
-        if reference.player_id in candidates:
-            return reference.player_id
-    digest = hashlib.sha256(f"{request.task.context_checksum}:subject".encode()).digest()
+        return reference.topic_id
+    digest = hashlib.sha256(f"{request.task.context_checksum}:topic".encode()).digest()
     return candidates[int.from_bytes(digest[:8], "big") % len(candidates)]
 
 
-def _latest_own_speech_subject(request: ModelRequest) -> str | None:
+def _latest_own_speech_topic(request: ModelRequest) -> str | None:
     observation = request.task.observation
     for speech in reversed(observation.speeches):
         if speech.player_id == observation.me.id:
-            return speech.subject_id
+            return speech.topic_id
     return None
 
 
@@ -317,21 +315,20 @@ def _fake_evidence_id(
     request: ModelRequest,
     action: AgentAvailableAction,
     *,
-    subject_id: str | None,
+    topic_id: str | None,
     target_id: str | None,
     response_to_id: str | None,
 ) -> str | None:
     if response_to_id is not None:
         return response_to_id
-    legal_ids = request.task.observation.legal_evidence.get(action.key, [])
-    if not legal_ids:
+    options = request.task.observation.evidence_options.get(action.key, [])
+    if not options:
         return None
-    expected_id = target_id or subject_id
-    for evidence_id in reversed(legal_ids):
-        item = _evidence_item(request, evidence_id)
-        if expected_id in {_nested_id(item, "actor"), _nested_id(item, "subject")}:
-            return evidence_id
-    return legal_ids[-1]
+    expected_id = target_id or topic_id
+    for item in reversed(options):
+        if expected_id in {item.actor_id, item.topic_id}:
+            return item.id
+    return None
 
 
 def _fake_reference(
@@ -347,20 +344,25 @@ def _fake_reference(
     return references[int.from_bytes(digest[:8], "big") % len(references)]
 
 
-def _fake_speech_act(
+def _fake_discussion_semantics(
     request: ModelRequest,
     action: AgentAvailableAction,
-    evidence_id: str | None,
     response_to_id: str | None,
-) -> str | None:
+) -> tuple[str | None, str | None]:
     if action.type is not AgentActionType.SPEECH:
-        return None
-    if response_to_id is not None:
-        return "challenge"
-    if evidence_id is None:
-        return "question"
-    previous_subject = _latest_own_speech_subject(request)
-    return "revise" if previous_subject is not None else "challenge"
+        return None, None
+    if response_to_id is None:
+        digest = hashlib.sha256(f"{request.task.context_checksum}:position".encode()).digest()
+        return ("support", "oppose", "undecided")[digest[0] % 3], "independent"
+    reference = next(
+        speech for speech in request.task.observation.speeches if speech.speech_id == response_to_id
+    )
+    if reference.position.value == "undecided":
+        return "support", "answer"
+    return (
+        "oppose" if reference.position.value == "support" else "support",
+        "challenge",
+    )
 
 
 def _fake_template_key(
@@ -378,7 +380,7 @@ def _fake_template_key(
 def _evidence_item(request: ModelRequest, evidence_id: str | None) -> Mapping[str, object]:
     if evidence_id is None:
         return {}
-    evidence = request.task.context.get("public_evidence")
+    evidence = request.task.context.get("argument_ledger")
     if not isinstance(evidence, list):
         return {}
     return next(

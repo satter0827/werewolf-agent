@@ -305,13 +305,14 @@ def _render_action_form(
         else:
             st.warning(catalog.t(lang, "common.none"))
 
-    message = None
-    speech_act = None
-    subject_id = None
+    utterance = None
+    topic_id = None
+    position = None
+    relation = None
     evidence_id = None
     response_to_id = None
     if selected_action.requires_message:
-        message = st.text_area(
+        utterance = st.text_area(
             catalog.t(lang, "action.message"),
             key=KEY_MESSAGE,
             placeholder=catalog.label(lang, "action", "speech"),
@@ -323,23 +324,36 @@ def _render_action_form(
                 list(screen.observation.reference_choices),
                 format_func=screen.observation.reference_choices.get,
             )
-        subject_id = next(
-            (
-                seat.player_id
-                for seat in screen.seats
-                if seat.player_id != manual_player_id and seat.status == "alive"
-            ),
-            None,
-        )
-        speech_act = "challenge" if response_to_id else "question"
-        evidence_id = str(response_to_id) if response_to_id else None
+        if response_to_id:
+            reference_id = str(response_to_id)
+            topic_id = screen.observation.reference_topics[reference_id]
+            referenced_position = screen.observation.reference_positions[reference_id]
+            if referenced_position == "undecided":
+                relation = "answer"
+                position = "support"
+            else:
+                relation = "challenge"
+                position = "oppose" if referenced_position == "support" else "support"
+            evidence_id = reference_id
+        else:
+            topic_id = st.selectbox(
+                catalog.t(lang, "action.topic"),
+                screen.observation.discussion_topic_ids,
+                format_func=lambda value: target_labels.get(str(value), str(value)),
+            )
+            position = st.selectbox(
+                catalog.t(lang, "action.position"),
+                ["support", "oppose", "undecided"],
+                format_func=lambda value: catalog.t(lang, f"position.{value}"),
+            )
+            relation = "independent"
 
     reason = None
     if selected_action.action_type == "vote":
         reason = st.text_area(catalog.t(lang, "action.reason"), max_chars=120)
 
     missing_target = selected_action.requires_target and not target_id
-    missing_message = selected_action.requires_message and not str(message or "").strip()
+    missing_message = selected_action.requires_message and not str(utterance or "").strip()
     missing_reason = selected_action.action_type == "vote" and not str(reason or "").strip()
     if missing_target:
         st.caption(catalog.t(lang, "action.target_required"))
@@ -361,9 +375,10 @@ def _render_action_form(
                 action_type=selected_action.action_type,
                 ability_id=selected_action.ability_id,
                 target_id=target_id,
-                message=str(message).strip() if message else None,
-                speech_act=speech_act,
-                subject_id=subject_id,
+                utterance=str(utterance).strip() if utterance else None,
+                topic_id=str(topic_id) if topic_id else None,
+                position=str(position) if position else None,
+                relation=relation,
                 evidence_id=evidence_id,
                 response_to_id=str(response_to_id) if response_to_id else None,
                 reason=str(reason).strip() if reason else None,

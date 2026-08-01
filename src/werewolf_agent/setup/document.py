@@ -14,11 +14,14 @@ from werewolf_agent.domain.state import (
 )
 from werewolf_agent.domain.state import (
     DiscussionConfig,
-    DiscussionKind,
+    DiscussionRelation,
+    DiscussionRoundKind,
+    DiscussionStageConfig,
     LifecycleConfig,
     NightConfig,
     Phase,
     RoleCatalog,
+    SubmissionMode,
     VotingConfig,
 )
 from werewolf_agent.domain.state import (
@@ -31,7 +34,7 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.5.0"
+SETUP_SCHEMA_VERSION: Final = "0.6.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(
@@ -316,12 +319,66 @@ class AbilityDefinition:
 
 
 @dataclass(frozen=True)
+class DiscussionStageDefinition:
+    """議論stageの提出順序と参照可能な関係を表す."""
+
+    stage: str
+    submission_mode: str
+    actor_order: str
+    reference_stage: str | None
+    allowed_relations: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, value: object) -> DiscussionStageDefinition:
+        """JSON互換mappingを検証してstage定義を返す."""
+        source = _mapping(value, "discussion stage")
+        _strict(
+            source,
+            {"stage", "submission_mode", "actor_order", "allowed_relations"},
+            "discussion stage",
+            optional={"reference_stage"},
+        )
+        stage = _choice(source["stage"], "stage", {"opening", "response"})
+        relations = tuple(
+            _choice(
+                item,
+                "allowed_relation",
+                {"independent", "answer", "support", "challenge", "revise"},
+            )
+            for item in _sequence(source["allowed_relations"], "allowed_relations")
+        )
+        if not relations or len(relations) != len(set(relations)):
+            raise ValueError("allowed_relations must contain unique values")
+        reference = source.get("reference_stage")
+        return cls(
+            stage,
+            _choice(source["submission_mode"], "submission_mode", {"sealed", "ordered"}),
+            _choice(source["actor_order"], "actor_order", {"rotating", "reverse_opening"}),
+            _choice(reference, "reference_stage", {"opening"}) if reference is not None else None,
+            relations,
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        """永続化できるJSON互換mappingを返す."""
+        result: dict[str, object] = {
+            "stage": self.stage,
+            "submission_mode": self.submission_mode,
+            "actor_order": self.actor_order,
+            "allowed_relations": list(self.allowed_relations),
+        }
+        if self.reference_stage is not None:
+            result["reference_stage"] = self.reference_stage
+        return result
+
+
+@dataclass(frozen=True)
 class DiscussionDefinition:
     """一局で使用する議論方式と公開発言長を表す."""
 
-    kind: str
+    protocol_id: str
     message_max_chars: int
     cycles_per_day: int = 1
+    stages: tuple[DiscussionStageDefinition, ...] = ()
 
     @classmethod
     def from_mapping(cls, value: object) -> DiscussionDefinition:
@@ -329,22 +386,27 @@ class DiscussionDefinition:
         source = _mapping(value, "discussion")
         _strict(
             source,
-            {"kind", "message_max_chars"},
+            {"protocol_id", "message_max_chars", "stages"},
             "discussion",
             optional={"cycles_per_day"},
         )
         return cls(
-            _choice(source["kind"], "kind", {"structured"}),
+            _text(source["protocol_id"], "protocol_id"),
             _integer(source["message_max_chars"], "message_max_chars", minimum=1, maximum=2000),
             _integer(source.get("cycles_per_day", 1), "cycles_per_day", minimum=1, maximum=10),
+            tuple(
+                DiscussionStageDefinition.from_mapping(item)
+                for item in _sequence(source["stages"], "stages")
+            ),
         )
 
     def to_mapping(self) -> dict[str, object]:
         """永続化できるJSON互換mappingを返す."""
         return {
-            "kind": self.kind,
+            "protocol_id": self.protocol_id,
             "message_max_chars": self.message_max_chars,
             "cycles_per_day": self.cycles_per_day,
+            "stages": [stage.to_mapping() for stage in self.stages],
         }
 
 
@@ -523,9 +585,23 @@ class MechanicsDefinition:
             player_count=sum(self.role_counts.values()),
             role_counts=self.role_counts,
             discussion=DiscussionConfig(
-                kind=DiscussionKind(self.discussion.kind),
+                protocol_id=self.discussion.protocol_id,
                 message_max_chars=self.discussion.message_max_chars,
                 cycles_per_day=self.discussion.cycles_per_day,
+                stages=tuple(
+                    DiscussionStageConfig(
+                        DiscussionRoundKind(stage.stage),
+                        SubmissionMode(stage.submission_mode),
+                        stage.actor_order,
+                        (
+                            DiscussionRoundKind(stage.reference_stage)
+                            if stage.reference_stage is not None
+                            else None
+                        ),
+                        tuple(DiscussionRelation(item) for item in stage.allowed_relations),
+                    )
+                    for stage in self.discussion.stages
+                ),
             ),
             voting=VotingConfig(**self.voting.to_mapping()),  # type: ignore[arg-type]
             night=NightConfig(**self.night.to_mapping()),  # type: ignore[arg-type]
