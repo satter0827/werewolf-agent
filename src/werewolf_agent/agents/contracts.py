@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.5.0"
+AGENT_CONTRACT_VERSION = "0.5.1"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -346,14 +346,16 @@ class DecisionResponse:
                 field_name,
                 optional_non_blank(getattr(self, field_name), field_name),
             )
-        if self.confidence is not None and not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be between 0 and 1")
+        if self.confidence is not None:
+            object.__setattr__(
+                self,
+                "confidence",
+                _probability(self.confidence, "confidence"),
+            )
         beliefs = {
-            non_blank(player_id, "belief player ID"): float(value)
+            non_blank(player_id, "belief player ID"): _probability(value, "belief value")
             for player_id, value in self.beliefs.items()
         }
-        if any(not 0 <= value <= 1 for value in beliefs.values()):
-            raise ValueError("belief values must be between 0 and 1")
         object.__setattr__(self, "beliefs", MappingProxyType(beliefs))
         object.__setattr__(self, "metadata", _freeze_mapping(self.metadata))
 
@@ -476,6 +478,15 @@ def _require_positive_integer(value: object, field_name: str) -> None:
 def _require_sha256(value: str, field_name: str) -> None:
     if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise ValueError(f"{field_name} must be a lowercase SHA-256 digest")
+
+
+def _probability(value: object, field_name: str) -> float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise ValueError(f"{field_name} must be numeric")
+    normalized = float(value)
+    if not isfinite(normalized) or not 0 <= normalized <= 1:
+        raise ValueError(f"{field_name} must be finite and between 0 and 1")
+    return normalized
 
 
 def _freeze_mapping(values: Mapping[str, object]) -> Mapping[str, object]:

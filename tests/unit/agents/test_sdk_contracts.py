@@ -149,6 +149,19 @@ def test_contract_rejects_non_string_text_without_leaking_attribute_errors() -> 
         RandomLegalAgentFactory(1)  # type: ignore[arg-type]
 
 
+@pytest.mark.parametrize("value", (float("nan"), float("inf"), float("-inf")))
+@pytest.mark.parametrize("field_name", ("confidence", "beliefs"))
+def test_decision_response_rejects_non_finite_probabilities(
+    value: float,
+    field_name: str,
+) -> None:
+    """外部Agentの非有限確率をartifactへ到達する前に拒否する."""
+    arguments = {field_name: value if field_name == "confidence" else {"p1": value}}
+
+    with pytest.raises(ValueError, match="finite and between 0 and 1"):
+        DecisionResponse("pass", **arguments)  # type: ignore[arg-type]
+
+
 def test_observation_separates_owner_identity_from_public_world() -> None:
     """本人知識と全員に公開する世界観を型付きの別領域として保持する."""
     me = ObservedPlayer("p1", "Alice", True)

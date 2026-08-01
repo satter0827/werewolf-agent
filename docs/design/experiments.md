@@ -52,6 +52,8 @@ LLM judgeは標準評価に使わず、説得や欺瞞の観測値を因果効�
 
 `StandardEvaluator`は条件ごとに合法判断率、fallback率、陣営別勝率、identity faction別生存率、
 controller別・役職別の勝率と生存率、投票対象、能力対象、latency、token、費用を集計する。
+勝率の分母には`SimulationStopReason.FINISHED`のTrialだけを含め、上限到達やcancelによる未完了Trialは
+`incomplete_trial_count`として分離する。生存率は停止時点の運用観測値として全Trialを対象にする。
 対象分布はプレイヤーIDに加えてtargetのidentity factionでも集計する。合法判断率はfallbackへ移る前にAgent応答が
 そのまま採用された割合とする。belief校正を有効にした場合は、Agentが返した各プレイヤーの
 werewolf確率と最終的なidentity factionからBrier scoreを計算する。
