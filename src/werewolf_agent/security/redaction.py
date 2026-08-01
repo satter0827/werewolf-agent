@@ -63,6 +63,10 @@ def _redact_json_assignments(value: str) -> str:
     while match := _SENSITIVE_JSON_KEY_PATTERN.search(value, search_from):
         try:
             _decoded, value_end = _JSON_DECODER.raw_decode(value, match.end())
+        except RecursionError:
+            output.append(value[copied_until : match.end()])
+            output.append(json.dumps(REDACTED, ensure_ascii=False))
+            return "".join(output)
         except json.JSONDecodeError:
             search_from = match.end()
             continue

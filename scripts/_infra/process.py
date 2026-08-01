@@ -142,6 +142,10 @@ def _redact_complete_json_values(value: str) -> str:
             continue
         try:
             _decoded, value_end = _JSON_DECODER.raw_decode(value, match.end())
+        except RecursionError:
+            output.append(value[copied_until : match.end()])
+            output.append('"[REDACTED]"')
+            return "".join(output)
         except json.JSONDecodeError:
             search_from = match.end()
             continue
