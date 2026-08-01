@@ -74,8 +74,26 @@ def _assert_legal_response(request: DecisionRequest, response: DecisionResponse)
                 len(cast(str, response.message)) <= option.message_max_chars,
                 "speech response must respect message_max_chars",
             )
+        if option.legal_reference_ids:
+            _require(
+                response.response_to_id in option.legal_reference_ids,
+                "speech response must use one of the legal references",
+            )
+        else:
+            _require(
+                response.response_to_id is None,
+                "opening speech response must not contain a reference",
+            )
     else:
         _require(response.message is None, "non-speech response must not contain a message")
+        _require(
+            response.response_to_id is None,
+            "non-speech response must not contain a reference",
+        )
+    if response.action_type == "vote":
+        _require(response.reason is not None, "vote response must contain a reason")
+    else:
+        _require(response.reason is None, "non-vote response must not contain a reason")
 
 
 def _assert_target(option: DecisionOption, response: DecisionResponse) -> None:

@@ -71,6 +71,19 @@ class CoreDiscussionPolicy:
         return DiscussionResolution(speeches, replace(round_, cursor=next_cursor), False)
 
 
+def start_discussion(state: GameState, *, policy: DiscussionPolicy) -> DiscussionRound:
+    """Policyが返す一日の初期roundをDomain不変条件で検証する."""
+    round_ = policy.start(state)
+    if not isinstance(round_, DiscussionRound):
+        raise TypeError("discussion policy must return DiscussionRound")
+    alive_ids = {player.id for player in state.players.values() if player.is_alive}
+    if round_.cycle != 1 or round_.kind is not DiscussionRoundKind.OPENING or round_.cursor != 0:
+        raise ValueError("discussion must start from the first opening round")
+    if set(round_.actor_order) != alive_ids:
+        raise ValueError("discussion must start with every alive player")
+    return round_
+
+
 def _opening_round(state: GameState, *, cycle: int) -> DiscussionRound:
     alive = tuple(player.id for player in state.players.values() if player.is_alive)
     offset = (state.day + cycle - 2) % len(alive)
@@ -251,12 +264,36 @@ def _validate_resolution(
             or resolution.next_round.cursor != 0
         ):
             raise ValueError("discussion next cycle must start from opening")
+        if next_cycle and not _round_can_end(round_, resolution):
+            raise ValueError("discussion cannot advance before the active round is complete")
+        if next_cycle and resolution.next_round.cycle > state.config.discussion.cycles_per_day:
+            raise ValueError("discussion cannot exceed the configured cycle count")
         if set(resolution.next_round.actor_order) != set(round_.actor_order):
             raise ValueError("discussion next round must preserve eligible actors")
+        if (
+            same_cycle
+            and round_.kind is DiscussionRoundKind.RESPONSE
+            and resolution.next_round.cursor >= len(round_.actor_order)
+        ):
+            raise ValueError("discussion response cannot continue past its final actor")
+    elif not _round_can_end(round_, resolution):
+        raise ValueError("discussion cannot complete before the active round is complete")
+    elif round_.cycle != state.config.discussion.cycles_per_day:
+        raise ValueError("discussion cannot complete before the configured cycle count")
+
+
+def _round_can_end(
+    round_: DiscussionRound,
+    resolution: DiscussionResolution,
+) -> bool:
+    if round_.kind is DiscussionRoundKind.OPENING:
+        return not resolution.speeches
+    return round_.cursor == len(round_.actor_order) - 1
 
 
 __all__ = [
     "CoreDiscussionPolicy",
     "record_discussion_submission",
     "resolve_discussion_round",
+    "start_discussion",
 ]

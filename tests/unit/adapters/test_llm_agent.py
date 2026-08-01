@@ -39,7 +39,7 @@ def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> No
     assert response.action_type == "vote"
     assert response.target_id == "p2"
     assert response.metadata == {"reason": "公開発言から判断"}
-    assert factory.spec.implementation_version == "1.3.0"
+    assert factory.spec.implementation_version == "1.4.0"
     assert factory.spec.parameters["provider"] == "openai-compatible"
     assert factory.spec.parameters["base_url"] == "http://localhost:1234/v1"
     assert str(factory.spec.parameters["decision_model_type"]).endswith(
@@ -82,6 +82,75 @@ def test_langchain_session_rejects_request_for_another_context() -> None:
 
     with pytest.raises(ValueError, match="does not belong"):
         factory.create(context).decide(_request(other))
+
+
+def test_langchain_session_preserves_model_selected_discussion_reference() -> None:
+    factory = _factory(
+        '{"type":"speech","message":"二つ目の意見に応答します","response_to_id":"speech-2"}'
+    )
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = _request(context)
+    request = replace(
+        request,
+        observation=replace(request.observation, phase="day_discussion"),
+        public_timeline=(
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {"speech_id": "speech-1", "message": "一つ目"},
+            ),
+            PublicTimelineEvent(
+                2,
+                "speech",
+                1,
+                "p2",
+                {"speech_id": "speech-2", "message": "二つ目"},
+            ),
+        ),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_reference_ids=("speech-1", "speech-2"),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.response_to_id == "speech-2"
+
+
+def test_langchain_session_rejects_model_reference_outside_visible_options() -> None:
+    factory = _factory('{"type":"speech","message":"応答します","response_to_id":"hidden-speech"}')
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = replace(
+        _request(context),
+        observation=replace(_request(context).observation, phase="day_discussion"),
+        public_timeline=(
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {"speech_id": "speech-1", "message": "公開意見"},
+            ),
+        ),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_reference_ids=("speech-1",),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    with pytest.raises(AgentDecisionError) as captured:
+        factory.create(context).decide(request)
+
+    assert captured.value.code == "llm_decision_failed"
 
 
 def test_langchain_session_rejects_preflight_response_outside_options() -> None:

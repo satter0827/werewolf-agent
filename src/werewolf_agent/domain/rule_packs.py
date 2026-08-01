@@ -27,10 +27,10 @@ from werewolf_agent.domain.state import (
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.7.0"
+RULE_PACK_CONTRACT_VERSION = "0.8.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.7.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.7.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.8.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.8.0").hexdigest()
 
 
 @dataclass(frozen=True)
