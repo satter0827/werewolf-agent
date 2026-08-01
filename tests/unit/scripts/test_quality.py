@@ -59,7 +59,7 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
     assert settings.max_jobs == 4
     assert settings.benchmark_min_rounds == 5
     assert settings.timeouts == {
-        "focus": 120,
+        "focus": 180,
         "check": 300,
         "release": 900,
         "deep": 1200,
@@ -306,7 +306,7 @@ def test_quality_environment_cannot_override_isolation_invariants() -> None:
 
     environment = quality_environment(
         extra={
-            "OPENAI_API_KEY": "paid-secret",
+            "OPENAI_API_KEY": "paid-secret",  # pragma: allowlist secret
             "HTTPS_PROXY": "https://external-proxy.example",
             "WEREWOLF_LLM_PROVIDER": "openai",
             "WEREWOLF_LOCAL_LLM_BASE_URL": "http://127.0.0.1:1234/v1",
@@ -329,7 +329,7 @@ def test_quality_environment_keeps_only_explicit_public_supabase_keys() -> None:
     """local E2Eに必要な公開鍵だけをsecret除外規則から外す。"""
     environment = quality_environment(
         extra={
-            "OPENAI_API_KEY": "paid-secret",
+            "OPENAI_API_KEY": "paid-secret",  # pragma: allowlist secret
             "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "local-public-key",
         }
     )
@@ -425,12 +425,15 @@ def test_redact_artifacts_keeps_json_valid_and_masks_failure_details(
 ) -> None:
     """失敗時のJUnitやJSONにも設定値とprivate stateを残さない。"""
 
+    private_message = (
+        "runner failed: token=private-value\nnext diagnostic"  # pragma: allowlist secret
+    )
     report = tmp_path / "result.json"
     report.write_text(
         json.dumps(
             {
-                "message": "runner failed: token=private-value\nnext diagnostic",
-                "openai_api_key": "paid-secret",
+                "message": private_message,
+                "openai_api_key": "paid-secret",  # pragma: allowlist secret
                 "role": "werewolf",
                 "state": "failed",
             }
@@ -773,7 +776,7 @@ def test_run_command_keeps_raw_output_internal_and_redacts_log() -> None:
     """接続値は内部処理へ渡し、同じ値をlogへは残さない。"""
 
     log = StringIO()
-    dsn = "postgresql://postgres:local-password@127.0.0.1:5432/postgres"
+    dsn = "postgresql://postgres:local-password@127.0.0.1:5432/postgres"  # pragma: allowlist secret
     result = run_command(
         [sys.executable, "-c", f"print({dsn!r})"],
         timeout_seconds=10,

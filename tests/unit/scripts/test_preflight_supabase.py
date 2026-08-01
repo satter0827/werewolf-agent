@@ -16,6 +16,10 @@ from scripts.supabase.preflight import (
     select_status_environment,
 )
 
+LOCAL_DATABASE_DSN = (
+    "postgresql://postgres:local@127.0.0.1:54322/postgres"  # pragma: allowlist secret
+)
+
 
 def test_preflight_import_does_not_load_process_monitor_dependency() -> None:
     """隔離project生成はprocess監視dependencyなしで読み込める。"""
@@ -99,7 +103,7 @@ def test_parse_status_environment_accepts_only_env_assignments() -> None:
             'PUBLISHABLE_KEY="local-key"',
             'SERVICE_ROLE_KEY="must-not-leak"',
             "Stopped services: analytics",
-            'DB_URL="postgresql://postgres:local@127.0.0.1:54322/postgres"',
+            f'DB_URL="{LOCAL_DATABASE_DSN}"',
         ]
     )
 
@@ -107,12 +111,12 @@ def test_parse_status_environment_accepts_only_env_assignments() -> None:
         "API_URL": "http://127.0.0.1:54321",
         "PUBLISHABLE_KEY": "local-key",
         "SERVICE_ROLE_KEY": "must-not-leak",
-        "DB_URL": "postgresql://postgres:local@127.0.0.1:54322/postgres",
+        "DB_URL": LOCAL_DATABASE_DSN,
     }
     assert select_status_environment(output) == {
         "API_URL": "http://127.0.0.1:54321",
         "PUBLISHABLE_KEY": "local-key",
-        "DB_URL": "postgresql://postgres:local@127.0.0.1:54322/postgres",
+        "DB_URL": LOCAL_DATABASE_DSN,
     }
 
 
@@ -375,7 +379,7 @@ def test_preflight_blocks_when_dotenv_connection_does_not_match_local_supabase(
                 0.0,
                 'API_URL="http://127.0.0.1:54321"\n'
                 'PUBLISHABLE_KEY="local-key"\n'
-                'DB_URL="postgresql://postgres:local@127.0.0.1:54322/postgres"\n',
+                f'DB_URL="{LOCAL_DATABASE_DSN}"\n',
             )
         if command[:3] == ["supabase", "migration", "up"]:
             return CommandResult(command, 0, 0.0, "migrated")
@@ -433,7 +437,7 @@ def test_isolated_quality_preflight_does_not_use_repository_dotenv(
                 0.0,
                 'API_URL="http://127.0.0.1:54321"\n'
                 'PUBLISHABLE_KEY="local-key"\n'
-                'DB_URL="postgresql://postgres:local@127.0.0.1:54322/postgres"\n',
+                f'DB_URL="{LOCAL_DATABASE_DSN}"\n',
             )
         if command[:3] == ["supabase", "migration", "up"]:
             return CommandResult(command, 0, 0.0, "migrated")

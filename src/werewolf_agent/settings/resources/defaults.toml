@@ -59,7 +59,7 @@ streamlit_random_seed_max = 1000000
 streamlit_page_title = "Werewolf Agent"
 streamlit_service_name = "werewolf-agent-streamlit"
 
-reveal_api_enabled = true
+reveal_api_enabled = false
 api_game_list_default_limit = 20
 api_game_list_max_limit = 100
 api_timeline_default_limit = 100

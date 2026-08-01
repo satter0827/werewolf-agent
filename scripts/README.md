@@ -24,6 +24,17 @@ uv run --no-project python -m scripts.environment setup quality
 `setup development|quality`は隔離Supabase projectで必要imageを準備し、project IDとworkdirを
 指定して停止する。Docker Desktopは自動起動しない。
 
+## Security検査
+
+依存監査はlock済みの全extraとdependency groupをhash付きで対象にする。脆弱性databaseへ
+接続できない場合も成功として扱わない。secret検査はGit管理中と追加前のfilesを対象にし、
+`.secrets.baseline`に監査済みのテスト用ダミー値以外の候補を失敗させる。
+
+```powershell
+uv run --no-sync python -m scripts.security dependencies
+uv run --no-sync python -m scripts.security secrets
+```
+
 ## 品質プロファイル
 
 ```powershell

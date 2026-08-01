@@ -54,7 +54,7 @@ default_pool_size = 20
 max_client_conn = 100
 
 # [db.vault]
-# secret_key = "env(SECRET_VALUE)"
+# secret_key = "env(SECRET_VALUE)" # pragma: allowlist secret
 
 [db.migrations]
 # If disabled, migrations will be skipped during a db push or reset.
@@ -98,7 +98,7 @@ port = 54323
 # External URL of the API server used by clients.
 api_url = "http://127.0.0.1"
 # OpenAI API Key to use for Supabase AI in the Supabase Studio.
-openai_api_key = "env(OPENAI_API_KEY)"
+openai_api_key = "env(OPENAI_API_KEY)" # pragma: allowlist secret
 
 # Email testing server. Emails sent with the local dev setup are not actually sent - rather, they
 # are monitored, and you can view the emails that would have been sent from the web interface.
@@ -225,7 +225,7 @@ double_confirm_changes = true
 # If enabled, users need to confirm their email address before signing in.
 enable_confirmations = false
 # If enabled, users will need to reauthenticate or have logged in recently to change their password.
-secure_password_change = false
+secure_password_change = false # pragma: allowlist secret
 # Controls the minimum amount of time that must pass before sending another signup confirmation or password reset email.
 max_frequency = "1s"
 # Number of characters used in the email OTP.
@@ -323,7 +323,7 @@ max_frequency = "5s"
 enabled = false
 client_id = ""
 # DO NOT commit your OAuth provider secret to git. Use environment variable substitution instead:
-secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)"
+secret = "env(SUPABASE_AUTH_EXTERNAL_APPLE_SECRET)" # pragma: allowlist secret
 # Overrides the default auth callback URL derived from auth.external_url.
 redirect_uri = ""
 # Overrides the default auth provider URL. Used to support self-hosted gitlab, single-tenant Azure,
@@ -383,7 +383,7 @@ inspector_port = 8083
 deno_version = 2
 
 # [edge_runtime.secrets]
-# secret_key = "env(SECRET_VALUE)"
+# secret_key = "env(SECRET_VALUE)" # pragma: allowlist secret
 
 [analytics]
 enabled = true
@@ -402,7 +402,7 @@ s3_region = "env(S3_REGION)"
 # Configures AWS_ACCESS_KEY_ID for S3 bucket
 s3_access_key = "env(S3_ACCESS_KEY)"
 # Configures AWS_SECRET_ACCESS_KEY for S3 bucket
-s3_secret_key = "env(S3_SECRET_KEY)"
+s3_secret_key = "env(S3_SECRET_KEY)" # pragma: allowlist secret
 
 # [experimental.pgdelta]
 # When enabled, pg-delta becomes the active engine for supported schema flows.
