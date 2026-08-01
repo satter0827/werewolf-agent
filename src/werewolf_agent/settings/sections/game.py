@@ -20,6 +20,14 @@ class GameSettings(BaseModel):
         ge=MIN_PLAYER_COUNT,
         validation_alias="WEREWOLF_GAME_MAX_PLAYERS",
     )
+    game_setup_max_revisions: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_GAME_SETUP_MAX_REVISIONS",
+    )
+    game_setup_max_saved_setups: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_GAME_SETUP_MAX_SAVED_SETUPS",
+    )
     game_supported_agent_name: str = Field(
         validation_alias="WEREWOLF_GAME_SUPPORTED_AGENT_NAME",
     )

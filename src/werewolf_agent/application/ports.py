@@ -166,11 +166,14 @@ class SetupRepository(Protocol):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_setups: int,
     ) -> SavedSetupRevision:
         """所有setupと最初のimmutable revisionを作成して返す."""
         ...
 
-    def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
+    def list_setups(
+        self, *, owner_user_id: str, limit: int, offset: int
+    ) -> list[SavedSetupSummary]:
         """指定した利用者が所有するsetup概要だけを返す."""
         ...
 
@@ -189,6 +192,8 @@ class SetupRepository(Protocol):
         setup_id: str,
         *,
         owner_user_id: str,
+        limit: int,
+        offset: int,
     ) -> list[SavedSetupRevision]:
         """所有する一つのsetupのimmutable revisionを返す."""
         ...
@@ -202,6 +207,7 @@ class SetupRepository(Protocol):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_revisions: int,
     ) -> SavedSetupRevision:
         """楽観的並行性検証後にrevisionを追加して返す."""
         ...

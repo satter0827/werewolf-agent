@@ -30,7 +30,11 @@ from werewolf_agent.application.setup_options import (
     setup_catalog_options,
     validate_setup_document,
 )
-from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
+from werewolf_agent.application.setup_records import (
+    SavedSetupRevision,
+    SavedSetupRevisionPage,
+    SavedSetupSummaryPage,
+)
 from werewolf_agent.application.validation import non_blank
 from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
@@ -113,14 +117,35 @@ class SetupApplication:
                 document=document,
                 setup_checksum=setup_checksum,
                 mechanics_checksum=mechanics_checksum,
+                max_setups=self._config.setup_max_saved_setups,
             )
         )
 
-    def list_setups(self, actor: Actor) -> list[SavedSetupSummary]:
+    def list_setups(
+        self, actor: Actor, *, limit: int | None = None, offset: int = 0
+    ) -> SavedSetupSummaryPage:
         """ログイン済みactorが所有するsetup概要を返す."""
         self._require_member(actor)
-        return public_result(
-            lambda: self._require_repository().list_setups(owner_user_id=actor.user_id)
+        if offset < 0 or (limit is not None and limit < 1):
+            raise AppError(
+                "ページ指定が正しくありません。",
+                code=ErrorCode.REQUEST_VALIDATION_FAILED,
+            )
+        page_limit = min(
+            limit or self._config.setup_list_default_limit,
+            self._config.setup_list_max_limit,
+        )
+        rows = public_result(
+            lambda: self._require_repository().list_setups(
+                owner_user_id=actor.user_id,
+                limit=page_limit + 1,
+                offset=offset,
+            )
+        )
+        has_more = len(rows) > page_limit
+        return SavedSetupSummaryPage(
+            items=rows[:page_limit],
+            next_offset=offset + page_limit if has_more else None,
         )
 
     def get(
@@ -143,11 +168,37 @@ class SetupApplication:
             raise ResourceNotFoundError("指定したゲーム設定が見つかりません。")
         return result
 
-    def revisions(self, actor: Actor, setup_id: str) -> list[SavedSetupRevision]:
+    def revisions(
+        self,
+        actor: Actor,
+        setup_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> SavedSetupRevisionPage:
         """所有するsetupのimmutableなrevision履歴を返す."""
         self.get(actor, setup_id)
-        return public_result(
-            lambda: self._require_repository().list_revisions(setup_id, owner_user_id=actor.user_id)
+        if offset < 0 or (limit is not None and limit < 1):
+            raise AppError(
+                "ページ指定が正しくありません。",
+                code=ErrorCode.REQUEST_VALIDATION_FAILED,
+            )
+        page_limit = min(
+            limit or self._config.setup_revision_default_limit,
+            self._config.setup_revision_max_limit,
+        )
+        rows = public_result(
+            lambda: self._require_repository().list_revisions(
+                setup_id,
+                owner_user_id=actor.user_id,
+                limit=page_limit + 1,
+                offset=offset,
+            )
+        )
+        has_more = len(rows) > page_limit
+        return SavedSetupRevisionPage(
+            items=rows[:page_limit],
+            next_offset=offset + page_limit if has_more else None,
         )
 
     def save_revision(
@@ -170,6 +221,7 @@ class SetupApplication:
                 document=document,
                 setup_checksum=setup_checksum,
                 mechanics_checksum=mechanics_checksum,
+                max_revisions=self._config.setup_max_revisions,
             )
         )
 

@@ -21,7 +21,13 @@ class AdminSessionUnavailable(Exception):
 class AdminSessionVerifier(Protocol):
     """Verify current server-side state for a sensitive administrator session."""
 
-    def verify(self, token: str, *, expected_user_id: str) -> bool:
+    def verify(
+        self,
+        token: str,
+        *,
+        expected_user_id: str,
+        expected_session_id: str,
+    ) -> bool:
         """Return whether Auth still recognizes the administrator session."""
 
 
@@ -121,7 +127,8 @@ class SupabaseJwtAuthenticator:
             return False
         if claims.get("aal") != "aal2":
             return False
-        if not str(claims.get("session_id") or "").strip():
+        session_id = str(claims.get("session_id") or "").strip()
+        if not session_id:
             return False
         issued_at = claims.get("iat")
         if isinstance(issued_at, bool) or not isinstance(issued_at, (int, float)):
@@ -133,7 +140,11 @@ class SupabaseJwtAuthenticator:
         if verifier is None:
             return False
         try:
-            return verifier.verify(token, expected_user_id=user_id)
+            return verifier.verify(
+                token,
+                expected_user_id=user_id,
+                expected_session_id=session_id,
+            )
         except AdminSessionUnavailable:
             return False
 

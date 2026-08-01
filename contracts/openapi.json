@@ -39,18 +39,6 @@
             ],
             "title": "Day"
           },
-          "error": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
           "game_id": {
             "title": "Game Id",
             "type": "string"
@@ -2991,6 +2979,18 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
           }
         },
         "required": [
@@ -3023,6 +3023,35 @@
           "revision"
         ],
         "title": "SavedSetupRequest",
+        "type": "object"
+      },
+      "SavedSetupRevisionListResponse": {
+        "description": "Bounded immutable revision page for one owned setup.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SavedSetupRevisionResponse"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_offset": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Offset"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SavedSetupRevisionListResponse",
         "type": "object"
       },
       "SavedSetupRevisionResponse": {
@@ -6971,6 +7000,36 @@
     "/api/v1/setups": {
       "get": {
         "operationId": "setup_list",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -7646,6 +7705,34 @@
               "title": "Setup Id",
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 1,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Limit"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
           }
         ],
         "responses": {
@@ -7653,11 +7740,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/SavedSetupRevisionResponse"
-                  },
-                  "title": "Response Setup Revision List",
-                  "type": "array"
+                  "$ref": "#/components/schemas/SavedSetupRevisionListResponse"
                 }
               }
             },

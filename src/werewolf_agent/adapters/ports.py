@@ -14,6 +14,7 @@ from werewolf_agent.contracts.api import (
     ReplayVerificationResponse,
     RuntimeStatusResponse,
     SavedSetupListResponse,
+    SavedSetupRevisionListResponse,
     SavedSetupRevisionResponse,
     SessionResponse,
     SetupCatalogResponse,
@@ -76,7 +77,7 @@ class GameClient(Protocol):
         """Return safe capabilities of the current session."""
         ...
 
-    def list_setups(self) -> SavedSetupListResponse:
+    def list_setups(self, *, limit: int | None = None, offset: int = 0) -> SavedSetupListResponse:
         """Return setup summaries owned by the current user."""
         ...
 
@@ -92,7 +93,13 @@ class GameClient(Protocol):
         """Return one immutable owned setup revision."""
         ...
 
-    def list_setup_revisions(self, setup_id: str) -> list[SavedSetupRevisionResponse]:
+    def list_setup_revisions(
+        self,
+        setup_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> SavedSetupRevisionListResponse:
         """Return revision history for an owned setup."""
         ...
 

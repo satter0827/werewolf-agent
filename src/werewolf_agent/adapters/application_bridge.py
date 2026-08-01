@@ -41,6 +41,12 @@ def build_game_application_config(settings: AppSettings | None = None) -> GameAp
         game_list_max_limit=app_settings.api_game_list_max_limit,
         timeline_default_limit=app_settings.api_timeline_default_limit,
         timeline_max_limit=app_settings.api_timeline_max_limit,
+        setup_revision_default_limit=app_settings.api_setup_revision_default_limit,
+        setup_revision_max_limit=app_settings.api_setup_revision_max_limit,
+        setup_list_default_limit=app_settings.api_setup_list_default_limit,
+        setup_list_max_limit=app_settings.api_setup_list_max_limit,
+        setup_max_saved_setups=app_settings.game_setup_max_saved_setups,
+        setup_max_revisions=app_settings.game_setup_max_revisions,
     )
 
 
@@ -68,6 +74,7 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         max_retries=app_settings.llm_max_retries,
         max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
+        model_catalog_max_bytes=app_settings.llm_model_catalog_max_bytes,
     )
 
 

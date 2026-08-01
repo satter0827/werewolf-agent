@@ -29,6 +29,7 @@ from werewolf_agent.application.types import (
 )
 from werewolf_agent.application.validation import public_generated_player_label
 from werewolf_agent.domain import GameEvent, GameState
+from werewolf_agent.setup._narration import render_narration
 
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
@@ -271,10 +272,7 @@ def public_narration(
             str(payload.get("winner") or ""),
         ),
     }
-    try:
-        return template.format(**values)
-    except (KeyError, ValueError):
-        return ""
+    return render_narration(template, values)
 
 
 def _public_player_label(value: object) -> str:

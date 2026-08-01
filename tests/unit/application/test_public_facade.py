@@ -38,13 +38,13 @@ class _MissingQueue:
 
 
 class _FailingSetupRepository:
-    def list_setups(self, *, owner_user_id: str) -> NoReturn:
+    def list_setups(self, *, owner_user_id: str, limit: int, offset: int) -> NoReturn:
         del owner_user_id
         raise RuntimeError("postgresql://private-host/database")
 
 
 class _InvalidSetupRepository:
-    def list_setups(self, *, owner_user_id: str) -> NoReturn:
+    def list_setups(self, *, owner_user_id: str, limit: int, offset: int) -> NoReturn:
         del owner_user_id
         raise ValueError("persisted setup row is invalid")
 

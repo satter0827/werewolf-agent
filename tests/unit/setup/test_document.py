@@ -340,6 +340,16 @@ def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
     with pytest.raises(ValueError, match="unknown fields"):
         GameSetupDocument.from_mapping(payload)
 
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count:1000000}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
+        GameSetupDocument.from_mapping(payload)
+
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count!r}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
+        GameSetupDocument.from_mapping(payload)
+
 
 def test_behavioral_ability_fields_are_explicit() -> None:
     payload = _standard().to_mapping()

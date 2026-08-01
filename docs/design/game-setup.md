@@ -61,6 +61,10 @@ LLMには本人の役職、本人のプロファイル、観測から判明し�
 保存時に親行をlockし、`expected_revision`と最新revisionが一致する場合だけ次版を追加する。競合は
 HTTP 409とする。
 
+所有者ごとの保存設定数とsetupごとのrevision数は設定値で制限する。新規setup作成は所有者単位で直列化して
+上限確認とinsertを同じtransaction内で行う。一覧とrevision履歴は設定されたpage size以内だけを取得し、
+継続位置を`next_offset`で返す。
+
 リポジトリの全取得は所有者IDで絞る。他利用者の設定は404、匿名利用者の保存とrevision参照は403に
 する。private tableはData APIへ公開せず、`anon`と`authenticated`へ直接権限を付与しない。
 

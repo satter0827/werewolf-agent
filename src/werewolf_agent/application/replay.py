@@ -98,6 +98,7 @@ def _verify_replay_records(
             actual=",".join(str(version) for version in command_versions),
         )
     event_records = list(records.get("events", ()))
+    state_version_set = set(state_versions)
     event_sequences = [int(record["sequence"]) for record in event_records]
     expected_event_sequences = list(range(1, len(event_sequences) + 1))
     if event_sequences != expected_event_sequences:
@@ -119,7 +120,7 @@ def _verify_replay_records(
         )
     for record in event_records:
         version = int(record["version"])
-        if version not in set(state_versions):
+        if version not in state_version_set:
             return _structural_mismatch(
                 game_id,
                 checked_versions,

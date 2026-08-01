@@ -15,6 +15,7 @@ from werewolf_agent.contracts.api import (
     OperationResponse,
     PlayerActionOperationRequest,
     SavedSetupListResponse,
+    SavedSetupRevisionListResponse,
     SavedSetupRevisionResponse,
     SessionResponse,
     SetupCreateRequest,
@@ -57,9 +58,17 @@ class HttpGameClient:
         """Return the current authenticated session capabilities."""
         return self._http.model(SessionResponse, "GET", "/api/v1/session")
 
-    def list_setups(self) -> SavedSetupListResponse:
+    def list_setups(self, *, limit: int | None = None, offset: int = 0) -> SavedSetupListResponse:
         """Return saved setups owned by the current user."""
-        return self._http.model(SavedSetupListResponse, "GET", "/api/v1/setups")
+        params: dict[str, int] = {"offset": offset}
+        if limit is not None:
+            params["limit"] = limit
+        return self._http.model(
+            SavedSetupListResponse,
+            "GET",
+            "/api/v1/setups",
+            params=params,
+        )
 
     def create_setup(self, request: SetupCreateRequest) -> SavedSetupRevisionResponse:
         """Create a saved setup with its first immutable revision."""
@@ -86,10 +95,23 @@ class HttpGameClient:
             f"/api/v1/setups/{setup_id}/revisions/{revision}",
         )
 
-    def list_setup_revisions(self, setup_id: str) -> list[SavedSetupRevisionResponse]:
+    def list_setup_revisions(
+        self,
+        setup_id: str,
+        *,
+        limit: int | None = None,
+        offset: int = 0,
+    ) -> SavedSetupRevisionListResponse:
         """Return revision history for one owned setup."""
-        response = self._http.json("GET", f"/api/v1/setups/{setup_id}/revisions")
-        return [SavedSetupRevisionResponse.model_validate(item) for item in response]
+        params = {"offset": offset}
+        if limit is not None:
+            params["limit"] = limit
+        return self._http.model(
+            SavedSetupRevisionListResponse,
+            "GET",
+            f"/api/v1/setups/{setup_id}/revisions",
+            params=params,
+        )
 
     def create_setup_revision(
         self,

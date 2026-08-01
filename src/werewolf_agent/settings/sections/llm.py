@@ -34,6 +34,10 @@ class LlmSettings(BaseModel):
         ge=1,
         validation_alias="WEREWOLF_LLM_MAX_TOKENS",
     )
+    llm_model_catalog_max_bytes: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_LLM_MODEL_CATALOG_MAX_BYTES",
+    )
     llm_temperature: float = Field(
         ge=MIN_LLM_TEMPERATURE,
         le=MAX_LLM_TEMPERATURE,

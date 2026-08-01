@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel
@@ -305,10 +305,12 @@ def _complete_result(
     store: SupabaseWorkerStore,
     request: Mapping[str, Any],
     result: BaseModel,
+    *,
+    domain_actions: Sequence[Mapping[str, object]] = (),
 ) -> None:
     """Commit ledger, audit, and queue completion for one result."""
     result_payload = result.model_dump(mode="json")
-    store.record_accepted_command(request, result_payload)
+    store.record_accepted_command(request, result_payload, domain_actions=domain_actions)
     store.complete_request(request, result_payload)
     logger.info(
         LOG_WORKER_REQUEST_COMPLETED,
@@ -404,7 +406,12 @@ def _execute_advance_request(
             response.game_id,
             actor_user_id=user_id,
         )
-        _complete_result(store, request, response)
+        _complete_result(
+            store,
+            request,
+            response,
+            domain_actions=traces.parsed_decisions(),
+        )
 
 
 def _reserve_paid_llm_admission(

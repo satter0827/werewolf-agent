@@ -64,7 +64,11 @@ from werewolf_agent.contracts.api import (
     PublicRuntimeFeatures,
     PublicRuntimeLimits,
 )
-from werewolf_agent.security.principal import Principal, SupabaseJwtAuthenticator
+from werewolf_agent.security.principal import (
+    AdminSessionUnavailable,
+    Principal,
+    SupabaseJwtAuthenticator,
+)
 from werewolf_agent.settings import AppSettings, get_settings
 
 
@@ -97,8 +101,24 @@ def create_app(
         probe_database=_probe_database,
         probe_operation_queue=_probe_operation_queue,
     )
+
+    def admin_session_is_active(user_id: str, session_id: str) -> bool:
+        if pool is None:
+            raise AdminSessionUnavailable
+        try:
+            with borrow_database_connection(pool) as connection:
+                row = connection.execute(
+                    "select private.is_auth_session_active(%s, %s) as active",
+                    (user_id, session_id),
+                ).fetchone()
+        except Exception as exc:
+            raise AdminSessionUnavailable from exc
+        return row is not None and bool(row["active"])
+
     admin_session_verifier = (
-        SupabaseAdminSessionVerifier(runtime) if runtime.supabase_client_configured else None
+        SupabaseAdminSessionVerifier(runtime, session_is_active=admin_session_is_active)
+        if runtime.supabase_client_configured and runtime.supabase_api_configured
+        else None
     )
 
     @asynccontextmanager

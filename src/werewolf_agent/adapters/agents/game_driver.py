@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -325,9 +326,24 @@ def _openai_compatible_model_id(config: LlmProviderConfig) -> str:
 def _lmstudio_model_id(config: LlmProviderConfig) -> str:
     models_url = f"{config.base_url.rstrip('/')}/models"
     try:
-        response = httpx.get(models_url, timeout=config.timeout_seconds)
-        response.raise_for_status()
-        payload = response.json()
+        with httpx.stream("GET", models_url, timeout=config.timeout_seconds) as response:
+            response.raise_for_status()
+            content = bytearray()
+            for chunk in response.iter_bytes():
+                if len(content) + len(chunk) > config.model_catalog_max_bytes:
+                    raise LlmProviderError(
+                        context={
+                            ERROR_CONTEXT_LLM_ERROR_TYPE: (
+                                LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE
+                            ),
+                            ERROR_CONTEXT_LLM_PROVIDER: config.provider,
+                            ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
+                        }
+                    )
+                content.extend(chunk)
+        payload = json.loads(content)
+    except LlmProviderError:
+        raise
     except Exception as exc:
         raise LlmProviderError(
             context={

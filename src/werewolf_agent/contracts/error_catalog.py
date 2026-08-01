@@ -32,7 +32,9 @@ from werewolf_agent.contracts.messages import (
     DETAIL_REQUEST_TIMED_OUT,
     DETAIL_REQUEST_VALIDATION_FAILED,
     DETAIL_RESOURCE_NOT_FOUND,
+    DETAIL_SETUP_LIMIT_REACHED,
     DETAIL_SETUP_REVISION_CONFLICT,
+    DETAIL_SETUP_REVISION_LIMIT_REACHED,
     TITLE_API_UNAVAILABLE,
     TITLE_AUTHENTICATION_REQUIRED,
     TITLE_AUTHORIZATION_FAILED,
@@ -54,7 +56,9 @@ from werewolf_agent.contracts.messages import (
     TITLE_REQUEST_TIMED_OUT,
     TITLE_REQUEST_VALIDATION_FAILED,
     TITLE_RESOURCE_NOT_FOUND,
+    TITLE_SETUP_LIMIT_REACHED,
     TITLE_SETUP_REVISION_CONFLICT,
+    TITLE_SETUP_REVISION_LIMIT_REACHED,
     TITLE_UNEXPECTED_INTERNAL_ERROR,
 )
 
@@ -158,6 +162,18 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         status=HTTPStatus.CONFLICT,
         detail=DETAIL_SETUP_REVISION_CONFLICT,
         recovery="reload",
+    ),
+    ErrorCode.SETUP_REVISION_LIMIT_REACHED: ErrorSpec(
+        title=TITLE_SETUP_REVISION_LIMIT_REACHED,
+        status=HTTPStatus.CONFLICT,
+        detail=DETAIL_SETUP_REVISION_LIMIT_REACHED,
+        recovery="contact_admin",
+    ),
+    ErrorCode.SETUP_LIMIT_REACHED: ErrorSpec(
+        title=TITLE_SETUP_LIMIT_REACHED,
+        status=HTTPStatus.CONFLICT,
+        detail=DETAIL_SETUP_LIMIT_REACHED,
+        recovery="contact_admin",
     ),
     ErrorCode.REQUEST_METHOD_NOT_ALLOWED: ErrorSpec(
         title=TITLE_METHOD_NOT_ALLOWED,

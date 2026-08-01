@@ -100,11 +100,7 @@ def list_llm_traces(
     """Return trace metadata without prompt or raw response content."""
     _require_admin(principal.is_admin)
     rows = _diagnostics(services).traces(game_id, limit=limit)
-    items = []
-    for row in rows:
-        payload = dict(row)
-        payload["error"] = payload.pop("error_payload", None)
-        items.append(AdminLlmTraceResponse.model_validate(payload))
+    items = [AdminLlmTraceResponse.model_validate(row) for row in rows]
     return AdminLlmTraceListResponse(items=items)
 
 

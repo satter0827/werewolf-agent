@@ -62,8 +62,10 @@
 所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
 Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
 applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証は`setup`の標準ライブラリ契約へ委譲する。
+公開narrationは単純なallowlist field置換だけを許し、format指定とconversionを拒否する。rendererは
+保存済み定義を再信頼せず、出力上限まで逐次構築して上限超過を公開eventへ含めない。
 domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
-replay 0.6.0はgenesis setupとRule Pack manifestを再検証する。復元時は明示登録済みproviderの
+replay 0.6.0はgenesis setupとRule Pack manifestを再検証し、agent actionを生成順で保持する。復元時は明示登録済みproviderの
 contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
@@ -73,7 +75,9 @@ applicationは独立した非公開runtime seedを生成し、private strategy�
 乱数をそのseed内でSHA-256 namespace分離する。
 
 本人の保存設定は`private.user_setups`と`private.user_setup_revisions`へ保存する。revisionは追記専用で、
-親行lockと`expected_revision`により競合を検出する。リポジトリは全queryへ所有者条件を付け、private
+親行lockと`expected_revision`により競合を検出する。所有者ごとのsetup総数とsetupごとのrevision総数を
+設定で制限し、新規setup作成は所有者単位のtransaction lockで上限判定を直列化する。一覧と履歴は
+設定されたpage size以内だけを取得する。リポジトリは全queryへ所有者条件を付け、private
 schema、権限剥奪、RLSを防御層として重ねる。公開previewはidentityとpublic personaだけを返し、
 role assignmentとprivate strategyを返さない。
 

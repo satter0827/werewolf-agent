@@ -107,6 +107,7 @@ def test_memory_repositories_honor_falsey_injected_clocks() -> None:
         document=document,
         setup_checksum="a" * 64,
         mechanics_checksum="b" * 64,
+        max_setups=100,
     )
 
     assert game.created_at == STARTED_AT
@@ -219,6 +220,7 @@ def test_setup_repository_preserves_owner_and_immutable_revisions() -> None:
         document=document,
         setup_checksum="a" * 64,
         mechanics_checksum="b" * 64,
+        max_setups=100,
     )
     second = repository.add_revision(
         first.setup_id,
@@ -227,6 +229,7 @@ def test_setup_repository_preserves_owner_and_immutable_revisions() -> None:
         document=document,
         setup_checksum="c" * 64,
         mechanics_checksum="d" * 64,
+        max_revisions=100,
     )
 
     assert first.revision == 1
@@ -237,9 +240,11 @@ def test_setup_repository_preserves_owner_and_immutable_revisions() -> None:
         for item in repository.list_revisions(
             first.setup_id,
             owner_user_id=OWNER_ID,
+            limit=100,
+            offset=0,
         )
     ] == [2, 1]
-    summaries = repository.list_setups(owner_user_id=OWNER_ID)
+    summaries = repository.list_setups(owner_user_id=OWNER_ID, limit=100, offset=0)
     assert summaries[0].latest_revision == 2
     assert summaries[0].created_at < summaries[0].updated_at
 
@@ -262,6 +267,7 @@ def test_setup_repository_rejects_foreign_and_stale_revision_updates() -> None:
         document=document,
         setup_checksum="a" * 64,
         mechanics_checksum="b" * 64,
+        max_setups=100,
     )
 
     for owner, expected_code in (
@@ -276,5 +282,39 @@ def test_setup_repository_rejects_foreign_and_stale_revision_updates() -> None:
                 document=document,
                 setup_checksum="c" * 64,
                 mechanics_checksum="d" * 64,
+                max_revisions=100,
             )
         assert raised.value.code is expected_code
+
+
+def test_setup_repository_bounds_owned_list_and_enforces_setup_quota() -> None:
+    repository = InMemorySetupRepository(clock=_Clock())
+    document = build_setup_catalog().require_document("standard_6")
+    created = []
+    for index in range(2):
+        created.append(
+            repository.create(
+                owner_user_id=OWNER_ID,
+                display_name=f"実験設定{index}",
+                document=document,
+                setup_checksum="a" * 64,
+                mechanics_checksum="b" * 64,
+                max_setups=2,
+            )
+        )
+
+    page = repository.list_setups(owner_user_id=OWNER_ID, limit=1, offset=1)
+    assert len(page) == 1
+    assert page[0].setup_id in {item.setup_id for item in created}
+
+    with pytest.raises(AppError) as raised:
+        repository.create(
+            owner_user_id=OWNER_ID,
+            display_name="上限超過",
+            document=document,
+            setup_checksum="a" * 64,
+            mechanics_checksum="b" * 64,
+            max_setups=2,
+        )
+
+    assert raised.value.code is ErrorCode.SETUP_LIMIT_REACHED

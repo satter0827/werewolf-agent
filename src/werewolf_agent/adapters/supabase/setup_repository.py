@@ -29,15 +29,30 @@ class SupabaseSetupRepository(SetupRepository):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_setups: int,
     ) -> SavedSetupRevision:
         """Create an owned setup and its first immutable revision."""
+        owner_id = UUID(owner_user_id)
+        self._connection.execute(
+            "select pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (str(owner_id),),
+        )
+        count_row = self._connection.execute(
+            "select count(*) as setup_count from private.user_setups where owner_user_id = %s",
+            (owner_id,),
+        ).fetchone()
+        if count_row is None or int(count_row["setup_count"]) >= max_setups:
+            raise AppError(
+                "保存できるゲーム設定数が上限に達しました。",
+                code=ErrorCode.SETUP_LIMIT_REACHED,
+            )
         setup_id = uuid4()
         self._connection.execute(
             """
             insert into private.user_setups (setup_id, owner_user_id, display_name)
             values (%s, %s, %s)
             """,
-            (setup_id, UUID(owner_user_id), display_name),
+            (setup_id, owner_id, display_name),
         )
         self._insert_revision(
             setup_id,
@@ -51,7 +66,9 @@ class SupabaseSetupRepository(SetupRepository):
             raise RuntimeError("created setup revision could not be loaded")
         return result
 
-    def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
+    def list_setups(
+        self, *, owner_user_id: str, limit: int, offset: int
+    ) -> list[SavedSetupSummary]:
         """Return setup summaries filtered by owner."""
         rows = self._connection.execute(
             """
@@ -67,8 +84,9 @@ class SupabaseSetupRepository(SetupRepository):
             ) r on true
             where s.owner_user_id = %s
             order by r.created_at desc, s.setup_id
+            limit %s offset %s
             """,
-            (UUID(owner_user_id),),
+            (UUID(owner_user_id), limit, offset),
         ).fetchall()
         summaries: list[SavedSetupSummary] = []
         for row in rows:
@@ -109,6 +127,8 @@ class SupabaseSetupRepository(SetupRepository):
         setup_id: str,
         *,
         owner_user_id: str,
+        limit: int,
+        offset: int,
     ) -> list[SavedSetupRevision]:
         """Return immutable revisions filtered by setup owner."""
         try:
@@ -123,8 +143,9 @@ class SupabaseSetupRepository(SetupRepository):
             join private.user_setup_revisions r on r.setup_id = s.setup_id
             where s.setup_id = %s and s.owner_user_id = %s
             order by r.revision desc
+            limit %s offset %s
             """,
-            (parsed_id, UUID(owner_user_id)),
+            (parsed_id, UUID(owner_user_id), limit, offset),
         ).fetchall()
         return [_revision(row) for row in rows]
 
@@ -137,6 +158,7 @@ class SupabaseSetupRepository(SetupRepository):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_revisions: int,
     ) -> SavedSetupRevision:
         """Lock an owned setup and append the expected next revision."""
         try:
@@ -177,6 +199,11 @@ class SupabaseSetupRepository(SetupRepository):
                     "expected_revision": expected_revision,
                     "latest_revision": latest_revision,
                 },
+            )
+        if latest_revision >= max_revisions:
+            raise AppError(
+                "保存できるゲーム設定の版数が上限に達しました。",
+                code=ErrorCode.SETUP_REVISION_LIMIT_REACHED,
             )
         next_revision = latest_revision + 1
         self._insert_revision(
