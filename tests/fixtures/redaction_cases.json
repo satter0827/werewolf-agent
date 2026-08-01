@@ -14,5 +14,13 @@
   {
     "input": "{\"Authorization\": \"Bearer secret-value\", \"api_key\":\"sk-value\"}",
     "expected": "{\"Authorization\": \"[REDACTED]\", \"api_key\":\"[REDACTED]\"}"
+  },
+  {
+    "input": "{\"private_state\":{\"strategy\":\"attack p2\",\"memory\":\"secret plan\"},\"ordinary\":\"safe\"}",
+    "expected": "{\"private_state\":\"[REDACTED]\",\"ordinary\":\"safe\"}"
+  },
+  {
+    "input": "prefix {\"token\":[\"first\",{\"nested\":\"second\"}],\"ordinary\":true} suffix",
+    "expected": "prefix {\"token\":\"[REDACTED]\",\"ordinary\":true} suffix"
   }
 ]
