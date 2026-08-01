@@ -11,7 +11,9 @@ Notebook、worker、実験から同じ一局実行契約を利用し、Agent差�
 - `SimulationSpec`はsimulation ID、game ID、seed、プレイヤー別controller、実行上限を固定する。
 - `PlayerController`はmanualまたは外部注入した`AgentFactory`を一人へ割り当てる。
 - `AgentMetadataProvider`は現在の本人用`GameView`から役職、能力残数、世界設定を都度解決する。
-- `SimulationRunner.create()`と`restore()`は同じseed規則でGameを開始する。
+- `SimulationRunner.create()`は用途分離したseedでGameを開始する。
+- `SimulationResult`は元の`SimulationSpec`と状態、step列、実行件数を一体で保持する。
+- `SimulationRunner.restore()`は`SimulationResult`だけを再開位置の正本とし、phase乱数位置も復元する。
 - `SimulationSession.step()`は一つのaction、phase進行、停止判定のいずれかを返す。
 - `submit_manual()`はmanual controllerのactionだけを`Game`へ渡す。
 - `run()`は終局、手動入力待ち、action/phase上限、cancelのいずれかで停止する。
@@ -21,7 +23,7 @@ Notebook、worker、実験から同じ一局実行契約を利用し、Agent差�
 
 simulationは`Game.view_for()`からAgent入力を構築し、完全状態をAgentへ渡さない。
 状態変更は`Game.submit()`と`Game.advance()`だけが行う。simulationはリポジトリ、queue、HTTP、
-provider設定、複数試行、統計、checkpoint、artifactを所有しない。これらはapplication、worker、
+provider設定、複数試行、統計、永続化checkpoint、artifactを所有しない。これらはapplication、worker、
 実験runnerなど外側のcomposition rootが組み立てる。
 
 同期の既定executorはAgentを一回だけ呼び出し、応答後にtimeout超過を検出する。実行中の処理を
@@ -35,12 +37,18 @@ simulationへ持ち込まない。
 
 ## 決定性
 
-role assignment、phase進行、プレイヤーsession、decisionごとのseedをnamespaceで分離する。
+role assignment、phase進行、プレイヤーsession、decisionごとのseedをnamespaceで分離する。phase進行は
+実行件数ごとのseedを使い、`SimulationResult`から再開しても乱数位置を維持する。
 同じsetup、rule pack、controller仕様、入力、seedからstate、domain event、action/response列を再現する。
 実時間から得るlatencyは診断情報であり、再現性の比較対象に含めない。標準runnerはwall clockを
 `DecisionRequest`へ含めない。
 
+`restore()`は新しいAgent Sessionを生成する。プロセスをまたぐ同値な再開が必要な外部Agentは、固定した
+Factory parameter、`DecisionRequest`、公開timelineから判断を再構築し、Session内だけの非公開memoryへ
+結果を依存させない。任意Agentの内部状態をSimulationが直列化する契約は提供しない。
+
 ## 検証
 
-単体テストは同一seedの再現性、manual待機と再開、Agent失敗時fallback、上限、cancel、controller整合を
-確認する。構造テストはsimulationが標準library、agents、domain、setup以外へ依存しないことを確認する。
+単体テストは同一seedの再現性、停止結果からの再開、manual待機、Agent失敗時fallback、上限、cancel、
+controller整合を確認する。構造テストはsimulationが標準library、agents、domain、setup以外へ依存しない
+ことを確認する。
