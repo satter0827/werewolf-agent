@@ -72,7 +72,6 @@ class LangChainAgentFactory:
             "timeout_seconds",
             "max_tokens",
             "temperature",
-            "max_retries",
         ):
             value = getattr(decision_model, field_name, None)
             if value not in {None, ""}:

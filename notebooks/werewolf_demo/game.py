@@ -366,7 +366,6 @@ def _fake_provider_config() -> LlmProviderConfig:
         base_url="",
         api_key="",
         timeout_seconds=12,
-        max_retries=0,
         max_tokens=128,
         temperature=0,
     )

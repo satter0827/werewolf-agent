@@ -71,6 +71,7 @@ from werewolf_agent.simulation import (
 )
 
 logger = logging.getLogger(__name__)
+LLM_TRANSPORT_MAX_RETRIES = 0
 
 
 @dataclass(frozen=True)
@@ -273,7 +274,6 @@ def _decision_provider(
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
             temperature=config.temperature,
-            max_retries=config.max_retries,
         )
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
@@ -304,7 +304,7 @@ def _openai_compatible_model(config: LlmProviderConfig, *, model_id: str) -> Any
         "api_key": config.api_key or LLM_STUDIO_API_KEY_PLACEHOLDER,
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
-        "max_retries": config.max_retries,
+        "max_retries": LLM_TRANSPORT_MAX_RETRIES,
         "max_tokens": config.max_tokens,
     }
     if config.base_url:

@@ -136,7 +136,6 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             base_url="",
             api_key="",
             timeout_seconds=12,
-            max_retries=0,
             max_tokens=128,
             temperature=0,
         )
@@ -151,7 +150,6 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             base_url=base_url,
             api_key="lm-studio",  # pragma: allowlist secret
             timeout_seconds=LOCAL_TIMEOUT_SECONDS,
-            max_retries=0,
             max_tokens=LOCAL_MAX_TOKENS,
             temperature=0,
         )
@@ -167,7 +165,6 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             base_url="",
             api_key=api_key,
             timeout_seconds=LOCAL_TIMEOUT_SECONDS,
-            max_retries=0,
             max_tokens=LOCAL_MAX_TOKENS,
             temperature=0,
         )
