@@ -44,7 +44,7 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "event": "0.1.0",
         "experiment": "0.5.0",
         "experiment-evaluator": "0.3.0",
-        "product": "0.32.1",
+        "product": "0.32.2",
         "quality-evidence": "0.2.0",
         "replay": "0.4.0",
         "rule-pack": "0.6.1",

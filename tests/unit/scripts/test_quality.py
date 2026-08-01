@@ -58,7 +58,7 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
     assert settings.max_jobs == 4
     assert settings.benchmark_min_rounds == 5
     assert settings.timeouts == {
-        "focus": 60,
+        "focus": 120,
         "check": 180,
         "release": 900,
         "deep": 1200,
