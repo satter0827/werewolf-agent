@@ -19,7 +19,7 @@ from werewolf_agent.agents.contracts import (
 )
 from werewolf_agent.agents.validation import non_blank
 
-_BUILTIN_IMPLEMENTATION_VERSION = "1.0.1"
+_BUILTIN_IMPLEMENTATION_VERSION = "1.1.0"
 
 
 @dataclass(frozen=True)
@@ -199,6 +199,8 @@ def _response(
         ability_id=option.ability_id,
         target_id=target,
         message=message,
+        response_to_id=(option.legal_reference_ids[0] if option.legal_reference_ids else None),
+        reason="この対象が最も疑わしいため" if option.action_type == "vote" else None,
     )
 
 
@@ -221,6 +223,8 @@ def _response_payload(response: DecisionResponse) -> dict[str, object]:
         "message": response.message,
         "focus_id": response.focus_id,
         "evidence_id": response.evidence_id,
+        "response_to_id": response.response_to_id,
+        "reason": response.reason,
         "confidence": response.confidence,
         "beliefs": _json_value(response.beliefs),
         "intent": response.intent,

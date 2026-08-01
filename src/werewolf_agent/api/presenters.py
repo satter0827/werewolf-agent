@@ -82,10 +82,14 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                             key: speech[key]
                             for key in (
                                 "day",
+                                "speech_id",
+                                "round_id",
+                                "round_kind",
                                 "player_id",
                                 "message",
                                 "focus_id",
                                 "evidence_id",
+                                "response_to_id",
                             )
                             if key in speech
                         }
@@ -96,6 +100,7 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                     PlayerObservationVote.model_validate(vote) for vote in history.get("votes", [])
                 ],
             ),
+            discussion_round=observation.get("discussion_round"),
             win_result=(
                 None
                 if win_result is None

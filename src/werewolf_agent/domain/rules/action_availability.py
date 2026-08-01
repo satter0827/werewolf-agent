@@ -26,20 +26,22 @@ def available_actions(
     if player.status is not PlayerStatus.ALIVE:
         return []
     if snapshot.phase is Phase.DAY_DISCUSSION:
-        if (
-            _speech_count_for_today(snapshot, player_id)
-            < snapshot.config.rules.day_speech_limit_per_player
-        ):
-            return [AvailableAction(ActionType.SPEECH)]
-        return []
+        round_ = pending_actions.discussion_round
+        if round_ is None or player_id in pending_actions.discussion_actions:
+            return []
+        if player_id not in round_.actor_order:
+            return []
+        if round_.current_actor_id is not None and round_.current_actor_id != player_id:
+            return []
+        return [AvailableAction(ActionType.SPEECH), AvailableAction(ActionType.PASS)]
     if snapshot.phase is Phase.VOTING:
-        if snapshot.config.rules.allow_vote_revision or player_id not in pending_actions.votes:
+        if snapshot.config.voting.allow_revision or player_id not in pending_actions.votes:
             return [AvailableAction(ActionType.VOTE)]
         return []
     if snapshot.phase is not Phase.NIGHT:
         return []
     if (
-        not snapshot.config.rules.allow_night_action_revision
+        not snapshot.config.night.allow_action_revision
         and player_id in pending_actions.night_actions
     ):
         return []
@@ -79,7 +81,7 @@ def legal_targets(
             targets[option.key] = [
                 target_id
                 for target_id in candidates
-                if snapshot.config.rules.allow_self_vote or target_id != player_id
+                if snapshot.config.voting.allow_self_vote or target_id != player_id
             ]
             continue
         if option.ability_id is not None:
@@ -166,11 +168,3 @@ def require_action_available(
             message_action_not_available(requested.key, snapshot.phase.value),
             context={"player_id": action.player_id, "target_id": action.target_id},
         )
-
-
-def _speech_count_for_today(snapshot: GameState, player_id: str) -> int:
-    return sum(
-        1
-        for speech in snapshot.history.speeches
-        if speech.day == snapshot.day and speech.player_id == player_id
-    )

@@ -11,19 +11,21 @@ import pytest
 from werewolf_agent.domain import (
     AbilityDefinition,
     Action,
-    ActionType,
+    DiscussionConfig,
     EventVisibility,
     Game,
     GameEvent,
     GameSetup,
     GameState,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     Phase,
     Player,
     RoleCatalog,
     RoleDefinition,
     RuleSetDefinition,
     RuleViolation,
+    VotingConfig,
     build_game_rules,
 )
 
@@ -110,14 +112,13 @@ def _game(
         RuleSetDefinition(
             player_count=len(players),
             role_counts={str(role): count for role, count in role_counts.items()},
-            rules=LocalRules(
-                day_speech_limit_per_player=1,
-                allow_self_vote=False,
-                allow_vote_revision=False,
-                allow_night_action_revision=False,
-                vote_tie_resolution="no_elimination",
+            discussion=DiscussionConfig(),
+            voting=VotingConfig(),
+            night=NightConfig(),
+            lifecycle=LifecycleConfig(
                 starting_phase=starting_phase,
                 reveal_role_on_death=reveal_role_on_death,
+                require_all_actions_before_advance=False,
             ),
             roles=RoleCatalog(roles),
             abilities=abilities or {},
@@ -218,10 +219,10 @@ def test_last_eliminated_knowledge_reveals_role_only_to_ability_owner() -> None:
     _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p3"),
-            Action.vote("p2", "p3"),
-            Action.vote("p3", "p1"),
-            Action.vote("p4", "p3"),
+            Action.vote("p1", "p3", reason="test"),
+            Action.vote("p2", "p3", reason="test"),
+            Action.vote("p3", "p1", reason="test"),
+            Action.vote("p4", "p3", reason="test"),
         ),
         seed=19,
     )
@@ -246,11 +247,14 @@ def test_same_definition_seed_and_actions_reproduce_state_and_events() -> None:
         )
         events = list(game.creation_events)
         events.extend(game.submit(Action.speech("p2", "確認します。")))
-        events.extend(game.advance(random.Random(11)))
+        phase_seed = 11
+        while game.snapshot().phase is Phase.DAY_DISCUSSION:
+            events.extend(game.advance(random.Random(phase_seed)))
+            phase_seed += 1
         for action in (
-            Action.vote("p1", "p2"),
-            Action.vote("p2", "p1"),
-            Action.vote("p3", "p1"),
+            Action.vote("p1", "p2", reason="test"),
+            Action.vote("p2", "p1", reason="test"),
+            Action.vote("p3", "p1", reason="test"),
         ):
             events.extend(game.submit(action))
         events.extend(game.advance(random.Random(13)))
@@ -391,10 +395,10 @@ def test_death_reaction_resolves_once_and_is_reported_without_hidden_ability_dat
     events = _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p2"),
-            Action.vote("p2", "p1"),
-            Action.vote("p3", "p2"),
-            Action.vote("p4", "p2"),
+            Action.vote("p1", "p2", reason="test"),
+            Action.vote("p2", "p1", reason="test"),
+            Action.vote("p3", "p2", reason="test"),
+            Action.vote("p4", "p2", reason="test"),
         ),
         seed=23,
     )
@@ -429,10 +433,10 @@ def test_living_fox_overrides_normal_village_victory() -> None:
     _submit_and_advance(
         game,
         (
-            Action.vote("p1", "p3"),
-            Action.vote("p2", "p1"),
-            Action.vote("p3", "p1"),
-            Action.vote("p4", "p1"),
+            Action.vote("p1", "p3", reason="test"),
+            Action.vote("p2", "p1", reason="test"),
+            Action.vote("p3", "p1", reason="test"),
+            Action.vote("p4", "p1", reason="test"),
         ),
         seed=29,
     )
@@ -446,7 +450,7 @@ def test_living_fox_overrides_normal_village_victory() -> None:
     assert not hasattr(visible_result, "winning_player_ids")
 
 
-def test_player_observation_removes_private_speech_reason() -> None:
+def test_sealed_opening_is_hidden_until_the_round_resolves() -> None:
     game = _game(
         (
             Player("p1", "Wolf", "werewolf"),
@@ -460,15 +464,10 @@ def test_player_observation_removes_private_speech_reason() -> None:
         starting_phase="day_discussion",
     )
 
-    game.submit(
-        Action(
-            ActionType.SPEECH,
-            "p2",
-            message="公開する発言です。",
-            reason="外部へ公開しない内部理由",
-        )
-    )
+    game.submit(Action.speech("p2", "公開する発言です。"))
 
+    assert game.view_for("p1").history.speeches == ()
+    game.advance(random.Random(0))
     speech = game.view_for("p1").history.speeches[0]
     assert speech.message == "公開する発言です。"
-    assert speech.reason == ""
+    assert speech.round_kind.value == "opening"

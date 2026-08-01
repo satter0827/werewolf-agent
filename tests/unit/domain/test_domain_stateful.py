@@ -33,7 +33,10 @@ def _game(preset_id: str, seed: int) -> Game:
         rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -128,8 +131,8 @@ TestGameStateMachine = pytest.mark.monkey(GameStateMachine.TestCase)
 
 
 def test_public_actions_do_not_accept_ability_ids() -> None:
-    vote = Action(type=ActionType.VOTE, player_id="p1", target_id="p2")
-    speech = Action(type=ActionType.SPEECH, player_id="p1", message="確認します。")
+    vote = Action.vote("p1", "p2", reason="疑わしいため")
+    speech = Action.speech("p1", "確認します。")
 
     assert vote.ability_id is None
     assert speech.ability_id is None

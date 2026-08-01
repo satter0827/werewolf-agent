@@ -16,7 +16,10 @@ def rule_definition_from_state(
     return RuleSetDefinition(
         player_count=config.player_count,
         role_counts=config.role_counts,
-        rules=config.rules,
+        discussion=config.discussion,
+        voting=config.voting,
+        night=config.night,
+        lifecycle=config.lifecycle,
         roles=config.roles,
         abilities=config.abilities,
     )

@@ -31,6 +31,9 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                     "speeches": [
                         {
                             "day": 1,
+                            "speech_id": "speech:1:round-1:p2",
+                            "round_id": "round-1",
+                            "round_kind": "opening",
                             "player_id": "p2",
                             "message": "公開発言",
                             "reason": "公開しない内部理由",

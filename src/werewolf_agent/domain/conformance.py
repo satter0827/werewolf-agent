@@ -83,13 +83,19 @@ def _first_legal_action(game: Game) -> Action | None:
             continue
         available = view.available_actions[0]
         targets = view.legal_targets.get(available.key, ())
-        return Action(
-            type=available.type,
-            player_id=player_id,
-            ability_id=available.ability_id,
-            target_id=targets[0] if targets else None,
-            message="契約を確認します。" if available.type is ActionType.SPEECH else None,
-        )
+        if available.type is ActionType.SPEECH:
+            round_ = view.discussion_round
+            reference_id = round_.reference_ids[0] if round_ and round_.reference_ids else None
+            return Action.speech(
+                player_id,
+                "契約を確認します。",
+                response_to_id=reference_id,
+            )
+        if available.type is ActionType.VOTE:
+            return Action.vote(player_id, targets[0], reason="契約上の判断です。")
+        if available.type is ActionType.USE_ABILITY:
+            return Action.use_ability(player_id, available.ability_id or "", targets[0])
+        return Action.pass_(player_id)
     return None
 
 

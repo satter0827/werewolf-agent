@@ -4,13 +4,16 @@ from werewolf_agent.domain import (
     RULE_PACK_CONTRACT_VERSION,
     CompiledRuleSet,
     CoreRulePack,
+    DiscussionConfig,
     GameSetup,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     Player,
     RoleCatalog,
     RoleDefinition,
     RulePackManifest,
     RuleSetDefinition,
+    VotingConfig,
     assert_rule_pack_contract,
 )
 
@@ -33,7 +36,10 @@ class ExternalRulePack:
 definition = RuleSetDefinition(
     player_count=4,
     role_counts={"werewolf": 1, "villager": 3},
-    rules=LocalRules(0, False, False, False, "no_elimination", "day_discussion", False),
+    discussion=DiscussionConfig(cycles_per_day=1),
+    voting=VotingConfig(),
+    night=NightConfig(),
+    lifecycle=LifecycleConfig(starting_phase="day_discussion"),
     roles=RoleCatalog(
         {
             "werewolf": RoleDefinition("werewolf", "werewolf"),

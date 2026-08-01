@@ -20,7 +20,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.5.0"
+SIMULATION_CONTRACT_VERSION = "0.6.0"
 
 
 class SimulationStepKind(StrEnum):

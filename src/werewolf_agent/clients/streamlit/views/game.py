@@ -306,6 +306,7 @@ def _render_action_form(
             st.warning(catalog.t(lang, "common.none"))
 
     message = None
+    response_to_id = None
     if selected_action.requires_message:
         message = st.text_area(
             catalog.t(lang, "action.message"),
@@ -313,18 +314,31 @@ def _render_action_form(
             placeholder=catalog.label(lang, "action", "speech"),
             max_chars=message_max_chars,
         )
+        if screen.observation.reference_choices:
+            response_to_id = st.selectbox(
+                catalog.t(lang, "action.response_to"),
+                list(screen.observation.reference_choices),
+                format_func=screen.observation.reference_choices.get,
+            )
+
+    reason = None
+    if selected_action.action_type == "vote":
+        reason = st.text_area(catalog.t(lang, "action.reason"), max_chars=120)
 
     missing_target = selected_action.requires_target and not target_id
     missing_message = selected_action.requires_message and not str(message or "").strip()
+    missing_reason = selected_action.action_type == "vote" and not str(reason or "").strip()
     if missing_target:
         st.caption(catalog.t(lang, "action.target_required"))
     if missing_message:
         st.caption(catalog.t(lang, "action.message_required"))
+    if missing_reason:
+        st.caption(catalog.t(lang, "action.reason_required"))
     if st.button(
         catalog.t(lang, "action.send"),
         type="primary",
         width="stretch",
-        disabled=missing_target or missing_message,
+        disabled=missing_target or missing_message or missing_reason,
     ):
         try:
             submit_screen_action(
@@ -335,6 +349,8 @@ def _render_action_form(
                 ability_id=selected_action.ability_id,
                 target_id=target_id,
                 message=str(message).strip() if message else None,
+                response_to_id=str(response_to_id) if response_to_id else None,
+                reason=str(reason).strip() if reason else None,
             )
         except AppError as exc:
             render_app_error(st, exc, lang=lang)

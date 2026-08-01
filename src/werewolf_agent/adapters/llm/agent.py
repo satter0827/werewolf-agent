@@ -35,7 +35,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.2.0"
+_IMPLEMENTATION_VERSION = "1.3.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -137,6 +137,19 @@ class _LangChainAgentSession:
             message=decision.message,
             focus_id=decision.focus_id,
             evidence_id=decision.evidence_id,
+            response_to_id=(
+                next(
+                    (
+                        option.legal_reference_ids[0]
+                        for option in request.options
+                        if option.action_type == decision.type.value
+                        and option.ability_id == decision.ability_id
+                        and option.legal_reference_ids
+                    ),
+                    None,
+                )
+            ),
+            reason=decision.reason or None,
             metadata=metadata,
         )
 
@@ -288,6 +301,8 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
             and len(decision.message) > option.message_max_chars
         ):
             raise AgentDecisionError("llm_message_too_long")
+    elif decision.type is AgentActionType.VOTE and not decision.reason.strip():
+        raise AgentDecisionError("llm_vote_reason_required")
     elif decision.message is not None:
         raise AgentDecisionError("llm_message_not_allowed")
 

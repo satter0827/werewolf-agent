@@ -15,13 +15,15 @@ from werewolf_agent.domain import (
     CoreRulePack,
     DeathReaction,
     DeathReactionResolution,
+    DiscussionConfig,
     Game,
     GameError,
     GameSetup,
     GameState,
     KnowledgeClaim,
     KnowledgeResolution,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     NightResolution,
     Phase,
     Player,
@@ -31,6 +33,7 @@ from werewolf_agent.domain import (
     RulePolicyRegistry,
     RuleSetDefinition,
     VoteResult,
+    VotingConfig,
     VotingPolicy,
     WinResult,
 )
@@ -41,14 +44,12 @@ def _definition() -> RuleSetDefinition:
     return RuleSetDefinition(
         player_count=3,
         role_counts={"villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(
             starting_phase="day_discussion",
-            reveal_role_on_death=False,
+            require_all_actions_before_advance=False,
         ),
         roles=RoleCatalog(
             {
@@ -100,6 +101,7 @@ class ExternalVictoryPack:
             manifest=self.manifest,
             ability_policy=core.ability_policy,
             voting_policy=core.voting_policy,
+            discussion_policy=core.discussion_policy,
             victory_policy=ImmediateVillageVictory(),
         )
 
@@ -140,6 +142,7 @@ class RedirectVotingPolicy:
         return VoteResult(
             day=state.day,
             votes=votes,
+            reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -165,6 +168,7 @@ class InvalidVotingPolicy:
         return VoteResult(
             day=state.day,
             votes={player_id: str(action.target_id) for player_id, action in pending_votes.items()},
+            reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -337,6 +341,7 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=core.ability_policy,
         voting_policy=policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -352,9 +357,9 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
     )
     game.advance(random.Random(11))
     for action in (
-        Action.vote("p1", "p2"),
-        Action.vote("p2", "p1"),
-        Action.vote("p3", "p1"),
+        Action.vote("p1", "p2", reason="test"),
+        Action.vote("p2", "p1", reason="test"),
+        Action.vote("p3", "p1", reason="test"),
     ):
         game.submit(action)
     return game
@@ -364,15 +369,10 @@ def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
     definition = RuleSetDefinition(
         player_count=3,
         role_counts={"villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
-            starting_phase="night",
-            reveal_role_on_death=False,
-        ),
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(starting_phase="night"),
         roles=RoleCatalog(
             {
                 "villager": RoleDefinition("village", "village", ("immunity",)),
@@ -418,6 +418,7 @@ def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy,
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -441,14 +442,12 @@ def _game_with_death_reaction_policy(
     definition = RuleSetDefinition(
         player_count=4,
         role_counts={"hunter": 1, "villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(
             starting_phase="day_discussion",
-            reveal_role_on_death=False,
+            require_all_actions_before_advance=False,
         ),
         roles=RoleCatalog(
             {
@@ -481,6 +480,7 @@ def _game_with_death_reaction_policy(
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy_factory(core.ability_policy),
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -497,10 +497,10 @@ def _game_with_death_reaction_policy(
     )
     game.advance(random.Random(11))
     for action in (
-        Action.vote("p1", "p2"),
-        Action.vote("p2", "p1"),
-        Action.vote("p3", "p2"),
-        Action.vote("p4", "p2"),
+        Action.vote("p1", "p2", reason="test"),
+        Action.vote("p2", "p1", reason="test"),
+        Action.vote("p3", "p2", reason="test"),
+        Action.vote("p4", "p2", reason="test"),
     ):
         game.submit(action)
     return game
@@ -512,15 +512,10 @@ def _game_with_knowledge_policy(
     definition = RuleSetDefinition(
         player_count=3,
         role_counts={"seer": 1, "villager": 1, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
-            starting_phase="night",
-            reveal_role_on_death=False,
-        ),
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(starting_phase="night"),
         roles=RoleCatalog(
             {
                 "seer": RoleDefinition("village", "village", ("knowledge",)),
@@ -552,6 +547,7 @@ def _game_with_knowledge_policy(
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy_factory(core.ability_policy),
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     return Game.create(
@@ -644,6 +640,7 @@ def test_invalid_external_outcome_is_rejected_atomically() -> None:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=core.ability_policy,
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=InvalidVictoryPolicy(),
     )
     game = Game.create(

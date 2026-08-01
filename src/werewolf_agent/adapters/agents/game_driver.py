@@ -26,7 +26,6 @@ from werewolf_agent.adapters.agents.messages import (
 )
 from werewolf_agent.adapters.llm.agent import LangChainAgentFactory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
 from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
 )
@@ -166,7 +165,6 @@ def drive_prepared_game(
                 max_phases=1,
             ),
             phase_seed=prepared.phase_seed,
-            speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
         ),
         trace_sink=runtime.decision_trace_sink,
     )
@@ -392,12 +390,14 @@ def _phase_action_limit(snapshot: GameState) -> int:
     }
     if snapshot.phase is not Phase.DAY_DISCUSSION:
         return max(len(alive_ids), 1)
-    speech_counts = {player_id: 0 for player_id in alive_ids}
-    for speech in snapshot.history.speeches:
-        if speech.day == snapshot.day and speech.player_id in speech_counts:
-            speech_counts[speech.player_id] += 1
-    speech_limit = snapshot.config.rules.day_speech_limit_per_player
-    remaining_speeches = sum(
-        max(0, speech_limit - speech_counts[player_id]) for player_id in alive_ids
-    )
-    return max(remaining_speeches + len(alive_ids), 1)
+    round_ = snapshot.pending_actions.discussion_round
+    if round_ is None:
+        return 1
+    remaining_cycles = snapshot.config.discussion.cycles_per_day - round_.cycle
+    current_remaining = len(round_.actor_order) - round_.cursor
+    if round_.submission_mode.value == "sealed":
+        current_remaining -= len(snapshot.pending_actions.discussion_actions)
+    future_actions = remaining_cycles * len(alive_ids) * 2
+    if round_.kind.value == "opening":
+        future_actions += len(alive_ids)
+    return max(current_remaining + future_actions, 1)

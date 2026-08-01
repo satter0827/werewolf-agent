@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import tomllib
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import typer
 from pydantic import ValidationError
@@ -35,13 +35,13 @@ from werewolf_agent.clients.cli.output import (
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     CreateGameRequest,
     DeliberationLevel,
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
     InlineSetupRequest,
-    PlayerActionRequest,
     TemplateSetupRequest,
 )
 from werewolf_agent.observability.constants import (
@@ -117,18 +117,26 @@ def _prompt_and_submit_manual_action(
     action_key = selected.key
     target_id = None
     message = None
+    response_to_id = None
     if action_type == "speech":
         message = typer.prompt(PROMPT_SPEECH)
+        round_ = observation.observation.discussion_round
+        if round_ is not None and round_.reference_ids:
+            response_to_id = round_.reference_ids[0]
     elif action_type != "pass":
         target_id = typer.prompt(message_target_prompt(action_key))
     response = client.submit_player_action(
         game_id,
         player_id,
-        PlayerActionRequest(
-            type=cast(Any, action_type),
-            ability_id=ability_id,
-            target_id=target_id,
-            message=message,
+        PLAYER_ACTION_REQUEST_ADAPTER.validate_python(
+            _action_payload(
+                action_type,
+                ability_id=ability_id,
+                target_id=target_id,
+                message=message,
+                reason=(typer.prompt("投票理由") if action_type == "vote" else None),
+                response_to_id=response_to_id,
+            )
         ),
     )
     logger.info(
@@ -143,6 +151,29 @@ def _prompt_and_submit_manual_action(
     )
     if output_format == CLI_OUTPUT_FORMAT_TABLE:
         print_timeline(response.timeline)
+
+
+def _action_payload(
+    action_type: str,
+    *,
+    ability_id: str | None,
+    target_id: str | None,
+    message: str | None,
+    reason: str | None,
+    response_to_id: str | None = None,
+) -> dict[str, object]:
+    payload: dict[str, object] = {"type": action_type}
+    if ability_id is not None:
+        payload["ability_id"] = ability_id
+    if target_id is not None:
+        payload["target_id"] = target_id
+    if message is not None:
+        payload["message"] = message
+    if reason is not None:
+        payload["reason"] = reason
+    if response_to_id is not None:
+        payload["response_to_id"] = response_to_id
+    return payload
 
 
 def _load_replay_items(

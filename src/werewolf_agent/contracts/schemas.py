@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Any, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, ValidationInfo, field_validator
 
 from werewolf_agent.contracts.constants import (
     DEFAULT_DELIBERATION_LEVEL,
@@ -63,14 +63,38 @@ RoleCount = Annotated[int, Field(ge=MIN_ROLE_COUNT)]
 SetupRoleCount = Annotated[int, Field(ge=1)]
 
 
-class LocalRulesSettings(BaseModel):
-    """Complete mutable game rules carried by an inline setup."""
+class DiscussionSettings(BaseModel):
+    """議論roundのwire設定."""
 
-    day_speech_limit_per_player: int = Field(ge=0, le=100)
+    kind: Literal["structured"]
+    message_max_chars: int = Field(ge=1, le=2000)
+    cycles_per_day: int = Field(default=1, ge=1, le=10)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class VotingSettings(BaseModel):
+    """投票のwire設定."""
+
     allow_self_vote: bool
-    allow_vote_revision: bool
-    allow_night_action_revision: bool
-    vote_tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    allow_revision: bool
+    tie_resolution: Literal["no_elimination", "random_elimination", "revote"]
+    reason_max_chars: int = Field(ge=1, le=1000)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class NightSettings(BaseModel):
+    """夜行動のwire設定."""
+
+    allow_action_revision: bool
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class LifecycleSettings(BaseModel):
+    """phase遷移のwire設定."""
+
     starting_phase: Literal["night", "day_discussion"]
     reveal_role_on_death: bool
     require_all_actions_before_advance: bool
@@ -158,7 +182,10 @@ class SetupMechanicsSettings(BaseModel):
     role_counts: dict[str, SetupRoleCount]
     roles: dict[str, SetupRoleDefinition]
     abilities: dict[str, SetupAbilityDefinition]
-    rules: LocalRulesSettings
+    discussion: DiscussionSettings
+    voting: VotingSettings
+    night: NightSettings
+    lifecycle: LifecycleSettings
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -215,7 +242,7 @@ class PlayerGenerationSettings(BaseModel):
 
 
 class GameSetupDocumentRequest(BaseModel):
-    schema_version: Literal["0.3.0"]
+    schema_version: Literal["0.4.0"]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
     player_generation: PlayerGenerationSettings
@@ -428,6 +455,10 @@ class GameRevealAction(BaseModel):
     ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
+    reason: str | None = None
+    focus_id: str | None = None
+    evidence_id: str | None = None
+    response_to_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -461,6 +492,7 @@ class GameRevealVote(BaseModel):
 
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
+    reasons: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)
@@ -483,13 +515,17 @@ class GameRevealResponse(BaseModel):
     scenario_name: str | None = None
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     role_counts: dict[RoleId, RoleCount]
-    rules: LocalRulesSettings
+    discussion: DiscussionSettings
+    voting: VotingSettings
+    night: NightSettings
+    lifecycle: LifecycleSettings
     players: list[GameRevealPlayer]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
     winner: Winner | None = None
     pending_votes: list[GameRevealAction] = Field(default_factory=list)
     pending_night_actions: list[GameRevealAction] = Field(default_factory=list)
+    pending_discussion_actions: list[GameRevealAction] = Field(default_factory=list)
     votes: list[GameRevealVote] = Field(default_factory=list)
     nights: list[GameRevealNight] = Field(default_factory=list)
 
@@ -544,10 +580,14 @@ class PlayerObservationSpeech(BaseModel):
     """One public speech visible in a player observation."""
 
     day: int = Field(ge=1)
+    speech_id: str
+    round_id: str
+    round_kind: Literal["opening", "response"]
     player_id: str
     message: str
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -558,6 +598,7 @@ class PlayerObservationVote(BaseModel):
     day: int = Field(ge=1)
     tie_break_policy: str
     votes: dict[str, str] = Field(default_factory=dict)
+    reasons: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)
@@ -573,6 +614,20 @@ class PlayerObservationHistory(BaseModel):
 
     speeches: list[PlayerObservationSpeech] = Field(default_factory=list)
     votes: list[PlayerObservationVote] = Field(default_factory=list)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class DiscussionRoundDescriptor(BaseModel):
+    """Playerへ公開できる現在の議論roundを表す."""
+
+    round_id: str
+    cycle: int = Field(ge=1)
+    kind: Literal["opening", "response"]
+    submission_mode: Literal["sealed", "ordered"]
+    actor_order: list[str]
+    cursor: int = Field(ge=0)
+    reference_ids: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -598,6 +653,7 @@ class PlayerObservation(BaseModel):
     known_factions: dict[str, Winner] = Field(default_factory=dict)
     available_actions: list[AvailableActionDescriptor] = Field(default_factory=list)
     history: PlayerObservationHistory = Field(default_factory=PlayerObservationHistory)
+    discussion_round: DiscussionRoundDescriptor | None = None
     win_result: PlayerObservationOutcome | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -613,28 +669,51 @@ class PlayerObservationResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class PlayerActionRequest(BaseModel):
-    """One manual player action submitted through the API port."""
+class SpeechActionRequest(BaseModel):
+    """公開発言request."""
 
-    type: ActionType
-    ability_id: str | None = None
+    type: Literal["speech"]
+    message: str
+    focus_id: str | None = None
+    evidence_id: str | None = None
+    response_to_id: str | None = None
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
+class VoteActionRequest(BaseModel):
+    """公開理由付き投票request."""
+
+    type: Literal["vote"]
+    target_id: str
+    reason: str
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
+class UseAbilityActionRequest(BaseModel):
+    """能力使用request."""
+
+    type: Literal["use_ability"]
+    ability_id: str
     target_id: str | None = None
-    message: str | None = None
-    reason: str = ""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+
+
+class PassActionRequest(BaseModel):
+    """行動しないrequest."""
+
+    type: Literal["pass"]
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    @field_validator("ability_id", "target_id", "message")
-    @classmethod
-    def validate_optional_text(cls, value: str | None, info: ValidationInfo) -> str | None:
-        """Return stripped optional action text."""
-        return optional_non_blank(value, str(info.field_name))
 
-    @field_validator("reason")
-    @classmethod
-    def normalize_reason(cls, value: str) -> str:
-        """Return stripped optional action reason text."""
-        return value.strip()
+PlayerActionRequest = Annotated[
+    SpeechActionRequest | VoteActionRequest | UseAbilityActionRequest | PassActionRequest,
+    Field(discriminator="type"),
+]
+PLAYER_ACTION_REQUEST_ADAPTER: TypeAdapter[PlayerActionRequest] = TypeAdapter(PlayerActionRequest)
 
 
 class PlayerActionResponse(BaseModel):
@@ -734,6 +813,7 @@ __all__ = [
     "GAME_PHASE_VOTING",
     "GAME_STATUS_COMPLETED",
     "GAME_STATUS_RUNNING",
+    "PLAYER_ACTION_REQUEST_ADAPTER",
     "ActionType",
     "AdvanceGameJobResponse",
     "AdvanceGameResponse",
@@ -741,6 +821,7 @@ __all__ = [
     "AvailableActionDescriptor",
     "CreateGameRequest",
     "DeliberationLevel",
+    "DiscussionSettings",
     "ErrorEventPayload",
     "GameListQuery",
     "GameListResponse",
@@ -756,8 +837,10 @@ __all__ = [
     "GameTimelineItem",
     "GameTimelineQuery",
     "GameTimelineResponse",
-    "LocalRulesSettings",
+    "LifecycleSettings",
     "NarrationMode",
+    "NightSettings",
+    "PassActionRequest",
     "PlayerActionRequest",
     "PlayerActionResponse",
     "PlayerObservation",
@@ -776,5 +859,9 @@ __all__ = [
     "RecoveryAction",
     "RoleCount",
     "RoleId",
+    "SpeechActionRequest",
+    "UseAbilityActionRequest",
+    "VoteActionRequest",
+    "VotingSettings",
     "Winner",
 ]

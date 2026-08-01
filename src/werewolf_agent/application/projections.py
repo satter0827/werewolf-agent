@@ -80,7 +80,7 @@ def public_state_payload_from_snapshot(
             killed_night=player.killed_night,
             role=(
                 player.role
-                if not player.is_alive and snapshot.config.rules.reveal_role_on_death
+                if not player.is_alive and snapshot.config.lifecycle.reveal_role_on_death
                 else None
             ),
             faction=cast(
@@ -89,7 +89,7 @@ def public_state_payload_from_snapshot(
                     snapshot.config.roles.faction_for_role(player.role)
                     if not player.is_alive
                     and player.role is not None
-                    and snapshot.config.rules.reveal_role_on_death
+                    and snapshot.config.lifecycle.reveal_role_on_death
                     else None
                 ),
             ),

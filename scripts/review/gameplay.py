@@ -30,7 +30,10 @@ def generate_gameplay_evidence(*, seed: int = 7) -> dict[str, Any]:
     rule_definition = rule_definition_from_values(
         player_count=player_count,
         role_counts=role_counts,
-        rules=setup.mechanics.rules.to_mapping(),
+        discussion=setup.mechanics.discussion.to_mapping(),
+        voting=setup.mechanics.voting.to_mapping(),
+        night=setup.mechanics.night.to_mapping(),
+        lifecycle=setup.mechanics.lifecycle.to_mapping(),
         roles={role_id: role.to_mapping() for role_id, role in setup.mechanics.roles.items()},
         abilities={
             ability_id: ability.to_mapping()

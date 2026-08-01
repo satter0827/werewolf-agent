@@ -85,5 +85,5 @@ def test_use_ability_envelope_requires_an_ability_id() -> None:
     assert option.key == "use_ability:custom_scan"
     assert action.ability_id == "custom_scan"
 
-    with pytest.raises(ValueError, match="requires ability_id"):
-        Action(type=ActionType.USE_ABILITY, player_id="p1", target_id="p2")
+    with pytest.raises(ValueError, match="ability_id"):
+        Action.use_ability("p1", "", "p2")

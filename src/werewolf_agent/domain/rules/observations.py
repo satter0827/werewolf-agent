@@ -68,15 +68,21 @@ def build_player_observation(
             speeches=tuple(
                 SpeechRecord(
                     day=speech.day,
+                    speech_id=speech.speech_id,
+                    round_id=speech.round_id,
+                    round_kind=speech.round_kind,
                     player_id=speech.player_id,
                     message=speech.message,
                     focus_id=speech.focus_id,
                     evidence_id=speech.evidence_id,
+                    response_to_id=speech.response_to_id,
                 )
                 for speech in snapshot.history.speeches
             ),
+            discussions=snapshot.history.discussions,
             votes=snapshot.history.votes,
         ),
+        discussion_round=pending_actions.discussion_round,
         win_result=(
             None
             if snapshot.win_result is None
@@ -125,7 +131,7 @@ def _known_roles(
                 and ability.result_detail == "role"
             ):
                 known[inspection.target_id] = inspection.target_role
-    if snapshot.config.rules.reveal_role_on_death:
+    if snapshot.config.lifecycle.reveal_role_on_death:
         for player in snapshot.players.values():
             if not player.is_alive and player.role is not None:
                 known[player.id] = player.role
@@ -153,7 +159,7 @@ def _known_factions(
         if claim.faction is not None:
             known[claim.target_id] = claim.faction
     observer = player_by_id(snapshot, player_id)
-    if snapshot.config.rules.reveal_role_on_death:
+    if snapshot.config.lifecycle.reveal_role_on_death:
         for player in snapshot.players.values():
             if not player.is_alive and player.role is not None:
                 known[player.id] = snapshot.config.roles.faction_for_role(player.role)

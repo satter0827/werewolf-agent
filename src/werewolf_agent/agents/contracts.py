@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.5.1"
+AGENT_CONTRACT_VERSION = "0.6.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -250,6 +250,7 @@ class DecisionOption:
     action_type: str
     ability_id: str | None = None
     legal_target_ids: tuple[str, ...] = ()
+    legal_reference_ids: tuple[str, ...] = ()
     message_max_chars: int | None = None
 
     def __post_init__(self) -> None:
@@ -264,6 +265,12 @@ class DecisionOption:
         if len(targets) != len(set(targets)):
             raise ValueError("legal_target_ids must be unique")
         object.__setattr__(self, "legal_target_ids", targets)
+        references = tuple(
+            non_blank(reference, "legal_reference_id") for reference in self.legal_reference_ids
+        )
+        if len(references) != len(set(references)):
+            raise ValueError("legal_reference_ids must be unique")
+        object.__setattr__(self, "legal_reference_ids", references)
         if self.message_max_chars is not None:
             _require_positive_integer(self.message_max_chars, "message_max_chars")
 
@@ -325,6 +332,8 @@ class DecisionResponse:
     message: str | None = None
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
+    reason: str | None = None
     confidence: float | None = None
     beliefs: Mapping[str, float] = field(default_factory=dict)
     intent: str | None = None
@@ -339,6 +348,8 @@ class DecisionResponse:
             "message",
             "focus_id",
             "evidence_id",
+            "response_to_id",
+            "reason",
             "intent",
         ):
             object.__setattr__(

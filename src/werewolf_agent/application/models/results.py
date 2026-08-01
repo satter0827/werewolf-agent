@@ -22,7 +22,12 @@ from werewolf_agent.application.types import (
     RoleId,
     Winner,
 )
-from werewolf_agent.setup import LocalRulesDefinition
+from werewolf_agent.setup import (
+    DiscussionDefinition,
+    LifecycleDefinition,
+    NightDefinition,
+    VotingDefinition,
+)
 
 if TYPE_CHECKING:
     pass
@@ -103,6 +108,10 @@ class GameRevealAction(ApplicationModel):
     ability_id: str | None = None
     target_id: str | None = None
     message: str | None = None
+    reason: str | None = None
+    focus_id: str | None = None
+    evidence_id: str | None = None
+    response_to_id: str | None = None
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -136,6 +145,7 @@ class GameRevealVote(ApplicationModel):
 
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
+    reasons: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)
@@ -159,13 +169,17 @@ class GameRevealResult(ApplicationModel):
     narration_mode: NarrationMode = DEFAULT_NARRATION_MODE
     theme: dict[str, Any] | None = None
     role_counts: dict[RoleId, RoleCount]
-    rules: LocalRulesDefinition
+    discussion: DiscussionDefinition
+    voting: VotingDefinition
+    night: NightDefinition
+    lifecycle: LifecycleDefinition
     players: list[GameRevealPlayer]
     alive_player_ids: list[str]
     eliminated_player_ids: list[str]
     winner: Winner | None = None
     pending_votes: list[GameRevealAction] = Field(default_factory=list)
     pending_night_actions: list[GameRevealAction] = Field(default_factory=list)
+    pending_discussion_actions: list[GameRevealAction] = Field(default_factory=list)
     votes: list[GameRevealVote] = Field(default_factory=list)
     nights: list[GameRevealNight] = Field(default_factory=list)
 
