@@ -207,7 +207,7 @@ def test_deadline_bound_decisions_disable_transport_retries(monkeypatch) -> None
         provider="openai",
         model="test-model",
         base_url="https://example.invalid/v1",
-        api_key="test-key",
+        api_key="test",
         timeout_seconds=10,
         max_tokens=128,
         temperature=0,
