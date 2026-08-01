@@ -22,6 +22,21 @@ class WorkerSettings(BaseModel):
     worker_paid_llm_base_url: str = Field(
         validation_alias="WEREWOLF_WORKER_PAID_LLM_BASE_URL",
     )
+    worker_paid_llm_enabled: bool = Field(
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_ENABLED",
+    )
+    worker_paid_llm_daily_advance_limit: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_DAILY_ADVANCE_LIMIT",
+    )
+    worker_paid_llm_max_concurrent_advances: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_MAX_CONCURRENT_ADVANCES",
+    )
+    worker_paid_llm_admission_ttl_seconds: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_WORKER_PAID_LLM_ADMISSION_TTL_SECONDS",
+    )
     supabase_worker_id: str = Field(
         validation_alias="WEREWOLF_SUPABASE_WORKER_ID",
     )

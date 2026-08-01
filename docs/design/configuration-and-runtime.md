@@ -59,6 +59,9 @@ console scriptは対応するextraを遅延して読み込み、不足時は導�
 
 APIとworkerのpool size、取得timeout、workerのvisibility timeout、heartbeat、最大試行回数は
 同じ設定modelで検証する。instance IDはAPIプロセスの識別だけに使う。
+有料LLMは`WEREWOLF_WORKER_PAID_LLM_ENABLED`で明示的に有効化し、日次有料advance上限、
+全workerの同時有料advance上限、crash時のadmission TTLをworker設定から解決する。これらを
+provider既定値やAPI設定へfallbackしない。
 
 ## ログと観測
 

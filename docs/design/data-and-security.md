@@ -31,6 +31,10 @@ setup、閲覧、operation送信に必要な権限だけを持ち、workerはque
 必要な権限だけを持つ。migration用owner接続をruntimeへ渡さず、新しいtableとfunctionは所有プロセスを
 migrationで明示するまでruntime roleへ許可しない。
 
+有料LLMのadmission台帳はprivate schemaへ保存し、operation、利用者、worker、予約時刻、期限、結果を
+保持する。日次上限は成功件数ではなく外部呼出しを許可した予約件数で判定し、provider失敗やworker中断で
+予算を戻さない。同じoperationの再予約を許可せず、retryによる意図しない重複課金を防ぐ。
+
 完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。専用設定は
 既定で無効とし、必要なruntimeだけが明示的に有効化する。
 通常の`GameClient`からは呼び出せない。CLIとStreamlitの

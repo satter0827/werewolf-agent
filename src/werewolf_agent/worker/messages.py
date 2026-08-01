@@ -11,6 +11,8 @@ MESSAGE_GAME_PARTICIPATION_REQUIRED = "The current user no longer has access to 
 
 MESSAGE_PAID_LLM_REQUIRES_MEMBER = "Paid LLM access requires a signed-in user."
 
+MESSAGE_PAID_LLM_DISABLED = "Paid LLM operations are disabled."
+
 MESSAGE_PLAYER_SEAT_NOT_OWNED = "The current user does not own this player seat."
 
 MESSAGE_WORKER_REQUEST_FAILED = "Worker request failed."

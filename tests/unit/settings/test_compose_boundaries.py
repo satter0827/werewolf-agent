@@ -48,6 +48,10 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
         "WEREWOLF_SUPABASE_WORKER_BATCH_SIZE",
         "WEREWOLF_LLM_TIMEOUT_SECONDS",
         "WEREWOLF_WORKER_PAID_LLM_BASE_URL",
+        "WEREWOLF_WORKER_PAID_LLM_ENABLED",
+        "WEREWOLF_WORKER_PAID_LLM_DAILY_ADVANCE_LIMIT",
+        "WEREWOLF_WORKER_PAID_LLM_MAX_CONCURRENT_ADVANCES",
+        "WEREWOLF_WORKER_PAID_LLM_ADMISSION_TTL_SECONDS",
     ):
         assert setting in worker_block
     for setting in (
