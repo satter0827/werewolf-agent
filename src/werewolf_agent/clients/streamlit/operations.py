@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from collections.abc import Callable
+from typing import Any, TypeVar, cast
 from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
@@ -22,6 +23,7 @@ from werewolf_agent.clients.streamlit.view_models import (
     ScreenMode,
     build_game_screen_view,
 )
+from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
     PlayerPreviewResponse,
@@ -29,6 +31,7 @@ from werewolf_agent.contracts.api import (
     RuntimeStatusResponse,
     SavedSetupListResponse,
     SavedSetupRevisionResponse,
+    SavedSetupSummaryResponse,
     SessionResponse,
     SetupCatalogResponse,
     SetupCreateRequest,
@@ -56,6 +59,7 @@ from werewolf_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 def build_streamlit_client(settings: AppSettings) -> GameClient:
@@ -133,7 +137,19 @@ def preview_players(
 
 def list_saved_setups(*, settings: AppSettings) -> SavedSetupListResponse:
     """Return setups owned by the authenticated user."""
-    return build_streamlit_client(settings).list_setups()
+    client = build_streamlit_client(settings)
+
+    def fetch_page(limit: int, offset: int) -> tuple[list[SavedSetupSummaryResponse], int | None]:
+        page = client.list_setups(limit=limit, offset=offset)
+        return page.items, page.next_offset
+
+    return SavedSetupListResponse(
+        items=_collect_bounded_pages(
+            fetch_page,
+            page_limit=settings.api_setup_list_max_limit,
+            max_items=settings.game_setup_max_saved_setups,
+        )
+    )
 
 
 def load_saved_setup(
@@ -152,7 +168,51 @@ def list_setup_revisions(
     *, settings: AppSettings, setup_id: str
 ) -> list[SavedSetupRevisionResponse]:
     """Return immutable revision history for an owned setup."""
-    return build_streamlit_client(settings).list_setup_revisions(setup_id).items
+    client = build_streamlit_client(settings)
+
+    def fetch_page(limit: int, offset: int) -> tuple[list[SavedSetupRevisionResponse], int | None]:
+        page = client.list_setup_revisions(setup_id, limit=limit, offset=offset)
+        return page.items, page.next_offset
+
+    return _collect_bounded_pages(
+        fetch_page,
+        page_limit=settings.api_setup_revision_max_limit,
+        max_items=settings.game_setup_max_revisions,
+    )
+
+
+def _collect_bounded_pages(
+    fetch_page: Callable[[int, int], tuple[list[T], int | None]],
+    *,
+    page_limit: int,
+    max_items: int,
+) -> list[T]:
+    """Collect trusted API pages without exceeding the configured storage quota."""
+    items: list[T] = []
+    offset = 0
+    seen_offsets: set[int] = set()
+    while len(items) < max_items:
+        if offset in seen_offsets:
+            raise _invalid_page_error()
+        seen_offsets.add(offset)
+        limit = min(page_limit, max_items - len(items))
+        page_items, next_offset = fetch_page(limit, offset)
+        if len(page_items) > limit:
+            raise _invalid_page_error()
+        items.extend(page_items)
+        if next_offset is None:
+            return items
+        if not page_items or next_offset <= offset:
+            raise _invalid_page_error()
+        offset = next_offset
+    raise _invalid_page_error()
+
+
+def _invalid_page_error() -> AppError:
+    return AppError(
+        "保存したゲーム設定を読み込めません。",
+        code=ErrorCode.INTERNAL_UNEXPECTED,
+    )
 
 
 def create_saved_setup(
