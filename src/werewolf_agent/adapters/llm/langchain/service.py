@@ -39,6 +39,7 @@ from werewolf_agent.adapters.llm.models import (
 from werewolf_agent.adapters.llm.ports import DecisionModel
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
+from werewolf_agent.contracts.error_catalog import ERROR_CONTEXT_LLM_TIMEOUT_SECONDS
 
 PIPELINE_REVISION = "discussion-move-v1"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
@@ -220,10 +221,10 @@ class LangChainDecisionProvider:
                     "fallback_reason": fallback_reason,
                     "deliberation_level": self.deliberation_level.value,
                     "effective_output_token_limit": request.task.output_token_limit,
-                    "effective_timeout_seconds": (
-                        response.metadata.get("effective_timeout_seconds")
-                        if response is not None
-                        else request.task.timeout_seconds
+                    "effective_timeout_seconds": _trace_timeout_seconds(
+                        request,
+                        response,
+                        error_payload,
                     ),
                     "decision_type": decision.type.value,
                     "risk_tolerance": (
@@ -257,6 +258,19 @@ class LangChainDecisionProvider:
                 response_bytes=len(response_text.encode("utf-8")),
             )
         )
+
+
+def _trace_timeout_seconds(
+    request: ModelRequest,
+    response: ModelResponse | None,
+    error_payload: Mapping[str, object] | None,
+) -> object:
+    """Return the timeout actually applied to a successful or failed model call."""
+    if response is not None:
+        return response.metadata.get("effective_timeout_seconds")
+    if error_payload is not None and ERROR_CONTEXT_LLM_TIMEOUT_SECONDS in error_payload:
+        return error_payload[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS]
+    return request.task.timeout_seconds
 
 
 def _preflight_decision(

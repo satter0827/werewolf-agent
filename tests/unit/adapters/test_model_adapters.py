@@ -9,6 +9,7 @@ import pytest
 import respx
 from langchain_openai import ChatOpenAI
 
+from werewolf_agent.adapters.llm.langchain.service import _trace_timeout_seconds
 from werewolf_agent.adapters.llm.model_adapters import (
     LangChainChatDecisionModel,
     LlmModelInvocationError,
@@ -21,6 +22,7 @@ from werewolf_agent.adapters.llm.models import (
     ModelRequest,
 )
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
+from werewolf_agent.contracts.error_catalog import ERROR_CONTEXT_LLM_TIMEOUT_SECONDS
 
 BASE_URL = "http://127.0.0.1:18765/v1"
 COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
@@ -152,10 +154,13 @@ def test_openai_compatible_adapter_uses_the_shorter_request_timeout() -> None:
 @respx.mock
 def test_openai_compatible_adapter_converts_transport_error_once() -> None:
     route = respx.post(COMPLETIONS_URL).mock(return_value=httpx.Response(503))
+    model_request = request(timeout_seconds=0.25)
 
     with pytest.raises(LlmModelInvocationError) as raised:
-        adapter().invoke(request())
+        adapter().invoke(model_request)
 
     assert len(route.calls) == 1
     assert raised.value.context["llm_provider"] == "lmstudio"
     assert raised.value.context["llm_model"] == "stub-model"
+    assert raised.value.context[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS] == pytest.approx(0.25)
+    assert _trace_timeout_seconds(model_request, None, raised.value.context) == pytest.approx(0.25)
