@@ -47,11 +47,22 @@ def test_architecture_outputs_are_complete_and_deterministic(tmp_path: Path) -> 
     architecture.write_outputs(second)
 
     expected = {
+        "agent-decision.svg",
         "architecture.json",
         "architecture.schema.json",
         "assessment.md",
+        "configuration-flow.svg",
         "domain-structure.svg",
+        "experiment-pipeline.svg",
+        "game-lifecycle.svg",
+        "information-boundaries.svg",
         "layer-dependencies.svg",
+        "public-sdk.svg",
+        "quality-pipeline.svg",
+        "request-lifecycle.svg",
+        "runtime-processes.svg",
+        "setup-resolution.svg",
+        "simulation-lifecycle.svg",
         "system-context.svg",
     }
     assert {path.name for path in first.iterdir()} == expected
@@ -84,6 +95,18 @@ def test_diagram_edges_end_at_node_boundaries() -> None:
 
     assert horizontal == (180.0, 32.0, 300.0, 32.0)
     assert diagonal == (154.0, 64.0, 326.0, 150.0)
+
+
+def test_static_diagram_definitions_are_complete() -> None:
+    """静的図のfile名、node、edge参照を重複なく定義する。"""
+    filenames = [diagram.filename for diagram in rendering.STATIC_DIAGRAMS]
+
+    assert len(filenames) == len(set(filenames))
+    for diagram in rendering.STATIC_DIAGRAMS:
+        node_ids = {node.node_id for node in diagram.nodes}
+        assert node_ids == set(diagram.positions)
+        assert all(edge.source in node_ids for edge in diagram.edges)
+        assert all(edge.target in node_ids for edge in diagram.edges)
 
 
 def test_import_analysis_resolves_relative_and_package_imports(tmp_path: Path) -> None:

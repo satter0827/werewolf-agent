@@ -1,7 +1,7 @@
 (simulation)=
 # 単一ゲームSimulation
 
-## 目的
+## 利用範囲
 
 Notebook、worker、実験から同じ一局実行契約を利用し、Agent差し替え後もdomainの決定性と
 本人用observationの秘匿性を維持する。
@@ -18,6 +18,14 @@ Notebook、worker、実験から同じ一局実行契約を利用し、Agent差�
 - `submit_manual()`はmanual controllerのactionだけを`Game`へ渡す。
 - `run()`は終局、手動入力待ち、action/phase上限、cancelのいずれかで停止する。
 - Agent sessionはゲームとプレイヤーごとに一つ作り、終了時にまとめてcloseする。
+
+```{image} ../_generated/architecture/simulation-lifecycle.svg
+:alt: SimulationSessionがAgent、手動入力、phase進行、停止を選択する流れ
+:width: 100%
+```
+
+各`step()`はAgent action、manual action、phase進行、停止の一つだけを記録する。終局、手動入力待ち、
+action上限、phase上限、cancelは通常の停止結果として返し、例外や暗黙の終了へ変換しない。
 
 ## 境界
 

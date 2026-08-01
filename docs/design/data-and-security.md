@@ -15,6 +15,15 @@
 | LLM trace | 観測、構造化出力、provider情報 | 運用権限を持つ主体 |
 | credential | token、API key、秘密鍵 | 実行環境だけ |
 
+```{image} ../_generated/architecture/information-boundaries.svg
+:alt: 完全状態からpublic state、本人observation、管理者revealを分離する流れ
+:width: 100%
+```
+
+完全状態から外部出力を作る各経路は独立したallowlist projectionを持つ。public projectionは閲覧者に
+依存せず、プレイヤーprojectionは認可主体とプレイヤーIDを検証し、revealは管理者認可と機能設定の両方を
+必要とする。完全状態を通常clientへ送って画面側で隠さない。
+
 死亡時役職公開が有効な場合だけ、死亡者のroleとfactionをpublic stateへ移す。通常のpublic
 stateは終局後も全役職を公開せず、完全状態は管理者revealと認可済みreplayに限定する。
 

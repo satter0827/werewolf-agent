@@ -7,9 +7,9 @@ HTTP APIは認証、wire schema、エラー応答を受け持つ。ユースケ�
 
 ## アプリケーション境界
 
-Python利用者向けの公開面は`werewolf_agent.domain`と`werewolf_agent.application`の
-`__all__`で定義する。公開署名から到達するproject内の型と、利用者が捕捉する例外は同じfacadeから
-importできる。HTTP request schemaと内部handlerは公開Python APIに含めない。
+application組み込み利用者向けの公開面は`werewolf_agent.application`の`__all__`で定義する。
+公開署名から到達するproject内の型と、利用者が捕捉する例外は同じfacadeからimportできる。
+HTTP request schemaと内部handlerは公開Python APIに含めない。
 `Actor`と例外変換はGame・Setup両facadeが共有するapplication所有境界とし、peer facade間で所有しない。
 handlerはリポジトリportから集約を読み、domainの操作を呼び、結果を保存して
 公開DTOへ射影する。application自身はログやtelemetryを出力しない。
@@ -66,15 +66,18 @@ middlewareを有効にする。設定fieldと環境変数名はsettings modelと
 
 ## 操作の流れ
 
-1. クライアントがchecked-in OpenAPI contractに従ってHTTP要求を送る。
-2. APIが認証と入力検証を行う。
-3. `GameApplication`が認可し、集約を取得してdomain操作を呼ぶ。
-4. リポジトリが更新後の完全状態を保存する。
-5. projectionが閲覧者向けの公開DTOを作る。
-6. APIが公開応答を返し、外部境界で観測情報を記録する。
+```{image} ../_generated/architecture/request-lifecycle.svg
+:alt: HTTP requestを認可してqueueへ保存しworkerが結果をcommitする流れ
+:width: 100%
+```
 
-同一操作の再送、競合、存在しないgame、許可されない操作は、domainエラーと
-infrastructureエラーを混同せず、安定したerror codeで表す。
+参照queryはAPIからapplicationを同期的に呼び、認可済みprojectionを返す。ゲーム作成、プレイヤー行動、
+自動進行などの更新コマンドはAPIで認証、形式検証、application認可を完了してからoperation queueへ
+保存する。workerは正規化済み入力だけを取得し、計算結果を期待versionとlease付きでcommitする。
+
+clientはoperation IDで`queued`、`running`、`succeeded`、`failed`を取得する。再送、競合、
+存在しないgame、許可されない操作はdomainエラーとinfrastructureエラーを混同せず、安定した
+error codeで表す。
 
 公開Python serviceは認可拒否を`AUTHORIZATION_FAILED`、resource不存在を
 `RESOURCE_NOT_FOUND`、portの構成不足を`ConfigError`、ゲーム操作違反を`GameError`系で表す。

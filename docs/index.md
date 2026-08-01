@@ -1,38 +1,37 @@
 # Werewolf Agent
 
-Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かすPython
-バックエンドである。この文書は、設計、公開API、開発、検証、リリース、運用の正本として、
-現在のソースコード、設定、生成契約、品質成果物を説明する。
+Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーとして動かすPythonバックエンドである。
+決定的なdomain core、公開Python SDK、HTTP API、worker、CLI、Streamlitを提供する。
 
 ::::{grid} 1 2 2 2
 :gutter: 2
 
-:::{grid-item-card} 製品と要件を理解する
+:::{grid-item-card} 利用者と機能
 :link: design/requirements
 :link-type: doc
 
-利用者、機能要件、品質要件、提供範囲を確認する。
+提供機能、利用者、品質要件、1.0.0の範囲を示す。
 :::
 
-:::{grid-item-card} 構造と境界を確認する
+:::{grid-item-card} システム構造
 :link: design/architecture
 :link-type: doc
 
-レイヤー、依存方向、公開面、生成された構造図を確認する。
+外部サービス、実行プロセス、Pythonパッケージ、依存方向を示す。
 :::
 
-:::{grid-item-card} 開発と検証を進める
+:::{grid-item-card} 開発と検証
 :link: design/development
 :link-type: doc
 
-変更の進め方、品質判定、成果物の読み方を確認する。
+変更単位、品質判定、構造検査、成果物を示す。
 :::
 
-:::{grid-item-card} 起動・診断・運用を行う
+:::{grid-item-card} 起動と運用
 :link: design/operations
 :link-type: doc
 
-実行プロセス、監視信号、問題調査、外部運用境界を確認する。
+実行プロセス、監視信号、障害調査、外部運用境界を示す。
 :::
 ::::
 
@@ -57,9 +56,9 @@ Werewolf Agentは、LLMエージェントを人狼ゲームのプレイヤーと
 /notes/index
 ```
 
-## 文書の使い分け
+## 入口
 
-- 初めて実行する場合は、リポジトリの`README.md`から始める。
-- 公開Python APIと実行時設定は、{ref}`reference`を参照する。
-- 品質コマンド、ブラウザーE2E、エージェントレビューの具体的な操作は、`scripts/README.md`を正本とする。
-- 過去の設計判断は、{doc}`notes/index`から参照する。決定済み仕様としては扱わない。
+- 最初の実行はリポジトリの`README.md`を使用する。
+- 公開Python APIと実行時設定は{ref}`reference`を使用する。
+- 品質、環境、ブラウザーE2E、レビューの操作は`scripts/README.md`を使用する。
+- 実装済み仕様は{doc}`design/index`、未完了の検討は{doc}`notes/index`に分ける。

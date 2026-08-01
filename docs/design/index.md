@@ -1,11 +1,8 @@
 # 設計書
 
-設計書は、利用者の要求がどの境界で実装され、どの検証を通り、どの自動化入口で
-運用されるかを説明する。コード、設定、生成契約、品質成果物を根拠とし、同じ事実を
-複数のページで定義しない。
-
-具体的なデフォルトと環境変数はsettings、HTTP wire schemaは`contracts/openapi.json`、
-構造規則は`scripts/architecture/rules.toml`、開発操作は`scripts/README.md`を正本とする。
+Werewolf Agentの実装済み要件、構造、処理、保証を現在形で定義する。具体的なデフォルトと環境変数は
+settings、HTTP wire schemaは`contracts/openapi.json`、構造規則は`scripts/architecture/rules.toml`、
+開発操作は`scripts/README.md`を使用する。
 
 ```{toctree}
 :maxdepth: 1
@@ -29,18 +26,20 @@ build-and-release
 operations
 ```
 
-## 責務別の入口
+## 読む順序
 
-| 関心 | 文書 |
+| 知りたいこと | 参照先 |
 | --- | --- |
-| 製品が満たす要求 | {ref}`requirements` |
-| コンポーネントと依存方向 | {ref}`system-architecture` |
-| ゲームルールと状態遷移 | {doc}`domain` |
-| HTTP、worker、永続化 | {doc}`application-and-api` |
-| LLMエージェントと自動進行 | {doc}`agents` |
-| 単一ゲームのheadless実行 | {doc}`simulation` |
-| 反復比較と評価 | {doc}`experiments` |
-| 秘密情報とリプレイ | {doc}`data-and-security` |
-| 開発と検証 | {ref}`development`、{ref}`verification` |
-| 品質証拠と診断 | {ref}`evidence-diagnostics` |
-| リリースと運用 | {ref}`build-release`、{ref}`operations` |
+| 利用者と提供機能 | {ref}`requirements` |
+| 外部サービス、実行プロセス、Pythonパッケージ | {ref}`system-architecture` |
+| ゲーム状態、phase、Rule Pack | {doc}`domain` |
+| setup、seed、プレイヤー生成 | {doc}`game-setup` |
+| HTTP request、認可、queue、worker | {doc}`application-and-api` |
+| Agent observationと意思決定 | {doc}`agents` |
+| 一局のheadless実行 | {doc}`simulation` |
+| 反復試行と評価 | {doc}`experiments` |
+| public、本人用、private情報 | {doc}`data-and-security` |
+| CLIとStreamlit | {doc}`clients` |
+| 設定と実行環境 | {doc}`configuration-and-runtime` |
+| 変更、検証、証拠、リリース | {ref}`development`、{ref}`verification`、{ref}`evidence-diagnostics`、{ref}`build-release` |
+| 起動、監視、障害調査 | {ref}`operations` |
