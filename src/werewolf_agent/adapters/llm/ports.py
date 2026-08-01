@@ -34,6 +34,7 @@ class PlayerAgent(Protocol):
         Args:
             player_id: Player requesting a decision.
             observation: Provider-independent context visible to that player.
+            timeout_seconds: Remaining provider-call time, when bounded.
 
         Returns:
             Structured decision that can be adapted to a game action.
