@@ -6,10 +6,15 @@ CLIとStreamlitは同じHTTP APIを通じてゲームを操作する。各画面
 
 ## CLI
 
-CLIは自動化、診断、開発確認の入口である。`system`、`setup`、`game`、`records`、
+CLIは自動化、診断、開発確認の入口である。`system`、`auth`、`setup`、`game`、`records`、
 `admin`の利用目的でコマンドを分ける。公開情報は`PublicClient`、通常操作は
 `GameClient`、管理操作は`AdminClient`を通す。machine-readableな出力を選べるコマンドでは、
 標準出力へ安定したschemaを返し、診断ログと分離する。
+
+`auth sign-in`はpassword認証後、登録済みTOTP factorがあればchallengeとverifyを完了して
+AAL2 sessionをOS credential storeへ保存する。初回管理者は`auth mfa-enroll`が返すURIを
+authenticatorへ登録し、同じ処理内で確認codeを検証する。password、TOTP code、access token、
+refresh token、TOTP URIをログへ記録しない。
 
 ## Streamlit
 
@@ -26,6 +31,9 @@ workspaceは`Play`、`Observe`、`Records`、`Admin`、`Preferences`の順に扱
 操作と復旧方法を描画し、guestや管理者へ暗黙昇格しない。ゲーム情報を分析情報より先に置き、分析
 領域は初期状態で折りたたむ。ゲーム画面はstatus ribbon、単一のtableau、native widgetの操作rail、
 公開timelineの順に描画する。独自HTMLはstatus ribbon、tableau、timelineだけに限定する。
+password認証後に管理者権限を確認できない場合は、登録済みTOTP factorを選んでAAL2へ昇格する
+入力をsidebarに表示する。確認codeはsession stateへ保存せず、成功時に更新されたsessionだけを
+server-sideのブラウザーsessionへ置き換える。
 `Records`は公開stateと解決済みtimelineを取得し、
 物語としてのreplayと分析を同じ記録導線で分けて表示する。
 
