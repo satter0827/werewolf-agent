@@ -154,7 +154,14 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
     assert re.findall(r"^          -\s+(.+?)\s*$", cache_group.group("patterns"), re.MULTILINE) == [
         '"actions/cache*"'
     ]
-    assert "groups:" not in updates["uv"]
+    uv = updates["uv"]
+    assert "versioning-strategy: increase-if-necessary" in uv
+    assert re.search(
+        r'(?ms)^      routine-updates:\s*$.*?^          - "\*"\s*$'
+        r".*?^        exclude-patterns:\s*$.*?^          - ruff\s*$"
+        r".*?^        update-types:\s*$.*?^          - patch\s*$.*?^          - minor\s*$",
+        uv,
+    )
 
 
 def test_repository_exposes_standard_community_templates() -> None:

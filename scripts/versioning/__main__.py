@@ -33,6 +33,8 @@ BREAKING_FOOTER = re.compile(r"^BREAKING(?: CHANGE|-CHANGE):", re.MULTILINE)
 VersionLevel = Literal["patch", "minor", "major"]
 VersionStandard = Literal["pep440", "semver"]
 ChangeDetection = Literal["path", "python_ast"]
+Enforcement = Literal["change", "release"]
+Scope = Literal["auto", "change", "release"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +48,7 @@ class Boundary:
     pattern: str
     watch: tuple[str, ...]
     change_detection: ChangeDetection = "path"
+    enforcement: Enforcement = "change"
 
 
 @total_ordering
@@ -82,9 +85,23 @@ class SemanticVersion:
         return len(self.prerelease) < len(other.prerelease)
 
 
-def _boundaries() -> tuple[Boundary, ...]:
+def _registry_document() -> dict[str, object]:
     with REGISTRY.open("rb") as stream:
-        items = tomllib.load(stream)["boundaries"]
+        return tomllib.load(stream)
+
+
+def _release_base_ref() -> str:
+    document = _registry_document()
+    value = document.get("release_base_ref")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("release_base_refをversion registryへ指定してください。")
+    return value
+
+
+def _boundaries() -> tuple[Boundary, ...]:
+    items = _registry_document()["boundaries"]
+    if not isinstance(items, list):
+        raise ValueError("version registryのboundariesは配列で指定してください。")
     standards = {"pep440", "semver"}
     unknown = {str(item["standard"]) for item in items if str(item["standard"]) not in standards}
     if unknown:
@@ -97,6 +114,14 @@ def _boundaries() -> tuple[Boundary, ...]:
     }
     if unknown_detections:
         raise ValueError("未定義の変更判定です: " + ", ".join(sorted(unknown_detections)))
+    enforcements = {"change", "release"}
+    unknown_enforcements = {
+        str(item.get("enforcement", "change"))
+        for item in items
+        if str(item.get("enforcement", "change")) not in enforcements
+    }
+    if unknown_enforcements:
+        raise ValueError("未定義の適用単位です: " + ", ".join(sorted(unknown_enforcements)))
     return tuple(
         Boundary(
             name=str(item["name"]),
@@ -106,6 +131,7 @@ def _boundaries() -> tuple[Boundary, ...]:
             pattern=str(item["pattern"]),
             watch=tuple(str(path) for path in item["watch"]),
             change_detection=cast(ChangeDetection, str(item.get("change_detection", "path"))),
+            enforcement=cast(Enforcement, str(item.get("enforcement", "change"))),
         )
         for item in items
     )
@@ -164,6 +190,7 @@ def inspect() -> list[dict[str, object]]:
                 boundary, _repository_path(boundary.path).read_text(encoding="utf-8")
             ),
             "watch": list(boundary.watch),
+            "enforcement": boundary.enforcement,
         }
         for boundary in _boundaries()
     ]
@@ -190,6 +217,13 @@ def _merge_base(base_ref: str, head_ref: str) -> str:
     if value is None:
         raise ValueError(f"base refを解決できません: {base_ref}")
     return value.strip()
+
+
+def _resolve_scope(scope: Scope, base_ref: str) -> Enforcement:
+    """明示scopeまたは比較元refの責務から適用単位を決定する。"""
+    if scope != "auto":
+        return scope
+    return "release" if base_ref == _release_base_ref() else "change"
 
 
 def _changed_paths(base_ref: str, head_ref: str) -> tuple[str, ...]:
@@ -322,15 +356,18 @@ def _current_version(boundary: Boundary, head_ref: str) -> str:
     return _version(boundary, content)
 
 
-def check(base_ref: str, head_ref: str) -> list[str]:
+def check(base_ref: str, head_ref: str, *, scope: Scope = "auto") -> list[str]:
     """変更された境界がversion更新を伴うことを検査する。"""
     try:
+        resolved_scope = _resolve_scope(scope, base_ref)
         base_revision = _merge_base(base_ref, head_ref)
         changed = _changed_paths(base_ref, head_ref)
     except ValueError as error:
         return [str(error)]
     issues: list[str] = []
     for boundary in _boundaries():
+        if resolved_scope == "change" and boundary.enforcement != "change":
+            continue
         current_version = _current_version(boundary, head_ref)
         base_version = _base_version(boundary, base_revision)
         if base_version is None:
@@ -379,15 +416,19 @@ def bump(
     head_ref: str,
     *,
     dry_run: bool = False,
+    scope: Scope = "auto",
 ) -> list[dict[str, str]]:
     """変更pathが触れた境界を指定levelへ更新する。"""
     if head_ref != "HEAD":
         raise ValueError("bumpのhead refはHEADだけを指定できます。")
+    resolved_scope = _resolve_scope(scope, base_ref)
     base_revision = _merge_base(base_ref, head_ref)
     changed = _changed_paths(base_ref, head_ref)
     contents: dict[str, str] = {}
     updates: list[dict[str, str]] = []
     for boundary in _boundaries():
+        if boundary.enforcement != resolved_scope:
+            continue
         if not _boundary_touched(boundary, changed, base_revision, head_ref):
             continue
         base_version = _base_version(boundary, base_revision)
@@ -446,6 +487,10 @@ def _add_refs(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--head-ref", default=DEFAULT_HEAD_REF)
 
 
+def _add_scope(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--scope", choices=("auto", "change", "release"), default="auto")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Version所有境界を管理する。")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -453,11 +498,13 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("--json", action="store_true")
     check_parser = subparsers.add_parser("check")
     _add_refs(check_parser)
+    _add_scope(check_parser)
     suggest_parser = subparsers.add_parser("suggest")
     _add_refs(suggest_parser)
     bump_parser = subparsers.add_parser("bump")
     bump_parser.add_argument("level", choices=("patch", "minor", "major"))
     _add_refs(bump_parser)
+    _add_scope(bump_parser)
     bump_parser.add_argument("--dry-run", action="store_true")
     return parser
 
@@ -473,11 +520,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 for entry in document:
                     print(
                         f"{entry['name']}: {entry['version']} "
-                        f"({entry['standard']}, {entry['owner']})"
+                        f"({entry['standard']}, {entry['owner']}, {entry['enforcement']})"
                     )
             return 0
         if arguments.command == "check":
-            issues = check(arguments.base_ref, arguments.head_ref)
+            issues = check(arguments.base_ref, arguments.head_ref, scope=arguments.scope)
             if issues:
                 print("\n".join(f"- {issue}" for issue in issues))
                 return 1
@@ -493,6 +540,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             arguments.base_ref,
             arguments.head_ref,
             dry_run=arguments.dry_run,
+            scope=arguments.scope,
         )
     except (OSError, RuntimeError, ValueError) as error:
         print(f"error: {error}")
