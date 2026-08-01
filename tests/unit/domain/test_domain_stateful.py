@@ -34,10 +34,8 @@ def _game(preset_id: str, seed: int) -> Game:
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
             rules=mechanics.rules.to_mapping(),
-            roles={key: value.model_dump(mode="json") for key, value in mechanics.roles.items()},
-            abilities={
-                key: value.model_dump(mode="json") for key, value in mechanics.abilities.items()
-            },
+            roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
+            abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
     )
     generated = generate_players(document.player_generation, player_count=player_count, seed=seed)
