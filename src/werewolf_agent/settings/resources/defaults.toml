@@ -82,6 +82,7 @@ api_rate_limit_requests = 120
 api_rate_limit_window_seconds = 60
 api_timeout_seconds = 15.0
 api_max_concurrent_requests = 32
+api_admin_max_token_age_seconds = 3600
 supabase_jwt_audience = "authenticated"
 supabase_jwt_issuer = ""
 supabase_jwks_url = ""
