@@ -42,8 +42,8 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     }
     versions = {str(item["name"]): str(item["version"]) for item in items}
     assert versions == {
-        "agent": "0.7.0",
-        "architecture": "0.13.2",
+        "agent": "0.8.0",
+        "architecture": "0.13.3",
         "event": "0.1.0",
         "experiment": "0.5.1",
         "experiment-evaluator": "0.4.0",

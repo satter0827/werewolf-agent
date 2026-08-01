@@ -39,7 +39,7 @@ class RequestServices:
     setups: SetupApplication
     message_max_chars: int
     diagnostics: AdminDiagnostics | None = None
-    reveal_api_enabled: bool = True
+    reveal_api_enabled: bool = False
 
 
 def get_services() -> RequestServices:

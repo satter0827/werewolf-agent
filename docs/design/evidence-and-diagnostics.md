@@ -45,8 +45,9 @@ Gameplayレビューは現在のrules、roles、abilitiesからseed固定で一�
 公開timeline、終局を保存する。解決前の行動対象などprivate情報は公開証拠へ保存しない。
 
 Fakeと実LLMは同じchat request、response正規化、schema検証、合法手検証、fallbackを通る。
-Local LLMレビューはloopbackだけを許可し、一局完走は`local-ui`へ分離する。fallbackを伴う完走は
-`degraded`とし、品質プロファイルの合格へ含めない。
+Local LLM preflightはopening、参照必須response、理由必須voteを個別に検証する。接続先はloopbackだけを
+許可し、一局完走は`local-ui`へ分離する。fallbackを伴う実行は`degraded`とし、品質プロファイルの
+合格へ含めない。
 
 エージェントレビューはreport、metrics、event、public timeline、private trace、SHA-256 manifestを
 分離して保存する。providerが返したtoken usageだけを記録し、取得できない値は推計しない。

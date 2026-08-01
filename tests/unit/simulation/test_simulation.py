@@ -483,6 +483,45 @@ def test_metadata_provider_is_resolved_for_every_decision() -> None:
     ]
 
 
+def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
+    game = _game()
+    factory = _CapturingFactory()
+    spec = SimulationSpec(
+        "procedure-context",
+        "game-1",
+        23,
+        {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
+    )
+    session = SimulationRunner().start(game, spec)
+    try:
+        for _ in range(100):
+            assert session.step().stop_reason is None
+            procedures = [
+                request.observation.procedure
+                for request in factory.requests
+                if request.observation.procedure is not None
+            ]
+            if any(procedure.stage_id == "response" for procedure in procedures):
+                break
+        else:
+            pytest.fail("response procedure was not reached")
+    finally:
+        session.close()
+
+    opening = next(procedure for procedure in procedures if procedure.stage_id == "opening")
+    response = next(procedure for procedure in procedures if procedure.stage_id == "response")
+    assert (opening.procedure_id, opening.cycle, opening.submission_mode) == (
+        "structured_discussion",
+        1,
+        "sealed",
+    )
+    assert (response.procedure_id, response.cycle, response.submission_mode) == (
+        "structured_discussion",
+        1,
+        "ordered",
+    )
+
+
 def test_spec_rejects_controller_mismatch_and_invalid_limits() -> None:
     game = _game()
     spec = _spec(game)

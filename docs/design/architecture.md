@@ -112,6 +112,8 @@ detail、visibilityを検証する。本人roleと設定済み死亡公開はPol
 `agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
 秘匿性検証済み`DecisionRequest`、構造化`DecisionResponse`を所有する。外部LLMアダプターは
 schema検証後のresponseだけを返し、simulationは本人用`GameView`からrequestを構築する。
+手続き型の意思決定は`AgentProcedure`でprocedure、stage、cycle、submission modeを伝え、
+構造化議論では`opening`と`response`を合法参照だけでなく現在の手続き段階としてLLMへ渡す。
 
 `SimulationRunner`は一局の`Game`、プレイヤー別controller、用途別seed、実行上限を固定する。
 `SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、

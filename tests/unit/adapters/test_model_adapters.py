@@ -14,13 +14,13 @@ from werewolf_agent.adapters.llm.model_adapters import (
     LlmModelInvocationError,
 )
 from werewolf_agent.adapters.llm.models import (
-    AgentModelDecision,
     AgentObservation,
     DecisionTask,
     DeliberationLevel,
     ModelMessage,
     ModelRequest,
 )
+from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 
 BASE_URL = "http://127.0.0.1:18765/v1"
 COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
@@ -54,7 +54,7 @@ def request() -> ModelRequest:
             ModelMessage(role="system", content="Return JSON."),
             ModelMessage(role="human", content=json.dumps(context)),
         ),
-        response_schema=AgentModelDecision.model_json_schema(),
+        response_schema=build_decision_response_schema(observation, context),
         prompt_checksum="prompt-checksum",
     )
 
@@ -106,6 +106,14 @@ def test_openai_compatible_adapter_sends_chat_request_and_normalizes_usage() -> 
     sent = json.loads(route.calls[0].request.content)
     assert sent["model"] == "stub-model"
     assert sent["max_completion_tokens"] == 96
+    assert sent["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "agent_model_decision",
+            "strict": False,
+            "schema": request().response_schema,
+        },
+    }
     assert [message["role"] for message in sent["messages"]] == ["system", "user"]
     assert response.content == '{"type":"vote","target_id":"p2"}'
     assert response.usage == {"input_tokens": 12, "output_tokens": 5, "total_tokens": 17}

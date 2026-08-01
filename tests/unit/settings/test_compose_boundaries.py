@@ -57,6 +57,10 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
     ):
         assert setting in streamlit_block
 
+    reveal_default = "WEREWOLF_REVEAL_API_ENABLED: ${WEREWOLF_REVEAL_API_ENABLED:-false}"
+    assert reveal_default in api_block
+    assert reveal_default in worker_block
+
 
 def test_compose_uses_a_container_reachable_database_dsn() -> None:
     compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")

@@ -10,6 +10,7 @@ from werewolf_agent.agents import (
     AgentContext,
     AgentDecisionError,
     AgentObservation,
+    AgentProcedure,
     AgentSession,
     DecisionOption,
     DecisionRequest,
@@ -377,6 +378,16 @@ class SimulationSession:
                 known_factions=dict(observation.known_factions),
                 identity=metadata.identity,
                 world=metadata.world,
+                procedure=(
+                    AgentProcedure(
+                        procedure_id="structured_discussion",
+                        stage_id=observation.discussion_round.kind.value,
+                        cycle=observation.discussion_round.cycle,
+                        submission_mode=observation.discussion_round.submission_mode.value,
+                    )
+                    if observation.discussion_round is not None
+                    else None
+                ),
             ),
             public_timeline=_public_timeline(observation),
             options=tuple(

@@ -36,6 +36,7 @@ from werewolf_agent.adapters.llm.models import (
     ModelResponse,
 )
 from werewolf_agent.adapters.llm.ports import DecisionModel
+from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 
 PIPELINE_REVISION = "decision-v3"
@@ -102,7 +103,7 @@ class LangChainDecisionProvider:
         request = ModelRequest(
             task=task,
             messages=messages,
-            response_schema=AgentModelDecision.model_json_schema(),
+            response_schema=build_decision_response_schema(normalized, context),
             prompt_checksum=prompt_checksum,
         )
 
@@ -285,6 +286,11 @@ def _decision_context(
             "objective": game.objective if game is not None else "",
         },
         "profile": _profile_context(observation),
+        "procedure": (
+            observation.procedure.model_dump(mode="json")
+            if observation.procedure is not None
+            else None
+        ),
         "legal": {
             "actions": [action.key for action in actions],
             "targets": {

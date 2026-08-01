@@ -8,7 +8,7 @@ import os
 import random
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
-from dataclasses import asdict
+from dataclasses import asdict, fields
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -32,7 +32,19 @@ from werewolf_agent.adapters.llm.models import (
     PlayerProfile,
 )
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
-from werewolf_agent.agents import AgentFactory
+from werewolf_agent.agents import (
+    AgentContext,
+    AgentDecisionError,
+    AgentFactory,
+    AgentIdentity,
+    AgentObservation,
+    AgentProcedure,
+    AgentWorld,
+    DecisionOption,
+    DecisionRequest,
+    ObservedPlayer,
+    PublicTimelineEvent,
+)
 from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.domain import EventVisibility, Game, GameSetup, Player, build_game_rules
 from werewolf_agent.settings import get_settings
@@ -54,7 +66,7 @@ ReviewState = Literal["passed", "degraded", "failed", "blocked", "error"]
 
 LOCAL_BASE_URL_DEFAULT = "http://127.0.0.1:1234/v1"
 LOCAL_MODEL_DEFAULT = "google/gemma-3-4b"
-LOCAL_TIMEOUT_SECONDS = 40.0
+LOCAL_TIMEOUT_SECONDS = 120.0
 LOCAL_MAX_TOKENS = 256
 LOCAL_MAX_INVOCATIONS = 3
 MAX_PHASES = 64
@@ -132,7 +144,7 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
             provider="lmstudio",
             model=model,
             base_url=base_url,
-            api_key="lm-studio",
+            api_key="lm-studio",  # pragma: allowlist secret
             timeout_seconds=LOCAL_TIMEOUT_SECONDS,
             max_retries=0,
             max_tokens=LOCAL_MAX_TOKENS,
@@ -158,7 +170,7 @@ def provider_config(provider: str, *, confirm_paid: bool = False) -> LlmProvider
 
 
 def preflight() -> tuple[ReviewState, dict[str, object]]:
-    """Local model一覧と実Agent decisionを検証する。"""
+    """Local model一覧と構造化議論の本番decision経路を検証する。"""
     started = time.perf_counter()
     root = _new_preflight_dir()
     state: ReviewState
@@ -176,43 +188,36 @@ def preflight() -> tuple[ReviewState, dict[str, object]]:
             }
             _write_preflight_artifacts(root, state, evidence)
             return state, evidence
-        scenario = _run_preset(config, "standard_6", seed=7, invocation_limit=1)
-        raw_traces = scenario.pop("private_traces")
-        traces = raw_traces if isinstance(raw_traces, list) else []
-        first_trace = traces[0] if traces else {}
-        if not isinstance(first_trace, Mapping):
-            first_trace = {}
-        fallback_used = bool(first_trace.get("fallback_used"))
-        provider_error = str(first_trace.get("provider_error") or "")
+        probes, traces = _run_structured_discussion_probes(config)
+        fallback_count = sum(bool(trace.get("fallback_used")) for trace in traces)
+        provider_errors = [
+            str(trace.get("provider_error")) for trace in traces if trace.get("provider_error")
+        ]
         state = (
-            "failed"
-            if not traces
-            else "blocked"
-            if provider_error
+            "blocked"
+            if provider_errors
             else "degraded"
-            if fallback_used
+            if fallback_count
             else "passed"
-            if first_trace.get("validation_status") == "valid"
+            if len(traces) == len(probes) == 3
+            and all(bool(probe.get("passed")) for probe in probes)
+            and all(trace.get("validation_status") == "valid" for trace in traces)
             else "failed"
         )
+        usage = _probe_usage(traces)
         evidence = {
-            "message": "Local LLM reached the production Agent decision pipeline.",
+            "message": "Local LLMで構造化議論の開始、応答、投票を検証しました。",
             "configured_model": config.model,
             "loaded_models": model_ids,
-            "decision": first_trace.get("parsed_decision"),
-            "validation_status": first_trace.get("validation_status"),
-            "fallback_used": fallback_used,
-            "provider_error": provider_error,
-            "usage": {
-                "input_tokens": first_trace.get("input_tokens"),
-                "output_tokens": first_trace.get("output_tokens"),
-                "total_tokens": first_trace.get("total_tokens"),
-                "source": first_trace.get("usage_source"),
-            },
+            "probes": probes,
+            "validation_status": "valid" if state == "passed" else state,
+            "fallback_count": fallback_count,
+            "provider_errors": provider_errors,
+            "usage": usage,
             "duration_seconds": round(time.perf_counter() - started, 3),
             "artifacts": str(root),
         }
-        _write_preflight_artifacts(root, state, evidence, trace=first_trace)
+        _write_preflight_artifacts(root, state, evidence, traces=traces)
         return state, evidence
     except (httpx.HTTPError, OSError) as exc:
         state = "blocked"
@@ -229,17 +234,23 @@ def _write_preflight_artifacts(
     state: ReviewState,
     evidence: Mapping[str, object],
     *,
-    trace: Mapping[str, object] | None = None,
+    traces: Sequence[Mapping[str, object]] = (),
 ) -> None:
     public_evidence = dict(evidence)
     if isinstance(public_evidence.get("message"), str):
         public_evidence["message"] = redact(str(public_evidence["message"]))
     usage = evidence.get("usage")
     usage_values = usage if isinstance(usage, Mapping) else {}
+    provider_errors = evidence.get("provider_errors")
+    provider_error_count = (
+        len(provider_errors)
+        if isinstance(provider_errors, Sequence) and not isinstance(provider_errors, str)
+        else 0
+    )
     metrics = {
-        "invocations": 1 if trace else 0,
-        "fallbacks": int(bool(evidence.get("fallback_used"))),
-        "provider_errors": int(bool(evidence.get("provider_error"))),
+        "invocations": len(traces),
+        "fallbacks": evidence.get("fallback_count", 0),
+        "provider_errors": provider_error_count,
         "input_tokens": usage_values.get("input_tokens"),
         "output_tokens": usage_values.get("output_tokens"),
         "total_tokens": usage_values.get("total_tokens"),
@@ -256,8 +267,8 @@ def _write_preflight_artifacts(
     _write_json(root / "report.json", run_document)
     _write_json(root / "metrics.json", metrics)
     _write_json(root / "public" / "result.json", {"state": state, **public_evidence})
-    if trace is not None:
-        _write_json(root / "private" / "trace.json", trace)
+    if traces:
+        _write_json(root / "private" / "traces.json", list(traces))
     _write_jsonl(
         root / "events.jsonl",
         [{"event": "preflight.completed", "state": state}],
@@ -273,6 +284,189 @@ def _write_preflight_artifacts(
         encoding="utf-8",
     )
     _finalize_review_run(root)
+
+
+def _run_structured_discussion_probes(
+    config: LlmProviderConfig,
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """開始、応答、投票を公開Agent契約から実providerへ一回ずつ送る。"""
+    definitions = build_llm_definitions(get_settings())
+    trace_sink = InMemoryTraceSink()
+    profile = PlayerProfile(
+        name="遥",
+        age=28,
+        gender="unspecified",
+        personality="落ち着いて発言の矛盾を確認します。",
+        speaking_style="短く明確に話します。",
+        reasoning_style="公開情報と発言のつながりを重視します。",
+        risk_tolerance="medium",
+    )
+    factory = langchain_agent_factory(
+        config,
+        definitions=definitions,
+        profile=profile,
+        trace_sink=trace_sink,
+        deliberation_level=DeliberationLevel.STANDARD,
+    )
+    context = AgentContext("local-review", "local-review", "p1", 7)
+    session = factory.create(context)
+    probes: list[dict[str, object]] = []
+    try:
+        for probe_id, request in _structured_discussion_requests(context):
+            try:
+                response = session.decide(request)
+                response_document = _safe_value(
+                    {item.name: getattr(response, item.name) for item in fields(response)}
+                )
+                passed = _probe_response_is_legal(probe_id, response_document)
+                probes.append(
+                    {
+                        "id": probe_id,
+                        "passed": passed,
+                        "response": response_document,
+                    }
+                )
+            except AgentDecisionError as exc:
+                probes.append(
+                    {
+                        "id": probe_id,
+                        "passed": False,
+                        "error": exc.code,
+                        "diagnostics": _safe_value(exc.diagnostics),
+                    }
+                )
+    finally:
+        session.close()
+    return probes, [_trace_document(trace) for trace in trace_sink.records]
+
+
+def _structured_discussion_requests(
+    context: AgentContext,
+) -> tuple[tuple[str, DecisionRequest], ...]:
+    players = (
+        ObservedPlayer("p1", "遥", True),
+        ObservedPlayer("p2", "結衣", True),
+        ObservedPlayer("p3", "湊", True),
+    )
+    checksum = "1" * 64
+    identity = AgentIdentity(
+        role_id="villager",
+        role_name="村人",
+        identity_faction_id="village",
+        identity_faction_name="村人陣営",
+        victory_team_id="village",
+        victory_team_name="村人陣営",
+        objective="公開情報を基に人狼を見つけます。",
+    )
+    world = AgentWorld(
+        theme_id="standard",
+        theme_name="古い村",
+        premise="村人の中に人狼が潜んでいます。",
+        setup_checksum=checksum,
+        mechanics_checksum=checksum,
+        action_names={"speech": "発言", "vote": "投票"},
+        phase_names={"day_discussion": "議論", "voting": "投票"},
+    )
+
+    def observation(phase: str, *, procedure_stage: str | None = None) -> AgentObservation:
+        return AgentObservation(
+            phase=phase,
+            day=1,
+            me=players[0],
+            players=players,
+            known_roles={"p1": "villager"},
+            known_factions={"p1": "village"},
+            identity=identity,
+            world=world,
+            procedure=AgentProcedure(
+                procedure_id="structured_discussion",
+                stage_id=procedure_stage or "",
+                cycle=1,
+                submission_mode="ordered" if procedure_stage == "response" else "sealed",
+            )
+            if procedure_stage is not None
+            else None,
+        )
+
+    timeline = (
+        PublicTimelineEvent(
+            1,
+            "speech",
+            1,
+            "p2",
+            {"speech_id": "opening:p2", "message": "私はまだ判断材料が足りません。"},
+        ),
+        PublicTimelineEvent(
+            2,
+            "speech",
+            1,
+            "p3",
+            {"speech_id": "opening:p3", "message": "結衣の慎重さが気になります。"},
+        ),
+    )
+    opening = DecisionRequest(
+        "probe-opening",
+        context,
+        observation("day_discussion", procedure_stage="opening"),
+        (),
+        (DecisionOption("speech", message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS),),
+        11,
+    )
+    response = DecisionRequest(
+        "probe-response",
+        context,
+        observation("day_discussion", procedure_stage="response"),
+        timeline,
+        (
+            DecisionOption(
+                "speech",
+                legal_reference_ids=("opening:p2", "opening:p3"),
+                message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
+            ),
+        ),
+        13,
+    )
+    vote = DecisionRequest(
+        "probe-vote",
+        context,
+        observation("voting"),
+        timeline,
+        (DecisionOption("vote", legal_target_ids=("p2", "p3")),),
+        17,
+    )
+    return (("opening", opening), ("response", response), ("vote", vote))
+
+
+def _probe_response_is_legal(probe_id: str, response: object) -> bool:
+    if not isinstance(response, Mapping):
+        return False
+    if probe_id == "opening":
+        return (
+            response.get("action_type") == "speech"
+            and bool(response.get("message"))
+            and response.get("response_to_id") is None
+        )
+    if probe_id == "response":
+        return (
+            response.get("action_type") == "speech"
+            and bool(response.get("message"))
+            and response.get("response_to_id") in {"opening:p2", "opening:p3"}
+        )
+    return (
+        response.get("action_type") == "vote"
+        and response.get("target_id") in {"p2", "p3"}
+        and bool(response.get("reason"))
+    )
+
+
+def _probe_usage(traces: Sequence[Mapping[str, object]]) -> dict[str, object]:
+    sources = {str(trace.get("usage_source")) for trace in traces}
+    return {
+        "input_tokens": _sum_available(trace.get("input_tokens") for trace in traces),
+        "output_tokens": _sum_available(trace.get("output_tokens") for trace in traces),
+        "total_tokens": _sum_available(trace.get("total_tokens") for trace in traces),
+        "source": sources.pop() if len(sources) == 1 else "mixed",
+    }
 
 
 def run_suite(

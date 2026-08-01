@@ -7,6 +7,10 @@ from werewolf_agent.application.errors import InternalError
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker import app as worker_app
 
+TEST_DATABASE_DSN = (
+    "postgresql://postgres:secret@127.0.0.1:54322/postgres"  # pragma: allowlist secret
+)
+
 
 def test_worker_once_requires_db_dsn_before_polling_queue(monkeypatch, caplog) -> None:
     def fail_process(_settings: object, **_kwargs: object) -> int:
@@ -38,7 +42,7 @@ def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> 
     """安全化した内部障害の原因をworkerのERROR logへ保持する。"""
     settings = AppSettings(
         _env_file=None,
-        supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
+        supabase_db_dsn=TEST_DATABASE_DSN,
     )
 
     def fail_process(_settings: object, **_kwargs: object) -> int:
@@ -72,7 +76,7 @@ def test_worker_internal_error_keeps_the_original_cause(monkeypatch, caplog) -> 
 def test_worker_once_logs_startup_before_polling_queue(monkeypatch, caplog) -> None:
     settings = AppSettings(
         _env_file=None,
-        supabase_db_dsn="postgresql://postgres:secret@127.0.0.1:54322/postgres",
+        supabase_db_dsn=TEST_DATABASE_DSN,
     )
 
     monkeypatch.setattr(

@@ -24,6 +24,17 @@ uv run --no-project python -m scripts.environment setup quality
 `setup development|quality`は隔離Supabase projectで必要imageを準備し、project IDとworkdirを
 指定して停止する。Docker Desktopは自動起動しない。
 
+## Security検査
+
+依存監査はlock済みの全extraとdependency groupをhash付きで対象にする。脆弱性databaseへ
+接続できない場合も成功として扱わない。secret検査はGit管理中と追加前のfilesを対象にし、
+`.secrets.baseline`に監査済みのテスト用ダミー値以外の候補を失敗させる。
+
+```powershell
+uv run --no-sync python -m scripts.security dependencies
+uv run --no-sync python -m scripts.security secrets
+```
+
 ## 品質プロファイル
 
 ```powershell
@@ -176,7 +187,10 @@ uv run --no-sync python -m scripts.review local-llm
 ```
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。
-Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離する。
+`preflight`と`review local-llm`はloopback上の実モデルへopening、参照必須response、理由必須voteを
+一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず120秒で打ち切る。
+Local smokeはloopbackだけを許可し、
+一局完走とStreamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
 public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。
 
