@@ -135,6 +135,7 @@ def test_standard_evaluator_calculates_game_agent_and_operational_metrics() -> N
     assert metrics == {
         "trial_count": 1,
         "finished_trial_count": 1,
+        "incomplete_trial_count": 0,
         "decision_count": 2,
         "legal_action_rate": 0.5,
         "fallback_rate": 0.5,
@@ -210,6 +211,28 @@ def test_standard_evaluator_counts_total_only_token_measurement() -> None:
     metrics = StandardEvaluator().evaluate((result,))
 
     assert metrics["tokens"] == {"sample_count": 1, "input": 0, "output": 0, "total": 9}
+
+
+def test_standard_evaluator_excludes_incomplete_trials_from_win_rates() -> None:
+    """運用上停止したTrialを全陣営・controller・役職の敗北として扱わない."""
+    finished = _result("baseline")
+    incomplete = replace(
+        _result("baseline"),
+        stop_reason=SimulationStopReason.ACTION_LIMIT,
+        winner_id=None,
+        players=tuple(replace(player, won=False) for player in finished.players),
+    )
+
+    metrics = StandardEvaluator().evaluate((finished, incomplete))
+
+    assert metrics["trial_count"] == 2
+    assert metrics["finished_trial_count"] == 1
+    assert metrics["incomplete_trial_count"] == 1
+    assert metrics["faction_win_rate"] == {"village": 1.0, "werewolf": 0.0}
+    assert metrics["controller_win_rate"] == {"c1": 1.0, "c2": 0.0}
+    assert metrics["role_win_rate"] == {"villager": 1.0, "werewolf": 0.0}
+    assert metrics["controller_survival_rate"] == {"c1": 1.0, "c2": 0.0}
+    assert metrics["role_survival_rate"] == {"villager": 1.0, "werewolf": 0.0}
 
 
 def test_partial_report_requires_all_planned_conditions_for_paired_count() -> None:

@@ -14,7 +14,7 @@ from werewolf_agent.experiments.execution import TrialResult
 from werewolf_agent.setup import checksum_payload
 from werewolf_agent.simulation import SimulationStopReason
 
-STANDARD_EVALUATOR_VERSION = "0.3.0"
+STANDARD_EVALUATOR_VERSION = "0.4.0"
 
 
 class Evaluator(Protocol):
@@ -176,31 +176,41 @@ class StandardEvaluator:
         survival_counts: Counter[str] = Counter()
         controller_opportunities: Counter[str] = Counter()
         controller_wins: Counter[str] = Counter()
+        controller_survival_opportunities: Counter[str] = Counter()
         controller_survivals: Counter[str] = Counter()
         role_opportunities: Counter[str] = Counter()
         role_wins: Counter[str] = Counter()
+        role_survival_opportunities: Counter[str] = Counter()
         role_survivals: Counter[str] = Counter()
         for trial in items:
-            factions = {player.victory_team_id for player in trial.players}
-            for faction_id in factions:
-                faction_opportunities[faction_id] += 1
-                if trial.winner_id == faction_id:
-                    faction_wins[faction_id] += 1
+            finished = trial.stop_reason is SimulationStopReason.FINISHED
+            if finished:
+                factions = {player.victory_team_id for player in trial.players}
+                for faction_id in factions:
+                    faction_opportunities[faction_id] += 1
+                    if trial.winner_id == faction_id:
+                        faction_wins[faction_id] += 1
             for player in trial.players:
                 survival_opportunities[player.identity_faction_id] += 1
                 survival_counts[player.identity_faction_id] += int(player.alive)
-                controller_opportunities[player.controller_id] += 1
-                controller_wins[player.controller_id] += int(player.won)
+                controller_survival_opportunities[player.controller_id] += 1
                 controller_survivals[player.controller_id] += int(player.alive)
-                role_opportunities[player.role_id] += 1
-                role_wins[player.role_id] += int(player.won)
+                role_survival_opportunities[player.role_id] += 1
                 role_survivals[player.role_id] += int(player.alive)
+                if finished:
+                    controller_opportunities[player.controller_id] += 1
+                    controller_wins[player.controller_id] += int(player.won)
+                    role_opportunities[player.role_id] += 1
+                    role_wins[player.role_id] += int(player.won)
+
+        finished_trial_count = sum(
+            item.stop_reason is SimulationStopReason.FINISHED for item in items
+        )
 
         metrics: dict[str, object] = {
             "trial_count": len(items),
-            "finished_trial_count": sum(
-                item.stop_reason is SimulationStopReason.FINISHED for item in items
-            ),
+            "finished_trial_count": finished_trial_count,
+            "incomplete_trial_count": len(items) - finished_trial_count,
             "decision_count": decision_count,
             "legal_action_rate": _rate(legal_count, decision_count),
             "fallback_rate": _rate(fallback_count, decision_count),
@@ -218,7 +228,7 @@ class StandardEvaluator:
             },
             "controller_survival_rate": {
                 key: _rate(controller_survivals[key], count)
-                for key, count in sorted(controller_opportunities.items())
+                for key, count in sorted(controller_survival_opportunities.items())
             },
             "role_win_rate": {
                 key: _rate(role_wins[key], count)
@@ -226,7 +236,7 @@ class StandardEvaluator:
             },
             "role_survival_rate": {
                 key: _rate(role_survivals[key], count)
-                for key, count in sorted(role_opportunities.items())
+                for key, count in sorted(role_survival_opportunities.items())
             },
             "vote_targets": dict(sorted(vote_targets.items())),
             "vote_target_factions": dict(sorted(vote_target_factions.items())),

@@ -24,7 +24,8 @@ Factoryはgameとプレイヤーごとに新しいSessionを生成し、Session�
 Requestは本人用observation、公開timeline、合法action、合法target、timezone付きdeadline、
 decision seedだけを保持する。完全state、application service、リポジトリ、provider credentialは
 含めない。Responseのbelief、confidence、intent、metadataは任意であり、chain-of-thoughtを要求または
-保存しない。Agent identityはimplementation version、SHA-256 fingerprint、固定parameterで記録する。
+保存しない。beliefとconfidenceは0以上1以下の有限値だけを受理する。Agent identityはimplementation version、
+SHA-256 fingerprint、固定parameterで記録する。
 `DecisionTrace`は意思決定を生成した`AgentSpec`を保持し、同じAgent IDの異なる実装や設定を区別する。
 
 `AgentIdentity`は本人だけが知る役職、陣営、勝利陣営、目的、能力を保持する。`AgentWorld`は全員へ
