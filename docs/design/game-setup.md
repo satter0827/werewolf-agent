@@ -17,6 +17,15 @@ seedとプレイヤーを確定し、setup、mechanics、rosterのchecksumを含
 外部file overrideのpathはsettingsが検証し、documentの読込みと相互参照はapplication側の
 setup loaderが検証する。
 
+```{image} ../_generated/architecture/setup-resolution.svg
+:alt: template、保存revision、inline documentからゲームを作成する流れ
+:width: 100%
+```
+
+入力形式の検証後に、意味検証、seed分離、roster生成、checksum計算を完了する。queueへ保存する
+`CreateGameCommand`は再解決を必要としない完全な入力であり、workerの実行時刻や作業directoryに
+結果を依存させない。
+
 ## 固定境界と可変要素
 
 phaseの基本構造、公開・秘匿境界、event保存、agent protocol、`village`、`werewolf`、`fox`の

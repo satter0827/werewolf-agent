@@ -20,6 +20,15 @@ modelであり、個別fieldを直接定義しない。sectionの一覧はarchit
 同じ値に複数の名前や暗黙fallbackを設けない。秘密値はversion管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
 
+```{image} ../_generated/architecture/configuration-flow.svg
+:alt: packaged defaults、環境変数、明示値からAppSettingsを構築する流れ
+:width: 100%
+```
+
+sectionごとの型検証後にsection間の整合性を検証し、完成した`AppSettings`だけをcomposition rootへ
+渡す。domain、setup、agents、simulation、experimentsには必要な値へ縮小した契約を注入し、
+環境変数を内側のパッケージから読み取らない。
+
 packaged resourceは所有機能へ配置する。applicationは`resources/setups`のtemplateとcatalog、
 agentsはprovider非依存prompt、LLMアダプターはFakeListChatModel fixture、Streamlit clientは
 i18nとCSS、settingsはruntimeデフォルトを所有する。settingsはpathとruntime値だけを検証し、resourceの読込みと

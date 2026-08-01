@@ -14,6 +14,14 @@ LLMの自由文は直接ゲーム操作へ変換しない。生JSONをPydantic s
 意味を変えない正規化は完全なMarkdown fenceの除去だけとする。不正応答は書き換えず、
 再問い合わせを行わず、決定的fallbackへ送る。
 
+```{image} ../_generated/architecture/agent-decision.svg
+:alt: 本人用GameViewから検証済みdomain actionまたは決定的fallbackを得る流れ
+:width: 100%
+```
+
+`Game.view_for()`から作る本人用入力だけがAgent境界を通る。provider応答はschema検証と合法性検証を
+順番に通し、どちらかに失敗した場合は同じrequestとdecision seedからfallbackを決定する。
+
 ## Agent SDK契約
 
 `werewolf_agent.agents`は標準ライブラリだけで`AgentFactory`、`AgentSession`、`AgentContext`、

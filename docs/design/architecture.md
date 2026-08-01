@@ -1,150 +1,99 @@
 (system-architecture)=
 # システムアーキテクチャ
 
-## 目的
+Werewolf Agentは、決定的なゲーム実行、LLMによる意思決定、HTTPサービス、利用者クライアントを
+分離したPythonバックエンドである。完全なゲーム状態はバックエンドだけが保持し、利用者には公開状態、
+public timeline、認証したプレイヤー本人のobservationだけを返す。
 
-ゲームの決定性と秘匿情報をdomainに閉じ、HTTP、worker、画面、database、LLMを
-交換可能な境界として接続する。
-
-## 責務
-
-| レイヤー | 責務 |
-| --- | --- |
-| `domain` | 標準libraryだけで構成するaggregate、immutable state、event、rule policy |
-| `setup` | 標準libraryだけで構成するsetup定義、seed、checksum、roster生成 |
-| `application` | use case、authorization、transaction、コマンド/result、port、projection |
-| `agents` | provider非依存のobservation、decision、プレイヤー port |
-| `simulation` | 単一ゲームのAgent呼び出し、action適用、phase進行、停止・再開 |
-| `experiments` | paired seed、割当rotation、複数試行、評価、checkpoint、report |
-| `adapters` | HTTP client、Supabase、LangChain、外部I/O |
-| `contracts` | wire schema、error、Problem Details |
-| `settings` | runtime設定と環境変数の検証 |
-| `security` | principal、redaction |
-| `observability` | ログ、context、event sink |
-| `api` | HTTPプロセスとcomposition root |
-| `worker` | queue consumerとapplication・agentの接続 |
-| `clients` | CLIとStreamlit |
+## システム境界
 
 ```{image} ../_generated/architecture/system-context.svg
-:alt: UI、API、worker、domain、Supabase、LLM providerの接続関係
+:alt: 利用者、Werewolf Agent、Supabase、LLM provider、ローカル成果物の接続関係
 :width: 100%
 ```
+
+プレイヤーと観戦者はStreamlitまたはCLIを使用し、管理者は専用の認可を通過した操作だけを使用する。
+Python利用者は公開SDKからdomain、setup、Agent、Simulation、Experimentを直接組み立てられる。
+
+SupabaseはAuth、永続化、非同期operation queueを担当する。LLM providerはAgentの構造化判断だけを返し、
+ゲーム状態を参照または変更しない。Experimentと品質実行の成果物はリポジトリ外の管理領域へ保存する。
+
+## 実行プロセス
+
+```{image} ../_generated/architecture/runtime-processes.svg
+:alt: Streamlit、CLI、API、worker、application、Simulation、domain、Agentの実行関係
+:width: 100%
+```
+
+APIプロセスはHTTP入力、認証、wire schema変換、application呼び出し、operation受付を担当する。
+workerプロセスはqueueから取得した操作をapplication、Simulation、Agent、外部アダプターへ接続する。
+長時間のAgent判断中はdatabase transactionを保持せず、計算後にleaseとgame versionを再確認して保存する。
+
+CLIとStreamlitはHTTP APIだけを使用する。API routeはapplicationの公開contractだけを呼び、
+workerだけがapplication、Agent、Simulation、Supabase、LLMアダプターを一つの実行経路へ組み立てる。
+
+## Pythonパッケージ
+
+| パッケージ | 所有する責務 |
+| --- | --- |
+| `domain` | `Game`、immutable state、event、Rule Policy、状態遷移 |
+| `setup` | setup定義、意味検証、seed、checksum、roster生成 |
+| `agents` | provider非依存のobservation、decision、Agent session契約 |
+| `simulation` | 一局のAgent呼び出し、action適用、phase進行、停止と再開 |
+| `experiments` | paired seed、割当rotation、複数Trial、評価、report |
+| `application` | use case、認可、transaction、コマンド、result、port、projection |
+| `adapters` | Supabase、HTTP client、LangChain、外部I/O |
+| `contracts` | HTTP wire schema、error、Problem Details |
+| `settings` | runtime設定、環境変数、構成間検証 |
+| `security` | principal、credential境界、redaction |
+| `observability` | 構造化ログ、context、event sink |
+| `api` | FastAPI route、middleware、API composition root |
+| `worker` | queue consumer、lease、worker composition root |
+| `clients` | CLI、Streamlit、表示model |
 
 ```{image} ../_generated/architecture/layer-dependencies.svg
-:alt: Python layer間の実import依存
+:alt: 実ソースコードのimportから生成したPython layer間の依存
 :width: 100%
 ```
 
-## 境界
+矢印はimportする側からimportされる側へ向く。構造規則は`scripts/architecture/rules.toml`に置き、
+実ソースコードのASTから許可依存、循環、公開面、例外を検査する。
 
-- domainは他layerを参照しない。
-- setupはdomainとsetup内部だけを参照する。
-- applicationはdomain、setup、application内部だけを参照し、wire schema、外部service、delivery、
-  agentsを参照しない。
-- agentsはdomainとapplicationを参照しない。
-- simulationはagents、domain、setupだけを参照し、I/O、永続化、provider設定を所有しない。
-- experimentsはagents、domain、setup、simulationだけを参照し、外部providerの探索を行わない。
-- LangChainはアダプター、workerは独立プロセスとして扱う。
-- package resourceと外部定義fileのI/Oおよび相互参照検証はアダプターに置く。
-- API routeはapplicationの公開contractだけを呼ぶ。
-- CLIとStreamlitはdomain、application、Supabaseを参照しない。
-- CLIとStreamlitはHTTP APIを通じてゲームを操作する。
-- clientは未認証の`PublicClient`、通常操作の`GameClient`、管理操作の`AdminClient`へ分け、
-  admin responseを通常clientへ追加しない。
-- `GET /health`はプロセスlivenessだけを示し、`GET /api/v1/status`は依存先の可用性、
-  `GET /api/v1/session`は安全な利用者区分を返す。
-- database接続失敗はAPIプロセスを停止せず、databaseを必要とするrequestだけを失敗させる。
+## 公開Python SDK
 
-## ゲーム設定
+```{image} ../_generated/architecture/public-sdk.svg
+:alt: domain、setup、agents、simulation、experiments、applicationの公開依存関係
+:width: 100%
+```
 
-`GameSetupDocument` 0.3.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
-同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
-所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
-Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
-applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証は`setup`の標準ライブラリ契約へ委譲する。
-domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
-replay 0.4.0はgenesis setupとRule Pack manifestを再検証する。復元時は明示登録済みproviderの
-contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
+公開モジュールは`werewolf_agent`、`werewolf_agent.domain`、`werewolf_agent.setup`、
+`werewolf_agent.agents`、`werewolf_agent.simulation`、`werewolf_agent.experiments`、
+`werewolf_agent.application`に限定する。package直下は`__version__`だけを公開し、利用者は型と操作を
+所有するモジュールから直接importする。
 
-ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
-seed確定、プレイヤー生成、checksum計算まで完了した正規化コマンドだけをqueueへ保存し、workerは
-template resourceや保存revisionを再解決しない。roster、role assignment、gameplayの乱数は同じ
-game seedからSHA-256 namespaceで分離する。
+公開Python API、内部モジュール、HTTP wire schemaは別の互換性境界である。HTTP契約は
+`contracts/openapi.json`、公開Python objectは責務別モジュールのdocstringから生成する。
 
-本人の保存設定は`private.user_setups`と`private.user_setup_revisions`へ保存する。revisionは追記専用で、
-親行lockと`expected_revision`により競合を検出する。リポジトリは全queryへ所有者条件を付け、private
-schema、権限剥奪、RLSを防御層として重ねる。公開previewはidentityとpublic personaだけを返し、
-role assignmentとprivate strategyを返さない。
+## 依存境界
 
-`api/bootstrap.py`から`adapters`への依存だけをpath単位の例外として登録する。
-構造規則の正本は`scripts/architecture/rules.toml`とする。
-公開Pythonモジュール、内部実装モジュール、HTTP wire schemaは別の契約として管理する。Sphinxは
-公開PythonモジュールのdocstringからAPI HTMLを生成し、モジュールanchorとPython object構造を検査する。
-Package rootの`werewolf_agent`は`__version__`だけを公開する。利用者と内部モジュールはroot aliasを
-経由せず、値と型を所有する責務別モジュールを直接参照する。
+- `Game`だけがゲーム状態を変更する。
+- `domain`は標準libraryと`domain`内部だけに依存する。
+- `setup`は標準library、`domain`、`setup`内部だけに依存する。
+- `agents`は`domain`と`application`へ依存しない。
+- `simulation`は`agents`、`domain`、`setup`だけに依存する。
+- `experiments`は`agents`、`domain`、`setup`、`simulation`だけに依存する。
+- `application`は`domain`、`setup`、`application`内部だけに依存する。
+- 外部I/Oとframeworkは`adapters`、`api`、`worker`、`clients`の所有境界から内側へ持ち込まない。
+- package resourceと外部fileのI/O、provider探索、database接続はcomposition rootまたはアダプターに置く。
+- `api/bootstrap.py`から`adapters`への依存だけをHTTP composition rootの明示例外とする。
 
-## Rule Pack
+ゲーム状態とルールは{doc}`domain`、設定解決は{doc}`game-setup`、HTTPとworkerの処理は
+{doc}`application-and-api`、Agent判断は{doc}`agents`、一局実行は{doc}`simulation`、反復比較は
+{doc}`experiments`、情報公開範囲は{doc}`data-and-security`で定義する。
 
-`CompiledRuleSet`は`GameConfig`、`RulePackManifest`、副作用を持たないPolicyを一局へ固定する。
-外部Rule Packは`RulePackProvider`を実装し、利用者またはcomposition rootが
-`RulePolicyRegistry`へ明示登録する。設定値からimport pathを解決せず、自動探索もしない。
-applicationは最小の`RulePackRegistry` Protocolだけに依存する。API、組み込みapplication、workerの
-composition rootは組み込みproviderまたは利用者が構築したregistryを明示注入する。
+## 構造証拠
 
-`RulePackManifest`はcontract version、implementation version、fingerprintを保持する。
-`AbilityPolicy`は検証済みのnight actionから`NightResolution`、新たな死亡から順序付き
-`DeathReactionResolution`、完全stateからobserver非依存の`KnowledgeResolution`を返す。
-能動能力、immunity、vulnerability、death reaction、knowledgeの解決意味論を所有する。
-Domainは死亡適用、発動条件、使用回数、履歴、eventに加え、knowledge能力の所有、開始時期、
-detail、visibilityを検証する。本人roleと設定済み死亡公開はPolicyの主張で上書きできない。
-`VictoryPolicy`はimmutableな`GameState`から`WinResult`だけを返す。
-`VotingPolicy`は検証済みのpending voteから`VoteResult`だけを返し、投票の合法性、死亡、
-履歴、eventはDomainが所有する。Gameは各Outcomeを新しい`GameState`へ適用する際に整合性を
-検証し、不正Outcomeまたは例外では元のstateと乱数状態を維持する。
-
-## Agent意思決定と単一ゲーム実行
-
-`agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
-秘匿性検証済み`DecisionRequest`、構造化`DecisionResponse`を所有する。外部LLMアダプターは
-schema検証後のresponseだけを返し、simulationは本人用`GameView`からrequestを構築する。
-
-`SimulationRunner`は一局の`Game`、プレイヤー別controller、用途別seed、実行上限を固定する。
-`SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、
-手動入力待ち、終局、上限、cancelを明示的な停止理由として返す。リポジトリ、HTTP、provider preflight、
-複数試行、統計、artifactは所有しない。状態・event・action/response列は同じ入力とseedで再現できる。
-`latency_ms`は運用診断値であり、決定性の比較対象に含めない。
-能力残数などの可変metadataは`AgentMetadataProvider`が本人用`GameView`から都度解決する。
-workerは`WorkerDependencies.agent_factories`からプレイヤーID別factoryを注入し、未指定seatだけを
-既定のLangChainアダプターで構築する。外部factoryの探索や設定値からの動的importは行わない。
-
-modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
-modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに
-生成させず、検証後にserverが付与する。行動が一意で対象や発言が不要な場合だけmodel呼び出しを省略する。
-
-ゲーム単位の`deliberation_level`は`quick`、`standard`、`deep`のいずれかとし、参照する公開event数と
-最大出力だけを変える。すべてのレベルで意思決定あたりのmodel呼び出しは最大1回とする。
-
-## 公開面
-
-Pythonの公開モジュールは`werewolf_agent`、`werewolf_agent.application`、
-`werewolf_agent.agents`、`werewolf_agent.domain`、`werewolf_agent.experiments`、
-`werewolf_agent.simulation`、
-`werewolf_agent.setup`に限定する。
-package直下は`__version__`だけを公開し、型と関数は責務を所有する公開モジュールからimportする。
-applicationは`GameApplication`、`Actor`、外部実装に必要なport、公開methodの型を
-公開する。HTTPの正本は`contracts/openapi.json`とする。
-
-`notebooks`はリポジトリ閲覧者向けの実行例を所有する。Notebook固有のFakeゲーム進行と
-表示用resultは製品package、wheel、sdistへ含めず、公開APIの互換性対象にしない。
-
-application内部はゲーム参照、進行、プレイヤー action、timelineを独立したhandlerにする。
-DTOはruntime context、request、result、persistence recordのlifecycleで分ける。
-HTTP routeはwire schemaとapplicationコマンド/resultの変換だけを行い、認可アダプターと
-queueアダプターを直接呼ばない。
-
-## 検証
-
-実ソースコードのASTからlayer、モジュール、import元行、cycle、公開面を評価する。結果は
-{download}`architecture.json <../_generated/architecture/architecture.json>`、
-{download}`architecture.schema.json <../_generated/architecture/architecture.schema.json>`、
-{download}`assessment.md <../_generated/architecture/assessment.md>`で確認できる。
+構造分析は{download}`architecture.json <../_generated/architecture/architecture.json>`、JSON Schemaは
+{download}`architecture.schema.json <../_generated/architecture/architecture.schema.json>`、判定は
+{download}`assessment.md <../_generated/architecture/assessment.md>`へ出力する。図、分析JSON、判定は
+同じ実ソースコードと構造規則から一回の処理で生成する。

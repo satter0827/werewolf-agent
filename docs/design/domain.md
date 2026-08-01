@@ -20,6 +20,17 @@ domainはID生成規則とuserの所有関係を扱わない。
 :class: architecture-diagram
 ```
 
+## ゲームの進行
+
+```{image} ../_generated/architecture/game-lifecycle.svg
+:alt: setup、night、day discussion、voting、finishedの状態遷移
+:width: 100%
+```
+
+一局は`setup`から設定された開始phaseへ進む。`night`、`day_discussion`、`voting`を
+`Game.advance()`が規則どおりに遷移させ、勝利条件を満たした時点で`finished`へ進む。
+開始phase、投票、夜行動、死亡反応の途中状態を外側のserviceが直接書き換えない。
+
 ## 状態と公開情報
 
 完全なゲーム状態には役職や夜行動などの秘匿情報を含む。通常の外部出力は公開状態と

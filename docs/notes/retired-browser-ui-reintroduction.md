@@ -1,7 +1,7 @@
 # React再導入手順
 
-この文書は削除済みブラウザーUIを参照するための非規範的な履歴である。現行製品のブラウザーUIは
-Python製Streamlit、ブラウザーE2EはPython Playwrightであり、React、Node.js、npmを使用しない。
+削除済みブラウザーUIの復元元と再導入条件を記録する。現行製品のブラウザーUIはPython製Streamlit、
+ブラウザーE2EはPython Playwrightであり、React、Node.js、npmを使用しない。
 
 ## 復元元
 

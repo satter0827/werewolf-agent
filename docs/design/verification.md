@@ -1,7 +1,7 @@
 (verification)=
 # 検証
 
-## 対象と責務
+## 判定範囲
 
 品質基盤は、リポジトリ内のソースコード、テスト、fixture、ローカルプロセス、Compose
 serviceから製品の合否を判定する。package取得先や有料providerの可用性は、製品品質と
@@ -20,6 +20,14 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 
 `auto`の変更pathと選定結果の対応は`scripts/quality/impact.toml`を正本とする。具体的な
 実行コマンド、`--fresh`、個別gate、環境準備は`scripts/README.md`が所有する。
+
+```{image} ../_generated/architecture/quality-pipeline.svg
+:alt: revisionと変更影響から品質gateを選び証拠と判定を保存する流れ
+:width: 100%
+```
+
+各gateは同じrevision、tree、変更集合を入力にし、結果と証拠をrun manifestへ記録する。
+一つの検査結果だけで全体を代表せず、未実行、実行条件不足、検査失敗、runner異常を区別する。
 
 `--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。

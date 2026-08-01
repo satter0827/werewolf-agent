@@ -1,7 +1,7 @@
 (experiments)=
 # 反復Experiment
 
-## 目的
+## 比較単位
 
 Rule PackまたはAgentだけを条件差として分離し、同じseedと割当で比較可能なTrialを計画する。
 実行、評価、reportは保存済みTrialを正本とし、中断再開後も同じ試行を重複させない。
@@ -26,6 +26,14 @@ setup checksum、Rule PackとAgentの実装fingerprintからSHA-256で生成す�
 `balanced` rotationはプレイヤー数をnとしてseedごとにn²個の割当を作る。各controllerと役職、
 各controllerとpersonaの組合せが同数になる。役職はTrialへ明示するため、Domainの乱数抽選へ
 比較条件を委ねない。小規模な疎通確認では`none`を明示して一割当だけを使える。
+
+```{image} ../_generated/architecture/experiment-pipeline.svg
+:alt: ExperimentSpecからTrialを計画、実行、保存、評価してReportを作る流れ
+:width: 100%
+```
+
+計画済みTrial IDと既存artifactのchecksumを先に照合し、不足したTrialだけをSimulationで実行する。
+評価は完成したTrial artifactを入力とし、実行順や生成時刻に依存しないReportを作る。
 
 ## 境界
 

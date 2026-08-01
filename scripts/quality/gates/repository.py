@@ -6,6 +6,7 @@ from pathlib import Path
 
 from scripts._infra.artifacts import LAYOUT
 from scripts._infra.process import REPOSITORY_ROOT, CommandResult, run_command
+from scripts.architecture.rendering import DIAGRAM_FILENAMES
 from scripts.quality.models import Gate, RunContext
 from scripts.versioning import DEFAULT_BASE_REF
 
@@ -35,9 +36,7 @@ def build() -> list[Gate]:
                 "outputs/architecture/architecture.json",
                 "outputs/architecture/architecture.schema.json",
                 "outputs/architecture/assessment.md",
-                "outputs/architecture/system-context.svg",
-                "outputs/architecture/layer-dependencies.svg",
-                "outputs/architecture/domain-structure.svg",
+                *(f"outputs/architecture/{name}" for name in DIAGRAM_FILENAMES),
             ),
         ),
     ]
