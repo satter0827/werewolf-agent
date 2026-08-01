@@ -4427,6 +4427,7 @@ source = { editable = "." }
 [package.optional-dependencies]
 api = [
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "psycopg", extra = ["binary", "pool"] },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -4531,6 +4532,7 @@ docs = [
 requires-dist = [
     { name = "fastapi", marker = "extra == 'api'", specifier = ">=0.115,<1" },
     { name = "gitpython", marker = "extra == 'streamlit'", specifier = ">=3.1.55,<4" },
+    { name = "httpx", marker = "extra == 'api'", specifier = ">=0.28,<1" },
     { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28,<1" },
     { name = "httpx", marker = "extra == 'streamlit'", specifier = ">=0.28,<1" },
     { name = "httpx", marker = "extra == 'worker'", specifier = ">=0.28,<1" },

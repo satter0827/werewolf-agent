@@ -65,6 +65,12 @@ domain actionを保存する。作成時のrule snapshotから集約を再構築
 「ログイン済み」判定へまとめない。IDを含む要求はapplication境界で主体と対象の関係を
 検証し、アダプターが返した行をそのまま公開しない。
 
+管理者権限は利用者が変更できない`app_metadata.role=admin`だけから候補を判定し、top-levelの
+`service_role`や`user_metadata`を利用者管理者へ昇格させない。管理者候補には`aal2`、空でない
+`session_id`、設定した最大発行経過時間を要求する。さらにSupabase Authへaccess tokenを再照会し、
+sessionが現在も有効で、返された利用者IDと最新の管理者roleが一致する場合だけ管理者として扱う。
+Authを確認できない場合は管理者権限だけを閉じ、通常利用者のlocal JWT認証は継続する。
+
 ## 検証
 
 public DTOとtimelineに秘匿fieldが混入しないこと、redactionが入れ子構造でも

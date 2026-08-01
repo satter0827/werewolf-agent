@@ -19,6 +19,7 @@ from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
     build_setup_catalog,
 )
+from werewolf_agent.adapters.supabase.admin_session import SupabaseAdminSessionVerifier
 from werewolf_agent.adapters.supabase.diagnostics import SupabaseAdminDiagnostics
 from werewolf_agent.adapters.supabase.operations import (
     SupabaseAccessPolicy,
@@ -96,6 +97,9 @@ def create_app(
         probe_database=_probe_database,
         probe_operation_queue=_probe_operation_queue,
     )
+    admin_session_verifier = (
+        SupabaseAdminSessionVerifier(runtime) if runtime.supabase_client_configured else None
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
@@ -123,7 +127,11 @@ def create_app(
             yield
         finally:
             try:
-                dependencies.close()
+                try:
+                    dependencies.close()
+                finally:
+                    if admin_session_verifier is not None:
+                        admin_session_verifier.close()
             except Exception:
                 api_logger.exception(
                     "api.application.stop_failed",
@@ -151,7 +159,10 @@ def create_app(
         responses=PROBLEM_RESPONSES,
         lifespan=lifespan,
     )
-    app.state.authenticator = SupabaseJwtAuthenticator(runtime)
+    app.state.authenticator = SupabaseJwtAuthenticator(
+        runtime,
+        admin_session_verifier=admin_session_verifier,
+    )
     app.state.principal_rate_limiter = PrincipalRateLimiter(
         request_limit=runtime.api_rate_limit_requests,
         window_seconds=runtime.api_rate_limit_window_seconds,

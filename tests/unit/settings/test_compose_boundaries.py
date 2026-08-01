@@ -41,6 +41,7 @@ def test_runtime_settings_are_wired_to_their_compose_services() -> None:
         "WEREWOLF_API_RATE_LIMIT_WINDOW_SECONDS",
         "WEREWOLF_API_TIMEOUT_SECONDS",
         "WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
+        "WEREWOLF_API_ADMIN_MAX_TOKEN_AGE_SECONDS",
     ):
         assert setting in api_block
     for setting in (

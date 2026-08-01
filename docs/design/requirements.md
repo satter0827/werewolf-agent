@@ -53,6 +53,7 @@
 | `REQ-DATA-003` | 本人のsetupを不変revisionとして保存し、保存競合を検出し、他利用者と匿名利用者から隔離する | application、Supabase |
 | `REQ-ADMIN-001` | 管理者はprivate payloadを返さず整合性と処理状態を診断できる | admin API |
 | `REQ-ADMIN-002` | 完全状態のrevealは設定で有効化した管理者専用APIだけが返す | admin API |
+| `REQ-ADMIN-003` | 管理者APIはAuth管理metadata、AAL2、短寿命token、失効していないsessionをすべて確認する | security、Supabase Auth |
 
 ## 品質要件
 

@@ -76,3 +76,7 @@ class ApiSettings(BaseModel):
         ge=1,
         validation_alias="WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
     )
+    api_admin_max_token_age_seconds: int = Field(
+        ge=300,
+        validation_alias="WEREWOLF_API_ADMIN_MAX_TOKEN_AGE_SECONDS",
+    )
