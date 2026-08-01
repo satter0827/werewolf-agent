@@ -183,7 +183,7 @@ def test_session_store_does_not_fallback_when_keyring_is_unavailable(tmp_path) -
         store.load()
 
     assert "private backend detail" not in str(exc_info.value)
-    assert legacy.exists()
+    assert not legacy.exists()
 
 
 @pytest.mark.parametrize(

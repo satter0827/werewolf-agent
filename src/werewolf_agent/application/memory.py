@@ -242,9 +242,16 @@ class InMemorySetupRepository(SetupRepository):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_setups: int,
     ) -> SavedSetupRevision:
         """Ownerへ紐づく最初のsetup revisionを作成する."""
         with self._lock:
+            owned_count = sum(1 for owner, _, _ in self._setups.values() if owner == owner_user_id)
+            if owned_count >= max_setups:
+                raise AppError(
+                    "保存できるゲーム設定数が上限に達しました。",
+                    code=ErrorCode.SETUP_LIMIT_REACHED,
+                )
             setup_id = str(uuid4())
             revision = SavedSetupRevision(
                 setup_id=setup_id,
@@ -258,7 +265,9 @@ class InMemorySetupRepository(SetupRepository):
             self._setups[setup_id] = (owner_user_id, display_name, [revision])
             return revision.model_copy()
 
-    def list_setups(self, *, owner_user_id: str) -> list[SavedSetupSummary]:
+    def list_setups(
+        self, *, owner_user_id: str, limit: int, offset: int
+    ) -> list[SavedSetupSummary]:
         """Ownerが所有するsetup概要を更新時刻の降順で返す."""
         with self._lock:
             values = [
@@ -273,7 +282,7 @@ class InMemorySetupRepository(SetupRepository):
                 if owner == owner_user_id
             ]
             values.sort(key=lambda value: (-value.updated_at.timestamp(), value.setup_id))
-            return [value.model_copy() for value in values]
+            return [value.model_copy() for value in values[offset : offset + limit]]
 
     def get(
         self,
@@ -303,13 +312,16 @@ class InMemorySetupRepository(SetupRepository):
         setup_id: str,
         *,
         owner_user_id: str,
+        limit: int,
+        offset: int,
     ) -> list[SavedSetupRevision]:
         """Ownerが所有するrevisionを新しい順で返す."""
         with self._lock:
             record = self._setups.get(setup_id)
             if record is None or record[0] != owner_user_id:
                 return []
-            return [item.model_copy() for item in reversed(record[2])]
+            revisions = list(reversed(record[2]))
+            return [item.model_copy() for item in revisions[offset : offset + limit]]
 
     def add_revision(
         self,
@@ -320,6 +332,7 @@ class InMemorySetupRepository(SetupRepository):
         document: GameSetupDocument,
         setup_checksum: str,
         mechanics_checksum: str,
+        max_revisions: int,
     ) -> SavedSetupRevision:
         """期待する最新版が一致する場合だけ次のrevisionを追加する."""
         with self._lock:
@@ -338,6 +351,11 @@ class InMemorySetupRepository(SetupRepository):
                         "expected_revision": expected_revision,
                         "latest_revision": latest.revision,
                     },
+                )
+            if len(record[2]) >= max_revisions:
+                raise AppError(
+                    "保存できるゲーム設定の版数が上限に達しました。",
+                    code=ErrorCode.SETUP_REVISION_LIMIT_REACHED,
                 )
             revision = SavedSetupRevision(
                 setup_id=setup_id,

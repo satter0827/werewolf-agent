@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 import pytest
 
 from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
-from werewolf_agent.adapters.agents.game_driver import AgentRuntime, drive_prepared_game
+from werewolf_agent.adapters.agents.game_driver import (
+    AgentRuntime,
+    _lmstudio_model_id,
+    drive_prepared_game,
+)
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions
@@ -17,6 +21,7 @@ from werewolf_agent.agents import DecisionTrace, RandomLegalAgentFactory
 from werewolf_agent.application import PreparedAdvanceGame
 from werewolf_agent.application.errors import GameError
 from werewolf_agent.application.handlers import compute_prepared_advance
+from werewolf_agent.contracts import LlmProviderError
 from werewolf_agent.domain import Game, GameSetup, Player, build_game_rules
 from werewolf_agent.setup import (
     checksum_payload,
@@ -149,3 +154,35 @@ def test_application_rejects_missing_or_unmarked_prepared_transition() -> None:
     driven = drive_prepared_game(missing, runtime=_runtime(player_ids, _TraceSink()))
     with pytest.raises(GameError, match="transition state"):
         compute_prepared_advance(replace(driven, domain_transition_complete=False))
+
+
+def test_lmstudio_model_catalog_is_rejected_before_exceeding_byte_limit(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_bytes(self):
+            yield b'{"data":['
+            yield b"x" * 32
+
+    monkeypatch.setattr("httpx.stream", lambda *_args, **_kwargs: Response())
+    config = LlmProviderConfig(
+        provider="lmstudio",
+        model="auto",
+        base_url="http://127.0.0.1:1234/v1",
+        api_key="",
+        timeout_seconds=1,
+        max_retries=0,
+        max_tokens=1,
+        temperature=0,
+        model_catalog_max_bytes=16,
+    )
+
+    with pytest.raises(LlmProviderError):
+        _lmstudio_model_id(config)

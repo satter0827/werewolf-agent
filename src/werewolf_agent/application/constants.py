@@ -16,20 +16,6 @@ NARRATION_EVENT_IDS: Final = frozenset(
         "game_finished",
     }
 )
-NARRATION_TEMPLATE_FIELDS: Final = frozenset(
-    {
-        "day",
-        "phase",
-        "phase_label",
-        "actor",
-        "player_count",
-        "eliminated_player",
-        "killed_player",
-        "winner",
-        "winner_label",
-    }
-)
-
 MIN_PAGE_LIMIT: Final = 1
 
 MIN_PAGE_OFFSET: Final = 0

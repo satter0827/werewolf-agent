@@ -35,7 +35,7 @@ class SupabaseAdminDiagnostics:
                 """
                 select invocation_id, game_id, operation_id, state_version,
                        provider, model, player_id, phase, day, prompt_hash,
-                       error_payload, latency_ms, created_at
+                       latency_ms, created_at
                 from private.llm_traces
                 where game_id = %s
                 order by created_at desc

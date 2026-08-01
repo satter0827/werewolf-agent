@@ -152,7 +152,7 @@ def list_setup_revisions(
     *, settings: AppSettings, setup_id: str
 ) -> list[SavedSetupRevisionResponse]:
     """Return immutable revision history for an owned setup."""
-    return build_streamlit_client(settings).list_setup_revisions(setup_id)
+    return build_streamlit_client(settings).list_setup_revisions(setup_id).items
 
 
 def create_saved_setup(

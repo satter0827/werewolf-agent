@@ -36,4 +36,27 @@ class SavedSetupRevision(ApplicationModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-__all__ = ["SavedSetupRevision", "SavedSetupSummary"]
+class SavedSetupSummaryPage(ApplicationModel):
+    """Bounded page of setup summaries owned by one user."""
+
+    items: list[SavedSetupSummary]
+    next_offset: int | None = Field(default=None, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class SavedSetupRevisionPage(ApplicationModel):
+    """Bounded page of one owned setup's immutable revisions."""
+
+    items: list[SavedSetupRevision]
+    next_offset: int | None = Field(default=None, ge=0)
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+__all__ = [
+    "SavedSetupRevision",
+    "SavedSetupRevisionPage",
+    "SavedSetupSummary",
+    "SavedSetupSummaryPage",
+]

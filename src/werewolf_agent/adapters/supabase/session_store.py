@@ -57,8 +57,8 @@ class SupabaseSessionStore:
 
     def load(self) -> SupabaseSession | None:
         """Return the saved session after verifying keyring availability."""
-        value = self._read_password()
         self._remove_legacy_session()
+        value = self._read_password()
         if value is None:
             return None
         try:
@@ -68,6 +68,7 @@ class SupabaseSessionStore:
 
     def save(self, session: SupabaseSession) -> None:
         """Save all session fields as one credential value."""
+        self._remove_legacy_session()
         payload = asdict(session)
         payload["expires_at"] = session.expires_at.isoformat()
         try:
@@ -78,17 +79,16 @@ class SupabaseSessionStore:
             )
         except (KeyringError, RuntimeError) as exc:
             raise _credential_error() from exc
-        self._remove_legacy_session()
 
     def clear(self) -> None:
         """Remove the credential when present."""
+        self._remove_legacy_session()
         try:
             self._backend.delete_password(KEYRING_SERVICE_NAME, self._account)
         except PasswordDeleteError:
             pass
         except (KeyringError, RuntimeError) as exc:
             raise _credential_error() from exc
-        self._remove_legacy_session()
 
     def _read_password(self) -> str | None:
         try:

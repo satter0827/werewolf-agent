@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 import httpx
@@ -17,17 +18,25 @@ class SupabaseAdminSessionVerifier:
         self,
         settings: AppSettings,
         *,
+        session_is_active: Callable[[str, str], bool],
         transport: httpx.BaseTransport | None = None,
     ) -> None:
         """Create a reusable Auth client without persisting user credentials."""
         self._publishable_key = settings.supabase_publishable_key_value
+        self._session_is_active = session_is_active
         self._client = httpx.Client(
             base_url=f"{settings.supabase_url.rstrip('/')}/auth/v1",
             timeout=settings.supabase_auth_timeout_seconds,
             transport=transport,
         )
 
-    def verify(self, token: str, *, expected_user_id: str) -> bool:
+    def verify(
+        self,
+        token: str,
+        *,
+        expected_user_id: str,
+        expected_session_id: str,
+    ) -> bool:
         """Require a live session, matching user, and current administrator role."""
         try:
             response = self._client.get(
@@ -51,10 +60,16 @@ class SupabaseAdminSessionVerifier:
             return False
         app_metadata = payload.get("app_metadata")
         metadata = app_metadata if isinstance(app_metadata, dict) else {}
-        return (
+        current_admin = (
             str(payload.get("id") or "").strip() == expected_user_id
             and str(metadata.get("role") or "") == "admin"
         )
+        if not current_admin:
+            return False
+        try:
+            return self._session_is_active(expected_user_id, expected_session_id)
+        except Exception as exc:
+            raise AdminSessionUnavailable from exc
 
     def close(self) -> None:
         """Release the reusable HTTP connection pool."""

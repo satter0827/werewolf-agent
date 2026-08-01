@@ -49,7 +49,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.3.0"
+        assert setup.schema_version == "0.4.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -251,6 +251,16 @@ def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
     payload = _standard().to_mapping()
     payload["theme"]["narration"]["game_started"] = ["秘密: {private_role}"]
     with pytest.raises(ValueError, match="unknown fields"):
+        GameSetupDocument.from_mapping(payload)
+
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count:1000000}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
+        GameSetupDocument.from_mapping(payload)
+
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count!r}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
         GameSetupDocument.from_mapping(payload)
 
 

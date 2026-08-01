@@ -45,6 +45,8 @@ _JAPANESE_STATE_MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.API_UNAVAILABLE: "APIに接続できません。",
     ErrorCode.RESOURCE_NOT_FOUND: "対象が見つかりません。",
     ErrorCode.SETUP_REVISION_CONFLICT: "別の操作で新しい設定版が保存されています。",
+    ErrorCode.SETUP_REVISION_LIMIT_REACHED: "保存できるゲーム設定の版数が上限に達しました。",
+    ErrorCode.SETUP_LIMIT_REACHED: "保存できるゲーム設定数が上限に達しました。",
     ErrorCode.HTTP_ERROR: "通信を完了できませんでした。",
     ErrorCode.GAME_INVALID_PHASE: "現在のフェーズではこの操作を行えません。",
     ErrorCode.GAME_INVALID_ACTION: "このゲームでは選択した操作を行えません。",

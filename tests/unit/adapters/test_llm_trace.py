@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace
-from werewolf_agent.adapters.supabase.llm_trace import SupabaseLlmTraceSink
+from werewolf_agent.adapters.supabase.llm_trace import (
+    BufferedLlmTraceSink,
+    SupabaseLlmTraceSink,
+)
 
 
 class RecordingConnection:
@@ -53,3 +56,16 @@ def test_usage_row_preserves_provider_reported_tokens() -> None:
     parameters = connection.calls[1][1]
     assert isinstance(parameters, tuple)
     assert parameters[-2:] == (12, 5)
+
+
+def test_buffer_preserves_decision_order_for_replay() -> None:
+    sink = BufferedLlmTraceSink()
+    sink.record_invocation(_trace(player_id="p3", parsed_decision={"player_id": "p3"}))
+    sink.record_invocation(_trace(player_id="p4", parsed_decision={"player_id": "p4"}))
+    sink.record_invocation(_trace(player_id="p6", parsed_decision={"player_id": "p6"}))
+
+    assert sink.parsed_decisions() == (
+        {"player_id": "p3"},
+        {"player_id": "p4"},
+        {"player_id": "p6"},
+    )

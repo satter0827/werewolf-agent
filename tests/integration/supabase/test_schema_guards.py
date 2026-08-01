@@ -48,7 +48,7 @@ RUNTIME_TABLE_PRIVILEGES = {
         "private.user_setups": set(),
         "private.llm_traces": {"SELECT", "INSERT"},
         "private.paid_llm_admissions": {"SELECT", "INSERT", "UPDATE"},
-        "auth.users": {"SELECT"},
+        "auth.users": set(),
     },
 }
 
@@ -156,6 +156,33 @@ def test_queue_functions_are_not_shared_between_runtime_roles() -> None:
                     for role in ("werewolf_api", "werewolf_worker")
                 )
                 assert actual == expected, (function_name, function_oid, actual)
+
+
+@pytest.mark.serial
+def test_runtime_auth_functions_expose_only_role_owned_decisions() -> None:
+    """Auth table accessを狭い判定functionへ置き換える。"""
+    expected = {
+        "is_auth_session_active": (True, False),
+        "auth_user_is_anonymous": (False, True),
+    }
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        for function_name, privileges in expected.items():
+            function_oid = connection.execute(
+                """
+                select p.oid
+                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'private' and p.proname = %s
+                """,
+                (function_name,),
+            ).fetchone()[0]
+            actual = tuple(
+                connection.execute(
+                    "select has_function_privilege(%s, %s, 'EXECUTE')",
+                    (role, function_oid),
+                ).fetchone()[0]
+                for role in ("werewolf_api", "werewolf_worker")
+            )
+            assert actual == privileges
 
 
 @pytest.mark.serial

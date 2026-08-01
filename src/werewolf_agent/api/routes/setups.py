@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
 from werewolf_agent.api.dependencies import (
     OptionalPrincipalDependency,
@@ -20,6 +20,7 @@ from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
     PlayerPreviewResponse,
     SavedSetupListResponse,
+    SavedSetupRevisionListResponse,
     SavedSetupRevisionResponse,
     SavedSetupSummaryResponse,
     SetupCatalogResponse,
@@ -131,12 +132,16 @@ def preview_setup_players(
 def list_setups(
     principal: PrincipalDependency,
     services: ServicesDependency,
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
 ) -> SavedSetupListResponse:
+    page = services.setups.list_setups(_actor(principal), limit=limit, offset=offset)
     return SavedSetupListResponse(
         items=[
             SavedSetupSummaryResponse.model_validate(item.model_dump(mode="json"))
-            for item in services.setups.list_setups(_actor(principal))
-        ]
+            for item in page.items
+        ],
+        next_offset=page.next_offset,
     )
 
 
@@ -175,18 +180,21 @@ def get_setup(
 
 @router.get(
     "/setups/{setup_id}/revisions",
-    response_model=list[SavedSetupRevisionResponse],
+    response_model=SavedSetupRevisionListResponse,
     operation_id="setup_revision_list",
 )
 def list_setup_revisions(
     setup_id: str,
     principal: PrincipalDependency,
     services: ServicesDependency,
-) -> list[SavedSetupRevisionResponse]:
-    return [
-        saved_setup_revision_response(item)
-        for item in services.setups.revisions(_actor(principal), setup_id)
-    ]
+    limit: int | None = Query(default=None, ge=1),
+    offset: int = Query(default=0, ge=0),
+) -> SavedSetupRevisionListResponse:
+    page = services.setups.revisions(_actor(principal), setup_id, limit=limit, offset=offset)
+    return SavedSetupRevisionListResponse(
+        items=[saved_setup_revision_response(item) for item in page.items],
+        next_offset=page.next_offset,
+    )
 
 
 @router.get(

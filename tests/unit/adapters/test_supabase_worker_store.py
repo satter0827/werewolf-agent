@@ -56,6 +56,7 @@ def test_create_replay_reads_runtime_seed_from_private_snapshot(
     SupabaseWorkerStore(connection).record_accepted_command(
         request,
         {"game_id": "game-1", "state": {"version": 1}},
+        domain_actions=({"player_id": "p3"}, {"player_id": "p4"}),
     )
 
     snapshot_sql = next(sql for sql, _params in connection.calls if "game_snapshots" in sql)
@@ -66,3 +67,5 @@ def test_create_replay_reads_runtime_seed_from_private_snapshot(
     payload = accepted_params[5]
     assert payload["request"]["seed"] == 991
     assert payload["replay"]["seed"] == 991
+    assert payload["domain_actions"] == [{"player_id": "p3"}, {"player_id": "p4"}]
+    assert all("from private.llm_traces" not in sql for sql, _params in connection.calls)
