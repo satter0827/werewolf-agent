@@ -378,6 +378,12 @@ def test_script_redaction_matches_shared_corpus(case: dict[str, str]) -> None:
     assert redact(case["input"]) == case["expected"]
 
 
+def test_script_redaction_masks_the_remainder_after_json_recursion_limit() -> None:
+    deeply_nested = "[" * 20_000 + "0" + "]" * 20_000
+
+    assert redact('{"token":' + deeply_nested + ',"ordinary":"safe"}') == ('{"token":"[REDACTED]"')
+
+
 def test_redact_masks_credentials_embedded_in_url() -> None:
     """接続URLに埋め込まれたpasswordを成果物へ残さない。"""
 

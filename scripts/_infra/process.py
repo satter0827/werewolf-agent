@@ -57,6 +57,8 @@ _JSON_SECRET_PATTERN = re.compile(
     rf'(?i)("(?P<key>{_SENSITIVE_KEY})"\s*:\s*)'
     r'("(?:\\.|[^"\\])*"|null|true|false|-?\d+(?:\.\d+)?)'
 )
+_JSON_SECRET_KEY_PATTERN = re.compile(rf'(?i)"(?P<key>{_SENSITIVE_KEY})"\s*:\s*')
+_JSON_DECODER = json.JSONDecoder()
 _SECRET_PATTERN = re.compile(
     rf"(?i)(\b(?P<key>{_SENSITIVE_KEY})\b\s*[:=]\s*)"
     r"(Bearer\s+[^\s\"']+|SecretStr\([^)]*\)|'[^']*'|\"[^\"]*\"|[^\s,;)}&]+)"
@@ -123,9 +125,36 @@ def redact(value: str) -> str:
     """ログに含まれる代表的な秘密情報を伏せる。"""
     redacted = _QUERY_SECRET_PATTERN.sub(r"\1[REDACTED]", value)
     redacted = _URL_CREDENTIAL_PATTERN.sub(r"\1[REDACTED]\4", redacted)
+    redacted = _redact_complete_json_values(redacted)
     redacted = _JSON_SECRET_PATTERN.sub(_redact_json_secret, redacted)
     redacted = _SECRET_PATTERN.sub(_redact_text_secret, redacted)
     return _BEARER_PATTERN.sub("Bearer [REDACTED]", redacted)
+
+
+def _redact_complete_json_values(value: str) -> str:
+    """機密JSON keyに続くobjectやarrayを含む値全体を伏せる。"""
+    output: list[str] = []
+    copied_until = 0
+    search_from = 0
+    while match := _JSON_SECRET_KEY_PATTERN.search(value, search_from):
+        if match.group("key").casefold() in _TOKEN_METRIC_KEYS:
+            search_from = match.end()
+            continue
+        try:
+            _decoded, value_end = _JSON_DECODER.raw_decode(value, match.end())
+        except RecursionError:
+            output.append(value[copied_until : match.end()])
+            output.append('"[REDACTED]"')
+            return "".join(output)
+        except json.JSONDecodeError:
+            search_from = match.end()
+            continue
+        output.append(value[copied_until : match.end()])
+        output.append('"[REDACTED]"')
+        copied_until = value_end
+        search_from = value_end
+    output.append(value[copied_until:])
+    return "".join(output)
 
 
 def _redact_json_secret(match: re.Match[str]) -> str:

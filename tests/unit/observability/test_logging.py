@@ -324,6 +324,14 @@ def test_application_redaction_matches_shared_corpus(case: dict[str, str]) -> No
     assert redact_text(case["input"]) == case["expected"]
 
 
+def test_application_redaction_masks_the_remainder_after_json_recursion_limit() -> None:
+    deeply_nested = "[" * 20_000 + "0" + "]" * 20_000
+
+    assert redact_text('{"token":' + deeply_nested + ',"ordinary":"safe"}') == (
+        '{"token":"[REDACTED]"'
+    )
+
+
 def teardown_module() -> None:
     logging.shutdown()
     logging.basicConfig(handlers=[logging.NullHandler()], force=True)
