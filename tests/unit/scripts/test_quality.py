@@ -55,11 +55,12 @@ def test_quality_settings_are_loaded_from_pyproject() -> None:
 
     settings = quality.load_quality_settings()
 
+    assert settings.default_jobs == 2
     assert settings.max_jobs == 4
     assert settings.benchmark_min_rounds == 5
     assert settings.timeouts == {
         "focus": 120,
-        "check": 180,
+        "check": 300,
         "release": 900,
         "deep": 1200,
     }
@@ -84,6 +85,7 @@ def test_invalid_quality_settings_are_rejected(
         """
 [tool.werewolf-quality]
 benchmark_min_rounds = 5
+default_jobs = 1
 max_jobs = 0
 [tool.werewolf-quality.timeouts]
 focus = 60
@@ -96,6 +98,31 @@ deep = 1200
     monkeypatch.setattr(quality, "REPOSITORY_ROOT", tmp_path)
 
     with pytest.raises(ValueError, match="max_jobs"):
+        quality.load_quality_settings()
+
+
+def test_default_jobs_cannot_exceed_max_jobs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """既定並列数を明示実行の上限内に制限する。"""
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.werewolf-quality]
+benchmark_min_rounds = 5
+default_jobs = 3
+max_jobs = 2
+[tool.werewolf-quality.timeouts]
+focus = 60
+check = 180
+release = 600
+deep = 1200
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(quality, "REPOSITORY_ROOT", tmp_path)
+
+    with pytest.raises(ValueError, match="default_jobs"):
         quality.load_quality_settings()
 
 
@@ -136,6 +163,18 @@ def test_auto_is_an_explicit_command_separate_from_fixed_focus() -> None:
 
     assert parser.parse_args(["auto"]).profile == "auto"
     assert parser.parse_args(["focus"]).profile == "focus"
+
+
+def test_quality_cli_uses_configured_default_jobs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """高性能hostでも通常実行は低発熱の既定並列数を使う。"""
+    monkeypatch.setattr(quality.os, "cpu_count", lambda: 10)
+
+    settings = quality.load_quality_settings()
+
+    assert quality._default_jobs(settings) == 2
+    assert quality.build_parser(settings).parse_args(["check"]).jobs == 2
 
 
 def test_quality_cli_accepts_explicit_change_refs() -> None:

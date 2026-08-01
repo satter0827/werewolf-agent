@@ -31,6 +31,9 @@ headは現在checkoutしている`HEAD`と同じcommitへ解決されるrefだ�
 checkoutして検査し、reportのheadと実際にgateを動かすtreeを一致させる。現在checkoutのworkspace差分を
 別treeへ合成しない。
 
+品質runnerは通常実行を2並列とし、明示指定した場合も4並列を上限とする。並列数は実行順序と
+資源消費だけを制御し、プロファイルの検査対象と合否条件を変更しない。
+
 ## CI境界
 
 ローカルとGitHub Actionsは`scripts.quality`を共通の品質入口とする。feature branchはPR作成前に
