@@ -358,7 +358,10 @@ def _decision_context(
             },
             "reference_speeches": reference_speeches,
             "constraints": {
-                "speech_max_chars": LLM_SPEECH_MESSAGE_MAX_CHARS,
+                "speech_max_chars": _positive_rule_integer(
+                    game.relevant_rules.get("speech_max_chars") if game is not None else None,
+                    default=LLM_SPEECH_MESSAGE_MAX_CHARS,
+                ),
                 "vote_reason_max_chars": _positive_rule_integer(
                     game.relevant_rules.get("reason_max_chars") if game is not None else None,
                     default=120,

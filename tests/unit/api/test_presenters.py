@@ -73,7 +73,8 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                     "winning_player_ids": ["p1", "p2"],
                 },
             },
-        )
+        ),
+        api_text_max_chars=100,
     )
 
     assert [item.key for item in response.observation.available_actions] == [
@@ -82,7 +83,7 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
         "vote",
     ]
     assert response.observation.available_actions[0].message_required is True
-    assert response.observation.available_actions[0].message_max_chars == 180
+    assert response.observation.available_actions[0].message_max_chars == 100
     assert response.observation.available_actions[1].legal_target_ids == ["p2"]
     assert response.observation.available_actions[2].evidence_options[0].actor_id == "p2"
     assert response.observation.available_actions[2].reason_max_chars == 75

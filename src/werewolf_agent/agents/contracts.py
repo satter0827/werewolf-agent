@@ -11,7 +11,7 @@ from typing import Protocol, runtime_checkable
 
 from werewolf_agent.agents.validation import non_blank, optional_non_blank
 
-AGENT_CONTRACT_VERSION = "0.9.0"
+AGENT_CONTRACT_VERSION = "0.10.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -300,6 +300,7 @@ class DecisionOption:
     legal_positions: tuple[str, ...] = ()
     legal_relations: tuple[str, ...] = ()
     message_max_chars: int | None = None
+    reason_max_chars: int | None = None
 
     def __post_init__(self) -> None:
         """Action keyと合法targetを正規化する."""
@@ -343,6 +344,8 @@ class DecisionOption:
         object.__setattr__(self, "legal_relations", relations)
         if self.message_max_chars is not None:
             _require_positive_integer(self.message_max_chars, "message_max_chars")
+        if self.reason_max_chars is not None:
+            _require_positive_integer(self.reason_max_chars, "reason_max_chars")
 
     @property
     def key(self) -> str:

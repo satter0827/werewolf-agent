@@ -276,6 +276,7 @@ def test_agent_decision_error_freezes_safe_diagnostics() -> None:
             (ObservedPlayer("p1", "Alice", True),),
         ),
         lambda: DecisionOption("speech", message_max_chars=True),
+        lambda: DecisionOption("vote", reason_max_chars=True),
     ),
 )
 def test_contract_rejects_boolean_values_for_integer_fields(

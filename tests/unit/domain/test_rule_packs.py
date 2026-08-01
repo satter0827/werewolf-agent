@@ -20,6 +20,7 @@ from werewolf_agent.domain import (
     DiscussionPosition,
     DiscussionRelation,
     DiscussionResolution,
+    DiscussionResult,
     DiscussionRound,
     DiscussionRoundKind,
     EvidenceKind,
@@ -45,7 +46,7 @@ from werewolf_agent.domain import (
     WinResult,
 )
 from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
-from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy
+from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy, start_discussion
 
 
 def _vote(game: Game, player_id: str, target_id: str) -> Action:
@@ -301,6 +302,18 @@ class ReusedRoundIdDiscussionPolicy(SkipResponseDiscussionPolicy):
             replace(resolution.next_round, round_id=round_.round_id),
             False,
         )
+
+
+class ReusedDayStartDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """過去日のround IDを新しい日のopeningへ再利用するfault policy。"""
+
+    def __init__(self, round_id: str) -> None:
+        super().__init__()
+        self._round_id = round_id
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """Core openingのIDだけを過去日の値へ改変する。"""
+        return replace(self._core.start(state), round_id=self._round_id)
 
 
 class RedirectAbilityPolicy:
@@ -878,6 +891,28 @@ def test_discussion_policy_cannot_start_outside_first_opening() -> None:
         )
 
     assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_reuse_round_id_at_day_start() -> None:
+    """新しい日の開始roundは過去日のIDを再利用できない。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    state = game.snapshot()
+    reused_id = state.pending_actions.discussion_round.round_id
+    state = replace(
+        state,
+        day=2,
+        history=replace(
+            state.history,
+            discussions=(DiscussionResult(1, reused_id, DiscussionRoundKind.OPENING, (), ("p1",)),),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="fresh round ID"):
+        start_discussion(state, policy=ReusedDayStartDiscussionPolicy(reused_id))
 
 
 def test_discussion_policy_cannot_reuse_round_id_across_stages() -> None:

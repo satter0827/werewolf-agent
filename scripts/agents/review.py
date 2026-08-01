@@ -1546,6 +1546,7 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
         "degraded_count": sum(item.get("state") == "degraded" for item in scenarios),
         "failed_count": sum(item.get("state") in {"failed", "error"} for item in scenarios),
         "finished_day_total": sum(_as_int(item.get("finished_day")) for item in scenarios),
+        "deadline_stops": sum(bool(item.get("stopped_for_duration")) for item in scenarios),
         "scenarios": [
             {
                 key: item.get(key)
@@ -1563,6 +1564,8 @@ def _aggregate_metrics(scenarios: Sequence[Mapping[str, object]]) -> dict[str, o
                     "provider_errors",
                     "schema_violations",
                     "timeouts",
+                    "stopped_for_duration",
+                    "simulation_stop_reason",
                     "input_tokens",
                     "output_tokens",
                     "total_tokens",
@@ -1606,6 +1609,7 @@ def _summary_markdown(
         f"- invocations: `{metrics['invocations']}`",
         f"- provider errors: `{metrics['provider_errors']}`",
         f"- schema violations/timeouts: `{metrics['schema_violations']}` / `{metrics['timeouts']}`",
+        f"- deadline stops: `{metrics['deadline_stops']}`",
         f"- input/output/total tokens: `{metrics['input_tokens']}` / "
         f"`{metrics['output_tokens']}` / `{metrics['total_tokens']}`",
         f"- LLM latency: `{metrics['latency_ms']}` ms",

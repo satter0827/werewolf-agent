@@ -41,6 +41,28 @@ def test_session_deadline_stop_is_classified_as_duration_stop() -> None:
     assert stopped_for_duration is True
 
 
+def test_aggregate_metrics_count_and_expose_deadline_stops() -> None:
+    metrics = review._aggregate_metrics(
+        [
+            {
+                "preset_id": "standard_6",
+                "seed": 7,
+                "deliberation_level": "standard",
+                "state": "failed",
+                "completed": False,
+                "stopped_for_duration": True,
+                "simulation_stop_reason": "deadline_reached",
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
+            }
+        ]
+    )
+
+    assert metrics["deadline_stops"] == 1
+    assert metrics["scenarios"][0]["simulation_stop_reason"] == "deadline_reached"
+
+
 def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_MODEL", "local-model")

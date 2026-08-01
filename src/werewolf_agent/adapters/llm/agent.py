@@ -40,7 +40,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.6.0"
+_IMPLEMENTATION_VERSION = "1.7.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -233,6 +233,12 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     if world is not None:
         scenario = AgentScenario(name=world.theme_name, premise=world.premise)
     if world is not None and identity is not None:
+        relevant_rules = dict(world.relevant_rules)
+        for option in request.options:
+            if option.action_type == "speech" and option.message_max_chars is not None:
+                relevant_rules["speech_max_chars"] = option.message_max_chars
+            if option.action_type == "vote" and option.reason_max_chars is not None:
+                relevant_rules["reason_max_chars"] = option.reason_max_chars
         game_context = AgentGameContext(
             theme_id=world.theme_id,
             theme_name=world.theme_name,
@@ -253,7 +259,7 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
                 )
                 for ability in identity.abilities
             ),
-            relevant_rules=dict(world.relevant_rules),
+            relevant_rules=relevant_rules,
             action_names=dict(world.action_names),
             phase_names=dict(world.phase_names),
             setup_checksum=world.setup_checksum,
@@ -358,6 +364,12 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
             raise AgentDecisionError("llm_reference_not_legal")
     elif decision.type is AgentActionType.VOTE and not decision.reason.strip():
         raise AgentDecisionError("llm_vote_reason_required")
+    elif (
+        decision.type is AgentActionType.VOTE
+        and option.reason_max_chars is not None
+        and len(decision.reason) > option.reason_max_chars
+    ):
+        raise AgentDecisionError("llm_vote_reason_too_long")
     elif (
         decision.type is AgentActionType.VOTE
         and option.evidence_options

@@ -44,7 +44,11 @@ def timeline_response(source: BaseModel) -> GameTimelineResponse:
     return wire_model(GameTimelineResponse, source)
 
 
-def observation_response(source: BaseModel) -> PlayerObservationResponse:
+def observation_response(
+    source: BaseModel,
+    *,
+    api_text_max_chars: int | None = None,
+) -> PlayerObservationResponse:
     """Return allowlisted private player observation."""
     payload = source.model_dump(mode="json")
     observation = payload["observation"]
@@ -55,6 +59,12 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
     for item in observation.get("available_actions", []):
         ability_id = item.get("ability_id")
         key = f"{item['type']}:{ability_id}" if ability_id is not None else item["type"]
+        configured_limit = action_text_limits.get(key)
+        effective_limit = (
+            min(configured_limit, api_text_max_chars)
+            if isinstance(configured_limit, int) and api_text_max_chars is not None
+            else configured_limit
+        )
         actions.append(
             AvailableActionDescriptor(
                 key=key,
@@ -63,10 +73,8 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                 legal_target_ids=legal_targets.get(key, []),
                 evidence_options=legal_evidence.get(key, []),
                 message_required=item["type"] == "speech",
-                message_max_chars=(
-                    action_text_limits.get(key) if item["type"] == "speech" else None
-                ),
-                reason_max_chars=(action_text_limits.get(key) if item["type"] == "vote" else None),
+                message_max_chars=(effective_limit if item["type"] == "speech" else None),
+                reason_max_chars=(effective_limit if item["type"] == "vote" else None),
             )
         )
     history = observation.get("history", {})

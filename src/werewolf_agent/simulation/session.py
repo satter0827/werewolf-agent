@@ -334,7 +334,7 @@ class SimulationSession:
                     {"error_type": type(exc).__name__},
                 )
             )
-            if _deadline_expired(self._spec):
+            if _request_deadline_expired(request):
                 trace = DecisionTrace(
                     decision_id=request.decision_id,
                     agent_spec=controller.factory.spec,
@@ -517,6 +517,11 @@ class SimulationSession:
                             or self._game.snapshot().config.discussion.message_max_chars,
                         )
                         if action.type.value == "speech"
+                        else None
+                    ),
+                    reason_max_chars=(
+                        self._game.snapshot().config.voting.reason_max_chars
+                        if action.type.value == "vote"
                         else None
                     ),
                 )
@@ -801,6 +806,13 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
         raise AgentDecisionError("agent_message_too_long")
     if response.action_type != "speech" and response.utterance is not None:
         raise AgentDecisionError("agent_utterance_not_allowed")
+    if (
+        response.action_type == "vote"
+        and response.reason is not None
+        and option.reason_max_chars is not None
+        and len(response.reason) > option.reason_max_chars
+    ):
+        raise AgentDecisionError("agent_reason_too_long")
     if response.action_type == "speech":
         if option.legal_reference_ids and response.response_to_id is None:
             raise AgentDecisionError("agent_reference_required")
@@ -916,6 +928,11 @@ def _decision_deadline(spec: SimulationSpec) -> datetime | None:
 def _deadline_expired(spec: SimulationSpec) -> bool:
     """Return whether the full-run deadline has elapsed."""
     return spec.deadline_at is not None and datetime.now(UTC) >= spec.deadline_at
+
+
+def _request_deadline_expired(request: DecisionRequest) -> bool:
+    """Return whether the effective per-decision deadline has elapsed."""
+    return request.deadline_at is not None and datetime.now(UTC) >= request.deadline_at
 
 
 def _elapsed_milliseconds(started_at: float) -> int:

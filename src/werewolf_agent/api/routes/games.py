@@ -154,7 +154,7 @@ def get_observation(
         Actor(user_id=principal.user_id),
         player_id,
     )
-    return observation_response(result)
+    return observation_response(result, api_text_max_chars=services.message_max_chars)
 
 
 @router.post(

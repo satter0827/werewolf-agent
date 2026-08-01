@@ -524,10 +524,9 @@ def test_deadline_expiry_after_primary_failure_skips_fallback(monkeypatch) -> No
         )
         for player_id in base.controllers
     }
-    checks = iter((False, False, True))
     monkeypatch.setattr(
-        "werewolf_agent.simulation.session._deadline_expired",
-        lambda _spec: next(checks),
+        "werewolf_agent.simulation.session._request_deadline_expired",
+        lambda _request: True,
     )
     session = SimulationRunner().start(
         game,

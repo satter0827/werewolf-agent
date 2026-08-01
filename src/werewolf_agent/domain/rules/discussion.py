@@ -84,6 +84,8 @@ def start_discussion(state: GameState, *, policy: DiscussionPolicy) -> Discussio
         raise ValueError("discussion must start from the first opening round")
     if set(round_.actor_order) != alive_ids:
         raise ValueError("discussion must start with every alive player")
+    if round_.round_id in {result.round_id for result in state.history.discussions}:
+        raise ValueError("discussion day start requires a fresh round ID")
     return round_
 
 
