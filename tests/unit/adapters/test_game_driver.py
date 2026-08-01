@@ -203,11 +203,12 @@ def test_deadline_bound_decisions_disable_transport_retries(monkeypatch) -> None
         "werewolf_agent.adapters.agents.game_driver.import_module",
         lambda _name: module,
     )
+    placeholder = "test"
     config = LlmProviderConfig(
         provider="openai",
         model="test-model",
         base_url="https://example.invalid/v1",
-        api_key="test",
+        api_key=placeholder,
         timeout_seconds=10,
         max_tokens=128,
         temperature=0,
