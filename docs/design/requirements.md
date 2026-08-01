@@ -32,6 +32,7 @@
 | `REQ-GAME-013` | プレイヤー previewは公開personaだけを返し、役職とprivate strategyを返さない | API、clients |
 | `REQ-LLM-001` | Fakeと実LLMが同じchat request、応答検証、fallbackを通り、意思決定ごとの呼び出しを最大1回にする | アダプター contract、trace |
 | `REQ-LLM-002` | quick、standard、deepで参照履歴と出力上限を切り替え、ゲーム作成時の選択を保存する | API、worker、clients、persistence |
+| `REQ-LLM-003` | 有料LLMは既定で無効とし、利用者の日次advance上限と全workerの同時実行上限を外部呼出し前に原子的に判定する | worker、Supabase、settings |
 | `REQ-GAME-002` | 行動受付、phase進行、勝敗、可視性をdomainが判定する | domain |
 | `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`、`fox`の正規IDで表す | domain、application |
 | `REQ-API-001` | CLIとStreamlitは同じHTTP契約でゲームを操作する | API |

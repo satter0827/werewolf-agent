@@ -24,6 +24,10 @@ from werewolf_agent.adapters.supabase.llm_trace import (
     SupabaseLlmTraceSink,
 )
 from werewolf_agent.adapters.supabase.operations import SupabaseAccessPolicy
+from werewolf_agent.adapters.supabase.paid_llm_admission import (
+    PaidLlmAdmission,
+    SupabasePaidLlmAdmissionGate,
+)
 from werewolf_agent.adapters.supabase.pool import (
     SupabaseDatabaseUnavailableError,
     borrow_database_connection,
@@ -77,6 +81,7 @@ from werewolf_agent.worker.events import (
     LOG_WORKER_REQUEST_RETRY_STARTED,
 )
 from werewolf_agent.worker.messages import (
+    MESSAGE_PAID_LLM_DISABLED,
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
     MESSAGE_WORKER_REQUEST_FAILED,
     message_unsupported_operation_type,
@@ -338,6 +343,12 @@ def _execute_advance_request(
         )
         store = SupabaseWorkerStore(connection)
         llm_mode = store.game_llm_mode(game_id)
+    if llm_mode == "paid" and not settings.worker_paid_llm_enabled:
+        raise AppError(
+            MESSAGE_PAID_LLM_DISABLED,
+            code=ErrorCode.LLM_PROVIDER_UNAVAILABLE,
+            retryable=False,
+        )
 
     traces = BufferedLlmTraceSink()
     runtime = AgentRuntime(
@@ -346,49 +357,106 @@ def _execute_advance_request(
         trace_sink=traces,
         agent_factories=dependencies.agent_factories,
     )
-    with _LeaseHeartbeat(pool, settings, request) as heartbeat:
-        driven = drive_prepared_game(
-            prepared,
-            runtime=runtime,
-        )
-        computed = application.compute_advance(driven)
-        heartbeat.require_owned()
+    admission = _reserve_paid_llm_admission(
+        pool,
+        settings,
+        request,
+        actor_user_id=user_id,
+        llm_mode=llm_mode,
+    )
+    try:
+        with _LeaseHeartbeat(pool, settings, request, admission=admission) as heartbeat:
+            driven = drive_prepared_game(
+                prepared,
+                runtime=runtime,
+            )
+            computed = application.compute_advance(driven)
+            heartbeat.require_owned()
+    except Exception:
+        if admission is not None:
+            _finish_paid_llm_admission(pool, admission, outcome="failed")
+        raise
+    else:
+        if admission is not None:
+            _finish_paid_llm_admission(pool, admission, outcome="completed")
 
-        with borrow_database_connection(pool) as connection, connection.transaction():
-            store = SupabaseWorkerStore(connection)
-            context = _service(connection, settings, dependencies)
-            result = GameApplication(
-                context,
-                access_policy=SupabaseAccessPolicy(connection),
-            ).commit_advance(Actor(user_id=user_id), computed)
-            response = _wire_model(AdvanceGameResponse, result)
-            traces.flush_to(
-                SupabaseLlmTraceSink(
-                    connection,
-                    game_id=game_id,
-                    request_id=str(request["request_id"]),
-                    state_version=_expected_version(request),
-                )
-            )
-            _materialize_private_views(
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        store = SupabaseWorkerStore(connection)
+        context = _service(connection, settings, dependencies)
+        result = GameApplication(
+            context,
+            access_policy=SupabaseAccessPolicy(connection),
+        ).commit_advance(Actor(user_id=user_id), computed)
+        response = _wire_model(AdvanceGameResponse, result)
+        traces.flush_to(
+            SupabaseLlmTraceSink(
                 connection,
-                store,
-                settings,
-                dependencies,
-                response.game_id,
-                actor_user_id=user_id,
+                game_id=game_id,
+                request_id=str(request["request_id"]),
+                state_version=_expected_version(request),
             )
-            _complete_result(store, request, response)
+        )
+        _materialize_private_views(
+            connection,
+            store,
+            settings,
+            dependencies,
+            response.game_id,
+            actor_user_id=user_id,
+        )
+        _complete_result(store, request, response)
+
+
+def _reserve_paid_llm_admission(
+    pool: Any,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+    *,
+    actor_user_id: str,
+    llm_mode: str,
+) -> PaidLlmAdmission | None:
+    """Reserve paid capacity immediately before the external pipeline starts."""
+    if llm_mode != "paid":
+        return None
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        return SupabasePaidLlmAdmissionGate(connection).reserve(
+            operation_id=str(request["request_id"]),
+            actor_user_id=actor_user_id,
+            worker_id=settings.supabase_worker_id,
+            daily_limit=settings.worker_paid_llm_daily_advance_limit,
+            concurrency_limit=settings.worker_paid_llm_max_concurrent_advances,
+            ttl_seconds=settings.worker_paid_llm_admission_ttl_seconds,
+        )
+
+
+def _finish_paid_llm_admission(
+    pool: Any,
+    admission: PaidLlmAdmission,
+    *,
+    outcome: Literal["completed", "failed"],
+) -> None:
+    """Release paid capacity in its own short transaction."""
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        SupabasePaidLlmAdmissionGate(connection).finish(admission, outcome=outcome)
 
 
 class _LeaseHeartbeat:
     """Renew one PGMQ visibility timeout while the Agent pipeline is running."""
 
-    def __init__(self, pool: Any, settings: AppSettings, request: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        pool: Any,
+        settings: AppSettings,
+        request: Mapping[str, Any],
+        *,
+        admission: PaidLlmAdmission | None = None,
+    ) -> None:
         self._pool = pool
         self._interval = settings.supabase_worker_heartbeat_seconds
         self._claim_seconds = settings.supabase_worker_claim_seconds
         self._request = request
+        self._admission = admission
+        self._admission_ttl_seconds = settings.worker_paid_llm_admission_ttl_seconds
         self._stopped = threading.Event()
         self._lost = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -418,7 +486,13 @@ class _LeaseHeartbeat:
                         self._request,
                         claim_seconds=self._claim_seconds,
                     )
-                if not renewed:
+                    admission_renewed = self._admission is None or (
+                        SupabasePaidLlmAdmissionGate(connection).renew(
+                            self._admission,
+                            ttl_seconds=self._admission_ttl_seconds,
+                        )
+                    )
+                if not renewed or not admission_renewed:
                     self._lost.set()
                     return
             except Exception:

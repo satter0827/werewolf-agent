@@ -16,8 +16,14 @@ from werewolf_agent.adapters.application_bridge import (
     build_game_application_config,
     build_setup_catalog,
 )
+from werewolf_agent.adapters.supabase.paid_llm_admission import (
+    PaidLlmAdmission,
+    SupabasePaidLlmAdmissionGate,
+)
 from werewolf_agent.adapters.supabase.worker_store import SupabaseWorkerStore
+from werewolf_agent.application.errors import AppError
 from werewolf_agent.application.setup_facade import SetupApplication
+from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.settings import AppSettings
 from werewolf_agent.worker.composition import create_core_worker_dependencies
 from werewolf_agent.worker.service import process_worker_batch
@@ -32,12 +38,14 @@ RUNTIME_TABLE_PRIVILEGES = {
         "public.game_operation_requests": {"SELECT", "INSERT", "UPDATE"},
         "private.user_setups": {"SELECT", "INSERT"},
         "private.llm_traces": {"SELECT"},
+        "private.paid_llm_admissions": set(),
         "auth.users": set(),
     },
     "werewolf_worker": {
         "public.game_operation_requests": {"SELECT", "UPDATE"},
         "private.user_setups": set(),
         "private.llm_traces": {"SELECT", "INSERT"},
+        "private.paid_llm_admissions": {"SELECT", "INSERT", "UPDATE"},
         "auth.users": {"SELECT"},
     },
 }
@@ -146,6 +154,63 @@ def test_queue_functions_are_not_shared_between_runtime_roles() -> None:
                     for role in ("werewolf_api", "werewolf_worker")
                 )
                 assert actual == expected, (function_name, function_oid, actual)
+
+
+@pytest.mark.serial
+def test_paid_llm_concurrency_limit_is_atomic_across_connections() -> None:
+    """別workerの同時予約をDB lock内で判定し、上限超過を一件だけ拒否する。"""
+    dsn = os.environ["WEREWOLF_SUPABASE_DB_DSN"]
+    actor_user_id = uuid4()
+    operation_ids: list[UUID] = []
+    with psycopg.connect(dsn) as connection:
+        _insert_user(connection, actor_user_id)
+        for key in ("paid-admission-1", "paid-admission-2"):
+            row = connection.execute(
+                """
+                insert into public.game_operation_requests (
+                  owner_user_id, operation_type, idempotency_key
+                ) values (%s, 'advance_game', %s)
+                returning request_id
+                """,
+                (actor_user_id, key),
+            ).fetchone()
+            assert row is not None
+            operation_ids.append(row[0])
+
+    def reserve(operation_id: UUID) -> PaidLlmAdmission | AppError:
+        try:
+            with psycopg.connect(dsn) as connection, connection.transaction():
+                return SupabasePaidLlmAdmissionGate(connection).reserve(
+                    operation_id=str(operation_id),
+                    actor_user_id=str(actor_user_id),
+                    worker_id=f"worker-{operation_id}",
+                    daily_limit=10,
+                    concurrency_limit=1,
+                    ttl_seconds=300,
+                )
+        except AppError as error:
+            return error
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(reserve, operation_ids))
+        admissions = [result for result in results if isinstance(result, PaidLlmAdmission)]
+        errors = [result for result in results if isinstance(result, AppError)]
+        assert len(admissions) == 1
+        assert len(errors) == 1
+        assert errors[0].code is ErrorCode.REQUEST_CONCURRENCY_LIMITED
+        assert errors[0].retryable is True
+    finally:
+        with psycopg.connect(dsn) as connection:
+            connection.execute(
+                "delete from private.paid_llm_admissions where actor_user_id = %s",
+                (actor_user_id,),
+            )
+            connection.execute(
+                "delete from public.game_operation_requests where owner_user_id = %s",
+                (actor_user_id,),
+            )
+            connection.execute("delete from auth.users where id = %s", (actor_user_id,))
 
 
 @pytest.mark.serial

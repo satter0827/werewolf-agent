@@ -69,7 +69,10 @@ workerはPGMQの`game_operations`を取得し、認可されたgameを自動進�
 エージェント処理の実行前後だけ短いtransactionを開き、model待機中はDB connectionを保持しない。
 visibility timeoutは別connectionで更新する。プロセスが中断したmessageはPGMQが再配送し、
 捕捉した実行エラーは分類に従って再配送またはsafe Problem Details付きの`failed`へ確定する。有料providerは
-認証済み利用者のgameに限定し、providerの選択とmodelは設定から解決する。
+認証済み利用者のgameに限定し、providerの選択とmodelは設定から解決する。有料LLMは既定で無効とし、
+workerはmodel呼出し前に利用者の日次有料advance上限と全worker共通の同時実行上限をdatabaseへ予約する。
+同時実行超過だけを再試行し、無効設定、日次上限、同じoperationの再予約はfail-closedで確定する。
+予約は外部処理中にdatabase connectionを保持せず、終了時に解放し、worker中断時はTTLで失効する。
 
 private LLM traceは公開timelineから分離して保存する。本人に認可されたobservationとprompt、
 provider生応答、検証済みdecision、正規化、schema・合法手検証、fallback、provider error、

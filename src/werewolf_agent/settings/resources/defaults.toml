@@ -14,6 +14,10 @@ llm_fake_responses_file = ""
 worker_paid_llm_provider = "openai"
 worker_paid_llm_model = "gpt-4.1-mini"
 worker_paid_llm_base_url = ""
+worker_paid_llm_enabled = false
+worker_paid_llm_daily_advance_limit = 20
+worker_paid_llm_max_concurrent_advances = 2
+worker_paid_llm_admission_ttl_seconds = 300
 
 log_level = "INFO"
 log_output = "file"
