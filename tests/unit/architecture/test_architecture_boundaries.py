@@ -481,6 +481,14 @@ def test_console_entrypoints_match_the_architecture_manifest() -> None:
     }
 
 
+def test_streamlit_extra_supports_the_width_contract() -> None:
+    """全幅widgetで使用するwidth引数をoptional依存の下限でも保証する。"""
+    with (ROOT / "pyproject.toml").open("rb") as stream:
+        project = tomllib.load(stream)["project"]
+
+    assert "streamlit>=1.48,<2" in project["optional-dependencies"]["streamlit"]
+
+
 def test_domain_and_application_have_no_io_or_logging_dependencies() -> None:
     """Domainとapplicationを外部I/Oおよびloggingから分離する。"""
     forbidden = (

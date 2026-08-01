@@ -14,6 +14,7 @@ from werewolf_agent.api.dependencies import (
     RequestServices,
     ServicesDependency,
 )
+from werewolf_agent.api.presenters import saved_setup_revision_response
 from werewolf_agent.application import Actor, AppError, ErrorCode, parse_setup_document
 from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
@@ -155,7 +156,7 @@ def create_setup(
         display_name=request.display_name,
         document=_document(request.document),
     )
-    return SavedSetupRevisionResponse.model_validate(result.model_dump(mode="json"))
+    return saved_setup_revision_response(result)
 
 
 @router.get(
@@ -169,7 +170,7 @@ def get_setup(
     services: ServicesDependency,
 ) -> SavedSetupRevisionResponse:
     result = services.setups.get(_actor(principal), setup_id)
-    return SavedSetupRevisionResponse.model_validate(result.model_dump(mode="json"))
+    return saved_setup_revision_response(result)
 
 
 @router.get(
@@ -183,7 +184,7 @@ def list_setup_revisions(
     services: ServicesDependency,
 ) -> list[SavedSetupRevisionResponse]:
     return [
-        SavedSetupRevisionResponse.model_validate(item.model_dump(mode="json"))
+        saved_setup_revision_response(item)
         for item in services.setups.revisions(_actor(principal), setup_id)
     ]
 
@@ -200,7 +201,7 @@ def get_setup_revision(
     services: ServicesDependency,
 ) -> SavedSetupRevisionResponse:
     result = services.setups.get(_actor(principal), setup_id, revision=revision)
-    return SavedSetupRevisionResponse.model_validate(result.model_dump(mode="json"))
+    return saved_setup_revision_response(result)
 
 
 @router.post(
@@ -221,7 +222,7 @@ def create_setup_revision(
         expected_revision=request.expected_revision,
         document=_document(request.document),
     )
-    return SavedSetupRevisionResponse.model_validate(result.model_dump(mode="json"))
+    return saved_setup_revision_response(result)
 
 
 __all__ = ["resolve_setup", "router"]

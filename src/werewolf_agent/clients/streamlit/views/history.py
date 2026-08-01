@@ -56,14 +56,15 @@ def _render_history_screen(
             st.rerun()
         return
 
+    game_numbers = {game.game_id: index for index, game in enumerate(games, start=1)}
     selected = st.selectbox(
         catalog.t(lang, "records.game"),
         games,
-        format_func=lambda game: catalog.t(
-            lang,
-            "records.game_label",
-            game_id=game.game_id,
-            status=catalog.label(lang, "status", game.status),
+        format_func=lambda game: _record_label(
+            game,
+            index=game_numbers[game.game_id],
+            catalog=catalog,
+            lang=lang,
         ),
     )
     try:
@@ -88,6 +89,23 @@ def _render_history_screen(
         expanded=False,
     ):
         _render_history_analysis(st, games=games, catalog=catalog, lang=lang)
+
+
+def _record_label(
+    game: Any,
+    *,
+    index: int,
+    catalog: I18nCatalog,
+    lang: Language,
+) -> str:
+    """Return a short localized record label without exposing an internal UUID."""
+    return catalog.t(
+        lang,
+        "records.game_label",
+        index=index,
+        status=catalog.t(lang, f"status.{game.status}"),
+        day=catalog.t(lang, "time.day", day=game.day),
+    )
 
 
 def _render_history_analysis(

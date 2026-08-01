@@ -151,11 +151,13 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_IDEMPOTENCY_CONFLICT,
         status=HTTPStatus.CONFLICT,
         detail=DETAIL_IDEMPOTENCY_CONFLICT,
+        recovery="reload",
     ),
     ErrorCode.SETUP_REVISION_CONFLICT: ErrorSpec(
         title=TITLE_SETUP_REVISION_CONFLICT,
         status=HTTPStatus.CONFLICT,
         detail=DETAIL_SETUP_REVISION_CONFLICT,
+        recovery="reload",
     ),
     ErrorCode.REQUEST_METHOD_NOT_ALLOWED: ErrorSpec(
         title=TITLE_METHOD_NOT_ALLOWED,
@@ -196,6 +198,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_INVALID_GAME_PHASE,
         status=HTTPStatus.CONFLICT,
         detail=DETAIL_GAME_INVALID_PHASE,
+        recovery="reload",
     ),
     ErrorCode.GAME_INVALID_ACTION: ErrorSpec(
         title=TITLE_INVALID_GAME_ACTION,
@@ -235,6 +238,7 @@ ERROR_SPECS: Final[Mapping[ErrorCode, ErrorSpec]] = {
         title=TITLE_OPERATION_UPGRADE_INTERRUPTED,
         status=HTTPStatus.CONFLICT,
         detail=DETAIL_OPERATION_UPGRADE_INTERRUPTED,
+        recovery="reload",
         log_level="WARNING",
     ),
     ErrorCode.INTERNAL_UNEXPECTED: ErrorSpec(

@@ -122,7 +122,12 @@ def _render_game_settings_screen(
             for revision in revisions[value.setup_id]
         },
     }
-    source = st.selectbox("編集元", sources, format_func=lambda value: source_labels[value])
+    source = st.selectbox(
+        "編集元",
+        sources,
+        index=_source_index(st.session_state, sources),
+        format_func=lambda value: source_labels[value],
+    )
     if st.session_state.get(_SOURCE_KEY) != source:
         try:
             _load_source(st.session_state, settings, source)
@@ -153,6 +158,12 @@ def _render_game_settings_screen(
         else:
             _render_save(st, settings, lang, draft)
     st.session_state[SETUP_DRAFT_KEY] = draft
+
+
+def _source_index(state: Any, sources: list[str]) -> int:
+    """Keep the loaded immutable revision selected when the catalog grows."""
+    loaded_source = state.get(_SOURCE_KEY)
+    return sources.index(loaded_source) if loaded_source in sources else 0
 
 
 def _load_source(state: Any, settings: AppSettings, source: str) -> None:
@@ -477,7 +488,7 @@ def _edit_players(st: Any, draft: dict[str, Any]) -> None:
     generation["identities"] = st.data_editor(
         generation["identities"],
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config={
             "name": "名前",
             "age_min": "年齢の下限",
@@ -489,14 +500,14 @@ def _edit_players(st: Any, draft: dict[str, Any]) -> None:
     generation["public_personas"] = st.data_editor(
         generation["public_personas"],
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config={"personality": "性格", "speaking_style": "話し方"},
         key="public_personas",
     )
     generation["private_strategies"] = st.data_editor(
         generation["private_strategies"],
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         column_config={
             "reasoning_style": "推理方針",
             "risk_tolerance": "大胆さ",
@@ -553,7 +564,7 @@ def _render_confirmation(
         st.caption(f"{sections}に未入力、重複、または組み合わせできない内容があります。")
         return
     st.info("参照関係とゲーム進行条件をサーバーで確認できます。")
-    if st.button("設定を検証する", use_container_width=True):
+    if st.button("設定を検証する", width="stretch"):
         try:
             result = validate_setup(settings=settings, setup=document)
         except AppError as exc:
@@ -587,7 +598,7 @@ def _render_save(
     revision = st.session_state.get(_REVISION_KEY)
     if setup_id is None:
         display_name = st.text_input("保存名", value=document.theme.name)
-        if st.button("保存設定として複製", type="primary", use_container_width=True):
+        if st.button("保存設定として複製", type="primary", width="stretch"):
             try:
                 saved = create_saved_setup(
                     settings=settings,
@@ -599,7 +610,7 @@ def _render_save(
             st.session_state[_SETUP_ID_KEY] = saved.setup_id
             st.session_state[_REVISION_KEY] = saved.revision
             st.success(f"第{saved.revision}版を保存しました。")
-    elif st.button("新しい版として保存", type="primary", use_container_width=True):
+    elif st.button("新しい版として保存", type="primary", width="stretch"):
         try:
             saved = create_setup_revision(
                 settings=settings,

@@ -124,8 +124,7 @@ def _winner_label(state: PublicGameState, catalog: I18nCatalog, lang: Language) 
     fallback = catalog.label(lang, "winner", state.winner)
     if state.winner is None:
         return fallback
-    faction = _theme_term(state, "faction_names", state.winner, fallback)
-    return f"{faction}の勝利"
+    return _theme_term(state, "faction_names", state.winner, fallback)
 
 
 def target_candidates_for_action(
