@@ -270,8 +270,11 @@ class DiscussionStageConfig:
         if self.stage is DiscussionRoundKind.OPENING:
             if reference_stage is not None or relations != (DiscussionRelation.INDEPENDENT,):
                 raise ValueError("opening stage must be independent and reference-free")
-        elif reference_stage is not DiscussionRoundKind.OPENING:
-            raise ValueError("response stage must reference opening")
+        else:
+            if reference_stage is not DiscussionRoundKind.OPENING:
+                raise ValueError("response stage must reference opening")
+            if DiscussionRelation.INDEPENDENT in relations:
+                raise ValueError("response stage cannot allow independent relations")
 
 
 DEFAULT_DISCUSSION_STAGES = (

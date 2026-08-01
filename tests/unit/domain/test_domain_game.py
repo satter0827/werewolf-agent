@@ -3,7 +3,26 @@ from __future__ import annotations
 import pytest
 
 from werewolf_agent.domain import Action, ActionType, AvailableAction
-from werewolf_agent.domain.state import AbilityDefinition, Phase
+from werewolf_agent.domain.state import (
+    AbilityDefinition,
+    DiscussionRelation,
+    DiscussionRoundKind,
+    DiscussionStageConfig,
+    Phase,
+    SubmissionMode,
+)
+
+
+def test_response_stage_rejects_independent_relation() -> None:
+    """参照必須responseと矛盾するindependent定義をsetup境界で拒否する."""
+    with pytest.raises(ValueError, match="cannot allow independent"):
+        DiscussionStageConfig(
+            stage=DiscussionRoundKind.RESPONSE,
+            submission_mode=SubmissionMode.ORDERED,
+            actor_order="reverse_opening",
+            reference_stage=DiscussionRoundKind.OPENING,
+            allowed_relations=(DiscussionRelation.INDEPENDENT,),
+        )
 
 
 @pytest.mark.parametrize(

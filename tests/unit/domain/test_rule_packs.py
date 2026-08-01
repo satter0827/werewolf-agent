@@ -47,6 +47,7 @@ from werewolf_agent.domain import (
 )
 from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
 from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy, start_discussion
+from werewolf_agent.domain.rules.evidence import public_discussion_evidence
 
 
 def _vote(game: Game, player_id: str, target_id: str) -> Action:
@@ -1082,6 +1083,36 @@ def test_sealed_discussion_preserves_mixed_submission_order() -> None:
         "speech_recorded",
         "discussion_passed",
         "speech_recorded",
+    )
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    response_actor_id = response.current_actor_id
+    assert response_actor_id is not None
+    speeches = {speech.speech_id: speech for speech in game.snapshot().history.speeches}
+    reference_id = next(
+        item for item in response.reference_ids if speeches[item].player_id != response_actor_id
+    )
+    referenced = speeches[reference_id]
+    game.submit(
+        Action.speech(
+            response_actor_id,
+            "参照発言を支持します。",
+            topic_id=referenced.topic_id,
+            position=referenced.position,
+            relation=DiscussionRelation.SUPPORT,
+            evidence_id=reference_id,
+            response_to_id=reference_id,
+        )
+    )
+    game.advance(random.Random(13))
+
+    facts = public_discussion_evidence(game.snapshot())
+    assert tuple(fact.actor_id for fact in facts) == (*opening.actor_order, response_actor_id)
+    assert tuple(fact.kind for fact in facts) == (
+        EvidenceKind.DISCUSSION,
+        EvidenceKind.DISCUSSION_PASS,
+        EvidenceKind.DISCUSSION,
+        EvidenceKind.DISCUSSION,
     )
 
 
