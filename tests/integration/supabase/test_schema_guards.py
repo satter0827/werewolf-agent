@@ -27,6 +27,21 @@ pytestmark = [pytest.mark.supabase]
 INSTANCE_ID = UUID(int=0)
 WORKER_DEPENDENCIES = create_core_worker_dependencies()
 
+RUNTIME_TABLE_PRIVILEGES = {
+    "werewolf_api": {
+        "public.game_operation_requests": {"SELECT", "INSERT", "UPDATE"},
+        "private.user_setups": {"SELECT", "INSERT"},
+        "private.llm_traces": {"SELECT"},
+        "auth.users": set(),
+    },
+    "werewolf_worker": {
+        "public.game_operation_requests": {"SELECT", "UPDATE"},
+        "private.user_setups": set(),
+        "private.llm_traces": {"SELECT", "INSERT"},
+        "auth.users": {"SELECT"},
+    },
+}
+
 
 def _insert_user(connection: psycopg.Connection, user_id: UUID) -> None:
     connection.execute(
@@ -62,6 +77,75 @@ def _enqueue_operation_message(
         (message_id, request_id),
     )
     return message_id
+
+
+@pytest.mark.serial
+def test_runtime_roles_are_non_login_and_non_privileged() -> None:
+    """APIとworkerの権限集合をlogin資格情報やDB全体の特権にしない。"""
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        rows = connection.execute(
+            """
+            select rolname, rolcanlogin, rolsuper, rolcreatedb, rolcreaterole,
+                   rolreplication, rolbypassrls
+            from pg_roles
+            where rolname in ('werewolf_api', 'werewolf_worker')
+            order by rolname
+            """
+        ).fetchall()
+
+    assert [row[0] for row in rows] == ["werewolf_api", "werewolf_worker"]
+    assert all(not flag for row in rows for flag in row[1:])
+
+
+@pytest.mark.serial
+def test_runtime_roles_have_only_the_owned_table_operations() -> None:
+    """同じDSNへ権限を集約せず、process責務ごとの操作だけを許可する。"""
+    operations = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES")
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        for role, tables in RUNTIME_TABLE_PRIVILEGES.items():
+            for table, expected in tables.items():
+                actual = {
+                    operation
+                    for operation in operations
+                    if connection.execute(
+                        "select has_table_privilege(%s, %s, %s)",
+                        (role, table, operation),
+                    ).fetchone()[0]
+                }
+                assert actual == expected, (role, table, actual)
+
+
+@pytest.mark.serial
+def test_queue_functions_are_not_shared_between_runtime_roles() -> None:
+    """queue送信と消費をPUBLIC経由で両processへ漏らさない。"""
+    functions = {
+        "send": (True, False),
+        "list_queues": (True, False),
+        "read": (False, True),
+        "read_with_poll": (False, True),
+        "set_vt": (False, True),
+        "archive": (False, True),
+    }
+    with psycopg.connect(os.environ["WEREWOLF_SUPABASE_DB_DSN"]) as connection:
+        for function_name, expected in functions.items():
+            rows = connection.execute(
+                """
+                select p.oid
+                from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                where n.nspname = 'pgmq' and p.proname = %s
+                """,
+                (function_name,),
+            ).fetchall()
+            assert rows, function_name
+            for (function_oid,) in rows:
+                actual = tuple(
+                    connection.execute(
+                        "select has_function_privilege(%s, %s, 'EXECUTE')",
+                        (role, function_oid),
+                    ).fetchone()[0]
+                    for role in ("werewolf_api", "werewolf_worker")
+                )
+                assert actual == expected, (function_name, function_oid, actual)
 
 
 @pytest.mark.serial
@@ -332,7 +416,7 @@ def test_worker_creates_and_advances_game_with_fake_llm() -> None:
         _insert_user(connection, owner_id)
         settings = AppSettings(
             llm_provider="fake",
-            supabase_db_dsn=dsn,
+            supabase_worker_db_dsn=dsn,
             supabase_worker_batch_size=1,
         )
         setup_catalog = build_setup_catalog(settings)

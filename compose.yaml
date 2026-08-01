@@ -32,7 +32,7 @@ services:
     build: *python-build
     profiles: ["dev", "test", "e2e", "production"]
     environment:
-      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_MIGRATION_DB_DSN:-}
     command: python -m scripts.supabase migrate
     restart: "no"
 
@@ -44,7 +44,7 @@ services:
     init: true
     environment:
       <<: [*auth-environment, *log-environment]
-      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+      WEREWOLF_SUPABASE_API_DB_DSN: ${WEREWOLF_COMPOSE_API_DB_DSN:-}
       WEREWOLF_SUPABASE_JWT_AUDIENCE: ${WEREWOLF_SUPABASE_JWT_AUDIENCE:-authenticated}
       WEREWOLF_SUPABASE_JWT_ISSUER: ${WEREWOLF_SUPABASE_JWT_ISSUER:-}
       WEREWOLF_SUPABASE_JWKS_URL: ${WEREWOLF_SUPABASE_JWKS_URL:-}
@@ -92,7 +92,7 @@ services:
     init: true
     environment:
       <<: *log-environment
-      WEREWOLF_SUPABASE_DB_DSN: ${WEREWOLF_COMPOSE_SUPABASE_DB_DSN:-}
+      WEREWOLF_SUPABASE_WORKER_DB_DSN: ${WEREWOLF_COMPOSE_WORKER_DB_DSN:-}
       WEREWOLF_REVEAL_API_ENABLED: ${WEREWOLF_REVEAL_API_ENABLED:-false}
       WEREWOLF_SUPABASE_WORKER_ID: ${WEREWOLF_SUPABASE_WORKER_ID:-worker-default}
       WEREWOLF_SUPABASE_WORKER_POLL_INTERVAL_SECONDS: ${WEREWOLF_SUPABASE_WORKER_POLL_INTERVAL_SECONDS:-1}

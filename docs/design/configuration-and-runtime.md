@@ -19,6 +19,9 @@ modelであり、個別fieldを直接定義しない。sectionの一覧はarchit
 
 同じ値に複数の名前や暗黙fallbackを設けない。秘密値はversion管理する設定
 ファイルへ置かず、環境変数または実行基盤から渡す。
+database接続はmigration用`WEREWOLF_SUPABASE_DB_DSN`、API用
+`WEREWOLF_SUPABASE_API_DB_DSN`、worker用`WEREWOLF_SUPABASE_WORKER_DB_DSN`を分ける。
+runtime接続にmigration用DSNをfallback適用しない。
 
 packaged resourceは所有機能へ配置する。applicationは`resources/setups`のtemplateとcatalog、
 agentsはprovider非依存prompt、LLMアダプターはFakeListChatModel fixture、Streamlit clientは

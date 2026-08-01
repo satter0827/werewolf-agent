@@ -18,8 +18,11 @@ class DatabaseSettings(BaseModel):
     supabase_publishable_key: SecretStr = Field(
         validation_alias="WEREWOLF_SUPABASE_PUBLISHABLE_KEY",
     )
-    supabase_db_dsn: SecretStr = Field(
-        validation_alias="WEREWOLF_SUPABASE_DB_DSN",
+    supabase_api_db_dsn: SecretStr = Field(
+        validation_alias="WEREWOLF_SUPABASE_API_DB_DSN",
+    )
+    supabase_worker_db_dsn: SecretStr = Field(
+        validation_alias="WEREWOLF_SUPABASE_WORKER_DB_DSN",
     )
     supabase_auth_timeout_seconds: float = Field(
         gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,

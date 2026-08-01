@@ -16,7 +16,9 @@ def test_release_0_1_0_uses_one_from_scratch_baseline() -> None:
     """pre-release migration履歴を配布contractへ残さない。"""
     migrations = sorted((ROOT / "supabase" / "migrations").glob("*.sql"))
 
-    assert migrations == [BASELINE]
+    assert migrations
+    assert migrations[0] == BASELINE
+    assert all(migration.name > BASELINE.name for migration in migrations[1:])
     assert "does not upgrade pre-release data" in _baseline()
 
 

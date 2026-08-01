@@ -24,6 +24,13 @@ Supabaseアダプターはリポジトリportを実装し、公式Auth SDK、gam
 traceの接続を担当する。APIとworkerは用途別のプロセス所有connection poolを使う。
 Supabase Authとゲームテーブルを分離し、ゲームテーブルはData APIから参照させない。
 
+APIとworkerは別のdatabase LOGIN userを使う。LOGIN userにはmigrationが定義する
+`werewolf_api`または`werewolf_worker`の一方だけを付与する。権限role自体は`NOLOGIN`とし、
+passwordと接続文字列はdeploymentのsecret storeで作成、配布、rotationする。APIは利用者認証、
+setup、閲覧、operation送信に必要な権限だけを持ち、workerはqueue消費、状態更新、LLM trace記録に
+必要な権限だけを持つ。migration用owner接続をruntimeへ渡さず、新しいtableとfunctionは所有プロセスを
+migrationで明示するまでruntime roleへ許可しない。
+
 完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。専用設定は
 既定で無効とし、必要なruntimeだけが明示的に有効化する。
 通常の`GameClient`からは呼び出せない。CLIとStreamlitの
