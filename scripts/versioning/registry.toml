@@ -1,7 +1,10 @@
+release_base_ref = "origin/main"
+
 [[boundaries]]
 name = "product"
 owner = "release"
 standard = "pep440"
+enforcement = "release"
 path = "src/werewolf_agent/_version.py"
 pattern = '__version__\s*=\s*"([^"]+)"'
 watch = ["src/", "pyproject.toml", "supabase/migrations/"]
