@@ -13,8 +13,10 @@ def test_local_review_rejects_non_loopback_endpoint() -> None:
 
 
 def test_local_review_rejects_credentials_in_loopback_endpoint() -> None:
+    url = "http://user:password@127.0.0.1:1234/v1"  # pragma: allowlist secret
+
     with pytest.raises(ValueError, match="credentials"):
-        review.validate_loopback_base_url("http://user:password@127.0.0.1:1234/v1")
+        review.validate_loopback_base_url(url)
 
 
 def test_local_preflight_provider_error_is_blocked_before_bounded_stop() -> None:
@@ -244,7 +246,7 @@ def test_review_serializer_keeps_numeric_usage_but_redacts_credentials() -> None
         {
             "prompt_tokens": 123,
             "completion_tokens": 45,
-            "api_key": "secret",
+            "api_key": "secret",  # pragma: allowlist secret
             "authorization": "Bearer secret",
         }
     )
