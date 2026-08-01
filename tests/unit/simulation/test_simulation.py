@@ -152,7 +152,10 @@ def _rules() -> CompiledRuleSet:
         rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -314,13 +317,21 @@ def test_manual_player_waits_without_blocking_available_agent_action() -> None:
         view = game.view_for(manual_id)
         available = view.available_actions[0]
         targets = view.legal_targets.get(available.key, ())
-        action = Action(
-            type=available.type,
-            player_id=manual_id,
-            ability_id=available.ability_id,
-            target_id=targets[0] if targets else None,
-            message="状況を確認します。" if available.type.value == "speech" else None,
-        )
+        if available.type.value == "speech":
+            round_ = view.discussion_round
+            action = Action.speech(
+                manual_id,
+                "状況を確認します。",
+                response_to_id=(
+                    round_.reference_ids[0] if round_ is not None and round_.reference_ids else None
+                ),
+            )
+        elif available.type.value == "vote":
+            action = Action.vote(manual_id, targets[0], reason="状況から判断します。")
+        elif available.type.value == "use_ability":
+            action = Action.use_ability(manual_id, available.ability_id or "", targets[0])
+        else:
+            action = Action.pass_(manual_id)
         step = session.submit_manual(action)
         assert step.kind is SimulationStepKind.MANUAL_ACTION
         assert session.run().stop_reason in {

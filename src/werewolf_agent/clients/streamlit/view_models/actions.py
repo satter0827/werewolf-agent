@@ -51,6 +51,19 @@ def observation_view_from_response(
         )
         for action in action_keys
     }
+    speech_by_id = {speech.speech_id: speech for speech in observation.history.speeches}
+    reference_choices = {
+        reference_id: (
+            f"{_player_name(state.players, speech_by_id[reference_id].player_id)}: "
+            f"{speech_by_id[reference_id].message}"
+        )
+        for reference_id in (
+            observation.discussion_round.reference_ids
+            if observation.discussion_round is not None
+            else ()
+        )
+        if reference_id in speech_by_id
+    }
     return ObservationView(
         role=_theme_term(state, "role_names", role, catalog.label(lang, "role", role)),
         available_actions=action_keys,
@@ -83,6 +96,7 @@ def observation_view_from_response(
         ],
         known_role_lines=known_role_lines,
         target_candidates=target_candidates,
+        reference_choices=reference_choices,
     )
 
 

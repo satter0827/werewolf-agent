@@ -11,12 +11,18 @@ from werewolf_agent.domain.state import (
     AbilityDefinition,
     Action,
     ActionType,
+    DiscussionConfig,
+    DiscussionKind,
+    DiscussionResult,
+    DiscussionRound,
+    DiscussionRoundKind,
     GameConfig,
     GameHistory,
     GameSetup,
     GameState,
     InspectionResult,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     NightResult,
     PendingActions,
     Phase,
@@ -25,13 +31,31 @@ from werewolf_agent.domain.state import (
     RoleCatalog,
     RoleDefinition,
     SpeechRecord,
+    SubmissionMode,
     VoteResult,
+    VotingConfig,
     WinResult,
 )
 
 
 def domain_to_data(value: Any) -> Any:
     """Convert a domain value to JSON-compatible Python data."""
+    if isinstance(value, Action):
+        result: dict[str, Any] = {"player_id": value.player_id, "type": value.type.value}
+        for field_name in (
+            "ability_id",
+            "target_id",
+            "message",
+            "focus_id",
+            "evidence_id",
+            "response_to_id",
+        ):
+            item = getattr(value, field_name)
+            if item is not None:
+                result[field_name] = item
+        if value.reason:
+            result["reason"] = value.reason
+        return result
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value) and not isinstance(value, type):
@@ -53,16 +77,29 @@ def game_setup_from_data(data: Mapping[str, Any]) -> GameSetup:
 
 def action_from_data(data: Mapping[str, Any]) -> Action:
     """Build one validated domain action from an application payload."""
-    return Action(
-        type=ActionType(str(data["type"])),
-        player_id=str(data["player_id"]),
-        reason=str(data.get("reason") or ""),
-        target_id=_optional_text(data.get("target_id")),
-        ability_id=_optional_text(data.get("ability_id")),
-        message=_optional_text(data.get("message")),
-        focus_id=_optional_text(data.get("focus_id")),
-        evidence_id=_optional_text(data.get("evidence_id")),
-    )
+    action_type = ActionType(str(data["type"]))
+    player_id = str(data["player_id"])
+    if action_type is ActionType.SPEECH:
+        return Action.speech(
+            player_id,
+            str(data["message"]),
+            focus_id=_optional_text(data.get("focus_id")),
+            evidence_id=_optional_text(data.get("evidence_id")),
+            response_to_id=_optional_text(data.get("response_to_id")),
+        )
+    if action_type is ActionType.VOTE:
+        return Action.vote(
+            player_id,
+            str(data["target_id"]),
+            reason=str(data["reason"]),
+        )
+    if action_type is ActionType.USE_ABILITY:
+        return Action.use_ability(
+            player_id,
+            str(data["ability_id"]),
+            _optional_text(data.get("target_id")),
+        )
+    return Action.pass_(player_id)
 
 
 def game_state_from_data(data: Mapping[str, Any]) -> GameState:
@@ -93,7 +130,14 @@ def game_config_from_data(data: Mapping[str, Any]) -> GameConfig:
     return GameConfig(
         player_count=int(data["player_count"]),
         role_counts={str(key): int(value) for key, value in _mapping(data["role_counts"]).items()},
-        rules=LocalRules(**dict(_mapping(data["rules"]))),
+        discussion=DiscussionConfig(
+            kind=DiscussionKind(str(_mapping(data["discussion"])["kind"])),
+            message_max_chars=int(_mapping(data["discussion"])["message_max_chars"]),
+            cycles_per_day=int(_mapping(data["discussion"])["cycles_per_day"]),
+        ),
+        voting=VotingConfig(**dict(_mapping(data["voting"]))),
+        night=NightConfig(**dict(_mapping(data["night"]))),
+        lifecycle=LifecycleConfig(**dict(_mapping(data["lifecycle"]))),
         roles=RoleCatalog(
             roles={
                 str(key): RoleDefinition(
@@ -147,13 +191,25 @@ def _history(data: Mapping[str, Any]) -> GameHistory:
         speeches=tuple(
             SpeechRecord(
                 day=int(item["day"]),
+                speech_id=str(item["speech_id"]),
+                round_id=str(item["round_id"]),
+                round_kind=DiscussionRoundKind(str(item["round_kind"])),
                 player_id=str(item["player_id"]),
                 message=str(item["message"]),
-                reason=str(item.get("reason") or ""),
                 focus_id=_optional_text(item.get("focus_id")),
                 evidence_id=_optional_text(item.get("evidence_id")),
+                response_to_id=_optional_text(item.get("response_to_id")),
             )
             for item in map(_mapping, _sequence(data.get("speeches")))
+        ),
+        discussions=tuple(
+            DiscussionResult(
+                day=int(item["day"]),
+                round_id=str(item["round_id"]),
+                kind=DiscussionRoundKind(str(item["kind"])),
+                speech_ids=tuple(str(value) for value in _sequence(item.get("speech_ids"))),
+            )
+            for item in map(_mapping, _sequence(data.get("discussions")))
         ),
         votes=tuple(_vote(item) for item in map(_mapping, _sequence(data.get("votes")))),
         nights=tuple(_night(item) for item in map(_mapping, _sequence(data.get("nights")))),
@@ -165,6 +221,7 @@ def _vote(data: Mapping[str, Any]) -> VoteResult:
         day=int(data["day"]),
         tie_break_policy=str(data["tie_break_policy"]),
         votes={str(key): str(value) for key, value in _mapping(data.get("votes", {})).items()},
+        reasons={str(key): str(value) for key, value in _mapping(data.get("reasons", {})).items()},
         counts={str(key): int(value) for key, value in _mapping(data.get("counts", {})).items()},
         tied_player_ids=tuple(str(value) for value in _sequence(data.get("tied_player_ids"))),
         missing_voter_ids=tuple(str(value) for value in _sequence(data.get("missing_voter_ids"))),
@@ -212,8 +269,28 @@ def _pending(data: Mapping[str, Any]) -> PendingActions:
             str(key): action_from_data(_mapping(value))
             for key, value in _mapping(data.get("night_actions", {})).items()
         },
+        discussion_actions={
+            str(key): action_from_data(_mapping(value))
+            for key, value in _mapping(data.get("discussion_actions", {})).items()
+        },
+        discussion_round=_discussion_round(data.get("discussion_round")),
         vote_round=int(data.get("vote_round") or 1),
         revote_candidates=tuple(str(value) for value in _sequence(data.get("revote_candidates"))),
+    )
+
+
+def _discussion_round(value: Any) -> DiscussionRound | None:
+    if value is None:
+        return None
+    data = _mapping(value)
+    return DiscussionRound(
+        round_id=str(data["round_id"]),
+        cycle=int(data["cycle"]),
+        kind=DiscussionRoundKind(str(data["kind"])),
+        submission_mode=SubmissionMode(str(data["submission_mode"])),
+        actor_order=tuple(str(item) for item in _sequence(data["actor_order"])),
+        cursor=int(data.get("cursor") or 0),
+        reference_ids=tuple(str(item) for item in _sequence(data.get("reference_ids"))),
     )
 
 

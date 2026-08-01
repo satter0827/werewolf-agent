@@ -44,6 +44,14 @@ class Game:
     ) -> Game:
         """検証済みsetup dataと注入した規則からゲームを作成する."""
         state = game_setup.create_game_snapshot(rules.config, setup.players, random)
+        if state.phase.value == "day_discussion":
+            state = replace(
+                state,
+                pending_actions=replace(
+                    state.pending_actions,
+                    discussion_round=rules.discussion_policy.start(state),
+                ),
+            )
         events = (
             GameEvent(
                 event_type="game_started",
@@ -86,6 +94,7 @@ class Game:
             self._state.pending_actions,
             random,
             ability_policy=self._rules.ability_policy,
+            discussion_policy=self._rules.discussion_policy,
             voting_policy=self._rules.voting_policy,
             victory_policy=self._rules.victory_policy,
         )

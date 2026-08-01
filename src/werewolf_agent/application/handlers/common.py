@@ -121,6 +121,10 @@ def _reveal_action(action: Action) -> GameRevealAction:
         ability_id=action.ability_id,
         target_id=action.target_id,
         message=action.message,
+        reason=action.reason or None,
+        focus_id=action.focus_id,
+        evidence_id=action.evidence_id,
+        response_to_id=action.response_to_id,
     )
 
 
@@ -138,17 +142,13 @@ def _action_from_command(command: PlayerActionCommand) -> Action:
         return action_from_data(
             {
                 "player_id": command.player_id,
-                "type": command.type,
-                "ability_id": command.ability_id,
-                "target_id": command.target_id,
-                "message": command.message,
-                "reason": command.reason,
+                **command.action.model_dump(mode="python", exclude_none=True),
             }
         )
     except ValueError as exc:
         raise GameError(
-            message_unsupported_action_type(command.type),
-            context={"action_type": command.type},
+            message_unsupported_action_type(command.action.type),
+            context={"action_type": command.action.type},
         ) from exc
 
 

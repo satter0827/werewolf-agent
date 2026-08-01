@@ -518,30 +518,41 @@ def _edit_players(st: Any, draft: dict[str, Any]) -> None:
 
 
 def _edit_rules(st: Any, draft: dict[str, Any]) -> None:
-    rules = draft["mechanics"]["rules"]
-    rules["day_speech_limit_per_player"] = st.number_input(
-        "1日あたりの発言回数", min_value=0, value=rules["day_speech_limit_per_player"]
+    mechanics = draft["mechanics"]
+    discussion = mechanics["discussion"]
+    voting = mechanics["voting"]
+    night = mechanics["night"]
+    lifecycle = mechanics["lifecycle"]
+    discussion["cycles_per_day"] = st.number_input(
+        "1日あたりの議論サイクル数",
+        min_value=1,
+        max_value=10,
+        value=discussion["cycles_per_day"],
     )
-    for key, label in (
-        ("allow_self_vote", "自分への投票を許可する"),
-        ("allow_vote_revision", "投票の変更を許可する"),
-        ("allow_night_action_revision", "夜の行動変更を許可する"),
-        ("reveal_role_on_death", "死亡時に役職を公開する"),
-        ("require_all_actions_before_advance", "全員の行動後に進行する"),
+    discussion["message_max_chars"] = st.number_input(
+        "発言の最大文字数",
+        min_value=1,
+        max_value=2000,
+        value=discussion["message_max_chars"],
+    )
+    for section, key, label in (
+        (voting, "allow_self_vote", "自分への投票を許可する"),
+        (voting, "allow_revision", "投票の変更を許可する"),
+        (night, "allow_action_revision", "夜の行動変更を許可する"),
+        (lifecycle, "reveal_role_on_death", "死亡時に役職を公開する"),
+        (lifecycle, "require_all_actions_before_advance", "全員の行動後に進行する"),
     ):
-        rules[key] = st.toggle(label, value=rules[key], key=f"rule_{key}")
-    rules["starting_phase"] = st.selectbox(
+        section[key] = st.toggle(label, value=section[key], key=f"rule_{key}")
+    lifecycle["starting_phase"] = st.selectbox(
         "開始する時間帯",
         ["night", "day_discussion"],
-        index=["night", "day_discussion"].index(rules["starting_phase"]),
+        index=["night", "day_discussion"].index(lifecycle["starting_phase"]),
         format_func=_PHASE_LABELS.get,
     )
-    rules["vote_tie_resolution"] = st.selectbox(
+    voting["tie_resolution"] = st.selectbox(
         "同票時の処理",
         ["no_elimination", "random_elimination", "revote"],
-        index=["no_elimination", "random_elimination", "revote"].index(
-            rules["vote_tie_resolution"]
-        ),
+        index=["no_elimination", "random_elimination", "revote"].index(voting["tie_resolution"]),
         format_func={
             "no_elimination": "誰も追放しない",
             "random_elimination": "抽選で追放する",

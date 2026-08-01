@@ -701,7 +701,10 @@ def _run_preset(
     rule_definition = rule_definition_from_values(
         player_count=sum(mechanics.role_counts.values()),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.to_mapping(),
+        discussion=mechanics.discussion.to_mapping(),
+        voting=mechanics.voting.to_mapping(),
+        night=mechanics.night.to_mapping(),
+        lifecycle=mechanics.lifecycle.to_mapping(),
         roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
         abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
     )

@@ -107,6 +107,7 @@ class ObservationView:
     action_choices: list[ActionChoiceView]
     known_role_lines: list[str]
     target_candidates: dict[str, list[str]]
+    reference_choices: dict[str, str]
 
 
 @dataclass(frozen=True)

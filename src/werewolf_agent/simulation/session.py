@@ -384,8 +384,18 @@ class SimulationSession:
                     action_type=action.type.value,
                     ability_id=action.ability_id,
                     legal_target_ids=tuple(observation.legal_targets.get(action.key, ())),
+                    legal_reference_ids=(
+                        observation.discussion_round.reference_ids
+                        if action.type.value == "speech"
+                        and observation.discussion_round is not None
+                        else ()
+                    ),
                     message_max_chars=(
-                        self._spec.speech_message_max_chars
+                        min(
+                            self._game.snapshot().config.discussion.message_max_chars,
+                            self._spec.speech_message_max_chars
+                            or self._game.snapshot().config.discussion.message_max_chars,
+                        )
                         if action.type.value == "speech"
                         else None
                     ),
@@ -551,6 +561,10 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
                     "message": speech.message,
                     "focus_id": speech.focus_id,
                     "evidence_id": speech.evidence_id,
+                    "speech_id": speech.speech_id,
+                    "round_id": speech.round_id,
+                    "round_kind": speech.round_kind.value,
+                    "response_to_id": speech.response_to_id,
                 },
             )
         )
@@ -564,6 +578,7 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
                 None,
                 {
                     "votes": dict(vote.votes),
+                    "reasons": dict(vote.reasons),
                     "counts": dict(vote.counts),
                     "eliminated_player_id": vote.eliminated_player_id,
                 },
@@ -601,6 +616,20 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
         raise AgentDecisionError("agent_message_too_long")
     if response.action_type != "speech" and response.message is not None:
         raise AgentDecisionError("agent_message_not_allowed")
+    if response.action_type == "speech":
+        if option.legal_reference_ids and response.response_to_id is None:
+            raise AgentDecisionError("agent_reference_required")
+        if (
+            response.response_to_id is not None
+            and response.response_to_id not in option.legal_reference_ids
+        ):
+            raise AgentDecisionError("agent_reference_not_legal")
+    elif response.response_to_id is not None:
+        raise AgentDecisionError("agent_reference_not_allowed")
+    if response.action_type == "vote" and response.reason is None:
+        raise AgentDecisionError("agent_vote_reason_required")
+    if response.action_type != "vote" and response.reason is not None:
+        raise AgentDecisionError("agent_vote_reason_not_allowed")
 
 
 def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
@@ -612,11 +641,14 @@ def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
             response.message,
             focus_id=response.focus_id,
             evidence_id=response.evidence_id,
+            response_to_id=response.response_to_id,
         )
     if response.action_type == "vote":
         if response.target_id is None:
             raise AgentDecisionError("agent_target_required")
-        return Action.vote(player_id, response.target_id)
+        if response.reason is None:
+            raise AgentDecisionError("agent_vote_reason_required")
+        return Action.vote(player_id, response.target_id, reason=response.reason)
     if response.action_type == "use_ability":
         if response.target_id is None or response.ability_id is None:
             raise AgentDecisionError("agent_ability_payload_required")

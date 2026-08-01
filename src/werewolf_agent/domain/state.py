@@ -9,22 +9,16 @@ from enum import StrEnum
 from typing import Any, Self
 
 from werewolf_agent.domain._messages import (
-    MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD,
     MESSAGE_PLAYER_COUNT_AT_LEAST_ONE,
     MESSAGE_ROLE_ABILITIES_MUST_BE_UNIQUE,
     MESSAGE_ROLE_COUNTS_MUST_SUM_TO_PLAYER_COUNT,
     MESSAGE_ROLE_COUNTS_REQUIRE_VILLAGE_SIDE,
     MESSAGE_ROLE_COUNTS_REQUIRE_WEREWOLF,
     MESSAGE_ROLES_REQUIRED,
-    MESSAGE_SPEECH_ACTION_FORBIDS_TARGET,
-    MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE,
-    message_message_not_allowed,
     message_role_count_must_be_zero_or_greater,
-    message_target_required,
     message_unknown_role_in_role_counts,
     message_unsupported_abilities,
     message_unsupported_faction,
-    message_unsupported_type,
 )
 from werewolf_agent.domain._model import freeze_value, frozen_mapping, non_blank, optional_non_blank
 
@@ -70,6 +64,26 @@ class ActionType(StrEnum):
     VOTE = "vote"
     USE_ABILITY = "use_ability"
     PASS = "pass"
+
+
+class DiscussionKind(StrEnum):
+    """設定可能な議論方式を表す."""
+
+    STRUCTURED = "structured"
+
+
+class DiscussionRoundKind(StrEnum):
+    """一日の議論内で進行するroundを表す."""
+
+    OPENING = "opening"
+    RESPONSE = "response"
+
+
+class SubmissionMode(StrEnum):
+    """Actionを公開前に集めるか一人ずつ処理するか表す."""
+
+    SEALED = "sealed"
+    ORDERED = "ordered"
 
 
 class EventVisibility(StrEnum):
@@ -211,28 +225,60 @@ class Player:
 
 
 @dataclass(frozen=True)
-class LocalRules:
-    """標準ゲーム動作の設定可能な値を表す."""
+class DiscussionConfig:
+    """一局へ固定する議論規則を表す."""
 
-    day_speech_limit_per_player: int
-    allow_self_vote: bool
-    allow_vote_revision: bool
-    allow_night_action_revision: bool
-    vote_tie_resolution: str
-    starting_phase: str
-    reveal_role_on_death: bool
-    require_all_actions_before_advance: bool = True
+    kind: DiscussionKind = DiscussionKind.STRUCTURED
+    message_max_chars: int = 200
+    cycles_per_day: int = 1
 
     def __post_init__(self) -> None:
-        """Validate mutually dependent local rule values."""
-        if not 0 <= self.day_speech_limit_per_player <= 100:
-            raise ValueError("day_speech_limit_per_player must be between 0 and 100.")
-        if self.vote_tie_resolution not in {
+        """議論方式、発言長、サイクル数を検証する."""
+        object.__setattr__(self, "kind", DiscussionKind(self.kind))
+        if not 1 <= self.message_max_chars <= 2000:
+            raise ValueError("message_max_chars must be between 1 and 2000.")
+        if not 1 <= self.cycles_per_day <= 10:
+            raise ValueError("cycles_per_day must be between 1 and 10.")
+
+
+@dataclass(frozen=True)
+class VotingConfig:
+    """一局へ固定する投票規則を表す."""
+
+    allow_self_vote: bool = False
+    allow_revision: bool = False
+    tie_resolution: str = "no_elimination"
+    reason_max_chars: int = 120
+
+    def __post_init__(self) -> None:
+        """同票処理と理由長を検証する."""
+        if self.tie_resolution not in {
             "no_elimination",
             "random_elimination",
             "revote",
         }:
-            raise ValueError(f"Unknown vote tie resolution: {self.vote_tie_resolution}")
+            raise ValueError(f"Unknown vote tie resolution: {self.tie_resolution}")
+        if not 1 <= self.reason_max_chars <= 1000:
+            raise ValueError("reason_max_chars must be between 1 and 1000.")
+
+
+@dataclass(frozen=True)
+class NightConfig:
+    """一局へ固定する夜行動規則を表す."""
+
+    allow_action_revision: bool = False
+
+
+@dataclass(frozen=True)
+class LifecycleConfig:
+    """一局へ固定するphase遷移と公開規則を表す."""
+
+    starting_phase: str = "night"
+    reveal_role_on_death: bool = False
+    require_all_actions_before_advance: bool = True
+
+    def __post_init__(self) -> None:
+        """開始phaseを検証する."""
         if self.starting_phase not in {"night", "day_discussion"}:
             raise ValueError(f"Unknown starting phase: {self.starting_phase}")
 
@@ -301,7 +347,10 @@ class GameConfig:
 
     player_count: int
     role_counts: Mapping[str, int]
-    rules: LocalRules
+    discussion: DiscussionConfig
+    voting: VotingConfig
+    night: NightConfig
+    lifecycle: LifecycleConfig
     roles: RoleCatalog
     abilities: Mapping[str, AbilityDefinition]
     phase_order: tuple[Phase, ...] = (Phase.NIGHT, Phase.DAY_DISCUSSION, Phase.VOTING)
@@ -319,7 +368,7 @@ class GameConfig:
         object.__setattr__(self, "abilities", frozen_mapping(abilities))
         phase_order = (
             (Phase.NIGHT, Phase.DAY_DISCUSSION, Phase.VOTING)
-            if self.rules.starting_phase == "night"
+            if self.lifecycle.starting_phase == "night"
             else (Phase.DAY_DISCUSSION, Phase.VOTING, Phase.NIGHT)
         )
         object.__setattr__(self, "phase_order", phase_order)
@@ -386,64 +435,122 @@ class AvailableAction:
 
 
 @dataclass(frozen=True)
-class Action:
-    """ゲームaggregateが受理する検証済みplayer intentを表す."""
+class SpeechIntent:
+    """公開発言として提出する型付きpayloadを表す."""
 
-    type: ActionType
-    player_id: str
-    reason: str = ""
-    target_id: str | None = None
-    ability_id: str | None = None
-    message: str | None = None
+    message: str
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
 
     def __post_init__(self) -> None:
-        """Normalize action fields and enforce payload shape by action type."""
-        object.__setattr__(self, "type", ActionType(self.type))
-        object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
-        object.__setattr__(self, "reason", self.reason.strip())
-        object.__setattr__(self, "target_id", optional_non_blank(self.target_id, "target_id"))
-        object.__setattr__(self, "ability_id", optional_non_blank(self.ability_id, "ability_id"))
-        object.__setattr__(self, "message", optional_non_blank(self.message, "message"))
+        """発言本文と任意参照IDを正規化する."""
+        object.__setattr__(self, "message", non_blank(self.message, "message"))
         object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
-        if self.type is ActionType.SPEECH:
-            if self.message is None:
-                raise ValueError(MESSAGE_SPEECH_ACTION_REQUIRES_MESSAGE)
-            if self.target_id is not None:
-                raise ValueError(MESSAGE_SPEECH_ACTION_FORBIDS_TARGET)
-            if self.ability_id is not None:
-                raise ValueError("Speech actions cannot define ability_id.")
-        elif self.type is ActionType.VOTE:
-            if self.focus_id is not None or self.evidence_id is not None:
-                raise ValueError("Public speech references are allowed only for speech actions.")
-            if self.target_id is None:
-                raise ValueError(message_target_required(self.type.value, "actions"))
-            if self.message is not None:
-                raise ValueError(message_message_not_allowed(self.type.value, "actions"))
-            if self.ability_id is not None:
-                raise ValueError("Vote actions cannot define ability_id.")
-        elif self.type is ActionType.USE_ABILITY:
-            if self.ability_id is None:
-                raise ValueError("use_ability requires ability_id.")
-            if (
-                self.message is not None
-                or self.focus_id is not None
-                or self.evidence_id is not None
-            ):
-                raise ValueError("Ability actions accept only ability_id, target_id, and reason.")
-        elif self.type is ActionType.PASS:
-            if (
-                self.target_id is not None
-                or self.ability_id is not None
-                or self.message is not None
-                or self.focus_id is not None
-                or self.evidence_id is not None
-            ):
-                raise ValueError(MESSAGE_PASS_ACTION_FORBIDS_PAYLOAD)
-        else:
-            raise ValueError(message_unsupported_type(self.type.value, "action"))
+        object.__setattr__(
+            self,
+            "response_to_id",
+            optional_non_blank(self.response_to_id, "response_to_id"),
+        )
+
+
+@dataclass(frozen=True)
+class VoteIntent:
+    """公開理由を伴う投票payloadを表す."""
+
+    target_id: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        """投票先と公開理由を正規化する."""
+        object.__setattr__(self, "target_id", non_blank(self.target_id, "target_id"))
+        object.__setattr__(self, "reason", non_blank(self.reason, "reason"))
+
+
+@dataclass(frozen=True)
+class UseAbilityIntent:
+    """設定済み能力を使うpayloadを表す."""
+
+    ability_id: str
+    target_id: str | None = None
+
+    def __post_init__(self) -> None:
+        """能力IDと任意対象IDを正規化する."""
+        object.__setattr__(self, "ability_id", non_blank(self.ability_id, "ability_id"))
+        object.__setattr__(self, "target_id", optional_non_blank(self.target_id, "target_id"))
+
+
+@dataclass(frozen=True)
+class PassIntent:
+    """payloadを持たない明示的な棄権を表す."""
+
+
+ActionIntent = SpeechIntent | VoteIntent | UseAbilityIntent | PassIntent
+
+
+@dataclass(frozen=True)
+class Action:
+    """ゲームaggregateが受理する型付きplayer intentを表す."""
+
+    player_id: str
+    intent: ActionIntent
+
+    def __post_init__(self) -> None:
+        """Player IDと対応可能なintent型を検証する."""
+        object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
+        if not isinstance(self.intent, (SpeechIntent, VoteIntent, UseAbilityIntent, PassIntent)):
+            raise TypeError("intent must be a supported action intent")
+
+    @property
+    def type(self) -> ActionType:
+        """Intentに対応する安定action typeを返す."""
+        if isinstance(self.intent, SpeechIntent):
+            return ActionType.SPEECH
+        if isinstance(self.intent, VoteIntent):
+            return ActionType.VOTE
+        if isinstance(self.intent, UseAbilityIntent):
+            return ActionType.USE_ABILITY
+        return ActionType.PASS
+
+    @property
+    def target_id(self) -> str | None:
+        """対象player IDを持つintentなら返す."""
+        return (
+            self.intent.target_id
+            if isinstance(self.intent, (VoteIntent, UseAbilityIntent))
+            else None
+        )
+
+    @property
+    def ability_id(self) -> str | None:
+        """能力intentなら能力IDを返す."""
+        return self.intent.ability_id if isinstance(self.intent, UseAbilityIntent) else None
+
+    @property
+    def message(self) -> str | None:
+        """発言intentなら本文を返す."""
+        return self.intent.message if isinstance(self.intent, SpeechIntent) else None
+
+    @property
+    def focus_id(self) -> str | None:
+        """発言intentなら注目player IDを返す."""
+        return self.intent.focus_id if isinstance(self.intent, SpeechIntent) else None
+
+    @property
+    def evidence_id(self) -> str | None:
+        """発言intentなら根拠IDを返す."""
+        return self.intent.evidence_id if isinstance(self.intent, SpeechIntent) else None
+
+    @property
+    def response_to_id(self) -> str | None:
+        """発言intentなら応答先の公開発言IDを返す."""
+        return self.intent.response_to_id if isinstance(self.intent, SpeechIntent) else None
+
+    @property
+    def reason(self) -> str:
+        """投票intentなら公開理由を返す."""
+        return self.intent.reason if isinstance(self.intent, VoteIntent) else ""
 
     @property
     def is_night_action(self) -> bool:
@@ -458,20 +565,15 @@ class Action:
         *,
         focus_id: str | None = None,
         evidence_id: str | None = None,
+        response_to_id: str | None = None,
     ) -> Self:
         """公開speech actionを作成して返す."""
-        return cls(
-            ActionType.SPEECH,
-            player_id,
-            message=message,
-            focus_id=focus_id,
-            evidence_id=evidence_id,
-        )
+        return cls(player_id, SpeechIntent(message, focus_id, evidence_id, response_to_id))
 
     @classmethod
-    def vote(cls, player_id: str, target_id: str, *, reason: str = "") -> Self:
+    def vote(cls, player_id: str, target_id: str, *, reason: str) -> Self:
         """生存player一人を対象とするvote actionを作成して返す."""
-        return cls(ActionType.VOTE, player_id, reason=reason, target_id=target_id)
+        return cls(player_id, VoteIntent(target_id, reason))
 
     @classmethod
     def use_ability(
@@ -479,31 +581,24 @@ class Action:
         player_id: str,
         ability_id: str,
         target_id: str | None = None,
-        *,
-        reason: str = "",
     ) -> Self:
         """設定済みability actionを作成して返す."""
-        return cls(
-            ActionType.USE_ABILITY,
-            player_id,
-            reason=reason,
-            target_id=target_id,
-            ability_id=ability_id,
-        )
+        return cls(player_id, UseAbilityIntent(ability_id, target_id))
 
     @classmethod
-    def pass_(cls, player_id: str, *, reason: str = "") -> Self:
+    def pass_(cls, player_id: str) -> Self:
         """明示的なno-op actionを作成して返す."""
-        return cls(ActionType.PASS, player_id, reason=reason)
+        return cls(player_id, PassIntent())
 
 
 @dataclass(frozen=True)
-class VoteResult:
-    """一回のvoteで解決した公開factとprivate factを表す."""
+class VoteResolution:
+    """Voting Policyが返すstate非変更Outcomeを表す."""
 
     day: int
     tie_break_policy: str
     votes: Mapping[str, str] = field(default_factory=dict)
+    reasons: Mapping[str, str] = field(default_factory=dict)
     counts: Mapping[str, int] = field(default_factory=dict)
     tied_player_ids: tuple[str, ...] = ()
     missing_voter_ids: tuple[str, ...] = ()
@@ -512,11 +607,17 @@ class VoteResult:
     requires_revote: bool = False
 
     def __post_init__(self) -> None:
-        """Freeze vote mappings and ordered identifier collections."""
+        """投票Outcomeのmappingと順序付きcollectionを固定する."""
         object.__setattr__(self, "votes", frozen_mapping(self.votes))
+        object.__setattr__(self, "reasons", frozen_mapping(self.reasons))
         object.__setattr__(self, "counts", frozen_mapping(self.counts))
         object.__setattr__(self, "tied_player_ids", tuple(self.tied_player_ids))
         object.__setattr__(self, "missing_voter_ids", tuple(self.missing_voter_ids))
+
+
+@dataclass(frozen=True)
+class VoteResult(VoteResolution):
+    """Gameが検証して確定した一回の投票履歴を表す."""
 
 
 @dataclass(frozen=True)
@@ -639,19 +740,110 @@ class SpeechRecord:
     """受理された一つの公開speechを表す."""
 
     day: int
+    speech_id: str
+    round_id: str
+    round_kind: DiscussionRoundKind
     player_id: str
     message: str
-    reason: str = ""
     focus_id: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
 
     def __post_init__(self) -> None:
         """Normalize speech identifiers and text."""
+        object.__setattr__(self, "speech_id", non_blank(self.speech_id, "speech_id"))
+        object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
+        object.__setattr__(self, "round_kind", DiscussionRoundKind(self.round_kind))
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
         object.__setattr__(self, "message", non_blank(self.message, "message"))
-        object.__setattr__(self, "reason", self.reason.strip())
         object.__setattr__(self, "focus_id", optional_non_blank(self.focus_id, "focus_id"))
         object.__setattr__(self, "evidence_id", optional_non_blank(self.evidence_id, "evidence_id"))
+        object.__setattr__(
+            self,
+            "response_to_id",
+            optional_non_blank(self.response_to_id, "response_to_id"),
+        )
+        if self.round_kind is DiscussionRoundKind.OPENING and self.response_to_id is not None:
+            raise ValueError("opening speech cannot reference another speech")
+        if self.round_kind is DiscussionRoundKind.RESPONSE and self.response_to_id is None:
+            raise ValueError("response speech requires response_to_id")
+
+
+@dataclass(frozen=True)
+class DiscussionRound:
+    """一つの議論roundの決定的な進行位置を表す."""
+
+    round_id: str
+    cycle: int
+    kind: DiscussionRoundKind
+    submission_mode: SubmissionMode
+    actor_order: tuple[str, ...]
+    cursor: int = 0
+    reference_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Round方式、順序、参照を相互検証する."""
+        object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
+        if self.cycle < 1:
+            raise ValueError("discussion cycle must be at least 1")
+        object.__setattr__(self, "kind", DiscussionRoundKind(self.kind))
+        object.__setattr__(self, "submission_mode", SubmissionMode(self.submission_mode))
+        actor_order = tuple(non_blank(item, "actor_id") for item in self.actor_order)
+        references = tuple(non_blank(item, "reference_id") for item in self.reference_ids)
+        if not actor_order or len(actor_order) != len(set(actor_order)):
+            raise ValueError("discussion actor_order must contain unique players")
+        if not 0 <= self.cursor <= len(actor_order):
+            raise ValueError("discussion cursor is outside actor_order")
+        if self.kind is DiscussionRoundKind.OPENING:
+            if self.submission_mode is not SubmissionMode.SEALED or references:
+                raise ValueError("opening round must be sealed without references")
+        elif self.submission_mode is not SubmissionMode.ORDERED or not references:
+            raise ValueError("response round must be ordered with references")
+        object.__setattr__(self, "actor_order", actor_order)
+        object.__setattr__(self, "reference_ids", references)
+
+    @property
+    def current_actor_id(self) -> str | None:
+        """順次roundで現在行動できるplayer IDを返す."""
+        if self.submission_mode is SubmissionMode.SEALED or self.cursor >= len(self.actor_order):
+            return None
+        return self.actor_order[self.cursor]
+
+
+@dataclass(frozen=True)
+class DiscussionResolution:
+    """Discussion Policyが返すstate非変更Outcomeを表す."""
+
+    speeches: tuple[SpeechRecord, ...]
+    next_round: DiscussionRound | None
+    completed: bool
+
+    def __post_init__(self) -> None:
+        """完了状態と次roundの排他関係を検証する."""
+        object.__setattr__(self, "speeches", tuple(self.speeches))
+        if self.completed == (self.next_round is not None):
+            raise ValueError("completed discussion must not define next_round")
+
+
+@dataclass(frozen=True)
+class DiscussionResult:
+    """Gameが確定した一つの議論roundを表す."""
+
+    day: int
+    round_id: str
+    kind: DiscussionRoundKind
+    speech_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        """確定roundと公開発言IDを検証する."""
+        if self.day < 1:
+            raise ValueError("discussion result day must be at least 1")
+        object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
+        object.__setattr__(self, "kind", DiscussionRoundKind(self.kind))
+        speech_ids = tuple(non_blank(item, "speech_id") for item in self.speech_ids)
+        if len(speech_ids) != len(set(speech_ids)):
+            raise ValueError("discussion result speech IDs must be unique")
+        object.__setattr__(self, "speech_ids", speech_ids)
 
 
 @dataclass(frozen=True)
@@ -704,12 +896,14 @@ class GameHistory:
     """解決済みゲーム履歴のimmutable collectionを表す."""
 
     speeches: tuple[SpeechRecord, ...] = ()
+    discussions: tuple[DiscussionResult, ...] = ()
     votes: tuple[VoteResult, ...] = ()
     nights: tuple[NightResult, ...] = ()
 
     def __post_init__(self) -> None:
         """Freeze all history collections."""
         object.__setattr__(self, "speeches", tuple(self.speeches))
+        object.__setattr__(self, "discussions", tuple(self.discussions))
         object.__setattr__(self, "votes", tuple(self.votes))
         object.__setattr__(self, "nights", tuple(self.nights))
 
@@ -720,6 +914,8 @@ class PendingActions:
 
     votes: Mapping[str, Action] = field(default_factory=dict)
     night_actions: Mapping[str, Action] = field(default_factory=dict)
+    discussion_actions: Mapping[str, Action] = field(default_factory=dict)
+    discussion_round: DiscussionRound | None = None
     vote_round: int = 1
     revote_candidates: tuple[str, ...] = ()
 
@@ -727,6 +923,7 @@ class PendingActions:
         """Freeze unresolved vote and night action mappings."""
         object.__setattr__(self, "votes", frozen_mapping(self.votes))
         object.__setattr__(self, "night_actions", frozen_mapping(self.night_actions))
+        object.__setattr__(self, "discussion_actions", frozen_mapping(self.discussion_actions))
         object.__setattr__(self, "revote_candidates", tuple(self.revote_candidates))
         if self.vote_round not in {1, 2}:
             raise ValueError("vote_round must be 1 or 2.")
@@ -776,11 +973,23 @@ class GameState:
                 raise ValueError("winning player ids must match the winning faction.")
             if self.win_result.day != self.day:
                 raise ValueError("win result day must match the game day.")
-        for actions in (self.pending_actions.votes, self.pending_actions.night_actions):
+        for actions in (
+            self.pending_actions.votes,
+            self.pending_actions.night_actions,
+            self.pending_actions.discussion_actions,
+        ):
             if any(
                 key != action.player_id or key not in players for key, action in actions.items()
             ):
                 raise ValueError("pending action keys must identify a game player.")
+        round_ = self.pending_actions.discussion_round
+        if phase is Phase.DAY_DISCUSSION:
+            if round_ is None and self.pending_actions.discussion_actions:
+                raise ValueError("discussion actions require an active round")
+            if round_ is not None and set(round_.actor_order) - set(players):
+                raise ValueError("discussion actors must belong to the game")
+        elif round_ is not None or self.pending_actions.discussion_actions:
+            raise ValueError("discussion pending state is allowed only during day discussion")
         object.__setattr__(self, "phase", phase)
         object.__setattr__(self, "players", frozen_mapping(players))
         ability_uses = {
@@ -822,6 +1031,7 @@ class GameView:
     available_actions: tuple[AvailableAction, ...] = ()
     legal_targets: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
     history: GameHistory = field(default_factory=GameHistory)
+    discussion_round: DiscussionRound | None = None
     win_result: VisibleWinResult | None = None
 
     def __post_init__(self) -> None:
@@ -880,10 +1090,17 @@ __all__ = [
     "SUPPORTED_FACTIONS",
     "AbilityDefinition",
     "Action",
+    "ActionIntent",
     "ActionType",
     "AvailableAction",
     "DeathReaction",
     "DeathReactionResolution",
+    "DiscussionConfig",
+    "DiscussionKind",
+    "DiscussionResolution",
+    "DiscussionResult",
+    "DiscussionRound",
+    "DiscussionRoundKind",
     "EventVisibility",
     "GameConfig",
     "GameEvent",
@@ -894,16 +1111,24 @@ __all__ = [
     "InspectionResult",
     "KnowledgeClaim",
     "KnowledgeResolution",
-    "LocalRules",
+    "LifecycleConfig",
+    "NightConfig",
     "NightResolution",
     "NightResult",
+    "PassIntent",
     "PendingActions",
     "Phase",
     "Player",
     "PlayerStatus",
     "RoleCatalog",
     "RoleDefinition",
+    "SpeechIntent",
     "SpeechRecord",
+    "SubmissionMode",
+    "UseAbilityIntent",
+    "VoteIntent",
+    "VoteResolution",
     "VoteResult",
+    "VotingConfig",
     "WinResult",
 ]

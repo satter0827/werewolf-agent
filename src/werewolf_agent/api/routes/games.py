@@ -184,7 +184,10 @@ def submit_action(
 
 
 def _validate_action_text(request: PlayerActionOperationRequest, max_chars: int) -> None:
-    for value in (request.action.message, request.action.reason):
+    for value in (
+        getattr(request.action, "message", None),
+        getattr(request.action, "reason", None),
+    ):
         if value is not None and len(value) > max_chars:
             raise AppError(
                 f"入力できる文章は{max_chars}文字までです。",

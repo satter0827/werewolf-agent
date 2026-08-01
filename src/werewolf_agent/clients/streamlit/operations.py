@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
 from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
@@ -37,6 +36,7 @@ from werewolf_agent.contracts.api import (
     SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     AdvanceGameJobResponse,
     CreateGameRequest,
     DeliberationLevel,
@@ -44,7 +44,6 @@ from werewolf_agent.contracts.schemas import (
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
-    PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -291,14 +290,21 @@ def submit_screen_action(
     ability_id: str | None,
     target_id: str | None,
     message: str | None,
+    reason: str | None = None,
+    response_to_id: str | None = None,
 ) -> None:
     """Submit one action selected in the Streamlit hand panel."""
-    request = PlayerActionRequest(
-        type=cast(Any, action_type.split(":", 1)[0]),
-        ability_id=ability_id,
-        target_id=target_id,
-        message=message,
-    )
+    payload: dict[str, object] = {"type": action_type.split(":", 1)[0]}
+    for key, value in {
+        "ability_id": ability_id,
+        "target_id": target_id,
+        "message": message,
+        "reason": reason,
+        "response_to_id": response_to_id,
+    }.items():
+        if value is not None:
+            payload[key] = value
+    request = PLAYER_ACTION_REQUEST_ADAPTER.validate_python(payload)
     build_streamlit_client(settings).submit_player_action(
         game_id,
         manual_player_id,
