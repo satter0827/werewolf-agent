@@ -52,7 +52,12 @@ PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
         {
             "eliminated_player_id",
             "counts",
+            "votes",
+            "reasons",
+            "evidence_ids",
             "tied_player_ids",
+            "round",
+            "requires_revote",
             "reaction_player_ids",
             "role",
             "faction",

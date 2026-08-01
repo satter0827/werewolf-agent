@@ -487,6 +487,31 @@ def test_limits_and_cancellation_are_explicit_stop_reasons() -> None:
         session.close()
 
 
+def test_expired_full_run_deadline_stops_before_any_action() -> None:
+    game = _game()
+    base = _spec(game)
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            base.controllers,
+            base.limits,
+            deadline_at=datetime.now(UTC) - timedelta(seconds=1),
+        ),
+    )
+    try:
+        result = session.run()
+    finally:
+        session.close()
+
+    assert result.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert result.steps[-1].kind is SimulationStepKind.DEADLINE_REACHED
+    assert result.action_count == 0
+    assert result.phase_count == 0
+
+
 def test_action_limit_does_not_block_a_ready_phase_advance() -> None:
     game = _game()
     base = _spec(game)

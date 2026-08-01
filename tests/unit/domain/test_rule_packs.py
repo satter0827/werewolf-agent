@@ -917,6 +917,30 @@ def test_discussion_runs_configured_opening_response_cycles() -> None:
     }
 
 
+def test_each_ended_discussion_round_records_implicit_passes() -> None:
+    """早期遷移でも各cycleの未提出をそのroundの公開passとして確定する。"""
+    definition = _definition()
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(
+            replace(definition, discussion=DiscussionConfig(cycles_per_day=2))
+        ),
+        random=random.Random(7),
+    )
+
+    first_events = game.advance(random.Random(11))
+    second_events = game.advance(random.Random(13))
+
+    results = game.snapshot().history.discussions
+    assert [result.round_id for result in results] == [
+        "day-1-cycle-1-opening",
+        "day-1-cycle-2-opening",
+    ]
+    assert all(set(result.passed_player_ids) == {"p1", "p2", "p3"} for result in results)
+    assert sum(event.event_type == "discussion_passed" for event in first_events) == 3
+    assert sum(event.event_type == "discussion_passed" for event in second_events) == 3
+
+
 def test_response_must_advance_another_players_opening() -> None:
     """responseは自己反復と再質問を許可せず、他者のopeningへ前進回答する。"""
     game = Game.create(

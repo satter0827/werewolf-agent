@@ -227,6 +227,11 @@ class SimulationSession:
         state = self._game.snapshot()
         if state.is_finished:
             return self._record_stop(SimulationStepKind.FINISHED, SimulationStopReason.FINISHED)
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
         limits = self._spec.limits
         if self._phase_count >= limits.max_phases:
             return self._record_stop(
@@ -243,11 +248,21 @@ class SimulationSession:
         before = self._game.snapshot()
         context = self._agent_context(controller.player_id)
         request = self._decision_request(context, controller, observation)
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
         response, trace = self._decide(controller, context, request)
         if self._cancellation.is_cancelled:
             return self._record_stop(
                 SimulationStepKind.CANCELLED,
                 SimulationStopReason.CANCELLED,
+            )
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
             )
         action = _action_from_response(controller.player_id, response)
         events = tuple(self._game.submit(action))
@@ -875,6 +890,11 @@ def _decision_deadline(spec: SimulationSpec) -> datetime | None:
     if call_deadline is None:
         return spec.deadline_at
     return min(spec.deadline_at, call_deadline)
+
+
+def _deadline_expired(spec: SimulationSpec) -> bool:
+    """Return whether the full-run deadline has elapsed."""
+    return spec.deadline_at is not None and datetime.now(UTC) >= spec.deadline_at
 
 
 def _elapsed_milliseconds(started_at: float) -> int:

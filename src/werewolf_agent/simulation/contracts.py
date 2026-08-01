@@ -21,7 +21,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.7.0"
+SIMULATION_CONTRACT_VERSION = "0.8.0"
 
 
 class SimulationStepKind(StrEnum):
@@ -33,6 +33,7 @@ class SimulationStepKind(StrEnum):
     WAITING_FOR_MANUAL = "waiting_for_manual"
     FINISHED = "finished"
     LIMIT_REACHED = "limit_reached"
+    DEADLINE_REACHED = "deadline_reached"
     CANCELLED = "cancelled"
 
 
@@ -43,6 +44,7 @@ class SimulationStopReason(StrEnum):
     FINISHED = "finished"
     ACTION_LIMIT = "action_limit"
     PHASE_LIMIT = "phase_limit"
+    DEADLINE_REACHED = "deadline_reached"
     CANCELLED = "cancelled"
 
 
@@ -185,6 +187,7 @@ class SimulationStep:
             SimulationStepKind.WAITING_FOR_MANUAL,
             SimulationStepKind.FINISHED,
             SimulationStepKind.LIMIT_REACHED,
+            SimulationStepKind.DEADLINE_REACHED,
             SimulationStepKind.CANCELLED,
         }
         if (self.kind in terminal_kinds) != (self.stop_reason is not None):

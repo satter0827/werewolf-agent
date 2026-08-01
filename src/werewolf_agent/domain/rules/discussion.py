@@ -197,6 +197,10 @@ def resolve_discussion_round(
         if result.round_id == round_.round_id
         for player_id in result.passed_player_ids
     )
+    round_ended = resolution.next_round is None or (
+        resolution.next_round.cycle,
+        resolution.next_round.kind,
+    ) != (round_.cycle, round_.kind)
     passed_player_ids = tuple(
         player_id
         for player_id in round_.actor_order
@@ -204,11 +208,7 @@ def resolve_discussion_round(
             submissions.get(player_id) is not None
             and submissions[player_id].type is ActionType.PASS
         )
-        or (
-            resolution.completed
-            and player_id not in previously_resolved
-            and player_id not in submissions
-        )
+        or (round_ended and player_id not in previously_resolved and player_id not in submissions)
     )
     history = replace(
         state.history,
@@ -384,6 +384,7 @@ def _validate_resolution(
                     raise ValueError("discussion opening must advance to its response round")
             elif (
                 resolution.next_round.kind is not DiscussionRoundKind.RESPONSE
+                or resolution.next_round.round_id != round_.round_id
                 or resolution.next_round.cursor != round_.cursor + 1
                 or resolution.next_round.reference_ids != round_.reference_ids
             ):

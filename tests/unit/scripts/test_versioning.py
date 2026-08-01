@@ -51,7 +51,7 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
         "quality-evidence": "0.2.1",
         "replay": "0.7.0",
         "rule-pack": "0.9.0",
-        "simulation": "0.7.0",
+        "simulation": "0.8.0",
         "setup": "0.6.0",
     }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}
