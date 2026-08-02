@@ -27,7 +27,13 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
         },
         legal_references={"speech": ["opening:p2", "opening:p3"]},
         speeches=[
-            _speech("opening:p2", "p2", "p3", "undecided"),
+            _speech(
+                "opening:p2",
+                "p2",
+                "p3",
+                "undecided",
+                utterance="Claim  is true",
+            ),
             _speech("opening:p3", "p3", "p2", "support"),
         ],
     )
@@ -48,7 +54,7 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert not validator.is_valid(
         {
             "type": "speech",
-            "utterance": "opening:p2の発言",
+            "utterance": " claim is true ",
             "topic_id": "p3",
             "position": "support",
             "relation": "answer",
@@ -252,12 +258,19 @@ def _evidence(evidence_id: str, actor_id: str, topic_id: str, position: str) -> 
     }
 
 
-def _speech(speech_id: str, player_id: str, topic_id: str, position: str) -> dict[str, object]:
+def _speech(
+    speech_id: str,
+    player_id: str,
+    topic_id: str,
+    position: str,
+    *,
+    utterance: str | None = None,
+) -> dict[str, object]:
     return {
         "day": 1,
         "speech_id": speech_id,
         "player_id": player_id,
-        "utterance": f"{speech_id}の発言",
+        "utterance": utterance or f"{speech_id}の発言",
         "topic_id": topic_id,
         "position": position,
         "relation": "independent",

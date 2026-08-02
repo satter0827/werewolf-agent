@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 
 from werewolf_agent.adapters.llm.models import (
@@ -90,7 +91,7 @@ def _action_schema(
                 or response_position is None
             ):
                 raise ValueError("response schema requires one reference branch")
-            message_schema["not"] = {"const": referenced.utterance}
+            message_schema["not"] = {"pattern": _normalized_utterance_pattern(referenced.utterance)}
             properties["topic_id"] = {"const": referenced.topic_id}
             properties["position"] = {"const": response_position}
             properties["relation"] = {"const": response_relation}
@@ -157,6 +158,25 @@ def _speech_max_chars(context: Mapping[str, object]) -> int | None:
         return None
     value = constraints.get("speech_max_chars")
     return value if isinstance(value, int) and value > 0 else None
+
+
+def _normalized_utterance_pattern(utterance: str) -> str:
+    """Match one utterance after whitespace collapse and case normalization."""
+    normalized = " ".join(utterance.split())
+    parts: list[str] = []
+    for character in normalized:
+        if character == " ":
+            parts.append(r"\s+")
+            continue
+        variants = {
+            character,
+            character.casefold(),
+            character.lower(),
+            character.upper(),
+        }
+        escaped = sorted({re.escape(variant) for variant in variants if variant})
+        parts.append(escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})")
+    return rf"^\s*{''.join(parts)}\s*$"
 
 
 def _vote_reason_max_chars(context: Mapping[str, object]) -> int:
