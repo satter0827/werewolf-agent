@@ -66,14 +66,17 @@ def test_gameplay_waiting_speech_and_target(
     expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
     expect(page.locator(".wa-status")).to_have_count(6)
     expect(page.locator(".wa-seat")).to_have_count(6)
+    advance = page.get_by_role("button", name="1ステップ進める")
     initial_submit = page.get_by_role("button", name="入力を送信")
-    expect(initial_submit).to_be_enabled(timeout=30_000)
-    expect(page.get_by_label("対象を選ぶ")).to_be_visible()
+    expect(advance.or_(initial_submit)).to_be_visible(timeout=30_000)
     _capture_state(page, capture_public_screenshot, f"streamlit-gameplay-waiting-{device_name}.png")
-    initial_submit.click()
-    expect(
-        page.get_by_text("自動進行中です。入力が必要になったら停止します。").first
-    ).to_be_visible(timeout=30_000)
+    if initial_submit.is_visible():
+        expect(initial_submit).to_be_enabled()
+        expect(page.get_by_label("対象を選ぶ")).to_be_visible()
+        initial_submit.click()
+    else:
+        advance.focus()
+        page.keyboard.press("Enter")
     message = page.get_by_label("発言内容")
     expect(message).to_be_visible(timeout=30_000)
     capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")

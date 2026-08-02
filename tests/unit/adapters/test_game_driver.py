@@ -82,10 +82,9 @@ def _prepared(seed: int = 7) -> tuple[PreparedAdvanceGame, tuple[str, ...]]:
                 "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
             },
             game=game,
+            prepared_state=game.snapshot(),
             created_at=datetime(2030, 1, 1, tzinfo=UTC),
             phase_seed=namespace_seed(seed, "prepared-phase"),
-            prepared_phase=game.snapshot().phase.value,
-            prepared_day=game.snapshot().day,
         ),
         player_ids,
     )
@@ -157,6 +156,32 @@ def test_application_rejects_missing_or_unmarked_prepared_transition() -> None:
     driven = drive_prepared_game(missing, runtime=_runtime(player_ids, _TraceSink()))
     with pytest.raises(GameError, match="transition state"):
         compute_prepared_advance(replace(driven, domain_transition_complete=False))
+
+
+def test_prepared_transition_accepts_discussion_substage_change() -> None:
+    prepared, player_ids = _prepared()
+    runtime = _runtime(player_ids, _TraceSink())
+    first = drive_prepared_game(prepared, runtime=runtime)
+    opening = first.game.snapshot()
+    assert opening.phase.value == "day_discussion"
+
+    second = replace(
+        first,
+        version=2,
+        prepared_state=opening,
+        phase_seed=namespace_seed(7, "prepared-response"),
+        domain_transition_complete=False,
+        domain_events=(),
+    )
+    response = drive_prepared_game(second, runtime=runtime)
+    after = response.game.snapshot()
+
+    assert after != opening
+    assert after.phase == opening.phase
+    assert after.day == opening.day
+    computed = compute_prepared_advance(response)
+    assert computed.phase == after.phase.value
+    assert computed.day == after.day
 
 
 def test_lmstudio_model_catalog_is_rejected_before_exceeding_byte_limit(monkeypatch) -> None:
