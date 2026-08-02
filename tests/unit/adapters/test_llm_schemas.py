@@ -13,7 +13,10 @@ from werewolf_agent.adapters.llm.models import (
     AgentObservation,
     AgentSpeech,
 )
-from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
+from werewolf_agent.adapters.llm.schemas import (
+    _normalized_utterance_pattern,
+    build_decision_response_schema,
+)
 from werewolf_agent.agents import DecisionResponse
 from werewolf_agent.domain import Action
 from werewolf_agent.domain.rules.discussion import _normalized_message
@@ -269,6 +272,28 @@ def test_non_contract_edge_whitespace_is_preserved_across_decision_boundaries() 
 
     with pytest.raises((ValidationError, ValueError), match="utterance must not be blank"):
         AgentModelDecision.model_validate({**model_payload, "utterance": " \t\n"})
+
+
+@pytest.mark.parametrize(
+    ("utterance", "escaped"),
+    [
+        ("CO-2", r"\x2D"),
+        ("A#B", r"\x23"),
+        ("A&B", r"\x26"),
+        ("A~B", r"\x7E"),
+        ("A[B]", r"\x5B"),
+        (r"A\B", r"\x5C"),
+    ],
+)
+def test_response_repetition_pattern_uses_ecmascript_safe_escapes(
+    utterance: str,
+    escaped: str,
+) -> None:
+    """ECMA-262 Unicode modeで不正なidentity escapeを生成しない."""
+    pattern = _normalized_utterance_pattern(utterance)
+
+    assert escaped in pattern
+    assert not any(f"\\{character}" in pattern for character in "-#&~")
 
 
 def test_vote_schema_constrains_target_and_requires_reason() -> None:

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 
 from werewolf_agent.adapters.llm.models import (
@@ -172,10 +171,18 @@ def _normalized_utterance_pattern(utterance: str) -> str:
         variants = {character}
         if character.isascii() and character.isalpha():
             variants.update((character.lower(), character.upper()))
-        escaped = sorted({re.escape(variant) for variant in variants if variant})
+        escaped = sorted({_escape_ecmascript_character(variant) for variant in variants if variant})
         parts.append(escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})")
     whitespace = r"[\u0009-\u000D\u0020]"
     return rf"^{whitespace}*{''.join(parts)}{whitespace}*$"
+
+
+def _escape_ecmascript_character(character: str) -> str:
+    """Escape one pattern character without ECMA-262 identity escapes."""
+    codepoint = ord(character)
+    if codepoint < 128 and not character.isalnum() and character != "_":
+        return rf"\x{codepoint:02X}"
+    return character
 
 
 def _vote_reason_max_chars(context: Mapping[str, object]) -> int:
