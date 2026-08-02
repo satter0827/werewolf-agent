@@ -23,8 +23,8 @@ from scripts.browser.scenarios.quality import (
     scroll_streamlit_to_text,
 )
 
-STRUCTURED_DISCUSSION_STAGES = ("opening", "response")
 PHASE_BOUNDARY_STEP_ALLOWANCE = 2
+VOTING_STAGE_COUNT = 1
 
 
 def test_setup_sections_and_validation(
@@ -73,6 +73,9 @@ def test_gameplay_waiting_speech_and_target(
         display_name="議論E2E",
     )
     document["mechanics"]["abilities"]["night_attack"]["enabled_first_night"] = False
+    discussion = document["mechanics"]["discussion"]
+    discussion_stage_count = len(discussion["stages"])
+    discussion_cycles_per_day = int(discussion["cycles_per_day"])
     add_setup_revision(
         api_client,
         api_url,
@@ -110,7 +113,12 @@ def test_gameplay_waiting_speech_and_target(
     expect(message).to_be_visible(timeout=30_000)
     capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")
     _submit_message_action(page, message, "公開情報を整理して話します。")
-    _advance_until_target_action(page, player_count=player_count)
+    _advance_until_target_action(
+        page,
+        player_count=player_count,
+        discussion_stage_count=discussion_stage_count,
+        discussion_cycles_per_day=discussion_cycles_per_day,
+    )
     reason = page.get_by_label("投票理由")
     expect(reason).to_be_visible()
     reason.fill("対象について公開された発言を投票根拠にします。")
@@ -130,12 +138,21 @@ def test_gameplay_waiting_speech_and_target(
     capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
 
 
-def _advance_until_target_action(page: Page, *, player_count: int) -> Locator:
+def _advance_until_target_action(
+    page: Page,
+    *,
+    player_count: int,
+    discussion_stage_count: int,
+    discussion_cycles_per_day: int,
+) -> Locator:
     """画面が示す合法操作を辿り、投票対象入力まで進める。"""
     target = page.get_by_label("対象を選ぶ")
     advance = page.get_by_role("button", name="1ステップ進める")
     message = page.get_by_label("発言内容")
-    max_steps = player_count * len(STRUCTURED_DISCUSSION_STAGES) + PHASE_BOUNDARY_STEP_ALLOWANCE
+    preceding_action_stages = (
+        discussion_stage_count * discussion_cycles_per_day + VOTING_STAGE_COUNT
+    )
+    max_steps = player_count * preceding_action_stages + PHASE_BOUNDARY_STEP_ALLOWANCE
     for step in range(max_steps):
         expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
         if target.is_visible():
