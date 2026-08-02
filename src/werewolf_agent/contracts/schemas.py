@@ -23,6 +23,7 @@ from werewolf_agent.contracts.constants import (
 from werewolf_agent.contracts.validation import (
     non_blank,
     optional_non_blank,
+    validate_discussion_utterance,
 )
 
 GAME_PHASE_NIGHT: Final = "night"
@@ -734,7 +735,25 @@ class SpeechActionRequest(BaseModel):
     evidence_id: str | None = Field(default=None, min_length=1)
     response_to_id: str | None = Field(default=None, min_length=1)
 
-    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    @field_validator("utterance")
+    @classmethod
+    def validate_utterance(cls, value: str) -> str:
+        """表示文を変更せず、議論契約上の空文だけを拒否する."""
+        return validate_discussion_utterance(value)
+
+    @field_validator("topic_id")
+    @classmethod
+    def validate_topic_id(cls, value: str) -> str:
+        """議論対象IDを正規化する."""
+        return non_blank(value, "topic_id")
+
+    @field_validator("evidence_id", "response_to_id")
+    @classmethod
+    def validate_optional_reference(cls, value: str | None, info: ValidationInfo) -> str | None:
+        """任意参照IDを正規化する."""
+        return optional_non_blank(value, str(info.field_name))
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class VoteActionRequest(BaseModel):

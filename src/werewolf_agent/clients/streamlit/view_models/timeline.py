@@ -168,15 +168,16 @@ def _event_detail(
             )
         return catalog.t(lang, "event_detail.game_started")
     if turn.event_type == "speech_recorded":
-        message = str(turn.payload.get("utterance", "")).strip()
-        if message and actor_label:
+        message = str(turn.payload.get("utterance", ""))
+        has_message = bool(message.strip(" \t\n\r\f\v"))
+        if has_message and actor_label:
             return catalog.t(
                 lang,
                 "event_detail.speech_with_actor",
                 actor=actor_label,
                 message=message,
             )
-        if message:
+        if has_message:
             return catalog.t(lang, "event_detail.speech_message", message=message)
         if actor_label:
             return catalog.t(lang, "event_detail.speech_actor", actor=actor_label)

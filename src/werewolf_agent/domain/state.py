@@ -21,6 +21,7 @@ from werewolf_agent.domain._messages import (
     message_unsupported_faction,
 )
 from werewolf_agent.domain._model import freeze_value, frozen_mapping, non_blank, optional_non_blank
+from werewolf_agent.domain.discussion_text import validate_discussion_utterance
 
 FACTION_VILLAGE = "village"
 FACTION_WEREWOLF = "werewolf"
@@ -565,7 +566,7 @@ class DiscussionMove:
 
     def __post_init__(self) -> None:
         """表示文、議論対象、立場、関係を正規化する."""
-        object.__setattr__(self, "utterance", non_blank(self.utterance, "utterance"))
+        object.__setattr__(self, "utterance", validate_discussion_utterance(self.utterance))
         object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
         object.__setattr__(self, "position", DiscussionPosition(self.position))
         object.__setattr__(self, "relation", DiscussionRelation(self.relation))
@@ -916,7 +917,7 @@ class SpeechRecord:
         object.__setattr__(self, "round_id", non_blank(self.round_id, "round_id"))
         object.__setattr__(self, "round_kind", DiscussionRoundKind(self.round_kind))
         object.__setattr__(self, "player_id", non_blank(self.player_id, "player_id"))
-        object.__setattr__(self, "utterance", non_blank(self.utterance, "utterance"))
+        object.__setattr__(self, "utterance", validate_discussion_utterance(self.utterance))
         object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
         object.__setattr__(self, "position", DiscussionPosition(self.position))
         object.__setattr__(self, "relation", DiscussionRelation(self.relation))

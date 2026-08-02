@@ -69,3 +69,8 @@ formatter、lint、型、対象テストを先に実行し、変更範囲に応�
 
 `develop`向けPRはCheckを必須とする。`main`向けPRはheadを`develop`に限定し、Deepと
 対応Python版の互換性検査を必須とする。`main`へのpushでは同じ検査を再実行しない。
+
+コードレビューは`develop`取り込み前の品質境界である。実装中はローカル差分を`/review`で検査し、
+`develop`向けPRの最新headへGitHub Codexレビューを明示的に要求する。レビュー指摘の修正でheadが変わる
+場合だけ再レビューする。自動レビューは無効にし、`main`向けPRではCodexレビューを実行しない。
+`main`向けPRはレビュー済みの`develop`を、Deep、Python互換性、リリース証拠、人間の最終判断で昇格する。

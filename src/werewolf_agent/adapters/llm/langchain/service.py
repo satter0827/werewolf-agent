@@ -40,6 +40,7 @@ from werewolf_agent.adapters.llm.ports import DecisionModel
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 from werewolf_agent.contracts.error_catalog import ERROR_CONTEXT_LLM_TIMEOUT_SECONDS
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 
 PIPELINE_REVISION = "discussion-move-v1"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
@@ -656,7 +657,7 @@ def _validated_decision(
         and model_decision.utterance is not None
         and model_decision.response_to_id is not None
     ):
-        normalized_message = " ".join(model_decision.utterance.split()).casefold()
+        normalized_message = _normalized_utterance(model_decision.utterance)
         referenced = next(
             speech
             for speech in observation.speeches
@@ -664,7 +665,7 @@ def _validated_decision(
         )
         if model_decision.topic_id != referenced.topic_id:
             raise ValueError("response topic must match the referenced speech")
-        if " ".join(referenced.utterance.split()).casefold() == normalized_message:
+        if _normalized_utterance(referenced.utterance) == normalized_message:
             raise ValueError("speech must contribute new content")
         _validate_discussion_relation(observation, player_id, referenced, model_decision)
     elif (
@@ -727,6 +728,11 @@ def _validated_decision(
         response_to_id=model_decision.response_to_id,
         reason=model_decision.reason,
     )
+
+
+def _normalized_utterance(value: str) -> str:
+    """Normalize repetition checks with schema-expressible ASCII case folding."""
+    return normalize_discussion_utterance(value)
 
 
 def _validate_discussion_relation(

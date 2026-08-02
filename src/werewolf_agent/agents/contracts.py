@@ -9,9 +9,14 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
-from werewolf_agent.agents.validation import non_blank, optional_non_blank
+from werewolf_agent.agents.validation import (
+    is_discussion_utterance,
+    non_blank,
+    optional_non_blank,
+    validate_discussion_utterance,
+)
 
-AGENT_CONTRACT_VERSION = "0.10.0"
+AGENT_CONTRACT_VERSION = "0.11.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -406,8 +411,7 @@ class DecisionRequest:
             for event in self.public_timeline
             if event.event_type == "speech"
             and event.actor_id is not None
-            and isinstance(event.payload.get("utterance"), str)
-            and str(event.payload["utterance"]).strip()
+            and is_discussion_utterance(event.payload.get("utterance"))
             for reference_id in (event.payload.get("speech_id"),)
             if isinstance(reference_id, str) and reference_id.strip()
         }
@@ -446,7 +450,6 @@ class DecisionResponse:
         for field_name in (
             "ability_id",
             "target_id",
-            "utterance",
             "topic_id",
             "position",
             "relation",
@@ -459,6 +462,12 @@ class DecisionResponse:
                 self,
                 field_name,
                 optional_non_blank(getattr(self, field_name), field_name),
+            )
+        if self.utterance is not None:
+            object.__setattr__(
+                self,
+                "utterance",
+                validate_discussion_utterance(self.utterance),
             )
         if self.confidence is not None:
             object.__setattr__(

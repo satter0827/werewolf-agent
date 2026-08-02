@@ -360,7 +360,9 @@ def _render_action_form(
             evidence_id = str(selected_evidence) if selected_evidence else None
 
     missing_target = selected_action.requires_target and not target_id
-    missing_message = selected_action.requires_message and not str(utterance or "").strip()
+    missing_message = selected_action.requires_message and not str(utterance or "").strip(
+        " \t\n\r\f\v"
+    )
     missing_reason = selected_action.action_type == "vote" and not str(reason or "").strip()
     missing_evidence = selected_action.action_type == "vote" and not evidence_id
     if missing_target:
@@ -385,7 +387,7 @@ def _render_action_form(
                 action_type=selected_action.action_type,
                 ability_id=selected_action.ability_id,
                 target_id=target_id,
-                utterance=str(utterance).strip() if utterance else None,
+                utterance=str(utterance) if utterance else None,
                 topic_id=str(topic_id) if topic_id else None,
                 position=str(position) if position else None,
                 relation=relation,

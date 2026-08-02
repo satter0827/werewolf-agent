@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 
 from werewolf_agent.domain.definitions import RuleSetDefinition
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 from werewolf_agent.domain.errors import RuleViolation
 from werewolf_agent.domain.game import Game
 from werewolf_agent.domain.rule_packs import RulePackProvider, RulePolicyRegistry
@@ -164,14 +165,15 @@ def _bounded_speech(*, state: GameState, referenced_utterance: str | None) -> st
     limit = state.config.discussion.message_max_chars
     base = "参照発言への見解です。" if referenced_utterance is not None else "契約を確認します。"
     candidate = base[:limit]
-    if (
-        referenced_utterance is None
-        or candidate.strip().casefold() != referenced_utterance.strip().casefold()
-    ):
+    if referenced_utterance is None or normalize_discussion_utterance(
+        candidate
+    ) != normalize_discussion_utterance(referenced_utterance):
         return candidate
     for prefix in ("異", "別", "再", "補"):
         candidate = f"{prefix}{base}"[:limit]
-        if candidate.strip().casefold() != referenced_utterance.strip().casefold():
+        if normalize_discussion_utterance(candidate) != normalize_discussion_utterance(
+            referenced_utterance
+        ):
             return candidate
     raise AssertionError("configured message limit must permit a distinct response")
 

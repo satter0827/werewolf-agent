@@ -9,6 +9,7 @@ from werewolf_agent.adapters.llm.models import (
     AgentAvailableAction,
     AgentObservation,
 )
+from werewolf_agent.domain.discussion_text import collapse_discussion_whitespace
 
 
 def build_decision_response_schema(
@@ -90,6 +91,7 @@ def _action_schema(
                 or response_position is None
             ):
                 raise ValueError("response schema requires one reference branch")
+            message_schema["not"] = {"pattern": _normalized_utterance_pattern(referenced.utterance)}
             properties["topic_id"] = {"const": referenced.topic_id}
             properties["position"] = {"const": response_position}
             properties["relation"] = {"const": response_relation}
@@ -156,6 +158,31 @@ def _speech_max_chars(context: Mapping[str, object]) -> int | None:
         return None
     value = constraints.get("speech_max_chars")
     return value if isinstance(value, int) and value > 0 else None
+
+
+def _normalized_utterance_pattern(utterance: str) -> str:
+    """Match one utterance after ASCII-whitespace and ASCII-case normalization."""
+    normalized = collapse_discussion_whitespace(utterance)
+    parts: list[str] = []
+    for character in normalized:
+        if character == " ":
+            parts.append(r"[\u0009-\u000D\u0020]+")
+            continue
+        variants = {character}
+        if character.isascii() and character.isalpha():
+            variants.update((character.lower(), character.upper()))
+        escaped = sorted({_escape_ecmascript_character(variant) for variant in variants if variant})
+        parts.append(escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})")
+    whitespace = r"[\u0009-\u000D\u0020]"
+    return rf"^{whitespace}*{''.join(parts)}{whitespace}*$"
+
+
+def _escape_ecmascript_character(character: str) -> str:
+    """Escape one pattern character without ECMA-262 identity escapes."""
+    codepoint = ord(character)
+    if codepoint < 128 and not character.isalnum() and character != "_":
+        return rf"\x{codepoint:02X}"
+    return character
 
 
 def _vote_reason_max_chars(context: Mapping[str, object]) -> int:
