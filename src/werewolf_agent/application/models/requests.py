@@ -27,7 +27,7 @@ from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 if TYPE_CHECKING:
-    from werewolf_agent.domain import Game, GameEvent
+    from werewolf_agent.domain import Game, GameEvent, GameState
 
 EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
@@ -160,10 +160,9 @@ class PreparedAdvanceGame:
     seed: int | None
     config: dict[str, Any]
     game: Game
+    prepared_state: GameState
     created_at: datetime
     phase_seed: int
-    prepared_phase: str
-    prepared_day: int
     domain_transition_complete: bool = False
     domain_events: tuple[GameEvent, ...] = ()
 
