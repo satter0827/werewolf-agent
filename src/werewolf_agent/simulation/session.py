@@ -275,7 +275,7 @@ class SimulationSession:
                 SimulationStepKind.DEADLINE_REACHED,
                 SimulationStopReason.DEADLINE_REACHED,
             )
-        action = _action_from_response(controller.player_id, response)
+        action = action_from_response(controller.player_id, response)
         events = tuple(self._game.submit(action))
         self._action_count += 1
         return self._record(
@@ -938,7 +938,8 @@ def _require_legal_response_relation(
             raise AgentDecisionError("agent_response_revision_mismatch")
 
 
-def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
+def action_from_response(player_id: str, response: DecisionResponse) -> Action:
+    """検証済みAgent応答をdomainへ提出する正規Actionへ変換する."""
     if response.action_type == "speech":
         if (
             response.utterance is None

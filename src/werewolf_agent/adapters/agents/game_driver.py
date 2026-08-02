@@ -7,7 +7,7 @@ import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -38,6 +38,7 @@ from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
 from werewolf_agent.adapters.llm.tracing import LlmTraceSink, NullLlmTraceSink
 from werewolf_agent.adapters.resources import LlmDefinitions
 from werewolf_agent.agents import AgentFactory
+from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.handlers import (
     commit_prepared_advance,
     prepare_advance_game,
@@ -68,6 +69,7 @@ from werewolf_agent.simulation import (
     SimulationSpec,
     SimulationStepKind,
     SimulationStopReason,
+    action_from_response,
 )
 
 logger = logging.getLogger(__name__)
@@ -171,11 +173,20 @@ def drive_prepared_game(
         trace_sink=runtime.decision_trace_sink,
     )
     events: list[GameEvent] = []
+    actions: list[Mapping[str, object]] = []
     try:
         while True:
             step = session.step()
             events.extend(step.events)
             if step.kind is SimulationStepKind.AGENT_ACTION:
+                if (
+                    step.actor_id is None
+                    or step.decision_trace is None
+                    or step.decision_trace.response is None
+                ):
+                    raise RuntimeError("agent action is missing its accepted decision")
+                action = action_from_response(step.actor_id, step.decision_trace.response)
+                actions.append(cast(Mapping[str, object], domain_to_data(action)))
                 current = game.snapshot()
                 logger.debug(
                     "game.agent_action.generated",
@@ -198,6 +209,7 @@ def drive_prepared_game(
     return replace(
         prepared,
         domain_events=tuple(events),
+        domain_actions=tuple(actions),
         domain_transition_complete=True,
     )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
@@ -165,6 +166,7 @@ class PreparedAdvanceGame:
     phase_seed: int
     domain_transition_complete: bool = False
     domain_events: tuple[GameEvent, ...] = ()
+    domain_actions: tuple[Mapping[str, object], ...] = ()
 
 
 class ComputedAdvanceGame(ApplicationModel):

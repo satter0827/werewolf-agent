@@ -412,7 +412,7 @@ def _execute_advance_request(
             store,
             request,
             response,
-            domain_actions=traces.parsed_decisions(),
+            domain_actions=driven.domain_actions,
         )
 
 

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
 from psycopg.types.json import Jsonb
@@ -26,14 +25,6 @@ class BufferedLlmTraceSink:
         """Persist every buffered trace through a transaction-bound sink."""
         for trace in self.records:
             sink.record_invocation(trace)
-
-    def parsed_decisions(self) -> tuple[Mapping[str, object], ...]:
-        """Return replay actions in the exact order in which decisions were produced."""
-        return tuple(
-            dict(trace.parsed_decision)
-            for trace in self.records
-            if trace.parsed_decision is not None
-        )
 
 
 class SupabaseLlmTraceSink:
