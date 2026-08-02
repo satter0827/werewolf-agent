@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 from werewolf_agent.application.errors import AppError, ErrorCode
 from werewolf_agent.application.ports import SetupRepository
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
-from werewolf_agent.setup import GameSetupDocument, SETUP_SCHEMA_VERSION
+from werewolf_agent.setup import SETUP_SCHEMA_VERSION, GameSetupDocument
 
 
 class SupabaseSetupRepository(SetupRepository):
