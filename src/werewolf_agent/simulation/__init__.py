@@ -20,6 +20,7 @@ from werewolf_agent.simulation.session import (
     SimulationRunner,
     SimulationSession,
     SynchronousDecisionExecutor,
+    action_from_response,
 )
 
 __all__ = [
@@ -40,4 +41,5 @@ __all__ = [
     "SimulationStepKind",
     "SimulationStopReason",
     "SynchronousDecisionExecutor",
+    "action_from_response",
 ]

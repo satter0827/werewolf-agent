@@ -18,7 +18,7 @@ from werewolf_agent.adapters.agents.game_driver import (
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions
-from werewolf_agent.agents import DecisionTrace, RandomLegalAgentFactory
+from werewolf_agent.agents import DecisionTrace, FaultAgentFactory, RandomLegalAgentFactory
 from werewolf_agent.application import PreparedAdvanceGame
 from werewolf_agent.application.errors import GameError
 from werewolf_agent.application.handlers import compute_prepared_advance
@@ -125,6 +125,27 @@ def test_prepared_game_uses_simulation_and_advances_exactly_once() -> None:
     assert computed.phase == after.phase.value
     assert computed.day == after.day
     assert computed.private_state["phase"] == after.phase.value
+
+
+def test_prepared_game_records_actions_accepted_after_agent_fallback() -> None:
+    """Replay正本には失敗したprimaryでなく実際に提出したfallback actionを残す。"""
+    prepared, player_ids = _prepared()
+    sink = _TraceSink()
+    runtime = replace(
+        _runtime(player_ids, sink),
+        agent_factories={player_id: FaultAgentFactory("broken") for player_id in player_ids},
+    )
+
+    driven = drive_prepared_game(prepared, runtime=runtime)
+
+    assert driven.domain_actions
+    assert len(driven.domain_actions) == len(sink.records)
+    for payload, trace in zip(driven.domain_actions, sink.records, strict=True):
+        assert trace.fallback_used
+        assert trace.response is not None
+        assert payload["player_id"]
+        assert payload["type"] == trace.response.action_type
+        assert payload.get("target_id") == trace.response.target_id
 
 
 def test_game_context_keeps_only_each_players_current_private_metadata() -> None:
