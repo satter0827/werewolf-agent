@@ -85,11 +85,7 @@ def test_gameplay_waiting_speech_and_target(
     message = page.get_by_label("発言内容")
     expect(message).to_be_visible(timeout=30_000)
     capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")
-    message.fill("公開情報を整理して話します。")
-    message.press("Tab")
-    submit = page.get_by_role("button", name="入力を送信")
-    expect(submit).to_be_enabled()
-    submit.click()
+    _submit_message_action(page, message, "公開情報を整理して話します。")
     _advance_until_target_action(page, player_count=player_count)
     reason = page.get_by_label("投票理由")
     expect(reason).to_be_visible()
@@ -121,13 +117,24 @@ def _advance_until_target_action(page: Page, *, player_count: int) -> Locator:
         if target.is_visible():
             return target
         if message.is_visible():
-            message.fill(f"公開情報を踏まえた応答です。{step + 1}")
-            submit = page.get_by_role("button", name="入力を送信")
-            expect(submit).to_be_enabled()
-            submit.click()
+            _submit_message_action(
+                page,
+                message,
+                f"公開情報を踏まえた応答です。{step + 1}",
+            )
             continue
         advance.click()
     raise AssertionError("投票対象の入力へ到達できませんでした。")
+
+
+def _submit_message_action(page: Page, message: Locator, utterance: str) -> None:
+    """発言を送り、送信前のフォームが破棄されるまで待つ。"""
+    message.fill(utterance)
+    message.press("Tab")
+    submit = page.get_by_role("button", name="入力を送信")
+    expect(submit).to_be_enabled()
+    submit.click()
+    expect(message).not_to_have_value(utterance, timeout=30_000)
 
 
 def test_completed_game_presents_result_before_timeline(
