@@ -75,11 +75,13 @@ def test_contract_kit_honors_support_only_response_setup() -> None:
         definition,
         discussion=replace(
             definition.discussion,
+            message_max_chars=1,
             stages=(
                 opening,
                 replace(response, allowed_relations=(DiscussionRelation.SUPPORT,)),
             ),
         ),
+        voting=replace(definition.voting, reason_max_chars=1),
     )
 
     assert_rule_pack_contract(CoreRulePack(), definition=definition, setup=setup, seed=_SEED)

@@ -1140,7 +1140,11 @@ def _run_preset(
     prompt_characters = sum(_as_int(trace["prompt_characters"]) for trace in traces)
     response_characters = sum(_as_int(trace["response_characters"]) for trace in traces)
     completed = snapshot.is_finished
-    gameplay_metrics = _gameplay_metrics(traces, public_timeline)
+    gameplay_metrics = _gameplay_metrics(
+        traces,
+        public_timeline,
+        expect_finished=completed,
+    )
     state = _classify_scenario_state(
         stopped_for_preflight=stopped_for_preflight,
         stopped_for_duration=stopped_for_duration,
@@ -1220,6 +1224,8 @@ def _simulation_stop_metadata(reason: SimulationStopReason) -> tuple[str, bool]:
 def _gameplay_metrics(
     traces: Sequence[Mapping[str, object]],
     public_timeline: Sequence[Mapping[str, object]] = (),
+    *,
+    expect_finished: bool = True,
 ) -> dict[str, object]:
     """一局の会話、根拠、投票、夜、終了整合を決定的に集計する。"""
     speeches: list[str] = []
@@ -1302,7 +1308,10 @@ def _gameplay_metrics(
     fixed_target_rate = (
         max(targets.count(target) for target in set(targets)) / len(targets) if targets else 0.0
     )
-    timeline_metrics = _timeline_gameplay_metrics(public_timeline)
+    timeline_metrics = _timeline_gameplay_metrics(
+        public_timeline,
+        expect_finished=expect_finished,
+    )
     return {
         "speech_count": len(speeches),
         "speech_exact_duplicate_rate": round(duplicate_count / len(speeches), 4)
@@ -1333,6 +1342,8 @@ def _gameplay_metrics(
 
 def _timeline_gameplay_metrics(
     public_timeline: Sequence[Mapping[str, object]],
+    *,
+    expect_finished: bool,
 ) -> dict[str, object]:
     """公開timelineだけから一局の参照整合と進行結果を検証する。"""
     speech_ids: set[str] = set()
@@ -1422,7 +1433,9 @@ def _timeline_gameplay_metrics(
         elif event_type == "game_finished":
             finished_count += 1
             winner = str(payload.get("winner") or "")
-    if public_timeline and finished_count != 1:
+    if public_timeline and (
+        (expect_finished and finished_count != 1) or (not expect_finished and finished_count > 1)
+    ):
         integrity_flags.append(f"game_finished_event_count:{finished_count}")
     if finished_count == 1 and winner not in {"village", "werewolf", "fox"}:
         integrity_flags.append(f"invalid_winner:{winner}")

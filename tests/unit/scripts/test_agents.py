@@ -357,6 +357,17 @@ def test_review_serializer_keeps_numeric_usage_but_redacts_credentials() -> None
     assert document["authorization"] == "[REDACTED]"
 
 
+def test_bounded_smoke_metrics_do_not_require_game_finished_event() -> None:
+    metrics = review._gameplay_metrics(
+        [],
+        [{"event_type": "game_started", "payload": {}}],
+        expect_finished=False,
+    )
+
+    assert metrics["game_finished_event_count"] == 0
+    assert metrics["integrity_flags"] == []
+
+
 def test_gameplay_metrics_distinguish_explained_public_position_changes() -> None:
     metrics = review._gameplay_metrics(
         [

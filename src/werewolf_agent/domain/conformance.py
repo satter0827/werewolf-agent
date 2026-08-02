@@ -118,7 +118,10 @@ def _first_legal_action(game: Game) -> Action | None:
                 position = referenced.position
             return Action.speech(
                 player_id,
-                "参照発言への見解を示します。" if reference_id else "契約を確認します。",
+                _bounded_speech(
+                    state=game.snapshot(),
+                    referenced_utterance=(referenced.utterance if referenced is not None else None),
+                ),
                 topic_id=topic_id,
                 position=position,
                 relation=relation,
@@ -147,13 +150,30 @@ def _first_legal_action(game: Game) -> Action | None:
             return Action.vote(
                 player_id,
                 target_id,
-                reason="契約上の判断です。",
+                reason="契約上の判断です。"[: game.snapshot().config.voting.reason_max_chars],
                 evidence_id=evidence_id,
             )
         if available.type is ActionType.USE_ABILITY:
             return Action.use_ability(player_id, available.ability_id or "", targets[0])
         return Action.pass_(player_id)
     return None
+
+
+def _bounded_speech(*, state: GameState, referenced_utterance: str | None) -> str:
+    """Return a legal conformance utterance for the active setup."""
+    limit = state.config.discussion.message_max_chars
+    base = "参照発言への見解です。" if referenced_utterance is not None else "契約を確認します。"
+    candidate = base[:limit]
+    if (
+        referenced_utterance is None
+        or candidate.strip().casefold() != referenced_utterance.strip().casefold()
+    ):
+        return candidate
+    for prefix in ("異", "別", "再", "補"):
+        candidate = f"{prefix}{base}"[:limit]
+        if candidate.strip().casefold() != referenced_utterance.strip().casefold():
+            return candidate
+    raise AssertionError("configured message limit must permit a distinct response")
 
 
 def _views(game: Game) -> tuple[GameView, ...]:
