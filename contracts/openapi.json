@@ -1277,6 +1277,13 @@
             ],
             "title": "Eliminated Player Id"
           },
+          "evidence_ids": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "object"
+          },
           "missing_voter_ids": {
             "items": {
               "type": "string"

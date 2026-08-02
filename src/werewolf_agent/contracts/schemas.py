@@ -512,6 +512,7 @@ class GameRevealVote(BaseModel):
     day: int
     votes: dict[str, str] = Field(default_factory=dict)
     reasons: dict[str, str] = Field(default_factory=dict)
+    evidence_ids: dict[str, str] = Field(default_factory=dict)
     counts: dict[str, int] = Field(default_factory=dict)
     tied_player_ids: list[str] = Field(default_factory=list)
     missing_voter_ids: list[str] = Field(default_factory=list)

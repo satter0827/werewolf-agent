@@ -47,6 +47,7 @@ def test_random_legal_agent_is_reproducible_for_a_decision_seed() -> None:
 
     assert first == second
     assert factory.spec.fingerprint == RandomLegalAgentFactory().spec.fingerprint
+    assert factory.spec.implementation_version == "1.4.0"
 
 
 def test_heuristic_agent_uses_stable_priority_and_legal_target() -> None:
@@ -122,6 +123,53 @@ def test_builtin_agent_response_contributes_new_content(
 
     assert response.utterance != factory.speech
     assert response.response_to_id == "speech-1"
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_response_remains_distinct_at_one_character_limit(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "反",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("support",),
+                message_max_chars=1,
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.utterance is not None
+    assert len(response.utterance) == 1
+    assert response.utterance != "反"
 
 
 @pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))

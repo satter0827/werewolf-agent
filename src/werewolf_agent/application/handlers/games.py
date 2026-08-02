@@ -254,6 +254,7 @@ def get_game_reveal(
                 day=vote.day,
                 votes=dict(vote.votes),
                 reasons=dict(vote.reasons),
+                evidence_ids=dict(vote.evidence_ids),
                 counts=dict(vote.counts),
                 tied_player_ids=list(vote.tied_player_ids),
                 missing_voter_ids=list(vote.missing_voter_ids),

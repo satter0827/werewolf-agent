@@ -331,6 +331,32 @@ class ReusedDayStartDiscussionPolicy(SkipResponseDiscussionPolicy):
         return replace(self._core.start(state), round_id=self._round_id)
 
 
+class InvalidActorOrderDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """setupで宣言したactor順を変更するfault policy。"""
+
+    def start(self, state: GameState) -> DiscussionRound:
+        opening = self._core.start(state)
+        return replace(opening, actor_order=tuple(reversed(opening.actor_order)))
+
+
+class InvalidResponseOrderDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """responseをopeningと同じ順序へ変更するfault policy。"""
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        resolution = self._core.resolve(state, round_, submissions)
+        if round_.kind is DiscussionRoundKind.OPENING and resolution.next_round is not None:
+            return replace(
+                resolution,
+                next_round=replace(resolution.next_round, actor_order=round_.actor_order),
+            )
+        return resolution
+
+
 class RedirectAbilityPolicy:
     """提出された攻撃先ではなくp3を死亡させる外部test policy."""
 
@@ -906,6 +932,44 @@ def test_discussion_policy_cannot_start_outside_first_opening() -> None:
         )
 
     assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_change_configured_opening_order() -> None:
+    core = CoreRulePack().compile(_definition())
+    rules = replace(core, discussion_policy=InvalidActorOrderDiscussionPolicy())
+
+    with pytest.raises(ValueError, match="configured opening order"):
+        Game.create(
+            GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+            rules=rules,
+            random=random.Random(7),
+        )
+
+
+def test_discussion_policy_cannot_change_configured_response_order() -> None:
+    core = CoreRulePack().compile(_definition())
+    rules = replace(core, discussion_policy=InvalidResponseOrderDiscussionPolicy())
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    round_ = game.snapshot().pending_actions.discussion_round
+    assert round_ is not None
+    for actor_id in round_.actor_order:
+        topic_id = next(item for item in round_.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                f"{actor_id}の意見です。",
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
+        )
+
+    with pytest.raises(ValueError, match="opening must advance"):
+        game.advance(random.Random(11))
 
 
 def test_discussion_policy_cannot_reuse_round_id_at_day_start() -> None:

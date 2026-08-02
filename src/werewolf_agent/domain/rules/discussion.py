@@ -79,28 +79,31 @@ def start_discussion(state: GameState, *, policy: DiscussionPolicy) -> Discussio
     round_ = policy.start(state)
     if not isinstance(round_, DiscussionRound):
         raise TypeError("discussion policy must return DiscussionRound")
-    alive_ids = {player.id for player in state.players.values() if player.is_alive}
     if round_.cycle != 1 or round_.kind is not DiscussionRoundKind.OPENING or round_.cursor != 0:
         raise ValueError("discussion must start from the first opening round")
-    if set(round_.actor_order) != alive_ids:
-        raise ValueError("discussion must start with every alive player")
+    if round_.actor_order != _opening_actor_order(state, cycle=1):
+        raise ValueError("discussion must start in the configured opening order")
     if round_.round_id in {result.round_id for result in state.history.discussions}:
         raise ValueError("discussion day start requires a fresh round ID")
     return round_
 
 
 def _opening_round(state: GameState, *, cycle: int) -> DiscussionRound:
-    alive = tuple(player.id for player in state.players.values() if player.is_alive)
-    offset = (state.day + cycle - 2) % len(alive)
-    order = (*alive[offset:], *alive[:offset])
     opening_stage = state.config.discussion.stages[0]
     return DiscussionRound(
         round_id=f"day-{state.day}-cycle-{cycle}-opening",
         cycle=cycle,
         kind=DiscussionRoundKind.OPENING,
         submission_mode=opening_stage.submission_mode,
-        actor_order=order,
+        actor_order=_opening_actor_order(state, cycle=cycle),
     )
+
+
+def _opening_actor_order(state: GameState, *, cycle: int) -> tuple[str, ...]:
+    """Return the configured rotating order for one opening cycle."""
+    alive = tuple(player.id for player in state.players.values() if player.is_alive)
+    offset = (state.day + cycle - 2) % len(alive)
+    return (*alive[offset:], *alive[:offset])
 
 
 def _after_cycle(
@@ -405,6 +408,7 @@ def _validate_resolution(
                 if (
                     resolution.next_round.kind is not DiscussionRoundKind.RESPONSE
                     or resolution.next_round.cursor != 0
+                    or resolution.next_round.actor_order != tuple(reversed(round_.actor_order))
                     or set(resolution.next_round.reference_ids)
                     != {speech.speech_id for speech in resolution.speeches}
                 ):
@@ -413,20 +417,21 @@ def _validate_resolution(
                 resolution.next_round.kind is not DiscussionRoundKind.RESPONSE
                 or resolution.next_round.round_id != round_.round_id
                 or resolution.next_round.cursor != round_.cursor + 1
+                or resolution.next_round.actor_order != round_.actor_order
                 or resolution.next_round.reference_ids != round_.reference_ids
             ):
                 raise ValueError("discussion response cursor must advance exactly once")
         if next_cycle and (
             resolution.next_round.kind is not DiscussionRoundKind.OPENING
             or resolution.next_round.cursor != 0
+            or resolution.next_round.actor_order
+            != _opening_actor_order(state, cycle=resolution.next_round.cycle)
         ):
             raise ValueError("discussion next cycle must start from opening")
         if next_cycle and not _round_can_end(round_, resolution):
             raise ValueError("discussion cannot advance before the active round is complete")
         if next_cycle and resolution.next_round.cycle > state.config.discussion.cycles_per_day:
             raise ValueError("discussion cannot exceed the configured cycle count")
-        if set(resolution.next_round.actor_order) != set(round_.actor_order):
-            raise ValueError("discussion next round must preserve eligible actors")
         if (
             same_cycle
             and round_.kind is DiscussionRoundKind.RESPONSE

@@ -125,7 +125,7 @@ def _prompt_and_submit_manual_action(
     evidence_id = None
     response_to_id = None
     if action_type == "speech":
-        utterance = typer.prompt(PROMPT_SPEECH)
+        utterance = _prompt_bounded_text(PROMPT_SPEECH, selected.message_max_chars)
         topic_id = next(
             player.id
             for player in observation.observation.players
@@ -173,7 +173,11 @@ def _prompt_and_submit_manual_action(
                 position=position,
                 relation=relation,
                 evidence_id=evidence_id,
-                reason=(typer.prompt("投票理由") if action_type == "vote" else None),
+                reason=(
+                    _prompt_bounded_text("投票理由", selected.reason_max_chars)
+                    if action_type == "vote"
+                    else None
+                ),
                 response_to_id=response_to_id,
             )
         ),
@@ -202,6 +206,20 @@ def _vote_evidence_ids(
         for item in action.evidence_options
         if target_id in {item.actor_id, item.topic_id}
     ]
+
+
+def _prompt_bounded_text(prompt: str, max_chars: int | None) -> str:
+    """Prompt until text satisfies the server-advertised character limit."""
+    if max_chars is None:
+        raise AppError(
+            "入力文字数の上限が取得できません。",
+            code=ErrorCode.INTERNAL_UNEXPECTED,
+        )
+    while True:
+        value = str(typer.prompt(prompt))
+        if len(value) <= max_chars:
+            return value
+        typer.echo(f"{max_chars}文字以内で入力してください。", err=True)
 
 
 def _action_payload(

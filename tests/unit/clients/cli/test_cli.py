@@ -1,7 +1,8 @@
+import pytest
 from typer.testing import CliRunner
 
 from werewolf_agent.clients.cli.app import app
-from werewolf_agent.clients.cli.commands.common import _vote_evidence_ids
+from werewolf_agent.clients.cli.commands.common import _prompt_bounded_text, _vote_evidence_ids
 from werewolf_agent.clients.presentation import CLI_COMMAND_FEATURES
 from werewolf_agent.contracts.schemas import AvailableActionDescriptor
 
@@ -56,3 +57,15 @@ def test_cli_vote_uses_only_server_authorized_evidence_for_the_target() -> None:
     )
 
     assert _vote_evidence_ids(action, "p2") == ["speech-p2", "speech-p3"]
+
+
+def test_cli_reprompts_until_server_text_limit_is_satisfied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    responses = iter(("長すぎます", "適切"))
+    messages: list[str] = []
+    monkeypatch.setattr("typer.prompt", lambda _prompt: next(responses))
+    monkeypatch.setattr("typer.echo", lambda message, **_kwargs: messages.append(message))
+
+    assert _prompt_bounded_text("投票理由", 2) == "適切"
+    assert messages == ["2文字以内で入力してください。"]

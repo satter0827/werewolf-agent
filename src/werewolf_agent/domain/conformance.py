@@ -110,15 +110,12 @@ def _first_legal_action(game: Game) -> Action | None:
             relation = DiscussionRelation.INDEPENDENT
             position = DiscussionPosition.SUPPORT
             if referenced is not None:
-                if referenced.position is DiscussionPosition.UNDECIDED:
-                    relation = DiscussionRelation.ANSWER
-                else:
-                    relation = DiscussionRelation.CHALLENGE
-                    position = (
-                        DiscussionPosition.OPPOSE
-                        if referenced.position is DiscussionPosition.SUPPORT
-                        else DiscussionPosition.SUPPORT
-                    )
+                _require(
+                    DiscussionRelation.SUPPORT in view.allowed_discussion_relations,
+                    "response stage must expose a universally legal support relation",
+                )
+                relation = DiscussionRelation.SUPPORT
+                position = referenced.position
             return Action.speech(
                 player_id,
                 "参照発言への見解を示します。" if reference_id else "契約を確認します。",

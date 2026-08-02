@@ -9,6 +9,7 @@ from werewolf_agent.domain import (
     RULE_PACK_CONTRACT_VERSION,
     CompiledRuleSet,
     CoreRulePack,
+    DiscussionRelation,
     GameSetup,
     Player,
     RulePackManifest,
@@ -65,3 +66,20 @@ def test_external_rule_pack_uses_the_public_contract_kit() -> None:
     """外部providerへ利用者と同じ公開契約を適用する。"""
     definition, setup = _inputs()
     assert_rule_pack_contract(_ExternalMirrorPack(), definition=definition, setup=setup, seed=_SEED)
+
+
+def test_contract_kit_honors_support_only_response_setup() -> None:
+    definition, setup = _inputs()
+    opening, response = definition.discussion.stages
+    definition = replace(
+        definition,
+        discussion=replace(
+            definition.discussion,
+            stages=(
+                opening,
+                replace(response, allowed_relations=(DiscussionRelation.SUPPORT,)),
+            ),
+        ),
+    )
+
+    assert_rule_pack_contract(CoreRulePack(), definition=definition, setup=setup, seed=_SEED)

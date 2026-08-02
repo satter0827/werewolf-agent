@@ -19,7 +19,7 @@ from werewolf_agent.agents.contracts import (
 )
 from werewolf_agent.agents.validation import non_blank
 
-_BUILTIN_IMPLEMENTATION_VERSION = "1.3.0"
+_BUILTIN_IMPLEMENTATION_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True)
@@ -213,7 +213,12 @@ def _response(
             relation = "support"
             position = referenced.position
         if option.message_max_chars:
-            utterance = utterance[: option.message_max_chars]
+            reference_utterance = _reference_utterance(request, option.legal_reference_ids)
+            utterance = _bounded_distinct_utterance(
+                utterance,
+                reference_utterance,
+                option.message_max_chars,
+            )
     evidence_id = None
     if option.action_type == "speech" and option.legal_reference_ids:
         evidence_id = option.legal_reference_ids[0]
@@ -241,6 +246,30 @@ def _response(
         response_to_id=(option.legal_reference_ids[0] if option.legal_reference_ids else None),
         reason=reason,
     )
+
+
+def _reference_utterance(request: DecisionRequest, reference_ids: tuple[str, ...]) -> str | None:
+    """Return the visible utterance identified by the selected reference."""
+    if not reference_ids:
+        return None
+    reference_id = reference_ids[0]
+    for event in reversed(request.public_timeline):
+        if event.payload.get("speech_id") == reference_id:
+            value = event.payload.get("utterance")
+            return str(value) if isinstance(value, str) else None
+    return None
+
+
+def _bounded_distinct_utterance(base: str, reference: str | None, max_chars: int) -> str:
+    """Return bounded content that remains distinct from a referenced utterance."""
+    candidate = base[:max_chars]
+    if reference is None or candidate.strip().casefold() != reference.strip().casefold():
+        return candidate
+    for prefix in ("異", "別", "再", "補"):
+        candidate = f"{prefix}{base}"[:max_chars]
+        if candidate.strip().casefold() != reference.strip().casefold():
+            return candidate
+    raise AgentDecisionError("agent_response_message_unavailable")
 
 
 def _spec(agent_id: str, parameters: Mapping[str, object]) -> AgentSpec:
