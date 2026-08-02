@@ -1334,7 +1334,7 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": "0.6.0",
+            "const": "0.7.0",
             "title": "Schema Version",
             "type": "string"
           },

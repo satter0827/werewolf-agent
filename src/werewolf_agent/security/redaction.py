@@ -25,6 +25,7 @@ _SENSITIVE_JSON_KEY_PATTERN: Final = re.compile(
 )
 _URI_CREDENTIALS_PATTERN: Final = re.compile(r"(?i)\b([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^@\s/]+)@")
 _JSON_DECODER: Final = json.JSONDecoder()
+_JSON_NESTING_LIMIT: Final = 256
 
 
 def redact_mapping(mapping: Mapping[str, object]) -> dict[str, object]:
@@ -61,6 +62,10 @@ def _redact_json_assignments(value: str) -> str:
     copied_until = 0
     search_from = 0
     while match := _SENSITIVE_JSON_KEY_PATTERN.search(value, search_from):
+        if _json_value_exceeds_nesting_limit(value, match.end()):
+            output.append(value[copied_until : match.end()])
+            output.append(json.dumps(REDACTED, ensure_ascii=False))
+            return "".join(output)
         try:
             _decoded, value_end = _JSON_DECODER.raw_decode(value, match.end())
         except RecursionError:
@@ -76,6 +81,37 @@ def _redact_json_assignments(value: str) -> str:
         search_from = value_end
     output.append(value[copied_until:])
     return "".join(output)
+
+
+def _json_value_exceeds_nesting_limit(value: str, start: int) -> bool:
+    """Detect excessive JSON nesting consistently across Python versions."""
+    depth = 0
+    in_string = False
+    escaped = False
+    for character in value[start:]:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif character == "\\":
+                escaped = True
+            elif character == '"':
+                in_string = False
+            continue
+        if character == '"':
+            in_string = True
+        elif character in "[{":
+            depth += 1
+            if depth > _JSON_NESTING_LIMIT:
+                return True
+        elif character in "]}":
+            if depth == 0:
+                return False
+            depth -= 1
+            if depth == 0:
+                return False
+        elif depth == 0 and not character.isspace():
+            return False
+    return False
 
 
 def _redact_assignment(match: re.Match[str]) -> str:

@@ -8,6 +8,7 @@ import pytest
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.adapters.supabase.setup_repository import SupabaseSetupRepository
 from werewolf_agent.application.errors import AppError, ErrorCode
+from werewolf_agent.setup import SETUP_SCHEMA_VERSION
 
 OWNER_ID = "11111111-1111-1111-1111-111111111111"
 SETUP_ID = "22222222-2222-2222-2222-222222222222"
@@ -45,6 +46,7 @@ def test_setup_read_is_always_scoped_to_owner() -> None:
     assert "s.owner_user_id = %s" in query
     assert parameters[0] == UUID(SETUP_ID)
     assert parameters[1] == UUID(OWNER_ID)
+    assert parameters[2] == SETUP_SCHEMA_VERSION
 
 
 def test_revision_conflict_is_detected_while_parent_is_locked() -> None:
@@ -70,7 +72,11 @@ def test_revision_conflict_is_detected_while_parent_is_locked() -> None:
 
     assert raised.value.code is ErrorCode.SETUP_REVISION_CONFLICT
     assert "for update" in connection.calls[0][0].lower()
-    assert connection.calls[0][1] == (UUID(SETUP_ID), UUID(OWNER_ID))
+    assert connection.calls[0][1] == (
+        UUID(SETUP_ID),
+        UUID(OWNER_ID),
+        SETUP_SCHEMA_VERSION,
+    )
 
 
 def test_revision_list_is_bounded_by_limit_and_offset() -> None:
@@ -88,7 +94,13 @@ def test_revision_list_is_bounded_by_limit_and_offset() -> None:
 
     query, parameters = connection.calls[0]
     assert "limit %s offset %s" in query.lower()
-    assert parameters == (UUID(SETUP_ID), UUID(OWNER_ID), 21, 40)
+    assert parameters == (
+        UUID(SETUP_ID),
+        UUID(OWNER_ID),
+        SETUP_SCHEMA_VERSION,
+        21,
+        40,
+    )
 
 
 def test_setup_list_is_bounded_by_limit_and_offset() -> None:
@@ -105,7 +117,7 @@ def test_setup_list_is_bounded_by_limit_and_offset() -> None:
 
     query, parameters = connection.calls[0]
     assert "limit %s offset %s" in query.lower()
-    assert parameters == (UUID(OWNER_ID), 21, 40)
+    assert parameters == (SETUP_SCHEMA_VERSION, UUID(OWNER_ID), 21, 40)
 
 
 def test_setup_limit_is_checked_under_owner_lock_before_insert() -> None:
@@ -130,6 +142,7 @@ def test_setup_limit_is_checked_under_owner_lock_before_insert() -> None:
     assert raised.value.code is ErrorCode.SETUP_LIMIT_REACHED
     assert "pg_advisory_xact_lock" in connection.calls[0][0]
     assert "count(*)" in connection.calls[1][0].lower()
+    assert connection.calls[1][1] == (UUID(OWNER_ID), SETUP_SCHEMA_VERSION)
     assert len(connection.calls) == 2
 
 

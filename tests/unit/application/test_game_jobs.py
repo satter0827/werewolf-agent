@@ -5,7 +5,7 @@ import pytest
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.application.actor import Actor
 from werewolf_agent.application.errors import AppError, ConfigError, ErrorCode
-from werewolf_agent.application.models import GameApplicationConfig
+from werewolf_agent.application.models import CreateGameCommand, GameApplicationConfig
 from werewolf_agent.application.ports import SetupRepository
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.application.setup_options import prepare_create_command, preview_players
@@ -37,6 +37,8 @@ def test_create_command_contains_a_complete_resolved_setup_and_generated_players
     )
     assert command.rule_pack_provider_id == "core"
     assert command.model_dump(mode="json")["setup"] == setup.to_mapping()
+    queued_payload = command.model_dump(mode="json", exclude_none=True)
+    assert CreateGameCommand.model_validate(queued_payload).setup == setup
 
 
 def test_create_command_preserves_an_explicit_rule_pack_provider() -> None:

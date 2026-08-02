@@ -81,8 +81,21 @@ class GameStateMachine(RuleBasedStateMachine):
         if not candidates:
             return
         player_id, available, targets = candidates[self.random.randrange(len(candidates))]
-        target_id = self.random.choice(targets) if targets else None
         view = self.game.view_for(player_id)
+        if available.type is ActionType.VOTE:
+            viable_targets = [
+                target
+                for target in targets
+                if any(
+                    target in {evidence.actor_id, evidence.topic_id}
+                    for evidence in view.legal_evidence.get(available.key, ())
+                )
+            ]
+            if not viable_targets:
+                return
+            target_id = self.random.choice(viable_targets)
+        else:
+            target_id = self.random.choice(targets) if targets else None
         if available.type is ActionType.SPEECH:
             round_ = view.discussion_round
             speeches = {speech.speech_id: speech for speech in view.history.speeches}
@@ -107,7 +120,11 @@ class GameStateMachine(RuleBasedStateMachine):
             )
             action = Action.speech(
                 player_id,
-                "状況を確認します。",
+                (
+                    f"{reference_id}を踏まえて状況を再検討します。"
+                    if reference_id is not None
+                    else f"{player_id}の視点から状況を確認します。"
+                ),
                 topic_id=topic_id,
                 position=(
                     "oppose"
@@ -120,9 +137,9 @@ class GameStateMachine(RuleBasedStateMachine):
             )
         elif available.type is ActionType.VOTE and target_id is not None:
             evidence_id = next(
-                speech.speech_id
-                for speech in reversed(view.history.speeches)
-                if target_id in {speech.player_id, speech.topic_id}
+                evidence.evidence_id
+                for evidence in view.legal_evidence[available.key]
+                if target_id in {evidence.actor_id, evidence.topic_id}
             )
             action = Action.vote(
                 player_id,

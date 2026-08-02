@@ -34,7 +34,7 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.6.0"
+SETUP_SCHEMA_VERSION: Final = "0.7.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(
@@ -312,8 +312,8 @@ class DiscussionStageDefinition:
     stage: str
     submission_mode: str
     actor_order: str
-    reference_stage: str | None
     allowed_relations: tuple[str, ...]
+    reference_stage: str | None = None
 
     @classmethod
     def from_mapping(cls, value: object) -> DiscussionStageDefinition:
@@ -338,11 +338,19 @@ class DiscussionStageDefinition:
             raise ValueError("allowed_relations must contain unique values")
         reference = source.get("reference_stage")
         return cls(
-            stage,
-            _choice(source["submission_mode"], "submission_mode", {"sealed", "ordered"}),
-            _choice(source["actor_order"], "actor_order", {"rotating", "reverse_opening"}),
-            _choice(reference, "reference_stage", {"opening"}) if reference is not None else None,
-            relations,
+            stage=stage,
+            submission_mode=_choice(
+                source["submission_mode"], "submission_mode", {"sealed", "ordered"}
+            ),
+            actor_order=_choice(
+                source["actor_order"], "actor_order", {"rotating", "reverse_opening"}
+            ),
+            allowed_relations=relations,
+            reference_stage=(
+                _choice(reference, "reference_stage", {"opening"})
+                if reference is not None
+                else None
+            ),
         )
 
     def to_mapping(self) -> dict[str, object]:
