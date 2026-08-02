@@ -130,9 +130,12 @@ def preview_players(
     *, settings: AppSettings, setup: GameSetupSelectionRequest, seed: int | None
 ) -> PlayerPreviewResponse:
     """Return a deterministic public roster preview."""
-    return build_streamlit_public_client(settings).preview_players(
-        PlayerPreviewRequest(setup=setup, seed=seed)
+    client = (
+        build_streamlit_client(settings)
+        if setup.mode == "saved"
+        else build_streamlit_public_client(settings)
     )
+    return client.preview_players(PlayerPreviewRequest(setup=setup, seed=seed))
 
 
 def list_saved_setups(*, settings: AppSettings) -> SavedSetupListResponse:

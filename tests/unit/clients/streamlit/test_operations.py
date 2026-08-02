@@ -8,6 +8,8 @@ from werewolf_agent.clients.streamlit import operations
 from werewolf_agent.clients.streamlit.i18n import load_i18n
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.api import (
+    PlayerPreviewRequest,
+    PlayerPreviewResponse,
     SavedSetupListResponse,
     SavedSetupRevisionListResponse,
     SavedSetupRevisionResponse,
@@ -23,6 +25,8 @@ from werewolf_agent.contracts.schemas import (
     PlayerObservationResponse,
     PublicGameState,
     PublicPlayerState,
+    SavedSetupRequest,
+    TemplateSetupRequest,
 )
 from werewolf_agent.observability import (
     bind_observation_context,
@@ -252,6 +256,47 @@ class _PagingSetupClient:
             items=items,
             next_offset=offset + 1 if offset == 0 else None,
         )
+
+
+class _PreviewClient:
+    def __init__(self) -> None:
+        self.requests: list[PlayerPreviewRequest] = []
+
+    def preview_players(self, request: PlayerPreviewRequest) -> PlayerPreviewResponse:
+        self.requests.append(request)
+        return PlayerPreviewResponse(seed=request.seed or 0, players=(), roster_checksum="checksum")
+
+
+def test_saved_setup_preview_uses_authenticated_client(monkeypatch) -> None:
+    authenticated = _PreviewClient()
+    public = _PreviewClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda _settings: authenticated)
+    monkeypatch.setattr(operations, "build_streamlit_public_client", lambda _settings: public)
+
+    operations.preview_players(
+        settings=AppSettings(_env_file=None),
+        setup=SavedSetupRequest(mode="saved", setup_id="setup-1", revision=2),
+        seed=7,
+    )
+
+    assert len(authenticated.requests) == 1
+    assert public.requests == []
+
+
+def test_template_setup_preview_remains_public(monkeypatch) -> None:
+    authenticated = _PreviewClient()
+    public = _PreviewClient()
+    monkeypatch.setattr(operations, "build_streamlit_client", lambda _settings: authenticated)
+    monkeypatch.setattr(operations, "build_streamlit_public_client", lambda _settings: public)
+
+    operations.preview_players(
+        settings=AppSettings(_env_file=None),
+        setup=TemplateSetupRequest(mode="template", template_id="standard_6"),
+        seed=7,
+    )
+
+    assert authenticated.requests == []
+    assert len(public.requests) == 1
 
 
 def test_setup_operations_follow_all_bounded_pages(monkeypatch) -> None:

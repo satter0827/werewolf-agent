@@ -14,6 +14,8 @@ from werewolf_agent.contracts import AppError, ErrorCode, ResourceNotFoundError
 from werewolf_agent.contracts.api import (
     OperationResponse,
     PlayerActionOperationRequest,
+    PlayerPreviewRequest,
+    PlayerPreviewResponse,
     SavedSetupListResponse,
     SavedSetupRevisionListResponse,
     SavedSetupRevisionResponse,
@@ -57,6 +59,15 @@ class HttpGameClient:
     def get_session(self) -> SessionResponse:
         """Return the current authenticated session capabilities."""
         return self._http.model(SessionResponse, "GET", "/api/v1/session")
+
+    def preview_players(self, request: PlayerPreviewRequest) -> PlayerPreviewResponse:
+        """Generate a public roster preview for an authorized setup selection."""
+        return self._http.model(
+            PlayerPreviewResponse,
+            "POST",
+            "/api/v1/setups/preview-players",
+            json=request.model_dump(mode="json", exclude_none=True),
+        )
 
     def list_setups(self, *, limit: int | None = None, offset: int = 0) -> SavedSetupListResponse:
         """Return saved setups owned by the current user."""
