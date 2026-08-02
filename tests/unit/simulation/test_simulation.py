@@ -820,7 +820,7 @@ def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
         "game-1",
         23,
         {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
-        response_reference_limit=2,
+        response_reference_limit=1,
     )
     session = SimulationRunner().start(game, spec)
     try:
@@ -859,7 +859,7 @@ def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
     speech_option = next(
         option for option in response_request.options if option.action_type == "speech"
     )
-    assert len(speech_option.legal_reference_ids) == 2
+    assert len(speech_option.legal_reference_ids) == 1
     speech_actors = {
         str(event.payload["speech_id"]): event.actor_id
         for event in response_request.public_timeline
@@ -868,6 +868,14 @@ def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
     assert all(
         speech_actors[reference_id] != response_request.context.player_id
         for reference_id in speech_option.legal_reference_ids
+    )
+    speech_topics = {
+        str(event.payload["speech_id"]): str(event.payload["topic_id"])
+        for event in response_request.public_timeline
+        if event.event_type == "speech"
+    }
+    assert speech_option.legal_topic_ids == tuple(
+        dict.fromkeys(speech_topics[item] for item in speech_option.legal_reference_ids)
     )
 
 

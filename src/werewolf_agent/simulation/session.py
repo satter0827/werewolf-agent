@@ -459,6 +459,13 @@ class SimulationSession:
                 )
                 != context.player_id
             )
+        if legal_reference_ids and self._spec.response_reference_limit is not None:
+            if discussion_round is None:
+                raise RuntimeError("discussion references require an active round")
+            actor_index = discussion_round.actor_order.index(context.player_id)
+            offset = actor_index % len(legal_reference_ids)
+            rotated_references = (*legal_reference_ids[offset:], *legal_reference_ids[:offset])
+            legal_reference_ids = rotated_references[: self._spec.response_reference_limit]
         topic_ids = (
             tuple(
                 dict.fromkeys(
@@ -470,13 +477,6 @@ class SimulationSession:
             if legal_reference_ids
             else opening_topic_ids
         )
-        if legal_reference_ids and self._spec.response_reference_limit is not None:
-            if discussion_round is None:
-                raise RuntimeError("discussion references require an active round")
-            actor_index = discussion_round.actor_order.index(context.player_id)
-            offset = actor_index % len(legal_reference_ids)
-            rotated_references = (*legal_reference_ids[offset:], *legal_reference_ids[:offset])
-            legal_reference_ids = rotated_references[: self._spec.response_reference_limit]
         discussion_config = self._game.snapshot().config.discussion
         active_discussion_stage = (
             next(
