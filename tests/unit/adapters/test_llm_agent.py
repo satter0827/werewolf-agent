@@ -155,6 +155,33 @@ def test_langchain_session_preserves_model_selected_discussion_reference() -> No
     assert response.response_to_id == "speech-2"
 
 
+def test_langchain_session_accepts_speech_within_propagated_limit() -> None:
+    utterance = "根" * 100
+    factory = _factory(
+        '{"type":"speech","utterance":"'
+        + utterance
+        + '","topic_id":"p2","position":"oppose","relation":"independent"}'
+    )
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = replace(
+        _request(context),
+        observation=replace(_request(context).observation, phase="day_discussion"),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("independent",),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.utterance == utterance
+
+
 def test_langchain_session_rejects_model_reference_outside_visible_options() -> None:
     factory = _factory(
         '{"type":"speech","utterance":"応答します","topic_id":"p2",'

@@ -707,7 +707,11 @@ def _validated_decision(
     if (
         model_decision.type is AgentActionType.SPEECH
         and model_decision.utterance is not None
-        and len(model_decision.utterance) > LLM_SPEECH_MESSAGE_MAX_CHARS
+        and len(model_decision.utterance)
+        > _positive_rule_integer(
+            observation.decision_constraints.get("speech_max_chars"),
+            default=LLM_SPEECH_MESSAGE_MAX_CHARS,
+        )
     ):
         raise ValueError("speech is too long")
     return AgentDecision(
