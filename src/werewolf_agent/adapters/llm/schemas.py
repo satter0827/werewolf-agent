@@ -90,6 +90,7 @@ def _action_schema(
                 or response_position is None
             ):
                 raise ValueError("response schema requires one reference branch")
+            message_schema["not"] = {"const": referenced.utterance}
             properties["topic_id"] = {"const": referenced.topic_id}
             properties["position"] = {"const": response_position}
             properties["relation"] = {"const": response_relation}

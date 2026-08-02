@@ -48,6 +48,17 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     assert not validator.is_valid(
         {
             "type": "speech",
+            "utterance": "opening:p2の発言",
+            "topic_id": "p3",
+            "position": "support",
+            "relation": "answer",
+            "evidence_id": "opening:p2",
+            "response_to_id": "opening:p2",
+        }
+    )
+    assert not validator.is_valid(
+        {
+            "type": "speech",
             "utterance": "さらに質問します",
             "topic_id": "p3",
             "position": "undecided",
