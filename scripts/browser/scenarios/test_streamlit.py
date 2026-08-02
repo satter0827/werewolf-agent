@@ -23,6 +23,9 @@ from scripts.browser.scenarios.quality import (
     scroll_streamlit_to_text,
 )
 
+STRUCTURED_DISCUSSION_STAGES = ("opening", "response")
+PHASE_BOUNDARY_STEP_ALLOWANCE = 2
+
 
 def test_setup_sections_and_validation(
     page: Page,
@@ -110,7 +113,9 @@ def _advance_until_target_action(page: Page) -> Locator:
     target = page.get_by_label("対象を選ぶ")
     advance = page.get_by_role("button", name="1ステップ進める")
     message = page.get_by_label("発言内容")
-    for step in range(8):
+    player_count = page.locator(".wa-seat").count()
+    max_steps = player_count * len(STRUCTURED_DISCUSSION_STAGES) + PHASE_BOUNDARY_STEP_ALLOWANCE
+    for step in range(max_steps):
         expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
         if target.is_visible():
             return target
