@@ -26,18 +26,28 @@ def test_response_stage_rejects_independent_relation() -> None:
 
 
 @pytest.mark.parametrize(
-    ("stage", "submission_mode", "reference_stage", "relations", "message"),
+    ("stage", "submission_mode", "actor_order", "reference_stage", "relations", "message"),
     [
         (
             DiscussionRoundKind.OPENING,
             SubmissionMode.ORDERED,
+            "rotating",
             None,
             (DiscussionRelation.INDEPENDENT,),
             "opening stage must use sealed",
         ),
         (
+            DiscussionRoundKind.OPENING,
+            SubmissionMode.SEALED,
+            "reverse_opening",
+            None,
+            (DiscussionRelation.INDEPENDENT,),
+            "opening stage must use rotating actor order",
+        ),
+        (
             DiscussionRoundKind.RESPONSE,
             SubmissionMode.SEALED,
+            "reverse_opening",
             DiscussionRoundKind.OPENING,
             (DiscussionRelation.SUPPORT,),
             "response stage must use ordered",
@@ -45,6 +55,15 @@ def test_response_stage_rejects_independent_relation() -> None:
         (
             DiscussionRoundKind.RESPONSE,
             SubmissionMode.ORDERED,
+            "rotating",
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.SUPPORT,),
+            "response stage must use reverse_opening actor order",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.ORDERED,
+            "reverse_opening",
             DiscussionRoundKind.OPENING,
             (DiscussionRelation.CHALLENGE,),
             "response stage must allow support",
@@ -54,6 +73,7 @@ def test_response_stage_rejects_independent_relation() -> None:
 def test_discussion_stage_rejects_unexecutable_protocols(
     stage: DiscussionRoundKind,
     submission_mode: SubmissionMode,
+    actor_order: str,
     reference_stage: DiscussionRoundKind | None,
     relations: tuple[DiscussionRelation, ...],
     message: str,
@@ -63,7 +83,7 @@ def test_discussion_stage_rejects_unexecutable_protocols(
         DiscussionStageConfig(
             stage=stage,
             submission_mode=submission_mode,
-            actor_order=("rotating" if stage is DiscussionRoundKind.OPENING else "reverse_opening"),
+            actor_order=actor_order,
             reference_stage=reference_stage,
             allowed_relations=relations,
         )

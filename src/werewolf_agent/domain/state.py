@@ -270,11 +270,15 @@ class DiscussionStageConfig:
         if self.stage is DiscussionRoundKind.OPENING:
             if self.submission_mode is not SubmissionMode.SEALED:
                 raise ValueError("opening stage must use sealed submission")
+            if self.actor_order != "rotating":
+                raise ValueError("opening stage must use rotating actor order")
             if reference_stage is not None or relations != (DiscussionRelation.INDEPENDENT,):
                 raise ValueError("opening stage must be independent and reference-free")
         else:
             if self.submission_mode is not SubmissionMode.ORDERED:
                 raise ValueError("response stage must use ordered submission")
+            if self.actor_order != "reverse_opening":
+                raise ValueError("response stage must use reverse_opening actor order")
             if reference_stage is not DiscussionRoundKind.OPENING:
                 raise ValueError("response stage must reference opening")
             if DiscussionRelation.INDEPENDENT in relations:

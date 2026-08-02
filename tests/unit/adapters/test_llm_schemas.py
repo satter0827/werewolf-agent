@@ -89,6 +89,28 @@ def test_response_schema_requires_one_visible_legal_reference() -> None:
     )
 
 
+def test_response_schema_uses_only_relations_authorized_by_setup() -> None:
+    observation = _observation(
+        actions=[{"type": "speech"}],
+        legal_topics={"speech": ["p3"]},
+        evidence_options={"speech": [_evidence("opening:p2", "p2", "p3", "undecided")]},
+        legal_references={"speech": ["opening:p2"]},
+        legal_relations={"speech": ["support"]},
+        speeches=[_speech("opening:p2", "p2", "p3", "undecided")],
+    )
+    validator = Draft202012Validator(build_decision_response_schema(observation, _context()))
+
+    base = {
+        "type": "speech",
+        "utterance": "判断保留という立場を支持します",
+        "topic_id": "p3",
+        "evidence_id": "opening:p2",
+        "response_to_id": "opening:p2",
+    }
+    assert validator.is_valid({**base, "position": "undecided", "relation": "support"})
+    assert not validator.is_valid({**base, "position": "support", "relation": "answer"})
+
+
 def test_vote_schema_constrains_target_and_requires_reason() -> None:
     observation = _observation(
         phase="voting",
@@ -177,6 +199,7 @@ def _observation(
     legal_topics: dict[str, list[str]] | None = None,
     evidence_options: dict[str, list[dict[str, object]]] | None = None,
     legal_references: dict[str, list[str]] | None = None,
+    legal_relations: dict[str, list[str]] | None = None,
     speeches: list[dict[str, object]] | None = None,
 ) -> AgentObservation:
     return AgentObservation.model_validate(
@@ -194,6 +217,8 @@ def _observation(
             "legal_topics": legal_topics or {},
             "evidence_options": evidence_options or {},
             "legal_references": legal_references or {},
+            "legal_relations": legal_relations
+            or {"speech": ["answer", "support", "challenge", "revise"]},
             "speeches": speeches or [],
         }
     )

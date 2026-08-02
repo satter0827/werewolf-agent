@@ -21,7 +21,11 @@ def build_decision_response_schema(
         references = observation.legal_references.get(action.key, [])
         if action.type is AgentActionType.SPEECH and references:
             for reference_id in references:
-                for relation, position in _response_variants(observation, reference_id):
+                for relation, position in _response_variants(
+                    observation,
+                    action.key,
+                    reference_id,
+                ):
                     branches.append(
                         _action_schema(
                             action,
@@ -180,11 +184,16 @@ def _target_evidence_ids(
 
 def _response_variants(
     observation: AgentObservation,
+    action_key: str,
     reference_id: str,
 ) -> tuple[tuple[str, str], ...]:
     referenced = next(speech for speech in observation.speeches if speech.speech_id == reference_id)
     if referenced.position.value == "undecided":
-        variants: list[tuple[str, str]] = [("answer", "support"), ("answer", "oppose")]
+        variants: list[tuple[str, str]] = [
+            ("answer", "support"),
+            ("answer", "oppose"),
+            ("support", "undecided"),
+        ]
     else:
         opposite = "oppose" if referenced.position.value == "support" else "support"
         variants = [("support", referenced.position.value), ("challenge", opposite)]
@@ -202,7 +211,10 @@ def _response_variants(
             for position in ("support", "oppose", "undecided")
             if position != prior.position.value
         )
-    return tuple(variants)
+    allowed_relations = {
+        relation.value for relation in observation.legal_relations.get(action_key, [])
+    }
+    return tuple(item for item in variants if item[0] in allowed_relations)
 
 
 __all__ = ["build_decision_response_schema"]

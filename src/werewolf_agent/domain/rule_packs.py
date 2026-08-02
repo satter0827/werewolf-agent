@@ -30,7 +30,9 @@ if TYPE_CHECKING:
 RULE_PACK_CONTRACT_VERSION = "0.9.0"
 CORE_RULE_PACK_ID = "core"
 CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.9.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.8.0").hexdigest()
+CORE_RULE_PACK_FINGERPRINT = sha256(
+    f"werewolf-agent:core-rule-pack:{CORE_RULE_PACK_IMPLEMENTATION_VERSION}".encode()
+).hexdigest()
 
 
 @dataclass(frozen=True)

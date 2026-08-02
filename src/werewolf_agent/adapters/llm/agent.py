@@ -40,7 +40,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.8.0"
+_IMPLEMENTATION_VERSION = "1.9.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -318,6 +318,11 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
         },
         legal_references={
             option.key: list(option.legal_reference_ids) for option in request.options
+        },
+        legal_relations={
+            option.key: [AgentDiscussionRelation(item) for item in option.legal_relations]
+            for option in request.options
+            if option.legal_relations
         },
         decision_constraints=decision_constraints,
         speeches=speeches,

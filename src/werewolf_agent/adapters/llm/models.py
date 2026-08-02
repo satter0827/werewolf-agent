@@ -372,6 +372,7 @@ class AgentObservation(_LlmModel):
     legal_topics: dict[str, list[str]] = Field(default_factory=dict)
     evidence_options: dict[str, list[AgentEvidence]] = Field(default_factory=dict)
     legal_references: dict[str, list[str]] = Field(default_factory=dict)
+    legal_relations: dict[str, list[AgentDiscussionRelation]] = Field(default_factory=dict)
     decision_constraints: dict[str, int] = Field(default_factory=dict)
     speeches: list[AgentSpeech] = Field(default_factory=list)
     vote_rounds: list[AgentVoteRound] = Field(default_factory=list)
@@ -403,6 +404,20 @@ class AgentObservation(_LlmModel):
                 non_blank(str(player_id), "legal target player id") for player_id in player_ids
             ]
             for action_key, player_ids in value.items()
+        }
+
+    @field_validator("legal_relations")
+    @classmethod
+    def validate_legal_relations(
+        cls,
+        value: dict[str, list[AgentDiscussionRelation]],
+    ) -> dict[str, list[AgentDiscussionRelation]]:
+        """Return authorized discussion relations keyed by action type."""
+        return {
+            non_blank(str(action_key), "action key"): [
+                AgentDiscussionRelation(item) for item in relations
+            ]
+            for action_key, relations in value.items()
         }
 
     @field_validator("decision_constraints")

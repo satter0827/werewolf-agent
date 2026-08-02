@@ -15,6 +15,7 @@ from werewolf_agent.adapters.llm.fake_definitions import FakeDecisionCatalog
 from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
+    AgentDiscussionRelation,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -376,12 +377,10 @@ def _fake_discussion_semantics(
     reference = next(
         speech for speech in request.task.observation.speeches if speech.speech_id == response_to_id
     )
-    if reference.position.value == "undecided":
-        return "support", "answer"
-    return (
-        "oppose" if reference.position.value == "support" else "support",
-        "challenge",
-    )
+    allowed_relations = request.task.observation.legal_relations.get(action.key, [])
+    if AgentDiscussionRelation.SUPPORT not in allowed_relations:
+        raise ValueError("response action must authorize support")
+    return reference.position.value, "support"
 
 
 def _fake_template_key(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import random
 from collections.abc import Mapping
 from dataclasses import replace
+from hashlib import sha256
 
 import pytest
 
@@ -45,7 +46,10 @@ from werewolf_agent.domain import (
     VotingPolicy,
     WinResult,
 )
-from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
+from werewolf_agent.domain.rule_packs import (
+    CORE_RULE_PACK_IMPLEMENTATION_VERSION,
+    RULE_PACK_CONTRACT_VERSION,
+)
 from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy, start_discussion
 from werewolf_agent.domain.rules.evidence import public_discussion_evidence
 
@@ -98,6 +102,16 @@ def _definition() -> RuleSetDefinition:
         ),
         abilities={},
     )
+
+
+def test_core_manifest_fingerprint_tracks_implementation_version() -> None:
+    manifest = CoreRulePack().manifest
+    expected = sha256(
+        f"werewolf-agent:core-rule-pack:{CORE_RULE_PACK_IMPLEMENTATION_VERSION}".encode()
+    ).hexdigest()
+
+    assert manifest.implementation_version == CORE_RULE_PACK_IMPLEMENTATION_VERSION
+    assert manifest.fingerprint == expected
 
 
 def test_vote_candidates_and_validation_share_typed_public_evidence() -> None:
