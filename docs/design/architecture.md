@@ -117,6 +117,11 @@ topicを継承し、`support`、`challenge`、`revise`をpositionと発言履歴
 stage完了時にpassとして公開履歴へ確定する。投票evidenceは投票対象本人、対象topicの発言、または
 対象の当日passに限定する。
 
+発言の完全一致と単純反復は、domain、simulation、LLM schema、事後合法性検証で同じ正規化契約を
+使用して判定する。正規化はU+0009からU+000DとU+0020だけを単一のU+0020へ圧縮し、前後から除き、
+ASCII英字だけを大小文字同一として扱う。それ以外のUnicode文字は置換、case fold、空白扱いをせず、
+表示文を変更しない。
+
 ## Agent意思決定と単一ゲーム実行
 
 `agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
