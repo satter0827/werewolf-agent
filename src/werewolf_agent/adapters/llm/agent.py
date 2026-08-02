@@ -39,6 +39,7 @@ from werewolf_agent.agents import (
     DecisionRequest,
     DecisionResponse,
 )
+from werewolf_agent.agents.validation import is_discussion_utterance
 
 _IMPLEMENTATION_VERSION = "1.9.0"
 _FAILURE_CODE = "llm_decision_failed"
@@ -200,7 +201,7 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     for event in request.public_timeline:
         if event.event_type == "speech" and event.actor_id is not None:
             utterance = event.payload.get("utterance")
-            if isinstance(utterance, str) and utterance.strip():
+            if is_discussion_utterance(utterance):
                 speeches.append(
                     AgentSpeech(
                         day=event.day,

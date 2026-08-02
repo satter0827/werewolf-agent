@@ -17,7 +17,11 @@ from werewolf_agent.adapters.llm.messages import (
     message_target_required,
     message_unsupported_type,
 )
-from werewolf_agent.agents.validation import non_blank, optional_non_blank
+from werewolf_agent.agents.validation import (
+    non_blank,
+    optional_non_blank,
+    validate_discussion_utterance,
+)
 
 
 class AgentPhase(StrEnum):
@@ -124,11 +128,17 @@ class AgentSpeech(_LlmModel):
     evidence_id: str | None = None
     response_to_id: str | None = None
 
-    @field_validator("speech_id", "player_id", "utterance", "topic_id")
+    @field_validator("speech_id", "player_id", "topic_id")
     @classmethod
     def validate_non_blank(cls, value: str, info: Any) -> str:
         """Return a trimmed non-empty string."""
         return non_blank(value, str(info.field_name))
+
+    @field_validator("utterance")
+    @classmethod
+    def validate_utterance(cls, value: str) -> str:
+        """Preserve display text under the discussion whitespace contract."""
+        return validate_discussion_utterance(value)
 
     @field_validator("evidence_id", "response_to_id")
     @classmethod
@@ -231,13 +241,17 @@ class AgentModelDecision(_LlmModel):
     response_to_id: str | None = None
     reason: str = ""
 
-    @field_validator(
-        "ability_id", "target_id", "utterance", "topic_id", "evidence_id", "response_to_id"
-    )
+    @field_validator("ability_id", "target_id", "topic_id", "evidence_id", "response_to_id")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return normalized optional output text."""
         return optional_non_blank(value, str(info.field_name))
+
+    @field_validator("utterance")
+    @classmethod
+    def validate_utterance(cls, value: str | None) -> str | None:
+        """Preserve optional display text under the discussion whitespace contract."""
+        return None if value is None else validate_discussion_utterance(value)
 
     @model_validator(mode="after")
     def validate_shape(self) -> Self:
@@ -483,13 +497,17 @@ class AgentDecision(_LlmModel):
         """Return a trimmed non-empty player id."""
         return non_blank(value, "player_id")
 
-    @field_validator(
-        "ability_id", "target_id", "utterance", "topic_id", "evidence_id", "response_to_id"
-    )
+    @field_validator("ability_id", "target_id", "topic_id", "evidence_id", "response_to_id")
     @classmethod
     def validate_optional_text(cls, value: str | None, info: Any) -> str | None:
         """Return a trimmed optional string."""
         return optional_non_blank(value, str(info.field_name))
+
+    @field_validator("utterance")
+    @classmethod
+    def validate_utterance(cls, value: str | None) -> str | None:
+        """Preserve optional display text under the discussion whitespace contract."""
+        return None if value is None else validate_discussion_utterance(value)
 
     @model_validator(mode="after")
     def validate_payload(self) -> Self:

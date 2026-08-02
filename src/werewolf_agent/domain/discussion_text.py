@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import TypeGuard
+
 DISCUSSION_WHITESPACE = frozenset(" \t\n\r\f\v")
 _ASCII_CASE_TRANSLATION = str.maketrans(
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
@@ -29,8 +31,22 @@ def normalize_discussion_utterance(value: str) -> str:
     return collapse_discussion_whitespace(value).translate(_ASCII_CASE_TRANSLATION)
 
 
+def is_discussion_utterance(value: object) -> TypeGuard[str]:
+    """値が表示文として有効な文字列ならtrueを返す."""
+    return isinstance(value, str) and bool(collapse_discussion_whitespace(value))
+
+
+def validate_discussion_utterance(value: str) -> str:
+    """表示文を変更せず、契約上の空白だけからなる値を拒否する."""
+    if not is_discussion_utterance(value):
+        raise ValueError("utterance must not be blank.")
+    return value
+
+
 __all__ = [
     "DISCUSSION_WHITESPACE",
     "collapse_discussion_whitespace",
+    "is_discussion_utterance",
     "normalize_discussion_utterance",
+    "validate_discussion_utterance",
 ]

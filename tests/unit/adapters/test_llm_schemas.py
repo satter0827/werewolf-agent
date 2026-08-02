@@ -1,12 +1,21 @@
 """Tests for request-specific LLM structured-output schemas."""
 
+import pytest
 from jsonschema import Draft202012Validator
+from pydantic import ValidationError
 
 from werewolf_agent.adapters.llm.langchain.service import (
     _normalized_utterance as adapter_normalized_utterance,
 )
-from werewolf_agent.adapters.llm.models import AgentObservation
+from werewolf_agent.adapters.llm.models import (
+    AgentDecision,
+    AgentModelDecision,
+    AgentObservation,
+    AgentSpeech,
+)
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
+from werewolf_agent.agents import DecisionResponse
+from werewolf_agent.domain import Action
 from werewolf_agent.domain.rules.discussion import _normalized_message
 from werewolf_agent.simulation.session import (
     _normalized_utterance as simulation_normalized_utterance,
@@ -186,7 +195,7 @@ def test_repetition_normalization_is_consistent_and_schema_expressible() -> None
         evidence_options={"speech": [_evidence("opening:p2", "p2", "p3", "support")]},
         legal_references={"speech": ["opening:p2"]},
         legal_relations={"speech": ["support"]},
-        speeches=[_speech("opening:p2", "p2", "p3", "support", utterance="A B")],
+        speeches=[_speech("opening:p2", "p2", "p3", "support", utterance="Claim")],
     )
     whitespace_validator = Draft202012Validator(
         build_decision_response_schema(whitespace_observation, _context())
@@ -199,9 +208,67 @@ def test_repetition_normalization_is_consistent_and_schema_expressible() -> None
         "evidence_id": "opening:p2",
         "response_to_id": "opening:p2",
     }
-    assert not whitespace_validator.is_valid({**response, "utterance": " A\tB "})
-    assert whitespace_validator.is_valid({**response, "utterance": "A\u001cB"})
-    assert whitespace_validator.is_valid({**response, "utterance": "A\ufeffB"})
+    assert not whitespace_validator.is_valid({**response, "utterance": " Claim\t"})
+    assert whitespace_validator.is_valid({**response, "utterance": "Claim\u001c"})
+    assert whitespace_validator.is_valid({**response, "utterance": "Claim\ufeff"})
+
+
+def test_non_contract_edge_whitespace_is_preserved_across_decision_boundaries() -> None:
+    utterance = "Claim\u001c"
+    model_payload = {
+        "type": "speech",
+        "utterance": utterance,
+        "topic_id": "p2",
+        "position": "support",
+        "relation": "independent",
+    }
+
+    assert AgentModelDecision.model_validate(model_payload).utterance == utterance
+    assert (
+        AgentDecision.speech(
+            "p1",
+            utterance,
+            topic_id="p2",
+            position="support",
+            relation="independent",
+        ).utterance
+        == utterance
+    )
+    assert (
+        AgentSpeech(
+            day=1,
+            speech_id="speech-1",
+            player_id="p1",
+            utterance=utterance,
+            topic_id="p2",
+            position="support",
+            relation="independent",
+        ).utterance
+        == utterance
+    )
+    assert (
+        DecisionResponse(
+            "speech",
+            utterance=utterance,
+            topic_id="p2",
+            position="support",
+            relation="independent",
+        ).utterance
+        == utterance
+    )
+    assert (
+        Action.speech(
+            "p1",
+            utterance,
+            topic_id="p2",
+            position="support",
+            relation="independent",
+        ).utterance
+        == utterance
+    )
+
+    with pytest.raises((ValidationError, ValueError), match="utterance must not be blank"):
+        AgentModelDecision.model_validate({**model_payload, "utterance": " \t\n"})
 
 
 def test_vote_schema_constrains_target_and_requires_reason() -> None:
