@@ -73,6 +73,10 @@ class PublicClient(Protocol):
 class GameClient(Protocol):
     """Authenticated game operations used by human-facing entry points."""
 
+    def preview_players(self, request: PlayerPreviewRequest) -> PlayerPreviewResponse:
+        """Return a public roster preview for an authorized setup selection."""
+        ...
+
     def get_session(self) -> SessionResponse:
         """Return safe capabilities of the current session."""
         ...
