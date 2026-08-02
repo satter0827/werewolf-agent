@@ -144,6 +144,9 @@ def test_repetition_normalization_is_consistent_and_schema_expressible() -> None
 
     for normalize in normalizers:
         assert normalize("Claim  is true") == normalize(" claim is TRUE ")
+        assert normalize("Claim\tis\ntrue") == normalize(" claim is TRUE ")
+        assert normalize("A B") != normalize("A\u001cB")
+        assert normalize("A B") != normalize("A\ufeffB")
         assert normalize("STRASSE") != normalize("straße")
         assert normalize("ΟΣ") != normalize("ος")
 
@@ -176,6 +179,29 @@ def test_repetition_normalization_is_consistent_and_schema_expressible() -> None
             "response_to_id": "opening:p2",
         }
     )
+
+    whitespace_observation = _observation(
+        actions=[{"type": "speech"}],
+        legal_topics={"speech": ["p3"]},
+        evidence_options={"speech": [_evidence("opening:p2", "p2", "p3", "support")]},
+        legal_references={"speech": ["opening:p2"]},
+        legal_relations={"speech": ["support"]},
+        speeches=[_speech("opening:p2", "p2", "p3", "support", utterance="A B")],
+    )
+    whitespace_validator = Draft202012Validator(
+        build_decision_response_schema(whitespace_observation, _context())
+    )
+    response = {
+        "type": "speech",
+        "topic_id": "p3",
+        "position": "support",
+        "relation": "support",
+        "evidence_id": "opening:p2",
+        "response_to_id": "opening:p2",
+    }
+    assert not whitespace_validator.is_valid({**response, "utterance": " A\tB "})
+    assert whitespace_validator.is_valid({**response, "utterance": "A\u001cB"})
+    assert whitespace_validator.is_valid({**response, "utterance": "A\ufeffB"})
 
 
 def test_vote_schema_constrains_target_and_requires_reason() -> None:

@@ -40,13 +40,10 @@ from werewolf_agent.adapters.llm.ports import DecisionModel
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
 from werewolf_agent.adapters.llm.tracing import LlmInvocationTrace, LlmTraceSink
 from werewolf_agent.contracts.error_catalog import ERROR_CONTEXT_LLM_TIMEOUT_SECONDS
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 
 PIPELINE_REVISION = "discussion-move-v1"
 CompiledPromptMessage = tuple[Literal["system", "human", "ai"], str, str, bool]
-_ASCII_CASE_TRANSLATION = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
-)
 
 
 @dataclass(frozen=True)
@@ -735,7 +732,7 @@ def _validated_decision(
 
 def _normalized_utterance(value: str) -> str:
     """Normalize repetition checks with schema-expressible ASCII case folding."""
-    return " ".join(value.split()).translate(_ASCII_CASE_TRANSLATION)
+    return normalize_discussion_utterance(value)
 
 
 def _validate_discussion_relation(

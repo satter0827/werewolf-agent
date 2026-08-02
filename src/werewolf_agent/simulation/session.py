@@ -32,6 +32,7 @@ from werewolf_agent.domain import (
     GameState,
     GameView,
 )
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 from werewolf_agent.setup import namespace_seed
 from werewolf_agent.simulation.contracts import (
     AgentMetadata,
@@ -44,11 +45,6 @@ from werewolf_agent.simulation.contracts import (
     SimulationStep,
     SimulationStepKind,
     SimulationStopReason,
-)
-
-_ASCII_CASE_TRANSLATION = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
 )
 
 
@@ -905,7 +901,7 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
 
 def _normalized_utterance(value: str) -> str:
     """Normalize repetition checks with schema-expressible ASCII case folding."""
-    return " ".join(value.split()).translate(_ASCII_CASE_TRANSLATION)
+    return normalize_discussion_utterance(value)
 
 
 def _require_legal_response_relation(

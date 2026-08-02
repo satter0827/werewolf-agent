@@ -27,9 +27,9 @@ from werewolf_agent.domain.state import (
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.9.0"
+RULE_PACK_CONTRACT_VERSION = "0.10.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.9.0"
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.10.0"
 CORE_RULE_PACK_FINGERPRINT = sha256(
     f"werewolf-agent:core-rule-pack:{CORE_RULE_PACK_IMPLEMENTATION_VERSION}".encode()
 ).hexdigest()

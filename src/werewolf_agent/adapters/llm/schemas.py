@@ -10,6 +10,7 @@ from werewolf_agent.adapters.llm.models import (
     AgentAvailableAction,
     AgentObservation,
 )
+from werewolf_agent.domain.discussion_text import collapse_discussion_whitespace
 
 
 def build_decision_response_schema(
@@ -161,19 +162,20 @@ def _speech_max_chars(context: Mapping[str, object]) -> int | None:
 
 
 def _normalized_utterance_pattern(utterance: str) -> str:
-    """Match one utterance after whitespace collapse and case normalization."""
-    normalized = " ".join(utterance.split())
+    """Match one utterance after ASCII-whitespace and ASCII-case normalization."""
+    normalized = collapse_discussion_whitespace(utterance)
     parts: list[str] = []
     for character in normalized:
         if character == " ":
-            parts.append(r"\s+")
+            parts.append(r"[\u0009-\u000D\u0020]+")
             continue
         variants = {character}
         if character.isascii() and character.isalpha():
             variants.update((character.lower(), character.upper()))
         escaped = sorted({re.escape(variant) for variant in variants if variant})
         parts.append(escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})")
-    return rf"^\s*{''.join(parts)}\s*$"
+    whitespace = r"[\u0009-\u000D\u0020]"
+    return rf"^{whitespace}*{''.join(parts)}{whitespace}*$"
 
 
 def _vote_reason_max_chars(context: Mapping[str, object]) -> int:

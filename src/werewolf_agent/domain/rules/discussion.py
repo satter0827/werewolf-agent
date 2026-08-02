@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rule_packs import DiscussionPolicy
 from werewolf_agent.domain.state import (
@@ -21,11 +22,6 @@ from werewolf_agent.domain.state import (
     GameState,
     SpeechRecord,
     SubmissionMode,
-)
-
-_ASCII_CASE_TRANSLATION = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
-    "abcdefghijklmnopqrstuvwxyz",
 )
 
 
@@ -313,7 +309,7 @@ def _speech_record(
 
 
 def _normalized_message(value: str) -> str:
-    return " ".join(value.split()).translate(_ASCII_CASE_TRANSLATION)
+    return normalize_discussion_utterance(value)
 
 
 def _validate_response_relation(
