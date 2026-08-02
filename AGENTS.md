@@ -83,6 +83,12 @@ uv run --no-sync python -m scripts.architecture
 
 ## Pull Requestガバナンス
 
+コードレビューは変更が`develop`へ入る前に完了させる。実装中はローカル`/review`で未コミット差分または
+baseとの差分を検査し、`develop`向けPRではGitHub Codexレビューを最新head SHAへ明示的に一度要求する。
+指摘修正でheadが変わった場合だけ再レビューする。自動レビューは使用せず、`main`向けPRでは
+Codexレビューを要求しない。`main`は`develop`でレビュー済みの変更をDeep、互換性検査、リリース証拠、
+人間の最終判断で昇格させる。
+
 AIはPRの調査、作成、修正、通常コメント、inline `COMMENT`を担当する。`develop`向けPRでは
 必須checkと未解決指摘を最新head SHAで確認し、そのcommitへ判断を記録してmerge commitで取り込める。
 レビューAPIの`COMMENT`、`APPROVE`、`REQUEST_CHANGES`はすべて最新head SHAへ固定する。通常コメントは

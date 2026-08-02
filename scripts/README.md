@@ -136,6 +136,11 @@ PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`�
 別のPR head SHAを渡さず、reportのheadと実際にgateを動かすtreeを一致させる。最終的なmerge判定は
 PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
+コードレビューは`develop`へ取り込む前に行う。実装中はCodexの`/review`で未コミット差分またはbaseとの差分を
+検査し、`develop`向けPRの最終headだけへ`@codex review`を明示的に要求する。指摘修正でheadが変わった場合は
+新しいheadへ再要求する。ChatGPTのCodexコードレビュー設定では自動レビューを無効にする。
+`main`向けPRでは`@codex review`を要求せず、Deep、互換性検査、リリース証拠と人間判断を使用する。
+
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
 適用した後にGitHub APIから読み戻して確認する。夜間Deepは毎日03:17 JSTに変更を検知し、
 月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。

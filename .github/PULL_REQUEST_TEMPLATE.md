@@ -17,6 +17,8 @@
 - [ ] formatter、lint、型検査を確認した
 - [ ] 関連テストを確認した
 - [ ] 必要な文書を更新した
+- [ ] develop向けでは最新headのCodex reviewを確認した
+- [ ] main向けではCodex reviewを要求せず、Deepと互換性検査を確認した
 
 ## 最終判断
 
