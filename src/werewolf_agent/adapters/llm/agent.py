@@ -41,7 +41,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.agents.validation import is_discussion_utterance
 
-_IMPLEMENTATION_VERSION = "1.9.0"
+_IMPLEMENTATION_VERSION = "1.10.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
