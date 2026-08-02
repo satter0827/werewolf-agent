@@ -11,7 +11,7 @@ from psycopg.types.json import Jsonb
 from werewolf_agent.application.errors import AppError, ErrorCode
 from werewolf_agent.application.ports import SetupRepository
 from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
-from werewolf_agent.setup import GameSetupDocument
+from werewolf_agent.setup import GameSetupDocument, SETUP_SCHEMA_VERSION
 
 
 class SupabaseSetupRepository(SetupRepository):
@@ -38,8 +38,16 @@ class SupabaseSetupRepository(SetupRepository):
             (str(owner_id),),
         )
         count_row = self._connection.execute(
-            "select count(*) as setup_count from private.user_setups where owner_user_id = %s",
-            (owner_id,),
+            """
+            select count(*) as setup_count
+            from private.user_setups s
+            where s.owner_user_id = %s
+              and exists (
+                select 1 from private.user_setup_revisions r
+                where r.setup_id = s.setup_id and r.schema_version = %s
+              )
+            """,
+            (owner_id, SETUP_SCHEMA_VERSION),
         ).fetchone()
         if count_row is None or int(count_row["setup_count"]) >= max_setups:
             raise AppError(
@@ -78,7 +86,7 @@ class SupabaseSetupRepository(SetupRepository):
             join lateral (
               select revision, created_at
               from private.user_setup_revisions
-              where setup_id = s.setup_id
+              where setup_id = s.setup_id and schema_version = %s
               order by revision desc
               limit 1
             ) r on true
@@ -86,7 +94,7 @@ class SupabaseSetupRepository(SetupRepository):
             order by r.created_at desc, s.setup_id
             limit %s offset %s
             """,
-            (UUID(owner_user_id), limit, offset),
+            (SETUP_SCHEMA_VERSION, UUID(owner_user_id), limit, offset),
         ).fetchall()
         summaries: list[SavedSetupSummary] = []
         for row in rows:
@@ -114,11 +122,18 @@ class SupabaseSetupRepository(SetupRepository):
             from private.user_setups s
             join private.user_setup_revisions r on r.setup_id = s.setup_id
             where s.setup_id = %s and s.owner_user_id = %s
+              and r.schema_version = %s
               and (%s::integer is null or r.revision = %s::integer)
             order by r.revision desc
             limit 1
             """,
-            (parsed_id, UUID(owner_user_id), revision, revision),
+            (
+                parsed_id,
+                UUID(owner_user_id),
+                SETUP_SCHEMA_VERSION,
+                revision,
+                revision,
+            ),
         ).fetchone()
         return None if row is None else _revision(row)
 
@@ -142,10 +157,11 @@ class SupabaseSetupRepository(SetupRepository):
             from private.user_setups s
             join private.user_setup_revisions r on r.setup_id = s.setup_id
             where s.setup_id = %s and s.owner_user_id = %s
+              and r.schema_version = %s
             order by r.revision desc
             limit %s offset %s
             """,
-            (parsed_id, UUID(owner_user_id), limit, offset),
+            (parsed_id, UUID(owner_user_id), SETUP_SCHEMA_VERSION, limit, offset),
         ).fetchall()
         return [_revision(row) for row in rows]
 
@@ -170,12 +186,16 @@ class SupabaseSetupRepository(SetupRepository):
             ) from exc
         parent = self._connection.execute(
             """
-            select setup_id
-            from private.user_setups
-            where setup_id = %s and owner_user_id = %s
+            select s.setup_id
+            from private.user_setups s
+            where s.setup_id = %s and s.owner_user_id = %s
+              and exists (
+                select 1 from private.user_setup_revisions r
+                where r.setup_id = s.setup_id and r.schema_version = %s
+              )
             for update
             """,
-            (parsed_id, UUID(owner_user_id)),
+            (parsed_id, UUID(owner_user_id), SETUP_SCHEMA_VERSION),
         ).fetchone()
         if parent is None:
             raise AppError(
@@ -186,9 +206,9 @@ class SupabaseSetupRepository(SetupRepository):
             """
             select max(revision) as latest_revision
             from private.user_setup_revisions
-            where setup_id = %s
+            where setup_id = %s and schema_version = %s
             """,
-            (parsed_id,),
+            (parsed_id, SETUP_SCHEMA_VERSION),
         ).fetchone()
         latest_revision = int(row["latest_revision"])
         if latest_revision != expected_revision:

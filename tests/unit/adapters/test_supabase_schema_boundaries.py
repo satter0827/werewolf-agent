@@ -73,7 +73,8 @@ def test_latest_setup_schema_constraint_accepts_only_current_documents() -> None
     migration = SETUP_SCHEMA_0_7_0.read_text(encoding="utf-8").casefold()
 
     assert 'drop constraint "user_setup_revisions_schema_version_check"' in migration
-    assert "check (schema_version = '0.7.0')" in migration
+    assert "check (schema_version = '0.7.0') not valid" in migration
+    assert "delete from" not in migration
 
 
 def test_baseline_has_no_redundant_engine_or_definition_version_columns() -> None:
