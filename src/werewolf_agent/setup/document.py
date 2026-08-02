@@ -12,9 +12,16 @@ from werewolf_agent.domain.state import (
     AbilityDefinition as DomainAbilityDefinition,
 )
 from werewolf_agent.domain.state import (
-    LocalRules,
+    DiscussionConfig,
+    DiscussionRelation,
+    DiscussionRoundKind,
+    DiscussionStageConfig,
+    LifecycleConfig,
+    NightConfig,
     Phase,
     RoleCatalog,
+    SubmissionMode,
+    VotingConfig,
 )
 from werewolf_agent.domain.state import (
     RoleDefinition as DomainRoleDefinition,
@@ -27,7 +34,7 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.4.0"
+SETUP_SCHEMA_VERSION: Final = "0.6.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(
@@ -77,10 +84,16 @@ def _mapping(value: object, name: str) -> Mapping[str, object]:
     return {str(key): item for key, item in value.items()}
 
 
-def _strict(value: Mapping[str, object], required: set[str] | frozenset[str], name: str) -> None:
+def _strict(
+    value: Mapping[str, object],
+    required: set[str] | frozenset[str],
+    name: str,
+    *,
+    optional: set[str] | frozenset[str] = frozenset(),
+) -> None:
     actual = set(value)
     missing = sorted(required - actual)
-    extra = sorted(actual - required)
+    extra = sorted(actual - required - optional)
     if missing:
         raise ValueError(f"{name} is missing required fields: {missing}")
     if extra:
@@ -293,68 +306,190 @@ class AbilityDefinition:
 
 
 @dataclass(frozen=True)
-class LocalRulesDefinition:
-    """Abilityが所有しないゲーム全体の規則を表す."""
+class DiscussionStageDefinition:
+    """議論stageの提出順序と参照可能な関係を表す."""
 
-    day_speech_limit_per_player: int
+    stage: str
+    submission_mode: str
+    actor_order: str
+    reference_stage: str | None
+    allowed_relations: tuple[str, ...]
+
+    @classmethod
+    def from_mapping(cls, value: object) -> DiscussionStageDefinition:
+        """JSON互換mappingを検証してstage定義を返す."""
+        source = _mapping(value, "discussion stage")
+        _strict(
+            source,
+            {"stage", "submission_mode", "actor_order", "allowed_relations"},
+            "discussion stage",
+            optional={"reference_stage"},
+        )
+        stage = _choice(source["stage"], "stage", {"opening", "response"})
+        relations = tuple(
+            _choice(
+                item,
+                "allowed_relation",
+                {"independent", "answer", "support", "challenge", "revise"},
+            )
+            for item in _sequence(source["allowed_relations"], "allowed_relations")
+        )
+        if not relations or len(relations) != len(set(relations)):
+            raise ValueError("allowed_relations must contain unique values")
+        reference = source.get("reference_stage")
+        return cls(
+            stage,
+            _choice(source["submission_mode"], "submission_mode", {"sealed", "ordered"}),
+            _choice(source["actor_order"], "actor_order", {"rotating", "reverse_opening"}),
+            _choice(reference, "reference_stage", {"opening"}) if reference is not None else None,
+            relations,
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        """永続化できるJSON互換mappingを返す."""
+        result: dict[str, object] = {
+            "stage": self.stage,
+            "submission_mode": self.submission_mode,
+            "actor_order": self.actor_order,
+            "allowed_relations": list(self.allowed_relations),
+        }
+        if self.reference_stage is not None:
+            result["reference_stage"] = self.reference_stage
+        return result
+
+
+@dataclass(frozen=True)
+class DiscussionDefinition:
+    """一局で使用する議論方式と公開発言長を表す."""
+
+    protocol_id: str
+    message_max_chars: int
+    cycles_per_day: int = 1
+    stages: tuple[DiscussionStageDefinition, ...] = ()
+
+    @classmethod
+    def from_mapping(cls, value: object) -> DiscussionDefinition:
+        """JSON互換mappingを検証して議論定義を返す."""
+        source = _mapping(value, "discussion")
+        _strict(
+            source,
+            {"protocol_id", "message_max_chars", "stages"},
+            "discussion",
+            optional={"cycles_per_day"},
+        )
+        return cls(
+            _text(source["protocol_id"], "protocol_id"),
+            _integer(source["message_max_chars"], "message_max_chars", minimum=1, maximum=2000),
+            _integer(source.get("cycles_per_day", 1), "cycles_per_day", minimum=1, maximum=10),
+            tuple(
+                DiscussionStageDefinition.from_mapping(item)
+                for item in _sequence(source["stages"], "stages")
+            ),
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        """永続化できるJSON互換mappingを返す."""
+        return {
+            "protocol_id": self.protocol_id,
+            "message_max_chars": self.message_max_chars,
+            "cycles_per_day": self.cycles_per_day,
+            "stages": [stage.to_mapping() for stage in self.stages],
+        }
+
+
+@dataclass(frozen=True)
+class VotingDefinition:
+    """一局で使用する投票規則を表す."""
+
     allow_self_vote: bool
-    allow_vote_revision: bool
-    allow_night_action_revision: bool
-    vote_tie_resolution: str
+    allow_revision: bool
+    tie_resolution: str
+    reason_max_chars: int
+
+    @classmethod
+    def from_mapping(cls, value: object) -> VotingDefinition:
+        """JSON互換mappingを検証して投票定義を返す."""
+        source = _mapping(value, "voting")
+        _strict(
+            source,
+            {"allow_self_vote", "allow_revision", "tie_resolution", "reason_max_chars"},
+            "voting",
+        )
+        return cls(
+            _boolean(source["allow_self_vote"], "allow_self_vote"),
+            _boolean(source["allow_revision"], "allow_revision"),
+            _choice(
+                source["tie_resolution"],
+                "tie_resolution",
+                {"no_elimination", "random_elimination", "revote"},
+            ),
+            _integer(source["reason_max_chars"], "reason_max_chars", minimum=1, maximum=1000),
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        """永続化できるJSON互換mappingを返す."""
+        return {
+            "allow_self_vote": self.allow_self_vote,
+            "allow_revision": self.allow_revision,
+            "tie_resolution": self.tie_resolution,
+            "reason_max_chars": self.reason_max_chars,
+        }
+
+
+@dataclass(frozen=True)
+class NightDefinition:
+    """一局で使用する夜行動規則を表す."""
+
+    allow_action_revision: bool
+    allow_pass: bool
+
+    @classmethod
+    def from_mapping(cls, value: object) -> NightDefinition:
+        """JSON互換mappingを検証して夜行動定義を返す."""
+        source = _mapping(value, "night")
+        _strict(source, {"allow_action_revision", "allow_pass"}, "night")
+        return cls(
+            _boolean(source["allow_action_revision"], "allow_action_revision"),
+            _boolean(source["allow_pass"], "allow_pass"),
+        )
+
+    def to_mapping(self) -> dict[str, object]:
+        """永続化できるJSON互換mappingを返す."""
+        return {
+            "allow_action_revision": self.allow_action_revision,
+            "allow_pass": self.allow_pass,
+        }
+
+
+@dataclass(frozen=True)
+class LifecycleDefinition:
+    """一局で使用するphase遷移と死亡公開規則を表す."""
+
     starting_phase: str
     reveal_role_on_death: bool
     require_all_actions_before_advance: bool
 
     @classmethod
-    def from_mapping(cls, value: object) -> LocalRulesDefinition:
-        """JSON互換mappingを検証してゲーム全体規則を返す."""
-        source = _mapping(value, "rules")
-        fields = {
-            "day_speech_limit_per_player",
-            "allow_self_vote",
-            "allow_vote_revision",
-            "allow_night_action_revision",
-            "vote_tie_resolution",
-            "starting_phase",
-            "reveal_role_on_death",
-            "require_all_actions_before_advance",
-        }
-        _strict(source, fields, "rules")
+    def from_mapping(cls, value: object) -> LifecycleDefinition:
+        """JSON互換mappingを検証して進行定義を返す."""
+        source = _mapping(value, "lifecycle")
+        _strict(
+            source,
+            {"starting_phase", "reveal_role_on_death", "require_all_actions_before_advance"},
+            "lifecycle",
+        )
         return cls(
-            day_speech_limit_per_player=_integer(
-                source["day_speech_limit_per_player"],
-                "day_speech_limit_per_player",
-                minimum=0,
-                maximum=100,
-            ),
-            allow_self_vote=_boolean(source["allow_self_vote"], "allow_self_vote"),
-            allow_vote_revision=_boolean(source["allow_vote_revision"], "allow_vote_revision"),
-            allow_night_action_revision=_boolean(
-                source["allow_night_action_revision"], "allow_night_action_revision"
-            ),
-            vote_tie_resolution=_choice(
-                source["vote_tie_resolution"],
-                "vote_tie_resolution",
-                {"no_elimination", "random_elimination", "revote"},
-            ),
-            starting_phase=_choice(
-                source["starting_phase"], "starting_phase", {"night", "day_discussion"}
-            ),
-            reveal_role_on_death=_boolean(source["reveal_role_on_death"], "reveal_role_on_death"),
-            require_all_actions_before_advance=_boolean(
+            _choice(source["starting_phase"], "starting_phase", {"night", "day_discussion"}),
+            _boolean(source["reveal_role_on_death"], "reveal_role_on_death"),
+            _boolean(
                 source["require_all_actions_before_advance"],
                 "require_all_actions_before_advance",
             ),
         )
 
     def to_mapping(self) -> dict[str, object]:
-        """JSON互換の正規化済みゲーム全体規則を返す."""
+        """永続化できるJSON互換mappingを返す."""
         return {
-            "day_speech_limit_per_player": self.day_speech_limit_per_player,
-            "allow_self_vote": self.allow_self_vote,
-            "allow_vote_revision": self.allow_vote_revision,
-            "allow_night_action_revision": self.allow_night_action_revision,
-            "vote_tie_resolution": self.vote_tie_resolution,
             "starting_phase": self.starting_phase,
             "reveal_role_on_death": self.reveal_role_on_death,
             "require_all_actions_before_advance": self.require_all_actions_before_advance,
@@ -368,13 +503,20 @@ class MechanicsDefinition:
     role_counts: Mapping[str, int]
     roles: Mapping[str, RoleDefinition]
     abilities: Mapping[str, AbilityDefinition]
-    rules: LocalRulesDefinition
+    discussion: DiscussionDefinition
+    voting: VotingDefinition
+    night: NightDefinition
+    lifecycle: LifecycleDefinition
 
     @classmethod
     def from_mapping(cls, value: object) -> MechanicsDefinition:
         """JSON互換mappingを参照整合性まで検証してmechanicsを返す."""
         source = _mapping(value, "mechanics")
-        _strict(source, {"role_counts", "roles", "abilities", "rules"}, "mechanics")
+        _strict(
+            source,
+            {"role_counts", "roles", "abilities", "discussion", "voting", "night", "lifecycle"},
+            "mechanics",
+        )
         role_counts = MappingProxyType(
             {
                 _text(key, "role id"): _integer(count, "role count", minimum=1)
@@ -406,7 +548,10 @@ class MechanicsDefinition:
             role_counts=role_counts,
             roles=roles,
             abilities=abilities,
-            rules=LocalRulesDefinition.from_mapping(source["rules"]),
+            discussion=DiscussionDefinition.from_mapping(source["discussion"]),
+            voting=VotingDefinition.from_mapping(source["voting"]),
+            night=NightDefinition.from_mapping(source["night"]),
+            lifecycle=LifecycleDefinition.from_mapping(source["lifecycle"]),
         )
 
     def to_mapping(self) -> dict[str, object]:
@@ -415,7 +560,10 @@ class MechanicsDefinition:
             "role_counts": dict(self.role_counts),
             "roles": {key: item.to_mapping() for key, item in self.roles.items()},
             "abilities": {key: item.to_mapping() for key, item in self.abilities.items()},
-            "rules": self.rules.to_mapping(),
+            "discussion": self.discussion.to_mapping(),
+            "voting": self.voting.to_mapping(),
+            "night": self.night.to_mapping(),
+            "lifecycle": self.lifecycle.to_mapping(),
         }
 
     def to_rule_definition(self) -> RuleSetDefinition:
@@ -423,7 +571,28 @@ class MechanicsDefinition:
         return RuleSetDefinition(
             player_count=sum(self.role_counts.values()),
             role_counts=self.role_counts,
-            rules=LocalRules(**self.rules.to_mapping()),  # type: ignore[arg-type]
+            discussion=DiscussionConfig(
+                protocol_id=self.discussion.protocol_id,
+                message_max_chars=self.discussion.message_max_chars,
+                cycles_per_day=self.discussion.cycles_per_day,
+                stages=tuple(
+                    DiscussionStageConfig(
+                        DiscussionRoundKind(stage.stage),
+                        SubmissionMode(stage.submission_mode),
+                        stage.actor_order,
+                        (
+                            DiscussionRoundKind(stage.reference_stage)
+                            if stage.reference_stage is not None
+                            else None
+                        ),
+                        tuple(DiscussionRelation(item) for item in stage.allowed_relations),
+                    )
+                    for stage in self.discussion.stages
+                ),
+            ),
+            voting=VotingConfig(**self.voting.to_mapping()),  # type: ignore[arg-type]
+            night=NightConfig(**self.night.to_mapping()),  # type: ignore[arg-type]
+            lifecycle=LifecycleConfig(**self.lifecycle.to_mapping()),  # type: ignore[arg-type]
             roles=RoleCatalog(
                 {
                     role_id: DomainRoleDefinition(
@@ -637,7 +806,10 @@ def rule_definition_from_values(
     *,
     player_count: int,
     role_counts: Mapping[str, int],
-    rules: Mapping[str, object],
+    discussion: Mapping[str, object],
+    voting: Mapping[str, object],
+    night: Mapping[str, object],
+    lifecycle: Mapping[str, object],
     roles: Mapping[str, Mapping[str, object]],
     abilities: Mapping[str, Mapping[str, object]],
 ) -> RuleSetDefinition:
@@ -645,7 +817,10 @@ def rule_definition_from_values(
     mechanics = MechanicsDefinition.from_mapping(
         {
             "role_counts": dict(role_counts),
-            "rules": dict(rules),
+            "discussion": dict(discussion),
+            "voting": dict(voting),
+            "night": dict(night),
+            "lifecycle": dict(lifecycle),
             "roles": {key: dict(value) for key, value in roles.items()},
             "abilities": {key: dict(value) for key, value in abilities.items()},
         }
@@ -736,10 +911,13 @@ __all__ = [
     "ABILITY_KINDS",
     "SETUP_SCHEMA_VERSION",
     "AbilityDefinition",
+    "DiscussionDefinition",
     "GameSetupDocument",
-    "LocalRulesDefinition",
+    "LifecycleDefinition",
     "MechanicsDefinition",
+    "NightDefinition",
     "RoleDefinition",
     "ThemeDefinition",
+    "VotingDefinition",
     "rule_definition_from_values",
 ]

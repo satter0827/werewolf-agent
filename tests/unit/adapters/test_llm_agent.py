@@ -23,9 +23,19 @@ from werewolf_agent.agents import (
     AgentWorld,
     DecisionOption,
     DecisionRequest,
+    EvidenceOption,
     ObservedPlayer,
     PublicTimelineEvent,
 )
+
+
+def test_default_prompt_owns_action_specific_effective_output_limits() -> None:
+    definitions = load_llm_definitions(prompt_path=None, fake_responses_path=None)
+
+    assert definitions.prompt.version == 7
+    assert definitions.prompt.deliberation["quick"].output_token_limits["vote"] == 160
+    assert definitions.prompt.deliberation["standard"].output_token_limits["vote"] == 192
+    assert definitions.prompt.deliberation["deep"].output_token_limits["vote"] == 224
 
 
 def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> None:
@@ -39,7 +49,7 @@ def test_langchain_factory_exposes_one_session_contract_for_chat_adapter() -> No
     assert response.action_type == "vote"
     assert response.target_id == "p2"
     assert response.metadata == {"reason": "公開発言から判断"}
-    assert factory.spec.implementation_version == "1.2.0"
+    assert factory.spec.implementation_version == "1.9.0"
     assert factory.spec.parameters["provider"] == "openai-compatible"
     assert factory.spec.parameters["base_url"] == "http://localhost:1234/v1"
     assert str(factory.spec.parameters["decision_model_type"]).endswith(
@@ -82,6 +92,138 @@ def test_langchain_session_rejects_request_for_another_context() -> None:
 
     with pytest.raises(ValueError, match="does not belong"):
         factory.create(context).decide(_request(other))
+
+
+def test_langchain_session_preserves_model_selected_discussion_reference() -> None:
+    factory = _factory(
+        '{"type":"speech","utterance":"二つ目の意見に応答します",'
+        '"topic_id":"p2","position":"oppose","relation":"challenge",'
+        '"evidence_id":"speech-2","response_to_id":"speech-2"}'
+    )
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = _request(context)
+    request = replace(
+        request,
+        observation=replace(request.observation, phase="day_discussion"),
+        public_timeline=(
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "一つ目",
+                    "topic_id": "p2",
+                    "position": "undecided",
+                    "relation": "independent",
+                },
+            ),
+            PublicTimelineEvent(
+                2,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-2",
+                    "utterance": "二つ目",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                    "evidence_id": "speech-1",
+                },
+            ),
+        ),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(
+                    EvidenceOption("speech-1", "discussion", "p2", "p2", "undecided"),
+                    EvidenceOption("speech-2", "discussion", "p2", "p2", "support"),
+                ),
+                legal_reference_ids=("speech-1", "speech-2"),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.response_to_id == "speech-2"
+
+
+def test_langchain_session_accepts_speech_within_propagated_limit() -> None:
+    utterance = "根" * 100
+    factory = _factory(
+        '{"type":"speech","utterance":"'
+        + utterance
+        + '","topic_id":"p2","position":"oppose","relation":"independent"}'
+    )
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = replace(
+        _request(context),
+        observation=replace(_request(context).observation, phase="day_discussion"),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("independent",),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.utterance == utterance
+
+
+def test_langchain_session_rejects_model_reference_outside_visible_options() -> None:
+    factory = _factory(
+        '{"type":"speech","utterance":"応答します","topic_id":"p2",'
+        '"position":"oppose","relation":"challenge","evidence_id":"hidden-speech",'
+        '"response_to_id":"hidden-speech"}'
+    )
+    context = AgentContext("session-1", "game-1", "p1", 11)
+    request = replace(
+        _request(context),
+        observation=replace(_request(context).observation, phase="day_discussion"),
+        public_timeline=(
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "公開意見",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        options=(
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
+                message_max_chars=120,
+            ),
+        ),
+    )
+
+    with pytest.raises(AgentDecisionError) as captured:
+        factory.create(context).decide(request)
+
+    assert captured.value.code == "llm_decision_failed"
 
 
 def test_langchain_session_rejects_preflight_response_outside_options() -> None:
@@ -175,7 +317,13 @@ def _request(context: AgentContext) -> DecisionRequest:
                 event_type="speech",
                 day=1,
                 actor_id="p2",
-                payload={"message": "Aliceの主張を確認したい"},
+                payload={
+                    "speech_id": "speech-1",
+                    "utterance": "Aliceの主張を確認したい",
+                    "topic_id": "p1",
+                    "position": "support",
+                    "relation": "independent",
+                },
             ),
         ),
         options=(DecisionOption("vote", legal_target_ids=("p2",)),),

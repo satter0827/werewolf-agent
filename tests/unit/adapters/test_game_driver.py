@@ -12,6 +12,7 @@ from werewolf_agent.adapters.agents.game_context import build_agent_game_context
 from werewolf_agent.adapters.agents.game_driver import (
     AgentRuntime,
     _lmstudio_model_id,
+    _openai_compatible_model,
     drive_prepared_game,
 )
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
@@ -54,7 +55,10 @@ def _prepared(seed: int = 7) -> tuple[PreparedAdvanceGame, tuple[str, ...]]:
         rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -95,7 +99,6 @@ def _runtime(player_ids: tuple[str, ...], sink: _TraceSink) -> AgentRuntime:
             base_url="",
             api_key="",
             timeout_seconds=1,
-            max_retries=0,
             max_tokens=1,
             temperature=0,
         ),
@@ -178,7 +181,6 @@ def test_lmstudio_model_catalog_is_rejected_before_exceeding_byte_limit(monkeypa
         base_url="http://127.0.0.1:1234/v1",
         api_key="",
         timeout_seconds=1,
-        max_retries=0,
         max_tokens=1,
         temperature=0,
         model_catalog_max_bytes=16,
@@ -186,3 +188,32 @@ def test_lmstudio_model_catalog_is_rejected_before_exceeding_byte_limit(monkeypa
 
     with pytest.raises(LlmProviderError):
         _lmstudio_model_id(config)
+
+
+def test_deadline_bound_decisions_disable_transport_retries(monkeypatch) -> None:
+    """Decision全体期限を越えるtransport内retryを構成しない."""
+    captured: dict[str, object] = {}
+
+    class ChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    module = type("LangChainOpenAI", (), {"ChatOpenAI": ChatOpenAI})
+    monkeypatch.setattr(
+        "werewolf_agent.adapters.agents.game_driver.import_module",
+        lambda _name: module,
+    )
+    placeholder = "test"
+    config = LlmProviderConfig(
+        provider="openai",
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key=placeholder,
+        timeout_seconds=10,
+        max_tokens=128,
+        temperature=0,
+    )
+
+    _openai_compatible_model(config, model_id="test-model")
+
+    assert captured["max_retries"] == 0

@@ -30,9 +30,13 @@
 | `REQ-GAME-011` | 自動プレイヤーが公開根拠に基づいて合法な行動と対象を選び、発言・投票・役職行動へ一貫して反映する | agents、gameplayレビュー |
 | `REQ-GAME-012` | 同じsetupとroster seedから同じ公開プロファイルを生成し、非公開runtime seed内では同じprivate strategy、役職割当、ゲーム進行を再現し、両seedを相互に分離する | setup、application、domain |
 | `REQ-GAME-013` | プレイヤー previewは公開personaだけを返し、役職とprivate strategyを返さない | API、clients |
+| `REQ-GAME-014` | 昼の議論は全員のopeningを解決まで秘匿して同時公開し、その発言を参照するresponseを順番に公開する。この組を設定回数だけ反復し、既定値は1回とする | setup、domain、agents、clients |
+| `REQ-GAME-015` | 議論は自然文と分離したtopic、position、relation、参照、evidenceを正本とし、responseの話題継承と関係整合を機械的に検証する | setup、domain、agents |
+| `REQ-GAME-016` | 各議論stageで全生存者の発言またはpassを公開事実として残し、投票は選択対象本人の発言、対象についての発言、対象の当日passだけを根拠にする | domain、projection、agents |
 | `REQ-LLM-001` | Fakeと実LLMが同じchat request、応答検証、fallbackを通り、意思決定ごとの呼び出しを最大1回にする | アダプター contract、trace |
 | `REQ-LLM-002` | quick、standard、deepで参照履歴と出力上限を切り替え、ゲーム作成時の選択を保存する | API、worker、clients、persistence |
 | `REQ-LLM-003` | 有料LLMは既定で無効とし、利用者の日次advance上限と全workerの同時実行上限を外部呼出し前に原子的に判定する | worker、Supabase、settings |
+| `REQ-LLM-004` | promptはargument ledgerと設定件数の参照候補に限定し、行動別の実効出力上限、全体期限から算出したcall期限、token、latency、error分類をtraceへ残す | adapters、simulation、レビュー |
 | `REQ-GAME-002` | 行動受付、phase進行、勝敗、可視性をdomainが判定する | domain |
 | `REQ-GAME-003` | factionと勝利陣営は`village`、`werewolf`、`fox`の正規IDで表す | domain、application |
 | `REQ-API-001` | CLIとStreamlitは同じHTTP契約でゲームを操作する | API |

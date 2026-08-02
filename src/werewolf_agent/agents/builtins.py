@@ -19,7 +19,7 @@ from werewolf_agent.agents.contracts import (
 )
 from werewolf_agent.agents.validation import non_blank
 
-_BUILTIN_IMPLEMENTATION_VERSION = "1.0.1"
+_BUILTIN_IMPLEMENTATION_VERSION = "1.4.0"
 
 
 @dataclass(frozen=True)
@@ -138,7 +138,7 @@ class _RandomLegalSession(_Session):
             if option.legal_target_ids
             else None
         )
-        return _response(option, target=target, speech=self._speech)
+        return _response(request, option, target=target, speech=self._speech)
 
 
 class _HeuristicSession(_Session):
@@ -155,7 +155,7 @@ class _HeuristicSession(_Session):
             key=lambda item: (priority.get(item.action_type, 4), item.key),
         )
         target = option.legal_target_ids[0] if option.legal_target_ids else None
-        return _response(option, target=target, speech=self._speech)
+        return _response(request, option, target=target, speech=self._speech)
 
 
 class _ScriptedSession(_Session):
@@ -186,20 +186,90 @@ class _FaultSession(_Session):
 
 
 def _response(
+    request: DecisionRequest,
     option: DecisionOption,
     *,
     target: str | None,
     speech: str,
 ) -> DecisionResponse:
-    message = None
+    utterance = None
+    topic_id = None
+    position = None
+    relation = None
     if option.action_type == "speech":
-        message = speech[: option.message_max_chars] if option.message_max_chars else speech
+        utterance = f"反対です。{speech}" if option.legal_reference_ids else speech
+        topic_id = option.legal_topic_ids[0]
+        position = "support"
+        relation = "independent"
+        if option.legal_reference_ids:
+            referenced = next(
+                item
+                for item in option.evidence_options
+                if item.evidence_id == option.legal_reference_ids[0]
+            )
+            topic_id = referenced.topic_id
+            if "support" not in option.legal_relations:
+                raise AgentDecisionError("agent_response_relation_unavailable")
+            relation = "support"
+            position = referenced.position
+        if option.message_max_chars:
+            reference_utterance = _reference_utterance(request, option.legal_reference_ids)
+            utterance = _bounded_distinct_utterance(
+                utterance,
+                reference_utterance,
+                option.message_max_chars,
+            )
+    evidence_id = None
+    if option.action_type == "speech" and option.legal_reference_ids:
+        evidence_id = option.legal_reference_ids[0]
+    elif option.action_type == "vote" and option.evidence_options:
+        evidence_id = next(
+            (
+                item.evidence_id
+                for item in reversed(option.evidence_options)
+                if target in {item.actor_id, item.topic_id}
+            ),
+            option.evidence_options[0].evidence_id,
+        )
+    reason = "この対象が最も疑わしいため" if option.action_type == "vote" else None
+    if reason is not None and option.reason_max_chars is not None:
+        reason = reason[: option.reason_max_chars]
     return DecisionResponse(
         action_type=option.action_type,
         ability_id=option.ability_id,
         target_id=target,
-        message=message,
+        utterance=utterance,
+        topic_id=topic_id,
+        position=position,
+        relation=relation,
+        evidence_id=evidence_id,
+        response_to_id=(option.legal_reference_ids[0] if option.legal_reference_ids else None),
+        reason=reason,
     )
+
+
+def _reference_utterance(request: DecisionRequest, reference_ids: tuple[str, ...]) -> str | None:
+    """Return the visible utterance identified by the selected reference."""
+    if not reference_ids:
+        return None
+    reference_id = reference_ids[0]
+    for event in reversed(request.public_timeline):
+        if event.payload.get("speech_id") == reference_id:
+            value = event.payload.get("utterance")
+            return str(value) if isinstance(value, str) else None
+    return None
+
+
+def _bounded_distinct_utterance(base: str, reference: str | None, max_chars: int) -> str:
+    """Return bounded content that remains distinct from a referenced utterance."""
+    candidate = base[:max_chars]
+    if reference is None or candidate.strip().casefold() != reference.strip().casefold():
+        return candidate
+    for prefix in ("異", "別", "再", "補"):
+        candidate = f"{prefix}{base}"[:max_chars]
+        if candidate.strip().casefold() != reference.strip().casefold():
+            return candidate
+    raise AgentDecisionError("agent_response_message_unavailable")
 
 
 def _spec(agent_id: str, parameters: Mapping[str, object]) -> AgentSpec:
@@ -218,9 +288,13 @@ def _response_payload(response: DecisionResponse) -> dict[str, object]:
         "action_type": response.action_type,
         "ability_id": response.ability_id,
         "target_id": response.target_id,
-        "message": response.message,
-        "focus_id": response.focus_id,
+        "utterance": response.utterance,
+        "topic_id": response.topic_id,
+        "position": response.position,
+        "relation": response.relation,
         "evidence_id": response.evidence_id,
+        "response_to_id": response.response_to_id,
+        "reason": response.reason,
         "confidence": response.confidence,
         "beliefs": _json_value(response.beliefs),
         "intent": response.intent,

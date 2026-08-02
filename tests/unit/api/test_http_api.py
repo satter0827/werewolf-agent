@@ -52,7 +52,10 @@ def test_player_observation_is_a_typed_client_contract() -> None:
         "type",
         "ability_id",
         "legal_target_ids",
+        "evidence_options",
         "message_required",
+        "message_max_chars",
+        "reason_max_chars",
     } == action["properties"].keys()
     assert action["additionalProperties"] is False
 

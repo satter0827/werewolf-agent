@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel
 
 from werewolf_agent.application import QueuedOperation, SavedSetupRevision
@@ -9,6 +11,7 @@ from werewolf_agent.contracts.api import OperationResponse, SavedSetupRevisionRe
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
     AvailableActionDescriptor,
+    DiscussionRoundDescriptor,
     GameListResponse,
     GameResponse,
     GameRevealResponse,
@@ -44,22 +47,37 @@ def timeline_response(source: BaseModel) -> GameTimelineResponse:
     return wire_model(GameTimelineResponse, source)
 
 
-def observation_response(source: BaseModel) -> PlayerObservationResponse:
+def observation_response(
+    source: BaseModel,
+    *,
+    api_text_max_chars: int | None = None,
+) -> PlayerObservationResponse:
     """Return allowlisted private player observation."""
     payload = source.model_dump(mode="json")
     observation = payload["observation"]
     legal_targets = observation.get("legal_targets", {})
+    legal_evidence = observation.get("legal_evidence", {})
+    action_text_limits = observation.get("action_text_limits", {})
     actions: list[AvailableActionDescriptor] = []
     for item in observation.get("available_actions", []):
         ability_id = item.get("ability_id")
         key = f"{item['type']}:{ability_id}" if ability_id is not None else item["type"]
+        configured_limit = action_text_limits.get(key)
+        effective_limit = (
+            min(configured_limit, api_text_max_chars)
+            if isinstance(configured_limit, int) and api_text_max_chars is not None
+            else configured_limit
+        )
         actions.append(
             AvailableActionDescriptor(
                 key=key,
                 type=item["type"],
                 ability_id=ability_id,
                 legal_target_ids=legal_targets.get(key, []),
+                evidence_options=legal_evidence.get(key, []),
                 message_required=item["type"] == "speech",
+                message_max_chars=(effective_limit if item["type"] == "speech" else None),
+                reason_max_chars=(effective_limit if item["type"] == "vote" else None),
             )
         )
     history = observation.get("history", {})
@@ -82,10 +100,16 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                             key: speech[key]
                             for key in (
                                 "day",
+                                "speech_id",
+                                "round_id",
+                                "round_kind",
                                 "player_id",
-                                "message",
-                                "focus_id",
+                                "utterance",
+                                "topic_id",
+                                "position",
+                                "relation",
                                 "evidence_id",
+                                "response_to_id",
                             )
                             if key in speech
                         }
@@ -96,6 +120,7 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                     PlayerObservationVote.model_validate(vote) for vote in history.get("votes", [])
                 ],
             ),
+            discussion_round=_discussion_round_descriptor(observation, payload["player_id"]),
             win_result=(
                 None
                 if win_result is None
@@ -108,6 +133,74 @@ def observation_response(source: BaseModel) -> PlayerObservationResponse:
                 )
             ),
         ),
+    )
+
+
+def _discussion_round_descriptor(
+    observation: dict[str, Any],
+    player_id: str,
+) -> DiscussionRoundDescriptor | None:
+    """Active setupと公開履歴からserver-authorized response候補を返す."""
+    round_ = observation.get("discussion_round")
+    if not isinstance(round_, dict):
+        return None
+    relations = [str(item) for item in observation.get("allowed_discussion_relations", [])]
+    speeches = {
+        str(item["speech_id"]): item for item in observation.get("history", {}).get("speeches", [])
+    }
+    response_options: list[dict[str, str]] = []
+    for reference_id in round_.get("reference_ids", []):
+        referenced = speeches.get(str(reference_id))
+        if referenced is None or referenced.get("player_id") == player_id:
+            continue
+        topic_id = str(referenced["topic_id"])
+        referenced_position = str(referenced["position"])
+        prior = next(
+            (
+                item
+                for item in reversed(tuple(speeches.values()))
+                if item.get("player_id") == player_id and item.get("topic_id") == topic_id
+            ),
+            None,
+        )
+        for relation in relations:
+            positions: tuple[str, ...] = ()
+            if relation == "answer" and referenced_position == "undecided":
+                positions = ("support", "oppose")
+            elif relation == "support":
+                positions = (referenced_position,)
+            elif relation == "challenge" and referenced_position in {"support", "oppose"}:
+                positions = ("oppose" if referenced_position == "support" else "support",)
+            elif relation == "revise" and prior is not None:
+                positions = tuple(
+                    item
+                    for item in ("support", "oppose", "undecided")
+                    if item != prior.get("position")
+                )
+            response_options.extend(
+                {
+                    "response_to_id": str(reference_id),
+                    "evidence_id": str(reference_id),
+                    "topic_id": topic_id,
+                    "position": position,
+                    "relation": relation,
+                }
+                for position in positions
+            )
+    return DiscussionRoundDescriptor.model_validate(
+        {
+            key: round_[key]
+            for key in (
+                "round_id",
+                "cycle",
+                "kind",
+                "submission_mode",
+                "actor_order",
+                "cursor",
+                "reference_ids",
+            )
+        }
+        | {"allowed_relations": relations, "response_options": response_options}
     )
 
 

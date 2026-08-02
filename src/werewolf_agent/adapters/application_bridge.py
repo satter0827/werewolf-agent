@@ -71,7 +71,6 @@ def build_llm_provider_config(settings: AppSettings | None = None) -> LlmProvide
         base_url=app_settings.llm_base_url,
         api_key=api_key,
         timeout_seconds=app_settings.llm_timeout_seconds,
-        max_retries=app_settings.llm_max_retries,
         max_tokens=app_settings.llm_max_tokens,
         temperature=app_settings.llm_temperature,
         model_catalog_max_bytes=app_settings.llm_model_catalog_max_bytes,

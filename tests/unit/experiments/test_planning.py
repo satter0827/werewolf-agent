@@ -90,7 +90,7 @@ def test_rules_plan_pairs_conditions_and_identifies_implementations() -> None:
     assert first.trial_id != second.trial_id
     assert first.implementation_fingerprint != second.implementation_fingerprint
     assert set(first.player_agent_specs) == {"p1", "p2", "p3"}
-    assert first.to_mapping()["contract_version"] == "0.5.1"
+    assert first.to_mapping()["contract_version"] == "0.6.0"
 
 
 def test_balanced_rotation_removes_controller_role_and_persona_bias() -> None:

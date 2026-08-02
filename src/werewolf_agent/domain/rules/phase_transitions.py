@@ -141,6 +141,9 @@ def _advance_from_voting(
             payload={
                 "eliminated_player_id": result.eliminated_player_id,
                 "counts": result.counts,
+                "votes": result.votes,
+                "reasons": result.reasons,
+                "evidence_ids": result.evidence_ids,
                 "tied_player_ids": result.tied_player_ids,
                 "round": result.round,
                 "requires_revote": result.requires_revote,
@@ -226,7 +229,7 @@ def _next_phase(config: GameConfig, current: Phase) -> Phase:
 
 
 def _death_reveal(snapshot: GameState, player_id: str | None) -> dict[str, str]:
-    if player_id is None or not snapshot.config.rules.reveal_role_on_death:
+    if player_id is None or not snapshot.config.lifecycle.reveal_role_on_death:
         return {}
     player = snapshot.players[player_id]
     if player.role is None:

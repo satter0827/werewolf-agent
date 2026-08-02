@@ -115,7 +115,7 @@ def test_screen_view_keeps_private_role_out_of_public_timeline() -> None:
 def test_timeline_renders_public_speech_vote_and_night_results() -> None:
     catalog = _catalog()
     turns = [
-        _turn("speech_recorded", {"message": "根拠を聞きたいです。"}),
+        _turn("speech_recorded", {"utterance": "根拠を聞きたいです。"}),
         _turn("vote_submitted", {"target_id": "player-2"}),
         _turn("vote_resolved", {"eliminated_player_id": "player-2", "counts": {"player-2": 2}}),
         _turn("night_resolved", {"killed_player_id": "player-3"}),
@@ -252,6 +252,73 @@ def test_target_candidates_exclude_unavailable_targets() -> None:
     )
 
     assert candidates == ["player-2"]
+
+
+def test_vote_evidence_choices_are_projected_from_server_authorized_facts() -> None:
+    catalog = _catalog()
+    observation = PlayerObservationResponse.model_validate(
+        {
+            "game_id": "game-1",
+            "player_id": "player-1",
+            "observation": {
+                "phase": "voting",
+                "day": 1,
+                "me": {"id": "player-1", "name": "P1", "status": "alive"},
+                "players": [
+                    {"id": "player-1", "name": "P1", "status": "alive"},
+                    {"id": "player-2", "name": "P2", "status": "alive"},
+                ],
+                "available_actions": [
+                    {
+                        "key": "vote",
+                        "type": "vote",
+                        "legal_target_ids": ["player-2"],
+                        "evidence_options": [
+                            {
+                                "evidence_id": "speech-1",
+                                "kind": "discussion",
+                                "actor_id": "player-2",
+                                "topic_id": "player-1",
+                                "position": "support",
+                            }
+                        ],
+                        "reason_max_chars": 75,
+                    }
+                ],
+                "history": {
+                    "speeches": [
+                        {
+                            "day": 1,
+                            "speech_id": "speech-1",
+                            "round_id": "opening-1",
+                            "round_kind": "opening",
+                            "player_id": "player-2",
+                            "utterance": "player-1を疑います。",
+                            "topic_id": "player-1",
+                            "position": "support",
+                            "relation": "independent",
+                        }
+                    ]
+                },
+            },
+        }
+    )
+
+    screen = build_game_screen_view(
+        state=_state(),
+        turns=[],
+        observation=observation,
+        manual_player_id="player-1",
+        screen_mode="playable",
+        catalog=catalog,
+        lang="ja",
+    )
+
+    assert screen.observation is not None
+    assert screen.observation.vote_evidence_choices["player-2"] == {
+        "speech-1": "P2: player-1を疑います。"
+    }
+    assert screen.observation.action_text_limits["vote"] == 75
 
 
 def test_unknown_icons_and_sidebar_labels_have_safe_defaults() -> None:

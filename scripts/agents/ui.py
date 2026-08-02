@@ -284,7 +284,6 @@ def _compose_environment(
             "WEREWOLF_COMPOSE_MIGRATION_DB_DSN": container_dsn,
             "WEREWOLF_COMPOSE_API_DB_DSN": container_dsn,
             "WEREWOLF_COMPOSE_WORKER_DB_DSN": container_dsn,
-            "WEREWOLF_LLM_MAX_RETRIES": "0",
             "WEREWOLF_LLM_MAX_TOKENS": "256",
             "WEREWOLF_LLM_TEMPERATURE": "0",
             "WEREWOLF_LLM_TIMEOUT_SECONDS": "120",

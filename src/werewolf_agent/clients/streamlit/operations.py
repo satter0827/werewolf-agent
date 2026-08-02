@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
-from typing import Any, TypeVar, cast
+from typing import TypeVar
 from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
@@ -40,6 +40,7 @@ from werewolf_agent.contracts.api import (
     SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     AdvanceGameJobResponse,
     CreateGameRequest,
     DeliberationLevel,
@@ -47,7 +48,6 @@ from werewolf_agent.contracts.schemas import (
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
-    PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -350,15 +350,30 @@ def submit_screen_action(
     action_type: str,
     ability_id: str | None,
     target_id: str | None,
-    message: str | None,
+    utterance: str | None,
+    topic_id: str | None = None,
+    position: str | None = None,
+    relation: str | None = None,
+    evidence_id: str | None = None,
+    reason: str | None = None,
+    response_to_id: str | None = None,
 ) -> None:
     """Submit one action selected in the Streamlit hand panel."""
-    request = PlayerActionRequest(
-        type=cast(Any, action_type.split(":", 1)[0]),
-        ability_id=ability_id,
-        target_id=target_id,
-        message=message,
-    )
+    payload: dict[str, object] = {"type": action_type.split(":", 1)[0]}
+    for key, value in {
+        "ability_id": ability_id,
+        "target_id": target_id,
+        "utterance": utterance,
+        "topic_id": topic_id,
+        "position": position,
+        "relation": relation,
+        "evidence_id": evidence_id,
+        "reason": reason,
+        "response_to_id": response_to_id,
+    }.items():
+        if value is not None:
+            payload[key] = value
+    request = PLAYER_ACTION_REQUEST_ADAPTER.validate_python(payload)
     build_streamlit_client(settings).submit_player_action(
         game_id,
         manual_player_id,
@@ -371,7 +386,7 @@ def submit_screen_action(
             "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": target_id is not None,
-            "has_message": bool(message),
+            "has_message": bool(utterance),
         },
     )
 

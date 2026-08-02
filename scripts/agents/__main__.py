@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections.abc import Sequence
 
 from scripts.agents.review import preflight, resolve_run, run_suite, write_comparison
@@ -11,12 +12,13 @@ from scripts.agents.ui import run_local_ui
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_console_encoding()
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("preflight")
     run = subparsers.add_parser("run")
     run.add_argument("--provider", choices=("fake", "local", "openai"), default="local")
-    run.add_argument("--suite", choices=("smoke", "standard"), default="smoke")
+    run.add_argument("--suite", choices=("smoke", "full-game", "standard"), default="smoke")
     run.add_argument("--seed", type=int, default=7)
     run.add_argument(
         "--deliberation-level",
@@ -58,6 +60,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(f"state: {state}")
     print(f"review artifacts: {run_dir}")
     return _exit_code(state)
+
+
+def _configure_console_encoding() -> None:
+    """任意Unicodeを含むLLM結果をWindows consoleへUTF-8で出力する."""
+    reconfigure = getattr(sys.stdout, "reconfigure", None)
+    if callable(reconfigure):
+        reconfigure(encoding="utf-8", errors="strict")
 
 
 def _exit_code(state: str) -> int:

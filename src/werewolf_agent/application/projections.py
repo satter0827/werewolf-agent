@@ -34,12 +34,30 @@ from werewolf_agent.setup._narration import render_narration
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
     "phase_started": frozenset({"phase"}),
-    "speech_recorded": frozenset({"message", "focus_id", "evidence_id"}),
+    "speech_recorded": frozenset(
+        {
+            "speech_id",
+            "round_id",
+            "round_kind",
+            "utterance",
+            "topic_id",
+            "position",
+            "relation",
+            "evidence_id",
+            "response_to_id",
+        }
+    ),
+    "discussion_passed": frozenset({"evidence_id", "round_id", "round_kind", "topic_id"}),
     "vote_resolved": frozenset(
         {
             "eliminated_player_id",
             "counts",
+            "votes",
+            "reasons",
+            "evidence_ids",
             "tied_player_ids",
+            "round",
+            "requires_revote",
             "reaction_player_ids",
             "role",
             "faction",
@@ -80,7 +98,7 @@ def public_state_payload_from_snapshot(
             killed_night=player.killed_night,
             role=(
                 player.role
-                if not player.is_alive and snapshot.config.rules.reveal_role_on_death
+                if not player.is_alive and snapshot.config.lifecycle.reveal_role_on_death
                 else None
             ),
             faction=cast(
@@ -89,7 +107,7 @@ def public_state_payload_from_snapshot(
                     snapshot.config.roles.faction_for_role(player.role)
                     if not player.is_alive
                     and player.role is not None
-                    and snapshot.config.rules.reveal_role_on_death
+                    and snapshot.config.lifecycle.reveal_role_on_death
                     else None
                 ),
             ),

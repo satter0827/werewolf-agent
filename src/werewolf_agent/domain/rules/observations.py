@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from werewolf_agent.domain.rule_packs import AbilityPolicy
 from werewolf_agent.domain.rules.action_availability import available_actions, legal_targets
+from werewolf_agent.domain.rules.evidence import public_discussion_evidence
 from werewolf_agent.domain.rules.player_rules import player_by_id
 from werewolf_agent.domain.state import (
     SUPPORTED_FACTIONS,
@@ -34,6 +35,7 @@ def build_player_observation(
     visible_claims = _visible_knowledge_claims(snapshot, player_id, knowledge)
     known_roles = _known_roles(snapshot, player_id, visible_claims)
     known_factions = _known_factions(snapshot, player_id, known_roles, visible_claims)
+    actions = tuple(available_actions(snapshot, pending_actions, player_id))
     observed_players = [
         Player(
             id=player.id,
@@ -59,23 +61,54 @@ def build_player_observation(
         players=tuple(observed_players),
         known_roles=known_roles,
         known_factions=known_factions,
-        available_actions=tuple(available_actions(snapshot, pending_actions, player_id)),
+        available_actions=actions,
         legal_targets={
             key: tuple(targets)
             for key, targets in legal_targets(snapshot, pending_actions, player_id).items()
+        },
+        legal_evidence={
+            action.key: public_discussion_evidence(snapshot)
+            for action in actions
+            if action.type.value == "vote"
+        },
+        action_text_limits={
+            action.key: (
+                snapshot.config.discussion.message_max_chars
+                if action.type.value == "speech"
+                else snapshot.config.voting.reason_max_chars
+            )
+            for action in actions
+            if action.type.value in {"speech", "vote"}
         },
         history=GameHistory(
             speeches=tuple(
                 SpeechRecord(
                     day=speech.day,
+                    speech_id=speech.speech_id,
+                    round_id=speech.round_id,
+                    round_kind=speech.round_kind,
                     player_id=speech.player_id,
-                    message=speech.message,
-                    focus_id=speech.focus_id,
+                    utterance=speech.utterance,
+                    topic_id=speech.topic_id,
+                    position=speech.position,
+                    relation=speech.relation,
                     evidence_id=speech.evidence_id,
+                    response_to_id=speech.response_to_id,
                 )
                 for speech in snapshot.history.speeches
             ),
+            discussions=snapshot.history.discussions,
             votes=snapshot.history.votes,
+        ),
+        discussion_round=pending_actions.discussion_round,
+        allowed_discussion_relations=(
+            next(
+                stage.allowed_relations
+                for stage in snapshot.config.discussion.stages
+                if stage.stage is pending_actions.discussion_round.kind
+            )
+            if pending_actions.discussion_round is not None
+            else ()
         ),
         win_result=(
             None
@@ -125,7 +158,7 @@ def _known_roles(
                 and ability.result_detail == "role"
             ):
                 known[inspection.target_id] = inspection.target_role
-    if snapshot.config.rules.reveal_role_on_death:
+    if snapshot.config.lifecycle.reveal_role_on_death:
         for player in snapshot.players.values():
             if not player.is_alive and player.role is not None:
                 known[player.id] = player.role
@@ -153,7 +186,7 @@ def _known_factions(
         if claim.faction is not None:
             known[claim.target_id] = claim.faction
     observer = player_by_id(snapshot, player_id)
-    if snapshot.config.rules.reveal_role_on_death:
+    if snapshot.config.lifecycle.reveal_role_on_death:
         for player in snapshot.players.values():
             if not player.is_alive and player.role is not None:
                 known[player.id] = snapshot.config.roles.faction_for_role(player.role)

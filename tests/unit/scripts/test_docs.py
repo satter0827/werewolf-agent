@@ -118,7 +118,7 @@ def test_pydantic_signature_preserves_default_factory_parameters() -> None:
         None,
     )
 
-    assert signature.count("<factory>") == 4
+    assert signature.count("<factory>") == 5
 
 
 def test_python_api_snippets_execute_without_external_services() -> None:

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import random
+from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.agents import (
     AgentContext,
+    AgentDecisionError,
     AgentSession,
     AgentSpec,
     AgentWorld,
@@ -21,6 +24,8 @@ from werewolf_agent.agents import (
 from werewolf_agent.domain import (
     Action,
     CompiledRuleSet,
+    DiscussionPosition,
+    DiscussionRelation,
     Game,
     GameSetup,
     GameView,
@@ -83,9 +88,69 @@ class _LongSpeechSession:
         self._inner = inner
 
     def decide(self, request: DecisionRequest) -> DecisionResponse:
-        if any(option.action_type == "speech" for option in request.options):
-            return DecisionResponse("speech", message="長すぎる発言です")
+        option = next(
+            (item for item in request.options if item.action_type == "speech"),
+            None,
+        )
+        if option is not None:
+            reference_id = option.legal_reference_ids[0] if option.legal_reference_ids else None
+            return DecisionResponse(
+                "speech",
+                utterance="長すぎる発言です",
+                topic_id=option.legal_topic_ids[0],
+                position="oppose" if reference_id else "support",
+                relation="challenge" if reference_id else "independent",
+                evidence_id=reference_id,
+                response_to_id=reference_id,
+            )
         return self._inner.decide(request)
+
+    def close(self) -> None:
+        self._inner.close()
+
+
+class _InvalidRelationFactory:
+    def __init__(self) -> None:
+        self._inner = RandomLegalAgentFactory()
+
+    @property
+    def spec(self) -> AgentSpec:
+        return self._inner.spec
+
+    def create(self, context: AgentContext) -> AgentSession:
+        return _InvalidRelationSession(self._inner.create(context))
+
+
+class _InvalidRelationSession:
+    def __init__(self, inner: AgentSession) -> None:
+        self._inner = inner
+
+    def decide(self, request: DecisionRequest) -> DecisionResponse:
+        option = next(
+            (
+                item
+                for item in request.options
+                if item.action_type == "speech" and item.legal_reference_ids
+            ),
+            None,
+        )
+        if option is None:
+            return self._inner.decide(request)
+        evidence = next(
+            item
+            for item in option.evidence_options
+            if item.evidence_id == option.legal_reference_ids[0]
+        )
+        incompatible_position = "oppose" if evidence.position == "support" else "support"
+        return DecisionResponse(
+            "speech",
+            utterance="参照発言とは異なる内容を述べます。",
+            topic_id=evidence.topic_id,
+            position=incompatible_position,
+            relation="support",
+            evidence_id=evidence.evidence_id,
+            response_to_id=evidence.evidence_id,
+        )
 
     def close(self) -> None:
         self._inner.close()
@@ -127,6 +192,27 @@ class _FalseyExecutor:
         return session.decide(request)
 
 
+class _FallbackTimeoutExecutor:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def decide(
+        self,
+        session: AgentSession,
+        request: DecisionRequest,
+        *,
+        timeout_seconds: float | None,
+    ) -> DecisionResponse:
+        _ = session, request, timeout_seconds
+        self.calls += 1
+        if self.calls == 1:
+            raise AgentDecisionError("primary_failed", {"primary": "detail"})
+        raise AgentDecisionError(
+            "agent_timeout",
+            {"elapsed_seconds": 1.25, "timeout_seconds": 1.0},
+        )
+
+
 class _FalseyTraceSink:
     def __init__(self) -> None:
         self.traces: list[DecisionTrace] = []
@@ -152,14 +238,17 @@ def _rules() -> CompiledRuleSet:
         rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
     )
 
 
-def _game(seed: int = 41) -> Game:
+def _game(seed: int = 41, *, rules: CompiledRuleSet | None = None) -> Game:
     catalog = build_setup_catalog()
     document = catalog.require_document(catalog.template_order[0])
     player_count = sum(document.mechanics.role_counts.values())
@@ -168,7 +257,7 @@ def _game(seed: int = 41) -> Game:
         GameSetup(
             players=tuple(Player(id=item.player_id, name=item.profile.name) for item in generated)
         ),
-        rules=_rules(),
+        rules=rules or _rules(),
         random=random.Random(namespace_seed(seed, "role_assignment")),
     )
 
@@ -314,13 +403,67 @@ def test_manual_player_waits_without_blocking_available_agent_action() -> None:
         view = game.view_for(manual_id)
         available = view.available_actions[0]
         targets = view.legal_targets.get(available.key, ())
-        action = Action(
-            type=available.type,
-            player_id=manual_id,
-            ability_id=available.ability_id,
-            target_id=targets[0] if targets else None,
-            message="状況を確認します。" if available.type.value == "speech" else None,
-        )
+        if available.type.value == "speech":
+            round_ = view.discussion_round
+            speeches = {speech.speech_id: speech for speech in view.history.speeches}
+            reference_id = (
+                next(
+                    reference_id
+                    for reference_id in round_.reference_ids
+                    if speeches[reference_id].player_id != manual_id
+                )
+                if round_ is not None and round_.reference_ids
+                else None
+            )
+            action = Action.speech(
+                manual_id,
+                "その発言には異論があります。" if reference_id else "状況を確認します。",
+                topic_id=(
+                    speeches[reference_id].topic_id
+                    if reference_id
+                    else next(
+                        player.id
+                        for player in view.players
+                        if player.id != manual_id and player.is_alive
+                    )
+                ),
+                position=(
+                    DiscussionPosition.OPPOSE if reference_id else DiscussionPosition.SUPPORT
+                ),
+                relation=(
+                    DiscussionRelation.CHALLENGE if reference_id else DiscussionRelation.INDEPENDENT
+                ),
+                evidence_id=reference_id,
+                response_to_id=reference_id,
+            )
+        elif available.type.value == "vote":
+            speech = next(
+                (
+                    item
+                    for item in reversed(view.history.speeches)
+                    if targets[0] in {item.player_id, item.topic_id}
+                ),
+                None,
+            )
+            if speech is not None:
+                evidence_id = speech.speech_id
+            else:
+                result = next(
+                    item
+                    for item in reversed(view.history.discussions)
+                    if targets[0] in item.passed_player_ids
+                )
+                evidence_id = f"pass:{result.day}:{result.round_id}:{targets[0]}"
+            action = Action.vote(
+                manual_id,
+                targets[0],
+                reason="状況から判断します。",
+                evidence_id=evidence_id,
+            )
+        elif available.type.value == "use_ability":
+            action = Action.use_ability(manual_id, available.ability_id or "", targets[0])
+        else:
+            action = Action.pass_(manual_id)
         step = session.submit_manual(action)
         assert step.kind is SimulationStepKind.MANUAL_ACTION
         assert session.run().stop_reason in {
@@ -385,7 +528,36 @@ def test_too_long_agent_speech_uses_fallback_and_records_stable_error() -> None:
         assert step.decision_trace.fallback_used
         assert step.decision_trace.error_code == "agent_message_too_long"
         assert step.decision_trace.response is not None
-        assert len(step.decision_trace.response.message or "") <= 4
+        assert len(step.decision_trace.response.utterance or "") <= 4
+    finally:
+        session.close()
+
+
+def test_invalid_response_relation_uses_fallback_before_domain_submit() -> None:
+    """relationとpositionの不正な組合せをAgent境界でfallbackへ送る。"""
+    game = _game()
+    base = _spec(game)
+    controllers = {
+        player_id: PlayerController(player_id, _InvalidRelationFactory())
+        for player_id in base.controllers
+    }
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        for _ in range(100):
+            step = session.step()
+            if (
+                step.decision_trace is not None
+                and step.decision_trace.error_code == "agent_response_support_mismatch"
+            ):
+                break
+        else:
+            pytest.fail("response decision was not reached")
+        assert step.decision_trace is not None
+        assert step.decision_trace.fallback_used
+        assert step.kind is SimulationStepKind.AGENT_ACTION
     finally:
         session.close()
 
@@ -412,6 +584,96 @@ def test_limits_and_cancellation_are_explicit_stop_reasons() -> None:
         assert session.run().stop_reason is SimulationStopReason.CANCELLED
     finally:
         session.close()
+
+
+def test_expired_full_run_deadline_stops_before_any_action() -> None:
+    game = _game()
+    base = _spec(game)
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            base.controllers,
+            base.limits,
+            deadline_at=datetime.now(UTC) - timedelta(seconds=1),
+        ),
+    )
+    try:
+        result = session.run()
+    finally:
+        session.close()
+
+    assert result.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert result.steps[-1].kind is SimulationStepKind.DEADLINE_REACHED
+    assert result.action_count == 0
+    assert result.phase_count == 0
+
+
+def test_deadline_expiry_after_primary_failure_skips_fallback(monkeypatch) -> None:
+    game = _game()
+    base = _spec(game)
+    fallback = _CapturingFactory()
+    controllers = {
+        player_id: PlayerController(
+            player_id,
+            FaultAgentFactory("broken"),
+            fallback_factory=fallback,
+        )
+        for player_id in base.controllers
+    }
+    monkeypatch.setattr(
+        "werewolf_agent.simulation.session._request_deadline_expired",
+        lambda _request: True,
+    )
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        step = session.step()
+    finally:
+        session.close()
+
+    assert step.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert fallback.requests == []
+
+
+def test_fallback_timeout_becomes_deadline_stop_with_trace() -> None:
+    game = _game()
+    base = _spec(game)
+    executor = _FallbackTimeoutExecutor()
+    sink = _FalseyTraceSink()
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(
+            base.simulation_id,
+            base.game_id,
+            base.seed,
+            base.controllers,
+            SimulationLimits(decision_timeout_seconds=60),
+        ),
+        decision_executor=executor,
+        trace_sink=sink,
+    )
+    try:
+        step = session.step()
+        while step.kind is SimulationStepKind.PHASE_ADVANCED:
+            step = session.step()
+    finally:
+        session.close()
+
+    assert step.stop_reason is SimulationStopReason.DEADLINE_REACHED
+    assert executor.calls == 2
+    assert len(sink.traces) == 1
+    assert sink.traces[0].error_code == "agent_timeout"
+    assert sink.traces[0].diagnostics == {
+        "elapsed_seconds": 1.25,
+        "timeout_seconds": 1.0,
+        "primary_error_code": "primary_failed",
+        "primary_diagnostics": {"primary": "detail"},
+    }
 
 
 def test_action_limit_does_not_block_a_ready_phase_advance() -> None:
@@ -470,6 +732,151 @@ def test_metadata_provider_is_resolved_for_every_decision() -> None:
         "call-2",
         "call-3",
     ]
+
+
+def test_response_relations_are_derived_from_active_setup() -> None:
+    """Agentへ広告するresponse relationをactive setupの許可値へ限定する."""
+    rules = _rules()
+    opening_stage, response_stage = rules.config.discussion.stages
+    rules = replace(
+        rules,
+        config=replace(
+            rules.config,
+            discussion=replace(
+                rules.config.discussion,
+                stages=(
+                    opening_stage,
+                    replace(
+                        response_stage,
+                        allowed_relations=(DiscussionRelation.SUPPORT,),
+                    ),
+                ),
+            ),
+        ),
+    )
+    game = _game(rules=rules)
+    factory = _CapturingFactory()
+    base = _spec(game)
+    controllers = {
+        player_id: PlayerController(player_id, factory) for player_id in base.controllers
+    }
+    session = SimulationRunner().start(
+        game,
+        SimulationSpec(base.simulation_id, base.game_id, base.seed, controllers, base.limits),
+    )
+    try:
+        for _ in range(100):
+            session.step()
+            response_request = next(
+                (
+                    request
+                    for request in factory.requests
+                    if request.observation.procedure is not None
+                    and request.observation.procedure.stage_id == "response"
+                ),
+                None,
+            )
+            if response_request is not None:
+                break
+        else:
+            pytest.fail("response decision was not reached")
+    finally:
+        session.close()
+
+    assert response_request is not None
+    speech = next(item for item in response_request.options if item.action_type == "speech")
+    assert speech.legal_relations == ("support",)
+
+
+def test_per_call_timeout_is_propagated_as_request_deadline() -> None:
+    game = _game()
+    factory = _CapturingFactory()
+    started_at = datetime.now(UTC)
+    spec = SimulationSpec(
+        "call-deadline",
+        "game-1",
+        19,
+        {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
+        limits=SimulationLimits(decision_timeout_seconds=2.0),
+        deadline_at=started_at + timedelta(seconds=60),
+    )
+    session = SimulationRunner().start(game, spec)
+    try:
+        while not factory.requests:
+            assert session.step().stop_reason is None
+    finally:
+        session.close()
+
+    deadline = factory.requests[0].deadline_at
+    assert deadline is not None
+    assert started_at < deadline <= started_at + timedelta(seconds=2.1)
+
+
+def test_simulation_exposes_structured_discussion_procedure_stages() -> None:
+    game = _game()
+    factory = _CapturingFactory()
+    spec = SimulationSpec(
+        "procedure-context",
+        "game-1",
+        23,
+        {player_id: PlayerController(player_id, factory) for player_id in game.snapshot().players},
+        response_reference_limit=1,
+    )
+    session = SimulationRunner().start(game, spec)
+    try:
+        for _ in range(100):
+            assert session.step().stop_reason is None
+            procedures = [
+                request.observation.procedure
+                for request in factory.requests
+                if request.observation.procedure is not None
+            ]
+            if any(procedure.stage_id == "response" for procedure in procedures):
+                break
+        else:
+            pytest.fail("response procedure was not reached")
+    finally:
+        session.close()
+
+    opening = next(procedure for procedure in procedures if procedure.stage_id == "opening")
+    response = next(procedure for procedure in procedures if procedure.stage_id == "response")
+    assert (opening.procedure_id, opening.cycle, opening.submission_mode) == (
+        "structured_discussion",
+        1,
+        "sealed",
+    )
+    assert (response.procedure_id, response.cycle, response.submission_mode) == (
+        "structured_discussion",
+        1,
+        "ordered",
+    )
+    response_request = next(
+        request
+        for request in factory.requests
+        if request.observation.procedure is not None
+        and request.observation.procedure.stage_id == "response"
+    )
+    speech_option = next(
+        option for option in response_request.options if option.action_type == "speech"
+    )
+    assert len(speech_option.legal_reference_ids) == 1
+    speech_actors = {
+        str(event.payload["speech_id"]): event.actor_id
+        for event in response_request.public_timeline
+        if event.event_type == "speech"
+    }
+    assert all(
+        speech_actors[reference_id] != response_request.context.player_id
+        for reference_id in speech_option.legal_reference_ids
+    )
+    speech_topics = {
+        str(event.payload["speech_id"]): str(event.payload["topic_id"])
+        for event in response_request.public_timeline
+        if event.event_type == "speech"
+    }
+    assert speech_option.legal_topic_ids == tuple(
+        dict.fromkeys(speech_topics[item] for item in speech_option.legal_reference_ids)
+    )
 
 
 def test_spec_rejects_controller_mismatch_and_invalid_limits() -> None:

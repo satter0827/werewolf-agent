@@ -297,6 +297,13 @@
             ],
             "title": "Ability Id"
           },
+          "evidence_options": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceFactDescriptor"
+            },
+            "title": "Evidence Options",
+            "type": "array"
+          },
           "key": {
             "title": "Key",
             "type": "string"
@@ -308,10 +315,36 @@
             "title": "Legal Target Ids",
             "type": "array"
           },
+          "message_max_chars": {
+            "anyOf": [
+              {
+                "maximum": 2000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Message Max Chars"
+          },
           "message_required": {
             "default": false,
             "title": "Message Required",
             "type": "boolean"
+          },
+          "reason_max_chars": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Max Chars"
           },
           "type": {
             "enum": [
@@ -397,6 +430,288 @@
         "title": "CreateGameRequest",
         "type": "object"
       },
+      "DiscussionResponseOptionDescriptor": {
+        "additionalProperties": false,
+        "description": "Serverが許可する一つのresponse構造候補を表す.",
+        "properties": {
+          "evidence_id": {
+            "minLength": 1,
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "response_to_id": {
+            "minLength": 1,
+            "title": "Response To Id",
+            "type": "string"
+          },
+          "topic_id": {
+            "minLength": 1,
+            "title": "Topic Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response_to_id",
+          "evidence_id",
+          "topic_id",
+          "position",
+          "relation"
+        ],
+        "title": "DiscussionResponseOptionDescriptor",
+        "type": "object"
+      },
+      "DiscussionRoundDescriptor": {
+        "additionalProperties": false,
+        "description": "Playerへ公開できる現在の議論roundを表す.",
+        "properties": {
+          "actor_order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Actor Order",
+            "type": "array"
+          },
+          "allowed_relations": {
+            "items": {
+              "enum": [
+                "independent",
+                "answer",
+                "support",
+                "challenge",
+                "revise"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Relations",
+            "type": "array"
+          },
+          "cursor": {
+            "minimum": 0.0,
+            "title": "Cursor",
+            "type": "integer"
+          },
+          "cycle": {
+            "minimum": 1.0,
+            "title": "Cycle",
+            "type": "integer"
+          },
+          "kind": {
+            "enum": [
+              "opening",
+              "response"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reference_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reference Ids",
+            "type": "array"
+          },
+          "response_options": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionResponseOptionDescriptor"
+            },
+            "title": "Response Options",
+            "type": "array"
+          },
+          "round_id": {
+            "title": "Round Id",
+            "type": "string"
+          },
+          "submission_mode": {
+            "enum": [
+              "sealed",
+              "ordered"
+            ],
+            "title": "Submission Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "round_id",
+          "cycle",
+          "kind",
+          "submission_mode",
+          "actor_order",
+          "cursor"
+        ],
+        "title": "DiscussionRoundDescriptor",
+        "type": "object"
+      },
+      "DiscussionSettings": {
+        "additionalProperties": false,
+        "description": "議論protocolのwire設定.",
+        "properties": {
+          "cycles_per_day": {
+            "default": 1,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Cycles Per Day",
+            "type": "integer"
+          },
+          "message_max_chars": {
+            "maximum": 2000.0,
+            "minimum": 1.0,
+            "title": "Message Max Chars",
+            "type": "integer"
+          },
+          "protocol_id": {
+            "const": "structured_argument",
+            "title": "Protocol Id",
+            "type": "string"
+          },
+          "stages": {
+            "items": {
+              "$ref": "#/components/schemas/DiscussionStageSettings"
+            },
+            "title": "Stages",
+            "type": "array"
+          }
+        },
+        "required": [
+          "protocol_id",
+          "message_max_chars",
+          "stages"
+        ],
+        "title": "DiscussionSettings",
+        "type": "object"
+      },
+      "DiscussionStageSettings": {
+        "additionalProperties": false,
+        "description": "一つの議論stageを表すwire設定.",
+        "properties": {
+          "actor_order": {
+            "enum": [
+              "rotating",
+              "reverse_opening"
+            ],
+            "title": "Actor Order",
+            "type": "string"
+          },
+          "allowed_relations": {
+            "items": {
+              "enum": [
+                "independent",
+                "answer",
+                "support",
+                "challenge",
+                "revise"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Relations",
+            "type": "array"
+          },
+          "reference_stage": {
+            "anyOf": [
+              {
+                "const": "opening",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Stage"
+          },
+          "stage": {
+            "enum": [
+              "opening",
+              "response"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "submission_mode": {
+            "enum": [
+              "sealed",
+              "ordered"
+            ],
+            "title": "Submission Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "stage",
+          "submission_mode",
+          "actor_order",
+          "allowed_relations"
+        ],
+        "title": "DiscussionStageSettings",
+        "type": "object"
+      },
+      "EvidenceFactDescriptor": {
+        "additionalProperties": false,
+        "description": "One server-authorized public fact that may ground an action.",
+        "properties": {
+          "actor_id": {
+            "title": "Actor Id",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "discussion",
+              "discussion_pass"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "support",
+                  "oppose",
+                  "undecided"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "topic_id": {
+            "title": "Topic Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "kind",
+          "actor_id",
+          "topic_id"
+        ],
+        "title": "EvidenceFactDescriptor",
+        "type": "object"
+      },
       "GameListResponse": {
         "additionalProperties": false,
         "description": "Public game list response.",
@@ -460,7 +775,7 @@
             ],
             "title": "Ability Id"
           },
-          "message": {
+          "evidence_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -469,11 +784,67 @@
                 "type": "null"
               }
             ],
-            "title": "Message"
+            "title": "Evidence Id"
           },
           "player_id": {
             "title": "Player Id",
             "type": "string"
+          },
+          "position": {
+            "anyOf": [
+              {
+                "enum": [
+                  "support",
+                  "oppose",
+                  "undecided"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "relation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "independent",
+                  "answer",
+                  "support",
+                  "challenge",
+                  "revise"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relation"
+          },
+          "response_to_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response To Id"
           },
           "target_id": {
             "anyOf": [
@@ -486,6 +857,17 @@
             ],
             "title": "Target Id"
           },
+          "topic_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Topic Id"
+          },
           "type": {
             "enum": [
               "speech",
@@ -495,6 +877,17 @@
             ],
             "title": "Type",
             "type": "string"
+          },
+          "utterance": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Utterance"
           }
         },
         "required": [
@@ -685,6 +1078,9 @@
             "title": "Day",
             "type": "integer"
           },
+          "discussion": {
+            "$ref": "#/components/schemas/DiscussionSettings"
+          },
           "eliminated_player_ids": {
             "items": {
               "type": "string"
@@ -696,6 +1092,9 @@
             "title": "Game Id",
             "type": "string"
           },
+          "lifecycle": {
+            "$ref": "#/components/schemas/LifecycleSettings"
+          },
           "narration_mode": {
             "default": "standard",
             "enum": [
@@ -705,11 +1104,21 @@
             "title": "Narration Mode",
             "type": "string"
           },
+          "night": {
+            "$ref": "#/components/schemas/NightSettings"
+          },
           "nights": {
             "items": {
               "$ref": "#/components/schemas/GameRevealNight"
             },
             "title": "Nights",
+            "type": "array"
+          },
+          "pending_discussion_actions": {
+            "items": {
+              "$ref": "#/components/schemas/GameRevealAction"
+            },
+            "title": "Pending Discussion Actions",
             "type": "array"
           },
           "pending_night_actions": {
@@ -750,9 +1159,6 @@
             },
             "title": "Role Counts",
             "type": "object"
-          },
-          "rules": {
-            "$ref": "#/components/schemas/LocalRulesSettings"
           },
           "scenario_id": {
             "anyOf": [
@@ -806,6 +1212,9 @@
             "title": "Votes",
             "type": "array"
           },
+          "voting": {
+            "$ref": "#/components/schemas/VotingSettings"
+          },
           "winner": {
             "anyOf": [
               {
@@ -831,7 +1240,10 @@
           "version",
           "seed",
           "role_counts",
-          "rules",
+          "discussion",
+          "voting",
+          "night",
+          "lifecycle",
           "players",
           "alive_player_ids",
           "eliminated_player_ids"
@@ -865,12 +1277,26 @@
             ],
             "title": "Eliminated Player Id"
           },
+          "evidence_ids": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "object"
+          },
           "missing_voter_ids": {
             "items": {
               "type": "string"
             },
             "title": "Missing Voter Ids",
             "type": "array"
+          },
+          "reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "object"
           },
           "tie_break_policy": {
             "title": "Tie Break Policy",
@@ -908,7 +1334,7 @@
             "$ref": "#/components/schemas/PlayerGenerationSettings"
           },
           "schema_version": {
-            "const": "0.4.0",
+            "const": "0.6.0",
             "title": "Schema Version",
             "type": "string"
           },
@@ -1079,28 +1505,10 @@
         "title": "InlineSetupRequest",
         "type": "object"
       },
-      "LocalRulesSettings": {
+      "LifecycleSettings": {
         "additionalProperties": false,
-        "description": "Complete mutable game rules carried by an inline setup.",
+        "description": "phase遷移のwire設定.",
         "properties": {
-          "allow_night_action_revision": {
-            "title": "Allow Night Action Revision",
-            "type": "boolean"
-          },
-          "allow_self_vote": {
-            "title": "Allow Self Vote",
-            "type": "boolean"
-          },
-          "allow_vote_revision": {
-            "title": "Allow Vote Revision",
-            "type": "boolean"
-          },
-          "day_speech_limit_per_player": {
-            "maximum": 100.0,
-            "minimum": 0.0,
-            "title": "Day Speech Limit Per Player",
-            "type": "integer"
-          },
           "require_all_actions_before_advance": {
             "title": "Require All Actions Before Advance",
             "type": "boolean"
@@ -1116,28 +1524,34 @@
             ],
             "title": "Starting Phase",
             "type": "string"
-          },
-          "vote_tie_resolution": {
-            "enum": [
-              "no_elimination",
-              "random_elimination",
-              "revote"
-            ],
-            "title": "Vote Tie Resolution",
-            "type": "string"
           }
         },
         "required": [
-          "day_speech_limit_per_player",
-          "allow_self_vote",
-          "allow_vote_revision",
-          "allow_night_action_revision",
-          "vote_tie_resolution",
           "starting_phase",
           "reveal_role_on_death",
           "require_all_actions_before_advance"
         ],
-        "title": "LocalRulesSettings",
+        "title": "LifecycleSettings",
+        "type": "object"
+      },
+      "NightSettings": {
+        "additionalProperties": false,
+        "description": "夜行動のwire設定.",
+        "properties": {
+          "allow_action_revision": {
+            "title": "Allow Action Revision",
+            "type": "boolean"
+          },
+          "allow_pass": {
+            "title": "Allow Pass",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allow_action_revision",
+          "allow_pass"
+        ],
+        "title": "NightSettings",
         "type": "object"
       },
       "OperationResponse": {
@@ -1227,12 +1641,51 @@
         "title": "OperationResponse",
         "type": "object"
       },
+      "PassActionRequest": {
+        "additionalProperties": false,
+        "description": "行動しないrequest.",
+        "properties": {
+          "type": {
+            "const": "pass",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type"
+        ],
+        "title": "PassActionRequest",
+        "type": "object"
+      },
       "PlayerActionOperationRequest": {
         "additionalProperties": false,
         "description": "Version-checked player action submitted to the queue.",
         "properties": {
           "action": {
-            "$ref": "#/components/schemas/PlayerActionRequest"
+            "discriminator": {
+              "mapping": {
+                "pass": "#/components/schemas/PassActionRequest",
+                "speech": "#/components/schemas/SpeechActionRequest",
+                "use_ability": "#/components/schemas/UseAbilityActionRequest",
+                "vote": "#/components/schemas/VoteActionRequest"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SpeechActionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/VoteActionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/UseAbilityActionRequest"
+              },
+              {
+                "$ref": "#/components/schemas/PassActionRequest"
+              }
+            ],
+            "title": "Action"
           },
           "expected_version": {
             "minimum": 1.0,
@@ -1250,65 +1703,6 @@
           "action"
         ],
         "title": "PlayerActionOperationRequest",
-        "type": "object"
-      },
-      "PlayerActionRequest": {
-        "additionalProperties": false,
-        "description": "One manual player action submitted through the API port.",
-        "properties": {
-          "ability_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ability Id"
-          },
-          "message": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Message"
-          },
-          "reason": {
-            "default": "",
-            "title": "Reason",
-            "type": "string"
-          },
-          "target_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Id"
-          },
-          "type": {
-            "enum": [
-              "speech",
-              "vote",
-              "use_ability",
-              "pass"
-            ],
-            "title": "Type",
-            "type": "string"
-          }
-        },
-        "required": [
-          "type"
-        ],
-        "title": "PlayerActionRequest",
         "type": "object"
       },
       "PlayerGenerationSettings": {
@@ -1392,6 +1786,16 @@
             "minimum": 1.0,
             "title": "Day",
             "type": "integer"
+          },
+          "discussion_round": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DiscussionRoundDescriptor"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "history": {
             "$ref": "#/components/schemas/PlayerObservationHistory"
@@ -1614,7 +2018,31 @@
             ],
             "title": "Evidence Id"
           },
-          "focus_id": {
+          "player_id": {
+            "title": "Player Id",
+            "type": "string"
+          },
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "independent",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "response_to_id": {
             "anyOf": [
               {
                 "type": "string"
@@ -1623,21 +2051,43 @@
                 "type": "null"
               }
             ],
-            "title": "Focus Id"
+            "title": "Response To Id"
           },
-          "message": {
-            "title": "Message",
+          "round_id": {
+            "title": "Round Id",
             "type": "string"
           },
-          "player_id": {
-            "title": "Player Id",
+          "round_kind": {
+            "enum": [
+              "opening",
+              "response"
+            ],
+            "title": "Round Kind",
+            "type": "string"
+          },
+          "speech_id": {
+            "title": "Speech Id",
+            "type": "string"
+          },
+          "topic_id": {
+            "title": "Topic Id",
+            "type": "string"
+          },
+          "utterance": {
+            "title": "Utterance",
             "type": "string"
           }
         },
         "required": [
           "day",
+          "speech_id",
+          "round_id",
+          "round_kind",
           "player_id",
-          "message"
+          "utterance",
+          "topic_id",
+          "position",
+          "relation"
         ],
         "title": "PlayerObservationSpeech",
         "type": "object"
@@ -1669,12 +2119,26 @@
             ],
             "title": "Eliminated Player Id"
           },
+          "evidence_ids": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence Ids",
+            "type": "object"
+          },
           "missing_voter_ids": {
             "items": {
               "type": "string"
             },
             "title": "Missing Voter Ids",
             "type": "array"
+          },
+          "reasons": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "object"
           },
           "requires_revote": {
             "default": false,
@@ -3537,6 +4001,15 @@
             "title": "Abilities",
             "type": "object"
           },
+          "discussion": {
+            "$ref": "#/components/schemas/DiscussionSettings"
+          },
+          "lifecycle": {
+            "$ref": "#/components/schemas/LifecycleSettings"
+          },
+          "night": {
+            "$ref": "#/components/schemas/NightSettings"
+          },
           "role_counts": {
             "additionalProperties": {
               "minimum": 1.0,
@@ -3552,15 +4025,18 @@
             "title": "Roles",
             "type": "object"
           },
-          "rules": {
-            "$ref": "#/components/schemas/LocalRulesSettings"
+          "voting": {
+            "$ref": "#/components/schemas/VotingSettings"
           }
         },
         "required": [
           "role_counts",
           "roles",
           "abilities",
-          "rules"
+          "discussion",
+          "voting",
+          "night",
+          "lifecycle"
         ],
         "title": "SetupMechanicsSettings",
         "type": "object"
@@ -3884,6 +4360,80 @@
         "title": "SetupVulnerabilityAbility",
         "type": "object"
       },
+      "SpeechActionRequest": {
+        "additionalProperties": false,
+        "description": "公開発言request.",
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "position": {
+            "enum": [
+              "support",
+              "oppose",
+              "undecided"
+            ],
+            "title": "Position",
+            "type": "string"
+          },
+          "relation": {
+            "enum": [
+              "independent",
+              "answer",
+              "support",
+              "challenge",
+              "revise"
+            ],
+            "title": "Relation",
+            "type": "string"
+          },
+          "response_to_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response To Id"
+          },
+          "topic_id": {
+            "minLength": 1,
+            "title": "Topic Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "speech",
+            "title": "Type",
+            "type": "string"
+          },
+          "utterance": {
+            "minLength": 1,
+            "title": "Utterance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "utterance",
+          "topic_id",
+          "position",
+          "relation"
+        ],
+        "title": "SpeechActionRequest",
+        "type": "object"
+      },
       "StoryThemeSettings": {
         "additionalProperties": false,
         "properties": {
@@ -4013,6 +4563,40 @@
         "title": "TemplateSetupRequest",
         "type": "object"
       },
+      "UseAbilityActionRequest": {
+        "additionalProperties": false,
+        "description": "能力使用request.",
+        "properties": {
+          "ability_id": {
+            "minLength": 1,
+            "title": "Ability Id",
+            "type": "string"
+          },
+          "target_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Id"
+          },
+          "type": {
+            "const": "use_ability",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "ability_id"
+        ],
+        "title": "UseAbilityActionRequest",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -4052,6 +4636,83 @@
         ],
         "title": "ValidationError",
         "type": "object"
+      },
+      "VoteActionRequest": {
+        "additionalProperties": false,
+        "description": "公開理由付き投票request.",
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "reason": {
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          },
+          "target_id": {
+            "minLength": 1,
+            "title": "Target Id",
+            "type": "string"
+          },
+          "type": {
+            "const": "vote",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "target_id",
+          "reason"
+        ],
+        "title": "VoteActionRequest",
+        "type": "object"
+      },
+      "VotingSettings": {
+        "additionalProperties": false,
+        "description": "投票のwire設定.",
+        "properties": {
+          "allow_revision": {
+            "title": "Allow Revision",
+            "type": "boolean"
+          },
+          "allow_self_vote": {
+            "title": "Allow Self Vote",
+            "type": "boolean"
+          },
+          "reason_max_chars": {
+            "maximum": 1000.0,
+            "minimum": 1.0,
+            "title": "Reason Max Chars",
+            "type": "integer"
+          },
+          "tie_resolution": {
+            "enum": [
+              "no_elimination",
+              "random_elimination",
+              "revote"
+            ],
+            "title": "Tie Resolution",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allow_self_vote",
+          "allow_revision",
+          "tie_resolution",
+          "reason_max_chars"
+        ],
+        "title": "VotingSettings",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -4063,7 +4724,7 @@
   },
   "info": {
     "title": "Werewolf Agent API",
-    "version": "0.32.4"
+    "version": "0.33.0"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
+from datetime import UTC, datetime
 from hashlib import sha256
 
 from werewolf_agent.adapters.llm.langchain.service import LangChainDecisionProvider
@@ -13,9 +14,13 @@ from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentDecision,
+    AgentDiscussionPosition,
+    AgentDiscussionRelation,
+    AgentEvidence,
     AgentGameContext,
     AgentPhase,
     AgentPlayerStatus,
+    AgentProcedureContext,
     AgentScenario,
     AgentSpeech,
     AgentVoteRound,
@@ -35,7 +40,7 @@ from werewolf_agent.agents import (
     DecisionResponse,
 )
 
-_IMPLEMENTATION_VERSION = "1.2.0"
+_IMPLEMENTATION_VERSION = "1.9.0"
 _FAILURE_CODE = "llm_decision_failed"
 
 
@@ -67,7 +72,6 @@ class LangChainAgentFactory:
             "timeout_seconds",
             "max_tokens",
             "temperature",
-            "max_retries",
         ):
             value = getattr(decision_model, field_name, None)
             if value not in {None, ""}:
@@ -107,7 +111,19 @@ class _LangChainAgentSession:
             decision = self.provider.choose_decision(
                 self.context.player_id,
                 _llm_observation(request, self.profile),
+                timeout_seconds=_remaining_timeout(request),
             )
+            trace = self.trace_capture.last_trace
+            if trace is not None and trace.fallback_used:
+                diagnostics: dict[str, object] = {
+                    "provider": trace.provider,
+                    "model": trace.model,
+                    "validation_status": trace.validation_status,
+                }
+                if trace.provider_error:
+                    diagnostics["provider_error"] = trace.provider_error
+                diagnostics.update(_usage_metadata(trace))
+                raise AgentDecisionError(_FAILURE_CODE, diagnostics)
             _require_legal_decision(request, decision)
         except AgentDecisionError:
             raise
@@ -117,16 +133,6 @@ class _LangChainAgentSession:
                 {"error_type": type(exc).__name__},
             ) from exc
         trace = self.trace_capture.last_trace
-        if trace is not None and trace.fallback_used:
-            diagnostics: dict[str, object] = {
-                "provider": trace.provider,
-                "model": trace.model,
-                "validation_status": trace.validation_status,
-            }
-            if trace.provider_error:
-                diagnostics["provider_error"] = trace.provider_error
-            diagnostics.update(_usage_metadata(trace))
-            raise AgentDecisionError(_FAILURE_CODE, diagnostics)
         metadata = {"reason": decision.reason} if decision.reason else {}
         if trace is not None:
             metadata.update(_usage_metadata(trace))
@@ -134,9 +140,13 @@ class _LangChainAgentSession:
             action_type=decision.type.value,
             ability_id=decision.ability_id,
             target_id=decision.target_id,
-            message=decision.message,
-            focus_id=decision.focus_id,
+            utterance=decision.utterance,
+            topic_id=decision.topic_id,
+            position=decision.position.value if decision.position is not None else None,
+            relation=decision.relation.value if decision.relation is not None else None,
             evidence_id=decision.evidence_id,
+            response_to_id=decision.response_to_id,
+            reason=(decision.reason or None if decision.type is AgentActionType.VOTE else None),
             metadata=metadata,
         )
 
@@ -168,6 +178,13 @@ class _TraceCapture:
             self.delegate.record_invocation(trace)
 
 
+def _remaining_timeout(request: DecisionRequest) -> float | None:
+    """Return the positive time remaining before the simulation call deadline."""
+    if request.deadline_at is None:
+        return None
+    return max((request.deadline_at - datetime.now(UTC)).total_seconds(), 0.001)
+
+
 def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObservation:
     observation = request.observation
     players = [
@@ -182,15 +199,22 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     vote_rounds: list[AgentVoteRound] = []
     for event in request.public_timeline:
         if event.event_type == "speech" and event.actor_id is not None:
-            message = event.payload.get("message")
-            if isinstance(message, str) and message.strip():
+            utterance = event.payload.get("utterance")
+            if isinstance(utterance, str) and utterance.strip():
                 speeches.append(
                     AgentSpeech(
                         day=event.day,
+                        speech_id=(
+                            _optional_text(event.payload.get("speech_id"))
+                            or f"speech:event:{event.sequence}"
+                        ),
                         player_id=event.actor_id,
-                        message=message,
-                        focus_id=_optional_text(event.payload.get("focus_id")),
+                        utterance=utterance,
+                        topic_id=str(event.payload["topic_id"]),
+                        position=AgentDiscussionPosition(str(event.payload["position"])),
+                        relation=AgentDiscussionRelation(str(event.payload["relation"])),
                         evidence_id=_optional_text(event.payload.get("evidence_id")),
+                        response_to_id=_optional_text(event.payload.get("response_to_id")),
                     )
                 )
         if event.event_type == "vote_round":
@@ -208,6 +232,15 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
     scenario = None
     if world is not None:
         scenario = AgentScenario(name=world.theme_name, premise=world.premise)
+    decision_constraints = {
+        key: value
+        for option in request.options
+        for key, value in (
+            ("speech_max_chars", option.message_max_chars),
+            ("reason_max_chars", option.reason_max_chars),
+        )
+        if value is not None
+    }
     if world is not None and identity is not None:
         game_context = AgentGameContext(
             theme_id=world.theme_id,
@@ -243,6 +276,16 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
         role=identity.role_id if identity is not None else None,
         profile=profile,
         scenario=scenario,
+        procedure=(
+            AgentProcedureContext(
+                procedure_id=observation.procedure.procedure_id,
+                stage_id=observation.procedure.stage_id,
+                cycle=observation.procedure.cycle,
+                submission_mode=observation.procedure.submission_mode,
+            )
+            if observation.procedure is not None
+            else None
+        ),
         game_context=game_context,
         players=players,
         known_roles=dict(observation.known_roles),
@@ -255,6 +298,33 @@ def _llm_observation(request: DecisionRequest, profile: PlayerProfile) -> LlmObs
             for option in request.options
         ],
         legal_targets={option.key: list(option.legal_target_ids) for option in request.options},
+        legal_topics={option.key: list(option.legal_topic_ids) for option in request.options},
+        evidence_options={
+            option.key: [
+                AgentEvidence(
+                    id=item.evidence_id,
+                    kind=("discussion" if item.kind == "discussion" else "discussion_pass"),
+                    actor_id=item.actor_id,
+                    topic_id=item.topic_id,
+                    position=(
+                        AgentDiscussionPosition(item.position)
+                        if item.position is not None
+                        else None
+                    ),
+                )
+                for item in option.evidence_options
+            ]
+            for option in request.options
+        },
+        legal_references={
+            option.key: list(option.legal_reference_ids) for option in request.options
+        },
+        legal_relations={
+            option.key: [AgentDiscussionRelation(item) for item in option.legal_relations]
+            for option in request.options
+            if option.legal_relations
+        },
+        decision_constraints=decision_constraints,
         speeches=speeches,
         vote_rounds=vote_rounds,
     )
@@ -281,15 +351,44 @@ def _require_legal_decision(request: DecisionRequest, decision: AgentDecision) -
     if option.legal_target_ids and decision.target_id is None:
         raise AgentDecisionError("llm_target_required")
     if decision.type is AgentActionType.SPEECH:
-        if decision.message is None:
-            raise AgentDecisionError("llm_message_required")
+        if decision.utterance is None:
+            raise AgentDecisionError("llm_utterance_required")
+        if decision.position is None or decision.position.value not in option.legal_positions:
+            raise AgentDecisionError("llm_position_not_legal")
+        if decision.relation is None or decision.relation.value not in option.legal_relations:
+            raise AgentDecisionError("llm_relation_not_legal")
+        if decision.topic_id not in option.legal_topic_ids:
+            raise AgentDecisionError("llm_topic_not_legal")
         if (
             option.message_max_chars is not None
-            and len(decision.message) > option.message_max_chars
+            and len(decision.utterance) > option.message_max_chars
         ):
             raise AgentDecisionError("llm_message_too_long")
-    elif decision.message is not None:
-        raise AgentDecisionError("llm_message_not_allowed")
+        if option.legal_reference_ids and decision.response_to_id is None:
+            raise AgentDecisionError("llm_reference_required")
+        if (
+            decision.response_to_id is not None
+            and decision.response_to_id not in option.legal_reference_ids
+        ):
+            raise AgentDecisionError("llm_reference_not_legal")
+    elif decision.type is AgentActionType.VOTE and not decision.reason.strip():
+        raise AgentDecisionError("llm_vote_reason_required")
+    elif (
+        decision.type is AgentActionType.VOTE
+        and option.reason_max_chars is not None
+        and len(decision.reason) > option.reason_max_chars
+    ):
+        raise AgentDecisionError("llm_vote_reason_too_long")
+    elif (
+        decision.type is AgentActionType.VOTE
+        and option.evidence_options
+        and decision.evidence_id not in {item.evidence_id for item in option.evidence_options}
+    ):
+        raise AgentDecisionError("llm_vote_evidence_required")
+    elif decision.utterance is not None:
+        raise AgentDecisionError("llm_utterance_not_allowed")
+    elif decision.response_to_id is not None:
+        raise AgentDecisionError("llm_reference_not_allowed")
 
 
 def _optional_text(value: object) -> str | None:

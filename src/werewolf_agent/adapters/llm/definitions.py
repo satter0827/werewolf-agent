@@ -90,7 +90,19 @@ class DeliberationSettings(_DefinitionModel):
     """Resource-owned context and output limits for one deliberation level."""
 
     event_limit: int = Field(ge=1)
-    output_token_limit: int = Field(ge=1)
+    output_token_limits: dict[str, int]
+
+    @field_validator("output_token_limits")
+    @classmethod
+    def validate_output_token_limits(cls, value: dict[str, int]) -> dict[str, int]:
+        """全actionに正の出力上限がある設定を返す."""
+        required = {"speech", "vote", "use_ability", "pass"}
+        if set(value) != required or any(
+            not isinstance(limit, int) or isinstance(limit, bool) or limit < 1
+            for limit in value.values()
+        ):
+            raise ValueError("output_token_limits must define positive limits for every action")
+        return value
 
 
 class PromptDefinition(_DefinitionModel):

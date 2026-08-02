@@ -87,3 +87,56 @@ def test_public_narration_fails_closed_for_unsafe_or_oversized_output() -> None:
         ).payload.get("narration")
         is None
     )
+
+
+def test_public_speech_preserves_structured_discussion_identifiers() -> None:
+    created = event_to_create(
+        GameEvent(
+            event_type="speech_recorded",
+            phase=Phase.DAY_DISCUSSION,
+            day=1,
+            actor_id="p1",
+            payload={
+                "speech_id": "speech:1:opening:p1",
+                "round_id": "day-1-cycle-1-opening",
+                "round_kind": "opening",
+                "utterance": "p2について確認します。",
+                "topic_id": "p2",
+                "position": "undecided",
+                "relation": "independent",
+            },
+        )
+    )
+
+    assert created.payload["speech_id"] == "speech:1:opening:p1"
+    assert created.payload["round_id"] == "day-1-cycle-1-opening"
+    assert created.payload["round_kind"] == "opening"
+
+
+def test_public_vote_preserves_reasons_and_typed_evidence_links() -> None:
+    created = event_to_create(
+        GameEvent(
+            event_type="vote_resolved",
+            phase=Phase.VOTING,
+            day=1,
+            payload={
+                "eliminated_player_id": "p2",
+                "counts": {"p2": 2},
+                "votes": {"p1": "p2", "p3": "p2"},
+                "reasons": {"p1": "openingを根拠にします。", "p3": "passを根拠にします。"},
+                "evidence_ids": {
+                    "p1": "speech:1:day-1-cycle-1-opening:p2",
+                    "p3": "pass:1:day-1-cycle-1-opening:p2",
+                },
+                "tied_player_ids": (),
+                "round": 1,
+                "requires_revote": False,
+            },
+        )
+    )
+
+    assert created.payload["votes"] == {"p1": "p2", "p3": "p2"}
+    assert created.payload["reasons"]["p1"] == "openingを根拠にします。"
+    assert created.payload["evidence_ids"]["p3"] == "pass:1:day-1-cycle-1-opening:p2"
+    assert created.payload["round"] == 1
+    assert created.payload["requires_revote"] is False

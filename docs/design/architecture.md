@@ -57,7 +57,7 @@
 
 ## ゲーム設定
 
-`GameSetupDocument` 0.4.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
+`GameSetupDocument` 0.6.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
 同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
 所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
 Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。
@@ -65,7 +65,7 @@ applicationとHTTPは入力境界のshapeをPydanticで検証し、意味検証�
 公開narrationは単純なallowlist field置換だけを許し、format指定とconversionを拒否する。rendererは
 保存済み定義を再信頼せず、出力上限まで逐次構築して上限超過を公開eventへ含めない。
 domainの`build_game_rules()`は変換済みRule Definitionから決定的な実行規則を構築する。
-replay 0.6.0はgenesis setupとRule Pack manifestを再検証し、agent actionを生成順で保持する。復元時は明示登録済みproviderの
+replay 0.7.0はgenesis setupとRule Pack manifestを再検証し、agent actionを生成順で保持する。復元時は明示登録済みproviderの
 contract version、implementation version、fingerprintが保存値と一致する場合だけ実行する。
 
 ゲーム作成routeはtemplate、保存revision、inline documentのいずれかをrequest時点で解決する。
@@ -107,11 +107,23 @@ detail、visibilityを検証する。本人roleと設定済み死亡公開はPol
 履歴、eventはDomainが所有する。Gameは各Outcomeを新しい`GameState`へ適用する際に整合性を
 検証し、不正Outcomeまたは例外では元のstateと乱数状態を維持する。
 
+`DiscussionPolicy`は議論開始時のroundと、検証済み提出から`DiscussionResolution`を返す。
+組み込み規則はsealedな`opening`を全員分まとめて公開し、公開済みopeningのIDを選ぶorderedな
+`response`へ進む。この組を`cycles_per_day`回だけ反復し、既定値を1とする。Domainは提出者、
+発言長、参照ID、Policyが返す発言とround遷移を検証し、公開前のopeningを観測へ含めない。
+議論の正本は`DiscussionMove`であり、`utterance`は表示文、`topic_id`は対象命題、`position`は
+`support`、`oppose`、`undecided`、`relation`は他発言との関係を表す。responseは参照openingの
+topicを継承し、`support`、`challenge`、`revise`をpositionと発言履歴に対して検証する。未提出者も
+stage完了時にpassとして公開履歴へ確定する。投票evidenceは投票対象本人、対象topicの発言、または
+対象の当日passに限定する。
+
 ## Agent意思決定と単一ゲーム実行
 
 `agents`はprovider非依存の`AgentFactory`、ゲームとプレイヤーに分離した`AgentSession`、
 秘匿性検証済み`DecisionRequest`、構造化`DecisionResponse`を所有する。外部LLMアダプターは
 schema検証後のresponseだけを返し、simulationは本人用`GameView`からrequestを構築する。
+手続き型の意思決定は`AgentProcedure`でprocedure、stage、cycle、submission modeを伝え、
+構造化議論では`opening`と`response`を合法参照だけでなく現在の手続き段階としてLLMへ渡す。
 
 `SimulationRunner`は一局の`Game`、プレイヤー別controller、用途別seed、実行上限を固定する。
 `SimulationSession.step()`はAgent action、manual action、phase進行のいずれか一つだけを適用し、
@@ -122,7 +134,8 @@ schema検証後のresponseだけを返し、simulationは本人用`GameView`か�
 workerは`WorkerDependencies.agent_factories`からプレイヤーID別factoryを注入し、未指定seatだけを
 既定のLangChainアダプターで構築する。外部factoryの探索や設定値からの動的importは行わない。
 
-modelには利用可能な行動、行動別の合法対象、発言長、参照可能なプレイヤー IDと公開evidence IDを渡す。
+modelには利用可能な行動、行動別の合法対象、発言長、応答可能な発言IDと本文、型付き公開evidence、
+対象別の最新position、直前の投票をまとめたargument ledgerを渡す。全履歴は再投入しない。
 modelが返した行動や対象は書き換えず、不正値は再問い合わせせずfallbackへ送る。`player_id`はmodelに
 生成させず、検証後にserverが付与する。行動が一意で対象や発言が不要な場合だけmodel呼び出しを省略する。
 

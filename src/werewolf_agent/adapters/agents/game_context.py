@@ -52,23 +52,33 @@ def build_agent_game_contexts(
         return {}
     roles = mechanics.get("roles")
     abilities = mechanics.get("abilities")
-    rules = mechanics.get("rules")
+    rule_sections = {
+        key: mechanics.get(key) for key in ("discussion", "voting", "night", "lifecycle")
+    }
     if (
         not isinstance(roles, Mapping)
         or not isinstance(abilities, Mapping)
-        or not isinstance(rules, Mapping)
+        or any(not isinstance(value, Mapping) for value in rule_sections.values())
     ):
         return {}
+    typed_sections = {key: _mapping(value) for key, value in rule_sections.items()}
+    rules = {
+        str(key): value for section in typed_sections.values() for key, value in section.items()
+    }
     role_names = _mapping(theme.get("role_names"))
     role_objectives = _mapping(theme.get("role_objectives"))
     faction_names = _mapping(theme.get("faction_names"))
     ability_names = _mapping(theme.get("ability_names"))
     relevant_keys = {
-        "day_speech_limit_per_player",
+        "kind",
+        "message_max_chars",
+        "cycles_per_day",
         "allow_self_vote",
-        "allow_vote_revision",
-        "allow_night_action_revision",
-        "vote_tie_resolution",
+        "allow_revision",
+        "allow_action_revision",
+        "allow_pass",
+        "tie_resolution",
+        "reason_max_chars",
         "starting_phase",
         "reveal_role_on_death",
         "require_all_actions_before_advance",

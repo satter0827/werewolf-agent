@@ -25,17 +25,52 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                 "available_actions": [
                     {"type": "speech", "ability_id": None},
                     {"type": "use_ability", "ability_id": "inspect"},
+                    {"type": "vote", "ability_id": None},
                 ],
-                "legal_targets": {"speech": [], "use_ability:inspect": ["p2"]},
+                "legal_targets": {
+                    "speech": [],
+                    "use_ability:inspect": ["p2"],
+                    "vote": ["p2"],
+                },
+                "legal_evidence": {
+                    "speech": [],
+                    "use_ability:inspect": [],
+                    "vote": [
+                        {
+                            "evidence_id": "speech:1:round-1:p2",
+                            "kind": "discussion",
+                            "actor_id": "p2",
+                            "topic_id": "p1",
+                            "position": "undecided",
+                        }
+                    ],
+                },
+                "action_text_limits": {"speech": 180, "vote": 75},
+                "discussion_round": {
+                    "round_id": "round-2",
+                    "cycle": 1,
+                    "kind": "response",
+                    "submission_mode": "ordered",
+                    "actor_order": ["p1", "p2"],
+                    "cursor": 0,
+                    "reference_ids": ["speech:1:round-1:p2"],
+                },
+                "allowed_discussion_relations": ["support"],
                 "history": {
                     "speeches": [
                         {
                             "day": 1,
+                            "speech_id": "speech:1:round-1:p2",
+                            "round_id": "round-1",
+                            "round_kind": "opening",
                             "player_id": "p2",
-                            "message": "公開発言",
+                            "utterance": "公開発言",
                             "reason": "公開しない内部理由",
-                            "focus_id": None,
+                            "topic_id": "p1",
+                            "position": "undecided",
+                            "relation": "independent",
                             "evidence_id": None,
+                            "response_to_id": None,
                         }
                     ],
                     "votes": [],
@@ -48,15 +83,33 @@ def test_observation_presenter_exposes_typed_actions_without_private_fields() ->
                     "winning_player_ids": ["p1", "p2"],
                 },
             },
-        )
+        ),
+        api_text_max_chars=100,
     )
 
     assert [item.key for item in response.observation.available_actions] == [
         "speech",
         "use_ability:inspect",
+        "vote",
     ]
     assert response.observation.available_actions[0].message_required is True
+    assert response.observation.available_actions[0].message_max_chars == 100
     assert response.observation.available_actions[1].legal_target_ids == ["p2"]
+    assert response.observation.available_actions[2].evidence_options[0].actor_id == "p2"
+    assert response.observation.available_actions[2].reason_max_chars == 75
+    assert response.observation.discussion_round is not None
+    assert response.observation.discussion_round.allowed_relations == ["support"]
+    assert [
+        item.model_dump() for item in response.observation.discussion_round.response_options
+    ] == [
+        {
+            "response_to_id": "speech:1:round-1:p2",
+            "evidence_id": "speech:1:round-1:p2",
+            "topic_id": "p1",
+            "position": "undecided",
+            "relation": "support",
+        }
+    ]
     payload = response.model_dump(mode="json")
     assert "legal_targets" not in payload["observation"]
     assert "reason" not in payload["observation"]["history"]["speeches"][0]

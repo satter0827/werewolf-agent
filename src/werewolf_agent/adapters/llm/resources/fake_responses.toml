@@ -1,5 +1,5 @@
 name = "werewolf-agent-fake-decisions"
-version = 1
+version = 2
 alias = "local"
 
 [tags]
@@ -7,21 +7,21 @@ task = "agent_decision"
 provider = "fake-list-chat-model"
 
 [templates]
-speech = [
-'''{"type":"speech","message":"$player_nameです。Day $day は、発言の理由が薄い人を先に確認したいです。$focus_name の反応も見たいです。","reason":"$persona"}''',
-'''{"type":"speech","message":"$player_nameです。今は決め打たず、昨日から意見が変わった人の根拠を聞きたいです。","reason":"visible discussion pattern"}''',
-'''{"type":"speech","message":"$player_nameです。私は $focus_name の投票理由が少し気になります。説明があれば印象を更新します。","reason":"focus on public vote consistency"}''',
-'''{"type":"speech","message":"$player_nameです。強い誘導より、誰が何を根拠に疑っているかを揃えたいです。","reason":"keep public reasoning comparable"}''',
+speech_opening_question = [
+'''{"type":"speech","utterance":"$topic_nameさんについて、現時点の公開情報から立場を示します。"}''',
+]
+speech_opening_evidence = [
+'''{"type":"speech","utterance":"$evidence_actor_nameさんの公開発言を踏まえ、$topic_nameさんへの見方を整理します。"}''',
+]
+speech_response = [
+'''{"type":"speech","utterance":"$reference_actor_nameさんの見方とは異なり、$topic_nameさんを判断する根拠はまだ十分ではありません。"}''',
 ]
 vote = [
-'''{"type":"vote","target_id":"$target_id","reason":"$target_name の発言と投票理由にずれを感じたため"}''',
-'''{"type":"vote","target_id":"$target_id","reason":"Day $day 時点で $target_name の根拠が一番薄く見えるため"}''',
-'''{"type":"vote","target_id":"$target_id","reason":"場への乗り方が中立に寄りすぎているため"}''',
+'''{"type":"vote","target_id":"$target_id","reason":"$evidence_actor_nameさんの公開発言を踏まえ、$target_nameさんの説明が最も不足していると判断したため"}''',
 ]
 use_ability = [
-'''{"type":"use_ability","target_id":"$target_id","reason":"$target_name への能力使用が現在の判断材料を最も増やすため"}''',
-'''{"type":"use_ability","target_id":"$target_id","reason":"設定された能力の目的に照らして $target_name が妥当な対象であるため"}''',
+'''{"type":"use_ability","target_id":"$target_id"}''',
 ]
 pass = [
-'''{"type":"pass","reason":"available actionがないため待機"}''',
+'''{"type":"pass"}''',
 ]

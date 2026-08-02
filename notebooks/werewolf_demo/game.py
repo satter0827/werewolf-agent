@@ -154,7 +154,10 @@ class FakeGameDemo:
         rule_definition = rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
             abilities={
                 ability_id: ability.to_mapping()
@@ -363,7 +366,6 @@ def _fake_provider_config() -> LlmProviderConfig:
         base_url="",
         api_key="",
         timeout_seconds=12,
-        max_retries=0,
         max_tokens=128,
         temperature=0,
     )

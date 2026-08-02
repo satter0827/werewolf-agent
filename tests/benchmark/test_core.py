@@ -18,7 +18,7 @@ def test_canonical_payload_checksum(benchmark: BenchmarkFixture) -> None:
             {"id": f"p{index}", "alive": index % 3 != 0, "role": None} for index in range(15)
         ],
         "timeline": [
-            {"version": index, "kind": "speech", "message": "状況を確認します。"}
+            {"version": index, "kind": "speech", "utterance": "状況を確認します。"}
             for index in range(100)
         ],
     }

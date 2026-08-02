@@ -32,6 +32,37 @@ def test_local_preflight_provider_error_is_blocked_before_bounded_stop() -> None
     assert state == "blocked"
 
 
+def test_session_deadline_stop_is_classified_as_duration_stop() -> None:
+    reason, stopped_for_duration = review._simulation_stop_metadata(
+        review.SimulationStopReason.DEADLINE_REACHED
+    )
+
+    assert reason == "deadline_reached"
+    assert stopped_for_duration is True
+
+
+def test_aggregate_metrics_count_and_expose_deadline_stops() -> None:
+    metrics = review._aggregate_metrics(
+        [
+            {
+                "preset_id": "standard_6",
+                "seed": 7,
+                "deliberation_level": "standard",
+                "state": "failed",
+                "completed": False,
+                "stopped_for_duration": True,
+                "simulation_stop_reason": "deadline_reached",
+                "input_tokens": None,
+                "output_tokens": None,
+                "total_tokens": None,
+            }
+        ]
+    )
+
+    assert metrics["deadline_stops"] == 1
+    assert metrics["scenarios"][0]["simulation_stop_reason"] == "deadline_reached"
+
+
 def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_MODEL", "local-model")
@@ -41,8 +72,8 @@ def test_local_provider_uses_deterministic_review_limits(monkeypatch) -> None:
     assert config.provider == "lmstudio"
     assert config.model == "local-model"
     assert config.temperature == 0
-    assert config.max_tokens == 256
-    assert config.timeout_seconds == 40
+    assert config.max_tokens == 1024
+    assert config.timeout_seconds == 240
 
 
 def test_openai_review_requires_explicit_paid_confirmation(monkeypatch) -> None:
@@ -96,6 +127,33 @@ def test_preflight_records_blocked_model_evidence(tmp_path: Path, monkeypatch) -
     assert (run_dir / "summary.md").is_file()
 
 
+def test_structured_discussion_probes_cover_opening_response_and_vote() -> None:
+    config = review.provider_config("fake")
+
+    probes, traces = review._run_structured_discussion_probes(config)
+
+    assert [probe["id"] for probe in probes] == ["opening", "response", "vote"]
+    assert all(probe["passed"] for probe in probes)
+    assert len(traces) == 3
+    assert all(trace["validation_status"] == "valid" for trace in traces)
+    assert all(not trace["fallback_used"] for trace in traces)
+    responses = {str(probe["id"]): probe["response"] for probe in probes}
+    assert responses["opening"]["response_to_id"] is None
+    assert responses["response"]["response_to_id"] in {"opening:p2", "opening:p3"}
+    assert responses["vote"]["target_id"] in {"p2", "p3"}
+    assert responses["vote"]["reason"]
+    opening_context = json.loads(traces[0]["prompt_messages"][-1]["content"])
+    response_context = json.loads(traces[1]["prompt_messages"][-1]["content"])
+    assert opening_context["procedure"] == {
+        "procedure_id": "structured_discussion",
+        "stage_id": "opening",
+        "cycle": 1,
+        "submission_mode": "sealed",
+    }
+    assert response_context["procedure"]["stage_id"] == "response"
+    assert response_context["procedure"]["submission_mode"] == "ordered"
+
+
 def test_local_run_blocks_before_game_when_model_is_not_loaded(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(review, "LAYOUT", ArtifactLayout(tmp_path))
     monkeypatch.setenv("WEREWOLF_LOCAL_LLM_BASE_URL", "http://127.0.0.1:1234/v1")
@@ -128,7 +186,49 @@ def test_local_standard_run_is_rejected_before_model_discovery(tmp_path: Path, m
     run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
     assert state == "error"
     assert run["error"]["type"] == "ValueError"
-    assert "bounded smoke suite" in run["error"]["message"]
+    assert "smoke or full-game" in run["error"]["message"]
+
+
+def test_local_full_game_uses_one_standard_game_with_bounded_limits(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(review, "LAYOUT", ArtifactLayout(tmp_path))
+    monkeypatch.setattr(review, "_local_model_ids", lambda _config: [review.LOCAL_MODEL_DEFAULT])
+    captured: dict[str, object] = {}
+
+    def run_preset(*_args, **kwargs):
+        captured.update(kwargs)
+        return {
+            "preset_id": "standard_6",
+            "state": "passed",
+            "completed": True,
+            "action_count": 1,
+            "invocations": 1,
+            "fallbacks": 0,
+            "provider_errors": 0,
+            "usage_unavailable": 0,
+            "latency_ms": 1.0,
+            "input_tokens": 1,
+            "output_tokens": 1,
+            "total_tokens": 2,
+            "private_traces": [],
+        }
+
+    monkeypatch.setattr(review, "_run_preset", run_preset)
+
+    state, run_dir = review.run_suite("local", "full-game")
+
+    run = json.loads((run_dir / "report.json").read_text(encoding="utf-8"))
+    assert state == "passed"
+    assert run["presets"] == ["standard_6"]
+    assert run["limits"] == {
+        "max_phases": review.MAX_PHASES,
+        "max_invocations": review.FULL_GAME_MAX_INVOCATIONS,
+        "max_duration_seconds": review.FULL_GAME_MAX_DURATION_SECONDS,
+    }
+    assert captured["invocation_limit"] == review.FULL_GAME_MAX_INVOCATIONS
+    assert captured["duration_limit_seconds"] == review.FULL_GAME_MAX_DURATION_SECONDS
 
 
 def test_fake_smoke_writes_reviewable_public_and_private_artifacts(
@@ -257,14 +357,31 @@ def test_review_serializer_keeps_numeric_usage_but_redacts_credentials() -> None
     assert document["authorization"] == "[REDACTED]"
 
 
+def test_bounded_smoke_metrics_do_not_require_game_finished_event() -> None:
+    metrics = review._gameplay_metrics(
+        [],
+        [{"event_type": "game_started", "payload": {}}],
+        expect_finished=False,
+    )
+
+    assert metrics["game_finished_event_count"] == 0
+    assert metrics["integrity_flags"] == []
+
+
 def test_gameplay_metrics_distinguish_explained_public_position_changes() -> None:
     metrics = review._gameplay_metrics(
         [
             {
                 "player_id": "p1",
                 "day": 1,
-                "parsed_decision": {"type": "speech", "message": "p2を疑う"},
-                "request_payload": {"focus_id": "p2"},
+                "parsed_decision": {
+                    "type": "speech",
+                    "utterance": "p2を疑う",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
+                "request_payload": {},
             },
             {
                 "player_id": "p1",
@@ -282,6 +399,78 @@ def test_gameplay_metrics_distinguish_explained_public_position_changes() -> Non
     assert metrics["speech_vote_consistency_rate"] == 0.0
     assert metrics["changed_vote_count"] == 1
     assert metrics["changed_vote_reason_missing_count"] == 0
+
+
+def test_gameplay_metrics_cover_whole_game_integrity_and_phase_quality() -> None:
+    timeline = [
+        {
+            "event_type": "speech_recorded",
+            "payload": {
+                "speech_id": "s1",
+                "topic_id": "p2",
+                "position": "support",
+                "relation": "independent",
+                "evidence_id": None,
+                "response_to_id": None,
+            },
+        },
+        {
+            "event_type": "speech_recorded",
+            "payload": {
+                "speech_id": "s2",
+                "topic_id": "p2",
+                "position": "oppose",
+                "relation": "challenge",
+                "evidence_id": "s1",
+                "response_to_id": "s1",
+            },
+        },
+        {
+            "event_type": "vote_resolved",
+            "payload": {
+                "evidence_ids": {"p1": "s2"},
+                "tied_player_ids": ["p2", "p3"],
+                "requires_revote": True,
+                "eliminated_player_id": None,
+            },
+        },
+        {
+            "event_type": "night_resolved",
+            "payload": {"killed_player_ids": ["p2"]},
+        },
+        {
+            "event_type": "game_finished",
+            "payload": {"winner": "village"},
+        },
+    ]
+
+    metrics = review._gameplay_metrics([], timeline)
+    phase = review._phase_quality_metrics(
+        [
+            {
+                "phase": "voting",
+                "latency_ms": 10.0,
+                "total_tokens": 20,
+                "usage_source": "usage_metadata",
+                "fallback_used": False,
+            },
+            {
+                "phase": "voting",
+                "latency_ms": 30.0,
+                "total_tokens": 40,
+                "usage_source": "usage_metadata",
+                "fallback_used": True,
+            },
+        ]
+    )
+
+    assert metrics["response_evidence_alignment_rate"] == 1.0
+    assert metrics["revote_count"] == 1
+    assert metrics["night_kill_count"] == 1
+    assert metrics["public_winner"] == "village"
+    assert metrics["integrity_flags"] == []
+    assert phase["voting"]["latency_ms"]["p95"] == 30.0
+    assert phase["voting"]["total_tokens"]["average"] == 30.0
 
 
 def test_standard_suite_can_select_explicit_presets(tmp_path: Path, monkeypatch) -> None:

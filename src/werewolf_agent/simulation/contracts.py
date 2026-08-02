@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import datetime
 from enum import StrEnum
 from types import MappingProxyType
 from typing import Protocol
@@ -20,7 +21,7 @@ from werewolf_agent.agents import (
 )
 from werewolf_agent.domain import GameEvent, GameState, GameView
 
-SIMULATION_CONTRACT_VERSION = "0.5.0"
+SIMULATION_CONTRACT_VERSION = "0.8.0"
 
 
 class SimulationStepKind(StrEnum):
@@ -32,6 +33,7 @@ class SimulationStepKind(StrEnum):
     WAITING_FOR_MANUAL = "waiting_for_manual"
     FINISHED = "finished"
     LIMIT_REACHED = "limit_reached"
+    DEADLINE_REACHED = "deadline_reached"
     CANCELLED = "cancelled"
 
 
@@ -42,6 +44,7 @@ class SimulationStopReason(StrEnum):
     FINISHED = "finished"
     ACTION_LIMIT = "action_limit"
     PHASE_LIMIT = "phase_limit"
+    DEADLINE_REACHED = "deadline_reached"
     CANCELLED = "cancelled"
 
 
@@ -116,6 +119,8 @@ class SimulationSpec:
     limits: SimulationLimits = field(default_factory=SimulationLimits)
     phase_seed: int | None = None
     speech_message_max_chars: int | None = None
+    response_reference_limit: int | None = None
+    deadline_at: datetime | None = None
 
     def __post_init__(self) -> None:
         """Controller mappingをimmutableにして参照整合を検証する."""
@@ -133,6 +138,10 @@ class SimulationSpec:
             raise ValueError("phase_seed must be an integer")
         if self.speech_message_max_chars is not None:
             _positive_integer(self.speech_message_max_chars, "speech_message_max_chars")
+        if self.response_reference_limit is not None:
+            _positive_integer(self.response_reference_limit, "response_reference_limit")
+        if self.deadline_at is not None and self.deadline_at.utcoffset() is None:
+            raise ValueError("deadline_at must be timezone-aware")
         controllers = dict(self.controllers)
         if not controllers:
             raise ValueError("controllers must not be empty")
@@ -178,6 +187,7 @@ class SimulationStep:
             SimulationStepKind.WAITING_FOR_MANUAL,
             SimulationStepKind.FINISHED,
             SimulationStepKind.LIMIT_REACHED,
+            SimulationStepKind.DEADLINE_REACHED,
             SimulationStepKind.CANCELLED,
         }
         if (self.kind in terminal_kinds) != (self.stop_reason is not None):

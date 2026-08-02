@@ -56,10 +56,10 @@ from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     AdvanceGameResponse,
     GameResponse,
     GameRevealResponse,
-    PlayerActionRequest,
     PlayerActionResponse,
     ProblemDetails,
 )
@@ -560,22 +560,20 @@ def _submit_action(
     game_id = str(request.get("game_id") or "")
     player_id = str(request.get("player_id") or "")
     user_id = str(request["owner_user_id"])
-    action_request = PlayerActionRequest.model_validate(
+    action_request = PLAYER_ACTION_REQUEST_ADAPTER.validate_python(
         _json_object(request.get("request_payload"))
     )
     service = _service(connection, settings, dependencies)
     application = GameApplication(service, access_policy=SupabaseAccessPolicy(connection))
     result = application.submit_action(
         Actor(user_id=user_id),
-        PlayerActionCommand(
-            game_id=game_id,
-            player_id=player_id,
-            type=action_request.type,
-            ability_id=action_request.ability_id,
-            target_id=action_request.target_id,
-            message=action_request.message,
-            reason=action_request.reason,
-            expected_version=_expected_version(request),
+        PlayerActionCommand.model_validate(
+            {
+                "game_id": game_id,
+                "player_id": player_id,
+                "action": action_request.model_dump(mode="python", exclude_none=True),
+                "expected_version": _expected_version(request),
+            }
         ),
     )
     response = _wire_model(PlayerActionResponse, result)

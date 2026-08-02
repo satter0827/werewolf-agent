@@ -9,6 +9,7 @@ from werewolf_agent.domain import (
     RULE_PACK_CONTRACT_VERSION,
     CompiledRuleSet,
     CoreRulePack,
+    DiscussionRelation,
     GameSetup,
     Player,
     RulePackManifest,
@@ -43,7 +44,10 @@ def _inputs() -> tuple[RuleSetDefinition, GameSetup]:
     definition = rule_definition_from_values(
         player_count=player_count,
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.to_mapping(),
+        discussion=mechanics.discussion.to_mapping(),
+        voting=mechanics.voting.to_mapping(),
+        night=mechanics.night.to_mapping(),
+        lifecycle=mechanics.lifecycle.to_mapping(),
         roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
         abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
     )
@@ -62,3 +66,22 @@ def test_external_rule_pack_uses_the_public_contract_kit() -> None:
     """外部providerへ利用者と同じ公開契約を適用する。"""
     definition, setup = _inputs()
     assert_rule_pack_contract(_ExternalMirrorPack(), definition=definition, setup=setup, seed=_SEED)
+
+
+def test_contract_kit_honors_support_only_response_setup() -> None:
+    definition, setup = _inputs()
+    opening, response = definition.discussion.stages
+    definition = replace(
+        definition,
+        discussion=replace(
+            definition.discussion,
+            message_max_chars=1,
+            stages=(
+                opening,
+                replace(response, allowed_relations=(DiscussionRelation.SUPPORT,)),
+            ),
+        ),
+        voting=replace(definition.voting, reason_max_chars=1),
+    )
+
+    assert_rule_pack_contract(CoreRulePack(), definition=definition, setup=setup, seed=_SEED)

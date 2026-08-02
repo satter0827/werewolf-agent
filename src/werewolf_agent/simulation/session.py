@@ -4,23 +4,28 @@ from __future__ import annotations
 
 import random
 import time
+from datetime import UTC, datetime, timedelta
 from threading import Lock
 
 from werewolf_agent.agents import (
     AgentContext,
     AgentDecisionError,
     AgentObservation,
+    AgentProcedure,
     AgentSession,
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
     DecisionTrace,
+    EvidenceOption,
     ObservedPlayer,
     PublicTimelineEvent,
 )
 from werewolf_agent.domain import (
     Action,
     CompiledRuleSet,
+    DiscussionPosition,
+    DiscussionRelation,
     Game,
     GameEvent,
     GameSetup,
@@ -60,6 +65,10 @@ class CancellationToken:
         """停止要求済みか返す."""
         with self._lock:
             return self._cancelled
+
+
+class _SimulationDeadlineReached(Exception):
+    """Signal that no fallback may start after the full-run deadline."""
 
 
 class SynchronousDecisionExecutor:
@@ -222,6 +231,11 @@ class SimulationSession:
         state = self._game.snapshot()
         if state.is_finished:
             return self._record_stop(SimulationStepKind.FINISHED, SimulationStopReason.FINISHED)
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
         limits = self._spec.limits
         if self._phase_count >= limits.max_phases:
             return self._record_stop(
@@ -238,11 +252,27 @@ class SimulationSession:
         before = self._game.snapshot()
         context = self._agent_context(controller.player_id)
         request = self._decision_request(context, controller, observation)
-        response, trace = self._decide(controller, context, request)
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
+        try:
+            response, trace = self._decide(controller, context, request)
+        except _SimulationDeadlineReached:
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
+            )
         if self._cancellation.is_cancelled:
             return self._record_stop(
                 SimulationStepKind.CANCELLED,
                 SimulationStopReason.CANCELLED,
+            )
+        if _deadline_expired(self._spec):
+            return self._record_stop(
+                SimulationStepKind.DEADLINE_REACHED,
+                SimulationStopReason.DEADLINE_REACHED,
             )
         action = _action_from_response(controller.player_id, response)
         events = tuple(self._game.submit(action))
@@ -286,7 +316,7 @@ class SimulationSession:
             response = self._executor.decide(
                 session,
                 request,
-                timeout_seconds=self._spec.limits.decision_timeout_seconds,
+                timeout_seconds=_effective_timeout(self._spec, request),
             )
             _require_legal_response(request, response)
             trace = DecisionTrace(
@@ -304,16 +334,53 @@ class SimulationSession:
                     {"error_type": type(exc).__name__},
                 )
             )
+            if _request_deadline_expired(request):
+                trace = DecisionTrace(
+                    decision_id=request.decision_id,
+                    agent_spec=controller.factory.spec,
+                    response=None,
+                    latency_ms=_elapsed_milliseconds(started_at),
+                    error_code=error.code,
+                    diagnostics=error.diagnostics,
+                )
+                self._trace_sink.record_decision(trace)
+                raise _SimulationDeadlineReached from exc
             fallback = self._fallback_sessions.get(controller.player_id)
             if fallback is None:
                 fallback = controller.fallback_factory.create(context)
                 self._fallback_sessions[controller.player_id] = fallback
-            response = self._executor.decide(
-                fallback,
-                request,
-                timeout_seconds=self._spec.limits.decision_timeout_seconds,
-            )
-            _require_legal_response(request, response)
+            try:
+                response = self._executor.decide(
+                    fallback,
+                    request,
+                    timeout_seconds=_effective_timeout(self._spec, request),
+                )
+                _require_legal_response(request, response)
+            except Exception as fallback_exc:
+                fallback_error = (
+                    fallback_exc
+                    if isinstance(fallback_exc, AgentDecisionError)
+                    else AgentDecisionError(
+                        "agent_fallback_failed",
+                        {"error_type": type(fallback_exc).__name__},
+                    )
+                )
+                if _request_deadline_expired(request) or fallback_error.code == "agent_timeout":
+                    trace = DecisionTrace(
+                        decision_id=request.decision_id,
+                        agent_spec=controller.fallback_factory.spec,
+                        response=None,
+                        latency_ms=_elapsed_milliseconds(started_at),
+                        error_code=fallback_error.code,
+                        diagnostics={
+                            **fallback_error.diagnostics,
+                            "primary_error_code": error.code,
+                            "primary_diagnostics": error.diagnostics,
+                        },
+                    )
+                    self._trace_sink.record_decision(trace)
+                    raise _SimulationDeadlineReached from fallback_exc
+                raise
             trace = DecisionTrace(
                 decision_id=request.decision_id,
                 agent_spec=controller.fallback_factory.spec,
@@ -362,6 +429,62 @@ class SimulationSession:
         )
         if not isinstance(metadata, AgentMetadata):
             raise TypeError("metadata provider must return AgentMetadata")
+        public_timeline = _public_timeline(observation)
+        reference_evidence_options = _evidence_options(public_timeline)
+        vote_evidence_options = tuple(
+            EvidenceOption(
+                evidence_id=item.evidence_id,
+                kind=item.kind.value,
+                actor_id=item.actor_id,
+                topic_id=item.topic_id,
+                position=None if item.position is None else item.position.value,
+            )
+            for item in observation.legal_evidence.get("vote", ())
+        )
+        opening_topic_ids = tuple(
+            player.player_id
+            for player in players
+            if player.player_id != context.player_id and player.alive
+        )
+        discussion_round = observation.discussion_round
+        legal_reference_ids: tuple[str, ...] = ()
+        if discussion_round is not None:
+            legal_reference_ids = tuple(
+                reference_id
+                for reference_id in discussion_round.reference_ids
+                if next(
+                    speech.player_id
+                    for speech in observation.history.speeches
+                    if speech.speech_id == reference_id
+                )
+                != context.player_id
+            )
+        if legal_reference_ids and self._spec.response_reference_limit is not None:
+            if discussion_round is None:
+                raise RuntimeError("discussion references require an active round")
+            actor_index = discussion_round.actor_order.index(context.player_id)
+            offset = actor_index % len(legal_reference_ids)
+            rotated_references = (*legal_reference_ids[offset:], *legal_reference_ids[:offset])
+            legal_reference_ids = rotated_references[: self._spec.response_reference_limit]
+        topic_ids = (
+            tuple(
+                dict.fromkeys(
+                    speech.topic_id
+                    for speech in observation.history.speeches
+                    if speech.speech_id in legal_reference_ids
+                )
+            )
+            if legal_reference_ids
+            else opening_topic_ids
+        )
+        discussion_config = self._game.snapshot().config.discussion
+        active_discussion_stage = (
+            next(
+                stage for stage in discussion_config.stages if stage.stage is discussion_round.kind
+            )
+            if discussion_round is not None
+            else None
+        )
         return DecisionRequest(
             decision_id=(
                 f"{context.session_id}:{observation.phase.value}:{observation.day}:"
@@ -377,22 +500,69 @@ class SimulationSession:
                 known_factions=dict(observation.known_factions),
                 identity=metadata.identity,
                 world=metadata.world,
+                procedure=(
+                    AgentProcedure(
+                        procedure_id="structured_discussion",
+                        stage_id=observation.discussion_round.kind.value,
+                        cycle=observation.discussion_round.cycle,
+                        submission_mode=observation.discussion_round.submission_mode.value,
+                    )
+                    if observation.discussion_round is not None
+                    else None
+                ),
             ),
-            public_timeline=_public_timeline(observation),
+            public_timeline=public_timeline,
             options=tuple(
                 DecisionOption(
                     action_type=action.type.value,
                     ability_id=action.ability_id,
                     legal_target_ids=tuple(observation.legal_targets.get(action.key, ())),
-                    message_max_chars=(
-                        self._spec.speech_message_max_chars
+                    legal_topic_ids=topic_ids if action.type.value == "speech" else (),
+                    evidence_options=(
+                        tuple(
+                            item
+                            for item in reference_evidence_options
+                            if item.evidence_id in legal_reference_ids
+                        )
+                        if action.type.value == "speech" and legal_reference_ids
+                        else reference_evidence_options
                         if action.type.value == "speech"
+                        else vote_evidence_options
+                        if action.type.value == "vote"
+                        else ()
+                    ),
+                    legal_reference_ids=(
+                        legal_reference_ids if action.type.value == "speech" else ()
+                    ),
+                    legal_positions=(
+                        ("support", "oppose", "undecided") if action.type.value == "speech" else ()
+                    ),
+                    legal_relations=(
+                        tuple(
+                            relation.value for relation in active_discussion_stage.allowed_relations
+                        )
+                        if action.type.value == "speech" and active_discussion_stage is not None
+                        else ()
+                    ),
+                    message_max_chars=(
+                        min(
+                            discussion_config.message_max_chars,
+                            self._spec.speech_message_max_chars
+                            or discussion_config.message_max_chars,
+                        )
+                        if action.type.value == "speech"
+                        else None
+                    ),
+                    reason_max_chars=(
+                        self._game.snapshot().config.voting.reason_max_chars
+                        if action.type.value == "vote"
                         else None
                     ),
                 )
                 for action in observation.available_actions
             ),
             decision_seed=seed,
+            deadline_at=_decision_deadline(self._spec),
         )
 
     def _record_stop(
@@ -540,30 +710,57 @@ def _validate_resume_result(
 
 def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
     items: list[tuple[int, int, str, str | None, dict[str, object]]] = []
-    for index, speech in enumerate(observation.history.speeches):
-        items.append(
-            (
-                speech.day,
-                index,
-                "speech",
-                speech.player_id,
-                {
-                    "message": speech.message,
-                    "focus_id": speech.focus_id,
+    speeches = {speech.speech_id: speech for speech in observation.history.speeches}
+    emitted_speech_ids: set[str] = set()
+    event_index = 0
+    for discussion in observation.history.discussions:
+        round_speeches = {
+            speeches[speech_id].player_id: speeches[speech_id]
+            for speech_id in discussion.speech_ids
+        }
+        passed_player_ids = set(discussion.passed_player_ids)
+        for player_id in discussion.actor_ids:
+            speech = round_speeches.get(player_id)
+            if speech is not None:
+                event_type = "speech"
+                payload: dict[str, object] = {
+                    "utterance": speech.utterance,
+                    "topic_id": speech.topic_id,
+                    "position": speech.position.value,
+                    "relation": speech.relation.value,
                     "evidence_id": speech.evidence_id,
-                },
-            )
-        )
-    offset = len(observation.history.speeches)
+                    "speech_id": speech.speech_id,
+                    "round_id": speech.round_id,
+                    "round_kind": speech.round_kind.value,
+                    "response_to_id": speech.response_to_id,
+                }
+                emitted_speech_ids.add(speech.speech_id)
+            elif player_id in passed_player_ids:
+                event_type = "discussion_pass"
+                payload = {
+                    "evidence_id": f"pass:{discussion.day}:{discussion.round_id}:{player_id}",
+                    "round_id": discussion.round_id,
+                    "round_kind": discussion.kind.value,
+                    "topic_id": player_id,
+                }
+            else:
+                raise ValueError("discussion result actor must have a speech or pass")
+            items.append((discussion.day, event_index, event_type, player_id, payload))
+            event_index += 1
+    for speech in observation.history.speeches:
+        if speech.speech_id not in emitted_speech_ids:
+            raise ValueError("speech history must belong to a resolved discussion round")
     for index, vote in enumerate(observation.history.votes):
         items.append(
             (
                 vote.day,
-                offset + index,
+                event_index + index,
                 "vote_round",
                 None,
                 {
                     "votes": dict(vote.votes),
+                    "reasons": dict(vote.reasons),
+                    "evidence_ids": dict(vote.evidence_ids),
                     "counts": dict(vote.counts),
                     "eliminated_player_id": vote.eliminated_player_id,
                 },
@@ -574,6 +771,38 @@ def _public_timeline(observation: GameView) -> tuple[PublicTimelineEvent, ...]:
         PublicTimelineEvent(sequence, event_type, day, actor_id, payload)
         for sequence, (day, _, event_type, actor_id, payload) in enumerate(items, start=1)
     )
+
+
+def _evidence_options(
+    public_timeline: tuple[PublicTimelineEvent, ...],
+) -> tuple[EvidenceOption, ...]:
+    """参照可能な全公開議論事実を時系列順に返す."""
+    selected: list[EvidenceOption] = []
+    seen_ids: set[str] = set()
+    for event in public_timeline:
+        evidence_id = event.payload.get("speech_id") or event.payload.get("evidence_id")
+        normalized_id = str(evidence_id or "")
+        if (
+            event.event_type in {"speech", "discussion_pass"}
+            and event.actor_id is not None
+            and normalized_id
+            and normalized_id not in seen_ids
+        ):
+            seen_ids.add(normalized_id)
+            selected.append(
+                EvidenceOption(
+                    evidence_id=normalized_id,
+                    kind=("discussion" if event.event_type == "speech" else "discussion_pass"),
+                    actor_id=event.actor_id,
+                    topic_id=str(event.payload.get("topic_id") or event.actor_id),
+                    position=(
+                        str(event.payload["position"])
+                        if event.payload.get("position") is not None
+                        else None
+                    ),
+                )
+            )
+    return tuple(selected)
 
 
 def _require_legal_response(request: DecisionRequest, response: DecisionResponse) -> None:
@@ -591,32 +820,148 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
         raise AgentDecisionError("agent_target_not_legal")
     if option.legal_target_ids and response.target_id is None:
         raise AgentDecisionError("agent_target_required")
-    if response.action_type == "speech" and response.message is None:
-        raise AgentDecisionError("agent_message_required")
+    if response.action_type == "speech" and response.utterance is None:
+        raise AgentDecisionError("agent_utterance_required")
+    if response.action_type == "speech":
+        if response.position not in option.legal_positions:
+            raise AgentDecisionError("agent_position_not_legal")
+        if response.relation not in option.legal_relations:
+            raise AgentDecisionError("agent_relation_not_legal")
+        evidence_ids = {item.evidence_id for item in option.evidence_options}
+        if response.evidence_id is not None and response.evidence_id not in evidence_ids:
+            raise AgentDecisionError("agent_evidence_not_legal")
+        if response.topic_id not in option.legal_topic_ids:
+            raise AgentDecisionError("agent_topic_not_legal")
     if (
-        response.message is not None
+        response.utterance is not None
         and option.message_max_chars is not None
-        and len(response.message) > option.message_max_chars
+        and len(response.utterance) > option.message_max_chars
     ):
         raise AgentDecisionError("agent_message_too_long")
-    if response.action_type != "speech" and response.message is not None:
-        raise AgentDecisionError("agent_message_not_allowed")
+    if response.action_type != "speech" and response.utterance is not None:
+        raise AgentDecisionError("agent_utterance_not_allowed")
+    if (
+        response.action_type == "vote"
+        and response.reason is not None
+        and option.reason_max_chars is not None
+        and len(response.reason) > option.reason_max_chars
+    ):
+        raise AgentDecisionError("agent_reason_too_long")
+    if response.action_type == "speech":
+        if option.legal_reference_ids and response.response_to_id is None:
+            raise AgentDecisionError("agent_reference_required")
+        if (
+            response.response_to_id is not None
+            and response.response_to_id not in option.legal_reference_ids
+        ):
+            raise AgentDecisionError("agent_reference_not_legal")
+        if option.legal_reference_ids and response.evidence_id != response.response_to_id:
+            raise AgentDecisionError("agent_response_evidence_mismatch")
+        if option.legal_reference_ids and response.response_to_id is not None:
+            referenced = next(
+                event
+                for event in request.public_timeline
+                if event.payload.get("speech_id") == response.response_to_id
+            )
+            if response.topic_id != referenced.payload.get("topic_id"):
+                raise AgentDecisionError("agent_response_topic_mismatch")
+            _require_legal_response_relation(request, response, referenced)
+            referenced_message = str(referenced.payload.get("utterance") or "")
+            if (
+                " ".join(referenced_message.split()).casefold()
+                == " ".join((response.utterance or "").split()).casefold()
+            ):
+                raise AgentDecisionError("agent_response_must_contribute_new_content")
+    elif response.response_to_id is not None:
+        raise AgentDecisionError("agent_reference_not_allowed")
+    if response.action_type == "vote" and response.reason is None:
+        raise AgentDecisionError("agent_vote_reason_required")
+    if (
+        response.action_type == "vote"
+        and option.evidence_options
+        and response.evidence_id not in {item.evidence_id for item in option.evidence_options}
+    ):
+        raise AgentDecisionError("agent_vote_evidence_required")
+    if (
+        response.action_type == "vote"
+        and response.evidence_id is not None
+        and response.target_id is not None
+    ):
+        evidence = next(
+            item for item in option.evidence_options if item.evidence_id == response.evidence_id
+        )
+        if response.target_id not in {
+            evidence.actor_id,
+            evidence.topic_id,
+        }:
+            raise AgentDecisionError("agent_vote_evidence_target_mismatch")
+    if response.action_type != "vote" and response.reason is not None:
+        raise AgentDecisionError("agent_vote_reason_not_allowed")
+
+
+def _require_legal_response_relation(
+    request: DecisionRequest,
+    response: DecisionResponse,
+    referenced: PublicTimelineEvent,
+) -> None:
+    """参照発言とresponseのrelation・positionを一つの組合せとして検証する."""
+    referenced_position = str(referenced.payload.get("position") or "")
+    if response.relation == "answer":
+        if referenced_position != "undecided" or response.position == "undecided":
+            raise AgentDecisionError("agent_response_answer_mismatch")
+        return
+    if response.relation == "support":
+        if response.position != referenced_position:
+            raise AgentDecisionError("agent_response_support_mismatch")
+        return
+    if response.relation == "challenge":
+        if {response.position, referenced_position} != {"support", "oppose"}:
+            raise AgentDecisionError("agent_response_challenge_mismatch")
+        return
+    if response.relation == "revise":
+        prior = next(
+            (
+                event
+                for event in reversed(request.public_timeline)
+                if event.event_type == "speech"
+                and event.actor_id == request.context.player_id
+                and event.payload.get("topic_id") == response.topic_id
+            ),
+            None,
+        )
+        if prior is None or prior.payload.get("position") == response.position:
+            raise AgentDecisionError("agent_response_revision_mismatch")
 
 
 def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
     if response.action_type == "speech":
-        if response.message is None:
-            raise AgentDecisionError("agent_message_required")
+        if (
+            response.utterance is None
+            or response.topic_id is None
+            or response.position is None
+            or response.relation is None
+        ):
+            raise AgentDecisionError("agent_speech_payload_required")
         return Action.speech(
             player_id,
-            response.message,
-            focus_id=response.focus_id,
+            response.utterance,
+            topic_id=response.topic_id,
+            position=DiscussionPosition(response.position),
+            relation=DiscussionRelation(response.relation),
             evidence_id=response.evidence_id,
+            response_to_id=response.response_to_id,
         )
     if response.action_type == "vote":
         if response.target_id is None:
             raise AgentDecisionError("agent_target_required")
-        return Action.vote(player_id, response.target_id)
+        if response.reason is None:
+            raise AgentDecisionError("agent_vote_reason_required")
+        return Action.vote(
+            player_id,
+            response.target_id,
+            reason=response.reason,
+            evidence_id=response.evidence_id,
+        )
     if response.action_type == "use_ability":
         if response.target_id is None or response.ability_id is None:
             raise AgentDecisionError("agent_ability_payload_required")
@@ -624,6 +969,39 @@ def _action_from_response(player_id: str, response: DecisionResponse) -> Action:
     if response.action_type == "pass":
         return Action.pass_(player_id)
     raise AgentDecisionError("agent_action_not_available")
+
+
+def _effective_timeout(spec: SimulationSpec, request: DecisionRequest) -> float | None:
+    """一回の待機上限をcall上限と全体deadlineの短い方へ制限する."""
+    timeout = spec.limits.decision_timeout_seconds
+    if request.deadline_at is None:
+        return timeout
+    remaining = max((request.deadline_at - datetime.now(UTC)).total_seconds(), 0.001)
+    return remaining if timeout is None else min(timeout, remaining)
+
+
+def _decision_deadline(spec: SimulationSpec) -> datetime | None:
+    """Return one deadline combining the full-run and per-call limits."""
+    call_deadline = (
+        datetime.now(UTC) + timedelta(seconds=spec.limits.decision_timeout_seconds)
+        if spec.limits.decision_timeout_seconds is not None
+        else None
+    )
+    if spec.deadline_at is None:
+        return call_deadline
+    if call_deadline is None:
+        return spec.deadline_at
+    return min(spec.deadline_at, call_deadline)
+
+
+def _deadline_expired(spec: SimulationSpec) -> bool:
+    """Return whether the full-run deadline has elapsed."""
+    return spec.deadline_at is not None and datetime.now(UTC) >= spec.deadline_at
+
+
+def _request_deadline_expired(request: DecisionRequest) -> bool:
+    """Return whether the effective per-decision deadline has elapsed."""
+    return request.deadline_at is not None and datetime.now(UTC) >= request.deadline_at
 
 
 def _elapsed_milliseconds(started_at: float) -> int:
