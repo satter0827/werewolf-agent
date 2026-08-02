@@ -38,6 +38,7 @@ class _Session:
         return DecisionResponse(
             action_type=option.action_type,
             target_id=option.legal_target_ids[0] if option.legal_target_ids else None,
+            reason="公開情報から判断" if option.action_type == "vote" else None,
         )
 
     def close(self) -> None:
@@ -66,7 +67,7 @@ def _request(context: AgentContext) -> DecisionRequest:
             players=(me, other),
             known_roles={context.player_id: "villager"},
         ),
-        public_timeline=(PublicTimelineEvent(1, "speech", 1, "p2", {"message": ["確認します"]}),),
+        public_timeline=(PublicTimelineEvent(1, "speech", 1, "p2", {"utterance": ["確認します"]}),),
         options=(DecisionOption("vote", legal_target_ids=("p2",)),),
         decision_seed=17,
         deadline_at=datetime(2030, 1, 1, tzinfo=UTC),
@@ -125,6 +126,15 @@ def test_request_rejects_secret_or_illegal_player_references() -> None:
             options=(DecisionOption("pass"),),
             decision_seed=17,
         )
+    with pytest.raises(ValueError, match="legal references"):
+        DecisionRequest(
+            decision_id="decision-1",
+            context=context,
+            observation=AgentObservation("day_discussion", 1, me, (me,)),
+            public_timeline=(),
+            options=(DecisionOption("speech", legal_reference_ids=("hidden-speech",)),),
+            decision_seed=17,
+        )
 
 
 def test_contract_values_deeply_freeze_diagnostics_and_public_payloads() -> None:
@@ -132,7 +142,7 @@ def test_contract_values_deeply_freeze_diagnostics_and_public_payloads() -> None
     request = _request(AgentContext("s1", "g1", "p1", 11))
 
     assert spec.parameters["nested"] == {"items": (1, 2)}
-    assert request.public_timeline[0].payload["message"] == ("確認します",)
+    assert request.public_timeline[0].payload["utterance"] == ("確認します",)
     with pytest.raises(TypeError):
         spec.parameters["other"] = True  # type: ignore[index]
     with pytest.raises(ValueError, match="mapping keys"):
@@ -266,6 +276,7 @@ def test_agent_decision_error_freezes_safe_diagnostics() -> None:
             (ObservedPlayer("p1", "Alice", True),),
         ),
         lambda: DecisionOption("speech", message_max_chars=True),
+        lambda: DecisionOption("vote", reason_max_chars=True),
     ),
 )
 def test_contract_rejects_boolean_values_for_integer_fields(

@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, SecretStr
 from werewolf_agent.settings.constants import (
     MAX_LLM_TEMPERATURE,
     MIN_LLM_TEMPERATURE,
-    MIN_RETRY_COUNT,
     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
 )
 
@@ -26,13 +25,13 @@ class LlmSettings(BaseModel):
         gt=MIN_TIMEOUT_SECONDS_EXCLUSIVE,
         validation_alias="WEREWOLF_LLM_TIMEOUT_SECONDS",
     )
-    llm_max_retries: int = Field(
-        ge=MIN_RETRY_COUNT,
-        validation_alias="WEREWOLF_LLM_MAX_RETRIES",
-    )
     llm_max_tokens: int = Field(
         ge=1,
         validation_alias="WEREWOLF_LLM_MAX_TOKENS",
+    )
+    llm_model_catalog_max_bytes: int = Field(
+        ge=1,
+        validation_alias="WEREWOLF_LLM_MODEL_CATALOG_MAX_BYTES",
     )
     llm_temperature: float = Field(
         ge=MIN_LLM_TEMPERATURE,

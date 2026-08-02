@@ -33,7 +33,10 @@ def _game(preset_id: str, seed: int) -> Game:
         rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -78,13 +81,76 @@ class GameStateMachine(RuleBasedStateMachine):
         if not candidates:
             return
         player_id, available, targets = candidates[self.random.randrange(len(candidates))]
-        action = Action(
-            type=available.type,
-            player_id=player_id,
-            ability_id=available.ability_id,
-            target_id=self.random.choice(targets) if targets else None,
-            message="状況を確認します。" if available.type is ActionType.SPEECH else None,
-        )
+        view = self.game.view_for(player_id)
+        if available.type is ActionType.VOTE:
+            viable_targets = [
+                target
+                for target in targets
+                if any(
+                    target in {evidence.actor_id, evidence.topic_id}
+                    for evidence in view.legal_evidence.get(available.key, ())
+                )
+            ]
+            if not viable_targets:
+                return
+            target_id = self.random.choice(viable_targets)
+        else:
+            target_id = self.random.choice(targets) if targets else None
+        if available.type is ActionType.SPEECH:
+            round_ = view.discussion_round
+            speeches = {speech.speech_id: speech for speech in view.history.speeches}
+            reference_id = (
+                next(
+                    reference
+                    for reference in round_.reference_ids
+                    if speeches[reference].player_id != player_id
+                )
+                if round_ is not None and round_.reference_ids
+                else None
+            )
+            referenced = speeches.get(reference_id) if reference_id else None
+            topic_id = (
+                referenced.topic_id
+                if referenced is not None
+                else next(
+                    player.id
+                    for player in view.players
+                    if player.id != player_id and player.is_alive
+                )
+            )
+            action = Action.speech(
+                player_id,
+                (
+                    f"{reference_id}を踏まえて状況を再検討します。"
+                    if reference_id is not None
+                    else f"{player_id}の視点から状況を確認します。"
+                ),
+                topic_id=topic_id,
+                position=(
+                    "oppose"
+                    if referenced is not None and referenced.position.value == "support"
+                    else "support"
+                ),
+                relation="challenge" if referenced is not None else "independent",
+                evidence_id=reference_id,
+                response_to_id=reference_id,
+            )
+        elif available.type is ActionType.VOTE and target_id is not None:
+            evidence_id = next(
+                evidence.evidence_id
+                for evidence in view.legal_evidence[available.key]
+                if target_id in {evidence.actor_id, evidence.topic_id}
+            )
+            action = Action.vote(
+                player_id,
+                target_id,
+                reason="公開情報から判断します。",
+                evidence_id=evidence_id,
+            )
+        elif available.type is ActionType.USE_ABILITY:
+            action = Action.use_ability(player_id, available.ability_id or "", target_id)
+        else:
+            action = Action.pass_(player_id)
         before = self.game.snapshot()
         self.game.submit(action)
         assert self.game.snapshot() is not before
@@ -128,8 +194,14 @@ TestGameStateMachine = pytest.mark.monkey(GameStateMachine.TestCase)
 
 
 def test_public_actions_do_not_accept_ability_ids() -> None:
-    vote = Action(type=ActionType.VOTE, player_id="p1", target_id="p2")
-    speech = Action(type=ActionType.SPEECH, player_id="p1", message="確認します。")
+    vote = Action.vote("p1", "p2", reason="疑わしいため", evidence_id="speech:p2")
+    speech = Action.speech(
+        "p1",
+        "確認します。",
+        topic_id="p2",
+        position="undecided",
+        relation="independent",
+    )
 
     assert vote.ability_id is None
     assert speech.ability_id is None

@@ -29,6 +29,22 @@ class ApiSettings(BaseModel):
         ge=MIN_PAGE_LIMIT,
         validation_alias="WEREWOLF_API_TIMELINE_MAX_LIMIT",
     )
+    api_setup_revision_default_limit: int = Field(
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_SETUP_REVISION_DEFAULT_LIMIT",
+    )
+    api_setup_revision_max_limit: int = Field(
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_SETUP_REVISION_MAX_LIMIT",
+    )
+    api_setup_list_default_limit: int = Field(
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_SETUP_LIST_DEFAULT_LIMIT",
+    )
+    api_setup_list_max_limit: int = Field(
+        ge=MIN_PAGE_LIMIT,
+        validation_alias="WEREWOLF_API_SETUP_LIST_MAX_LIMIT",
+    )
     api_host: str = Field(
         validation_alias="WEREWOLF_API_HOST",
     )
@@ -75,4 +91,8 @@ class ApiSettings(BaseModel):
     api_max_concurrent_requests: int = Field(
         ge=1,
         validation_alias="WEREWOLF_API_MAX_CONCURRENT_REQUESTS",
+    )
+    api_admin_max_token_age_seconds: int = Field(
+        ge=300,
+        validation_alias="WEREWOLF_API_ADMIN_MAX_TOKEN_AGE_SECONDS",
     )

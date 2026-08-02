@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -52,6 +53,71 @@ class SupabaseAuthClient:
             lambda: self._client.sign_in_with_password({"email": email, "password": password})
         )
 
+    def list_totp_factors(self, session: SupabaseSession) -> tuple[MfaFactor, ...]:
+        """Return verified TOTP factors for one current member session."""
+        self._restore_session(session)
+        try:
+            response = self._client.mfa.list_factors()
+        except (AuthRetryableError, AuthError, httpx.HTTPError) as exc:
+            raise AppError(
+                MESSAGE_SUPABASE_AUTH_UNAVAILABLE,
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            ) from exc
+        return tuple(
+            MfaFactor(id=str(factor.id), friendly_name=factor.friendly_name or "")
+            for factor in response.totp
+        )
+
+    def enroll_totp(
+        self,
+        session: SupabaseSession,
+        *,
+        friendly_name: str,
+    ) -> MfaEnrollment:
+        """Start one TOTP enrollment for a current member session."""
+        self._restore_session(session)
+        try:
+            response = self._client.mfa.enroll(
+                {"factor_type": "totp", "friendly_name": friendly_name}
+            )
+        except (AuthRetryableError, AuthError, httpx.HTTPError) as exc:
+            raise AppError(
+                MESSAGE_SUPABASE_AUTH_UNAVAILABLE,
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            ) from exc
+        if response.totp is None:
+            raise AppError(MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION)
+        return MfaEnrollment(
+            factor_id=str(response.id),
+            uri=str(response.totp.uri),
+        )
+
+    def verify_totp(
+        self,
+        session: SupabaseSession,
+        *,
+        factor_id: str,
+        code: str,
+    ) -> SupabaseSession:
+        """Verify one TOTP challenge and return the upgraded AAL2 session."""
+        self._restore_session(session)
+        try:
+            response = self._client.mfa.challenge_and_verify({"factor_id": factor_id, "code": code})
+        except AuthApiError as exc:
+            raise AppError(
+                "多要素認証コードを確認できませんでした。",
+                code=ErrorCode.AUTHENTICATION_REQUIRED,
+            ) from exc
+        except (AuthRetryableError, AuthError, httpx.HTTPError) as exc:
+            raise AppError(
+                MESSAGE_SUPABASE_AUTH_UNAVAILABLE,
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            ) from exc
+        return _session_from_mfa_response(response)
+
     def sign_out(self, session: SupabaseSession) -> None:
         """Invalidate the current server-side Auth session."""
         try:
@@ -72,6 +138,22 @@ class SupabaseAuthClient:
     def refresh(self, session: SupabaseSession) -> SupabaseSession:
         """Refresh an expired access token."""
         return self._invoke(lambda: self._client.refresh_session(session.refresh_token))
+
+    def _restore_session(self, session: SupabaseSession) -> None:
+        """Bind explicit credentials to the non-persistent SDK client."""
+        try:
+            self._client.set_session(session.access_token, session.refresh_token)
+        except AuthApiError as exc:
+            raise AppError(
+                "認証情報を確認できませんでした。",
+                code=ErrorCode.AUTHENTICATION_REQUIRED,
+            ) from exc
+        except (AuthRetryableError, AuthError, httpx.HTTPError) as exc:
+            raise AppError(
+                MESSAGE_SUPABASE_AUTH_UNAVAILABLE,
+                code=ErrorCode.API_UNAVAILABLE,
+                retryable=True,
+            ) from exc
 
     def _invoke(self, operation: Any) -> SupabaseSession:
         try:
@@ -112,3 +194,39 @@ def _session_from_response(response: AuthResponse) -> SupabaseSession:
         email=sdk_session.user.email or "",
         is_anonymous=sdk_session.user.is_anonymous,
     )
+
+
+def _session_from_mfa_response(response: Any) -> SupabaseSession:
+    """Convert successful MFA verification into the shared session value."""
+    access_token = str(response.access_token).strip()
+    refresh_token = str(response.refresh_token).strip()
+    user_id = str(response.user.id).strip()
+    if not access_token or not refresh_token or not user_id:
+        raise AppError(MESSAGE_SUPABASE_AUTH_INCOMPLETE_SESSION)
+    return SupabaseSession(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        expires_at=datetime.now(UTC) + timedelta(seconds=max(response.expires_in - 30, 0)),
+        user_id=user_id,
+        email=response.user.email or "",
+        is_anonymous=response.user.is_anonymous,
+    )
+
+
+@dataclass(frozen=True)
+class MfaFactor:
+    """Allowlisted TOTP factor metadata presented to one signed-in user."""
+
+    id: str
+    friendly_name: str
+
+
+@dataclass(frozen=True)
+class MfaEnrollment:
+    """Short-lived TOTP enrollment material for the enrolling user."""
+
+    factor_id: str
+    uri: str
+
+
+__all__ = ["MfaEnrollment", "MfaFactor", "SupabaseAuthClient"]

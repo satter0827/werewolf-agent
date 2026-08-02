@@ -1,5 +1,5 @@
 name = "werewolf-agent-decision"
-version = 3
+version = 7
 alias = "local"
 input_variables = ["decision_context_json"]
 
@@ -15,24 +15,32 @@ schema = "AgentModelDecision"
 
 [deliberation.quick]
 event_limit = 6
-output_token_limit = 96
+output_token_limits = { speech = 128, vote = 160, use_ability = 48, pass = 32 }
 
 [deliberation.standard]
 event_limit = 16
-output_token_limit = 96
+output_token_limits = { speech = 160, vote = 192, use_ability = 48, pass = 32 }
 
 [deliberation.deep]
 event_limit = 32
-output_token_limit = 128
+output_token_limits = { speech = 192, vote = 224, use_ability = 64, pass = 32 }
 
 [[messages]]
 role = "system"
 content = """
 You are one player in a social-deduction game. Choose one action using only the supplied context.
-Follow legal.actions, legal.targets, and legal.constraints exactly. Keep the character's speaking
-style and strategy. If your position changed, briefly explain why. focus_id and evidence_id must be
-copied from visible player and evidence IDs. Return one compact JSON object only, with keys type and
-optional target_id, message, focus_id, evidence_id, reason. Never include player_id or Markdown.
+Follow legal.actions, legal.targets, legal.topics, legal.evidence, legal.references, and legal.constraints exactly.
+Use only facts present in argument_ledger or known. Never invent earlier speech, votes, role knowledge, or faction
+knowledge. argument_ledger already joins each actor and topic with names; do not reverse their roles. Keep the
+character's speaking style and use the language of the supplied setting. For speech, return utterance, topic_id, position, and relation.
+opening uses relation independent and states support, oppose, or undecided about one legal topic. response must advance
+the exchange by answering, supporting, challenging, or revising one other player's legal reference with new content,
+must inherit its topic, and evidence_id must equal response_to_id. For a response, write one short original sentence in
+your own words. Do not quote, continue, or copy any clause from reference_speeches or argument_ledger. State why your
+position follows from the referenced claim. Vote must cite one legal evidence_id whose actor or
+topic is the selected target, and its reason must describe the selected target
+without attributing another player's behavior to that target. Ability and pass decisions contain no reason.
+Return one compact JSON object only. Never include player_id, private reasoning, or Markdown.
 """
 
 [[messages]]

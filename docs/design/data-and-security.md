@@ -24,7 +24,22 @@ Supabaseアダプターはリポジトリportを実装し、公式Auth SDK、gam
 traceの接続を担当する。APIとworkerは用途別のプロセス所有connection poolを使う。
 Supabase Authとゲームテーブルを分離し、ゲームテーブルはData APIから参照させない。
 
-完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。
+APIとworkerは別のdatabase LOGIN userを使う。LOGIN userにはmigrationが定義する
+`werewolf_api`または`werewolf_worker`の一方だけを付与する。権限role自体は`NOLOGIN`とし、
+passwordと接続文字列はdeploymentのsecret storeで作成、配布、rotationする。APIは利用者認証、
+setup、閲覧、operation送信に必要な権限だけを持ち、workerはqueue消費、状態更新、LLM trace記録に
+必要な権限だけを持つ。migration用owner接続をruntimeへ渡さず、新しいtableとfunctionは所有プロセスを
+migrationで明示するまでruntime roleへ許可しない。
+
+workerは`auth.users`を直接参照しない。登録状態の再確認はmigration ownerが所有する限定functionを通し、
+利用者IDに対応する`is_anonymous`だけを受け取る。
+
+有料LLMのadmission台帳はprivate schemaへ保存し、operation、利用者、worker、予約時刻、期限、結果を
+保持する。日次上限は成功件数ではなく外部呼出しを許可した予約件数で判定し、provider失敗やworker中断で
+予算を戻さない。同じoperationの再予約を許可せず、retryによる意図しない重複課金を防ぐ。
+
+完全状態を返すrevealは、管理者認可と専用設定を通過するHTTP routeに限定する。専用設定は
+既定で無効とし、必要なruntimeだけが明示的に有効化する。
 通常の`GameClient`からは呼び出せない。CLIとStreamlitの
 管理者領域は、管理者認可を通過した`AdminClient`だけから呼び出す。完全情報を通常clientで
 取得してから画面で隠す実装は禁止する。
@@ -46,12 +61,22 @@ domain actionを保存する。作成時のrule snapshotから集約を再構築
 - `secret`、`token`、`api_key`、`authorization`、`password`をログ記録前にmaskする。
 - 例外、HTTP応答、ブラウザーstateに内部設定やstack traceを含めない。
 - 外部入力を未検証のままprompt、file path、shellコマンドに渡さない。
+- 公開するroster生成seedは公開プロファイルだけに使い、private strategy、role割当、gameplay、replayに
+  使うprivate seedと分離する。private seedは
+  operation payloadと永続化境界の内側だけに保持し、public stateとgame一覧へ返さない。
 
 ## 認証と認可
 
 認証は利用者を特定し、認可はgameごとの操作可否を判断する。両者を一つの
 「ログイン済み」判定へまとめない。IDを含む要求はapplication境界で主体と対象の関係を
 検証し、アダプターが返した行をそのまま公開しない。
+
+管理者権限は利用者が変更できない`app_metadata.role=admin`だけから候補を判定し、top-levelの
+`service_role`や`user_metadata`を利用者管理者へ昇格させない。管理者候補には`aal2`、空でない
+`session_id`、設定した最大発行経過時間を要求する。さらにSupabase Authへaccess tokenを再照会し、
+返された利用者IDと最新の管理者roleを確認したうえで、tokenの`session_id`と利用者IDに一致する
+`auth.sessions` rowが残っている場合だけ管理者として扱う。
+Authを確認できない場合は管理者権限だけを閉じ、通常利用者のlocal JWT認証は継続する。
 
 ## 検証
 

@@ -57,13 +57,13 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into public.games (
-              game_id, owner_user_id, status, phase, day, version, seed,
+              game_id, owner_user_id, status, phase, day, version,
               scenario_id, scenario_name, narration_mode, public_state,
               llm_mode, state_checksum,
               created_at, updated_at, completed_at
             )
             values (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s
             )
             """,
@@ -74,7 +74,6 @@ class SupabaseGameRepository(GameRepository):
                 game.phase,
                 game.day,
                 game.version,
-                game.seed,
                 _state_text(game.public_state, "scenario_id"),
                 _state_text(game.public_state, "scenario_name"),
                 str(game.public_state.get("narration_mode") or "standard"),
@@ -89,12 +88,13 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into private.game_snapshots (
-              game_id, config, private_state, pending_actions, checksum, updated_at
+              game_id, seed, config, private_state, pending_actions, checksum, updated_at
             )
-            values (%s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 game.id,
+                game.seed,
                 Jsonb(game.config),
                 Jsonb(game.private_state),
                 Jsonb(game.pending_actions),
@@ -127,7 +127,7 @@ class SupabaseGameRepository(GameRepository):
         row = self._connection.execute(
             """
             select
-              g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
+              g.game_id, g.status, g.phase, g.day, s.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
               s.config, s.private_state, s.pending_actions
             from public.games g
@@ -143,7 +143,7 @@ class SupabaseGameRepository(GameRepository):
         row = self._connection.execute(
             """
             select
-              g.game_id, g.status, g.phase, g.day, g.seed, g.public_state,
+              g.game_id, g.status, g.phase, g.day, s.seed, g.public_state,
               g.version, g.created_at, g.updated_at,
               s.config, s.private_state, s.pending_actions
             from public.games g
@@ -164,31 +164,35 @@ class SupabaseGameRepository(GameRepository):
         offset: int,
     ) -> list[StoredGameSummary]:
         """Return game summaries."""
-        params: list[object] = [_uuid_or_none(user_id)]
-        clauses: list[str] = [
-            """
-            exists (
+        user_uuid = _uuid_or_none(user_id)
+        if status is None:
+            query = """
+            select *
+            from public.game_summaries
+            where exists (
               select 1 from public.game_participants participant
               where participant.game_id = game_summaries.game_id
                 and participant.user_id = %s
             )
-            """
-        ]
-        if status is not None:
-            clauses.append("status = %s")
-            params.append(status)
-        where = f"where {' and '.join(clauses)}" if clauses else ""
-        params.extend([limit, offset])
-        rows = self._connection.execute(
-            f"""
-            select *
-            from public.game_summaries
-            {where}
             order by updated_at desc, created_at desc
             limit %s offset %s
-            """,
-            params,
-        ).fetchall()
+            """
+            params: tuple[object, ...] = (user_uuid, limit, offset)
+        else:
+            query = """
+            select *
+            from public.game_summaries
+            where exists (
+              select 1 from public.game_participants participant
+              where participant.game_id = game_summaries.game_id
+                and participant.user_id = %s
+            )
+              and status = %s
+            order by updated_at desc, created_at desc
+            limit %s offset %s
+            """
+            params = (user_uuid, status, limit, offset)
+        rows = self._connection.execute(query, params).fetchall()
         return [stored_summary(row) for row in rows]
 
     def save(self, update: GameRecordUpdate) -> StoredGame:
@@ -379,18 +383,17 @@ class SupabaseGameRepository(GameRepository):
         self._connection.execute(
             """
             insert into public.game_summaries (
-              game_id, owner_user_id, status, phase, day, version, seed,
+              game_id, owner_user_id, status, phase, day, version,
               scenario_id, scenario_name, theme,
               player_count, alive_count, winner, step_count, turn_count,
               created_at, updated_at, completed_at
             )
-            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             on conflict (game_id) do update set
               status = excluded.status,
               phase = excluded.phase,
               day = excluded.day,
               version = excluded.version,
-              seed = excluded.seed,
               scenario_id = excluded.scenario_id,
               scenario_name = excluded.scenario_name,
               theme = excluded.theme,
@@ -409,7 +412,6 @@ class SupabaseGameRepository(GameRepository):
                 game.phase,
                 game.day,
                 game.version,
-                game.seed,
                 public_state.get("scenario_id"),
                 public_state.get("scenario_name"),
                 Jsonb(_json_object(public_state.get("theme")))

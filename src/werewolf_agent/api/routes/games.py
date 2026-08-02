@@ -154,7 +154,7 @@ def get_observation(
         Actor(user_id=principal.user_id),
         player_id,
     )
-    return observation_response(result)
+    return observation_response(result, api_text_max_chars=services.message_max_chars)
 
 
 @router.post(
@@ -184,7 +184,10 @@ def submit_action(
 
 
 def _validate_action_text(request: PlayerActionOperationRequest, max_chars: int) -> None:
-    for value in (request.action.message, request.action.reason):
+    for value in (
+        getattr(request.action, "utterance", None),
+        getattr(request.action, "reason", None),
+    ):
         if value is not None and len(value) > max_chars:
             raise AppError(
                 f"入力できる文章は{max_chars}文字までです。",

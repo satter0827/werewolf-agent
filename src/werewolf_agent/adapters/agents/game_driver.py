@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from importlib import import_module
-from typing import Any
+from typing import Any, cast
 
 import httpx
 
@@ -26,7 +27,6 @@ from werewolf_agent.adapters.agents.messages import (
 )
 from werewolf_agent.adapters.llm.agent import LangChainAgentFactory
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
-from werewolf_agent.adapters.llm.langchain.constants import LLM_SPEECH_MESSAGE_MAX_CHARS
 from werewolf_agent.adapters.llm.langchain.service import (
     LangChainDecisionProvider,
 )
@@ -38,6 +38,7 @@ from werewolf_agent.adapters.llm.models import DeliberationLevel, PlayerProfile
 from werewolf_agent.adapters.llm.tracing import LlmTraceSink, NullLlmTraceSink
 from werewolf_agent.adapters.resources import LlmDefinitions
 from werewolf_agent.agents import AgentFactory
+from werewolf_agent.application.domain_codec import domain_to_data
 from werewolf_agent.application.handlers import (
     commit_prepared_advance,
     prepare_advance_game,
@@ -68,9 +69,11 @@ from werewolf_agent.simulation import (
     SimulationSpec,
     SimulationStepKind,
     SimulationStopReason,
+    action_from_response,
 )
 
 logger = logging.getLogger(__name__)
+LLM_TRANSPORT_MAX_RETRIES = 0
 
 
 @dataclass(frozen=True)
@@ -166,16 +169,24 @@ def drive_prepared_game(
                 max_phases=1,
             ),
             phase_seed=prepared.phase_seed,
-            speech_message_max_chars=LLM_SPEECH_MESSAGE_MAX_CHARS,
         ),
         trace_sink=runtime.decision_trace_sink,
     )
     events: list[GameEvent] = []
+    actions: list[Mapping[str, object]] = []
     try:
         while True:
             step = session.step()
             events.extend(step.events)
             if step.kind is SimulationStepKind.AGENT_ACTION:
+                if (
+                    step.actor_id is None
+                    or step.decision_trace is None
+                    or step.decision_trace.response is None
+                ):
+                    raise RuntimeError("agent action is missing its accepted decision")
+                action = action_from_response(step.actor_id, step.decision_trace.response)
+                actions.append(cast(Mapping[str, object], domain_to_data(action)))
                 current = game.snapshot()
                 logger.debug(
                     "game.agent_action.generated",
@@ -198,6 +209,7 @@ def drive_prepared_game(
     return replace(
         prepared,
         domain_events=tuple(events),
+        domain_actions=tuple(actions),
         domain_transition_complete=True,
     )
 
@@ -274,7 +286,6 @@ def _decision_provider(
             timeout_seconds=config.timeout_seconds,
             max_tokens=config.max_tokens,
             temperature=config.temperature,
-            max_retries=config.max_retries,
         )
         return LangChainDecisionProvider(
             prompt=definitions.prompt,
@@ -305,7 +316,7 @@ def _openai_compatible_model(config: LlmProviderConfig, *, model_id: str) -> Any
         "api_key": config.api_key or LLM_STUDIO_API_KEY_PLACEHOLDER,
         "temperature": config.temperature,
         "timeout": config.timeout_seconds,
-        "max_retries": config.max_retries,
+        "max_retries": LLM_TRANSPORT_MAX_RETRIES,
         "max_tokens": config.max_tokens,
     }
     if config.base_url:
@@ -327,9 +338,24 @@ def _openai_compatible_model_id(config: LlmProviderConfig) -> str:
 def _lmstudio_model_id(config: LlmProviderConfig) -> str:
     models_url = f"{config.base_url.rstrip('/')}/models"
     try:
-        response = httpx.get(models_url, timeout=config.timeout_seconds)
-        response.raise_for_status()
-        payload = response.json()
+        with httpx.stream("GET", models_url, timeout=config.timeout_seconds) as response:
+            response.raise_for_status()
+            content = bytearray()
+            for chunk in response.iter_bytes():
+                if len(content) + len(chunk) > config.model_catalog_max_bytes:
+                    raise LlmProviderError(
+                        context={
+                            ERROR_CONTEXT_LLM_ERROR_TYPE: (
+                                LLM_PROVIDER_ERROR_INVALID_MODELS_RESPONSE
+                            ),
+                            ERROR_CONTEXT_LLM_PROVIDER: config.provider,
+                            ERROR_CONTEXT_LLM_BASE_URL: config.base_url,
+                        }
+                    )
+                content.extend(chunk)
+        payload = json.loads(content)
+    except LlmProviderError:
+        raise
     except Exception as exc:
         raise LlmProviderError(
             context={
@@ -392,12 +418,14 @@ def _phase_action_limit(snapshot: GameState) -> int:
     }
     if snapshot.phase is not Phase.DAY_DISCUSSION:
         return max(len(alive_ids), 1)
-    speech_counts = {player_id: 0 for player_id in alive_ids}
-    for speech in snapshot.history.speeches:
-        if speech.day == snapshot.day and speech.player_id in speech_counts:
-            speech_counts[speech.player_id] += 1
-    speech_limit = snapshot.config.rules.day_speech_limit_per_player
-    remaining_speeches = sum(
-        max(0, speech_limit - speech_counts[player_id]) for player_id in alive_ids
-    )
-    return max(remaining_speeches + len(alive_ids), 1)
+    round_ = snapshot.pending_actions.discussion_round
+    if round_ is None:
+        return 1
+    remaining_cycles = snapshot.config.discussion.cycles_per_day - round_.cycle
+    current_remaining = len(round_.actor_order) - round_.cursor
+    if round_.submission_mode.value == "sealed":
+        current_remaining -= len(snapshot.pending_actions.discussion_actions)
+    future_actions = remaining_cycles * len(alive_ids) * 2
+    if round_.kind.value == "opening":
+        future_actions += len(alive_ids)
+    return max(current_remaining + future_actions, 1)

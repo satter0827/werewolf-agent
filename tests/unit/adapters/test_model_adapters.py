@@ -9,24 +9,26 @@ import pytest
 import respx
 from langchain_openai import ChatOpenAI
 
+from werewolf_agent.adapters.llm.langchain.service import _trace_timeout_seconds
 from werewolf_agent.adapters.llm.model_adapters import (
     LangChainChatDecisionModel,
     LlmModelInvocationError,
 )
 from werewolf_agent.adapters.llm.models import (
-    AgentModelDecision,
     AgentObservation,
     DecisionTask,
     DeliberationLevel,
     ModelMessage,
     ModelRequest,
 )
+from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
+from werewolf_agent.contracts.error_catalog import ERROR_CONTEXT_LLM_TIMEOUT_SECONDS
 
 BASE_URL = "http://127.0.0.1:18765/v1"
 COMPLETIONS_URL = f"{BASE_URL}/chat/completions"
 
 
-def request() -> ModelRequest:
+def request(*, timeout_seconds: float | None = None) -> ModelRequest:
     context = {"legal": {"actions": ["vote"], "targets": {"vote": ["p2"]}}}
     observation = AgentObservation.model_validate(
         {
@@ -47,6 +49,7 @@ def request() -> ModelRequest:
             observation=observation,
             deliberation_level=DeliberationLevel.STANDARD,
             output_token_limit=96,
+            timeout_seconds=timeout_seconds,
             context=context,
             context_checksum="checksum",
         ),
@@ -54,7 +57,7 @@ def request() -> ModelRequest:
             ModelMessage(role="system", content="Return JSON."),
             ModelMessage(role="human", content=json.dumps(context)),
         ),
-        response_schema=AgentModelDecision.model_json_schema(),
+        response_schema=build_decision_response_schema(observation, context),
         prompt_checksum="prompt-checksum",
     )
 
@@ -65,8 +68,8 @@ def adapter() -> LangChainChatDecisionModel:
             model="stub-model",
             api_key="stub-key",
             base_url=BASE_URL,
-            max_retries=0,
             temperature=0,
+            max_retries=0,
         ),
         provider_name="lmstudio",
         model_name="stub-model",
@@ -106,6 +109,14 @@ def test_openai_compatible_adapter_sends_chat_request_and_normalizes_usage() -> 
     sent = json.loads(route.calls[0].request.content)
     assert sent["model"] == "stub-model"
     assert sent["max_completion_tokens"] == 96
+    assert sent["response_format"] == {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "agent_model_decision",
+            "strict": False,
+            "schema": request().response_schema,
+        },
+    }
     assert [message["role"] for message in sent["messages"]] == ["system", "user"]
     assert response.content == '{"type":"vote","target_id":"p2"}'
     assert response.usage == {"input_tokens": 12, "output_tokens": 5, "total_tokens": 17}
@@ -113,12 +124,43 @@ def test_openai_compatible_adapter_sends_chat_request_and_normalizes_usage() -> 
 
 
 @respx.mock
+def test_openai_compatible_adapter_uses_the_shorter_request_timeout() -> None:
+    route = respx.post(COMPLETIONS_URL).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "id": "chatcmpl-timeout",
+                "object": "chat.completion",
+                "created": 1,
+                "model": "stub-model",
+                "choices": [
+                    {
+                        "index": 0,
+                        "message": {"role": "assistant", "content": '{"type":"pass"}'},
+                        "finish_reason": "stop",
+                    }
+                ],
+            },
+        )
+    )
+
+    response = adapter().invoke(request(timeout_seconds=0.25))
+
+    timeout = route.calls[0].request.extensions["timeout"]
+    assert timeout["read"] == pytest.approx(0.25)
+    assert response.metadata["effective_timeout_seconds"] == pytest.approx(0.25)
+
+
+@respx.mock
 def test_openai_compatible_adapter_converts_transport_error_once() -> None:
     route = respx.post(COMPLETIONS_URL).mock(return_value=httpx.Response(503))
+    model_request = request(timeout_seconds=0.25)
 
     with pytest.raises(LlmModelInvocationError) as raised:
-        adapter().invoke(request())
+        adapter().invoke(model_request)
 
     assert len(route.calls) == 1
     assert raised.value.context["llm_provider"] == "lmstudio"
     assert raised.value.context["llm_model"] == "stub-model"
+    assert raised.value.context[ERROR_CONTEXT_LLM_TIMEOUT_SECONDS] == pytest.approx(0.25)
+    assert _trace_timeout_seconds(model_request, None, raised.value.context) == pytest.approx(0.25)

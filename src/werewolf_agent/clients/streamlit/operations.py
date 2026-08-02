@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, cast
+from collections.abc import Callable
+from typing import TypeVar
 from uuid import uuid4
 
 from werewolf_agent.adapters.factory import build_game_client, build_public_client
@@ -22,6 +23,7 @@ from werewolf_agent.clients.streamlit.view_models import (
     ScreenMode,
     build_game_screen_view,
 )
+from werewolf_agent.contracts import AppError, ErrorCode
 from werewolf_agent.contracts.api import (
     PlayerPreviewRequest,
     PlayerPreviewResponse,
@@ -29,6 +31,7 @@ from werewolf_agent.contracts.api import (
     RuntimeStatusResponse,
     SavedSetupListResponse,
     SavedSetupRevisionResponse,
+    SavedSetupSummaryResponse,
     SessionResponse,
     SetupCatalogResponse,
     SetupCreateRequest,
@@ -37,6 +40,7 @@ from werewolf_agent.contracts.api import (
     SetupValidationResponse,
 )
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     AdvanceGameJobResponse,
     CreateGameRequest,
     DeliberationLevel,
@@ -44,7 +48,6 @@ from werewolf_agent.contracts.schemas import (
     GameSetupDocumentRequest,
     GameSetupSelectionRequest,
     GameTimelineItem,
-    PlayerActionRequest,
     PlayerObservationResponse,
     PublicGameState,
     PublicGameSummary,
@@ -56,6 +59,7 @@ from werewolf_agent.settings import (
 )
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 def build_streamlit_client(settings: AppSettings) -> GameClient:
@@ -126,14 +130,29 @@ def preview_players(
     *, settings: AppSettings, setup: GameSetupSelectionRequest, seed: int | None
 ) -> PlayerPreviewResponse:
     """Return a deterministic public roster preview."""
-    return build_streamlit_public_client(settings).preview_players(
-        PlayerPreviewRequest(setup=setup, seed=seed)
+    client = (
+        build_streamlit_client(settings)
+        if setup.mode == "saved"
+        else build_streamlit_public_client(settings)
     )
+    return client.preview_players(PlayerPreviewRequest(setup=setup, seed=seed))
 
 
 def list_saved_setups(*, settings: AppSettings) -> SavedSetupListResponse:
     """Return setups owned by the authenticated user."""
-    return build_streamlit_client(settings).list_setups()
+    client = build_streamlit_client(settings)
+
+    def fetch_page(limit: int, offset: int) -> tuple[list[SavedSetupSummaryResponse], int | None]:
+        page = client.list_setups(limit=limit, offset=offset)
+        return page.items, page.next_offset
+
+    return SavedSetupListResponse(
+        items=_collect_bounded_pages(
+            fetch_page,
+            page_limit=settings.api_setup_list_max_limit,
+            max_items=settings.game_setup_max_saved_setups,
+        )
+    )
 
 
 def load_saved_setup(
@@ -152,7 +171,51 @@ def list_setup_revisions(
     *, settings: AppSettings, setup_id: str
 ) -> list[SavedSetupRevisionResponse]:
     """Return immutable revision history for an owned setup."""
-    return build_streamlit_client(settings).list_setup_revisions(setup_id)
+    client = build_streamlit_client(settings)
+
+    def fetch_page(limit: int, offset: int) -> tuple[list[SavedSetupRevisionResponse], int | None]:
+        page = client.list_setup_revisions(setup_id, limit=limit, offset=offset)
+        return page.items, page.next_offset
+
+    return _collect_bounded_pages(
+        fetch_page,
+        page_limit=settings.api_setup_revision_max_limit,
+        max_items=settings.game_setup_max_revisions,
+    )
+
+
+def _collect_bounded_pages(
+    fetch_page: Callable[[int, int], tuple[list[T], int | None]],
+    *,
+    page_limit: int,
+    max_items: int,
+) -> list[T]:
+    """Collect trusted API pages without exceeding the configured storage quota."""
+    items: list[T] = []
+    offset = 0
+    seen_offsets: set[int] = set()
+    while len(items) < max_items:
+        if offset in seen_offsets:
+            raise _invalid_page_error()
+        seen_offsets.add(offset)
+        limit = min(page_limit, max_items - len(items))
+        page_items, next_offset = fetch_page(limit, offset)
+        if len(page_items) > limit:
+            raise _invalid_page_error()
+        items.extend(page_items)
+        if next_offset is None:
+            return items
+        if not page_items or next_offset <= offset:
+            raise _invalid_page_error()
+        offset = next_offset
+    raise _invalid_page_error()
+
+
+def _invalid_page_error() -> AppError:
+    return AppError(
+        "保存したゲーム設定を読み込めません。",
+        code=ErrorCode.INTERNAL_UNEXPECTED,
+    )
 
 
 def create_saved_setup(
@@ -290,15 +353,30 @@ def submit_screen_action(
     action_type: str,
     ability_id: str | None,
     target_id: str | None,
-    message: str | None,
+    utterance: str | None,
+    topic_id: str | None = None,
+    position: str | None = None,
+    relation: str | None = None,
+    evidence_id: str | None = None,
+    reason: str | None = None,
+    response_to_id: str | None = None,
 ) -> None:
     """Submit one action selected in the Streamlit hand panel."""
-    request = PlayerActionRequest(
-        type=cast(Any, action_type.split(":", 1)[0]),
-        ability_id=ability_id,
-        target_id=target_id,
-        message=message,
-    )
+    payload: dict[str, object] = {"type": action_type.split(":", 1)[0]}
+    for key, value in {
+        "ability_id": ability_id,
+        "target_id": target_id,
+        "utterance": utterance,
+        "topic_id": topic_id,
+        "position": position,
+        "relation": relation,
+        "evidence_id": evidence_id,
+        "reason": reason,
+        "response_to_id": response_to_id,
+    }.items():
+        if value is not None:
+            payload[key] = value
+    request = PLAYER_ACTION_REQUEST_ADAPTER.validate_python(payload)
     build_streamlit_client(settings).submit_player_action(
         game_id,
         manual_player_id,
@@ -311,7 +389,7 @@ def submit_screen_action(
             "event_outcome": EVENT_OUTCOME_SUCCESS,
             "game_id": game_id,
             "has_target": target_id is not None,
-            "has_message": bool(message),
+            "has_message": bool(utterance),
         },
     )
 

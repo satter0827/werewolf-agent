@@ -5,12 +5,15 @@ from __future__ import annotations
 import random
 
 from werewolf_agent.domain.definitions import RuleSetDefinition
+from werewolf_agent.domain.discussion_text import normalize_discussion_utterance
 from werewolf_agent.domain.errors import RuleViolation
 from werewolf_agent.domain.game import Game
 from werewolf_agent.domain.rule_packs import RulePackProvider, RulePolicyRegistry
 from werewolf_agent.domain.state import (
     Action,
     ActionType,
+    DiscussionPosition,
+    DiscussionRelation,
     GameEvent,
     GameSetup,
     GameState,
@@ -83,14 +86,96 @@ def _first_legal_action(game: Game) -> Action | None:
             continue
         available = view.available_actions[0]
         targets = view.legal_targets.get(available.key, ())
-        return Action(
-            type=available.type,
-            player_id=player_id,
-            ability_id=available.ability_id,
-            target_id=targets[0] if targets else None,
-            message="契約を確認します。" if available.type is ActionType.SPEECH else None,
-        )
+        if available.type is ActionType.SPEECH:
+            round_ = view.discussion_round
+            speeches = {speech.speech_id: speech for speech in view.history.speeches}
+            reference_id = (
+                next(
+                    reference_id
+                    for reference_id in round_.reference_ids
+                    if speeches[reference_id].player_id != player_id
+                )
+                if round_ and round_.reference_ids
+                else None
+            )
+            referenced = speeches.get(reference_id) if reference_id is not None else None
+            topic_id = (
+                referenced.topic_id
+                if referenced is not None
+                else next(
+                    player.id
+                    for player in view.players
+                    if player.id != player_id and player.is_alive
+                )
+            )
+            relation = DiscussionRelation.INDEPENDENT
+            position = DiscussionPosition.SUPPORT
+            if referenced is not None:
+                _require(
+                    DiscussionRelation.SUPPORT in view.allowed_discussion_relations,
+                    "response stage must expose a universally legal support relation",
+                )
+                relation = DiscussionRelation.SUPPORT
+                position = referenced.position
+            return Action.speech(
+                player_id,
+                _bounded_speech(
+                    state=game.snapshot(),
+                    referenced_utterance=(referenced.utterance if referenced is not None else None),
+                ),
+                topic_id=topic_id,
+                position=position,
+                relation=relation,
+                evidence_id=reference_id,
+                response_to_id=reference_id,
+            )
+        if available.type is ActionType.VOTE:
+            target_id = targets[0]
+            speech = next(
+                (
+                    item
+                    for item in reversed(view.history.speeches)
+                    if target_id in {item.player_id, item.topic_id}
+                ),
+                None,
+            )
+            if speech is not None:
+                evidence_id = speech.speech_id
+            else:
+                discussion = next(
+                    item
+                    for item in reversed(view.history.discussions)
+                    if target_id in item.passed_player_ids
+                )
+                evidence_id = f"pass:{discussion.day}:{discussion.round_id}:{target_id}"
+            return Action.vote(
+                player_id,
+                target_id,
+                reason="契約上の判断です。"[: game.snapshot().config.voting.reason_max_chars],
+                evidence_id=evidence_id,
+            )
+        if available.type is ActionType.USE_ABILITY:
+            return Action.use_ability(player_id, available.ability_id or "", targets[0])
+        return Action.pass_(player_id)
     return None
+
+
+def _bounded_speech(*, state: GameState, referenced_utterance: str | None) -> str:
+    """Return a legal conformance utterance for the active setup."""
+    limit = state.config.discussion.message_max_chars
+    base = "参照発言への見解です。" if referenced_utterance is not None else "契約を確認します。"
+    candidate = base[:limit]
+    if referenced_utterance is None or normalize_discussion_utterance(
+        candidate
+    ) != normalize_discussion_utterance(referenced_utterance):
+        return candidate
+    for prefix in ("異", "別", "再", "補"):
+        candidate = f"{prefix}{base}"[:limit]
+        if normalize_discussion_utterance(candidate) != normalize_discussion_utterance(
+            referenced_utterance
+        ):
+            return candidate
+    raise AssertionError("configured message limit must permit a distinct response")
 
 
 def _views(game: Game) -> tuple[GameView, ...]:

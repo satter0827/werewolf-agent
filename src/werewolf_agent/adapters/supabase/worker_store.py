@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, cast
 
@@ -144,11 +144,11 @@ class SupabaseWorkerStore:
             )
         row = self._connection.execute(
             """
-            select is_anonymous from auth.users where id = %s limit 1
+            select private.auth_user_is_anonymous(%s) as is_anonymous
             """,
             (owner_user_id,),
         ).fetchone()
-        if row is None:
+        if row is None or row["is_anonymous"] is None:
             raise AppError(
                 "利用者を確認できませんでした。",
                 code=ErrorCode.AUTHENTICATION_REQUIRED,
@@ -299,6 +299,8 @@ class SupabaseWorkerStore:
         self,
         request: Mapping[str, Any],
         result_payload: Mapping[str, Any],
+        *,
+        domain_actions: Sequence[Mapping[str, object]] = (),
     ) -> None:
         """Persist the accepted command and its audit event."""
         state = _object(result_payload.get("state"))
@@ -312,20 +314,11 @@ class SupabaseWorkerStore:
             "player_id": request.get("player_id"),
             "request": normalized_request,
         }
-        decisions = self._connection.execute(
-            """
-            select parsed_decision
-            from private.llm_traces
-            where operation_id = %s and parsed_decision is not null
-            order by created_at, invocation_id
-            """,
-            (request["request_id"],),
-        ).fetchall()
-        payload["domain_actions"] = [_object(row["parsed_decision"]) for row in decisions]
+        payload["domain_actions"] = [dict(action) for action in domain_actions]
         if request["operation_type"] == "create_game":
             snapshot_row = self._connection.execute(
                 """
-                select config, private_state
+                select seed, config, private_state
                 from private.game_snapshots
                 where game_id = %s
                 """,
@@ -335,7 +328,7 @@ class SupabaseWorkerStore:
                 raise RuntimeError("Created game snapshot is missing.")
             private_state = _object(snapshot_row["private_state"])
             players = _object(private_state.get("players"))
-            effective_seed = state.get("seed")
+            effective_seed = snapshot_row["seed"]
             normalized_request["seed"] = effective_seed
             stored_config = _object(snapshot_row["config"])
             payload["replay"] = {

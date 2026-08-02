@@ -14,21 +14,25 @@ from werewolf_agent.domain.rules.player_rules import check_win
 from werewolf_agent.domain.state import (
     Action,
     DeathReactionResolution,
+    DiscussionResolution,
+    DiscussionRound,
     GameConfig,
     GameState,
     KnowledgeResolution,
     NightResolution,
-    VoteResult,
+    VoteResolution,
     WinResult,
 )
 
 if TYPE_CHECKING:
     from werewolf_agent.domain.definitions import RuleSetDefinition
 
-RULE_PACK_CONTRACT_VERSION = "0.6.1"
+RULE_PACK_CONTRACT_VERSION = "0.10.0"
 CORE_RULE_PACK_ID = "core"
-CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.6.0"
-CORE_RULE_PACK_FINGERPRINT = sha256(b"werewolf-agent:core-rule-pack:0.6.0").hexdigest()
+CORE_RULE_PACK_IMPLEMENTATION_VERSION = "0.10.0"
+CORE_RULE_PACK_FINGERPRINT = sha256(
+    f"werewolf-agent:core-rule-pack:{CORE_RULE_PACK_IMPLEMENTATION_VERSION}".encode()
+).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -98,7 +102,7 @@ class VotingPolicy(Protocol):
         random: random.Random,
         *,
         vote_round: int,
-    ) -> VoteResult:
+    ) -> VoteResolution:
         """現在の投票を集計し、一つの検証可能なOutcomeを返す."""
         ...
 
@@ -129,6 +133,23 @@ class AbilityPolicy(Protocol):
         ...
 
 
+class DiscussionPolicy(Protocol):
+    """議論入力からstateを変更せずround Outcomeを返すpolicy契約."""
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """一日の開始時に最初の議論roundを返す."""
+        ...
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        """現在roundの提出から公開内容と次roundを返す."""
+        ...
+
+
 class RulePackProvider(Protocol):
     """Rule Definitionを実行可能なRule Packへcompileする契約."""
 
@@ -150,6 +171,7 @@ class CompiledRuleSet:
     manifest: RulePackManifest
     ability_policy: AbilityPolicy
     voting_policy: VotingPolicy
+    discussion_policy: DiscussionPolicy
     victory_policy: VictoryPolicy
 
 
@@ -219,6 +241,7 @@ __all__ = [
     "AbilityPolicy",
     "CompiledRuleSet",
     "CoreVictoryPolicy",
+    "DiscussionPolicy",
     "RulePackManifest",
     "RulePackProvider",
     "RulePolicyRegistry",

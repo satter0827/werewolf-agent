@@ -35,7 +35,10 @@ def _rules(setup: GameSetupDocument):
         rule_definition_from_values(
             player_count=sum(mechanics.role_counts.values()),
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -49,7 +52,7 @@ def test_packaged_templates_are_complete_executable_v2_documents() -> None:
         setup = catalog.require_document(template_id)
         rules = _rules(setup)
 
-        assert setup.schema_version == "0.3.0"
+        assert setup.schema_version == "0.7.0"
         assert rules.config.player_count == sum(setup.mechanics.role_counts.values())
         assert set(setup.theme.role_names) == set(setup.mechanics.roles)
         assert set(setup.theme.ability_names) == set(setup.mechanics.abilities)
@@ -85,7 +88,9 @@ def test_arbitrary_role_id_runs_through_ability_envelope() -> None:
 
 
 def test_night_ability_can_be_explicitly_passed() -> None:
-    setup = _standard()
+    payload = _standard().to_mapping()
+    payload["mechanics"]["night"]["allow_pass"] = True
+    setup = GameSetupDocument.from_mapping(payload)
     players = generate_players(setup.player_generation, player_count=6, seed=41)
     game = Game.create(
         GameSetup(
@@ -104,15 +109,59 @@ def test_night_ability_can_be_explicitly_passed() -> None:
     )
 
     assert AvailableAction(ActionType.PASS) in game.view_for(actor.id).available_actions
-    game.submit(Action.pass_(actor.id, reason="今夜は能力を使いません。"))
-
+    game.submit(Action.pass_(actor.id))
     assert game.pending_actions.night_actions[actor.id].type is ActionType.PASS
+
+
+def test_structured_discussion_repeats_configured_cycles_with_default_one() -> None:
+    payload = _standard().to_mapping()
+    assert payload["mechanics"]["discussion"]["cycles_per_day"] == 1
+    without_cycles = _standard().to_mapping()
+    del without_cycles["mechanics"]["discussion"]["cycles_per_day"]
+    assert GameSetupDocument.from_mapping(without_cycles).mechanics.discussion.cycles_per_day == 1
+    payload["mechanics"]["discussion"]["cycles_per_day"] = 2
+    payload["mechanics"]["lifecycle"]["starting_phase"] = "day_discussion"
+    setup = GameSetupDocument.from_mapping(payload)
+    players = generate_players(setup.player_generation, player_count=6, seed=31)
+    game = Game.create(
+        GameSetup(tuple(Player(item.player_id, item.profile.name) for item in players)),
+        rules=_rules(setup),
+        random=random.Random(namespace_seed(31, "role_assignment")),
+    )
+
+    first_round = game.snapshot().pending_actions.discussion_round
+    assert first_round is not None
+    for player_id in first_round.actor_order:
+        topic_id = next(item for item in first_round.actor_order if item != player_id)
+        game.submit(
+            Action.speech(
+                player_id,
+                f"{player_id}の意見です。",
+                topic_id=topic_id,
+                position="undecided",
+                relation="independent",
+            )
+        )
+    game.advance(random.Random(1))
+
+    response_round = game.snapshot().pending_actions.discussion_round
+    assert response_round is not None
+    assert response_round.kind.value == "response"
+    assert len(response_round.reference_ids) == len(first_round.actor_order)
+    for player_id in response_round.actor_order:
+        game.submit(Action.pass_(player_id))
+        game.advance(random.Random(2))
+
+    second_round = game.snapshot().pending_actions.discussion_round
+    assert second_round is not None
+    assert second_round.cycle == 2
+    assert second_round.kind.value == "opening"
 
 
 def test_resolution_priority_controls_protection_order() -> None:
     setup = _standard()
     payload = setup.to_mapping()
-    payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
+    payload["mechanics"]["lifecycle"]["require_all_actions_before_advance"] = False
 
     def resolve(guard_priority: int) -> bool:
         configured = payload.copy()
@@ -146,7 +195,7 @@ def test_resolution_priority_controls_protection_order() -> None:
 def test_repeat_target_rule_applies_to_every_active_ability_kind() -> None:
     payload = _standard().to_mapping()
     payload["mechanics"]["abilities"]["inspect"]["allow_repeat_target"] = False
-    payload["mechanics"]["rules"]["require_all_actions_before_advance"] = False
+    payload["mechanics"]["lifecycle"]["require_all_actions_before_advance"] = False
     setup = GameSetupDocument.from_mapping(payload)
     players = generate_players(setup.player_generation, player_count=6, seed=29)
     game = Game.create(
@@ -188,17 +237,55 @@ def test_packaged_setup_reaches_a_winner_deterministically() -> None:
             while view.available_actions:
                 available = view.available_actions[0]
                 targets = view.legal_targets.get(available.key, ())
-                game.submit(
-                    Action(
-                        type=available.type,
-                        player_id=player.id,
-                        ability_id=available.ability_id,
-                        target_id=targets[0] if targets else None,
-                        message="状況を確認します。"
-                        if available.type is ActionType.SPEECH
-                        else None,
+                if available.type is ActionType.SPEECH:
+                    round_ = view.discussion_round
+                    speeches = {speech.speech_id: speech for speech in view.history.speeches}
+                    reference_id = (
+                        next(
+                            reference_id
+                            for reference_id in round_.reference_ids
+                            if speeches[reference_id].player_id != player.id
+                        )
+                        if round_ is not None and round_.reference_ids
+                        else None
                     )
-                )
+                    topic_id = next(
+                        item.id for item in view.players if item.id != player.id and item.is_alive
+                    )
+                    action = Action.speech(
+                        player.id,
+                        "その発言には異論があります。" if reference_id else "状況を確認します。",
+                        topic_id=(speeches[reference_id].topic_id if reference_id else topic_id),
+                        position=(
+                            "oppose"
+                            if reference_id and speeches[reference_id].position.value == "support"
+                            else "support"
+                        ),
+                        relation="challenge" if reference_id else "independent",
+                        evidence_id=reference_id,
+                        response_to_id=reference_id,
+                    )
+                elif available.type is ActionType.VOTE:
+                    evidence_id = next(
+                        speech.speech_id
+                        for speech in reversed(view.history.speeches)
+                        if targets[0] in {speech.player_id, speech.topic_id}
+                    )
+                    action = Action.vote(
+                        player.id,
+                        targets[0],
+                        reason="状況から判断します。",
+                        evidence_id=evidence_id,
+                    )
+                elif available.type is ActionType.USE_ABILITY:
+                    action = Action.use_ability(
+                        player.id,
+                        available.ability_id or "",
+                        targets[0],
+                    )
+                else:
+                    action = Action.pass_(player.id)
+                game.submit(action)
                 view = game.view_for(player.id)
         game.advance(gameplay)
 
@@ -251,6 +338,16 @@ def test_setup_rejects_blank_generation_and_enabled_empty_narration() -> None:
     payload = _standard().to_mapping()
     payload["theme"]["narration"]["game_started"] = ["秘密: {private_role}"]
     with pytest.raises(ValueError, match="unknown fields"):
+        GameSetupDocument.from_mapping(payload)
+
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count:1000000}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
+        GameSetupDocument.from_mapping(payload)
+
+    payload = _standard().to_mapping()
+    payload["theme"]["narration"]["game_started"] = ["{player_count!r}"]
+    with pytest.raises(ValueError, match="invalid format syntax"):
         GameSetupDocument.from_mapping(payload)
 
 

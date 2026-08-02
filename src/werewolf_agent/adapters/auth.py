@@ -8,9 +8,15 @@ from contextvars import ContextVar
 from typing import Protocol
 
 from werewolf_agent.adapters.messages import MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED
-from werewolf_agent.adapters.supabase.auth_client import SupabaseAuthClient
+from werewolf_agent.adapters.supabase.auth_client import (
+    MfaEnrollment,
+    MfaFactor,
+    SupabaseAuthClient,
+)
 from werewolf_agent.adapters.supabase.session_store import SupabaseSession as SupabaseSession
-from werewolf_agent.adapters.supabase.session_store import SupabaseSessionStore
+from werewolf_agent.adapters.supabase.session_store import (
+    SupabaseSessionStore as SupabaseSessionStore,
+)
 from werewolf_agent.contracts import AppError
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.settings import AppSettings
@@ -75,6 +81,58 @@ def sign_in_with_password(
     return session
 
 
+def list_totp_factors(
+    settings: AppSettings,
+    *,
+    store: SessionStore,
+) -> tuple[MfaFactor, ...]:
+    """Return verified TOTP factors for the current non-anonymous session."""
+    session = _member_session(settings, store=store)
+    return _auth_client(settings).list_totp_factors(session)
+
+
+def enroll_totp(
+    settings: AppSettings,
+    *,
+    friendly_name: str,
+    store: SessionStore,
+) -> MfaEnrollment:
+    """Start TOTP enrollment for the current non-anonymous session."""
+    session = _member_session(settings, store=store)
+    name = friendly_name.strip()
+    if not name:
+        raise AppError(
+            "多要素認証端末の名前が必要です。",
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+        )
+    return _auth_client(settings).enroll_totp(session, friendly_name=name)
+
+
+def verify_totp(
+    settings: AppSettings,
+    factor_id: str,
+    code: str,
+    *,
+    store: SessionStore,
+) -> SupabaseSession:
+    """Upgrade the current session with one verified TOTP factor."""
+    session = _member_session(settings, store=store)
+    normalized_factor_id = factor_id.strip()
+    normalized_code = code.strip()
+    if not normalized_factor_id or len(normalized_code) != 6 or not normalized_code.isdigit():
+        raise AppError(
+            "6桁の多要素認証コードを入力してください。",
+            code=ErrorCode.CONFIG_INVALID_VALUE,
+        )
+    elevated = _auth_client(settings).verify_totp(
+        session,
+        factor_id=normalized_factor_id,
+        code=normalized_code,
+    )
+    store.save(elevated)
+    return elevated
+
+
 def sign_out(
     settings: AppSettings,
     *,
@@ -115,6 +173,16 @@ def require_supabase_client_config(settings: AppSettings) -> None:
         MESSAGE_SUPABASE_CLIENT_CONFIG_REQUIRED,
         code=ErrorCode.CONFIG_INVALID_VALUE,
     )
+
+
+def _member_session(settings: AppSettings, *, store: SessionStore) -> SupabaseSession:
+    session = ensure_session(settings, store=store)
+    if session.is_anonymous:
+        raise AppError(
+            "多要素認証にはログインが必要です。",
+            code=ErrorCode.AUTHENTICATION_REQUIRED,
+        )
+    return session
 
 
 def _auth_client(settings: AppSettings) -> SupabaseAuthClient:

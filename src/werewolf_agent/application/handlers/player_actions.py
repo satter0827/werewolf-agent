@@ -100,7 +100,6 @@ def submit_player_action(
         next_snapshot,
         game_id=str(run.id),
         version=run.version + 1,
-        seed=run.seed,
         created_at=run.created_at,
         scenario_id=_config_text(run.config, "scenario_id"),
         scenario_name=_config_text(run.config, "scenario_name"),

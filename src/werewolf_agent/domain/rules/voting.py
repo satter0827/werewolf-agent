@@ -13,6 +13,10 @@ from werewolf_agent.domain._messages import (
 )
 from werewolf_agent.domain.errors import GameError
 from werewolf_agent.domain.rule_packs import AbilityPolicy, VotingPolicy
+from werewolf_agent.domain.rules.evidence import (
+    evidence_concerns_target,
+    public_discussion_evidence,
+)
 from werewolf_agent.domain.rules.player_rules import (
     alive_players,
     mark_dead,
@@ -26,6 +30,7 @@ from werewolf_agent.domain.state import (
     GameConfig,
     GameState,
     Phase,
+    VoteResolution,
     VoteResult,
 )
 
@@ -42,21 +47,39 @@ def record_vote(
     require_phase(snapshot, Phase.VOTING)
     require_alive(snapshot, action.player_id)
     target_id = _vote_target(action)
+    if not action.reason or len(action.reason) > config.voting.reason_max_chars:
+        raise GameError("Vote requires a public reason within the configured maximum length.")
     require_alive(snapshot, target_id)
     if candidates and target_id not in candidates:
         raise GameError(
             "Vote target is not a revote candidate.",
             context={"target_id": target_id, "candidate_ids": candidates},
         )
-    if not config.rules.allow_self_vote and action.player_id == target_id:
+    if not config.voting.allow_self_vote and action.player_id == target_id:
         raise GameError(
             MESSAGE_SELF_VOTING_DISABLED,
             context={"player_id": action.player_id, "target_id": target_id},
         )
+    _require_target_evidence(snapshot, action, target_id)
 
     updated_votes = dict(pending_votes)
     updated_votes[action.player_id] = action
     return updated_votes
+
+
+def _require_target_evidence(snapshot: GameState, action: Action, target_id: str) -> None:
+    """投票根拠が対象本人または対象についての公開事実か検証する."""
+    evidence_id = action.evidence_id
+    if evidence_id is None:
+        raise GameError("Vote requires public evidence concerning the selected target.")
+    fact = next(
+        (item for item in public_discussion_evidence(snapshot) if item.evidence_id == evidence_id),
+        None,
+    )
+    if fact is None:
+        raise GameError("Vote evidence must identify a public discussion fact.")
+    if not evidence_concerns_target(fact, target_id):
+        raise GameError("Vote evidence must concern the selected target.")
 
 
 def resolve_votes(
@@ -72,13 +95,15 @@ def resolve_votes(
     require_phase(snapshot, Phase.VOTING)
     random_state = rng.getstate()
     try:
-        result = policy.resolve(
+        resolution = policy.resolve(
             snapshot,
             pending_votes,
             rng,
             vote_round=vote_round,
         )
-        _validate_outcome(snapshot, pending_votes, result, vote_round=vote_round)
+        _validate_outcome(snapshot, pending_votes, resolution, vote_round=vote_round)
+
+        result = VoteResult(**resolution.__dict__)
 
         updated_snapshot = snapshot
         if result.eliminated_player_id is not None:
@@ -115,10 +140,16 @@ class CoreVotingPolicy:
         random: random.Random,
         *,
         vote_round: int,
-    ) -> VoteResult:
+    ) -> VoteResolution:
         """現在の組み込み投票規則からstate非変更Outcomeを返す."""
         vote_targets = {
             player_id: _vote_target(action) for player_id, action in pending_votes.items()
+        }
+        vote_reasons = {player_id: action.reason for player_id, action in pending_votes.items()}
+        evidence_ids = {
+            player_id: action.evidence_id
+            for player_id, action in pending_votes.items()
+            if action.evidence_id is not None
         }
         counts = dict(Counter(vote_targets.values()))
         alive_voter_ids = [player.id for player in alive_players(state)]
@@ -134,22 +165,24 @@ class CoreVotingPolicy:
             )
             if len(tied_player_ids) == 1:
                 eliminated_player_id = tied_player_ids[0]
-            elif state.config.rules.vote_tie_resolution == "random_elimination":
+            elif state.config.voting.tie_resolution == "random_elimination":
                 eliminated_player_id = random.choice(tied_player_ids)
         requires_revote = bool(
             counts
             and len(tied_player_ids) > 1
-            and state.config.rules.vote_tie_resolution == "revote"
+            and state.config.voting.tie_resolution == "revote"
             and vote_round == 1
         )
-        return VoteResult(
+        return VoteResolution(
             day=state.day,
             votes=vote_targets,
+            reasons=vote_reasons,
+            evidence_ids=evidence_ids,
             counts=counts,
             tied_player_ids=tuple(tied_player_ids),
             missing_voter_ids=tuple(missing_voter_ids),
             eliminated_player_id=eliminated_player_id,
-            tie_break_policy=state.config.rules.vote_tie_resolution,
+            tie_break_policy=state.config.voting.tie_resolution,
             round=vote_round,
             requires_revote=requires_revote,
         )
@@ -158,7 +191,7 @@ class CoreVotingPolicy:
 def _validate_outcome(
     snapshot: GameState,
     pending_votes: Mapping[str, Action],
-    result: VoteResult,
+    result: VoteResolution,
     *,
     vote_round: int,
 ) -> None:
@@ -177,6 +210,16 @@ def _validate_outcome(
         raise ValueError("voting outcome day and round must match the current vote")
     if dict(result.votes) != expected_votes:
         raise ValueError("voting outcome votes must match pending votes")
+    expected_reasons = {player_id: action.reason for player_id, action in pending_votes.items()}
+    if dict(result.reasons) != expected_reasons:
+        raise ValueError("voting outcome reasons must match pending votes")
+    expected_evidence_ids = {
+        player_id: action.evidence_id
+        for player_id, action in pending_votes.items()
+        if action.evidence_id is not None
+    }
+    if dict(result.evidence_ids) != expected_evidence_ids:
+        raise ValueError("voting outcome evidence must match pending votes")
     if set(result.counts) - alive_ids or any(
         not isinstance(count, int) or isinstance(count, bool) or count < 0
         for count in result.counts.values()

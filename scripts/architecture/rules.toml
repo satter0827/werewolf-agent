@@ -16,6 +16,7 @@ root_entries = [
   ".github",
   ".gitignore",
   ".python-version",
+  ".secrets.baseline",
   ".streamlit",
   ".vscode",
   "AGENTS.md",

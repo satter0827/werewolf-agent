@@ -73,7 +73,6 @@ def _render_game_screen(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
     mutations_available: bool = True,
 ) -> None:
     """Render the game as one tableau with an adjacent command rail."""
@@ -93,7 +92,6 @@ def _render_game_screen(
             selected_option=selected_option,
             catalog=catalog,
             lang=lang,
-            message_max_chars=message_max_chars,
             mutations_available=mutations_available,
         )
     _render_next_actions(
@@ -193,7 +191,6 @@ def _render_action_panel(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
     mutations_available: bool,
 ) -> None:
     has_active_job = bool(advance_job_id(st.session_state, selected_option.game_id))
@@ -246,7 +243,6 @@ def _render_action_panel(
                 selected_option=selected_option,
                 catalog=catalog,
                 lang=lang,
-                message_max_chars=message_max_chars,
             )
         elif is_playable and not screen.is_completed and mutations_available:
             _render_auto_advance_controls(
@@ -272,7 +268,6 @@ def _render_action_form(
     selected_option: SavedGameOptionView,
     catalog: I18nCatalog,
     lang: Language,
-    message_max_chars: int,
 ) -> None:
     manual_player_id = selected_option.manual_player_id
     if screen.observation is None or manual_player_id is None:
@@ -305,26 +300,84 @@ def _render_action_form(
         else:
             st.warning(catalog.t(lang, "common.none"))
 
-    message = None
+    utterance = None
+    topic_id = None
+    position = None
+    relation = None
+    evidence_id = None
+    response_to_id = None
     if selected_action.requires_message:
-        message = st.text_area(
+        message_max_chars = screen.observation.action_text_limits[selected_action.action_type]
+        utterance = st.text_area(
             catalog.t(lang, "action.message"),
             key=KEY_MESSAGE,
             placeholder=catalog.label(lang, "action", "speech"),
             max_chars=message_max_chars,
         )
+        if screen.observation.response_options:
+            response_option = st.selectbox(
+                catalog.t(lang, "action.response_to"),
+                screen.observation.response_options,
+                format_func=lambda item: (
+                    f"{screen.observation.reference_choices.get(item.response_to_id, '')}"
+                    f" / {catalog.t(lang, f'position.{item.position}')} / {item.relation}"
+                ),
+            )
+        else:
+            response_option = None
+        if response_option is not None:
+            response_to_id = response_option.response_to_id
+            evidence_id = response_option.evidence_id
+            topic_id = response_option.topic_id
+            position = response_option.position
+            relation = response_option.relation
+        else:
+            topic_id = st.selectbox(
+                catalog.t(lang, "action.topic"),
+                screen.observation.discussion_topic_ids,
+                format_func=lambda value: target_labels.get(str(value), str(value)),
+            )
+            position = st.selectbox(
+                catalog.t(lang, "action.position"),
+                ["support", "oppose", "undecided"],
+                format_func=lambda value: catalog.t(lang, f"position.{value}"),
+            )
+            relation = "independent"
+
+    reason = None
+    if selected_action.action_type == "vote":
+        reason = st.text_area(
+            catalog.t(lang, "action.reason"),
+            max_chars=screen.observation.action_text_limits[selected_action.action_type],
+        )
+        evidence_choices = screen.observation.vote_evidence_choices.get(target_id or "", {})
+        if evidence_choices:
+            selected_evidence = st.selectbox(
+                catalog.t(lang, "action.evidence"),
+                list(evidence_choices),
+                format_func=evidence_choices.get,
+            )
+            evidence_id = str(selected_evidence) if selected_evidence else None
 
     missing_target = selected_action.requires_target and not target_id
-    missing_message = selected_action.requires_message and not str(message or "").strip()
+    missing_message = selected_action.requires_message and not str(utterance or "").strip(
+        " \t\n\r\f\v"
+    )
+    missing_reason = selected_action.action_type == "vote" and not str(reason or "").strip()
+    missing_evidence = selected_action.action_type == "vote" and not evidence_id
     if missing_target:
         st.caption(catalog.t(lang, "action.target_required"))
     if missing_message:
         st.caption(catalog.t(lang, "action.message_required"))
+    if missing_reason:
+        st.caption(catalog.t(lang, "action.reason_required"))
+    if missing_evidence:
+        st.caption(catalog.t(lang, "action.evidence_required"))
     if st.button(
         catalog.t(lang, "action.send"),
         type="primary",
         width="stretch",
-        disabled=missing_target or missing_message,
+        disabled=missing_target or missing_message or missing_reason or missing_evidence,
     ):
         try:
             submit_screen_action(
@@ -334,7 +387,13 @@ def _render_action_form(
                 action_type=selected_action.action_type,
                 ability_id=selected_action.ability_id,
                 target_id=target_id,
-                message=str(message).strip() if message else None,
+                utterance=str(utterance) if utterance else None,
+                topic_id=str(topic_id) if topic_id else None,
+                position=str(position) if position else None,
+                relation=relation,
+                evidence_id=evidence_id,
+                response_to_id=str(response_to_id) if response_to_id else None,
+                reason=str(reason).strip() if reason else None,
             )
         except AppError as exc:
             render_app_error(st, exc, lang=lang)

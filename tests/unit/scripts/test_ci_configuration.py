@@ -22,6 +22,14 @@ def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
     assert "name: Main / Source Branch" in workflow
     assert "name: Main / Readiness" in workflow
     assert "name: Main / Compatibility" in workflow
+    assert "name: Security / Dependencies" in workflow
+    assert "python -m scripts.security dependencies" in workflow
+    security_job = workflow.split("\n  security-dependencies:\n", 1)[1].split(
+        "\n  develop-check:\n", 1
+    )[0]
+    assert "github.event_name == 'schedule'" in security_job
+    assert "github.event_name == 'workflow_dispatch'" in security_job
+    assert "github.event_name == 'schedule' && 'develop' || github.sha" in security_job
     assert "python -m scripts.quality check" in workflow
     assert "python -m scripts.quality release" not in workflow
     composite = _read(".github/actions/deep-readiness/action.yml")
@@ -35,6 +43,17 @@ def test_quality_workflow_separates_develop_and_main_boundaries() -> None:
         "github.event.pull_request.head.sha" not in workflow.split("\n  nightly-preflight:", 1)[0]
     )
     assert "fetch-depth: 0" in workflow
+
+
+def test_rulesets_require_dependency_security_audit() -> None:
+    """developとmainの統合は依存脆弱性の未検出を要求する。"""
+    for ruleset_path in (".github/rulesets/develop.json", ".github/rulesets/main.json"):
+        ruleset = json.loads(_read(ruleset_path))
+        required = next(
+            rule for rule in ruleset["rules"] if rule["type"] == "required_status_checks"
+        )
+        contexts = {check["context"] for check in required["parameters"]["required_status_checks"]}
+        assert "Security / Dependencies" in contexts
 
 
 def test_manual_check_reuses_the_develop_pr_job() -> None:
@@ -90,9 +109,11 @@ def test_nightly_failure_issue_has_narrow_write_permission() -> None:
     assert "permissions:\n      contents: read\n      issues: write" in notify
     assert 'const title = "[CI] Nightly readiness failure"' in notify
     assert "PREFLIGHT_RESULT: ${{ needs.nightly-preflight.result }}" in notify
-    assert 'const stage = preflight === "success" ? "deep" : "preflight"' in notify
+    assert "SECURITY_RESULT: ${{ needs.security-dependencies.result }}" in notify
+    assert 'const stage = security !== "success" ? "security"' in notify
+    assert 'preflight === "success" ? "deep" : "preflight"' in notify
     assert 'const validSkip = result === "skipped" && !shouldRun' in notify
-    assert 'const recovered = preflight === "success"' in notify
+    assert 'const recovered = security === "success" && preflight === "success"' in notify
     assert 'state: "closed"' in notify
     assert workflow.split("\njobs:\n", 1)[0].count("issues: write") == 0
 
@@ -154,7 +175,14 @@ def test_workflow_actions_are_pinned_and_dependabot_targets_develop() -> None:
     assert re.findall(r"^          -\s+(.+?)\s*$", cache_group.group("patterns"), re.MULTILINE) == [
         '"actions/cache*"'
     ]
-    assert "groups:" not in updates["uv"]
+    uv = updates["uv"]
+    assert "versioning-strategy: increase-if-necessary" in uv
+    assert re.search(
+        r'(?ms)^      routine-updates:\s*$.*?^          - "\*"\s*$'
+        r".*?^        exclude-patterns:\s*$.*?^          - ruff\s*$"
+        r".*?^        update-types:\s*$.*?^          - patch\s*$.*?^          - minor\s*$",
+        uv,
+    )
 
 
 def test_repository_exposes_standard_community_templates() -> None:
@@ -255,8 +283,13 @@ def test_rulesets_require_the_stable_workflow_checks() -> None:
     """version管理したrulesetとworkflowの必須check名を一致させる。"""
     workflow = _read(".github/workflows/quality.yml")
     expected = {
-        "develop.json": {"Develop / Check"},
-        "main.json": {"Main / Source Branch", "Main / Readiness", "Main / Compatibility"},
+        "develop.json": {"Develop / Check", "Security / Dependencies"},
+        "main.json": {
+            "Main / Source Branch",
+            "Main / Readiness",
+            "Main / Compatibility",
+            "Security / Dependencies",
+        },
     }
     for filename, contexts in expected.items():
         document = json.loads(_read(f".github/rulesets/{filename}"))

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Self
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, field_serializer, field_validator, model_validator
@@ -27,7 +28,7 @@ from werewolf_agent.domain import CORE_RULE_PACK_ID
 from werewolf_agent.setup import GameSetupDocument, checksum_payload
 
 if TYPE_CHECKING:
-    from werewolf_agent.domain import Game, GameEvent
+    from werewolf_agent.domain import Game, GameEvent, GameState
 
 EventVisibility = Literal["public", "player_private", "debug"]
 ActionTypeId = str
@@ -47,6 +48,20 @@ class GeneratedPlayerInput(ApplicationModel):
     evidence_focus: str
 
     model_config = ConfigDict(extra="forbid", frozen=True)
+
+    def public_payload(self) -> dict[str, object]:
+        """公開roster checksumへ含めるprofileだけを返す."""
+        return self.model_dump(
+            mode="json",
+            include={
+                "player_id",
+                "name",
+                "age",
+                "gender",
+                "personality",
+                "speaking_style",
+            },
+        )
 
 
 class CreateGameCommand(ApplicationModel):
@@ -98,7 +113,7 @@ class CreateGameCommand(ApplicationModel):
             "setup_checksum": checksum_payload(self.setup.to_mapping()),
             "mechanics_checksum": checksum_payload(self.setup.mechanics.to_mapping()),
             "roster_checksum": checksum_payload(
-                [player.model_dump(mode="json") for player in self.players]
+                [player.public_payload() for player in self.players]
             ),
         }
         for field_name, expected in expected_checksums.items():
@@ -146,12 +161,12 @@ class PreparedAdvanceGame:
     seed: int | None
     config: dict[str, Any]
     game: Game
+    prepared_state: GameState
     created_at: datetime
     phase_seed: int
-    prepared_phase: str
-    prepared_day: int
     domain_transition_complete: bool = False
     domain_events: tuple[GameEvent, ...] = ()
+    domain_actions: tuple[Mapping[str, object], ...] = ()
 
 
 class ComputedAdvanceGame(ApplicationModel):
@@ -180,17 +195,54 @@ class GetPlayerObservationQuery(ApplicationModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
+class SpeechActionInput(ApplicationModel):
+    """構造化された公開議論手を表すapplication入力."""
+
+    type: Literal["speech"]
+    utterance: str
+    topic_id: str
+    position: Literal["support", "oppose", "undecided"]
+    relation: Literal["independent", "answer", "support", "challenge", "revise"]
+    evidence_id: str | None = None
+    response_to_id: str | None = None
+
+
+class VoteActionInput(ApplicationModel):
+    """公開理由付き投票を表すapplication入力."""
+
+    type: Literal["vote"]
+    target_id: str
+    reason: str
+    evidence_id: str | None = None
+
+
+class UseAbilityActionInput(ApplicationModel):
+    """能力使用を表すapplication入力."""
+
+    type: Literal["use_ability"]
+    ability_id: str
+    target_id: str | None = None
+
+
+class PassActionInput(ApplicationModel):
+    """行動しない意思を表すapplication入力."""
+
+    type: Literal["pass"]
+
+
+PlayerActionInput = Annotated[
+    SpeechActionInput | VoteActionInput | UseAbilityActionInput | PassActionInput,
+    Field(discriminator="type"),
+]
+
+
 class PlayerActionCommand(ApplicationModel):
-    """Manual playerのactionを送信するcommandを表す."""
+    """Manual playerの型付きactionを送信するcommandを表す."""
 
     game_id: str | UUID
     player_id: str
+    action: PlayerActionInput
     trusted_user_id: str | None = None
-    type: ActionTypeId
-    ability_id: str | None = None
-    target_id: str | None = None
-    message: str | None = None
-    reason: str = ""
     expected_version: int | None = Field(default=None, ge=MIN_VERSION)
 
     model_config = ConfigDict(extra="forbid", frozen=True)

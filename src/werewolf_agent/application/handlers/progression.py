@@ -92,10 +92,9 @@ def prepare_advance_game(
         seed=run.seed,
         config=dict(run.config),
         game=game,
+        prepared_state=snapshot,
         created_at=run.created_at,
         phase_seed=_runtime_seed(run.seed, run.version),
-        prepared_phase=snapshot.phase.value,
-        prepared_day=snapshot.day,
     )
 
 
@@ -115,10 +114,7 @@ def compute_prepared_advance(
     game = prepared.game
     action_events = list(prepared.domain_events)
     current = game.snapshot()
-    transition_position_changed = (
-        current.phase.value != prepared.prepared_phase or current.day != prepared.prepared_day
-    )
-    if transition_position_changed != prepared.domain_transition_complete:
+    if (current != prepared.prepared_state) != prepared.domain_transition_complete:
         raise GameError(MESSAGE_PREPARED_TRANSITION_STATE_MISMATCH)
     if prepared.domain_transition_complete:
         phase_events = []
@@ -133,7 +129,6 @@ def compute_prepared_advance(
         next_snapshot,
         game_id=prepared.game_id,
         version=prepared.version + 1,
-        seed=prepared.seed,
         created_at=prepared.created_at,
         scenario_id=_config_text(prepared.config, "scenario_id"),
         scenario_name=_config_text(prepared.config, "scenario_name"),

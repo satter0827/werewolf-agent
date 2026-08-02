@@ -9,9 +9,14 @@ from math import isfinite
 from types import MappingProxyType
 from typing import Protocol, runtime_checkable
 
-from werewolf_agent.agents.validation import non_blank, optional_non_blank
+from werewolf_agent.agents.validation import (
+    is_discussion_utterance,
+    non_blank,
+    optional_non_blank,
+    validate_discussion_utterance,
+)
 
-AGENT_CONTRACT_VERSION = "0.5.1"
+AGENT_CONTRACT_VERSION = "0.11.0"
 _CANONICAL_FACTION_IDS = frozenset({"village", "werewolf", "fox"})
 
 
@@ -174,6 +179,26 @@ class AgentWorld:
 
 
 @dataclass(frozen=True)
+class AgentProcedure:
+    """現在の意思決定が属する手続きと段階を汎用IDで表す."""
+
+    procedure_id: str
+    stage_id: str
+    cycle: int
+    submission_mode: str
+
+    def __post_init__(self) -> None:
+        """手続きIDと進行位置を正規化する."""
+        for field_name in ("procedure_id", "stage_id", "submission_mode"):
+            object.__setattr__(
+                self,
+                field_name,
+                non_blank(getattr(self, field_name), field_name),
+            )
+        _require_positive_integer(self.cycle, "cycle")
+
+
+@dataclass(frozen=True)
 class AgentObservation:
     """完全stateを含まない本人用のimmutable observation."""
 
@@ -185,6 +210,7 @@ class AgentObservation:
     known_factions: Mapping[str, str] = field(default_factory=dict)
     identity: AgentIdentity | None = None
     world: AgentWorld | None = None
+    procedure: AgentProcedure | None = None
 
     def __post_init__(self) -> None:
         """Observation内部の所有者と可視identityを検証する."""
@@ -244,13 +270,42 @@ class PublicTimelineEvent:
 
 
 @dataclass(frozen=True)
+class EvidenceOption:
+    """意思決定で参照できる型付き公開事実を表す."""
+
+    evidence_id: str
+    kind: str
+    actor_id: str
+    topic_id: str
+    position: str | None = None
+
+    def __post_init__(self) -> None:
+        """公開事実の識別子と意味属性を正規化する."""
+        object.__setattr__(self, "evidence_id", non_blank(self.evidence_id, "evidence_id"))
+        if self.kind not in {"discussion", "discussion_pass"}:
+            raise ValueError("evidence kind must be discussion or discussion_pass")
+        object.__setattr__(self, "actor_id", non_blank(self.actor_id, "actor_id"))
+        object.__setattr__(self, "topic_id", non_blank(self.topic_id, "topic_id"))
+        position = optional_non_blank(self.position, "position")
+        if position not in {None, "support", "oppose", "undecided"}:
+            raise ValueError("evidence position is unsupported")
+        object.__setattr__(self, "position", position)
+
+
+@dataclass(frozen=True)
 class DecisionOption:
     """一つの合法actionと選択可能なtargetを表す."""
 
     action_type: str
     ability_id: str | None = None
     legal_target_ids: tuple[str, ...] = ()
+    legal_topic_ids: tuple[str, ...] = ()
+    evidence_options: tuple[EvidenceOption, ...] = ()
+    legal_reference_ids: tuple[str, ...] = ()
+    legal_positions: tuple[str, ...] = ()
+    legal_relations: tuple[str, ...] = ()
     message_max_chars: int | None = None
+    reason_max_chars: int | None = None
 
     def __post_init__(self) -> None:
         """Action keyと合法targetを正規化する."""
@@ -264,8 +319,38 @@ class DecisionOption:
         if len(targets) != len(set(targets)):
             raise ValueError("legal_target_ids must be unique")
         object.__setattr__(self, "legal_target_ids", targets)
+        topics = tuple(non_blank(topic, "legal_topic_id") for topic in self.legal_topic_ids)
+        if len(topics) != len(set(topics)):
+            raise ValueError("legal_topic_ids must be unique")
+        object.__setattr__(self, "legal_topic_ids", topics)
+        evidence = tuple(self.evidence_options)
+        evidence_ids = tuple(item.evidence_id for item in evidence)
+        if len(evidence_ids) != len(set(evidence_ids)):
+            raise ValueError("evidence option IDs must be unique")
+        object.__setattr__(self, "evidence_options", evidence)
+        references = tuple(
+            non_blank(reference, "legal_reference_id") for reference in self.legal_reference_ids
+        )
+        if len(references) != len(set(references)):
+            raise ValueError("legal_reference_ids must be unique")
+        object.__setattr__(self, "legal_reference_ids", references)
+        positions = tuple(non_blank(item, "legal_position") for item in self.legal_positions)
+        if len(positions) != len(set(positions)) or any(
+            item not in {"support", "oppose", "undecided"} for item in positions
+        ):
+            raise ValueError("legal_positions must contain unique supported values")
+        object.__setattr__(self, "legal_positions", positions)
+        relations = tuple(non_blank(item, "legal_relation") for item in self.legal_relations)
+        if len(relations) != len(set(relations)) or any(
+            item not in {"independent", "answer", "support", "challenge", "revise"}
+            for item in relations
+        ):
+            raise ValueError("legal_relations must contain unique supported values")
+        object.__setattr__(self, "legal_relations", relations)
         if self.message_max_chars is not None:
             _require_positive_integer(self.message_max_chars, "message_max_chars")
+        if self.reason_max_chars is not None:
+            _require_positive_integer(self.reason_max_chars, "reason_max_chars")
 
     @property
     def key(self) -> str:
@@ -311,6 +396,31 @@ class DecisionRequest:
             for target in option.legal_target_ids
         ):
             raise ValueError("legal targets must be visible players")
+        if any(
+            topic not in visible_ids for option in self.options for topic in option.legal_topic_ids
+        ):
+            raise ValueError("legal topics must identify visible players")
+        if any(
+            evidence.actor_id not in visible_ids or evidence.topic_id not in visible_ids
+            for option in self.options
+            for evidence in option.evidence_options
+        ):
+            raise ValueError("evidence options may reference only visible players")
+        visible_reference_ids = {
+            reference_id
+            for event in self.public_timeline
+            if event.event_type == "speech"
+            and event.actor_id is not None
+            and is_discussion_utterance(event.payload.get("utterance"))
+            for reference_id in (event.payload.get("speech_id"),)
+            if isinstance(reference_id, str) and reference_id.strip()
+        }
+        if any(
+            reference not in visible_reference_ids
+            for option in self.options
+            for reference in option.legal_reference_ids
+        ):
+            raise ValueError("legal references must identify visible speeches")
         if self.deadline_at is not None and self.deadline_at.utcoffset() is None:
             raise ValueError("deadline_at must be timezone-aware")
 
@@ -322,9 +432,13 @@ class DecisionResponse:
     action_type: str
     ability_id: str | None = None
     target_id: str | None = None
-    message: str | None = None
-    focus_id: str | None = None
+    utterance: str | None = None
+    topic_id: str | None = None
+    position: str | None = None
+    relation: str | None = None
     evidence_id: str | None = None
+    response_to_id: str | None = None
+    reason: str | None = None
     confidence: float | None = None
     beliefs: Mapping[str, float] = field(default_factory=dict)
     intent: str | None = None
@@ -336,15 +450,24 @@ class DecisionResponse:
         for field_name in (
             "ability_id",
             "target_id",
-            "message",
-            "focus_id",
+            "topic_id",
+            "position",
+            "relation",
             "evidence_id",
+            "response_to_id",
+            "reason",
             "intent",
         ):
             object.__setattr__(
                 self,
                 field_name,
                 optional_non_blank(getattr(self, field_name), field_name),
+            )
+        if self.utterance is not None:
+            object.__setattr__(
+                self,
+                "utterance",
+                validate_discussion_utterance(self.utterance),
             )
         if self.confidence is not None:
             object.__setattr__(
@@ -518,6 +641,7 @@ __all__ = [
     "AgentFactory",
     "AgentIdentity",
     "AgentObservation",
+    "AgentProcedure",
     "AgentSession",
     "AgentSpec",
     "AgentWorld",
@@ -525,6 +649,7 @@ __all__ = [
     "DecisionRequest",
     "DecisionResponse",
     "DecisionTrace",
+    "EvidenceOption",
     "ObservedPlayer",
     "PublicTimelineEvent",
 ]

@@ -23,6 +23,8 @@ TITLE_API_UNAVAILABLE = "API Unavailable"
 TITLE_RESOURCE_NOT_FOUND = "Resource Not Found"
 
 TITLE_SETUP_REVISION_CONFLICT = "Setup Revision Conflict"
+TITLE_SETUP_REVISION_LIMIT_REACHED = "Setup Revision Limit Reached"
+TITLE_SETUP_LIMIT_REACHED = "Saved Setup Limit Reached"
 
 TITLE_METHOD_NOT_ALLOWED = "Method Not Allowed"
 
@@ -53,6 +55,8 @@ DETAIL_CONFIG_INVALID_VALUE = "The application configuration contains an invalid
 DETAIL_REQUEST_VALIDATION_FAILED = "The request body or parameters failed validation."
 
 DETAIL_SETUP_REVISION_CONFLICT = "A newer setup revision already exists."
+DETAIL_SETUP_REVISION_LIMIT_REACHED = "This setup cannot store more revisions."
+DETAIL_SETUP_LIMIT_REACHED = "This user cannot store more game setups."
 
 DETAIL_REQUEST_RATE_LIMITED = "Wait briefly before trying the request again."
 

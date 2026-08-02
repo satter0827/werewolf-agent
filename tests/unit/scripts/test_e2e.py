@@ -9,10 +9,14 @@ from scripts.browser import e2e
 from scripts.browser.scenarios.quality import FORBIDDEN_INTERNAL_TERMS
 from scripts.quality.gates import browser as browser_gate
 
+LOCAL_DATABASE_DSN = (
+    "postgresql://postgres:local@127.0.0.1:54322/postgres"  # pragma: allowlist secret
+)
+
 
 def _environment() -> dict[str, str]:
     return {
-        "WEREWOLF_SUPABASE_DB_DSN": "postgresql://postgres:local@127.0.0.1:54322/postgres",
+        "WEREWOLF_SUPABASE_DB_DSN": LOCAL_DATABASE_DSN,
         "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "local-public-key",
         "WEREWOLF_SUPABASE_URL": "http://127.0.0.1:54321",
     }
@@ -23,7 +27,12 @@ def test_compose_environment_uses_container_hosts_and_fake_provider() -> None:
     environment = e2e._compose_environment(_environment(), visual_regression=True)
 
     assert "host.docker.internal:54321" in environment["WEREWOLF_SUPABASE_URL"]
-    assert "host.docker.internal:54322" in environment["WEREWOLF_COMPOSE_SUPABASE_DB_DSN"]
+    for name in (
+        "WEREWOLF_COMPOSE_MIGRATION_DB_DSN",
+        "WEREWOLF_COMPOSE_API_DB_DSN",
+        "WEREWOLF_COMPOSE_WORKER_DB_DSN",
+    ):
+        assert "host.docker.internal:54322" in environment[name]
     assert environment["WEREWOLF_LLM_PROVIDER"] == "fake"
     assert environment["WEREWOLF_API_RATE_LIMIT_REQUESTS"] == "10000"
     assert environment["PLAYWRIGHT_VISUAL_REGRESSION"] == "1"

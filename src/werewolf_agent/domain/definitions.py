@@ -15,9 +15,18 @@ from werewolf_agent.domain.rule_packs import (
     CoreVictoryPolicy,
     RulePackManifest,
 )
+from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy
 from werewolf_agent.domain.rules.night_actions import CoreAbilityPolicy
 from werewolf_agent.domain.rules.voting import CoreVotingPolicy
-from werewolf_agent.domain.state import AbilityDefinition, GameConfig, LocalRules, RoleCatalog
+from werewolf_agent.domain.state import (
+    AbilityDefinition,
+    DiscussionConfig,
+    GameConfig,
+    LifecycleConfig,
+    NightConfig,
+    RoleCatalog,
+    VotingConfig,
+)
 
 
 @dataclass(frozen=True)
@@ -26,7 +35,10 @@ class RuleSetDefinition:
 
     player_count: int
     role_counts: Mapping[str, int]
-    rules: LocalRules
+    discussion: DiscussionConfig
+    voting: VotingConfig
+    night: NightConfig
+    lifecycle: LifecycleConfig
     roles: RoleCatalog
     abilities: Mapping[str, AbilityDefinition]
 
@@ -55,13 +67,17 @@ class CoreRulePack:
             config=GameConfig(
                 player_count=definition.player_count,
                 role_counts=definition.role_counts,
-                rules=definition.rules,
+                discussion=definition.discussion,
+                voting=definition.voting,
+                night=definition.night,
+                lifecycle=definition.lifecycle,
                 roles=definition.roles,
                 abilities=definition.abilities,
             ),
             manifest=self.manifest,
             ability_policy=CoreAbilityPolicy(),
             voting_policy=CoreVotingPolicy(),
+            discussion_policy=CoreDiscussionPolicy(),
             victory_policy=CoreVictoryPolicy(),
         )
 

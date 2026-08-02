@@ -28,7 +28,8 @@
         "required_status_checks": [
           {"context": "Main / Source Branch"},
           {"context": "Main / Readiness"},
-          {"context": "Main / Compatibility"}
+          {"context": "Main / Compatibility"},
+          {"context": "Security / Dependencies"}
         ],
         "strict_required_status_checks_policy": true
       }

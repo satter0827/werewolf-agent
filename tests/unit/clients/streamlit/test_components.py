@@ -70,7 +70,6 @@ def _screen() -> GameScreenView:
         winner_label="-",
         player_count=1,
         alive_count=1,
-        seed=1,
         status_metrics=[],
         table_legend=[],
         seats=[PlayerSeatView("p1", "葵<script>", "生存", "待機", "safe", True, True, False)],

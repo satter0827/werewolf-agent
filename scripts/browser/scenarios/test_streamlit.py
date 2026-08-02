@@ -23,6 +23,9 @@ from scripts.browser.scenarios.quality import (
     scroll_streamlit_to_text,
 )
 
+PHASE_BOUNDARY_STEP_ALLOWANCE = 2
+VOTING_STAGE_COUNT = 1
+
 
 def test_setup_sections_and_validation(
     page: Page,
@@ -52,12 +55,39 @@ def test_setup_sections_and_validation(
 
 def test_gameplay_waiting_speech_and_target(
     page: Page,
+    api_client: httpx.Client,
     streamlit_url: str,
     capture_public_screenshot: Callable[[Page, str], Path],
     device_name: str,
 ) -> None:
+    api_url = os.environ.get("PLAYWRIGHT_API_URL", "http://api:8000")
+    email, password, token = create_authenticated_user(
+        api_client,
+        os.environ["PLAYWRIGHT_SUPABASE_URL"],
+        os.environ["PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY"],
+    )
+    setup_id, document = create_saved_setup(
+        api_client,
+        api_url,
+        token,
+        display_name="議論E2E",
+    )
+    document["mechanics"]["abilities"]["night_attack"]["enabled_first_night"] = False
+    discussion = document["mechanics"]["discussion"]
+    discussion_stage_count = len(discussion["stages"])
+    discussion_cycles_per_day = int(discussion["cycles_per_day"])
+    add_setup_revision(
+        api_client,
+        api_url,
+        token,
+        setup_id=setup_id,
+        expected_revision=1,
+        document=document,
+    )
     page.goto(streamlit_url)
+    _sign_in(page, email=email, password=password)
     expect(page.get_by_role("heading", name="ゲームを始める")).to_be_visible()
+    _select_streamlit_option(page, "ゲーム設定", "議論E2E (第2版)")
     page.get_by_role("textbox", name="再現用の番号").fill("6")
     page.get_by_role("button", name="プレイヤーを生成").click()
     expect(page.get_by_role("heading", name="生成されたプレイヤー")).to_be_visible()
@@ -65,25 +95,33 @@ def test_gameplay_waiting_speech_and_target(
     expect(page.get_by_role("heading", name="月明かりの卓")).to_be_visible(timeout=30_000)
     expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
     expect(page.locator(".wa-status")).to_have_count(6)
-    expect(page.locator(".wa-seat")).to_have_count(6)
+    seats = page.locator(".wa-seat")
+    expect(seats).to_have_count(6)
+    player_count = seats.count()
     advance = page.get_by_role("button", name="1ステップ進める")
-    expect(advance).to_be_visible(timeout=30_000)
+    initial_submit = page.get_by_role("button", name="入力を送信")
+    expect(advance.or_(initial_submit)).to_be_visible(timeout=30_000)
     _capture_state(page, capture_public_screenshot, f"streamlit-gameplay-waiting-{device_name}.png")
-    advance.focus()
-    page.keyboard.press("Enter")
-    expect(
-        page.get_by_text("自動進行中です。入力が必要になったら停止します。").first
-    ).to_be_visible(timeout=30_000)
+    if initial_submit.is_visible():
+        expect(initial_submit).to_be_enabled()
+        expect(page.get_by_label("対象を選ぶ")).to_be_visible()
+        initial_submit.click()
+    else:
+        advance.focus()
+        page.keyboard.press("Enter")
     message = page.get_by_label("発言内容")
     expect(message).to_be_visible(timeout=30_000)
     capture_public_screenshot(page, f"streamlit-gameplay-speech-{device_name}.png")
-    message.fill("公開情報を整理して話します。")
-    message.press("Tab")
-    submit = page.get_by_role("button", name="入力を送信")
-    expect(submit).to_be_enabled()
-    submit.click()
-    target = page.get_by_label("対象を選ぶ")
-    expect(target).to_be_visible(timeout=30_000)
+    _submit_message_action(page, message, "公開情報を整理して話します。")
+    _advance_until_target_action(
+        page,
+        player_count=player_count,
+        discussion_stage_count=discussion_stage_count,
+        discussion_cycles_per_day=discussion_cycles_per_day,
+    )
+    reason = page.get_by_label("投票理由")
+    expect(reason).to_be_visible()
+    reason.fill("対象について公開された発言を投票根拠にします。")
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-gameplay-target-{device_name}.png")
     page.context.set_offline(True)
@@ -98,6 +136,58 @@ def test_gameplay_waiting_speech_and_target(
     expect(vote_result).to_be_visible(timeout=30_000)
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
+
+
+def _advance_until_target_action(
+    page: Page,
+    *,
+    player_count: int,
+    discussion_stage_count: int,
+    discussion_cycles_per_day: int,
+) -> Locator:
+    """画面が示す合法操作を辿り、投票対象入力まで進める。"""
+    target = page.get_by_label("対象を選ぶ")
+    advance = page.get_by_role("button", name="1ステップ進める")
+    message = page.get_by_label("発言内容")
+    preceding_action_stages = (
+        discussion_stage_count * discussion_cycles_per_day + VOTING_STAGE_COUNT
+    )
+    max_steps = player_count * preceding_action_stages + PHASE_BOUNDARY_STEP_ALLOWANCE
+    for step in range(max_steps + 1):
+        expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
+        if target.is_visible():
+            return target
+        if step == max_steps:
+            break
+        if message.is_visible():
+            _submit_message_action(
+                page,
+                message,
+                f"公開情報を踏まえた応答です。{step + 1}",
+            )
+            continue
+        _advance_one_step(advance)
+    raise AssertionError("投票対象の入力へ到達できませんでした。")
+
+
+def _submit_message_action(page: Page, message: Locator, utterance: str) -> None:
+    """発言を送り、送信前のフォームが破棄されるまで待つ。"""
+    message.fill(utterance)
+    message.press("Tab")
+    submitted_form = message.element_handle()
+    assert submitted_form is not None
+    submit = page.get_by_role("button", name="入力を送信")
+    expect(submit).to_be_enabled()
+    submit.click()
+    submitted_form.wait_for_element_state("hidden", timeout=30_000)
+
+
+def _advance_one_step(advance: Locator) -> None:
+    """進行を要求し、押下したボタンが再描画で破棄されるまで待つ。"""
+    submitted_button = advance.element_handle()
+    assert submitted_button is not None
+    advance.click()
+    submitted_button.wait_for_element_state("hidden", timeout=30_000)
 
 
 def test_completed_game_presents_result_before_timeline(

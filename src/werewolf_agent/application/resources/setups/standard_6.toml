@@ -1,4 +1,4 @@
-schema_version = "0.3.0"
+schema_version = "0.7.0"
 
 [mechanics.role_counts]
 werewolf = 1
@@ -74,12 +74,35 @@ resolution_priority = 50
 allow_repeat_target = true
 enabled_first_night = true
 
-[mechanics.rules]
-day_speech_limit_per_player = 1
+[mechanics.discussion]
+protocol_id = "structured_argument"
+message_max_chars = 200
+cycles_per_day = 1
+
+[[mechanics.discussion.stages]]
+stage = "opening"
+submission_mode = "sealed"
+actor_order = "rotating"
+allowed_relations = ["independent"]
+
+[[mechanics.discussion.stages]]
+stage = "response"
+submission_mode = "ordered"
+actor_order = "reverse_opening"
+reference_stage = "opening"
+allowed_relations = ["answer", "support", "challenge", "revise"]
+
+[mechanics.voting]
 allow_self_vote = false
-allow_vote_revision = false
-allow_night_action_revision = false
-vote_tie_resolution = "no_elimination"
+allow_revision = false
+tie_resolution = "revote"
+reason_max_chars = 120
+
+[mechanics.night]
+allow_action_revision = false
+allow_pass = false
+
+[mechanics.lifecycle]
 starting_phase = "night"
 reveal_role_on_death = false
 require_all_actions_before_advance = true

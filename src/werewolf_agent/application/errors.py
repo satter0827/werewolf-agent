@@ -23,6 +23,8 @@ class ErrorCode(StrEnum):
     API_UNAVAILABLE = "api.unavailable"
     RESOURCE_NOT_FOUND = "resource.not_found"
     SETUP_REVISION_CONFLICT = "setup.revision_conflict"
+    SETUP_REVISION_LIMIT_REACHED = "setup.revision_limit_reached"
+    SETUP_LIMIT_REACHED = "setup.limit_reached"
     HTTP_ERROR = "http.error"
     GAME_INVALID_PHASE = "game.invalid_phase"
     GAME_INVALID_ACTION = "game.invalid_action"
@@ -51,6 +53,8 @@ _DEFAULT_DETAILS = {
     ErrorCode.API_UNAVAILABLE: "The API server could not be reached.",
     ErrorCode.RESOURCE_NOT_FOUND: "The requested resource was not found.",
     ErrorCode.SETUP_REVISION_CONFLICT: "A newer setup revision already exists.",
+    ErrorCode.SETUP_REVISION_LIMIT_REACHED: "The setup revision limit has been reached.",
+    ErrorCode.SETUP_LIMIT_REACHED: "The saved setup limit has been reached.",
     ErrorCode.HTTP_ERROR: "The HTTP request could not be completed.",
     ErrorCode.GAME_INVALID_PHASE: "The requested game operation is not valid in the current phase.",
     ErrorCode.GAME_INVALID_ACTION: "The requested game action is not valid.",

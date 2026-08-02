@@ -29,16 +29,35 @@ from werewolf_agent.application.types import (
 )
 from werewolf_agent.application.validation import public_generated_player_label
 from werewolf_agent.domain import GameEvent, GameState
+from werewolf_agent.setup._narration import render_narration
 
 PUBLIC_EVENT_PAYLOAD_KEYS: dict[str, frozenset[str]] = {
     "game_started": frozenset({"player_count"}),
     "phase_started": frozenset({"phase"}),
-    "speech_recorded": frozenset({"message", "focus_id", "evidence_id"}),
+    "speech_recorded": frozenset(
+        {
+            "speech_id",
+            "round_id",
+            "round_kind",
+            "utterance",
+            "topic_id",
+            "position",
+            "relation",
+            "evidence_id",
+            "response_to_id",
+        }
+    ),
+    "discussion_passed": frozenset({"evidence_id", "round_id", "round_kind", "topic_id"}),
     "vote_resolved": frozenset(
         {
             "eliminated_player_id",
             "counts",
+            "votes",
+            "reasons",
+            "evidence_ids",
             "tied_player_ids",
+            "round",
+            "requires_revote",
             "reaction_player_ids",
             "role",
             "faction",
@@ -62,7 +81,6 @@ def public_state_payload_from_snapshot(
     *,
     game_id: str,
     version: int,
-    seed: int | None,
     created_at: datetime | None = None,
     scenario_id: str | None = None,
     scenario_name: str | None = None,
@@ -80,7 +98,7 @@ def public_state_payload_from_snapshot(
             killed_night=player.killed_night,
             role=(
                 player.role
-                if not player.is_alive and snapshot.config.rules.reveal_role_on_death
+                if not player.is_alive and snapshot.config.lifecycle.reveal_role_on_death
                 else None
             ),
             faction=cast(
@@ -89,7 +107,7 @@ def public_state_payload_from_snapshot(
                     snapshot.config.roles.faction_for_role(player.role)
                     if not player.is_alive
                     and player.role is not None
-                    and snapshot.config.rules.reveal_role_on_death
+                    and snapshot.config.lifecycle.reveal_role_on_death
                     else None
                 ),
             ),
@@ -106,7 +124,6 @@ def public_state_payload_from_snapshot(
         phase=cast(GamePhase, snapshot.phase.value),
         day=snapshot.day,
         version=version,
-        seed=seed,
         scenario_id=scenario_id,
         scenario_name=scenario_name,
         narration_mode=cast(Any, narration_mode),
@@ -135,7 +152,6 @@ def public_game_summary_payload_from_record(record: StoredGameSummary) -> dict[s
         phase=record.phase,
         day=record.day,
         version=record.version,
-        seed=record.seed,
         scenario_id=record.scenario_id,
         scenario_name=record.scenario_name,
         theme=record.theme,
@@ -264,10 +280,7 @@ def public_narration(
             str(payload.get("winner") or ""),
         ),
     }
-    try:
-        return template.format(**values)
-    except (KeyError, ValueError):
-        return ""
+    return render_narration(template, values)
 
 
 def _public_player_label(value: object) -> str:

@@ -16,8 +16,11 @@ def _boundary(
     *,
     standard: versioning.VersionStandard = "semver",
     change_detection: versioning.ChangeDetection = "path",
+    enforcement: versioning.Enforcement = "change",
 ) -> versioning.Boundary:
-    return versioning.Boundary(name, "test", standard, path, pattern, watch, change_detection)
+    return versioning.Boundary(
+        name, "test", standard, path, pattern, watch, change_detection, enforcement
+    )
 
 
 def test_registry_exposes_every_independent_version_boundary() -> None:
@@ -39,20 +42,36 @@ def test_registry_exposes_every_independent_version_boundary() -> None:
     }
     versions = {str(item["name"]): str(item["version"]) for item in items}
     assert versions == {
-        "agent": "0.5.1",
-        "architecture": "0.13.2",
+        "agent": "0.11.0",
+        "architecture": "0.13.3",
         "event": "0.1.0",
-        "experiment": "0.5.1",
+        "experiment": "0.6.0",
         "experiment-evaluator": "0.4.0",
-        "product": "0.32.3",
-        "quality-evidence": "0.2.0",
-        "replay": "0.4.0",
-        "rule-pack": "0.6.1",
-        "simulation": "0.5.0",
-        "setup": "0.3.0",
+        "product": "0.33.0",
+        "quality-evidence": "0.2.1",
+        "replay": "0.7.0",
+        "rule-pack": "0.10.0",
+        "simulation": "0.10.0",
+        "setup": "0.7.0",
     }
     assert {item["standard"] for item in items if item["name"] == "product"} == {"pep440"}
     assert {item["standard"] for item in items if item["name"] != "product"} == {"semver"}
+    assert {item["enforcement"] for item in items if item["name"] == "product"} == {"release"}
+    assert {item["enforcement"] for item in items if item["name"] != "product"} == {"change"}
+    watches = {str(item["name"]): set(item["watch"]) for item in items}
+    assert "supabase/migrations/" in watches["product"]
+    assert "supabase/migrations/" not in watches["setup"]
+
+
+def test_auto_scope_uses_the_configured_release_ref_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同じcommitでもdevelopのrefをrelease単位へ誤分類しない。"""
+    monkeypatch.setattr(versioning, "_release_base_ref", lambda: "origin/main")
+
+    assert versioning._resolve_scope("auto", "origin/main") == "release"
+    assert versioning._resolve_scope("auto", "origin/develop") == "change"
+    assert versioning._resolve_scope("change", "origin/main") == "change"
 
 
 def test_check_accepts_the_new_baseline_against_main() -> None:
@@ -211,7 +230,7 @@ def test_check_requires_precedence_to_increase_for_touched_boundary(
     monkeypatch.setattr(versioning, "_changed_paths", lambda *_args: ("src/event.py",))
     monkeypatch.setattr(versioning, "_base_version", lambda *_args: "1.0.0+old")
 
-    assert versioning.check("main", "HEAD") == [
+    assert versioning.check("main", "HEAD", scope="change") == [
         "event: 所有範囲が変更されていますがversionは1.0.0+newのままです。"
     ]
 
@@ -236,7 +255,43 @@ def test_check_reads_an_explicit_head_ref_instead_of_the_worktree(
         else None,
     )
 
-    assert versioning.check("main", "head") == []
+    assert versioning.check("main", "head", scope="change") == []
+
+
+def test_check_defers_product_to_release_but_rechecks_change_boundaries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """developではproductを保留し、releaseでは全境界を検査する。"""
+    product_path = tmp_path / "product.py"
+    event_path = tmp_path / "event.py"
+    product_path.write_text('__version__ = "1.0.0"\n', encoding="utf-8")
+    event_path.write_text('EVENT = "1.0.0"\n', encoding="utf-8")
+    boundaries = (
+        _boundary(
+            "product",
+            "product.py",
+            r'__version__\s*=\s*"([^"]+)"',
+            ("src/",),
+            standard="pep440",
+            enforcement="release",
+        ),
+        _boundary("event", "event.py", r'EVENT\s*=\s*"([^"]+)"', ("src/event.py",)),
+    )
+    monkeypatch.setattr(versioning, "ROOT", tmp_path)
+    monkeypatch.setattr(versioning, "_boundaries", lambda: boundaries)
+    monkeypatch.setattr(versioning, "_merge_base", lambda *_args: "base")
+    monkeypatch.setattr(
+        versioning, "_changed_paths", lambda *_args: ("src/event.py", "src/service.py")
+    )
+    monkeypatch.setattr(versioning, "_base_version", lambda *_args: "1.0.0")
+
+    assert versioning.check("develop", "HEAD", scope="change") == [
+        "event: 所有範囲が変更されていますがversionは1.0.0のままです。"
+    ]
+    assert versioning.check("main", "HEAD", scope="release") == [
+        "product: 所有範囲が変更されていますがversionは1.0.0のままです。",
+        "event: 所有範囲が変更されていますがversionは1.0.0のままです。",
+    ]
 
 
 def test_invalid_base_version_is_not_treated_as_an_absent_baseline(
@@ -250,7 +305,7 @@ def test_invalid_base_version_is_not_treated_as_an_absent_baseline(
         versioning._base_version(boundary, "base")
 
 
-def test_bump_updates_only_touched_boundaries_and_is_idempotent(
+def test_bump_updates_only_the_boundaries_owned_by_each_scope_and_is_idempotent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """変更pathに対応する境界だけを同じ基準から一度だけ更新する。"""
@@ -267,6 +322,7 @@ def test_bump_updates_only_touched_boundaries_and_is_idempotent(
             r'__version__\s*=\s*"([^"]+)"',
             ("src/",),
             standard="pep440",
+            enforcement="release",
         ),
         _boundary("event", "event.py", r'EVENT\s*=\s*"([^"]+)"', ("src/event.py",)),
         _boundary("replay", "replay.py", r'REPLAY\s*=\s*"([^"]+)"', ("src/replay.py",)),
@@ -279,13 +335,19 @@ def test_bump_updates_only_touched_boundaries_and_is_idempotent(
     )
     monkeypatch.setattr(versioning, "_base_version", lambda *_args: "1.2.3")
 
-    updates = versioning.bump("minor", "main", "HEAD")
+    change_updates = versioning.bump("minor", "main", "HEAD", scope="change")
 
-    assert [item["name"] for item in updates] == ["product", "event"]
-    assert '__version__ = "1.3.0"' in product_path.read_text(encoding="utf-8")
+    assert [item["name"] for item in change_updates] == ["event"]
+    assert '__version__ = "1.2.3"' in product_path.read_text(encoding="utf-8")
     assert 'EVENT = "1.3.0"' in event_path.read_text(encoding="utf-8")
     assert 'REPLAY = "1.2.3"' in replay_path.read_text(encoding="utf-8")
-    assert versioning.bump("minor", "main", "HEAD") == []
+    assert versioning.bump("minor", "main", "HEAD", scope="change") == []
+
+    release_updates = versioning.bump("minor", "main", "HEAD", scope="release")
+
+    assert [item["name"] for item in release_updates] == ["product"]
+    assert '__version__ = "1.3.0"' in product_path.read_text(encoding="utf-8")
+    assert versioning.bump("minor", "main", "HEAD", scope="release") == []
 
 
 def test_bump_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -299,7 +361,7 @@ def test_bump_dry_run_does_not_write(tmp_path: Path, monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(versioning, "_changed_paths", lambda *_args: ("src/event.py",))
     monkeypatch.setattr(versioning, "_base_version", lambda *_args: "1.2.3")
 
-    updates = versioning.bump("patch", "main", "HEAD", dry_run=True)
+    updates = versioning.bump("patch", "main", "HEAD", dry_run=True, scope="change")
 
     assert updates[0]["after"] == "1.2.4"
     assert path.read_text(encoding="utf-8") == 'VERSION = "1.2.3"\n'
@@ -319,7 +381,7 @@ def test_bump_refuses_to_overwrite_a_different_manual_version(
     monkeypatch.setattr(versioning, "_base_version", lambda *_args: "1.2.3")
 
     with pytest.raises(ValueError, match=r"更新先1\.3\.0"):
-        versioning.bump("minor", "main", "HEAD")
+        versioning.bump("minor", "main", "HEAD", scope="change")
 
 
 @pytest.mark.parametrize(

@@ -24,6 +24,17 @@ uv run --no-project python -m scripts.environment setup quality
 `setup development|quality`は隔離Supabase projectで必要imageを準備し、project IDとworkdirを
 指定して停止する。Docker Desktopは自動起動しない。
 
+## Security検査
+
+依存監査はlock済みの全extraとdependency groupをhash付きで対象にする。脆弱性databaseへ
+接続できない場合も成功として扱わない。secret検査はGit管理中と追加前のfilesを対象にし、
+`.secrets.baseline`に監査済みのテスト用ダミー値以外の候補を失敗させる。
+
+```powershell
+uv run --no-sync python -m scripts.security dependencies
+uv run --no-sync python -m scripts.security secrets
+```
+
 ## 品質プロファイル
 
 ```powershell
@@ -39,6 +50,7 @@ uv run --no-sync python -m scripts.versioning suggest --base-ref origin/main --h
 uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD --dry-run
 uv run --no-sync python -m scripts.versioning bump patch --base-ref origin/main --head-ref HEAD
 uv run --no-sync python -m scripts.versioning check --base-ref origin/main --head-ref HEAD
+uv run --no-sync python -m scripts.versioning check --base-ref origin/develop --head-ref HEAD --scope change
 uv run --no-sync python -m scripts.quality gate ruff mypy
 uv run --no-sync python -m scripts.quality list
 uv run --no-sync python -m scripts.quality auto --explain
@@ -50,7 +62,8 @@ uv run --no-sync python -m scripts.quality cleanup --confirm DELETE
 
 `suggest`はmainとの差分に含まれるConventional Commitから`patch`、`minor`、`major`を提案するが、
 versionを変更しない。変更levelは利用者が決定し、`bump`へ明示する。`bump`はcommit済み、stage済み、
-未stage、未追跡の変更pathをregistryの所有範囲へ対応付け、productと影響を受ける境界だけを更新する。
+未stage、未追跡の変更pathをregistryの所有範囲へ対応付ける。develop向けの`change`では影響を受ける
+独立境界だけを更新し、main向けの`release`ではproductだけを更新する。
 同じlevelでの再実行は変更を増やさず、異なる手動versionが既にある場合は上書きせず停止する。
 最初に`--dry-run`で対象を確認する。
 
@@ -65,11 +78,16 @@ versionを変更しない。変更levelは利用者が決定し、`bump`へ明�
 プロファイル名を直接指定した場合は差分にかかわらず全体を実行する。`--fresh`は再利用可能な
 成功gateも実行し直す。`auto --explain`は選定理由、stage、再利用候補を表示して終了する。
 `--base-ref`と`--head-ref`はcommit済みのPR差分を変更影響とreportへ関連付ける。明示したrefは
-Version gateへそのまま渡す。baseを省略した場合だけ、Version gateはリリース基準の`origin/main`を
-使用し、reportの実コマンドにも既定refを明示する。
+Version gateへそのまま渡す。baseがregistryのリリース基準と同じrefならリリース、それ以外なら変更を
+自動選択する。SHAや別名のrefを使う検証と障害調査では`--scope`を明示する。baseを省略した場合だけ、
+Version gateはリリース基準の`origin/main`を使用し、reportの実コマンドにも既定refを明示する。
 `--head-ref`は現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitを
 検査する場合は、そのcommitを専用worktreeへcheckoutしてから実行する。未commitの変更を検査する場合は
 `--head-ref HEAD`を使用し、任意commitへ別treeのworkspace差分を合成しない。
+
+通常実行は`default_jobs`の2並列で動作し、ローカルPCのCPUとDocker負荷を抑える。必要な場合だけ
+`--jobs`で並列数を指定できるが、`max_jobs`の4を超える値は受け付けない。品質プロファイルの判定範囲と
+CIの実行条件は並列数に依存しない。
 
 状態は`passed`、`failed`、`blocked`、`error`、`skipped`である。終了値は成功が0、品質違反が1、
 環境不備または実行基盤異常が2である。coverage、benchmark、ゲームバランスは観測値として保存し、
@@ -118,6 +136,11 @@ PR前のLinux検証ではbranchをremoteへpushし、GitHub Actionsの`Quality`�
 別のPR head SHAを渡さず、reportのheadと実際にgateを動かすtreeを一致させる。最終的なmerge判定は
 PR Checkを使用する。Deepはローカル、毎晩の`develop`、`main`向けPRで実行する。
 
+コードレビューは`develop`へ取り込む前に行う。実装中はCodexの`/review`で未コミット差分またはbaseとの差分を
+検査し、`develop`向けPRの最終headだけへ`@codex review`を明示的に要求する。指摘修正でheadが変わった場合は
+新しいheadへ再要求する。ChatGPTのCodexコードレビュー設定では自動レビューを無効にする。
+`main`向けPRでは`@codex review`を要求せず、Deep、互換性検査、リリース証拠と人間判断を使用する。
+
 すべてのPRはmerge commitを使用する。GitHub rulesetの正本は`.github/rulesets`に置き、remoteへ
 適用した後にGitHub APIから読み戻して確認する。夜間Deepは毎日03:17 JSTに変更を検知し、
 月曜JSTだけは変更や成功cacheの有無にかかわらず実行する。手動の`nightly-deep`も強制実行する。
@@ -162,6 +185,7 @@ uv run --no-sync python -m scripts.browser --capture gameplay-complete --device 
 uv run --no-sync python -m scripts.agents preflight
 uv run --no-sync python -m scripts.agents run --provider fake --suite standard
 uv run --no-sync python -m scripts.agents run --provider local --suite smoke
+uv run --no-sync python -m scripts.agents run --provider local --suite full-game
 uv run --no-sync python -m scripts.agents local-ui
 uv run --no-sync python -m scripts.review ui
 uv run --no-sync python -m scripts.review gameplay
@@ -169,7 +193,14 @@ uv run --no-sync python -m scripts.review local-llm
 ```
 
 Fakeと実LLMは同じrequest、応答正規化、schema検証、合法手検証、fallbackを通る。
-Local smokeはloopbackだけを許可し、一局完走とStreamlitの統合確認は`local-ui`へ分離する。
+`preflight`と`review local-llm`はloopback上の実モデルへopening、参照必須response、理由必須voteを
+一回ずつ送り、行為別JSON Schemaと公開Agent契約を検証する。各呼び出しは再試行せず240秒で打ち切る。
+Local smokeは3回の意思決定に制限する。Local `full-game`は`standard_6`を一局だけ実行し、
+128回の意思決定と90分の上限内で、公開根拠の整合、重複発言、投票・再投票、夜行動、勝敗、
+フェーズ別token数と応答時間を記録する。同じLocal LLMへのfull-gameは排他lockで重複実行を拒否し、
+全体期限の残り時間を各model callの期限にする。期限超過、provider error、schema違反、fallbackは
+別々に集計する。response候補は各話者2件に絞り、全話者が同じ参照へ
+集中しないよう話者順で回転する。Streamlitの統合確認は`local-ui`へ分離する。
 結果は`.werewolf-agent/reviews/agents`へ`report.json`、`summary.md`、`manifest.json`として保存し、
 public timelineとprivate traceを分離する。active markerを持つ実行中runは保持処理の対象外である。
 

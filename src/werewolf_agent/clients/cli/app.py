@@ -29,6 +29,13 @@ from werewolf_agent.clients.cli.commands.admin import (
     replay_verify,
     reveal,
 )
+from werewolf_agent.clients.cli.commands.authentication import (
+    enroll as enroll_mfa,
+)
+from werewolf_agent.clients.cli.commands.authentication import (
+    sign_in,
+    sign_out,
+)
 from werewolf_agent.clients.cli.commands.setup import export_setup, inspect_setup, validate_setup
 from werewolf_agent.clients.cli.commands.system import status
 from werewolf_agent.clients.cli.events import (
@@ -101,6 +108,7 @@ setup_app = typer.Typer(help="ゲーム作成に使える設定を確認しま�
 game_app = typer.Typer(help="ゲームを作成・操作します。")
 records_app = typer.Typer(help="公開記録を取得・再生します。")
 admin_app = typer.Typer(help="管理者専用の診断と検証を行います。")
+auth_app = typer.Typer(help="利用者sessionと多要素認証を管理します。")
 
 CLI_COMMAND_IMPLEMENTATIONS: Final[dict[str, Callable[..., Any]]] = {}
 
@@ -123,6 +131,9 @@ def _register_feature_command(
 
 system_app.command(name="doctor", help="ローカル設定とresourceを検査します。")(doctor)
 setup_app.command(name="export", help="templateを編集可能なTOMLへ出力します。")(export_setup)
+auth_app.command(name="sign-in", help="passwordと登録済みTOTPでログインします。")(sign_in)
+auth_app.command(name="mfa-enroll", help="現在の利用者へTOTPを登録します。")(enroll_mfa)
+auth_app.command(name="sign-out", help="現在のsessionを終了します。")(sign_out)
 for _group, _path, _name, _handler, _help in (
     (system_app, "system status", "status", status, "APIと依存先の可用性を表示します。"),
     (setup_app, "setup show", "show", setup_options, "選択可能なゲーム設定を表示します。"),
@@ -169,6 +180,7 @@ for _group, _path, _name, _handler, _help in (
     )
 
 app.add_typer(system_app, name="system")
+app.add_typer(auth_app, name="auth")
 app.add_typer(setup_app, name="setup")
 app.add_typer(game_app, name="game")
 app.add_typer(records_app, name="records")

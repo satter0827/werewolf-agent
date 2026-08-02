@@ -22,12 +22,19 @@ class DecisionModel(Protocol):
 class PlayerAgent(Protocol):
     """Provider boundary for turning visible player context into one decision."""
 
-    def choose_decision(self, player_id: str, observation: AgentObservation) -> AgentDecision:
+    def choose_decision(
+        self,
+        player_id: str,
+        observation: AgentObservation,
+        *,
+        timeout_seconds: float | None = None,
+    ) -> AgentDecision:
         """Return one validated decision for a visible player observation.
 
         Args:
             player_id: Player requesting a decision.
             observation: Provider-independent context visible to that player.
+            timeout_seconds: Remaining provider-call time, when bounded.
 
         Returns:
             Structured decision that can be adapted to a game action.

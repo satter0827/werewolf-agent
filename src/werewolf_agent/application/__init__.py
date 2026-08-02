@@ -44,17 +44,22 @@ from werewolf_agent.application.models import (
     GameSetupOptionsResult,
     GameTimelineResult,
     GeneratedPlayerInput,
+    PassActionInput,
     PlayerActionCommand,
+    PlayerActionInput,
     PlayerActionResult,
     PlayerObservationResult,
     PlayerPreviewResult,
     PreparedAdvanceGame,
     ReplayVerificationResult,
     SetupValidationResult,
+    SpeechActionInput,
     StoredGame,
     StoredGameEvent,
     StoredGameSummary,
     StoredGameTurn,
+    UseAbilityActionInput,
+    VoteActionInput,
 )
 from werewolf_agent.application.operations import AccessPolicy, OperationQueue, QueuedOperation
 from werewolf_agent.application.ports import GameRepository, SetupRepository, Transaction
@@ -65,7 +70,12 @@ from werewolf_agent.application.rule_packs import (
 from werewolf_agent.application.setup_catalog import SetupTemplateCatalog, SetupTemplateMetadata
 from werewolf_agent.application.setup_facade import SetupApplication
 from werewolf_agent.application.setup_options import parse_setup_document, validate_setup_document
-from werewolf_agent.application.setup_records import SavedSetupRevision, SavedSetupSummary
+from werewolf_agent.application.setup_records import (
+    SavedSetupRevision,
+    SavedSetupRevisionPage,
+    SavedSetupSummary,
+    SavedSetupSummaryPage,
+)
 from werewolf_agent.application.types import GameStatus
 
 __all__ = [
@@ -107,7 +117,9 @@ __all__ = [
     "InlineCommandExecutor",
     "InternalError",
     "OperationQueue",
+    "PassActionInput",
     "PlayerActionCommand",
+    "PlayerActionInput",
     "PlayerActionResult",
     "PlayerObservationResult",
     "PlayerPreviewResult",
@@ -117,18 +129,23 @@ __all__ = [
     "ResourceNotFoundError",
     "RulePackRegistry",
     "SavedSetupRevision",
+    "SavedSetupRevisionPage",
     "SavedSetupSummary",
+    "SavedSetupSummaryPage",
     "SetupApplication",
     "SetupRepository",
     "SetupTemplateCatalog",
     "SetupTemplateMetadata",
     "SetupValidationResult",
     "SingleTenantAccessPolicy",
+    "SpeechActionInput",
     "StoredGame",
     "StoredGameEvent",
     "StoredGameSummary",
     "StoredGameTurn",
     "Transaction",
+    "UseAbilityActionInput",
+    "VoteActionInput",
     "assert_game_repository_contract",
     "assert_setup_repository_contract",
     "create_core_rule_policy_registry",

@@ -19,10 +19,10 @@ from werewolf_agent.adapters.llm.messages import (
 from werewolf_agent.agents.validation import non_blank
 
 MIN_TIMEOUT_SECONDS_EXCLUSIVE: Final = 0
-MIN_RETRY_COUNT: Final = 0
 MIN_LLM_MAX_TOKENS: Final = 1
 MIN_LLM_TEMPERATURE: Final = 0
 MAX_LLM_TEMPERATURE: Final = 2
+MIN_MODEL_CATALOG_MAX_BYTES: Final = 1
 
 
 @dataclass(frozen=True)
@@ -34,9 +34,9 @@ class LlmProviderConfig:
     base_url: str
     api_key: str = field(repr=False)
     timeout_seconds: float
-    max_retries: int
     max_tokens: int
     temperature: float
+    model_catalog_max_bytes: int = 1_048_576
 
     def __post_init__(self) -> None:
         """Validate and normalize provider settings."""
@@ -51,8 +51,6 @@ class LlmProviderConfig:
                     MIN_TIMEOUT_SECONDS_EXCLUSIVE,
                 )
             )
-        if self.max_retries < MIN_RETRY_COUNT:
-            raise ValueError(message_field_must_be_at_least("llm max_retries", MIN_RETRY_COUNT))
         if self.max_tokens < MIN_LLM_MAX_TOKENS:
             raise ValueError(message_field_must_be_at_least("llm max_tokens", MIN_LLM_MAX_TOKENS))
         if not MIN_LLM_TEMPERATURE <= self.temperature <= MAX_LLM_TEMPERATURE:
@@ -61,6 +59,13 @@ class LlmProviderConfig:
                     "llm temperature",
                     MIN_LLM_TEMPERATURE,
                     MAX_LLM_TEMPERATURE,
+                )
+            )
+        if self.model_catalog_max_bytes < MIN_MODEL_CATALOG_MAX_BYTES:
+            raise ValueError(
+                message_field_must_be_at_least(
+                    "llm model_catalog_max_bytes",
+                    MIN_MODEL_CATALOG_MAX_BYTES,
                 )
             )
         if provider == LLM_PROVIDER_LMSTUDIO and not base_url:

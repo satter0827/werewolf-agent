@@ -49,7 +49,14 @@ from werewolf_agent.application.types import (
     GameStatus,
 )
 from werewolf_agent.domain import Game
-from werewolf_agent.setup import LocalRulesDefinition, namespace_seed, rule_definition_from_values
+from werewolf_agent.setup import (
+    DiscussionDefinition,
+    LifecycleDefinition,
+    NightDefinition,
+    VotingDefinition,
+    namespace_seed,
+    rule_definition_from_values,
+)
 
 
 def create_game(
@@ -72,7 +79,10 @@ def create_game(
     definition = rule_definition_from_values(
         player_count=len(players),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.to_mapping(),
+        discussion=mechanics.discussion.to_mapping(),
+        voting=mechanics.voting.to_mapping(),
+        night=mechanics.night.to_mapping(),
+        lifecycle=mechanics.lifecycle.to_mapping(),
         roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
         abilities={
             ability_id: ability.to_mapping() for ability_id, ability in mechanics.abilities.items()
@@ -123,7 +133,6 @@ def create_game(
         snapshot,
         game_id=str(game_id),
         version=1,
-        seed=seed,
         scenario_id=_config_text(scenario_config, "scenario_id"),
         scenario_name=_config_text(scenario_config, "scenario_name"),
         narration_mode="standard" if setup.theme.narration_enabled else "none",
@@ -208,7 +217,10 @@ def get_game_reveal(
         narration_mode=_narration_mode(run.config),
         theme=dict(setup_theme) if setup_theme is not None else None,
         role_counts=dict(snapshot.config.role_counts),
-        rules=LocalRulesDefinition.from_mapping(domain_to_data(snapshot.config.rules)),
+        discussion=DiscussionDefinition.from_mapping(domain_to_data(snapshot.config.discussion)),
+        voting=VotingDefinition.from_mapping(domain_to_data(snapshot.config.voting)),
+        night=NightDefinition.from_mapping(domain_to_data(snapshot.config.night)),
+        lifecycle=LifecycleDefinition.from_mapping(domain_to_data(snapshot.config.lifecycle)),
         players=[
             GameRevealPlayer(
                 id=player.id,
@@ -234,10 +246,15 @@ def get_game_reveal(
         pending_night_actions=[
             _reveal_action(action) for action in pending_actions.night_actions.values()
         ],
+        pending_discussion_actions=[
+            _reveal_action(action) for action in pending_actions.discussion_actions.values()
+        ],
         votes=[
             GameRevealVote(
                 day=vote.day,
                 votes=dict(vote.votes),
+                reasons=dict(vote.reasons),
+                evidence_ids=dict(vote.evidence_ids),
                 counts=dict(vote.counts),
                 tied_player_ids=list(vote.tied_player_ids),
                 missing_voter_ids=list(vote.missing_voter_ids),

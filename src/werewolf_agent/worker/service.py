@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from typing import Any, Literal, TypeVar
 
 from pydantic import BaseModel
@@ -24,6 +24,10 @@ from werewolf_agent.adapters.supabase.llm_trace import (
     SupabaseLlmTraceSink,
 )
 from werewolf_agent.adapters.supabase.operations import SupabaseAccessPolicy
+from werewolf_agent.adapters.supabase.paid_llm_admission import (
+    PaidLlmAdmission,
+    SupabasePaidLlmAdmissionGate,
+)
 from werewolf_agent.adapters.supabase.pool import (
     SupabaseDatabaseUnavailableError,
     borrow_database_connection,
@@ -52,10 +56,10 @@ from werewolf_agent.contracts.error_catalog import get_error_spec
 from werewolf_agent.contracts.errors import ErrorCode
 from werewolf_agent.contracts.mapping import wire_model
 from werewolf_agent.contracts.schemas import (
+    PLAYER_ACTION_REQUEST_ADAPTER,
     AdvanceGameResponse,
     GameResponse,
     GameRevealResponse,
-    PlayerActionRequest,
     PlayerActionResponse,
     ProblemDetails,
 )
@@ -77,6 +81,7 @@ from werewolf_agent.worker.events import (
     LOG_WORKER_REQUEST_RETRY_STARTED,
 )
 from werewolf_agent.worker.messages import (
+    MESSAGE_PAID_LLM_DISABLED,
     MESSAGE_SUPABASE_WORKER_DSN_REQUIRED,
     MESSAGE_WORKER_REQUEST_FAILED,
     message_unsupported_operation_type,
@@ -205,7 +210,7 @@ def process_worker_batch(
 def _worker_pool(settings: AppSettings) -> Any:
     """Return the closed process-owned worker pool."""
     return create_database_pool(
-        settings.supabase_db_dsn_value,
+        settings.supabase_worker_db_dsn_value,
         min_size=settings.supabase_worker_pool_min_size,
         max_size=settings.supabase_worker_pool_max_size,
         timeout=settings.supabase_pool_timeout_seconds,
@@ -300,10 +305,12 @@ def _complete_result(
     store: SupabaseWorkerStore,
     request: Mapping[str, Any],
     result: BaseModel,
+    *,
+    domain_actions: Sequence[Mapping[str, object]] = (),
 ) -> None:
     """Commit ledger, audit, and queue completion for one result."""
     result_payload = result.model_dump(mode="json")
-    store.record_accepted_command(request, result_payload)
+    store.record_accepted_command(request, result_payload, domain_actions=domain_actions)
     store.complete_request(request, result_payload)
     logger.info(
         LOG_WORKER_REQUEST_COMPLETED,
@@ -338,57 +345,127 @@ def _execute_advance_request(
         )
         store = SupabaseWorkerStore(connection)
         llm_mode = store.game_llm_mode(game_id)
+    requires_paid_admission = llm_mode == "paid" and settings.worker_paid_llm_provider != "fake"
+    if requires_paid_admission and not settings.worker_paid_llm_enabled:
+        raise AppError(
+            MESSAGE_PAID_LLM_DISABLED,
+            code=ErrorCode.LLM_PROVIDER_UNAVAILABLE,
+            retryable=False,
+        )
+    provider_config = build_worker_llm_provider_config(llm_mode, settings)
 
     traces = BufferedLlmTraceSink()
     runtime = AgentRuntime(
-        config=build_worker_llm_provider_config(llm_mode, settings),
+        config=provider_config,
         definitions=build_llm_definitions(settings),
         trace_sink=traces,
         agent_factories=dependencies.agent_factories,
     )
-    with _LeaseHeartbeat(pool, settings, request) as heartbeat:
-        driven = drive_prepared_game(
-            prepared,
-            runtime=runtime,
-        )
-        computed = application.compute_advance(driven)
-        heartbeat.require_owned()
+    admission = _reserve_paid_llm_admission(
+        pool,
+        settings,
+        request,
+        actor_user_id=user_id,
+        requires_paid_admission=requires_paid_admission,
+    )
+    try:
+        with _LeaseHeartbeat(pool, settings, request, admission=admission) as heartbeat:
+            driven = drive_prepared_game(
+                prepared,
+                runtime=runtime,
+            )
+            computed = application.compute_advance(driven)
+            heartbeat.require_owned()
+    except Exception:
+        if admission is not None:
+            _finish_paid_llm_admission(pool, admission, outcome="failed")
+        raise
+    else:
+        if admission is not None:
+            _finish_paid_llm_admission(pool, admission, outcome="completed")
 
-        with borrow_database_connection(pool) as connection, connection.transaction():
-            store = SupabaseWorkerStore(connection)
-            context = _service(connection, settings, dependencies)
-            result = GameApplication(
-                context,
-                access_policy=SupabaseAccessPolicy(connection),
-            ).commit_advance(Actor(user_id=user_id), computed)
-            response = _wire_model(AdvanceGameResponse, result)
-            traces.flush_to(
-                SupabaseLlmTraceSink(
-                    connection,
-                    game_id=game_id,
-                    request_id=str(request["request_id"]),
-                    state_version=_expected_version(request),
-                )
-            )
-            _materialize_private_views(
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        store = SupabaseWorkerStore(connection)
+        context = _service(connection, settings, dependencies)
+        result = GameApplication(
+            context,
+            access_policy=SupabaseAccessPolicy(connection),
+        ).commit_advance(Actor(user_id=user_id), computed)
+        response = _wire_model(AdvanceGameResponse, result)
+        traces.flush_to(
+            SupabaseLlmTraceSink(
                 connection,
-                store,
-                settings,
-                dependencies,
-                response.game_id,
-                actor_user_id=user_id,
+                game_id=game_id,
+                request_id=str(request["request_id"]),
+                state_version=_expected_version(request),
             )
-            _complete_result(store, request, response)
+        )
+        _materialize_private_views(
+            connection,
+            store,
+            settings,
+            dependencies,
+            response.game_id,
+            actor_user_id=user_id,
+        )
+        _complete_result(
+            store,
+            request,
+            response,
+            domain_actions=driven.domain_actions,
+        )
+
+
+def _reserve_paid_llm_admission(
+    pool: Any,
+    settings: AppSettings,
+    request: Mapping[str, Any],
+    *,
+    actor_user_id: str,
+    requires_paid_admission: bool,
+) -> PaidLlmAdmission | None:
+    """Reserve paid capacity immediately before the external pipeline starts."""
+    if not requires_paid_admission:
+        return None
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        return SupabasePaidLlmAdmissionGate(connection).reserve(
+            operation_id=str(request["request_id"]),
+            actor_user_id=actor_user_id,
+            worker_id=settings.supabase_worker_id,
+            daily_limit=settings.worker_paid_llm_daily_advance_limit,
+            concurrency_limit=settings.worker_paid_llm_max_concurrent_advances,
+            ttl_seconds=settings.worker_paid_llm_admission_ttl_seconds,
+        )
+
+
+def _finish_paid_llm_admission(
+    pool: Any,
+    admission: PaidLlmAdmission,
+    *,
+    outcome: Literal["completed", "failed"],
+) -> None:
+    """Release paid capacity in its own short transaction."""
+    with borrow_database_connection(pool) as connection, connection.transaction():
+        SupabasePaidLlmAdmissionGate(connection).finish(admission, outcome=outcome)
 
 
 class _LeaseHeartbeat:
     """Renew one PGMQ visibility timeout while the Agent pipeline is running."""
 
-    def __init__(self, pool: Any, settings: AppSettings, request: Mapping[str, Any]) -> None:
+    def __init__(
+        self,
+        pool: Any,
+        settings: AppSettings,
+        request: Mapping[str, Any],
+        *,
+        admission: PaidLlmAdmission | None = None,
+    ) -> None:
         self._pool = pool
         self._interval = settings.supabase_worker_heartbeat_seconds
         self._claim_seconds = settings.supabase_worker_claim_seconds
         self._request = request
+        self._admission = admission
+        self._admission_ttl_seconds = settings.worker_paid_llm_admission_ttl_seconds
         self._stopped = threading.Event()
         self._lost = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
@@ -418,7 +495,13 @@ class _LeaseHeartbeat:
                         self._request,
                         claim_seconds=self._claim_seconds,
                     )
-                if not renewed:
+                    admission_renewed = self._admission is None or (
+                        SupabasePaidLlmAdmissionGate(connection).renew(
+                            self._admission,
+                            ttl_seconds=self._admission_ttl_seconds,
+                        )
+                    )
+                if not renewed or not admission_renewed:
                     self._lost.set()
                     return
             except Exception:
@@ -479,22 +562,20 @@ def _submit_action(
     game_id = str(request.get("game_id") or "")
     player_id = str(request.get("player_id") or "")
     user_id = str(request["owner_user_id"])
-    action_request = PlayerActionRequest.model_validate(
+    action_request = PLAYER_ACTION_REQUEST_ADAPTER.validate_python(
         _json_object(request.get("request_payload"))
     )
     service = _service(connection, settings, dependencies)
     application = GameApplication(service, access_policy=SupabaseAccessPolicy(connection))
     result = application.submit_action(
         Actor(user_id=user_id),
-        PlayerActionCommand(
-            game_id=game_id,
-            player_id=player_id,
-            type=action_request.type,
-            ability_id=action_request.ability_id,
-            target_id=action_request.target_id,
-            message=action_request.message,
-            reason=action_request.reason,
-            expected_version=_expected_version(request),
+        PlayerActionCommand.model_validate(
+            {
+                "game_id": game_id,
+                "player_id": player_id,
+                "action": action_request.model_dump(mode="python", exclude_none=True),
+                "expected_version": _expected_version(request),
+            }
         ),
     )
     response = _wire_model(PlayerActionResponse, result)

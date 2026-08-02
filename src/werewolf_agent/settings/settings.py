@@ -20,6 +20,7 @@ from pydantic_settings import (
 )
 
 from werewolf_agent.settings.constants import (
+    LLM_PROVIDER_FAKE,
     LLM_PROVIDER_LMSTUDIO,
     LLM_PROVIDER_OPENAI,
 )
@@ -138,9 +139,14 @@ class AppSettings(
         return self.supabase_publishable_key.get_secret_value().strip()
 
     @property
-    def supabase_db_dsn_value(self) -> str:
+    def supabase_api_db_dsn_value(self) -> str:
+        """Return the API-only Supabase direct database DSN."""
+        return self.supabase_api_db_dsn.get_secret_value().strip()
+
+    @property
+    def supabase_worker_db_dsn_value(self) -> str:
         """Return the worker-only Supabase direct database DSN."""
-        return self.supabase_db_dsn.get_secret_value().strip()
+        return self.supabase_worker_db_dsn.get_secret_value().strip()
 
     @property
     def supabase_client_configured(self) -> bool:
@@ -150,7 +156,12 @@ class AppSettings(
     @property
     def supabase_worker_configured(self) -> bool:
         """Return whether the worker can connect to Supabase Postgres."""
-        return bool(self.supabase_db_dsn_value)
+        return bool(self.supabase_worker_db_dsn_value)
+
+    @property
+    def supabase_api_configured(self) -> bool:
+        """Return whether the API can connect to Supabase Postgres."""
+        return bool(self.supabase_api_db_dsn_value)
 
     @property
     def api_cors_origin_values(self) -> list[str]:
@@ -303,24 +314,24 @@ class AppSettings(
             case="lower",
         )
 
-    @field_validator("llm_provider", mode="before")
+    @field_validator("llm_provider", "worker_paid_llm_provider", mode="before")
     @classmethod
-    def normalize_llm_provider(cls, value: object) -> str:
+    def normalize_llm_provider(cls, value: object, info: ValidationInfo) -> str:
         """Return the configured LLM provider."""
         return normalize_choice(
             value,
-            field_name="llm_provider",
+            field_name=str(info.field_name),
             choices=LLM_PROVIDER_NAMES,
             case="lower",
         )
 
-    @field_validator("model", mode="before")
+    @field_validator("model", "worker_paid_llm_model", mode="before")
     @classmethod
-    def normalize_llm_model(cls, value: object) -> str:
+    def normalize_llm_model(cls, value: object, info: ValidationInfo) -> str:
         """Return the configured LLM model name."""
-        return normalize_non_blank(value, field_name="model")
+        return normalize_non_blank(value, field_name=str(info.field_name))
 
-    @field_validator("llm_base_url", mode="before")
+    @field_validator("llm_base_url", "worker_paid_llm_base_url", mode="before")
     @classmethod
     def normalize_llm_base_url(cls, value: object) -> str:
         """Return the optional OpenAI-compatible provider base URL."""
@@ -366,6 +377,11 @@ class AppSettings(
                 "supabase_worker_heartbeat_seconds must be less than half of "
                 "supabase_worker_claim_seconds"
             )
+        if self.supabase_worker_heartbeat_seconds >= self.worker_paid_llm_admission_ttl_seconds:
+            raise ValueError(
+                "supabase_worker_heartbeat_seconds must be less than "
+                "worker_paid_llm_admission_ttl_seconds"
+            )
         if self.api_game_list_default_limit > self.api_game_list_max_limit:
             raise ValueError(
                 message_field_must_be_le_field(
@@ -399,6 +415,22 @@ class AppSettings(
             raise ValueError(message_settings_llm_base_url_required(LLM_PROVIDER_LMSTUDIO))
         if self.llm_provider == LLM_PROVIDER_OPENAI and not self.configured_openai_api_key:
             raise ValueError(message_settings_openai_api_key_required(LLM_PROVIDER_OPENAI))
+        if not self.worker_paid_llm_enabled:
+            return
+        if self.worker_paid_llm_provider == LLM_PROVIDER_FAKE:
+            raise ValueError("worker_paid_llm_provider must be an external provider when enabled")
+        if (
+            self.worker_paid_llm_provider == LLM_PROVIDER_LMSTUDIO
+            and not self.worker_paid_llm_base_url
+        ):
+            raise ValueError(
+                "WEREWOLF_WORKER_PAID_LLM_BASE_URL is required when the paid provider is lmstudio"
+            )
+        if (
+            self.worker_paid_llm_provider == LLM_PROVIDER_OPENAI
+            and not self.configured_openai_api_key
+        ):
+            raise ValueError("OPENAI_API_KEY is required when the worker paid provider is openai")
 
     def _validate_supabase_settings(self) -> None:
         """Ensure client-facing Supabase settings are provided as a pair."""

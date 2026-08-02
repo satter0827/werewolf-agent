@@ -3,10 +3,14 @@ from pathlib import Path
 from scripts._infra.process import CommandResult
 from scripts.agents import ui
 
+LOCAL_DATABASE_DSN = (
+    "postgresql://postgres:local@127.0.0.1:54322/postgres"  # pragma: allowlist secret
+)
+
 
 def _environment() -> dict[str, str]:
     return {
-        "WEREWOLF_SUPABASE_DB_DSN": "postgresql://postgres:local@127.0.0.1:54322/postgres",
+        "WEREWOLF_SUPABASE_DB_DSN": LOCAL_DATABASE_DSN,
         "WEREWOLF_SUPABASE_PUBLISHABLE_KEY": "local-public-key",
         "WEREWOLF_SUPABASE_URL": "http://127.0.0.1:54321",
     }

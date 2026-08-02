@@ -9,14 +9,20 @@ from datetime import UTC, datetime
 import pytest
 
 from werewolf_agent.adapters.agents.game_context import build_agent_game_contexts
-from werewolf_agent.adapters.agents.game_driver import AgentRuntime, drive_prepared_game
+from werewolf_agent.adapters.agents.game_driver import (
+    AgentRuntime,
+    _lmstudio_model_id,
+    _openai_compatible_model,
+    drive_prepared_game,
+)
 from werewolf_agent.adapters.application_bridge import build_setup_catalog
 from werewolf_agent.adapters.llm.configuration import LlmProviderConfig
 from werewolf_agent.adapters.resources import load_llm_definitions
-from werewolf_agent.agents import DecisionTrace, RandomLegalAgentFactory
+from werewolf_agent.agents import DecisionTrace, FaultAgentFactory, RandomLegalAgentFactory
 from werewolf_agent.application import PreparedAdvanceGame
 from werewolf_agent.application.errors import GameError
 from werewolf_agent.application.handlers import compute_prepared_advance
+from werewolf_agent.contracts import LlmProviderError
 from werewolf_agent.domain import Game, GameSetup, Player, build_game_rules
 from werewolf_agent.setup import (
     checksum_payload,
@@ -49,7 +55,10 @@ def _prepared(seed: int = 7) -> tuple[PreparedAdvanceGame, tuple[str, ...]]:
         rule_definition_from_values(
             player_count=player_count,
             role_counts=mechanics.role_counts,
-            rules=mechanics.rules.to_mapping(),
+            discussion=mechanics.discussion.to_mapping(),
+            voting=mechanics.voting.to_mapping(),
+            night=mechanics.night.to_mapping(),
+            lifecycle=mechanics.lifecycle.to_mapping(),
             roles={key: value.to_mapping() for key, value in mechanics.roles.items()},
             abilities={key: value.to_mapping() for key, value in mechanics.abilities.items()},
         )
@@ -73,10 +82,9 @@ def _prepared(seed: int = 7) -> tuple[PreparedAdvanceGame, tuple[str, ...]]:
                 "mechanics_checksum": checksum_payload(mechanics.to_mapping()),
             },
             game=game,
+            prepared_state=game.snapshot(),
             created_at=datetime(2030, 1, 1, tzinfo=UTC),
             phase_seed=namespace_seed(seed, "prepared-phase"),
-            prepared_phase=game.snapshot().phase.value,
-            prepared_day=game.snapshot().day,
         ),
         player_ids,
     )
@@ -90,7 +98,6 @@ def _runtime(player_ids: tuple[str, ...], sink: _TraceSink) -> AgentRuntime:
             base_url="",
             api_key="",
             timeout_seconds=1,
-            max_retries=0,
             max_tokens=1,
             temperature=0,
         ),
@@ -118,6 +125,27 @@ def test_prepared_game_uses_simulation_and_advances_exactly_once() -> None:
     assert computed.phase == after.phase.value
     assert computed.day == after.day
     assert computed.private_state["phase"] == after.phase.value
+
+
+def test_prepared_game_records_actions_accepted_after_agent_fallback() -> None:
+    """Replay正本には失敗したprimaryでなく実際に提出したfallback actionを残す。"""
+    prepared, player_ids = _prepared()
+    sink = _TraceSink()
+    runtime = replace(
+        _runtime(player_ids, sink),
+        agent_factories={player_id: FaultAgentFactory("broken") for player_id in player_ids},
+    )
+
+    driven = drive_prepared_game(prepared, runtime=runtime)
+
+    assert driven.domain_actions
+    assert len(driven.domain_actions) == len(sink.records)
+    for payload, trace in zip(driven.domain_actions, sink.records, strict=True):
+        assert trace.fallback_used
+        assert trace.response is not None
+        assert payload["player_id"]
+        assert payload["type"] == trace.response.action_type
+        assert payload.get("target_id") == trace.response.target_id
 
 
 def test_game_context_keeps_only_each_players_current_private_metadata() -> None:
@@ -149,3 +177,89 @@ def test_application_rejects_missing_or_unmarked_prepared_transition() -> None:
     driven = drive_prepared_game(missing, runtime=_runtime(player_ids, _TraceSink()))
     with pytest.raises(GameError, match="transition state"):
         compute_prepared_advance(replace(driven, domain_transition_complete=False))
+
+
+def test_prepared_transition_accepts_discussion_substage_change() -> None:
+    prepared, player_ids = _prepared()
+    runtime = _runtime(player_ids, _TraceSink())
+    first = drive_prepared_game(prepared, runtime=runtime)
+    opening = first.game.snapshot()
+    assert opening.phase.value == "day_discussion"
+
+    second = replace(
+        first,
+        version=2,
+        prepared_state=opening,
+        phase_seed=namespace_seed(7, "prepared-response"),
+        domain_transition_complete=False,
+        domain_events=(),
+    )
+    response = drive_prepared_game(second, runtime=runtime)
+    after = response.game.snapshot()
+
+    assert after != opening
+    assert after.phase == opening.phase
+    assert after.day == opening.day
+    computed = compute_prepared_advance(response)
+    assert computed.phase == after.phase.value
+    assert computed.day == after.day
+
+
+def test_lmstudio_model_catalog_is_rejected_before_exceeding_byte_limit(monkeypatch) -> None:
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def iter_bytes(self):
+            yield b'{"data":['
+            yield b"x" * 32
+
+    monkeypatch.setattr("httpx.stream", lambda *_args, **_kwargs: Response())
+    config = LlmProviderConfig(
+        provider="lmstudio",
+        model="auto",
+        base_url="http://127.0.0.1:1234/v1",
+        api_key="",
+        timeout_seconds=1,
+        max_tokens=1,
+        temperature=0,
+        model_catalog_max_bytes=16,
+    )
+
+    with pytest.raises(LlmProviderError):
+        _lmstudio_model_id(config)
+
+
+def test_deadline_bound_decisions_disable_transport_retries(monkeypatch) -> None:
+    """Decision全体期限を越えるtransport内retryを構成しない."""
+    captured: dict[str, object] = {}
+
+    class ChatOpenAI:
+        def __init__(self, **kwargs: object) -> None:
+            captured.update(kwargs)
+
+    module = type("LangChainOpenAI", (), {"ChatOpenAI": ChatOpenAI})
+    monkeypatch.setattr(
+        "werewolf_agent.adapters.agents.game_driver.import_module",
+        lambda _name: module,
+    )
+    placeholder = "test"
+    config = LlmProviderConfig(
+        provider="openai",
+        model="test-model",
+        base_url="https://example.invalid/v1",
+        api_key=placeholder,
+        timeout_seconds=10,
+        max_tokens=128,
+        temperature=0,
+    )
+
+    _openai_compatible_model(config, model_id="test-model")
+
+    assert captured["max_retries"] == 0

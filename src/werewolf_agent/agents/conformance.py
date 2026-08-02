@@ -68,14 +68,61 @@ def _assert_legal_response(request: DecisionRequest, response: DecisionResponse)
     option = cast(DecisionOption, option)
     _assert_target(option, response)
     if response.action_type == "speech":
-        _require(response.message is not None, "speech response must contain a message")
+        _require(response.utterance is not None, "speech response must contain an utterance")
+        _require(
+            response.position in option.legal_positions,
+            "speech response must contain a legal position",
+        )
+        _require(
+            response.relation in option.legal_relations,
+            "speech response must contain a legal relation",
+        )
+        _require(
+            response.topic_id in option.legal_topic_ids,
+            "speech response must identify a legal topic",
+        )
         if option.message_max_chars is not None:
             _require(
-                len(cast(str, response.message)) <= option.message_max_chars,
+                len(cast(str, response.utterance)) <= option.message_max_chars,
                 "speech response must respect message_max_chars",
             )
+        if option.legal_reference_ids:
+            _require(
+                response.response_to_id in option.legal_reference_ids,
+                "speech response must use one of the legal references",
+            )
+            _require(
+                response.evidence_id == response.response_to_id,
+                "response speech must use its reference as evidence",
+            )
+        else:
+            _require(
+                response.evidence_id is None
+                or response.evidence_id in {item.evidence_id for item in option.evidence_options},
+                "opening speech must cite legal evidence",
+            )
+            _require(
+                response.response_to_id is None,
+                "opening speech response must not contain a reference",
+            )
     else:
-        _require(response.message is None, "non-speech response must not contain a message")
+        _require(response.utterance is None, "non-speech response must not contain an utterance")
+        _require(response.position is None, "non-speech response must not contain position")
+        _require(response.relation is None, "non-speech response must not contain relation")
+        _require(response.topic_id is None, "non-speech response must not contain topic_id")
+        _require(
+            response.response_to_id is None,
+            "non-speech response must not contain a reference",
+        )
+    if response.action_type == "vote":
+        _require(response.reason is not None, "vote response must contain a reason")
+        if option.evidence_options:
+            _require(
+                response.evidence_id in {item.evidence_id for item in option.evidence_options},
+                "vote response must use visible evidence",
+            )
+    else:
+        _require(response.reason is None, "non-vote response must not contain a reason")
 
 
 def _assert_target(option: DecisionOption, response: DecisionResponse) -> None:

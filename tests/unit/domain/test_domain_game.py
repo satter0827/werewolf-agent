@@ -3,7 +3,90 @@ from __future__ import annotations
 import pytest
 
 from werewolf_agent.domain import Action, ActionType, AvailableAction
-from werewolf_agent.domain.state import AbilityDefinition, Phase
+from werewolf_agent.domain.state import (
+    AbilityDefinition,
+    DiscussionRelation,
+    DiscussionRoundKind,
+    DiscussionStageConfig,
+    Phase,
+    SubmissionMode,
+)
+
+
+def test_response_stage_rejects_independent_relation() -> None:
+    """参照必須responseと矛盾するindependent定義をsetup境界で拒否する."""
+    with pytest.raises(ValueError, match="cannot allow independent"):
+        DiscussionStageConfig(
+            stage=DiscussionRoundKind.RESPONSE,
+            submission_mode=SubmissionMode.ORDERED,
+            actor_order="reverse_opening",
+            reference_stage=DiscussionRoundKind.OPENING,
+            allowed_relations=(DiscussionRelation.INDEPENDENT,),
+        )
+
+
+@pytest.mark.parametrize(
+    ("stage", "submission_mode", "actor_order", "reference_stage", "relations", "message"),
+    [
+        (
+            DiscussionRoundKind.OPENING,
+            SubmissionMode.ORDERED,
+            "rotating",
+            None,
+            (DiscussionRelation.INDEPENDENT,),
+            "opening stage must use sealed",
+        ),
+        (
+            DiscussionRoundKind.OPENING,
+            SubmissionMode.SEALED,
+            "reverse_opening",
+            None,
+            (DiscussionRelation.INDEPENDENT,),
+            "opening stage must use rotating actor order",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.SEALED,
+            "reverse_opening",
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.SUPPORT,),
+            "response stage must use ordered",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.ORDERED,
+            "rotating",
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.SUPPORT,),
+            "response stage must use reverse_opening actor order",
+        ),
+        (
+            DiscussionRoundKind.RESPONSE,
+            SubmissionMode.ORDERED,
+            "reverse_opening",
+            DiscussionRoundKind.OPENING,
+            (DiscussionRelation.CHALLENGE,),
+            "response stage must allow support",
+        ),
+    ],
+)
+def test_discussion_stage_rejects_unexecutable_protocols(
+    stage: DiscussionRoundKind,
+    submission_mode: SubmissionMode,
+    actor_order: str,
+    reference_stage: DiscussionRoundKind | None,
+    relations: tuple[DiscussionRelation, ...],
+    message: str,
+) -> None:
+    """Core policyが実行できないstage定義をsetup境界で拒否する."""
+    with pytest.raises(ValueError, match=message):
+        DiscussionStageConfig(
+            stage=stage,
+            submission_mode=submission_mode,
+            actor_order=actor_order,
+            reference_stage=reference_stage,
+            allowed_relations=relations,
+        )
 
 
 @pytest.mark.parametrize(
@@ -85,5 +168,5 @@ def test_use_ability_envelope_requires_an_ability_id() -> None:
     assert option.key == "use_ability:custom_scan"
     assert action.ability_id == "custom_scan"
 
-    with pytest.raises(ValueError, match="requires ability_id"):
-        Action(type=ActionType.USE_ABILITY, player_id="p1", target_id="p2")
+    with pytest.raises(ValueError, match="ability_id"):
+        Action.use_ability("p1", "", "p2")

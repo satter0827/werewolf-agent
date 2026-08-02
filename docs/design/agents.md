@@ -10,7 +10,7 @@ agents層はプレイヤーが観測できる情報から意思決定を作る�
 の役職、未公開の夜行動、運用上の秘密情報をpromptに渡さない。
 
 LLMの自由文は直接ゲーム操作へ変換しない。生JSONをPydantic schemaで検証し、
-利用可能なaction、対象、発言対象、公開evidenceを確認してからdomain操作へ渡す。
+利用可能なaction、対象、応答先の公開発言ID、発言対象、公開evidenceを確認してからdomain操作へ渡す。
 意味を変えない正規化は完全なMarkdown fenceの除去だけとする。不正応答は書き換えず、
 再問い合わせを行わず、決定的fallbackへ送る。
 
@@ -51,9 +51,10 @@ scriptedとfaultは通常品質、Simulationのfallback、timeout、close検証�
 公開Sessionでは成功とせず`AgentDecisionError`へ変換する。LLM自身が利用可能なactionと合法対象から
 一つを選ぶ。完全なactionが一意で発言や対象を必要としない場合だけmodel呼出しを省略する。
 `quick`、`standard`、`deep`は参照event上限と最大出力だけを変え、呼出しは一回に固定する。
-発言の`focus_id`と`evidence_id`は公開発言記録へ保存し、次の発言・投票で本人を含む全プレイヤーが
-同じ公開立場を参照する。これによりエージェント固有の非公開memoryを追加せず、発言変更と投票整合を
-公開情報だけで評価する。
+発言の`topic_id`、`position`、`relation`、`evidence_id`は公開発言記録へ保存する。responseは
+他プレイヤーの`response_to_id`と同じ公開発言をevidenceに指定し、`answer`、`support`、
+`challenge`、`revise`のいずれかで議論を前進させる。投票も公開発言を根拠として指定する。これにより
+エージェント固有の非公開memoryを追加せず、応答関係、立場変更、投票整合を公開情報だけで評価する。
 
 ## ゲーム進行アダプター
 
@@ -69,7 +70,10 @@ workerはPGMQの`game_operations`を取得し、認可されたgameを自動進�
 エージェント処理の実行前後だけ短いtransactionを開き、model待機中はDB connectionを保持しない。
 visibility timeoutは別connectionで更新する。プロセスが中断したmessageはPGMQが再配送し、
 捕捉した実行エラーは分類に従って再配送またはsafe Problem Details付きの`failed`へ確定する。有料providerは
-認証済み利用者のgameに限定し、providerの選択とmodelは設定から解決する。
+認証済み利用者のgameに限定し、providerの選択とmodelは設定から解決する。有料LLMは既定で無効とし、
+workerはmodel呼出し前に利用者の日次有料advance上限と全worker共通の同時実行上限をdatabaseへ予約する。
+同時実行超過だけを再試行し、無効設定、日次上限、同じoperationの再予約はfail-closedで確定する。
+予約は外部処理中にdatabase connectionを保持せず、終了時に解放し、worker中断時はTTLで失効する。
 
 private LLM traceは公開timelineから分離して保存する。本人に認可されたobservationとprompt、
 provider生応答、検証済みdecision、正規化、schema・合法手検証、fallback、provider error、

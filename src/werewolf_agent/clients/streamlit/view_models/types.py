@@ -99,6 +99,17 @@ class TimelineItemView:
 
 
 @dataclass(frozen=True)
+class DiscussionResponseOptionView:
+    """Serverが許可したresponse構造候補を表示用に保持する."""
+
+    response_to_id: str
+    evidence_id: str
+    topic_id: str
+    position: str
+    relation: str
+
+
+@dataclass(frozen=True)
 class ObservationView:
     """Private information visible only to the controlled player."""
 
@@ -107,6 +118,13 @@ class ObservationView:
     action_choices: list[ActionChoiceView]
     known_role_lines: list[str]
     target_candidates: dict[str, list[str]]
+    reference_choices: dict[str, str]
+    reference_topics: dict[str, str]
+    reference_positions: dict[str, str]
+    response_options: list[DiscussionResponseOptionView]
+    discussion_topic_ids: list[str]
+    vote_evidence_choices: dict[str, dict[str, str]]
+    action_text_limits: dict[str, int]
 
 
 @dataclass(frozen=True)
@@ -155,7 +173,6 @@ class GameScreenView:
     winner_label: str
     player_count: int
     alive_count: int
-    seed: int | None
     status_metrics: list[StatusMetricView]
     table_legend: list[TableLegendItemView]
     seats: list[PlayerSeatView]

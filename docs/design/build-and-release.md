@@ -32,12 +32,15 @@ architecture成果物、quality evidenceは独立した互換性境界としてS
 `0.x`から`1.0.0`への更新は安定版の宣言を伴うため、自動提案だけで決定しない。HTTP pathの
 `/api/v1`はroute majorであり、配布versionや設定値として扱わない。
 
-`scripts.versioning`は所有モジュール、規格、監視pathを`registry.toml`から読む。`suggest`は
-Conventional Commitから変更levelを提案するだけでversionを変更しない。利用者がlevelを指定する
-`bump`はmainとの差分とworking treeから対象境界を選び、productと必要な境界だけを同じlevelで
-更新する。`check`は規格、退行、precedenceを変えないmetadata更新、所有範囲の変更に対する
-version更新漏れを検査する。初回`0.1.0`では新しい正本をbaselineとして確立し、以後はmain上の
-値と比較する。mainへmergeした後にversionを変更する処理は設けず、検証対象とmerge結果を一致させる。
+`scripts.versioning`は所有モジュール、規格、監視path、適用単位を`registry.toml`から読む。
+productは`release`、独立した互換性境界は`change`を適用単位とする。`suggest`はConventional Commitから
+変更levelを提案するだけでversionを変更しない。利用者がlevelを指定する`bump`は、develop向け変更では
+影響を受ける`change`境界だけを更新し、main向けリリースではproductだけを更新する。`check`は
+develop向け変更で`change`境界を検査し、main向けリリースでproductを含む全境界を再検査する。
+比較元がregistryの`release_base_ref`と同じrefならリリース、それ以外なら変更として自動判定する。
+SHAや別名のrefを使う検証と障害調査ではscopeを明示する。規格、退行、precedenceを変えないmetadata更新、所有範囲の変更に
+対するversion更新漏れを検査する。mainへmergeした後にversionを変更する処理は設けず、検証対象と
+merge結果を一致させる。
 
 Supabaseの`0.1.0` migrationは新規databaseを構築する単一baselineである。リリース前databaseの
 data移行やmigration history修復は行わない。既存環境を切り替える場合は、main merge後にbackupと

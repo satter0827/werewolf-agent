@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import random
 from collections.abc import Mapping
+from dataclasses import replace
+from hashlib import sha256
 
 import pytest
 
@@ -15,13 +17,22 @@ from werewolf_agent.domain import (
     CoreRulePack,
     DeathReaction,
     DeathReactionResolution,
+    DiscussionConfig,
+    DiscussionPosition,
+    DiscussionRelation,
+    DiscussionResolution,
+    DiscussionResult,
+    DiscussionRound,
+    DiscussionRoundKind,
+    EvidenceKind,
     Game,
     GameError,
     GameSetup,
     GameState,
     KnowledgeClaim,
     KnowledgeResolution,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     NightResolution,
     Phase,
     Player,
@@ -31,24 +42,57 @@ from werewolf_agent.domain import (
     RulePolicyRegistry,
     RuleSetDefinition,
     VoteResult,
+    VotingConfig,
     VotingPolicy,
     WinResult,
 )
-from werewolf_agent.domain.rule_packs import RULE_PACK_CONTRACT_VERSION
+from werewolf_agent.domain.rule_packs import (
+    CORE_RULE_PACK_IMPLEMENTATION_VERSION,
+    RULE_PACK_CONTRACT_VERSION,
+)
+from werewolf_agent.domain.rules.discussion import CoreDiscussionPolicy, start_discussion
+from werewolf_agent.domain.rules.evidence import public_discussion_evidence
+
+
+def _vote(game: Game, player_id: str, target_id: str) -> Action:
+    """対象に関する公開発言またはpassを根拠に投票する。"""
+    speech = next(
+        (
+            item
+            for item in reversed(game.snapshot().history.speeches)
+            if target_id in {item.player_id, item.topic_id}
+        ),
+        None,
+    )
+    if speech is not None:
+        evidence_id = speech.speech_id
+    else:
+        result = next(
+            item
+            for item in reversed(game.snapshot().history.discussions)
+            if target_id in item.passed_player_ids
+        )
+        evidence_id = f"pass:{result.day}:{result.round_id}:{target_id}"
+    return Action.vote(player_id, target_id, reason="test", evidence_id=evidence_id)
+
+
+def _advance_to_voting(game: Game, *, seed: int = 11) -> None:
+    """全議論stageを暗黙passで完了して投票へ進める。"""
+    while game.snapshot().phase is Phase.DAY_DISCUSSION:
+        game.advance(random.Random(seed))
+        seed += 1
 
 
 def _definition() -> RuleSetDefinition:
     return RuleSetDefinition(
         player_count=3,
         role_counts={"villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(
             starting_phase="day_discussion",
-            reveal_role_on_death=False,
+            require_all_actions_before_advance=False,
         ),
         roles=RoleCatalog(
             {
@@ -58,6 +102,35 @@ def _definition() -> RuleSetDefinition:
         ),
         abilities={},
     )
+
+
+def test_core_manifest_fingerprint_tracks_implementation_version() -> None:
+    manifest = CoreRulePack().manifest
+    expected = sha256(
+        f"werewolf-agent:core-rule-pack:{CORE_RULE_PACK_IMPLEMENTATION_VERSION}".encode()
+    ).hexdigest()
+
+    assert manifest.implementation_version == CORE_RULE_PACK_IMPLEMENTATION_VERSION
+    assert manifest.fingerprint == expected
+
+
+def test_vote_candidates_and_validation_share_typed_public_evidence() -> None:
+    """観測で提示した型付き根拠だけを同じdomain規則で投票へ受理する."""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    _advance_to_voting(game)
+
+    facts = game.view_for("p1").legal_evidence["vote"]
+    assert {fact.kind for fact in facts} == {EvidenceKind.DISCUSSION_PASS}
+    p2_pass = next(fact for fact in facts if fact.actor_id == "p2")
+    p3_pass = next(fact for fact in facts if fact.actor_id == "p3")
+
+    with pytest.raises(GameError, match="concern the selected target"):
+        game.submit(Action.vote("p1", "p2", reason="test", evidence_id=p3_pass.evidence_id))
+    game.submit(Action.vote("p1", "p2", reason="test", evidence_id=p2_pass.evidence_id))
 
 
 class ImmediateVillageVictory:
@@ -100,6 +173,7 @@ class ExternalVictoryPack:
             manifest=self.manifest,
             ability_policy=core.ability_policy,
             voting_policy=core.voting_policy,
+            discussion_policy=core.discussion_policy,
             victory_policy=ImmediateVillageVictory(),
         )
 
@@ -140,6 +214,12 @@ class RedirectVotingPolicy:
         return VoteResult(
             day=state.day,
             votes=votes,
+            reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
+            evidence_ids={
+                player_id: action.evidence_id
+                for player_id, action in pending_votes.items()
+                if action.evidence_id is not None
+            },
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -165,6 +245,12 @@ class InvalidVotingPolicy:
         return VoteResult(
             day=state.day,
             votes={player_id: str(action.target_id) for player_id, action in pending_votes.items()},
+            reasons={player_id: action.reason or "" for player_id, action in pending_votes.items()},
+            evidence_ids={
+                player_id: action.evidence_id
+                for player_id, action in pending_votes.items()
+                if action.evidence_id is not None
+            },
             counts={"p1": 2, "p2": 1},
             tied_player_ids=("p1",),
             missing_voter_ids=(),
@@ -172,6 +258,103 @@ class InvalidVotingPolicy:
             tie_break_policy="invalid",
             round=vote_round,
         )
+
+
+class SkipResponseDiscussionPolicy:
+    """openingの公開後に必要なresponseを省略するfault policy."""
+
+    def __init__(self) -> None:
+        self._core = CoreDiscussionPolicy()
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """組み込みと同じopeningから開始する."""
+        return self._core.start(state)
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        """opening発言を保持したままresponseを不正に省略する."""
+        resolution = self._core.resolve(state, round_, submissions)
+        if round_.kind is DiscussionRoundKind.OPENING and resolution.speeches:
+            return DiscussionResolution(resolution.speeches, None, True)
+        return resolution
+
+
+class InvalidStartDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """初日をresponseから始めるfault policy."""
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """構造化議論の開始条件に反するroundを返す."""
+        opening = self._core.start(state)
+        return DiscussionRound(
+            "invalid-response",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            opening.actor_order,
+            reference_ids=("not-published",),
+        )
+
+
+class ReusedRoundIdDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """stage変更時に直前のround IDを再利用するfault policy。"""
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        """Core outcomeの次stageだけを重複IDへ改変する。"""
+        resolution = self._core.resolve(state, round_, submissions)
+        if resolution.next_round is None:
+            return resolution
+        return DiscussionResolution(
+            resolution.speeches,
+            replace(resolution.next_round, round_id=round_.round_id),
+            False,
+        )
+
+
+class ReusedDayStartDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """過去日のround IDを新しい日のopeningへ再利用するfault policy。"""
+
+    def __init__(self, round_id: str) -> None:
+        super().__init__()
+        self._round_id = round_id
+
+    def start(self, state: GameState) -> DiscussionRound:
+        """Core openingのIDだけを過去日の値へ改変する。"""
+        return replace(self._core.start(state), round_id=self._round_id)
+
+
+class InvalidActorOrderDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """setupで宣言したactor順を変更するfault policy。"""
+
+    def start(self, state: GameState) -> DiscussionRound:
+        opening = self._core.start(state)
+        return replace(opening, actor_order=tuple(reversed(opening.actor_order)))
+
+
+class InvalidResponseOrderDiscussionPolicy(SkipResponseDiscussionPolicy):
+    """responseをopeningと同じ順序へ変更するfault policy。"""
+
+    def resolve(
+        self,
+        state: GameState,
+        round_: DiscussionRound,
+        submissions: Mapping[str, Action],
+    ) -> DiscussionResolution:
+        resolution = self._core.resolve(state, round_, submissions)
+        if round_.kind is DiscussionRoundKind.OPENING and resolution.next_round is not None:
+            return replace(
+                resolution,
+                next_round=replace(resolution.next_round, actor_order=round_.actor_order),
+            )
+        return resolution
 
 
 class RedirectAbilityPolicy:
@@ -337,6 +520,7 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=core.ability_policy,
         voting_policy=policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -350,11 +534,11 @@ def _game_with_voting_policy(policy: VotingPolicy) -> Game:
         rules=rules,
         random=random.Random(7),
     )
-    game.advance(random.Random(11))
+    _advance_to_voting(game)
     for action in (
-        Action.vote("p1", "p2"),
-        Action.vote("p2", "p1"),
-        Action.vote("p3", "p1"),
+        _vote(game, "p1", "p2"),
+        _vote(game, "p2", "p1"),
+        _vote(game, "p3", "p1"),
     ):
         game.submit(action)
     return game
@@ -364,15 +548,10 @@ def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
     definition = RuleSetDefinition(
         player_count=3,
         role_counts={"villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
-            starting_phase="night",
-            reveal_role_on_death=False,
-        ),
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(starting_phase="night"),
         roles=RoleCatalog(
             {
                 "villager": RoleDefinition("village", "village", ("immunity",)),
@@ -418,6 +597,7 @@ def _game_with_ability_policy(policy: AbilityPolicy) -> Game:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy,
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -441,14 +621,12 @@ def _game_with_death_reaction_policy(
     definition = RuleSetDefinition(
         player_count=4,
         role_counts={"hunter": 1, "villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(
             starting_phase="day_discussion",
-            reveal_role_on_death=False,
+            require_all_actions_before_advance=False,
         ),
         roles=RoleCatalog(
             {
@@ -481,6 +659,7 @@ def _game_with_death_reaction_policy(
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy_factory(core.ability_policy),
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     game = Game.create(
@@ -495,12 +674,12 @@ def _game_with_death_reaction_policy(
         rules=rules,
         random=random.Random(7),
     )
-    game.advance(random.Random(11))
+    _advance_to_voting(game)
     for action in (
-        Action.vote("p1", "p2"),
-        Action.vote("p2", "p1"),
-        Action.vote("p3", "p2"),
-        Action.vote("p4", "p2"),
+        _vote(game, "p1", "p2"),
+        _vote(game, "p2", "p1"),
+        _vote(game, "p3", "p2"),
+        _vote(game, "p4", "p2"),
     ):
         game.submit(action)
     return game
@@ -512,15 +691,10 @@ def _game_with_knowledge_policy(
     definition = RuleSetDefinition(
         player_count=3,
         role_counts={"seer": 1, "villager": 1, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
-            starting_phase="night",
-            reveal_role_on_death=False,
-        ),
+        discussion=DiscussionConfig(),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(starting_phase="night"),
         roles=RoleCatalog(
             {
                 "seer": RoleDefinition("village", "village", ("knowledge",)),
@@ -552,6 +726,7 @@ def _game_with_knowledge_policy(
         manifest=ExternalVictoryPack().manifest,
         ability_policy=policy_factory(core.ability_policy),
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=core.victory_policy,
     )
     return Game.create(
@@ -644,6 +819,7 @@ def test_invalid_external_outcome_is_rejected_atomically() -> None:
         manifest=ExternalVictoryPack().manifest,
         ability_policy=core.ability_policy,
         voting_policy=core.voting_policy,
+        discussion_policy=core.discussion_policy,
         victory_policy=InvalidVictoryPolicy(),
     )
     game = Game.create(
@@ -688,6 +864,529 @@ def test_invalid_voting_outcome_is_rejected_atomically() -> None:
 
     assert game.snapshot() is before
     assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_skip_response_after_opening() -> None:
+    """外部Policyが構造化議論の必須responseを省略してもstateを変更しない."""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=SkipResponseDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    actor_id = next(
+        player_id
+        for player_id in game.snapshot().players
+        if game.view_for(player_id).available_actions
+    )
+    topic_id = next(
+        player.id
+        for player in game.snapshot().players.values()
+        if player.id != actor_id and player.is_alive
+    )
+    game.submit(
+        Action.speech(
+            actor_id,
+            "意見を述べます。",
+            topic_id=topic_id,
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
+    before = game.snapshot()
+
+    with pytest.raises(ValueError, match="cannot complete"):
+        game.advance(random.Random(11))
+
+    assert game.snapshot() is before
+
+
+def test_discussion_policy_cannot_start_outside_first_opening() -> None:
+    """外部Policyも初回openingと全生存者を省略できない."""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=InvalidStartDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+
+    random_source = random.Random(7)
+    random_state = random_source.getstate()
+
+    with pytest.raises(ValueError, match="first opening"):
+        Game.create(
+            GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+            rules=rules,
+            random=random_source,
+        )
+
+    assert random_source.getstate() == random_state
+
+
+def test_discussion_policy_cannot_change_configured_opening_order() -> None:
+    core = CoreRulePack().compile(_definition())
+    rules = replace(core, discussion_policy=InvalidActorOrderDiscussionPolicy())
+
+    with pytest.raises(ValueError, match="configured opening order"):
+        Game.create(
+            GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+            rules=rules,
+            random=random.Random(7),
+        )
+
+
+def test_discussion_policy_cannot_change_configured_response_order() -> None:
+    core = CoreRulePack().compile(_definition())
+    rules = replace(core, discussion_policy=InvalidResponseOrderDiscussionPolicy())
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    round_ = game.snapshot().pending_actions.discussion_round
+    assert round_ is not None
+    for actor_id in round_.actor_order:
+        topic_id = next(item for item in round_.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                f"{actor_id}の意見です。",
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
+        )
+
+    with pytest.raises(ValueError, match="opening must advance"):
+        game.advance(random.Random(11))
+
+
+def test_discussion_policy_cannot_reuse_round_id_at_day_start() -> None:
+    """新しい日の開始roundは過去日のIDを再利用できない。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    state = game.snapshot()
+    reused_id = state.pending_actions.discussion_round.round_id
+    state = replace(
+        state,
+        day=2,
+        history=replace(
+            state.history,
+            discussions=(
+                DiscussionResult(
+                    1,
+                    reused_id,
+                    DiscussionRoundKind.OPENING,
+                    ("p1",),
+                    (),
+                    ("p1",),
+                ),
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="fresh round ID"):
+        start_discussion(state, policy=ReusedDayStartDiscussionPolicy(reused_id))
+
+
+def test_discussion_policy_cannot_reuse_round_id_across_stages() -> None:
+    """発言・pass証拠IDが衝突するstage間のround ID再利用を拒否する。"""
+    core = CoreRulePack().compile(_definition())
+    rules = CompiledRuleSet(
+        config=core.config,
+        manifest=core.manifest,
+        ability_policy=core.ability_policy,
+        voting_policy=core.voting_policy,
+        discussion_policy=ReusedRoundIdDiscussionPolicy(),
+        victory_policy=core.victory_policy,
+    )
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=rules,
+        random=random.Random(7),
+    )
+    round_ = game.snapshot().pending_actions.discussion_round
+    assert round_ is not None
+    for actor_id in round_.actor_order:
+        topic_id = next(item for item in round_.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                "状況を確認します。",
+                topic_id=topic_id,
+                position=DiscussionPosition.UNDECIDED,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
+        )
+
+    before = game.snapshot()
+    with pytest.raises(ValueError, match="fresh round ID"):
+        game.advance(random.Random(11))
+    assert game.snapshot() is before
+
+
+def test_discussion_runs_configured_opening_response_cycles() -> None:
+    """一日内で設定回数のopeningとresponseを順に完了する。"""
+    definition = _definition()
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(
+            replace(definition, discussion=DiscussionConfig(cycles_per_day=2))
+        ),
+        random=random.Random(7),
+    )
+
+    while game.snapshot().phase is Phase.DAY_DISCUSSION:
+        submitted = False
+        for player_id in game.snapshot().players:
+            view = game.view_for(player_id)
+            if view.available_actions:
+                round_ = view.discussion_round
+                assert round_ is not None
+                action = (
+                    Action.speech(
+                        player_id,
+                        f"{round_.round_id}の立場です。",
+                        topic_id=next(
+                            player.id
+                            for player in view.players
+                            if player.id != player_id and player.is_alive
+                        ),
+                        position=DiscussionPosition.SUPPORT,
+                        relation=DiscussionRelation.INDEPENDENT,
+                    )
+                    if round_.kind is DiscussionRoundKind.OPENING
+                    else Action.pass_(player_id)
+                )
+                game.submit(action)
+                submitted = True
+        if not submitted:
+            game.advance(random.Random(11))
+
+    results = game.snapshot().history.discussions
+    assert tuple(result.kind.value for result in results) == (
+        "opening",
+        "response",
+        "response",
+        "response",
+        "opening",
+        "response",
+        "response",
+        "response",
+    )
+    assert {result.round_id for result in results} == {
+        "day-1-cycle-1-opening",
+        "day-1-cycle-1-response",
+        "day-1-cycle-2-opening",
+        "day-1-cycle-2-response",
+    }
+
+
+def test_each_ended_discussion_round_records_implicit_passes() -> None:
+    """早期遷移でも各cycleの未提出をそのroundの公開passとして確定する。"""
+    definition = _definition()
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(
+            replace(definition, discussion=DiscussionConfig(cycles_per_day=2))
+        ),
+        random=random.Random(7),
+    )
+
+    first_events = game.advance(random.Random(11))
+    second_events = game.advance(random.Random(13))
+
+    results = game.snapshot().history.discussions
+    assert [result.round_id for result in results] == [
+        "day-1-cycle-1-opening",
+        "day-1-cycle-2-opening",
+    ]
+    assert all(set(result.passed_player_ids) == {"p1", "p2", "p3"} for result in results)
+    assert sum(event.event_type == "discussion_passed" for event in first_events) == 3
+    assert sum(event.event_type == "discussion_passed" for event in second_events) == 3
+
+
+def test_sealed_discussion_preserves_mixed_submission_order() -> None:
+    """sealed roundのspeechとpassをactor順の公開事実として確定する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    actions = {
+        opening.actor_order[0]: Action.speech(
+            opening.actor_order[0],
+            "最初の意見です。",
+            topic_id=opening.actor_order[1],
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        ),
+        opening.actor_order[1]: Action.pass_(opening.actor_order[1]),
+        opening.actor_order[2]: Action.speech(
+            opening.actor_order[2],
+            "別の意見です。",
+            topic_id=opening.actor_order[0],
+            position=DiscussionPosition.OPPOSE,
+            relation=DiscussionRelation.INDEPENDENT,
+        ),
+    }
+    for actor_id in opening.actor_order:
+        game.submit(actions[actor_id])
+
+    events = game.advance(random.Random(11))
+
+    result = game.snapshot().history.discussions[-1]
+    discussion_events = [
+        event for event in events if event.event_type in {"speech_recorded", "discussion_passed"}
+    ]
+    assert result.actor_ids == opening.actor_order
+    assert tuple(event.actor_id for event in discussion_events) == opening.actor_order
+    assert tuple(event.event_type for event in discussion_events) == (
+        "speech_recorded",
+        "discussion_passed",
+        "speech_recorded",
+    )
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    response_actor_id = response.current_actor_id
+    assert response_actor_id is not None
+    speeches = {speech.speech_id: speech for speech in game.snapshot().history.speeches}
+    reference_id = next(
+        item for item in response.reference_ids if speeches[item].player_id != response_actor_id
+    )
+    referenced = speeches[reference_id]
+    game.submit(
+        Action.speech(
+            response_actor_id,
+            "参照発言を支持します。",
+            topic_id=referenced.topic_id,
+            position=referenced.position,
+            relation=DiscussionRelation.SUPPORT,
+            evidence_id=reference_id,
+            response_to_id=reference_id,
+        )
+    )
+    game.advance(random.Random(13))
+
+    facts = public_discussion_evidence(game.snapshot())
+    assert tuple(fact.actor_id for fact in facts) == (*opening.actor_order, response_actor_id)
+    assert tuple(fact.kind for fact in facts) == (
+        EvidenceKind.DISCUSSION,
+        EvidenceKind.DISCUSSION_PASS,
+        EvidenceKind.DISCUSSION,
+        EvidenceKind.DISCUSSION,
+    )
+
+
+def test_ordered_discussion_records_each_skipped_actor_as_pass() -> None:
+    """ordered roundのcursor前進は未提出の現在話者を公開passとして確定する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    game.submit(
+        Action.speech(
+            opening.actor_order[0],
+            "議論を始めます。",
+            topic_id=opening.actor_order[1],
+            position=DiscussionPosition.SUPPORT,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    skipped_actor_id = response.current_actor_id
+    assert skipped_actor_id is not None
+
+    events = game.advance(random.Random(13))
+
+    result = game.snapshot().history.discussions[-1]
+    assert result.actor_ids == (skipped_actor_id,)
+    assert result.passed_player_ids == (skipped_actor_id,)
+    assert [(event.event_type, event.actor_id) for event in events] == [
+        ("discussion_passed", skipped_actor_id)
+    ]
+
+
+def test_response_must_advance_another_players_opening() -> None:
+    """responseは自己反復と再質問を許可せず、他者のopeningへ前進回答する。"""
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    for actor_id in opening.actor_order:
+        topic_id = next(item for item in opening.actor_order if item != actor_id)
+        game.submit(
+            Action.speech(
+                actor_id,
+                "判断材料を確認します。",
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+            )
+        )
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    actor_id = response.current_actor_id
+    speeches = {speech.speech_id: speech for speech in game.snapshot().history.speeches}
+    own_reference = next(
+        reference_id
+        for reference_id in response.reference_ids
+        if speeches[reference_id].player_id == actor_id
+    )
+    other_reference = next(
+        reference_id
+        for reference_id in response.reference_ids
+        if speeches[reference_id].player_id != actor_id
+    )
+    topic_id = speeches[other_reference].topic_id
+
+    with pytest.raises(GameError, match="another player's speech"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "自分の問いを繰り返します。",
+                topic_id=speeches[own_reference].topic_id,
+                position=DiscussionPosition.OPPOSE,
+                relation=DiscussionRelation.CHALLENGE,
+                evidence_id=own_reference,
+                response_to_id=own_reference,
+            )
+        )
+    with pytest.raises(GameError, match="relation is not allowed"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "別の問いを重ねます。",
+                topic_id=topic_id,
+                position=DiscussionPosition.SUPPORT,
+                relation=DiscussionRelation.INDEPENDENT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    mismatched_topic = next(
+        player_id for player_id in response.actor_order if player_id != topic_id
+    )
+    with pytest.raises(GameError, match="inherit the referenced topic"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "別の対象へ話題を移します。",
+                topic_id=mismatched_topic,
+                position=speeches[other_reference].position,
+                relation=DiscussionRelation.SUPPORT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    opposing_position = (
+        DiscussionPosition.OPPOSE
+        if speeches[other_reference].position is DiscussionPosition.SUPPORT
+        else DiscussionPosition.SUPPORT
+    )
+    with pytest.raises(GameError, match="Support must preserve"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                "同意を名乗りながら逆の立場は取れません。",
+                topic_id=topic_id,
+                position=opposing_position,
+                relation=DiscussionRelation.SUPPORT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+    with pytest.raises(GameError, match="contribute new content"):
+        game.submit(
+            Action.speech(
+                actor_id,
+                speeches[other_reference].utterance,
+                topic_id=topic_id,
+                position=speeches[other_reference].position,
+                relation=DiscussionRelation.SUPPORT,
+                evidence_id=other_reference,
+                response_to_id=other_reference,
+            )
+        )
+
+
+def test_response_offers_only_pass_when_no_other_player_opening_exists() -> None:
+    game = Game.create(
+        GameSetup((Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol"))),
+        rules=CoreRulePack().compile(_definition()),
+        random=random.Random(7),
+    )
+    opening = game.snapshot().pending_actions.discussion_round
+    assert opening is not None
+    game.submit(
+        Action.speech(
+            "p1",
+            "p2について判断材料を確認します。",
+            topic_id="p2",
+            position=DiscussionPosition.UNDECIDED,
+            relation=DiscussionRelation.INDEPENDENT,
+        )
+    )
+    game.submit(Action.pass_("p2"))
+    game.submit(Action.pass_("p3"))
+    game.advance(random.Random(11))
+    response = game.snapshot().pending_actions.discussion_round
+    assert response is not None
+    assert response.current_actor_id == "p3"
+    game.submit(Action.pass_("p3"))
+    game.advance(random.Random(12))
+    game.submit(Action.pass_("p2"))
+    game.advance(random.Random(13))
+
+    assert [action.type.value for action in game.view_for("p1").available_actions] == ["pass"]
+
+
+def test_discussion_round_rejects_duplicate_reference_ids() -> None:
+    """応答候補を集合比較で曖昧にしない."""
+    with pytest.raises(ValueError, match="unique speeches"):
+        DiscussionRound(
+            "response-1",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            ("p1", "p2"),
+            reference_ids=("speech-1", "speech-1"),
+        )
+    with pytest.raises(ValueError, match="cursor is outside"):
+        DiscussionRound(
+            "response-1",
+            1,
+            DiscussionRoundKind.RESPONSE,
+            "ordered",
+            ("p1", "p2"),
+            cursor=2,
+            reference_ids=("speech-1",),
+        )
 
 
 def test_external_ability_policy_changes_night_resolution_without_mutating_directly() -> None:

@@ -7,7 +7,7 @@ from dataclasses import replace
 
 from werewolf_agent.domain.errors import RuleViolation
 from werewolf_agent.domain.rule_packs import CompiledRuleSet, RulePackManifest
-from werewolf_agent.domain.rules import engine, game_setup
+from werewolf_agent.domain.rules import discussion, engine, game_setup
 from werewolf_agent.domain.state import (
     Action,
     GameEvent,
@@ -43,7 +43,23 @@ class Game:
         random: random.Random,
     ) -> Game:
         """検証済みsetup dataと注入した規則からゲームを作成する."""
-        state = game_setup.create_game_snapshot(rules.config, setup.players, random)
+        random_state = random.getstate()
+        try:
+            state = game_setup.create_game_snapshot(rules.config, setup.players, random)
+            if state.phase.value == "day_discussion":
+                state = replace(
+                    state,
+                    pending_actions=replace(
+                        state.pending_actions,
+                        discussion_round=discussion.start_discussion(
+                            state,
+                            policy=rules.discussion_policy,
+                        ),
+                    ),
+                )
+        except Exception:
+            random.setstate(random_state)
+            raise
         events = (
             GameEvent(
                 event_type="game_started",
@@ -81,14 +97,20 @@ class Game:
     def advance(self, random: random.Random) -> list[GameEvent]:
         """現在のphaseを検証してatomicに進める."""
         engine.validate_phase_advance(self._state, self._state.pending_actions)
-        state, pending, events = engine.advance_phase(
-            self._state,
-            self._state.pending_actions,
-            random,
-            ability_policy=self._rules.ability_policy,
-            voting_policy=self._rules.voting_policy,
-            victory_policy=self._rules.victory_policy,
-        )
+        random_state = random.getstate()
+        try:
+            state, pending, events = engine.advance_phase(
+                self._state,
+                self._state.pending_actions,
+                random,
+                ability_policy=self._rules.ability_policy,
+                discussion_policy=self._rules.discussion_policy,
+                voting_policy=self._rules.voting_policy,
+                victory_policy=self._rules.victory_policy,
+            )
+        except Exception:
+            random.setstate(random_state)
+            raise
         self._state = replace(state, pending_actions=pending)
         return events
 

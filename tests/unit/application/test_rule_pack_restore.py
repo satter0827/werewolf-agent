@@ -52,7 +52,10 @@ def _definition() -> RuleSetDefinition:
     return rule_definition_from_values(
         player_count=sum(mechanics.role_counts.values()),
         role_counts=mechanics.role_counts,
-        rules=mechanics.rules.to_mapping(),
+        discussion=mechanics.discussion.to_mapping(),
+        voting=mechanics.voting.to_mapping(),
+        night=mechanics.night.to_mapping(),
+        lifecycle=mechanics.lifecycle.to_mapping(),
         roles={role_id: role.to_mapping() for role_id, role in mechanics.roles.items()},
         abilities={
             ability_id: ability.to_mapping() for ability_id, ability in mechanics.abilities.items()

@@ -5,7 +5,6 @@ from __future__ import annotations
 from hashlib import sha256
 
 from werewolf_agent.adapters.llm.langchain.constants import (
-    DEFAULT_FALLBACK_SPEECH,
     DETERMINISTIC_SELECTOR_BYTES,
     LLM_SPEECH_MESSAGE_MAX_CHARS,
 )
@@ -17,6 +16,8 @@ from werewolf_agent.adapters.llm.models import (
     AgentActionType,
     AgentAvailableAction,
     AgentDecision,
+    AgentDiscussionPosition,
+    AgentDiscussionRelation,
     AgentObservation,
     AgentPlayerStatus,
     VisiblePlayer,
@@ -54,7 +55,39 @@ def _fallback_decision(
     reason: str,
 ) -> AgentDecision:
     if action.type is AgentActionType.SPEECH and action in observation.available_actions:
-        return AgentDecision.speech(player_id, _fallback_speech(observation))
+        subject = _focus_player(observation)
+        if subject is None:
+            return AgentDecision.pass_(player_id=player_id, reason=reason)
+        references = observation.legal_references.get(action.key, [])
+        reference_id = references[0] if references else None
+        evidence = observation.evidence_options.get(action.key, [])
+        evidence_id = reference_id or (evidence[-1].id if evidence else None)
+        topic_id = subject.id
+        position = AgentDiscussionPosition.SUPPORT
+        relation = AgentDiscussionRelation.INDEPENDENT
+        if reference_id is not None:
+            referenced = next(
+                speech for speech in observation.speeches if speech.speech_id == reference_id
+            )
+            topic_id = referenced.topic_id
+            if referenced.position is AgentDiscussionPosition.UNDECIDED:
+                relation = AgentDiscussionRelation.ANSWER
+            else:
+                relation = AgentDiscussionRelation.CHALLENGE
+                position = (
+                    AgentDiscussionPosition.OPPOSE
+                    if referenced.position is AgentDiscussionPosition.SUPPORT
+                    else AgentDiscussionPosition.SUPPORT
+                )
+        return AgentDecision.speech(
+            player_id,
+            _fallback_speech(subject),
+            topic_id=topic_id,
+            position=position,
+            relation=relation,
+            evidence_id=evidence_id,
+            response_to_id=reference_id,
+        )
     if action.type in AgentDecision.TARGET_TYPES and action in observation.available_actions:
         target_id = _target_for_action(observation, action)
         if target_id is None:
@@ -62,26 +95,40 @@ def _fallback_decision(
                 player_id=player_id,
                 reason=_missing_target_reason(action.type),
             )
-        return _target_decision(player_id, action, target_id, reason=reason)
+        return _target_decision(
+            player_id,
+            observation,
+            action,
+            target_id,
+            reason=reason,
+        )
     return AgentDecision.pass_(player_id=player_id, reason=reason)
 
 
-def _fallback_speech(observation: AgentObservation) -> str:
-    focus = _focus_player(observation)
-    if focus is None:
-        return DEFAULT_FALLBACK_SPEECH
-    return _bounded_speech(f"I want to compare {focus.name}'s claims with the votes.")
+def _fallback_speech(subject: VisiblePlayer) -> str:
+    return _bounded_speech(f"{subject.name}さんの判断根拠を確認したいです。")
 
 
 def _target_decision(
     player_id: str,
+    observation: AgentObservation,
     action: AgentAvailableAction,
     target_id: str,
     *,
     reason: str,
 ) -> AgentDecision:
     if action.type is AgentActionType.VOTE:
-        return AgentDecision.vote(player_id, target_id, reason=reason)
+        evidence = observation.evidence_options.get(action.key, [])
+        evidence_id = next(
+            (item.id for item in reversed(evidence) if target_id in {item.actor_id, item.topic_id}),
+            None,
+        )
+        return AgentDecision.vote(
+            player_id,
+            target_id,
+            reason=reason,
+            evidence_id=evidence_id,
+        )
     if action.type is AgentActionType.USE_ABILITY and action.ability_id is not None:
         return AgentDecision.use_ability(player_id, action.ability_id, target_id, reason=reason)
     return AgentDecision.pass_(player_id=player_id, reason=reason)

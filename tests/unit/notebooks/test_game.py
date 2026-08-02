@@ -71,22 +71,22 @@ def test_fake_demo_steps_once_and_completes_deterministically() -> None:
     assert all(not decision.provider_error for decision in result.decisions)
 
 
-def test_fake_demo_distinguishes_private_actor_and_target_omission() -> None:
-    """private actorと、実際に存在するprivate targetだけを省略表示する。"""
+def test_fake_demo_distinguishes_public_speech_and_private_targeted_action() -> None:
+    """公開発言と、actorとtargetを省略するprivate actionを区別する。"""
     demo = FakeGameDemo.create(seed=7)
-    private_pass = None
+    public_speech = None
     private_targeted_action = None
-    while private_pass is None or private_targeted_action is None:
+    while public_speech is None or private_targeted_action is None:
         step = demo.step()
         assert step is not None
-        if step.action_type == "pass":
-            private_pass = step
+        if step.action_type == "speech":
+            public_speech = step
         if step.action_type == "use_ability" and step.private_target_omitted:
             private_targeted_action = step
 
-    assert private_pass.private_actor_omitted
-    assert not private_pass.private_target_omitted
-    assert private_pass.actor_id is None
+    assert not public_speech.private_actor_omitted
+    assert not public_speech.private_target_omitted
+    assert public_speech.actor_id is not None
     assert private_targeted_action.private_actor_omitted
     assert private_targeted_action.private_target_omitted
     assert private_targeted_action.actor_id is None
@@ -120,7 +120,7 @@ def test_demo_preserves_failed_action_atomicity_and_restores_snapshot() -> None:
     before = demo.game.snapshot()
 
     with pytest.raises(RuleViolation):
-        demo.game.submit(Action.vote("unknown-player", "unknown-target"))
+        demo.game.submit(Action.vote("unknown-player", "unknown-target", reason="test"))
 
     assert demo.game.snapshot() == before
     restored = demo.game.restore(before, rules=demo.rules)

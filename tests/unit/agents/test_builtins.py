@@ -12,9 +12,11 @@ from werewolf_agent.agents import (
     DecisionOption,
     DecisionRequest,
     DecisionResponse,
+    EvidenceOption,
     FaultAgentFactory,
     HeuristicAgentFactory,
     ObservedPlayer,
+    PublicTimelineEvent,
     RandomLegalAgentFactory,
     ScriptedAgentFactory,
 )
@@ -45,6 +47,7 @@ def test_random_legal_agent_is_reproducible_for_a_decision_seed() -> None:
 
     assert first == second
     assert factory.spec.fingerprint == RandomLegalAgentFactory().spec.fingerprint
+    assert factory.spec.implementation_version == "1.4.0"
 
 
 def test_heuristic_agent_uses_stable_priority_and_legal_target() -> None:
@@ -54,6 +57,167 @@ def test_heuristic_agent_uses_stable_priority_and_legal_target() -> None:
 
     assert response.action_type == "vote"
     assert response.target_id == "p2"
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_vote_reason_respects_authorized_limit(factory: AgentFactory) -> None:
+    context = AgentContext("session", "game", "p1", 1)
+    request = _request(context)
+    request = DecisionRequest(
+        request.decision_id,
+        request.context,
+        request.observation,
+        request.public_timeline,
+        (DecisionOption("vote", legal_target_ids=("p2",), reason_max_chars=4),),
+        request.decision_seed,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.reason is not None
+    assert len(response.reason) <= 4
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_agent_response_contributes_new_content(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    """参照元と同じ定型文を応答として再送しない。"""
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": factory.speech,
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("answer", "support", "challenge", "revise"),
+                message_max_chars=120,
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.utterance != factory.speech
+    assert response.response_to_id == "speech-1"
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_response_remains_distinct_at_one_character_limit(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "反",
+                    "topic_id": "p2",
+                    "position": "support",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(EvidenceOption("speech-1", "discussion", "p2", "p2", "support"),),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("support",),
+                message_max_chars=1,
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.utterance is not None
+    assert len(response.utterance) == 1
+    assert response.utterance != "反"
+
+
+@pytest.mark.parametrize("factory", (RandomLegalAgentFactory(), HeuristicAgentFactory()))
+def test_builtin_agent_honors_support_only_response_protocol(
+    factory: RandomLegalAgentFactory | HeuristicAgentFactory,
+) -> None:
+    """組み込みAgentはsetupで許可されたsupportだけを返す."""
+    context = AgentContext("session", "game", "p1", 1)
+    me = ObservedPlayer("p1", "Alice", True)
+    other = ObservedPlayer("p2", "Bob", True)
+    request = DecisionRequest(
+        "decision",
+        context,
+        AgentObservation("day_discussion", 1, me, (me, other)),
+        (
+            PublicTimelineEvent(
+                1,
+                "speech",
+                1,
+                "p2",
+                {
+                    "speech_id": "speech-1",
+                    "utterance": "判断を保留します。",
+                    "topic_id": "p2",
+                    "position": "undecided",
+                    "relation": "independent",
+                },
+            ),
+        ),
+        (
+            DecisionOption(
+                "speech",
+                legal_topic_ids=("p2",),
+                evidence_options=(
+                    EvidenceOption("speech-1", "discussion", "p2", "p2", "undecided"),
+                ),
+                legal_reference_ids=("speech-1",),
+                legal_positions=("support", "oppose", "undecided"),
+                legal_relations=("support",),
+            ),
+        ),
+        17,
+    )
+
+    response = factory.create(context).decide(request)
+
+    assert response.relation == "support"
+    assert response.position == "undecided"
 
 
 def test_scripted_agent_state_is_isolated_by_session_and_close_is_idempotent() -> None:

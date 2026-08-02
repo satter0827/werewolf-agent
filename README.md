@@ -46,7 +46,8 @@ python -m pip install ".[worker]"
 複数の提供層を同じ環境で使う場合は、`".[api,cli,streamlit,worker]"`のようにまとめて指定する。
 
 主要なdomain型は`werewolf_agent.domain`からimportする。次の例は外部serviceや設定fileを使わずに
-3人ゲームを作成し、公開発言を1件登録する。ゲーム作成時はプレイヤー、規則、seed付き乱数を
+3人ゲームを作成し、sealed openingへ発言を1件提出する。提出内容はround完了まで公開されない。
+ゲーム作成時はプレイヤー、規則、seed付き乱数を
 明示して渡し、状態変更は`Game`を通じて行う。
 
 ```python
@@ -54,13 +55,16 @@ import random
 
 from werewolf_agent.domain import (
     Action,
+    DiscussionConfig,
     Game,
     GameSetup,
-    LocalRules,
+    LifecycleConfig,
+    NightConfig,
     Player,
     RoleCatalog,
     RoleDefinition,
     RuleSetDefinition,
+    VotingConfig,
     build_game_rules,
 )
 
@@ -68,12 +72,10 @@ rules = build_game_rules(
     RuleSetDefinition(
         player_count=3,
         role_counts={"villager": 2, "werewolf": 1},
-        rules=LocalRules(
-            day_speech_limit_per_player=1,
-            allow_self_vote=False,
-            allow_vote_revision=False,
-            allow_night_action_revision=False,
-            vote_tie_resolution="no_elimination",
+        discussion=DiscussionConfig(cycles_per_day=1),
+        voting=VotingConfig(),
+        night=NightConfig(),
+        lifecycle=LifecycleConfig(
             starting_phase="day_discussion",
             reveal_role_on_death=True,
         ),

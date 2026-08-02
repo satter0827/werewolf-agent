@@ -16,9 +16,19 @@ updates:
   - package-ecosystem: uv
     directory: /
     target-branch: develop
+    versioning-strategy: increase-if-necessary
     schedule:
       interval: weekly
       day: monday
       time: "03:30"
       timezone: Asia/Tokyo
+    groups:
+      routine-updates:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - ruff
+        update-types:
+          - patch
+          - minor
     open-pull-requests-limit: 5

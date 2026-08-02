@@ -23,11 +23,16 @@ serviceから製品の合否を判定する。package取得先や有料provider�
 
 `--base-ref`と`--head-ref`を指定した場合は、両者のmerge-baseからheadまでのcommit差分へ
 現在のworkspace差分を加える。指定しない場合はworkspace差分だけを変更影響として扱う。
-明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。baseを省略した場合、
+明示したbaseとheadは変更影響の選定、version所有境界、reportで共有する。version所有境界は、baseが
+registryのリリース基準と同じrefならリリース、それ以外なら変更として適用する。SHAや別名のrefでは
+scopeを明示する。baseを省略した場合、
 変更影響はworkspaceだけを扱い、version所有境界はリリース基準の`origin/main`を使用して実コマンドへ記録する。
 headは現在checkoutしている`HEAD`と同じcommitへ解決されるrefだけを受け付ける。別commitは専用worktreeへ
 checkoutして検査し、reportのheadと実際にgateを動かすtreeを一致させる。現在checkoutのworkspace差分を
 別treeへ合成しない。
+
+品質runnerは通常実行を2並列とし、明示指定した場合も4並列を上限とする。並列数は実行順序と
+資源消費だけを制御し、プロファイルの検査対象と合否条件を変更しない。
 
 ## CI境界
 
@@ -51,6 +56,11 @@ Actionが使用する実行runtimeは参照値から推測せず、upstreamの�
 GitHub Actions上の実行結果で確認する。
 Dependabotはデフォルトbranchの設定を読むため、`develop`での設定変更は通常の`main`向け
 リリースへ取り込まれた後に有効となる。
+uv依存は許容範囲内の更新でmanifest制約を不要に引き上げず、patchとminorを定期更新PRへ集約する。
+Ruffはformatterとlintの出力変更を伴うため集約対象から除外し、major更新と同様に個別検証する。
+GitHubがsecurity updateをデフォルトbranch向けに作成した場合は、そのPRを直接mergeせず、同じ更新を
+最新developからの短期branchへ移してdevelop向けPRで検証する。mainの流入元はdevelopに限定したまま、
+次のdevelopからmainへのリリースへ含める。
 
 夜間preflightまたはDeepの失敗は同じGitHub Issueへ追記し、次の成功時に閉じる。CI artifactは各プロファイルの
 `current`と`last-passed.json`だけを7日保持し、リポジトリ全体の`operations`や`outputs`は
@@ -83,7 +93,8 @@ architectureテストは`scripts/architecture/rules.toml`を正本とし、impor
 照合し、配置だけが存在する未実装を許可しない。
 
 domainテストは状態遷移、復元snapshot、役職構成、終局結果、pending actionの参照整合を
-検証する。リプレイテストはコマンド、event、state、projection、rule snapshotの改変を最初の
+検証する。議論ではstage遷移、topic継承、relationとposition、revision、明示・暗黙pass、
+投票対象とevidenceの整合を検証する。リプレイテストはコマンド、event、state、projection、rule snapshotの改変を最初の
 不一致versionで検出する。
 
 Rule Pack contractテストはCoreと外部providerを同じsetup、seed、合法action選択へ通し、
@@ -97,6 +108,10 @@ Docker、image、隔離Supabase projectを独立して検証する。
 リリースとDeepはlocal Supabaseのschema lint、Data API grant、RLS、policy、公開view、privileged
 functionを検査する。認証user間のbehaviorテストは、本人の操作を許可し、他利用者と匿名userの
 操作を拒否することを確認する。
+
+Local LLMの一局レビューは同一base URLとmodelに対して排他実行し、全体期限の残り時間を各callの
+期限へ反映する。完走、fallback、provider error、schema違反、timeoutを個別集計する。tokenとlatencyは
+ローカル環境の観測値であり、通常品質ゲートや将来providerの固定性能基準にしない。
 
 runnerはgate開始前後のGit revision、tree、index、tracked差分、非ignore未追跡fileを比較する。
 品質実行がリポジトリを変更した場合は`repository-stability`として不合格にする。
