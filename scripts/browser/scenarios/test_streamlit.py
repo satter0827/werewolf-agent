@@ -55,12 +55,36 @@ def test_setup_sections_and_validation(
 
 def test_gameplay_waiting_speech_and_target(
     page: Page,
+    api_client: httpx.Client,
     streamlit_url: str,
     capture_public_screenshot: Callable[[Page, str], Path],
     device_name: str,
 ) -> None:
+    api_url = os.environ.get("PLAYWRIGHT_API_URL", "http://api:8000")
+    email, password, token = create_authenticated_user(
+        api_client,
+        os.environ["PLAYWRIGHT_SUPABASE_URL"],
+        os.environ["PLAYWRIGHT_SUPABASE_PUBLISHABLE_KEY"],
+    )
+    setup_id, document = create_saved_setup(
+        api_client,
+        api_url,
+        token,
+        display_name="議論E2E",
+    )
+    document["mechanics"]["abilities"]["night_attack"]["enabled_first_night"] = False
+    add_setup_revision(
+        api_client,
+        api_url,
+        token,
+        setup_id=setup_id,
+        expected_revision=1,
+        document=document,
+    )
     page.goto(streamlit_url)
+    _sign_in(page, email=email, password=password)
     expect(page.get_by_role("heading", name="ゲームを始める")).to_be_visible()
+    _select_streamlit_option(page, "ゲーム設定", "議論E2E (第2版)")
     page.get_by_role("textbox", name="再現用の番号").fill("6")
     page.get_by_role("button", name="プレイヤーを生成").click()
     expect(page.get_by_role("heading", name="生成されたプレイヤー")).to_be_visible()
@@ -131,10 +155,12 @@ def _submit_message_action(page: Page, message: Locator, utterance: str) -> None
     """発言を送り、送信前のフォームが破棄されるまで待つ。"""
     message.fill(utterance)
     message.press("Tab")
+    submitted_form = message.element_handle()
+    assert submitted_form is not None
     submit = page.get_by_role("button", name="入力を送信")
     expect(submit).to_be_enabled()
     submit.click()
-    expect(message).not_to_have_value(utterance, timeout=30_000)
+    submitted_form.wait_for_element_state("hidden", timeout=30_000)
 
 
 def test_completed_game_presents_result_before_timeline(
