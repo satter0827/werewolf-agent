@@ -68,7 +68,9 @@ def test_gameplay_waiting_speech_and_target(
     expect(page.get_by_role("heading", name="月明かりの卓")).to_be_visible(timeout=30_000)
     expect(page.get_by_text("ゲーム卓", exact=True)).to_be_visible()
     expect(page.locator(".wa-status")).to_have_count(6)
-    expect(page.locator(".wa-seat")).to_have_count(6)
+    seats = page.locator(".wa-seat")
+    expect(seats).to_have_count(6)
+    player_count = seats.count()
     advance = page.get_by_role("button", name="1ステップ進める")
     initial_submit = page.get_by_role("button", name="入力を送信")
     expect(advance.or_(initial_submit)).to_be_visible(timeout=30_000)
@@ -88,7 +90,7 @@ def test_gameplay_waiting_speech_and_target(
     submit = page.get_by_role("button", name="入力を送信")
     expect(submit).to_be_enabled()
     submit.click()
-    _advance_until_target_action(page)
+    _advance_until_target_action(page, player_count=player_count)
     reason = page.get_by_label("投票理由")
     expect(reason).to_be_visible()
     reason.fill("対象について公開された発言を投票根拠にします。")
@@ -108,12 +110,11 @@ def test_gameplay_waiting_speech_and_target(
     capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
 
 
-def _advance_until_target_action(page: Page) -> Locator:
+def _advance_until_target_action(page: Page, *, player_count: int) -> Locator:
     """画面が示す合法操作を辿り、投票対象入力まで進める。"""
     target = page.get_by_label("対象を選ぶ")
     advance = page.get_by_role("button", name="1ステップ進める")
     message = page.get_by_label("発言内容")
-    player_count = page.locator(".wa-seat").count()
     max_steps = player_count * len(STRUCTURED_DISCUSSION_STAGES) + PHASE_BOUNDARY_STEP_ALLOWANCE
     for step in range(max_steps):
         expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
