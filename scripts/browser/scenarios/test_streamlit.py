@@ -153,10 +153,12 @@ def _advance_until_target_action(
         discussion_stage_count * discussion_cycles_per_day + VOTING_STAGE_COUNT
     )
     max_steps = player_count * preceding_action_stages + PHASE_BOUNDARY_STEP_ALLOWANCE
-    for step in range(max_steps):
+    for step in range(max_steps + 1):
         expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
         if target.is_visible():
             return target
+        if step == max_steps:
+            break
         if message.is_visible():
             _submit_message_action(
                 page,
@@ -164,7 +166,7 @@ def _advance_until_target_action(
                 f"公開情報を踏まえた応答です。{step + 1}",
             )
             continue
-        advance.click()
+        _advance_one_step(advance)
     raise AssertionError("投票対象の入力へ到達できませんでした。")
 
 
@@ -178,6 +180,14 @@ def _submit_message_action(page: Page, message: Locator, utterance: str) -> None
     expect(submit).to_be_enabled()
     submit.click()
     submitted_form.wait_for_element_state("hidden", timeout=30_000)
+
+
+def _advance_one_step(advance: Locator) -> None:
+    """進行を要求し、押下したボタンが再描画で破棄されるまで待つ。"""
+    submitted_button = advance.element_handle()
+    assert submitted_button is not None
+    advance.click()
+    submitted_button.wait_for_element_state("hidden", timeout=30_000)
 
 
 def test_completed_game_presents_result_before_timeline(
