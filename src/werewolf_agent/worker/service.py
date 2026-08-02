@@ -69,7 +69,6 @@ from werewolf_agent.observability.constants import (
 )
 from werewolf_agent.observability.levels import log_level_number
 from werewolf_agent.settings import AppSettings
-from werewolf_agent.settings.constants import LLM_PROVIDER_FAKE
 from werewolf_agent.worker.composition import WorkerDependencies
 from werewolf_agent.worker.events import (
     LOG_WORKER_APPLICATION_STOPPED,
@@ -346,9 +345,7 @@ def _execute_advance_request(
         )
         store = SupabaseWorkerStore(connection)
         llm_mode = store.game_llm_mode(game_id)
-    requires_paid_admission = (
-        llm_mode == "paid" and settings.worker_paid_llm_provider != LLM_PROVIDER_FAKE
-    )
+    requires_paid_admission = llm_mode == "paid" and settings.worker_paid_llm_provider != "fake"
     if requires_paid_admission and not settings.worker_paid_llm_enabled:
         raise AppError(
             MESSAGE_PAID_LLM_DISABLED,

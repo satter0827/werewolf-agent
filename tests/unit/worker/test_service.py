@@ -276,7 +276,7 @@ def test_paid_advance_is_fail_closed_before_runtime_when_switch_is_off(
     with pytest.raises(AppError, match="disabled") as captured:
         service._execute_advance_request(
             _Pool(connection),
-            AppSettings(_env_file=None),
+            AppSettings(_env_file=None, worker_paid_llm_provider="openai"),
             WORKER_DEPENDENCIES,
             {
                 "request_id": "operation-1",
