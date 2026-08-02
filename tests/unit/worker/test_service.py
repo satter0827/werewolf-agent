@@ -290,6 +290,53 @@ def test_paid_advance_is_fail_closed_before_runtime_when_switch_is_off(
     assert captured.value.retryable is False
 
 
+def test_paid_access_uses_fake_provider_without_paid_admission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    connection = _Connection([])
+
+    class Application:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def prepare_advance(self, *_args: object) -> object:
+            return object()
+
+    class Store:
+        def __init__(self, _connection: object) -> None:
+            pass
+
+        def game_llm_mode(self, _game_id: str) -> str:
+            return "paid"
+
+    monkeypatch.setattr(service, "_service", lambda *_args, **_kwargs: object())
+    monkeypatch.setattr(service, "GameApplication", Application)
+    monkeypatch.setattr(service, "SupabaseWorkerStore", Store)
+
+    def runtime_reached(*_args: object, **_kwargs: object) -> None:
+        raise RuntimeError("runtime reached")
+
+    monkeypatch.setattr(service, "drive_prepared_game", runtime_reached)
+
+    settings = AppSettings(
+        _env_file=None,
+        worker_paid_llm_provider="fake",
+        worker_paid_llm_model="fake-list-chat-model",
+    )
+    with pytest.raises(RuntimeError, match="runtime reached"):
+        service._execute_advance_request(
+            _Pool(connection),
+            settings,
+            WORKER_DEPENDENCIES,
+            {
+                "request_id": "operation-1",
+                "owner_user_id": "user-1",
+                "game_id": "game-1",
+                "expected_version": 1,
+            },
+        )
+
+
 def test_failed_command_is_rolled_back_before_safe_failure_is_recorded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
