@@ -345,16 +345,18 @@ def _execute_advance_request(
         )
         store = SupabaseWorkerStore(connection)
         llm_mode = store.game_llm_mode(game_id)
-    if llm_mode == "paid" and not settings.worker_paid_llm_enabled:
+    requires_paid_admission = llm_mode == "paid" and settings.worker_paid_llm_provider != "fake"
+    if requires_paid_admission and not settings.worker_paid_llm_enabled:
         raise AppError(
             MESSAGE_PAID_LLM_DISABLED,
             code=ErrorCode.LLM_PROVIDER_UNAVAILABLE,
             retryable=False,
         )
+    provider_config = build_worker_llm_provider_config(llm_mode, settings)
 
     traces = BufferedLlmTraceSink()
     runtime = AgentRuntime(
-        config=build_worker_llm_provider_config(llm_mode, settings),
+        config=provider_config,
         definitions=build_llm_definitions(settings),
         trace_sink=traces,
         agent_factories=dependencies.agent_factories,
@@ -364,7 +366,7 @@ def _execute_advance_request(
         settings,
         request,
         actor_user_id=user_id,
-        llm_mode=llm_mode,
+        requires_paid_admission=requires_paid_admission,
     )
     try:
         with _LeaseHeartbeat(pool, settings, request, admission=admission) as heartbeat:
@@ -420,10 +422,10 @@ def _reserve_paid_llm_admission(
     request: Mapping[str, Any],
     *,
     actor_user_id: str,
-    llm_mode: str,
+    requires_paid_admission: bool,
 ) -> PaidLlmAdmission | None:
     """Reserve paid capacity immediately before the external pipeline starts."""
-    if llm_mode != "paid":
+    if not requires_paid_admission:
         return None
     with borrow_database_connection(pool) as connection, connection.transaction():
         return SupabasePaidLlmAdmissionGate(connection).reserve(
