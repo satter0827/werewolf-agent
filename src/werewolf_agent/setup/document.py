@@ -34,7 +34,7 @@ from werewolf_agent.setup.players import (
     PublicPersonaDefinition,
 )
 
-SETUP_SCHEMA_VERSION: Final = "0.6.0"
+SETUP_SCHEMA_VERSION: Final = "0.7.0"
 FactionId = Literal["village", "werewolf", "fox"]
 
 NARRATION_EVENT_IDS: Final = frozenset(

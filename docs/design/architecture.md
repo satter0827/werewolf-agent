@@ -57,7 +57,7 @@
 
 ## ゲーム設定
 
-`GameSetupDocument` 0.6.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
+`GameSetupDocument` 0.7.0はmechanics、theme、プレイヤー generationを一つの完全な文書として扱う。
 同梱templateと保存revisionは同じschemaを使い、コードは既定役職、既定人数、固定プレイヤーを
 所有しない。`setup`がimmutableな完全setup、意味検証、プレイヤー generation、用途別seed、checksum、
 Domain Rule Definition変換を所有する。役職はidentity faction、victory team、ability IDだけを持つ。

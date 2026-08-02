@@ -262,7 +262,7 @@ class PlayerGenerationSettings(BaseModel):
 
 
 class GameSetupDocumentRequest(BaseModel):
-    schema_version: Literal["0.6.0"]
+    schema_version: Literal["0.7.0"]
     mechanics: SetupMechanicsSettings
     theme: StoryThemeSettings
     player_generation: PlayerGenerationSettings

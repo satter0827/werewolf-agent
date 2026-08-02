@@ -6,7 +6,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE = ROOT / "supabase" / "migrations" / "20260729082649_release_0_1_0_baseline.sql"
-SETUP_SCHEMA_0_6_0 = ROOT / "supabase" / "migrations" / "20260802090000_setup_schema_0_6_0.sql"
+SETUP_SCHEMA_0_7_0 = ROOT / "supabase" / "migrations" / "20260802090000_setup_schema_0_7_0.sql"
 
 
 def _baseline() -> str:
@@ -70,10 +70,10 @@ def test_user_setup_revisions_are_private_immutable_and_semver_versioned() -> No
 
 
 def test_latest_setup_schema_constraint_accepts_only_current_documents() -> None:
-    migration = SETUP_SCHEMA_0_6_0.read_text(encoding="utf-8").casefold()
+    migration = SETUP_SCHEMA_0_7_0.read_text(encoding="utf-8").casefold()
 
-    assert "drop constraint user_setup_revisions_schema_version_check" in migration
-    assert "check (schema_version = '0.6.0')" in migration
+    assert 'drop constraint "user_setup_revisions_schema_version_check"' in migration
+    assert "check (schema_version = '0.7.0')" in migration
 
 
 def test_baseline_has_no_redundant_engine_or_definition_version_columns() -> None:
