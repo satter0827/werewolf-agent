@@ -23,6 +23,11 @@ from werewolf_agent.domain.state import (
     SubmissionMode,
 )
 
+_ASCII_CASE_TRANSLATION = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "abcdefghijklmnopqrstuvwxyz",
+)
+
 
 class CoreDiscussionPolicy:
     """独立意見と逆順応答からなる組み込み議論を実装する."""
@@ -308,7 +313,7 @@ def _speech_record(
 
 
 def _normalized_message(value: str) -> str:
-    return " ".join(value.split()).casefold()
+    return " ".join(value.split()).translate(_ASCII_CASE_TRANSLATION)
 
 
 def _validate_response_relation(

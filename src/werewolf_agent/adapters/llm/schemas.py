@@ -168,12 +168,9 @@ def _normalized_utterance_pattern(utterance: str) -> str:
         if character == " ":
             parts.append(r"\s+")
             continue
-        variants = {
-            character,
-            character.casefold(),
-            character.lower(),
-            character.upper(),
-        }
+        variants = {character}
+        if character.isascii() and character.isalpha():
+            variants.update((character.lower(), character.upper()))
         escaped = sorted({re.escape(variant) for variant in variants if variant})
         parts.append(escaped[0] if len(escaped) == 1 else f"(?:{'|'.join(escaped)})")
     return rf"^\s*{''.join(parts)}\s*$"

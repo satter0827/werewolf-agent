@@ -2,8 +2,15 @@
 
 from jsonschema import Draft202012Validator
 
+from werewolf_agent.adapters.llm.langchain.service import (
+    _normalized_utterance as adapter_normalized_utterance,
+)
 from werewolf_agent.adapters.llm.models import AgentObservation
 from werewolf_agent.adapters.llm.schemas import build_decision_response_schema
+from werewolf_agent.domain.rules.discussion import _normalized_message
+from werewolf_agent.simulation.session import (
+    _normalized_utterance as simulation_normalized_utterance,
+)
 
 
 def test_pass_schema_forbids_speech_fields() -> None:
@@ -126,6 +133,49 @@ def test_response_schema_uses_only_relations_authorized_by_setup() -> None:
     }
     assert validator.is_valid({**base, "position": "undecided", "relation": "support"})
     assert not validator.is_valid({**base, "position": "support", "relation": "answer"})
+
+
+def test_repetition_normalization_is_consistent_and_schema_expressible() -> None:
+    normalizers = (
+        adapter_normalized_utterance,
+        simulation_normalized_utterance,
+        _normalized_message,
+    )
+
+    for normalize in normalizers:
+        assert normalize("Claim  is true") == normalize(" claim is TRUE ")
+        assert normalize("STRASSE") != normalize("straße")
+        assert normalize("ΟΣ") != normalize("ος")
+
+    observation = _observation(
+        actions=[{"type": "speech"}],
+        legal_topics={"speech": ["p3"]},
+        evidence_options={"speech": [_evidence("opening:p2", "p2", "p3", "support")]},
+        legal_references={"speech": ["opening:p2"]},
+        legal_relations={"speech": ["support"]},
+        speeches=[
+            _speech(
+                "opening:p2",
+                "p2",
+                "p3",
+                "support",
+                utterance="STRASSE",
+            )
+        ],
+    )
+    validator = Draft202012Validator(build_decision_response_schema(observation, _context()))
+
+    assert validator.is_valid(
+        {
+            "type": "speech",
+            "utterance": "straße",
+            "topic_id": "p3",
+            "position": "support",
+            "relation": "support",
+            "evidence_id": "opening:p2",
+            "response_to_id": "opening:p2",
+        }
+    )
 
 
 def test_vote_schema_constrains_target_and_requires_reason() -> None:

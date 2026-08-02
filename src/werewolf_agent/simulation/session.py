@@ -46,6 +46,11 @@ from werewolf_agent.simulation.contracts import (
     SimulationStopReason,
 )
 
+_ASCII_CASE_TRANSLATION = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "abcdefghijklmnopqrstuvwxyz",
+)
+
 
 class CancellationToken:
     """外部から安全に停止要求を伝える小さな同期境界."""
@@ -867,9 +872,8 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
                 raise AgentDecisionError("agent_response_topic_mismatch")
             _require_legal_response_relation(request, response, referenced)
             referenced_message = str(referenced.payload.get("utterance") or "")
-            if (
-                " ".join(referenced_message.split()).casefold()
-                == " ".join((response.utterance or "").split()).casefold()
+            if _normalized_utterance(referenced_message) == _normalized_utterance(
+                response.utterance or ""
             ):
                 raise AgentDecisionError("agent_response_must_contribute_new_content")
     elif response.response_to_id is not None:
@@ -897,6 +901,11 @@ def _require_legal_response(request: DecisionRequest, response: DecisionResponse
             raise AgentDecisionError("agent_vote_evidence_target_mismatch")
     if response.action_type != "vote" and response.reason is not None:
         raise AgentDecisionError("agent_vote_reason_not_allowed")
+
+
+def _normalized_utterance(value: str) -> str:
+    """Normalize repetition checks with schema-expressible ASCII case folding."""
+    return " ".join(value.split()).translate(_ASCII_CASE_TRANSLATION)
 
 
 def _require_legal_response_relation(
