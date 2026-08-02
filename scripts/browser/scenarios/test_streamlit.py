@@ -85,8 +85,10 @@ def test_gameplay_waiting_speech_and_target(
     submit = page.get_by_role("button", name="入力を送信")
     expect(submit).to_be_enabled()
     submit.click()
-    target = page.get_by_label("対象を選ぶ")
-    expect(target).to_be_visible(timeout=30_000)
+    _advance_until_target_action(page)
+    reason = page.get_by_label("投票理由")
+    expect(reason).to_be_visible()
+    reason.fill("対象について公開された発言を投票根拠にします。")
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-gameplay-target-{device_name}.png")
     page.context.set_offline(True)
@@ -101,6 +103,25 @@ def test_gameplay_waiting_speech_and_target(
     expect(vote_result).to_be_visible(timeout=30_000)
     assert_streamlit_quality(page)
     capture_public_screenshot(page, f"streamlit-reconnected-{device_name}.png")
+
+
+def _advance_until_target_action(page: Page) -> Locator:
+    """画面が示す合法操作を辿り、投票対象入力まで進める。"""
+    target = page.get_by_label("対象を選ぶ")
+    advance = page.get_by_role("button", name="1ステップ進める")
+    message = page.get_by_label("発言内容")
+    for step in range(8):
+        expect(target.or_(advance).or_(message)).to_be_visible(timeout=30_000)
+        if target.is_visible():
+            return target
+        if message.is_visible():
+            message.fill(f"公開情報を踏まえた応答です。{step + 1}")
+            submit = page.get_by_role("button", name="入力を送信")
+            expect(submit).to_be_enabled()
+            submit.click()
+            continue
+        advance.click()
+    raise AssertionError("投票対象の入力へ到達できませんでした。")
 
 
 def test_completed_game_presents_result_before_timeline(
