@@ -67,7 +67,7 @@ jobs:
           --head-ref HEAD
           --fresh
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-develop-check
           path: |
@@ -107,7 +107,7 @@ jobs:
           base-ref: origin/main
           head-ref: HEAD
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-main-readiness
           path: |
@@ -141,7 +141,7 @@ jobs:
           --head-ref HEAD
           --fresh
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: compatibility-python-${{ matrix.python-version }}
           path: |
@@ -261,7 +261,7 @@ jobs:
           path: .werewolf-agent/cache/nightly-success
           key: ${{ needs.nightly-preflight.outputs.fingerprint }}
       - if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: quality-scheduled-deep
           path: |
